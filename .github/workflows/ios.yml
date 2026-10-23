@@ -42,6 +42,35 @@ jobs:
           xcodebuild build-for-testing -project TwilDiary.xcodeproj -scheme TwilDiary \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+      - name: Compile for physical iOS devices
+        id: device
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: |
+          xcodebuild build -project TwilDiary.xcodeproj -scheme TwilDiary \
+            -destination 'generic/platform=iOS' -configuration Release \
+            -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO
+      - name: Package unsigned IPA for LiveContainer
+        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+        run: |
+          mkdir -p artifacts/Payload
+          cp -R device-build/Build/Products/Release-iphoneos/TwilDiary.app artifacts/Payload/
+          cd artifacts
+          ditto -c -k --keepParent Payload TwilDiary-LiveContainer.ipa
+          shasum -a 256 TwilDiary-LiveContainer.ipa > TwilDiary-LiveContainer.ipa.sha256
+      - name: Upload LiveContainer IPA
+        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-LiveContainer-IPA
+          path: |
+            artifacts/TwilDiary-LiveContainer.ipa
+            artifacts/TwilDiary-LiveContainer.ipa.sha256
+          retention-days: 14
+      - name: Boot the iPhone simulator
+        timeout-minutes: 6
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Run iPhone UI tests
         timeout-minutes: 12
         run: |
@@ -49,12 +78,6 @@ jobs:
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -parallel-testing-enabled NO \
             -derivedDataPath build -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
-      - name: Compile for physical iOS devices
-        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
-        run: |
-          xcodebuild build -project TwilDiary.xcodeproj -scheme TwilDiary \
-            -destination 'generic/platform=iOS' -configuration Release \
-            -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO
       - name: Upload simulator application
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -71,7 +94,7 @@ jobs:
       - name: Export screen captures for visual review
         if: always()
         run: |
-          if [ -d TestResults.xcresult ]; then
+          if [ -f TestResults.xcresult/Info.plist ]; then
             xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots
           fi
       - name: Upload screen captures

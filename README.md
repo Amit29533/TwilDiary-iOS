@@ -21,7 +21,7 @@ swift test --package-path Packages/TwilDiaryCore
 
 The **Native iOS** GitHub Actions workflow runs on `macos-26`, tests the package, generates the project, runs native UI tests on an available iPhone simulator, and compiles a Release build for physical iOS devices. Simulator application and `.xcresult` screenshot/test reports are retained for seven days. CI uses synthetic data and never signs in to the owner’s live diary.
 
-These are unsigned builds. A simulator `.app` cannot be installed on an iPhone. An installable IPA/TestFlight release requires the owner's Apple development team, certificate and provisioning setup. Signing secrets must be stored in GitHub Actions secrets, never in this repository. Signed distribution is a subsequent milestone, not an output of this initial workflow.
+The workflow packages the Release device build as **TwilDiary-LiveContainer.ipa**, with a SHA-256 checksum, in the **TwilDiary-LiveContainer-IPA** artifact. This is an unsigned IPA intended for import into your configured LiveContainer, which handles guest signing. The archive contains `Payload/TwilDiary.app`; it is separate from the simulator `.app`, which cannot run on an iPhone. Import through LiveContainer's plus button, following its [official guide](https://github.com/LiveContainer/LiveContainer#installing-apps). Physical device compatibility and sign-in still need testing inside LiveContainer. TestFlight or direct Apple-signed distribution would require a separate signing setup; no Apple certificates are needed in CI for this unsigned artifact.
 
 ## Existing backend and sign-in
 
