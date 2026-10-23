@@ -53,7 +53,8 @@ import TwilDiaryCore
     func card(_ title: MediaTitle, season: Int? = nil) async throws -> WatchCard {
         var query = "?day=\(DiaryDate.day())"
         if let season { query += "&season=\(season)" }
-        return try await api.request("/api/glance/\(title.id)" + query)
+        do { return try await api.request("/api/glance/\(title.id)" + query) }
+        catch { fail(error); throw error }
     }
     func loadSeason(_ title: MediaTitle, number: Int) async {
         await perform {
