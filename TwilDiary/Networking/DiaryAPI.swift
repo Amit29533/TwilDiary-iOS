@@ -13,6 +13,18 @@ struct AccessCredential: Codable {
     var isValid: Bool { expires.map { $0 > .now } ?? true }
 }
 
+@MainActor protocol SessionStoring {
+    func read() -> AccessCredential?
+    func save(_ credential: AccessCredential) throws
+    func delete()
+}
+
+@MainActor struct KeychainSessionStorage: SessionStoring {
+    func read() -> AccessCredential? { SessionKeychain.read() }
+    func save(_ credential: AccessCredential) throws { try SessionKeychain.save(credential) }
+    func delete() { SessionKeychain.delete() }
+}
+
 @MainActor enum SessionKeychain {
     private static let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
@@ -40,12 +52,18 @@ struct AccessCredential: Codable {
 }
 
 enum APIError: LocalizedError {
-    case signIn, message(String), rejected(Int, String)
+    case signIn, message(String), rejected(Int, String), databaseLimit(Date?)
     var errorDescription: String? {
         switch self {
         case .signIn: "Your private session expired. Sign in again to continue."
         case .message(let text): text
         case .rejected(_, let text): text
+        case .databaseLimit(let reset):
+            if let reset {
+                "Cloudflare’s daily database limit has been reached. Your data is safe. Try again after \(reset.formatted(date: .abbreviated, time: .shortened))."
+            } else {
+                "Cloudflare’s daily database limit has been reached. Your data is safe. Try again after midnight UTC."
+            }
         }
     }
 }
@@ -63,13 +81,31 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
 @MainActor final class DiaryAPI {
     var credential: AccessCredential?
     private let session: URLSession
-    init() {
-        let config = URLSessionConfiguration.ephemeral
+    private let storage: any SessionStoring
+    init(configuration: URLSessionConfiguration = .ephemeral, storage: any SessionStoring = KeychainSessionStorage()) {
+        self.storage = storage
+        let config = configuration
         config.httpCookieAcceptPolicy = .never; config.httpShouldSetCookies = false
         config.urlCache = nil; config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = 30
         session = URLSession(configuration: config, delegate: StopRedirects(), delegateQueue: nil)
-        credential = SessionKeychain.read()
+        credential = storage.read()
+    }
+    func authenticate(_ value: AccessCredential) async throws {
+        let previous = credential
+        credential = value
+        do {
+            let session: SessionResponse = try await request("/api/session")
+            guard session.authenticated else { throw APIError.signIn }
+            try storage.save(value)
+        } catch {
+            credential = previous
+            throw error
+        }
+    }
+    func signOut() {
+        storage.delete()
+        credential = nil
     }
     func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> T {
         guard path.hasPrefix("/api/"), let url = URL(string: path, relativeTo: AppConfiguration.backend)?.absoluteURL,
@@ -86,12 +122,17 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
         }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.message("No response from the diary.") }
-        guard http.statusCode != 401 && http.statusCode != 403 && !(300..<400).contains(http.statusCode),
-              http.value(forHTTPHeaderField: "Content-Type")?.contains("application/json") == true else { throw APIError.signIn }
+        guard http.statusCode != 401 && http.statusCode != 403 && !(300..<400).contains(http.statusCode) else { throw APIError.signIn }
+        let isJSON = http.value(forHTTPHeaderField: "Content-Type")?.lowercased().contains("application/json") == true
         if !(200..<300).contains(http.statusCode) {
-            let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data)
+            let envelope = isJSON ? (try? JSONDecoder().decode(ErrorEnvelope.self, from: data)) : nil
+            if ["database_read_limit", "database_write_limit"].contains(envelope?.error.code ?? "") {
+                let reset = envelope?.error.resetAt.flatMap { ISO8601DateFormatter().date(from: $0) ?? ISO8601DateFormatter.fractional.date(from: $0) }
+                throw APIError.databaseLimit(reset)
+            }
             throw APIError.rejected(http.statusCode, envelope?.error.message ?? "The change was not confirmed. Refresh before trying again.")
         }
+        guard isJSON else { throw APIError.message("The diary returned an unexpected response. Please try again.") }
         return try JSONDecoder().decode(T.self, from: data)
     }
     func allPages<T: Decodable & Sendable>(_ section: String, as: T.Type) async throws -> [T] {
@@ -106,8 +147,17 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
         return result
     }
     private struct ErrorEnvelope: Decodable {
-        struct Detail: Decodable { let message: String }
+        struct Detail: Decodable { let code: String?; let message: String; let resetAt: String? }
         let error: Detail
+    }
+    private struct SessionResponse: Decodable { let authenticated: Bool }
+}
+
+private extension ISO8601DateFormatter {
+    static var fractional: ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
     }
 }
 

@@ -32,6 +32,20 @@ struct RootView: View {
                                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showSignIn = false } } }
                         }
                     }
+            } else if !store.hasLoadedWorkspace {
+                VStack(spacing: 22) {
+                    Image(systemName: store.loading ? "sparkle" : "externaldrive.badge.exclamationmark")
+                        .font(.system(size: 48)).foregroundStyle(.tint)
+                    Text(store.loading ? "Opening your diary" : "Your diary is temporarily unavailable").font(.title2.bold())
+                    if store.loading { ProgressView() }
+                    else {
+                        Text(store.error ?? "You’re signed in. Retry to load your diary.")
+                            .foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button("Retry") { Task { await store.refresh() } }
+                            .buttonStyle(.borderedProminent).controlSize(.large)
+                        Button("Sign out") { store.signOut() }.foregroundStyle(.secondary)
+                    }
+                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
             } else {
                 TabView {
                     Tab("Home", systemImage: "house") { diaryStack { HomeView() } }
@@ -49,9 +63,9 @@ struct RootView: View {
                         HStack { Text(error).font(.caption); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly) }
                             .padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14)).padding()
                     }
-                }.task { await store.refresh() }
+                }
             }
-        }
+        }.task { await store.refresh() }
     }
     private func diaryStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         NavigationStack {

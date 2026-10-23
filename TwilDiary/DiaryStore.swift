@@ -6,33 +6,33 @@ import TwilDiaryCore
     var loading = false
     var busy = false
     var needsSignIn = true
+    var hasLoadedWorkspace = false
     var error: String?
     var undoLabel: String?
     private var undoAction: (() async throws -> Void)?
-    private let api = DiaryAPI()
+    private let api: DiaryAPI
     private var pendingWatches: [String: [String: Any]] = [:]
     private var pendingProgress: [String: [String: Any]] = [:]
     private var pendingRemovals: [String: WatchCard.Previous] = [:]
     let isPreview: Bool
-    init() {
+    init(api: DiaryAPI? = nil) {
+        self.api = api ?? DiaryAPI()
         #if DEBUG
         isPreview = ProcessInfo.processInfo.arguments.contains("--ui-testing")
         #else
         isPreview = false
         #endif
-        if isPreview { workspace = PreviewData.workspace; needsSignIn = false }
-        else { needsSignIn = api.credential == nil }
+        if isPreview { workspace = PreviewData.workspace; needsSignIn = false; hasLoadedWorkspace = true }
+        else { needsSignIn = self.api.credential == nil }
     }
     func connect(_ credential: AccessCredential) async {
-        api.credential = credential
         do {
-            let _: WorkspacePage<MediaTitle> = try await api.request("/api/workspace")
-            try SessionKeychain.save(credential)
+            try await api.authenticate(credential)
             needsSignIn = false; error = nil; await refresh()
-        } catch { api.credential = nil; fail(error) }
+        } catch { fail(error) }
     }
     func signOut() {
-        SessionKeychain.delete(); api.credential = nil; workspace = Workspace()
+        api.signOut(); workspace = Workspace(); hasLoadedWorkspace = false; error = nil
         pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); undoAction = nil; undoLabel = nil
         needsSignIn = true
     }
@@ -48,6 +48,7 @@ import TwilDiaryCore
         let events = try await api.allPages("events", as: WatchEvent.self)
         let locations = try await api.allPages("locations", as: FileLocation.self)
         workspace = Workspace(titles: titles, episodes: episodes, events: events, locations: locations)
+        hasLoadedWorkspace = true
     }
     func title(_ id: String) -> MediaTitle? { workspace.titles.first { $0.id == id } }
     func card(_ title: MediaTitle, season: Int? = nil) async throws -> WatchCard {

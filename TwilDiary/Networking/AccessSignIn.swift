@@ -10,7 +10,7 @@ struct AccessSignIn: UIViewRepresentable {
         configuration.websiteDataStore = .nonPersistent()
         let web = WKWebView(frame: .zero, configuration: configuration)
         web.navigationDelegate = context.coordinator
-        web.load(URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/workspace")))
+        web.load(URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/session")))
         return web
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {}
@@ -20,7 +20,7 @@ struct AccessSignIn: UIViewRepresentable {
         init(completion: @escaping (AccessCredential) -> Void) { self.completion = completion }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard !completed, let url = webView.url, url.scheme == "https", url.host == AppConfiguration.backend.host,
-                  url.path == "/api/workspace" else { return }
+                  url.path == "/api/session" else { return }
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
                 guard let self, !self.completed, let host = AppConfiguration.backend.host else { return }
                 guard let cookie = cookies.first(where: {

@@ -2,9 +2,9 @@ name: Native iOS
 on:
   push:
     branches: [main]
-    paths: ['TwilDiary/**', 'TwilDiaryUITests/**', 'Packages/**', 'project.yml', '.github/workflows/ios.yml']
+    paths: ['TwilDiary/**', 'TwilDiaryTests/**', 'TwilDiaryUITests/**', 'Packages/**', 'project.yml', '.github/workflows/ios.yml']
   pull_request:
-    paths: ['TwilDiary/**', 'TwilDiaryUITests/**', 'Packages/**', 'project.yml', '.github/workflows/ios.yml']
+    paths: ['TwilDiary/**', 'TwilDiaryTests/**', 'TwilDiaryUITests/**', 'Packages/**', 'project.yml', '.github/workflows/ios.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -71,7 +71,7 @@ jobs:
         run: |
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
-      - name: Run iPhone UI tests
+      - name: Run session and iPhone UI tests
         timeout-minutes: 12
         run: |
           xcodebuild test-without-building -project TwilDiary.xcodeproj -scheme TwilDiary \
