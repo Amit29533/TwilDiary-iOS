@@ -54,7 +54,7 @@ struct LibraryView: View {
     }
 }
 
-func titleRow(_ title: MediaTitle) -> some View {
+@MainActor func titleRow(_ title: MediaTitle) -> some View {
     HStack(spacing: 12) {
         Artwork(path: title.poster, title: title.name).frame(width: 48, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
         VStack(alignment: .leading, spacing: 5) { Text(title.name).font(.subheadline.bold()); Text(title.categoryName).font(.caption).foregroundStyle(.secondary) }

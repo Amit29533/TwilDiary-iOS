@@ -51,7 +51,7 @@ struct QueueView: View {
     }
 }
 
-func historyRow(_ event: WatchEvent, title: MediaTitle, workspace: Workspace) -> some View {
+@MainActor func historyRow(_ event: WatchEvent, title: MediaTitle, workspace: Workspace) -> some View {
     HStack(spacing: 12) {
         Artwork(path: title.poster, title: title.name).frame(width: 42, height: 64).clipShape(RoundedRectangle(cornerRadius: 8))
         VStack(alignment: .leading, spacing: 5) {

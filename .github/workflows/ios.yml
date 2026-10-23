@@ -57,3 +57,16 @@ jobs:
           name: TwilDiary-iOS-TestResults
           path: TestResults.xcresult
           retention-days: 7
+      - name: Export screen captures for visual review
+        if: always()
+        run: |
+          if [ -d TestResults.xcresult ]; then
+            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots
+          fi
+      - name: Upload screen captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TwilDiary-iOS-Screenshots
+          path: screenshots
+          retention-days: 7
