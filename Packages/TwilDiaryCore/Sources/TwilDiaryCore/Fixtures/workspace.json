@@ -1,0 +1,196 @@
+{
+  "titles": [
+    {
+      "id": "again",
+      "name": "18 Again",
+      "category": "show",
+      "year": 2023,
+      "overview": "A story worth remembering. This is synthetic preview data for the native iOS build.",
+      "poster": "asset:again",
+      "backdrop": "asset:again-backdrop",
+      "communityScore": 8.4,
+      "tmdbId": null,
+      "genres": [
+        "Drama"
+      ],
+      "runtimeMinutes": 50,
+      "status": "watching",
+      "favorite": false,
+      "queued": false,
+      "score": 7.5,
+      "notes": "",
+      "tags": [],
+      "deletedAt": null,
+      "version": 1,
+      "seasons": [
+        {
+          "number": 1,
+          "name": "Season 1",
+          "expectedEpisodes": 4,
+          "metadataLoadedAt": "2026-10-23T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "frieren",
+      "name": "Frieren: Beyond Journey’s End",
+      "category": "anime",
+      "year": 2023,
+      "overview": "A story worth remembering. This is synthetic preview data for the native iOS build.",
+      "poster": "asset:frieren",
+      "backdrop": "asset:frieren-backdrop",
+      "communityScore": 8.9,
+      "tmdbId": null,
+      "genres": [
+        "Drama"
+      ],
+      "runtimeMinutes": 24,
+      "status": "watching",
+      "favorite": false,
+      "queued": false,
+      "score": 7.5,
+      "notes": "",
+      "tags": [],
+      "deletedAt": null,
+      "version": 1,
+      "seasons": [
+        {
+          "number": 1,
+          "name": "Season 1",
+          "expectedEpisodes": 4,
+          "metadataLoadedAt": "2026-10-23T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "severance",
+      "name": "Severance",
+      "category": "show",
+      "year": 2023,
+      "overview": "A story worth remembering. This is synthetic preview data for the native iOS build.",
+      "poster": "asset:severance",
+      "backdrop": "asset:severance-backdrop",
+      "communityScore": 8.7,
+      "tmdbId": null,
+      "genres": [
+        "Drama"
+      ],
+      "runtimeMinutes": 48,
+      "status": "planned",
+      "favorite": false,
+      "queued": false,
+      "score": 7.5,
+      "notes": "",
+      "tags": [],
+      "deletedAt": null,
+      "version": 1,
+      "seasons": [
+        {
+          "number": 1,
+          "name": "Season 1",
+          "expectedEpisodes": 4,
+          "metadataLoadedAt": "2026-10-23T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "night",
+      "name": "A Quiet Orbit",
+      "category": "movie",
+      "year": 2023,
+      "overview": "A story worth remembering. This is synthetic preview data for the native iOS build.",
+      "poster": "asset:night",
+      "backdrop": "asset:night-backdrop",
+      "communityScore": 7.3,
+      "tmdbId": null,
+      "genres": [
+        "Drama"
+      ],
+      "runtimeMinutes": 96,
+      "status": "planned",
+      "favorite": false,
+      "queued": false,
+      "score": 7.5,
+      "notes": "",
+      "tags": [],
+      "deletedAt": null,
+      "version": 1,
+      "seasons": []
+    }
+  ],
+  "episodes": [
+    {
+      "id": "ep-1",
+      "titleId": "again",
+      "season": 1,
+      "number": 1,
+      "name": "Chapter 1",
+      "overview": "",
+      "airedOn": "2023-01-01",
+      "still": null,
+      "hidden": false,
+      "skipped": false
+    },
+    {
+      "id": "ep-2",
+      "titleId": "again",
+      "season": 1,
+      "number": 2,
+      "name": "Chapter 2",
+      "overview": "",
+      "airedOn": "2023-01-01",
+      "still": null,
+      "hidden": false,
+      "skipped": false
+    },
+    {
+      "id": "ep-3",
+      "titleId": "again",
+      "season": 1,
+      "number": 3,
+      "name": "",
+      "overview": "",
+      "airedOn": "2023-01-01",
+      "still": null,
+      "hidden": true,
+      "skipped": false
+    },
+    {
+      "id": "ep-4",
+      "titleId": "again",
+      "season": 1,
+      "number": 4,
+      "name": "",
+      "overview": "",
+      "airedOn": "2023-01-01",
+      "still": null,
+      "hidden": true,
+      "skipped": false
+    }
+  ],
+  "events": [
+    {
+      "id": "watch-1",
+      "operationId": "op-1",
+      "titleId": "again",
+      "episodeId": "ep-1",
+      "watchedAt": "2026-10-23T00:00:00Z",
+      "recordedAt": "2026-10-23T00:00:00Z",
+      "revokedAt": null,
+      "origin": "sample",
+      "version": 1
+    },
+    {
+      "id": "watch-2",
+      "operationId": "op-2",
+      "titleId": "again",
+      "episodeId": "ep-2",
+      "watchedAt": "2026-10-23T00:00:00Z",
+      "recordedAt": "2026-10-23T00:00:00Z",
+      "revokedAt": null,
+      "origin": "sample",
+      "version": 1
+    }
+  ],
+  "locations": []
+}

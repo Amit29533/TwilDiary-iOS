@@ -1,0 +1,14 @@
+.DS_Store
+.local/
+.build/
+Packages/*/.build/
+Packages/*/.swiftpm/
+TwilDiary.xcodeproj/
+build/
+device-build/
+*.xcresult/
+**/xcuserdata/
+*.p12
+*.mobileprovision
+.env*
+*.log
