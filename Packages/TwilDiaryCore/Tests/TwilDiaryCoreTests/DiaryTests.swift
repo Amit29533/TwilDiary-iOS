@@ -58,3 +58,13 @@ import Testing
     #expect(DiaryDate.duration(273) == "4h 33m")
     #expect(DiaryDate.duration(120) == "2h")
 }
+
+@Test func weekStartsOnMondayEvenWhenTheDeviceUsesSunday() throws {
+    let now = try #require(DiaryDate.parse("2026-10-25T12:00:00Z"))
+    let monday = try #require(DiaryDate.parse("2026-10-19T12:00:00Z"))
+    let previousSunday = try #require(DiaryDate.parse("2026-10-18T12:00:00Z"))
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    calendar.firstWeekday = 1
+    #expect(Period.week.contains(monday, now: now, calendar: calendar))
+    #expect(!Period.week.contains(previousSunday, now: now, calendar: calendar))
+}

@@ -5,7 +5,7 @@ import TwilDiaryCore
 struct StatsView: View {
     @Environment(DiaryStore.self) private var store
     @State private var period = Period.today
-    @State private var year = Calendar.current.component(.year, from: Date.now)
+    @State private var year = DiaryDate.calendar().component(.year, from: Date.now)
     @State private var selectedDay: Date?
     @State private var showGenres = false
     var body: some View {
@@ -30,7 +30,7 @@ struct StatsView: View {
                         .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }.chartYAxis(.hidden)
                         .chartXSelection(value: $selectedDay).frame(height: 120)
                     if let selectedDay {
-                        let selected = events.filter { DiaryDate.parse($0.watchedAt).map { Calendar.current.isDate($0, inSameDayAs: selectedDay) } ?? false }
+                        let selected = events.filter { DiaryDate.parse($0.watchedAt).map { DiaryDate.calendar().isDate($0, inSameDayAs: selectedDay) } ?? false }
                         Text(selectedDay, format: .dateTime.day().month(.wide).year()).font(.subheadline.bold())
                         ForEach(selected) { event in if let title = store.title(event.titleId) { NavigationLink(value: title.id) { titleRow(title) }.buttonStyle(.plain) } }
                     }
@@ -53,14 +53,14 @@ struct StatsView: View {
             }.padding(.horizontal, 16).padding(.bottom, 24)
         }.refreshable { await store.refresh() }
     }
-    private var events: [WatchEvent] { store.workspace.activeEvents.filter { event in DiaryDate.parse(event.watchedAt).map { period.contains($0, now: .now, calendar: .current, year: year) } ?? false } }
+    private var events: [WatchEvent] { store.workspace.activeEvents.filter { event in DiaryDate.parse(event.watchedAt).map { period.contains($0, now: .now, calendar: DiaryDate.calendar(), year: year) } ?? false } }
     private var minutes: Int { events.reduce(0) { $0 + max(0, store.title($1.titleId)?.runtimeMinutes ?? 0) } }
     private var datedCount: Int { store.workspace.activeEvents.filter { DiaryDate.parse($0.watchedAt) != nil }.count }
-    private var years: [Int] { Set(store.workspace.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { Calendar.current.component(.year, from: $0) } } + [Calendar.current.component(.year, from: Date.now)]).sorted(by: >) }
+    private var years: [Int] { Set(store.workspace.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { DiaryDate.calendar().component(.year, from: $0) } } + [DiaryDate.calendar().component(.year, from: Date.now)]).sorted(by: >) }
     private struct Day: Identifiable { var id: Date { date }; let date: Date; let minutes: Int }
     private var daily: [Day] {
         var values: [Date: Int] = [:]
-        for event in events { if let date = DiaryDate.parse(event.watchedAt) { values[Calendar.current.startOfDay(for: date), default: 0] += max(0, store.title(event.titleId)?.runtimeMinutes ?? 0) } }
+        for event in events { if let date = DiaryDate.parse(event.watchedAt) { values[DiaryDate.calendar().startOfDay(for: date), default: 0] += max(0, store.title(event.titleId)?.runtimeMinutes ?? 0) } }
         return values.map { Day(date: $0.key, minutes: $0.value) }.sorted { $0.date < $1.date }
     }
     private struct Genre { let name: String; let count: Int; let percent: Int }

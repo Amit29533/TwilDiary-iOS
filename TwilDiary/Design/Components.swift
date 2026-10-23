@@ -33,7 +33,14 @@ struct PageHeader: View {
             Image(systemName: "sparkle").font(.title2).foregroundStyle(theme.accent)
                 .frame(width: 44, height: 44).background(theme.accent.opacity(0.1), in: Circle())
                 .overlay(Circle().strokeBorder(theme.accent.opacity(0.25)))
-            Text(name).font(.system(size: 28, weight: .bold)).tracking(-1).foregroundStyle(.white)
+            if name == "TwilDiary" {
+                HStack(spacing: 0) {
+                    Text("Twil").foregroundStyle(.white)
+                    Text("Diary").foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
+                }.font(.system(size: 28, weight: .bold)).tracking(-1)
+            } else {
+                Text(name).font(.system(size: 28, weight: .bold)).tracking(-1).foregroundStyle(.white)
+            }
             if let count { Text(count).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
             Spacer(minLength: 0)
         }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)

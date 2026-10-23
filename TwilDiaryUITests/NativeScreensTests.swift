@@ -28,7 +28,7 @@ import XCTest
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
         app.tabBars.buttons["Library"].tap(); app.buttons["Search library"].tap()
         let search = app.textFields["library-search"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("Frieren")
+        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("Frieren\n")
         XCTAssertTrue(app.buttons["title-frieren"].exists)
         XCTAssertFalse(app.buttons["title-again"].exists)
         app.tabBars.buttons["Home"].tap(); app.tabBars.buttons["Library"].tap()

@@ -9,12 +9,13 @@ struct LibraryView: View {
     @State private var drive = ""
     @State private var search = ""
     @State private var showSearch = false
+    @FocusState private var searchFocused: Bool
     @State private var list = false
     @State private var sort = "library"
     var body: some View {
         VStack(spacing: 0) {
             HStack { PageHeader(name: "Library", count: String(store.workspace.activeTitles.count)); Button { showSearch.toggle() } label: { Image(systemName: "magnifyingglass").font(.title3).padding(.trailing, 20) }.accessibilityLabel("Search library") }
-            if showSearch { TextField("Search your library…", text: $search).textFieldStyle(.roundedBorder).padding(.horizontal, 16).padding(.bottom, 12).accessibilityIdentifier("library-search") }
+            if showSearch { TextField("Search your library…", text: $search).textFieldStyle(.roundedBorder).focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }.padding(.horizontal, 16).padding(.bottom, 12).accessibilityIdentifier("library-search") }
             CategoryPicker(selection: $category)
             ScrollView(.horizontal) {
                 HStack(spacing: 10) {

@@ -103,6 +103,11 @@ public struct WatchCard: Decodable, Sendable {
 }
 
 public enum DiaryDate {
+    public static func calendar(timeZone: TimeZone = .current) -> Calendar {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = timeZone; value.firstWeekday = 2; value.minimumDaysInFirstWeek = 4
+        return value
+    }
     public static func parse(_ value: String?) -> Date? {
         guard let value else { return nil }
         let formatter = ISO8601DateFormatter()
@@ -150,7 +155,9 @@ public enum Period: String, CaseIterable, Identifiable, Sendable {
         guard date <= now else { return false }
         switch self {
         case .today: return calendar.isDate(date, inSameDayAs: now)
-        case .week: return calendar.dateInterval(of: .weekOfYear, for: now)?.contains(date) == true
+        case .week:
+            var week = calendar; week.firstWeekday = 2; week.minimumDaysInFirstWeek = 4
+            return week.dateInterval(of: .weekOfYear, for: now)?.contains(date) == true
         case .month: return calendar.isDate(date, equalTo: now, toGranularity: .month)
         case .year: return calendar.component(.year, from: date) == (year ?? calendar.component(.year, from: now))
         case .all: return true

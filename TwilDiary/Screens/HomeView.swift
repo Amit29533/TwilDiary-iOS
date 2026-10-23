@@ -7,7 +7,7 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 PageHeader(name: "TwilDiary").padding(.horizontal, -16)
-                SectionHeading(name: "Pick up where you left off") { Text("Glance →").foregroundStyle(.tint) }
+                SectionHeading(name: "Pick up where you left off") { NavigationLink { GlanceView() } label: { Text("Glance →") } }
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 12) {
                         ForEach(watching) { title in ProgressCard(title: title, compact: true).containerRelativeFrame(.horizontal, count: 1, spacing: 12) }
@@ -38,7 +38,7 @@ struct HomeView: View {
     }
     private var watching: [MediaTitle] { store.workspace.activeTitles.filter { $0.status == "watching" } }
     private var planned: [MediaTitle] { store.workspace.activeTitles.filter { $0.status == "planned" } }
-    private var weekEvents: [WatchEvent] { store.workspace.activeEvents.filter { DiaryDate.parse($0.watchedAt).map { Period.week.contains($0, now: .now, calendar: .current) } ?? false } }
+    private var weekEvents: [WatchEvent] { store.workspace.activeEvents.filter { DiaryDate.parse($0.watchedAt).map { Period.week.contains($0, now: .now, calendar: DiaryDate.calendar()) } ?? false } }
     private var weekMinutes: Int { weekEvents.reduce(0) { $0 + (store.title($1.titleId)?.runtimeMinutes ?? 0) } }
 }
 
@@ -84,7 +84,7 @@ struct HistoryView: View {
     private var events: [WatchEvent] {
         store.workspace.activeEvents.filter { event in
             let queryMatches = query.isEmpty || (store.title(event.titleId)?.name.localizedCaseInsensitiveContains(query) ?? false)
-            return queryMatches && (period == .all || (DiaryDate.parse(event.watchedAt).map { period.contains($0, now: .now, calendar: .current) } ?? false))
+            return queryMatches && (period == .all || (DiaryDate.parse(event.watchedAt).map { period.contains($0, now: .now, calendar: DiaryDate.calendar()) } ?? false))
         }.sorted { ($0.watchedAt ?? $0.recordedAt) > ($1.watchedAt ?? $1.recordedAt) }
     }
 }

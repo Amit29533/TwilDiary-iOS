@@ -16,7 +16,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Show Apple toolchain
@@ -34,9 +34,11 @@ jobs:
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for k,vs in sorted(d["devices"].items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
           echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
       - name: Compile and test native screens
+        timeout-minutes: 15
         run: |
           xcodebuild test -project TwilDiary.xcodeproj -scheme TwilDiary \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -parallel-testing-enabled NO \
             -derivedDataPath build -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
       - name: Compile for physical iOS devices
@@ -45,14 +47,14 @@ jobs:
             -destination 'generic/platform=iOS' -configuration Release \
             -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO
       - name: Upload simulator application
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: TwilDiary-iOS-Simulator
           path: build/Build/Products/Debug-iphonesimulator/TwilDiary.app
           retention-days: 7
       - name: Upload simulator test results and screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: TwilDiary-iOS-TestResults
           path: TestResults.xcresult
@@ -65,7 +67,7 @@ jobs:
           fi
       - name: Upload screen captures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: TwilDiary-iOS-Screenshots
           path: screenshots
