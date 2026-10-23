@@ -29,6 +29,8 @@ The app uses `https://twildiary-v2.amit29533.workers.dev`. No API, OAuth, Cloudf
 
 Workspace sections are paginated in full and published together. A failed request preserves the previous complete snapshot. Mutation controls wait for confirmed responses. Watch operations retain retry identities in memory; status changes use the existing atomic progress endpoint and Undo receipts. Pending writes are not persisted across process termination yet, so the app has no offline write queue. Refresh after a terminated/uncertain request before continuing.
 
+Sign-in validation uses the authenticated, database-independent `/api/session` endpoint. Temporary database failures keep the session and show a Retry screen until the first complete diary loads. Cloudflare daily quota errors show their reset time in the device's local time. See the [sign-in recovery report](docs/SIGN-IN-RECOVERY-2026-10-23.md).
+
 ## Port coverage
 
 | Area | First milestone | Remaining parity work |
