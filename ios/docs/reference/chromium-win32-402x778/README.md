@@ -1,0 +1,1 @@
+Secondary web references at 402x778, matching iPhone 17 Pro usable content after documented 62pt top/34pt bottom OS insets. Primary 390x844 references remain unchanged. Chromium/Windows typography differs from iOS; these are comparison inputs, not a pixel-parity claim.

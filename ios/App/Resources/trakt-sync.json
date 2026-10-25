@@ -1,0 +1,158 @@
+{
+  "run": {
+    "id": "reference-sync",
+    "state": "review",
+    "stage": "history",
+    "page": 1,
+    "progress": 120,
+    "ratingMode": "round",
+    "error": null,
+    "retryAfter": 0
+  },
+  "items": [
+    {
+      "id": "change-0",
+      "kind": "history",
+      "direction": "pull",
+      "name": "The Clockmaker",
+      "detail": "Import from Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-1",
+      "kind": "rating",
+      "direction": "push",
+      "name": "A Quiet Journey",
+      "detail": "Send to Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-2",
+      "kind": "watchlist",
+      "direction": "conflict",
+      "name": "Midnight Stories",
+      "detail": "Import from Trakt",
+      "review": true,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-3",
+      "kind": "history",
+      "direction": "push",
+      "name": "Beyond the Stars",
+      "detail": "Send to Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-4",
+      "kind": "rating",
+      "direction": "pull",
+      "name": "The Last Summer",
+      "detail": "Import from Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-5",
+      "kind": "watchlist",
+      "direction": "push",
+      "name": "Letters Home",
+      "detail": "Send to Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-6",
+      "kind": "history",
+      "direction": "pull",
+      "name": "The Clockmaker 7",
+      "detail": "Import from Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "change-7",
+      "kind": "rating",
+      "direction": "push",
+      "name": "A Quiet Journey 8",
+      "detail": "Send to Trakt",
+      "review": false,
+      "state": "pending",
+      "error": null,
+      "blocked": false,
+      "context": {
+        "local": "7.5",
+        "remote": "8",
+        "season": 1,
+        "episode": 3
+      }
+    }
+  ],
+  "counts": {
+    "pending": 8,
+    "links": 0,
+    "failed": 0,
+    "uncertain": 0,
+    "safe": 7
+  },
+  "next": null
+}

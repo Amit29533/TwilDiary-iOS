@@ -1,0 +1,72 @@
+{
+  "sourceSHA": "d59f55e5fa574382b067477f6b4fb079690507a8",
+  "codemagicBuild": "6adde71f4a72334e32e4fa14",
+  "buildNumber": 54,
+  "kind": "complete-codemagic-candidate",
+  "regressionAcceptance": "Complete Codemagic passed; independent GitHub acceptance pending",
+  "sha256": "71c8597fdc218ff2370148cbf733d66376304ef2987293486eac6e92437a9798",
+  "bytes": 5616221,
+  "zipCRC": "pass",
+  "architecture": "arm64",
+  "platform": "iPhoneOS",
+  "testFixtureResources": "absent",
+  "buildWarnings": 0,
+  "nativeTests": 188,
+  "focusedUITests": 8,
+  "earlyUITests": 10,
+  "primaryUITests": 51,
+  "extraPhoneLayoutTests": {
+    "iPhone 17e": 3,
+    "iPhone 17 Pro Max": 3
+  },
+  "screenshots": [
+    {
+      "path": "glass-title.png",
+      "test": "LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField()",
+      "originalAttachment": "55CC958C-67B5-4872-9103-181BB9BDF20B.png",
+      "label": "Layout 402 Glass lowered title artwork and identity_0_8F61AC1F-665D-4E21-B359-7B61D129E696.png",
+      "sha256": "0f4fcb38486106b0a12ac4b3499c9f5ed7094105fe0d230eaf56438fa65ffd99",
+      "device": "iPhone 17 Pro"
+    },
+    {
+      "path": "glass-compact.png",
+      "test": "LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField()",
+      "originalAttachment": "69366EC7-1DC3-471D-9A93-C3A1A684F372.png",
+      "label": "Layout 402 Glass compact scrolled title header_0_592DF958-92C8-4E6F-9A64-0E5E606398FC.png",
+      "sha256": "cb69649e9bc97e8da07c6b991a6cc653a31a2c66589eb4a970db0597b0e328c5",
+      "device": "iPhone 17 Pro"
+    },
+    {
+      "path": "episodes-grid-expanded.png",
+      "test": "NativeScreensTests/testCollectionGridsKeepEpisodeActionsFoldersAndHistoryEntries()",
+      "originalAttachment": "8E28FEB0-A58D-44AD-BEA6-ACFF6E5A5660.png",
+      "label": "Expanded episode grid keeps captions watch controls and summaries together_0_1EE4ADA5-F91D-4666-A983-0DEBCBF6E138.png",
+      "sha256": "91153a4c9eba466249f0c9001cc1fa5031ad842c6a0c1426a7304ee96ef11aaf",
+      "device": "iPhone 17 Pro"
+    },
+    {
+      "path": "episode-rewatch.png",
+      "test": "NativeScreensTests/testT35WatchedEpisodeOffersRewatchAndUndoKeepsItsOriginalWatch()",
+      "originalAttachment": "7DFA21BF-075F-4F24-9E40-F439769CE81B.png",
+      "label": "Visible watched episode rewatch action_0_30C44F7C-23E7-4C29-8560-EFF7CED34E4D.png",
+      "sha256": "d868584e784df11f05fa1f7d69bf20ebc9832bf271a9826bd99f14c81812ee23",
+      "device": "iPhone 17 Pro"
+    },
+    {
+      "path": "home.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "originalAttachment": "70AB1823-821F-4E7F-9262-ECC81301D71D.png",
+      "label": "Home_0_6A216119-E0AD-480B-8721-4D184054D5D8.png",
+      "sha256": "4c4ff31ca712feb319540260c6e16fa117f24dec3bcba04c349651fead8330d5",
+      "device": "iPhone 17 Pro"
+    },
+    {
+      "path": "glance.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "originalAttachment": "7182F70D-ACB3-4AE6-AE88-09B0F584442C.png",
+      "label": "Glance_0_EDBC52DA-3E38-436C-8AD6-DB1C6F1B8C75.png",
+      "sha256": "d059d43607393d7ea225a9fd5daff50af9d107d7ecc0d486d1b7ec843e3bd05d",
+      "device": "iPhone 17 Pro"
+    }
+  ]
+}

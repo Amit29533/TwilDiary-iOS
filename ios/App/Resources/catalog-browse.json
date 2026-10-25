@@ -1,0 +1,36 @@
+{
+  "details": {
+    "id": 900001,
+    "mediaType": "tv",
+    "name": "The Clockmaker",
+    "year": 2020,
+    "overview": "Fictional provider data used only for repeatable native parity verification.",
+    "posterPath": "/reference_poster.jpg",
+    "backdropPath": "/reference_backdrop.jpg",
+    "rating": 7.3,
+    "votes": 100,
+    "genres": [
+      "Drama",
+      "Animation"
+    ],
+    "source": "tmdb",
+    "inLibraryId": null,
+    "communityScore": 8.4,
+    "runtimeMinutes": 24,
+    "imdbId": "tt9999001",
+    "suggestedCategory": "anime",
+    "seasons": [
+      {
+        "number": 1,
+        "name": "Season 1",
+        "expectedEpisodes": 12
+      },
+      {
+        "number": 2,
+        "name": "Season 2",
+        "expectedEpisodes": 12
+      }
+    ]
+  },
+  "libraryTitle": null
+}

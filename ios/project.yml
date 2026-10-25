@@ -1,0 +1,77 @@
+name: TwilDiary
+options:
+  bundleIdPrefix: com.amit29533
+  deploymentTarget:
+    iOS: '26.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    IPHONEOS_DEPLOYMENT_TARGET: '26.0'
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGNING_ALLOWED: NO
+packages:
+  TwilDiaryCore:
+    path: Packages/TwilDiaryCore
+targets:
+  TwilDiary:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: [PrivacyInfo.xcprivacy]
+      - path: App/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    dependencies:
+      - sdk: AppIntents.framework
+      - package: TwilDiaryCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary
+        MARKETING_VERSION: '2.0.0'
+        CURRENT_PROJECT_VERSION: '64'
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: TwilDiary
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: '1'
+      configs:
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: 'catalog-*.json trakt-*.json reference-workspace.json'
+  TwilDiaryTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: TwilDiary
+      - package: TwilDiaryCore
+        product: TwilDiaryTestSupport
+      - sdk: AppIntents.framework
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  TwilDiaryUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: TwilDiary
+      - sdk: AppIntents.framework
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  TwilDiary:
+    build:
+      targets:
+        TwilDiary: all
+        TwilDiaryTests: [test]
+        TwilDiaryUITests: [test]
+    test:
+      gatherCoverageData: true
+      targets: [TwilDiaryTests, TwilDiaryUITests]

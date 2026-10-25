@@ -1,0 +1,25 @@
+{
+  "build": 36,
+  "commit": "7f166a72288e0f0a37ddd82ccc3b5e89cf4a4350",
+  "provider": "Codemagic",
+  "run": "6add31604a72334e32e4d9f3",
+  "overall": "failure",
+  "core": 64,
+  "native_unit": 139,
+  "early_ui": "9/10",
+  "source_test": "testTitleArtworkScrollsAwayBeforeTheEpisodeAndNotesContent",
+  "source_test_result": "passed",
+  "scope": "Unmodified synthetic iPhone 17 Pro attachments from one passed title-layout/scroll/header/Notes check. Full release and all-size acceptance are not established; Surprise target-reveal test failed before its first opening. No build36 IPA.",
+  "files": [
+    {
+      "file": "title-hero.png",
+      "original": "5BA0D7A7-CF2D-4D9D-82D5-677E5316D25F.png",
+      "sha256": "278aa427550a646b02db4caf5ebd16e38dafbe556d914398f593ae33092dfd18"
+    },
+    {
+      "file": "compact-header.png",
+      "original": "D117976D-5EBC-446C-83A5-DF321A38F953.png",
+      "sha256": "b08e05b5f0626c39fc68a6d04ada1e8cd8ea75f5d9f611aaf50b109bba6edb3b"
+    }
+  ]
+}

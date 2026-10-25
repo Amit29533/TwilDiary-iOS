@@ -1,0 +1,17 @@
+# Explore section pages
+
+Every Explore section has a View more link: the daily library recommendation, personal recommendations, four rated/popular shelves and Browse by genre. Links open `/preview/explore/:section`. Unknown section names return 404.
+
+Explore remains in the main app header with its existing search action. The chosen section name is a subheading beneath it, with a sliders icon aligned on the right of that same row. There is no back arrow. Filters are collapsed by default and toggle from that icon; they reset to collapsed when entering another section. Long section names wrap within their available width without displacing the filter action.
+
+Explore shelf subheadings use 20px text; dedicated section subheadings use 24px text. The right-side View more/filter action retains its 44px hit area and vertical alignment when a heading wraps.
+
+The filter panel includes sorting, genre, release year and minimum rating. Mixed sections also provide a Shows/Movies switch. Rated/popular show pages remain TV-only; their movie equivalents remain movie-only, even if an unrelated `type` is supplied in the URL. Browse by genre links preserve the originating media type and filters. Filter changes use replace/shallow navigation and retain scroll.
+
+The daily section lists only the same unwatched Planned library candidates used by the daily hero, never online or already watched fallbacks. Personal recommendations request up to 24 shows and 24 movies; the Explore shelf still requests eight of each. Personal/local sets can be sorted by name, rating and release year and are filtered as a complete loaded set. Local lists render 40 cards initially and offer Load more as needed. [Trakt's recommendations API](https://trakt.docs.apiary.io/reference/recommendations) supports requesting a larger result limit; this app deliberately bounds it to 24 per type and four concurrent metadata enrichments.
+
+TMDB pages retain provider sorting and pagination. Load more appends the next page and removes overlaps without conflating matching numeric movie/TV IDs. Changing filters cancels obsolete requests and starts a new collection; failed later pages preserve earlier cards and Retry targets the failed page. Invalid year/rating/genre values do not trigger provider queries. These pages use the same compact poster component as the Explore shelves, with current library membership resolving to saved detail pages.
+
+Validation: 212 unit/database/runtime tests, 3 compiled PWA checks, zero Svelte/TypeScript errors and warnings, and successful production build. Tests cover section routes/filters, fixed media types, local sorting, overlapping pagination and expanded recommendation bounds/concurrency. Read-only local HTTP checks confirmed representative section routes return 200 and unknown sections return 404. Live TMDB page-two checks returned 20 TV items for rated shows and 20 drama movies for the genre query. The movie check encountered one transient provider connection error and succeeded on retry. Browser control remains disabled in Work settings, so no fresh browser screenshot or physical-phone visual verification is claimed. No owner data, migrations, commits, pushes or Trakt sync changes were made.
+
+Final private Cloudflare release: `bafd3fe8-533e-48dd-bfad-f56503f1f4fc`. The final header/typography adjustment also passed type checks, the production build and all three compiled PWA checks.

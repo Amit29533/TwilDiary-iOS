@@ -1,0 +1,44 @@
+{
+  "source": "d64f6e7b665e7abe7ec8ad6f4a87ef9fd19dbb83",
+  "provider": "Codemagic",
+  "run": "6add54b04a72334e32e4e029",
+  "overall": "failure",
+  "native": {
+    "passed": 147,
+    "failed": 0
+  },
+  "earlyUI": {
+    "passed": 10,
+    "failed": 0
+  },
+  "primaryUI": {
+    "passed": 40,
+    "failed": 6
+  },
+  "iPhone17eLayout": {
+    "passed": 3,
+    "failed": 0
+  },
+  "iPhone17ProMaxLayout": {
+    "passed": 2,
+    "failed": 1
+  },
+  "passedCase": "LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField",
+  "images": [
+    {
+      "file": "glass-title.png",
+      "original": "1CD3D314-3876-4E0A-A2F1-E3CC4B7A6136.png",
+      "sha256": "0c9e7855a397cf0a2e27f0d897c290d0c067cd26d1e94af1ba67e36cf74fbb3e"
+    },
+    {
+      "file": "glass-compact-header.png",
+      "original": "F1A30BED-CBB4-4543-8CEB-AFEE53730A4A.png",
+      "sha256": "e9eb569f1787b6c2433e63b235a2ae371af593b03ba1330852b159771fba74c3"
+    },
+    {
+      "file": "glass-search.png",
+      "original": "5D6EAC0E-C48C-42EB-8EEF-BBF81767ED28.png",
+      "sha256": "c06aeb14de5fd2f465e776ae9b638a7ef20a9169dc3b27a22364149e83d75f36"
+    }
+  ]
+}

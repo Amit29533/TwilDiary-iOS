@@ -1,0 +1,125 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792524100628,
+      "tag": "0000_fuzzy_leech",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792552090647,
+      "tag": "0001_wild_brood",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792552316691,
+      "tag": "0002_legal_omega_flight",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792553961136,
+      "tag": "0003_heavy_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792601425157,
+      "tag": "0004_happy_darkstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792607847753,
+      "tag": "0005_late_sumo",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792635273781,
+      "tag": "0006_jittery_hellcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792637686001,
+      "tag": "0007_closed_agent_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792682783794,
+      "tag": "0008_funny_whirlwind",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792690684080,
+      "tag": "0009_lovely_bucky",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792695497892,
+      "tag": "0010_familiar_slayback",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792695863407,
+      "tag": "0011_green_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792719355236,
+      "tag": "0012_material_sebastian_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792891486922,
+      "tag": "0013_trakt_incoming",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1792939871313,
+      "tag": "0014_trakt_review_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1792943187054,
+      "tag": "0015_trakt_planning_cursor",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1792950685842,
+      "tag": "0016_native_query_bounds",
+      "breakpoints": true
+    }
+  ]
+}

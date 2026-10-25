@@ -1,0 +1,17 @@
+{
+  "scope": "Ten passed early UI cases only. Full regression and release acceptance are pending.",
+  "source": "3cd25b01f75039cf502a78caa684953abdef343a",
+  "run": "40130893194",
+  "tests": [
+    "testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatchAndPreservesUndo",
+    "testDoneButtonsReturnFromEverySettingsDestination",
+    "testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory",
+    "testGlanceNotesWaitForLateCastAndRelatedLayoutThenKeepEditorVisible",
+    "testManualTitleYearValidationStatusRatingAndSavedNavigation",
+    "testNativeExploreReturnsByDoneActiveHomeTabAndFullContentSwipe",
+    "testRandomPickKeepsPlannedScopeAndLogoRerollsWithoutRepeating",
+    "testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped",
+    "testTitleArtworkScrollsAwayBeforeTheEpisodeAndNotesContent",
+    "testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory"
+  ]
+}

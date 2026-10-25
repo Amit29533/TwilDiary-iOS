@@ -1,0 +1,66 @@
+{
+  "prepared_at_utc": "2026-10-25T20:58:26.036594+00:00",
+  "source": "50134fc9addcc243434ee5721eb74ea1eec13f61",
+  "status": "prepared_not_deployed",
+  "qualification": {
+    "codemagic": {
+      "id": 121268303837,
+      "url": "https://github.com/Amit29533/TwilDiary/runs/121268303837",
+      "conclusion": "success"
+    },
+    "github_backend_contracts": {
+      "run_id": 40228034161,
+      "result": "success",
+      "cases": 407,
+      "type_errors": 0,
+      "type_warnings": 0
+    },
+    "github_ios": "failed_focused_regression_not_a_stable_ios_release"
+  },
+  "archive_sha256": "fe1491379246aaf4b396b7cf5d3f6957f56255118c256950a96f4e51ee407bda",
+  "worker_build_archive_sha256": "029e0b8af35f4df63809dafef8f9c66170e965e92c463235737c39ee90102de3",
+  "migration_sha256": {
+    "drizzle/0014_trakt_review_counts.sql": "83d6dba0f1c66efedf7176b866666ca99035ef8d79886d8f05505e16d4e99e8f",
+    "drizzle/0015_trakt_planning_cursor.sql": "075360bb0b6d9bb9b1e7f43091aaeaf4d8f31143ce85481337056b13038d4d02",
+    "drizzle/0016_native_query_bounds.sql": "6a69e9363a1885be9a67faf86c0b354ed0ffe3020e03b4cb9544691efbb6c80f"
+  },
+  "local_d1_rehearsal": {
+    "source": "50134fc9addcc243434ee5721eb74ea1eec13f61",
+    "runtime": "Wrangler 4.151.3 local D1/workerd",
+    "original_application_tables": 26,
+    "upgraded_application_tables": 27,
+    "proposal_rows": 2000,
+    "watch_rows": 2,
+    "matching_rehearsal": true,
+    "all_original_rows_preserved": true,
+    "aggregate_counts": "exact",
+    "foreign_keys": "ok",
+    "migration_ledger": "0000 through 0016",
+    "hosted_actions": []
+  },
+  "worker_dry_run": {
+    "result": "success",
+    "warnings": [
+      "Generated bare drizzle-orm import ignored because the package declares sideEffects:false"
+    ]
+  },
+  "remaining": [
+    "Fresh hosted backup and local restore verification",
+    "Hosted schema/active-review preflight after quota recovery",
+    "Apply 0014-0016 before main Worker rollout",
+    "Hosted review preservation and D1 usage verification"
+  ],
+  "hosted_actions": [],
+  "new_ios_build_started": false,
+  "free_tier": {
+    "hosted_test_reads": 0,
+    "hosted_test_writes": 0,
+    "production_budget_verified": false,
+    "last_hosted_sql": "7500_daily_read_quota",
+    "engineering_daily_account_read_target": 2500000,
+    "engineering_daily_account_write_target": 50000,
+    "initial_hosted_diagnostic_read_budget": 50000,
+    "active_scheduler_cpu_verified": false,
+    "paid_upgrade": false
+  }
+}

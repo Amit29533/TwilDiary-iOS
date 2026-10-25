@@ -1,0 +1,101 @@
+# Candidate track. Only a complete pass permits same-SHA promotion to ios-native.
+# No automatic triggers, signing, deployment, credentials or hosted-data writes.
+workflows:
+  native-ios-regression:
+    name: TwilDiary native iOS — unsigned regression
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Build, test and retain diagnostic artifacts
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$CM_BUILD_DIR"
+          mkdir -p ios/.artifacts/logs
+          finish() {
+            local pipeline_status=$?
+            trap - EXIT
+            set +e
+            bash ios/scripts/ci.sh screenshots
+            bash ios/scripts/ci.sh summary
+            local summary_status=$?
+            if [ "$pipeline_status" -ne 0 ]; then exit "$pipeline_status"; fi
+            exit "$summary_status"
+          }
+          trap finish EXIT
+          # The shared inventory stage writes a KEY=value environment file.
+          export GITHUB_ENV="$CM_ENV"
+          bash ios/scripts/ci.sh inventory
+          export SIMULATOR_ID="$(python3 -c 'import json; print(json.load(open("ios/.artifacts/simulator.json"))["udid"])')"
+          bash ios/scripts/xcodegen.sh
+          swift test --package-path ios/Packages/TwilDiaryCore 2>&1 | tee ios/.artifacts/logs/core-tests.log
+          bash ios/scripts/ci.sh build-simulator
+          bash ios/scripts/ci.sh boot
+          bash ios/scripts/ci.sh test-unit
+          bash ios/scripts/ci.sh test-repairs
+          bash ios/scripts/ci.sh test-progress
+          bash ios/scripts/ci.sh screenshots-progress
+          # This IPA remains a candidate artifact until every later gate passes.
+          bash ios/scripts/ci.sh build-device
+          bash ios/scripts/ci.sh package
+          bash ios/scripts/ci.sh test
+          bash ios/scripts/ci.sh test-layouts
+    artifacts:
+      - ios/.artifacts/TwilDiary-unsigned.ipa
+      - ios/.artifacts/TwilDiary-unsigned.ipa.sha256
+      - ios/.artifacts/*.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/progress-evidence/**
+      - ios/.artifacts/toolchain.txt
+      - ios/.artifacts/*simulator*.json
+      - ios/.artifacts/devices.json
+  native-ios-device-diagnostic:
+    # Owner-authorized phone verification. This name deliberately cannot satisfy
+    # verify-codemagic.py's complete-regression promotion requirement.
+    name: TwilDiary device diagnostic — phone testing only
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Compile unsigned physical iPhone diagnostic
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$CM_BUILD_DIR"
+          mkdir -p ios/.artifacts/logs
+          { sw_vers; xcodebuild -version; } | tee ios/.artifacts/toolchain.txt
+          bash ios/scripts/xcodegen.sh
+          bash ios/scripts/ci.sh build-device
+          bash ios/scripts/ci.sh package
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, plistlib, re, shutil, subprocess
+          root = pathlib.Path('ios/.artifacts')
+          log = (root / 'logs/device-build.log').read_text(errors='replace')
+          if '** BUILD SUCCEEDED **' not in log or re.search(r'\bwarning:', log, re.I):
+              raise SystemExit('Diagnostic device compilation requires success and zero warnings.')
+          ipa = root / 'TwilDiary-device-diagnostic.ipa'
+          shutil.copyfile(root / 'TwilDiary-unsigned.ipa', ipa)
+          digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
+          (root / (ipa.name + '.sha256')).write_text(digest + '  ' + ipa.name + '\n')
+          info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app/Info.plist').read_bytes())
+          value = {'kind': 'device-diagnostic', 'regressionAcceptance': False,
+                   'note': 'Compilation and resource checks only; complete simulator regression is a separate workflow.',
+                   'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'buildNumber': info['CFBundleVersion'],
+                   'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest}
+          (root / 'device-diagnostic-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
+          print('Unsigned phone diagnostic packaged; this workflow does not qualify stable promotion.')
+          PY
+    artifacts:
+      - ios/.artifacts/TwilDiary-device-diagnostic.ipa
+      - ios/.artifacts/TwilDiary-device-diagnostic.ipa.sha256
+      - ios/.artifacts/device-diagnostic-provenance.json
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/toolchain.txt

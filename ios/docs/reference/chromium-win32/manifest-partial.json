@@ -1,0 +1,174 @@
+[
+  {
+    "id": "glance-movie-watching",
+    "path": "/preview",
+    "scenario": "manual-movie-watching",
+    "theme": "twilight",
+    "engine": "chromium",
+    "browserVersion": "156.0.8078.4",
+    "referenceTime": "2026-10-23T12:00:00.000Z",
+    "geometry": {
+      "width": 390,
+      "height": 844,
+      "documentWidth": 390,
+      "documentHeight": 1151,
+      "font": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+    },
+    "errors": [],
+    "controls": [
+      {
+        "tag": "BUTTON",
+        "label": "Spin TwilDiary logo",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Spin TwilDiary logo",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Search",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "All",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Movies",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Shows",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Anime",
+        "value": ""
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "More options for 18 Again"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Queue",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Move to Trash",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 8 unwatched for 18 Again",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 9 watched for 18 Again",
+        "value": ""
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "More options for Frieren: Beyond Journey’s End"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Queue",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Move to Trash",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 12 unwatched for Frieren: Beyond Journey’s End",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 13 watched for Frieren: Beyond Journey’s End",
+        "value": ""
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "More options for Call of the Night"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Queue",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Move to Trash",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 5 unwatched for Call of the Night",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 6 watched for Call of the Night",
+        "value": ""
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "More options for Severance"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Queue",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Move to Trash",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 3 unwatched for Severance",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Mark episode 4 watched for Severance",
+        "value": ""
+      },
+      {
+        "tag": "SUMMARY",
+        "label": "More options for Manual reference movie"
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Queue",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Move to Trash",
+        "value": ""
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Log watch",
+        "value": ""
+      }
+    ],
+    "file": "glance-movie-watching.png",
+    "sha256": "4468a11837434a95a35394eb30b1686e234689887633067d584ffb3a4050676a",
+    "passed": true
+  }
+]

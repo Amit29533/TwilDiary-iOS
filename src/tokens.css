@@ -1,0 +1,51 @@
+:root {
+  --font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bg: #000000;
+  --surface: #111115;
+  --surface-2: #1a191f;
+  --field: #111115;
+  --hover: #ffffff0d;
+  --text: #f3f0f7;
+  --secondary: #c5c0cf;
+  --muted: #a09aa9;
+  --dim: #77717f;
+  --border: #ffffff21;
+  --accent: #b795f6;
+  --accent-rgb: 183 149 246;
+  --accent-strong: #9d76f4;
+  --accent-light: #d3bfff;
+  --accent-deep: #473779;
+  --header-bg: #050507;
+  --library-bg: #0e0d13;
+  --library-header-bg: #0e0d13;
+  --sidebar-bg: #0a090d;
+  --nav-bg: linear-gradient(180deg, #111518cf, #080b0ee8);
+  --nav-blur: 16px;
+  --panel-shadow: none;
+  --accent-soft: rgb(var(--accent-rgb) / 45%);
+  --accent-tint: rgb(var(--accent-rgb) / 9%);
+  --mint: #9edbc4;
+  --gold: #e7ca90;
+  --ink: #21182e;
+  --danger: #efa7b1;
+  --nav-width: 224px;
+  --poster-width: 144px;
+  --poster-ratio: 2 / 3;
+  --poster-gap: 12px;
+  --poster-radius: 8px;
+  --poster-title-size: 0.9375rem;
+  --list-poster-width: 72px;
+}
+
+@media (max-width: 359px) {
+  :root {
+    --list-poster-width: 64px;
+  }
+}
+
+@media (max-width: 600px) {
+  :root {
+    /* Three reference-sized covers, with 14px page gutters and two 12px gaps. */
+    --poster-width: calc((100vw - 52px) / 3);
+  }
+}

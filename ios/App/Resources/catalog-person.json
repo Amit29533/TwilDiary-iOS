@@ -1,0 +1,522 @@
+{
+  "person": {
+    "id": 700001,
+    "name": "Reference Actor",
+    "biography": "A fictional biography for repeatable layout, disclosure and filmography verification. A fictional biography for repeatable layout, disclosure and filmography verification. A fictional biography for repeatable layout, disclosure and filmography verification. A fictional biography for repeatable layout, disclosure and filmography verification. ",
+    "birthday": "1990-05-01",
+    "deathday": null,
+    "birthplace": "Reference City",
+    "department": "Acting",
+    "profilePath": "/reference_poster.jpg",
+    "aliases": [
+      "Reference Name"
+    ],
+    "credits": [
+      {
+        "id": 900001,
+        "mediaType": "movie",
+        "name": "The Clockmaker",
+        "year": 2020,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3,
+        "votes": 100,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 1",
+        "job": "",
+        "popularity": 100,
+        "episodeCount": null
+      },
+      {
+        "id": 900002,
+        "mediaType": "tv",
+        "name": "A Quiet Journey",
+        "year": 2021,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3999999999999995,
+        "votes": 101,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 2",
+        "job": "",
+        "popularity": 99,
+        "episodeCount": 12
+      },
+      {
+        "id": 900003,
+        "mediaType": "tv",
+        "name": "Midnight Stories",
+        "year": 2022,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.5,
+        "votes": 102,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 3",
+        "job": "",
+        "popularity": 98,
+        "episodeCount": 12
+      },
+      {
+        "id": 900004,
+        "mediaType": "movie",
+        "name": "Beyond the Stars",
+        "year": 2023,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.6,
+        "votes": 103,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 4",
+        "job": "",
+        "popularity": 97,
+        "episodeCount": null
+      },
+      {
+        "id": 900005,
+        "mediaType": "tv",
+        "name": "The Last Summer",
+        "year": 2024,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.7,
+        "votes": 104,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 5",
+        "job": "",
+        "popularity": 96,
+        "episodeCount": 12
+      },
+      {
+        "id": 900006,
+        "mediaType": "tv",
+        "name": "Letters Home",
+        "year": 2025,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.8,
+        "votes": 105,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 6",
+        "job": "",
+        "popularity": 95,
+        "episodeCount": 12
+      },
+      {
+        "id": 900007,
+        "mediaType": "movie",
+        "name": "The Clockmaker 7",
+        "year": 2026,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3,
+        "votes": 106,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 7",
+        "job": "",
+        "popularity": 94,
+        "episodeCount": null
+      },
+      {
+        "id": 900008,
+        "mediaType": "tv",
+        "name": "A Quiet Journey 8",
+        "year": 2020,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3999999999999995,
+        "votes": 107,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 8",
+        "job": "",
+        "popularity": 93,
+        "episodeCount": 12
+      },
+      {
+        "id": 900009,
+        "mediaType": "tv",
+        "name": "Midnight Stories 9",
+        "year": 2021,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.5,
+        "votes": 108,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 9",
+        "job": "",
+        "popularity": 92,
+        "episodeCount": 12
+      },
+      {
+        "id": 900010,
+        "mediaType": "movie",
+        "name": "Beyond the Stars 10",
+        "year": 2022,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.6,
+        "votes": 109,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 10",
+        "job": "",
+        "popularity": 91,
+        "episodeCount": null
+      },
+      {
+        "id": 900011,
+        "mediaType": "tv",
+        "name": "The Last Summer 11",
+        "year": 2023,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.7,
+        "votes": 110,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 11",
+        "job": "",
+        "popularity": 90,
+        "episodeCount": 12
+      },
+      {
+        "id": 900012,
+        "mediaType": "tv",
+        "name": "Letters Home 12",
+        "year": 2024,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.8,
+        "votes": 111,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 12",
+        "job": "",
+        "popularity": 89,
+        "episodeCount": 12
+      },
+      {
+        "id": 900013,
+        "mediaType": "movie",
+        "name": "The Clockmaker 13",
+        "year": 2025,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3,
+        "votes": 112,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 13",
+        "job": "",
+        "popularity": 88,
+        "episodeCount": null
+      },
+      {
+        "id": 900014,
+        "mediaType": "tv",
+        "name": "A Quiet Journey 14",
+        "year": 2026,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3999999999999995,
+        "votes": 113,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 14",
+        "job": "",
+        "popularity": 87,
+        "episodeCount": 12
+      },
+      {
+        "id": 900015,
+        "mediaType": "tv",
+        "name": "Midnight Stories 15",
+        "year": 2020,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.5,
+        "votes": 114,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 15",
+        "job": "",
+        "popularity": 86,
+        "episodeCount": 12
+      },
+      {
+        "id": 900016,
+        "mediaType": "movie",
+        "name": "Beyond the Stars 16",
+        "year": 2021,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.6,
+        "votes": 115,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 16",
+        "job": "",
+        "popularity": 85,
+        "episodeCount": null
+      },
+      {
+        "id": 900017,
+        "mediaType": "tv",
+        "name": "The Last Summer 17",
+        "year": 2022,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.7,
+        "votes": 116,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 17",
+        "job": "",
+        "popularity": 84,
+        "episodeCount": 12
+      },
+      {
+        "id": 900018,
+        "mediaType": "tv",
+        "name": "Letters Home 18",
+        "year": 2023,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.8,
+        "votes": 117,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 18",
+        "job": "",
+        "popularity": 83,
+        "episodeCount": 12
+      },
+      {
+        "id": 900019,
+        "mediaType": "movie",
+        "name": "The Clockmaker 19",
+        "year": 2024,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3,
+        "votes": 118,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 19",
+        "job": "",
+        "popularity": 82,
+        "episodeCount": null
+      },
+      {
+        "id": 900020,
+        "mediaType": "tv",
+        "name": "A Quiet Journey 20",
+        "year": 2025,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.3999999999999995,
+        "votes": 119,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 20",
+        "job": "",
+        "popularity": 81,
+        "episodeCount": 12
+      },
+      {
+        "id": 900021,
+        "mediaType": "tv",
+        "name": "Midnight Stories 21",
+        "year": 2026,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.5,
+        "votes": 120,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 21",
+        "job": "",
+        "popularity": 80,
+        "episodeCount": 12
+      },
+      {
+        "id": 900022,
+        "mediaType": "movie",
+        "name": "Beyond the Stars 22",
+        "year": 2020,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.6,
+        "votes": 121,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 22",
+        "job": "",
+        "popularity": 79,
+        "episodeCount": null
+      },
+      {
+        "id": 900023,
+        "mediaType": "tv",
+        "name": "The Last Summer 23",
+        "year": 2021,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.7,
+        "votes": 122,
+        "genres": [
+          "Drama",
+          "Animation"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 23",
+        "job": "",
+        "popularity": 78,
+        "episodeCount": 12
+      },
+      {
+        "id": 900024,
+        "mediaType": "tv",
+        "name": "Letters Home 24",
+        "year": 2022,
+        "overview": "Fictional provider data used only for repeatable native parity verification.",
+        "posterPath": "/reference_poster.jpg",
+        "backdropPath": "/reference_backdrop.jpg",
+        "rating": 7.8,
+        "votes": 123,
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "source": "tmdb",
+        "inLibraryId": null,
+        "character": "Character 24",
+        "job": "",
+        "popularity": 77,
+        "episodeCount": 12
+      }
+    ]
+  },
+  "stale": false
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "twildiary-trakt-incoming",
+  "account_id": "2e8626da5c1177fdfc53aadaef4ec1f7",
+  "main": "index.ts",
+  "compatibility_date": "2026-10-21",
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "twildiary-v2",
+    "database_id": "fee4edca-0618-44fb-b110-0a9ecb3dfe17",
+    "migrations_dir": "../../drizzle"
+  }],
+  "observability": { "enabled": true }
+}

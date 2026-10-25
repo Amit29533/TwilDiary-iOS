@@ -1,0 +1,16 @@
+{
+  "sourceSHA": "0c087e72745e44a39cb4439ea1036f3ee26c0a71",
+  "codemagicBuild": "6ade51214a72334e32e51821",
+  "officialCheck": "https://github.com/Amit29533/TwilDiary/runs/121280525245",
+  "conclusion": "failure",
+  "completedAtUTC": "2026-10-25T20:21:05Z",
+  "buildNumber": 63,
+  "warnings": 0,
+  "nativePassed": 228,
+  "failedCase": "NativeScreensTests/testColdQuotaImportRestoresAcrossTabsAfterResetWithoutManualRetry",
+  "failure": "NativeScreensTests.swift:191: no matching snapshot for trakt-pause-restoration",
+  "detailEvidence": "Owner-pasted final CI diagnostic; full downloaded archive not yet available",
+  "extraPhoneLayouts": "skipped after failed primary UI suite",
+  "promotion": "blocked; native62 remains on ios-native",
+  "nextCandidate": "64prepared, not started; waiting for owner phone bug chart"
+}

@@ -1,0 +1,27 @@
+{
+  "sourceSHA": "8c9514094e96498855b83034c52c4b4349af8fee",
+  "codemagicBuild": "6ade36de4a72334e32e5107f",
+  "buildNumber": 61,
+  "kind": "complete-codemagic-candidate",
+  "regressionAcceptance": "Complete Codemagic pass; independent GitHub acceptance not claimed",
+  "sha256": "96eb75f475fdc1ff006c4e3acecbb94f50e6effd8d08d3b0f5ec86e29f24362e",
+  "bytes": 5726283,
+  "zipCRC": "pass",
+  "architecture": "arm64",
+  "platform": "iPhoneOS",
+  "minimumOS": "26.0",
+  "testFixtureResources": "absent",
+  "buildWarnings": 0,
+  "nativeTests": 219,
+  "focusedUITests": 17,
+  "earlyUITests": 10,
+  "primaryUITests": 53,
+  "extraPhoneLayoutTests": {
+    "iPhone 17e": 3,
+    "iPhone 17 Pro Max": 3
+  },
+  "codemagicURL": "https://codemagic.io/app/6adcc927390bc3069c9e5490/build/6ade36de4a72334e32e5107f",
+  "officialCheck": "https://github.com/Amit29533/TwilDiary/runs/121249082762",
+  "githubAcceptance": "Not promoted:62includes the audited Intel gate budget and backend contract job",
+  "privacyManifest": "Required-reason manifest is a separate uncompiled62draft"
+}

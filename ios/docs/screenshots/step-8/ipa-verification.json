@@ -1,0 +1,11 @@
+{
+  "run": 40020975007,
+  "commit": "a15b10381503a6d404a2ea87ecb8f5236c244409",
+  "build": 8,
+  "sha256": "82b1de7adcdd32127cfac3321e7153e9f6297ff9ac42928ad2b4bfac5e2ab96b",
+  "bytes": 2969269,
+  "bundleIdentifier": "com.amit29533.TwilDiary",
+  "minimumOSVersion": "26.0",
+  "architecture": "arm64",
+  "unsigned": true
+}

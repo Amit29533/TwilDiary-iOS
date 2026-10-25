@@ -1,0 +1,218 @@
+{
+  "run": 40056346004,
+  "commit": "9c4b527b80f209e2b907dd310e158af1e86ab088",
+  "build": 14,
+  "status": "success",
+  "tests": {
+    "core": 25,
+    "native_unit": 32,
+    "ui": 9
+  },
+  "warnings": 0,
+  "reviewScope": "Files/Scanner dismissal and Trakt conflict choice repaired; collection write, Stats, episode-piece and navigation regressions. Full visual parity is unfinished. Explore in this build predates the pending source section port.",
+  "screenshots": [
+    {
+      "file": "cast-profile.png",
+      "name": "Cast profile",
+      "test": "NativeScreensTests/testCatalogSearchReviewAndCastProfile()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "catalog-review.png",
+      "name": "Catalog review",
+      "test": "NativeScreensTests/testCatalogSearchReviewAndCastProfile()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "catalog-search.png",
+      "name": "Catalog search",
+      "test": "NativeScreensTests/testCatalogSearchReviewAndCastProfile()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "explore.png",
+      "name": "Explore",
+      "test": "NativeScreensTests/testExploreAndHomeStatsShortcut()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "confirmed-scanned-location.png",
+      "name": "Confirmed scanned location",
+      "test": "NativeScreensTests/testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "scanner-resolved.png",
+      "name": "Scanner resolved",
+      "test": "NativeScreensTests/testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "unmatched-scan.png",
+      "name": "Unmatched scan",
+      "test": "NativeScreensTests/testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "files-and-drives.png",
+      "name": "Files and drives",
+      "test": "NativeScreensTests/testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "stats-from-home.png",
+      "name": "Stats from Home",
+      "test": "NativeScreensTests/testHomeStatsUsesTodayAndKeepsTheOriginalRangeBar()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "stats-year.png",
+      "name": "Stats year",
+      "test": "NativeScreensTests/testHomeStatsUsesTodayAndKeepsTheOriginalRangeBar()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "trash-after-permanent-delete.png",
+      "name": "Trash after permanent delete",
+      "test": "NativeScreensTests/testLibraryBulkQueueTrashRestoreAndPermanentDeleteInIsolatedFixture()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "trash-populated.png",
+      "name": "Trash populated",
+      "test": "NativeScreensTests/testLibraryBulkQueueTrashRestoreAndPermanentDeleteInIsolatedFixture()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "bulk-queue-review.png",
+      "name": "Bulk Queue review",
+      "test": "NativeScreensTests/testLibraryBulkQueueTrashRestoreAndPermanentDeleteInIsolatedFixture()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library-genres.png",
+      "name": "Library genres",
+      "test": "NativeScreensTests/testLibrarySearchAndSelectionPersistAcrossTabs()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library-list.png",
+      "name": "Library list",
+      "test": "NativeScreensTests/testLibrarySearchAndSelectionPersistAcrossTabs()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library-search.png",
+      "name": "Library search",
+      "test": "NativeScreensTests/testLibrarySearchAndSelectionPersistAcrossTabs()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "more.png",
+      "name": "More",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "stats.png",
+      "name": "Stats",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "movie-detail.png",
+      "name": "Movie detail",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "title-detail.png",
+      "name": "Title detail",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library.png",
+      "name": "Library",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "home.png",
+      "name": "Home",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "glance.png",
+      "name": "Glance",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "undated-history.png",
+      "name": "Undated history",
+      "test": "NativeScreensTests/testStatsCalendarRangesEmptyBucketsAndUndatedHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "stats-week.png",
+      "name": "Stats week",
+      "test": "NativeScreensTests/testStatsCalendarRangesEmptyBucketsAndUndatedHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "stats-empty-day.png",
+      "name": "Stats empty day",
+      "test": "NativeScreensTests/testStatsCalendarRangesEmptyBucketsAndUndatedHistory()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "trakt-applied.png",
+      "name": "Trakt applied",
+      "test": "NativeScreensTests/testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "trakt-ratings.png",
+      "name": "Trakt ratings",
+      "test": "NativeScreensTests/testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "trakt-review.png",
+      "name": "Trakt review",
+      "test": "NativeScreensTests/testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    }
+  ]
+}

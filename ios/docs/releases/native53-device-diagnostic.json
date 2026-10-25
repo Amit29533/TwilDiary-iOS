@@ -1,0 +1,19 @@
+{
+  "kind": "device-diagnostic",
+  "regressionAcceptance": false,
+  "note": "Compilation and resource checks only; complete simulator regression is a separate workflow.",
+  "sourceSHA": "8c747f5b04a726ef3286570be0bf9937abc16bf9",
+  "buildNumber": "53",
+  "codemagicBuild": "6adde0d04a72334e32e4f8a9",
+  "sha256": "d131287eab7a009c2d70e57ce9c5fea71efa59ad640e4120f5f859c60f0e1872",
+  "bytes": 5613579,
+  "zipCRC": "pass",
+  "architecture": "arm64",
+  "platform": "iPhoneOS",
+  "minimumOS": "26.0",
+  "testFixtureResources": "absent",
+  "buildURL": "https://codemagic.io/app/6adcc927390bc3069c9e5490/build/6adde0d04a72334e32e4f8a9",
+  "compilerWarnings": 0,
+  "independentRegressionURL": "https://codemagic.io/app/6adcc927390bc3069c9e5490/build/6adde13c4a72334e32e4f8c3",
+  "independentRegressionResult": "failure: episode rewatch long press opened details instead of its menu; 188 native pass, 7/8 focused pass"
+}

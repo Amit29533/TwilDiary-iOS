@@ -1,0 +1,25 @@
+{
+  "sourceSHA": "8c9f16376389a4b8d162b7cd7b12e96d4fffb7b6",
+  "codemagic": {
+    "run": "6addaa674a72334e32e4ed86",
+    "result": "success; full49 UI and extra-phone suites passed"
+  },
+  "capture": {
+    "provider": "GitHub Actions",
+    "run": 40175024692,
+    "case": "LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField",
+    "caseResult": "passed",
+    "overallRunResult": "failure: separate retained-search swipe case; no stable release acceptance"
+  },
+  "note": "Original unedited attachments; native47, not new48/49 feature screenshots. Visually inspected25October2026.",
+  "files": {
+    "glass-compact-header.png": {
+      "bytes": 2254182,
+      "sha256": "7830f7e2bd7f9d5dd7ec7bc9048663d9b761fc9afc0658d9ac758543118a9caf"
+    },
+    "glass-title.png": {
+      "bytes": 3140951,
+      "sha256": "c9f709ca5144b56c80f1d0e1c2facff8f51b27682b2a44e1326e08d82c0d7800"
+    }
+  }
+}

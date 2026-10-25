@@ -1,0 +1,29 @@
+{
+  "sourceSHA": "3c5c766ecb852364d498a2863746ec3e7d60ad9c",
+  "codemagicBuild": "6addd3324a72334e32e4f553",
+  "overallResult": "failure: early History settings content-Back test",
+  "scope": "Original unedited screenshots from passing theme and episode-rewatch focused cases; not full-run or stable release acceptance.",
+  "nativeUnitTests": 187,
+  "focusedCasesPassed": 6,
+  "earlyCasesPassed": 9,
+  "earlyCasesTotal": 10,
+  "files": [
+    {
+      "path": "glass-title.png",
+      "exportedFileName": "8532D1E7-1A43-466E-9DB3-BF12FA31E194.png",
+      "sha256": "bdffd4e29c385061138c654af49095798be18ac3bae517cadbb89a487c9892e4"
+    },
+    {
+      "path": "glass-compact-header.png",
+      "exportedFileName": "72BC0167-4B37-4019-8407-4D52739816A1.png",
+      "sha256": "1004c1a26f38b3b896db0edb22ab5bd3ada5f1544da53c62f2fb0ea6427a05c9"
+    },
+    {
+      "path": "episode-rewatch-undo-history.png",
+      "exportedFileName": "ED5764A9-87D5-4B3B-A491-A6A06626D57F.png",
+      "sha256": "9c047becddb2ffdcf78259465846f0e082576acea49559ac39c12c2996ba0d79"
+    }
+  ],
+  "buildWarnings": 1,
+  "warningScope": "Core App Intents metadata extraction; final-summary finding, not a Swift compiler error."
+}

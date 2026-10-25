@@ -1,0 +1,1 @@
+ALTER TABLE `titles` ADD `queued` integer DEFAULT false NOT NULL;

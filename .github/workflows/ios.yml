@@ -1,106 +1,219 @@
-name: Native iOS
+name: Native iOS stable verification
 on:
   push:
-    branches: [main]
-    paths: ['TwilDiary/**', 'TwilDiaryTests/**', 'TwilDiaryUITests/**', 'Packages/**', 'project.yml', '.github/workflows/ios.yml']
-  pull_request:
-    paths: ['TwilDiary/**', 'TwilDiaryTests/**', 'TwilDiaryUITests/**', 'Packages/**', 'project.yml', '.github/workflows/ios.yml']
+    branches: [ios-native]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+      - 'src/lib/server/**'
+      - 'src/lib/domain/**'
+      - 'src/routes/api/**'
+      - 'src/hooks.server.ts'
+      - 'workers/trakt-incoming/**'
+      - 'drizzle/**'
+      - 'tests/unit/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'wrangler*.jsonc'
   workflow_dispatch:
 permissions:
   contents: read
+  checks: read
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  build-and-test:
-    runs-on: macos-26
-    timeout-minutes: 30
-    env:
-      HOMEBREW_NO_AUTO_UPDATE: '1'
+  candidate-proof:
+    runs-on: ubuntu-24.04
+    outputs:
+      check_url: ${{ steps.verify.outputs.check_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Show Apple toolchain
+      - name: Require a complete Codemagic pass for this exact source
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          xcodebuild -version
-          swift --version
-      - name: Test shared diary logic
-        run: swift test --package-path Packages/TwilDiaryCore
-      - name: Generate Xcode project
+          set -euo pipefail
+          python3 ios/tools/test_verify_codemagic.py
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?filter=all&per_page=100" > "$RUNNER_TEMP/codemagic-checks.json"
+          python3 ios/tools/verify-codemagic.py "$RUNNER_TEMP/codemagic-checks.json" "$GITHUB_SHA"
+  backend-contracts:
+    needs: candidate-proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked backend build dependencies
+        run: npm ci
+      - name: Verify the iOS API database and shared business rules without hosted access
+        shell: bash
         run: |
-          brew install xcodegen
-          xcodegen generate
-      - name: Pick an available iPhone simulator
-        run: |
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for k,vs in sorted(d["devices"].items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
-          echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
-      - name: Compile native screens
-        id: compile
-        timeout-minutes: 15
-        run: |
-          xcodebuild build-for-testing -project TwilDiary.xcodeproj -scheme TwilDiary \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO
-      - name: Compile for physical iOS devices
-        id: device
-        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
-        run: |
-          xcodebuild build -project TwilDiary.xcodeproj -scheme TwilDiary \
-            -destination 'generic/platform=iOS' -configuration Release \
-            -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO
-      - name: Package unsigned IPA for LiveContainer
-        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
-        run: |
-          mkdir -p artifacts/Payload
-          cp -R device-build/Build/Products/Release-iphoneos/TwilDiary.app artifacts/Payload/
-          cd artifacts
-          ditto -c -k --keepParent Payload TwilDiary-LiveContainer.ipa
-          shasum -a 256 TwilDiary-LiveContainer.ipa > TwilDiary-LiveContainer.ipa.sha256
-      - name: Upload LiveContainer IPA
-        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-backend-logs"
+          npm run check 2>&1 | tee "$RUNNER_TEMP/ios-backend-logs/types.log"
+          npm test 2>&1 | tee "$RUNNER_TEMP/ios-backend-logs/contracts.log"
+          npm run build 2>&1 | tee "$RUNNER_TEMP/ios-backend-logs/worker-build.log"
+      - name: Retain backend contract and Worker build diagnostics
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: TwilDiary-LiveContainer-IPA
-          path: |
-            artifacts/TwilDiary-LiveContainer.ipa
-            artifacts/TwilDiary-LiveContainer.ipa.sha256
+          name: TwilDiary-iOS-backend-contract-logs
+          path: ${{ runner.temp }}/ios-backend-logs
+          if-no-files-found: warn
           retention-days: 14
-      - name: Boot the iPhone simulator
-        timeout-minutes: 6
-        run: |
-          xcrun simctl boot "$SIMULATOR_ID" || true
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
-      - name: Run session and iPhone UI tests
-        timeout-minutes: 12
-        run: |
-          xcodebuild test-without-building -project TwilDiary.xcodeproj -scheme TwilDiary \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -parallel-testing-enabled NO \
-            -derivedDataPath build -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO
-      - name: Upload simulator application
+  build-test-artifacts:
+    needs: [candidate-proof, backend-contracts]
+    runs-on: macos-26-intel
+    timeout-minutes: 210
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      CODEMAGIC_CHECK_URL: ${{ needs.candidate-proof.outputs.check_url }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inspect pinned toolchain and choose available iPhone
+        run: bash ios/scripts/ci.sh inventory
+      - name: Cache Swift packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.spm
+          key: spm-macos26-${{ runner.arch }}-xcode26.6-${{ hashFiles('ios/**/Package.resolved', 'ios/**/Package.swift', 'ios/project.yml') }}
+      # Package target/resource moves must not restore modules from the old graph.
+      - name: Restore native compilation intermediates
+        id: native-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.derived
+          key: native-macos26-${{ runner.arch }}-xcode26.6-${{ hashFiles('ios/Packages/**/Package.swift') }}-${{ hashFiles('ios/App/**', 'ios/Tests/**', 'ios/UITests/**', 'ios/Packages/**/Sources/**', 'ios/Packages/**/Tests/**', 'ios/Packages/**/Package.swift', 'ios/project.yml', 'ios/scripts/ci.sh', 'ios/scripts/xcodegen.sh') }}
+          restore-keys: native-macos26-${{ runner.arch }}-xcode26.6-${{ hashFiles('ios/Packages/**/Package.swift') }}-
+      - name: Restore core regression build
+        id: core-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/Packages/TwilDiaryCore/.build
+          key: core-macos26-${{ runner.arch }}-xcode26.6-${{ hashFiles('ios/Packages/TwilDiaryCore/Package.swift', 'ios/Packages/TwilDiaryCore/Sources/**', 'ios/Packages/TwilDiaryCore/Tests/**') }}
+          restore-keys: core-macos26-${{ runner.arch }}-xcode26.6-
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Test core calculations and catalog contracts
+        timeout-minutes: 20
+        run: swift test --package-path ios/Packages/TwilDiaryCore 2>&1 | tee ios/.artifacts/logs/core-tests.log
+      - name: Save passing core regression build
+        if: ${{ success() && steps.core-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/Packages/TwilDiaryCore/.build
+          key: core-macos26-${{ runner.arch }}-xcode26.6-${{ hashFiles('ios/Packages/TwilDiaryCore/Package.swift', 'ios/Packages/TwilDiaryCore/Sources/**', 'ios/Packages/TwilDiaryCore/Tests/**') }}
+      - name: Compile simulator and test bundles
+        id: simulator
+        run: bash ios/scripts/ci.sh build-simulator
+      - name: Wait for simulator readiness
+        timeout-minutes: 15
+        run: bash ios/scripts/ci.sh boot
+      - name: Run native unit tests before UI regressions
+        id: unit
+        timeout-minutes: 20
+        run: bash ios/scripts/ci.sh test-unit
+      - name: Verify current stability regressions before the long suite
+        id: repairs
+        # Eight cases used12m37s on the pinned Intel runner. The current
+        #18case gate includes cold quota recovery; per-case deadlines stay fixed.
+        timeout-minutes: 35
+        run: bash ios/scripts/ci.sh test-repairs
+      - name: Verify progress, navigation and recent device regressions before Release
+        id: progress
+        timeout-minutes: 30
+        run: bash ios/scripts/ci.sh test-progress
+      - name: Export passed early UI evidence
+        run: bash ios/scripts/ci.sh screenshots-progress
+      - name: Share passed early UI screenshots
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: TwilDiary-iOS-Simulator
-          path: build/Build/Products/Debug-iphonesimulator/TwilDiary.app
-          retention-days: 7
-      - name: Upload simulator test results and screenshots
+          name: TwilDiary-passed-progress-screenshots
+          path: ios/.artifacts/progress-evidence
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run complete primary iPhone UI regression
+        timeout-minutes: 100
+        run: bash ios/scripts/ci.sh test
+      - name: Run compact and large iPhone layout regression
+        timeout-minutes: 40
+        run: bash ios/scripts/ci.sh test-layouts
+      - name: Compile unsigned physical iPhone application
+        run: bash ios/scripts/ci.sh build-device
+      - name: Package unsigned IPA
+        run: bash ios/scripts/ci.sh package
+      - name: Save compiled native targets
+        if: ${{ !cancelled() && steps.simulator.outcome == 'success' && steps.native-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.derived
+          key: native-macos26-${{ runner.arch }}-xcode26.6-${{ hashFiles('ios/Packages/**/Package.swift') }}-${{ hashFiles('ios/App/**', 'ios/Tests/**', 'ios/UITests/**', 'ios/Packages/**/Sources/**', 'ios/Packages/**/Tests/**', 'ios/Packages/**/Package.swift', 'ios/project.yml', 'ios/scripts/ci.sh', 'ios/scripts/xcodegen.sh') }}
+      - name: Export screenshots
+        if: always()
+        run: bash ios/scripts/ci.sh screenshots
+      - name: Upload xcresult and full logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: TwilDiary-iOS-TestResults
-          path: TestResults.xcresult
-          retention-days: 7
-      - name: Export screen captures for visual review
-        if: always()
-        run: |
-          if [ -f TestResults.xcresult/Info.plist ]; then
-            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots
-          fi
-      - name: Upload screen captures
+          name: TwilDiary-test-results-and-logs
+          include-hidden-files: true
+          path: |
+            ios/.artifacts/*.xcresult
+            ios/.artifacts/logs
+            ios/.artifacts/toolchain.txt
+            ios/.artifacts/devices.json
+            ios/.artifacts/simulator.json
+            ios/.artifacts/layout-simulators.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: TwilDiary-iOS-Screenshots
-          path: screenshots
-          retention-days: 7
+          name: TwilDiary-screenshots
+          path: ios/.artifacts/screenshots
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Print diagnostics and enforce zero build warnings
+        if: always()
+        run: bash ios/scripts/ci.sh summary
+      - name: Record stable artifact provenance
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          artifact = pathlib.Path('ios/.artifacts/TwilDiary-unsigned.ipa')
+          proof = {
+              'sourceSHA': os.environ['GITHUB_SHA'],
+              'codemagicCheck': os.environ['CODEMAGIC_CHECK_URL'],
+              'githubRun': f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              'ipaSHA256': hashlib.sha256(artifact.read_bytes()).hexdigest(),
+              'channel': 'stable-unsigned',
+              'acceptance': 'Both provider regressions passed; real-device checks remain separately documented.'
+          }
+          artifact.with_name('stable-provenance.json').write_text(json.dumps(proof, indent=2) + '\n')
+          PY
+      - name: Publish only the completely verified stable unsigned IPA
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-stable-unsigned-IPA
+          path: |
+            ios/.artifacts/TwilDiary-unsigned.ipa
+            ios/.artifacts/TwilDiary-unsigned.ipa.sha256
+            ios/.artifacts/stable-provenance.json
+          if-no-files-found: error
+          retention-days: 14

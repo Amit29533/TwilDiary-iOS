@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "twildiary-v2",
+  "account_id": "2e8626da5c1177fdfc53aadaef4ec1f7",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2026-10-21",
+  "compatibility_flags": ["nodejs_compat"],
+  // The owner-only Access application protects this Worker's production and preview traffic.
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": ".svelte-kit/cloudflare",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "twildiary-v2",
+    "database_id": "fee4edca-0618-44fb-b110-0a9ecb3dfe17",
+    "migrations_dir": "drizzle"
+  }]
+}

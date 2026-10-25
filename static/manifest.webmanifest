@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "TwilDiary",
+  "short_name": "TwilDiary",
+  "description": "Your stories, at your pace.",
+  "start_url": "/preview/home",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050507",
+  "theme_color": "#050507",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

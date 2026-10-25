@@ -1,0 +1,64 @@
+{
+  "source": "8c9514094e96498855b83034c52c4b4349af8fee",
+  "run": "6ade36de4a72334e32e5107f",
+  "status": "Complete official Codemagic regression success verified via exact-SHA check",
+  "scope": "Original native iPhone simulator attachments, synthetic fixture data; independent GitHub and real phone behavior not claimed",
+  "files": [
+    {
+      "file": "glass-compact-header.png",
+      "attachment": "560E5D76-790E-4583-A060-46AF8C2CC5F6.png",
+      "test": "LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField()",
+      "device": "iPhone 17 Pro",
+      "sha256": "2def42c104c3c9c13827050138997aeb8e0846e9939c06149cfbdf643ce39337"
+    },
+    {
+      "file": "import-progress.png",
+      "attachment": "311F709C-FCB6-4C4A-AE83-D4B4236DD87D.png",
+      "test": "NativeScreensTests/testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause()",
+      "device": "iPhone 17 Pro",
+      "sha256": "72e44d077f2b6eb0d450ac0b427af0c9adfd9a81a0512e41cb3582dad5839260"
+    },
+    {
+      "file": "episode-grid.png",
+      "attachment": "694F47B3-696A-4C74-B700-54343BA7DF99.png",
+      "test": "NativeScreensTests/testCollectionGridsKeepEpisodeActionsFoldersAndHistoryEntries()",
+      "device": "iPhone 17 Pro",
+      "sha256": "596769f8954f296c7b708bb8d724c1f35942ab69cf21e1f95c0b23fd1bca9386"
+    },
+    {
+      "file": "community-information.png",
+      "attachment": "499CBEC8-D0F4-463B-BDA7-4BC580D74CEE.png",
+      "test": "NativeScreensTests/testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle()",
+      "device": "iPhone 17 Pro",
+      "sha256": "ab04b7ad8dd4d9b44154cbd4f1d1abace38faa2b656ff211d76553e16c83f734"
+    },
+    {
+      "file": "title.png",
+      "attachment": "3EDFF1FE-BD29-4956-BFA1-2AE755C2717A.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "sha256": "8dbca2a538529cdc325f51396711aebb07a21352c1571e81b859241f957f8e4b"
+    },
+    {
+      "file": "home.png",
+      "attachment": "BAF25617-BC6D-4976-99BC-8647FF994BFB.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "sha256": "e5359c406b0f8c4ffa486b86139c6887105a2c6822f8143484838f6c3cddfd61"
+    },
+    {
+      "file": "glance.png",
+      "attachment": "AF741827-FD15-4700-BB06-B08CA29CC95B.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "sha256": "98904b4047355a4d25f6cb0104d9b08e77ece47dbbc3cf11fbfa5b7a2809439f"
+    },
+    {
+      "file": "compact-undo.png",
+      "attachment": "9779A005-71F6-4CC2-A595-E3BAB5514A49.png",
+      "test": "NativeScreensTests/testToastExpiresAndCardCoverAndUsefulMenuWork()",
+      "device": "iPhone 17 Pro",
+      "sha256": "588fd55bc74382450a679f8dcc8d8ffb7e85d80b5785a1bebf03f6274b084024"
+    }
+  ]
+}

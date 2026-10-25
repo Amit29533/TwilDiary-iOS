@@ -1,0 +1,24 @@
+{
+  "referenceSize": [
+    402,
+    778
+  ],
+  "nativeSize": [
+    402,
+    778
+  ],
+  "sameDimensions": true,
+  "nativeScale": 3,
+  "nativeInsets": [
+    62,
+    0,
+    34,
+    0
+  ],
+  "meanAbsoluteChannelDifference": [
+    36.65169653020246,
+    34.57530151300055,
+    37.5557847011728
+  ],
+  "identical": false
+}

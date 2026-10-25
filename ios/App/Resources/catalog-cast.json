@@ -1,0 +1,53 @@
+{
+  "cast": [
+    {
+      "id": 700001,
+      "name": "Reference Actor 1",
+      "character": "Character 1",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700002,
+      "name": "Reference Actor 2",
+      "character": "Character 2",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700003,
+      "name": "Reference Actor 3",
+      "character": "Character 3",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700004,
+      "name": "Reference Actor 4",
+      "character": "Character 4",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700005,
+      "name": "Reference Actor 5",
+      "character": "Character 5",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700006,
+      "name": "Reference Actor 6",
+      "character": "Character 6",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700007,
+      "name": "Reference Actor 7",
+      "character": "Character 7",
+      "profilePath": "/reference_poster.jpg"
+    },
+    {
+      "id": 700008,
+      "name": "Reference Actor 8",
+      "character": "Character 8",
+      "profilePath": "/reference_poster.jpg"
+    }
+  ],
+  "stale": false
+}

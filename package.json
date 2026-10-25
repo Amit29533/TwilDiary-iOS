@@ -1,0 +1,60 @@
+{
+  "name": "twildiary",
+  "version": "2.0.0-dev.1",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite dev --host 127.0.0.1 --port 5180 --strictPort",
+    "dev:network": "vite dev --host 0.0.0.0 --port 5180 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5181 --strictPort",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker/tsconfig.json",
+    "prepare": "svelte-kit sync",
+    "format": "prettier --write src tests docs README.md package.json tsconfig.json vite.config.ts",
+    "test": "node --test tests/unit/*.test.ts",
+    "test:pwa": "node --test tests/pwa-runtime.test.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "verify": "npm run check && npm test && npm run build && npm run test:pwa"
+  },
+  "dependencies": {
+    "@lucide/svelte": "1.60.0",
+    "drizzle-orm": "0.45.4",
+    "jose": "6.2.13"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261019.1",
+    "@sveltejs/adapter-cloudflare": "8.0.1",
+    "@sveltejs/kit": "3.1.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "24.19.2",
+    "drizzle-kit": "0.31.11",
+    "fake-indexeddb": "^6.2.6",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.7",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "wrangler": "4.151.3"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    },
+    "miniflare": {
+      "undici": "7.30.1"
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true,
+    "workerd@1.20261019.1": true
+  }
+}

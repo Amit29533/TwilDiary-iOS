@@ -1,0 +1,100 @@
+{
+  "run": 40001908810,
+  "commit": "db13a65",
+  "status": "success",
+  "tests": {
+    "core": 10,
+    "session_and_endpoint": 8,
+    "ui": 4
+  },
+  "warnings": 0,
+  "screenshots": [
+    {
+      "file": "cast-profile.png",
+      "test": "NativeScreensTests/testCatalogSearchReviewAndCastProfile()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "catalog-review.png",
+      "test": "NativeScreensTests/testCatalogSearchReviewAndCastProfile()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "catalog-search.png",
+      "test": "NativeScreensTests/testCatalogSearchReviewAndCastProfile()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "explore.png",
+      "test": "NativeScreensTests/testExploreAndHomeStatsShortcut()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library-genres.png",
+      "test": "NativeScreensTests/testLibrarySearchAndSelectionPersistAcrossTabs()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library-list.png",
+      "test": "NativeScreensTests/testLibrarySearchAndSelectionPersistAcrossTabs()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library-search.png",
+      "test": "NativeScreensTests/testLibrarySearchAndSelectionPersistAcrossTabs()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "more.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "stats.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "title-detail.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "library.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "home.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    },
+    {
+      "file": "glance.png",
+      "test": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+      "device": "iPhone 17 Pro",
+      "fixture": true
+    }
+  ],
+  "visualReview": {
+    "accepted": false,
+    "findings": [
+      "Duplicate system/custom tab bars",
+      "Poster artwork exceeds grid bounds",
+      "Custom chrome uses default blue accent"
+    ],
+    "followUpCommit": "a825529"
+  }
+}

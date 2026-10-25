@@ -1,0 +1,26 @@
+{
+  "sourceSHA": "d59f55e5fa574382b067477f6b4fb079690507a8",
+  "codemagicBuild": "6adde71f4a72334e32e4fa14",
+  "buildNumber": 54,
+  "kind": "complete-codemagic-candidate",
+  "regressionAcceptance": "Complete Codemagic passed; independent GitHub acceptance pending",
+  "sha256": "71c8597fdc218ff2370148cbf733d66376304ef2987293486eac6e92437a9798",
+  "bytes": 5616221,
+  "zipCRC": "pass",
+  "architecture": "arm64",
+  "platform": "iPhoneOS",
+  "testFixtureResources": "absent",
+  "buildWarnings": 0,
+  "nativeTests": 188,
+  "focusedUITests": 8,
+  "earlyUITests": 10,
+  "primaryUITests": 51,
+  "extraPhoneLayoutTests": {
+    "iPhone 17e": 3,
+    "iPhone 17 Pro Max": 3
+  },
+  "codemagicURL": "https://codemagic.io/app/6adcc927390bc3069c9e5490/build/6adde71f4a72334e32e4fa14",
+  "githubRun": "40192486938",
+  "githubURL": "https://github.com/Amit29533/TwilDiary/actions/runs/40192486938",
+  "githubAcceptance": "in progress"
+}

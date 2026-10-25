@@ -1,0 +1,3682 @@
+{
+  "webBaseline": "b43454e",
+  "sourceTree": "1543f6892abe6761f400c7ad1cad6c83a0789850",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "c0832040998e7fe645f36dfcf2b9f7cd4bfe0e165f669e715d943f69b045719c",
+      "lines": 58,
+      "exports": []
+    },
+    {
+      "path": "docs/APPEARANCE.md",
+      "sha256": "c6f1bbd7efb4515798ed78f2adcaaf2438d55428c26e06b0a774cdd47a9e1169",
+      "lines": 28,
+      "exports": []
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "sha256": "b8f720236c97bf539942fd1f3ccfc26cb32bede8f66d6d3aeb7ef8ae1b0b9793",
+      "lines": 57,
+      "exports": []
+    },
+    {
+      "path": "docs/BACKEND-OPTIONS.md",
+      "sha256": "f3ceb6a882ea7b1a29f916a1f9af26ec7da5fc904acf975bf58d293c03d5bc26",
+      "lines": 54,
+      "exports": []
+    },
+    {
+      "path": "docs/CATALOG-EPISODES.md",
+      "sha256": "fda8adae52b5aceba62508ddf777898e5f5cac5a221bfa9b3608c3055b4a303b",
+      "lines": 14,
+      "exports": []
+    },
+    {
+      "path": "docs/COLLECTION-AND-BRANDING-REPORT.md",
+      "sha256": "e0938dee17171478160c1e7122c9e6320c66d2d86aa4fd9b4fd29d8b3f10beb4",
+      "lines": 36,
+      "exports": []
+    },
+    {
+      "path": "docs/COMPACT-POSTERS.md",
+      "sha256": "5c8aa1d2af8e2014f385f8cffd24f81dcbf1631ce78f60602af5236a142d9ac6",
+      "lines": 14,
+      "exports": []
+    },
+    {
+      "path": "docs/DAILY-USE-POLISH-REPORT.md",
+      "sha256": "fde3fd0bc8c76fd2973baff1bb544a5457a8571b64907c4d99709d16c75edd35",
+      "lines": 68,
+      "exports": []
+    },
+    {
+      "path": "docs/DESIGN-ALIGNMENT.md",
+      "sha256": "480e4444968dffaa00c6a9fe4980af4b6aa9e03cbb289f19887143e1b41e8366",
+      "lines": 63,
+      "exports": []
+    },
+    {
+      "path": "docs/DEVELOPMENT-PLAN.md",
+      "sha256": "d1b24f3717de35a5a08519b8ccc33354d3bd6a403f841e74f07733b18d887f34",
+      "lines": 150,
+      "exports": []
+    },
+    {
+      "path": "docs/EXPLORE-AND-NAVIGATION-REPORT.md",
+      "sha256": "9000d82e756fec89f82face9accb1e1fd829a40f0fa0ec0f6832fb5366a22c32",
+      "lines": 50,
+      "exports": []
+    },
+    {
+      "path": "docs/EXPLORE-SHELVES.md",
+      "sha256": "650c848f417827a64896b8254f6f56878022135a801b0f1921b33bca0bf69db5",
+      "lines": 14,
+      "exports": []
+    },
+    {
+      "path": "docs/EXPLORE-VIEW-MORE.md",
+      "sha256": "681c007f5b283d4a96a1f149b8a60c345ce60c87f1a285b50bcd8b93e1f4e02a",
+      "lines": 18,
+      "exports": []
+    },
+    {
+      "path": "docs/FULL-AUDIT-2026-10-23.md",
+      "sha256": "291b13e8cee5b74e0c2890bee20a187dd201adb74375bc89fd2b0c0ffe46d6fe",
+      "lines": 47,
+      "exports": []
+    },
+    {
+      "path": "docs/GLANCE-REFERENCE.md",
+      "sha256": "97ab1fb1d616d14844f50391306417dd727cf05bfd44438d0cf6627ee9ad6356",
+      "lines": 21,
+      "exports": []
+    },
+    {
+      "path": "docs/HOME-REFERENCE.md",
+      "sha256": "b8ba41272fd53ba0fe10006cf20805cf2b66d534cde6e329359eb03efbed2a15",
+      "lines": 20,
+      "exports": []
+    },
+    {
+      "path": "docs/HOSTING-AND-TRAKT-CONNECTION.md",
+      "sha256": "7e3922e2253ea09035eeaec1cfb03eef2f3aba0cb1955980e72add7c14d022a8",
+      "lines": 38,
+      "exports": []
+    },
+    {
+      "path": "docs/INTERACTION-AND-OFFLINE-REPORT.md",
+      "sha256": "00666298c450007418b75163811c235bc54dc66e2f191bf2e146d17df321a849",
+      "lines": 42,
+      "exports": []
+    },
+    {
+      "path": "docs/LIBRARY-COMMUNITY-RATINGS.md",
+      "sha256": "ec9dcb6af5c63695d7197e85abe52c63bb7fe93ed77ff7ae7c290674519ef433",
+      "lines": 12,
+      "exports": []
+    },
+    {
+      "path": "docs/LIBRARY-FILTER-CLEANUP.md",
+      "sha256": "0906cc3989ed055a54b36d0b2247484cdab22e34d7ce368a58a21948f7dea56e",
+      "lines": 18,
+      "exports": []
+    },
+    {
+      "path": "docs/LIBRARY-REFERENCE.md",
+      "sha256": "5a8f2f3c1acc2a06b10ed01b43d2a7488bd76b4dd6ad5159f053bc462eec460d",
+      "lines": 13,
+      "exports": []
+    },
+    {
+      "path": "docs/LOCAL-PHONE-TESTING.md",
+      "sha256": "bc1e60446e498b6b5db02d3631a487a36ad957358c0b15c6fe4f2c6cfa554f74",
+      "lines": 8,
+      "exports": []
+    },
+    {
+      "path": "docs/METADATA-WORKSPACE-REPORT.md",
+      "sha256": "028ee33762b0e8d683f0a0c69227f9aff35131049a8b0fe0a8bcf3845b9e446c",
+      "lines": 43,
+      "exports": []
+    },
+    {
+      "path": "docs/NATIVE-SESSION-2026-10-23.md",
+      "sha256": "b7360da7fdfa741a8ec6ce9b471515aa0d7d9e16497d8d33e99ed71ee93e857a",
+      "lines": 24,
+      "exports": []
+    },
+    {
+      "path": "docs/NAV-STATS-RELIABILITY.md",
+      "sha256": "39e9ad6293db5caafbef681663cddb3aaa1ca2855d067cf1d6fc7da13cacc07d",
+      "lines": 16,
+      "exports": []
+    },
+    {
+      "path": "docs/NAVIGATION-HISTORY.md",
+      "sha256": "f5ee9cad16b860e73f653059e5094bdcf87b8ac8d4a69acd19039cb5ac924f09",
+      "lines": 70,
+      "exports": []
+    },
+    {
+      "path": "docs/PAGE-MEMORY.md",
+      "sha256": "0d167f93068be2bbc2aaf9f3030d0b38796f0df010d53e3a5e8878a7e341e782",
+      "lines": 16,
+      "exports": []
+    },
+    {
+      "path": "docs/PEOPLE-AND-RELATED-TITLES.md",
+      "sha256": "de87601dcbf21f737a623dd21570188fb75cd19614bc5b72e5cb761c8d7af42a",
+      "lines": 34,
+      "exports": []
+    },
+    {
+      "path": "docs/PHASE-1-REPORT.md",
+      "sha256": "bf75a6423611133525bad31a4dc86f5bc398eb0334f60462b90a773f8a6d467f",
+      "lines": 66,
+      "exports": []
+    },
+    {
+      "path": "docs/PHASE-2-REPORT.md",
+      "sha256": "6287c7558e4ad1f3353b3e5314fea7d55fb90d5b8ba57d3d5a71441828324e4d",
+      "lines": 49,
+      "exports": []
+    },
+    {
+      "path": "docs/PRODUCT-SPEC.md",
+      "sha256": "6b39174790dad4155f34a4709de1c6d1ac08f8961faa6cff27da4073e9a6b2a6",
+      "lines": 83,
+      "exports": []
+    },
+    {
+      "path": "docs/REAL-DIARY-AND-TRAKT.md",
+      "sha256": "193a035a85d34d82f77c859f5c1f55311f757ff9449c03c194108b89860beb24",
+      "lines": 63,
+      "exports": []
+    },
+    {
+      "path": "docs/RELEASE-AUDIT-2026-10-23.md",
+      "sha256": "a37c83f2a8685fad36297db45123c740267eac6e0cbf706765f844fa95ded1a9",
+      "lines": 59,
+      "exports": []
+    },
+    {
+      "path": "docs/RESEARCH.md",
+      "sha256": "f3f33d710982783fa1eac4c41ea18dde730dfe4588da919318db3c4c181b8087",
+      "lines": 58,
+      "exports": []
+    },
+    {
+      "path": "docs/SEARCH-DETAILS.md",
+      "sha256": "9eac507f58fcdcd1305274b924aa0a6d7838a45a06eede5e35a1f59bdea96dac",
+      "lines": 10,
+      "exports": []
+    },
+    {
+      "path": "docs/SETTINGS-REDESIGN.md",
+      "sha256": "0cf7ee060bd7c82d5b3ff6da3f4e6f3ab32017b123031074a3bbe9218ec0de87",
+      "lines": 18,
+      "exports": []
+    },
+    {
+      "path": "docs/STATS-AND-RECENT-WATCHES.md",
+      "sha256": "780098aa04520abbcb110ad0b306a1f91e6755da51062fe270fe0fa6d86c4ac5",
+      "lines": 16,
+      "exports": []
+    },
+    {
+      "path": "docs/STATS-DASHBOARD.md",
+      "sha256": "0a30119d93f87185a3721720454e23a33a167f7e2d3457a89036712eadaef0ac",
+      "lines": 27,
+      "exports": []
+    },
+    {
+      "path": "docs/STATUS-AND-PROGRESS.md",
+      "sha256": "61c89d0187d487d757cca170f6d20bc8c89acb8fa469176d41e36673ce6bd855",
+      "lines": 17,
+      "exports": []
+    },
+    {
+      "path": "docs/TITLE-DETAIL-REDESIGN.md",
+      "sha256": "4f963ecec6d77744982be6cd367fd2623c94982ca2540fdf6d9fb88f441dd6cd",
+      "lines": 16,
+      "exports": []
+    },
+    {
+      "path": "docs/TITLE-RATING.md",
+      "sha256": "be67048745e32625649819f6ba4803d409f29369ec60f7332ac963081c00b2e6",
+      "lines": 10,
+      "exports": []
+    },
+    {
+      "path": "docs/TMDB-INTEGRATION.md",
+      "sha256": "fbdda6c18ce3cabc7f04f7b382650a8174b57a9c90cc9a5f8daab5aaa8318e39",
+      "lines": 48,
+      "exports": []
+    },
+    {
+      "path": "docs/TRAKT-LIVE-AUDIT-2026-10-23.md",
+      "sha256": "7860780e7202d1b27ea8879f5b9864d9cb6806fd024252af8c2266cca2da9f0e",
+      "lines": 61,
+      "exports": []
+    },
+    {
+      "path": "docs/UI-WIRING-AUDIT.md",
+      "sha256": "bfa89f06614d3fd521e0999b40710b2656fd6d597473a0fdb4f160b7061b1724",
+      "lines": 61,
+      "exports": []
+    },
+    {
+      "path": "docs/verification-worker-private.json",
+      "sha256": "60fea9d734a952325b695f76ce7321aa416db4393454215439dd4ba70d106f7f",
+      "lines": 8,
+      "exports": []
+    },
+    {
+      "path": "src/app.css",
+      "sha256": "06b08266b35bd38a385e4b64fcf6dfc28861854d93af2041391f6d57c9b18eb9",
+      "lines": 712,
+      "exports": []
+    },
+    {
+      "path": "src/app.d.ts",
+      "sha256": "9c13ffafe119d6b53f63c65b3dafdc8cf839901adebea70fdb1ecc724b4f5f8b",
+      "lines": 34,
+      "exports": []
+    },
+    {
+      "path": "src/cloudflare-workers.d.ts",
+      "sha256": "12217dda3f8213005b9af87122e9da00ec80325e78ebf37c4101f185c53c9aa6",
+      "lines": 4,
+      "exports": [
+        "env"
+      ]
+    },
+    {
+      "path": "src/hooks.server.ts",
+      "sha256": "218c6e92047686bbeaf535ed431a1241e91cf6bbf3f16eb3ceaa26944664b9db",
+      "lines": 88,
+      "exports": [
+        "handle"
+      ]
+    },
+    {
+      "path": "src/lib/client/api.ts",
+      "sha256": "c3fda30a7162c4c8d3685435e22be4f8f7d1f1cdc144ad2cb3b61cfd52911822",
+      "lines": 52,
+      "exports": [
+        "ClientError",
+        "errorMessage",
+        "mutationRevision",
+        "requestJson"
+      ]
+    },
+    {
+      "path": "src/lib/client/artwork-continuity.ts",
+      "sha256": "a792563343eb160e04df7994f7165909befe90cc6d7f6c2e021b6f1a9e64294b",
+      "lines": 118,
+      "exports": [
+        "artworkContinuity",
+        "createArtworkCache"
+      ]
+    },
+    {
+      "path": "src/lib/client/celebrate.ts",
+      "sha256": "f9bcf5f44413f1b9a66f94cabae92c74ca5415aecb01e6c8664a5a64965704c8",
+      "lines": 30,
+      "exports": [
+        "captureCelebrationOrigin",
+        "celebrate"
+      ]
+    },
+    {
+      "path": "src/lib/client/community-ratings-context.ts",
+      "sha256": "75c90ed9308c731a880ce14e056aa760661abfd7887696ac694ee85358c0620b",
+      "lines": 14,
+      "exports": [
+        "COMMUNITY_RATINGS",
+        "CommunityRatingsController",
+        "useCommunityRatings"
+      ]
+    },
+    {
+      "path": "src/lib/client/community-ratings.svelte.ts",
+      "sha256": "56839189b2ec749f007164b51cc286fef16af8682de2b8edf80f1c1d3416c623",
+      "lines": 102,
+      "exports": [
+        "createCommunityRatings"
+      ]
+    },
+    {
+      "path": "src/lib/client/contracts.ts",
+      "sha256": "4fd6bdfbefe6e2c25c56eb4ff4a6f7e2e9f069cdc682862d7ba00ee4c8bfe9c6",
+      "lines": 58,
+      "exports": [
+        "SavedEpisode",
+        "SavedSeason",
+        "SavedTitle",
+        "SeasonPage",
+        "TitleDetails",
+        "TitleSummary"
+      ]
+    },
+    {
+      "path": "src/lib/client/dashboard.ts",
+      "sha256": "959da32270c5570ef1646ed08749312a360b236a1aa47f531e16b91580d822fd",
+      "lines": 41,
+      "exports": [
+        "DiaryStats",
+        "GenreData",
+        "HistoryPage",
+        "HistoryRow",
+        "HomeData",
+        "WatchCardData"
+      ]
+    },
+    {
+      "path": "src/lib/client/diary-context.ts",
+      "sha256": "ff3f86f3fd87bee7f0d911a594916991fd522cf7879af034b1034dcdff84f27c",
+      "lines": 45,
+      "exports": [
+        "DIARY",
+        "DiaryController",
+        "useDiary"
+      ]
+    },
+    {
+      "path": "src/lib/client/episode-window.ts",
+      "sha256": "deb3ceadb401ae9dd6476eb6b13cf615f96720aa937ac4f8aac6ae2975c41e5c",
+      "lines": 18,
+      "exports": [
+        "episodeWindow"
+      ]
+    },
+    {
+      "path": "src/lib/client/header.ts",
+      "sha256": "5582e1c5ebd263149f5927292f319b4e68392a4771b6e7900716b917ff3d9beb",
+      "lines": 11,
+      "exports": [
+        "HEADER_ACTIONS",
+        "HeaderActions",
+        "HeaderController"
+      ]
+    },
+    {
+      "path": "src/lib/client/id.ts",
+      "sha256": "d67830b4b26d7a6310c62738bdaa4e65a3b81c7ccb9e0778f453babbd23c74e7",
+      "lines": 12,
+      "exports": [
+        "newId"
+      ]
+    },
+    {
+      "path": "src/lib/client/input-modality.ts",
+      "sha256": "ff0cce2d21620af90aa178daf251501d42ca44630f3d40ae7822bf9f41c27a1b",
+      "lines": 43,
+      "exports": [
+        "trackInputModality"
+      ]
+    },
+    {
+      "path": "src/lib/client/live-diary.svelte.ts",
+      "sha256": "0843cd6d5ab2cff0d5420cec411a3551df5b5c9454d7e3a1dbae00569ef91d3a",
+      "lines": 695,
+      "exports": [
+        "createLiveDiary"
+      ]
+    },
+    {
+      "path": "src/lib/client/navigation-policy.ts",
+      "sha256": "3429b69b2302ca3007f62c418722cf1de9c5acdaf6130397d7f3f2b7026bdc33",
+      "lines": 37,
+      "exports": [
+        "entryDepth",
+        "isMainTab",
+        "mainTabs",
+        "navigationPlan",
+        "ownsPageHeader"
+      ]
+    },
+    {
+      "path": "src/lib/client/navigation.ts",
+      "sha256": "5f501c96bbce80a06a0a134a32b87e96bae4de2196e887284b4a42f6155abdb1",
+      "lines": 98,
+      "exports": [
+        "appLink",
+        "backLink",
+        "goBack",
+        "goto",
+        "navigationArrived",
+        "tabLink"
+      ]
+    },
+    {
+      "path": "src/lib/client/person-cache.ts",
+      "sha256": "b3e4bcc282ea35ac0020258b6fa64dec89cf994144de49ca3ba57e55c26260a8",
+      "lines": 21,
+      "exports": [
+        "cachedPerson",
+        "rememberPerson"
+      ]
+    },
+    {
+      "path": "src/lib/client/press-select.ts",
+      "sha256": "1abdaf35f4181c32de86d57d60259e456add77af56d5585a1ce35fe11bc17460",
+      "lines": 97,
+      "exports": [
+        "pressSelect"
+      ]
+    },
+    {
+      "path": "src/lib/client/remember-view.svelte.ts",
+      "sha256": "822baaee5373dcfe5e7bd644ec6c710202761e99aa4b0570212142899fa8ca9e",
+      "lines": 35,
+      "exports": [
+        "rememberView"
+      ]
+    },
+    {
+      "path": "src/lib/client/route-feedback.ts",
+      "sha256": "9009f03b5df1a5baba0cbfe7f0ba488d580210cff279c8521e45594845d10e08",
+      "lines": 66,
+      "exports": [
+        "historyRestoration",
+        "routeFeedback"
+      ]
+    },
+    {
+      "path": "src/lib/client/swipe-snapshot.ts",
+      "sha256": "2925abf6483c9e3162b6d1ddadc61c566ff74e80dcdb9f3a62ceb83c03c8a41c",
+      "lines": 15,
+      "exports": [
+        "preserveSwipeSnapshot"
+      ]
+    },
+    {
+      "path": "src/lib/client/swipe-watch.ts",
+      "sha256": "4f65ad4240c3018ffd5d733f433bd1fb8e5b07d1636eab92d5d026fbc61a2fc4",
+      "lines": 148,
+      "exports": [
+        "SwipeWatchOptions",
+        "swipeWatch"
+      ]
+    },
+    {
+      "path": "src/lib/client/theme-context.ts",
+      "sha256": "7837c67acee12402483ee15bf4107bd7a8483e63fe7e74e16668316669a81b9f",
+      "lines": 10,
+      "exports": [
+        "THEME",
+        "ThemeController",
+        "useTheme"
+      ]
+    },
+    {
+      "path": "src/lib/client/theme.svelte.ts",
+      "sha256": "eb28fe81ad1966261934c43cb48a435a7cd7a8e77d8f9a43cb150ea3c85abb3b",
+      "lines": 53,
+      "exports": [
+        "createTheme"
+      ]
+    },
+    {
+      "path": "src/lib/client/title-section.ts",
+      "sha256": "851cdbab307a9e95f3875c7e201467d7b6b757fdb0832f6c5cbdee4993dbe254",
+      "lines": 38,
+      "exports": [
+        "revealTitleSection",
+        "titleSection"
+      ]
+    },
+    {
+      "path": "src/lib/client/trakt-status.ts",
+      "sha256": "5c98be9d162d916d5aebc03a03b6c8cd2e579c1ae7dd833e710317d0da54df49",
+      "lines": 62,
+      "exports": [
+        "TraktChange",
+        "TraktKind",
+        "TraktStatus",
+        "TraktSync",
+        "pendingTraktChanges",
+        "reviewBatch",
+        "traktKinds"
+      ]
+    },
+    {
+      "path": "src/lib/client/view-memory.ts",
+      "sha256": "9e72192b54edf7abec2b2239b408c22d8908844d2f16507ea4c9cdf50e65c1d1",
+      "lines": 93,
+      "exports": [
+        "ViewPosition",
+        "captureDisclosures",
+        "captureRails",
+        "createViewMemory",
+        "restoreDisclosures",
+        "restoreRails",
+        "viewKey",
+        "viewMemory"
+      ]
+    },
+    {
+      "path": "src/lib/components/ArtworkWindow.svelte",
+      "sha256": "42a45dfe66e3b81b72ca894248be25314f53ae9b73730c3b32957beb9fe6a074",
+      "lines": 47,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/BrandMark.svelte",
+      "sha256": "faa67bad1a670c8c7328016355efe7f6b913c4cd2f79f63c66c33e86594d910f",
+      "lines": 126,
+      "components": [],
+      "accessibleNames": [
+        "Spin TwilDiary logo"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/BrowseHeading.svelte",
+      "sha256": "1997182508030d09051c295605fba77e6d45e0ffd90cdabd2a2f4ce9ca6bc61b",
+      "lines": 71,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/CastRow.svelte",
+      "sha256": "9fba6b08a3e1ed2ee8490065a4c200f2009d62dbfde51cda2bf6bedfd191d574",
+      "lines": 247,
+      "components": [],
+      "accessibleNames": [
+        "About {actor.name}",
+        "Actors and characters",
+        "Cast",
+        "Loading cast"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/Celebration.svelte",
+      "sha256": "5f74fd99d9a25ebb5d7c9ff35e1fa1f0cce0842533b87134915fd3b8e34a029c",
+      "lines": 96,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/CollectionConfirm.svelte",
+      "sha256": "350087875776866d8b2f140333fb28e4038043a45b899ba80675a1b67dc2e341",
+      "lines": 200,
+      "components": [],
+      "accessibleNames": [
+        "Close confirmation"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/CollectionSelection.svelte",
+      "sha256": "e2bc74de26fef18dd67b5c575e1b46edb8592c582594005ff32a3d096e1aaef4",
+      "lines": 213,
+      "components": [
+        "CollectionConfirm"
+      ],
+      "accessibleNames": [
+        "Apply selection action",
+        "Selection action",
+        "Selection actions"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/ContinueCard.svelte",
+      "sha256": "48428f9fe5cd02508d07eee9b4a0c82a197281234bc32d9319e634f0055673fb",
+      "lines": 215,
+      "components": [
+        "ArtworkWindow",
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Open {title.name}",
+        "Open {title.name} artwork",
+        "{title.name} progress"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/ContinueCarousel.svelte",
+      "sha256": "029844e60b3244b8df0db3ca34365514d4c6a8027e2a9a3ef12a521a8000c0a9",
+      "lines": 193,
+      "components": [
+        "ContinueCard"
+      ],
+      "accessibleNames": [
+        "Continue watching",
+        "Continue watching slides",
+        "Next continue watching title",
+        "Previous continue watching title",
+        "{position + 1} of {titles.length}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/DiarySearch.svelte",
+      "sha256": "c3d69956d82634cb1ea5435baa8bc61ae8940845f70089ea45d2d9b0442f5ab9",
+      "lines": 502,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Close search",
+        "Search library and online",
+        "Title or IMDb ID…"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/DiscoveryCard.svelte",
+      "sha256": "5c55925293f2c36c39a744fd9f2e86ccdb85d02324d358e1aec8fc05914daaa6",
+      "lines": 99,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Open {item.name}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/DiskMap.svelte",
+      "sha256": "3ff9eac4a54e140d0c3a56b8265159a6fa8e4b508e6072721ca8d09e0803d17c",
+      "lines": 38,
+      "components": [
+        "DiskSelector"
+      ],
+      "accessibleNames": [
+        "Disk Map"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/DiskSelector.svelte",
+      "sha256": "c305df72ce764e66fc5aeaa4aa1c4fe6ccba9430a52d6ecd9d2ebd40051d3321",
+      "lines": 56,
+      "components": [],
+      "accessibleNames": [
+        "Choose a drive"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/EmptyState.svelte",
+      "sha256": "372cdd828e5fd67159847cef4bb008755227fe9de09676bf85efe8bc0d12f1b1",
+      "lines": 11,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/EpisodeRequestNotice.svelte",
+      "sha256": "33f875f7d03863636be1b8d32689aa286e60df47a77b7929d47267a446113178",
+      "lines": 47,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/EpisodeSynopsis.svelte",
+      "sha256": "d9502ea4155c6f74e0700857b1faba292a374a66ec7d4cabb4b01d77877d4a1c",
+      "lines": 27,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/ExploreView.svelte",
+      "sha256": "799bbcbb0af7ca69b529e08a3796ce7fb0f35206453f2d513f5e3eede314e7b0",
+      "lines": 719,
+      "components": [
+        "DiscoveryCard",
+        "EmptyState",
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Any year",
+        "Explore",
+        "Explore genre",
+        "Explore media type",
+        "Explore minimum rating",
+        "Explore release year",
+        "More discovery filters",
+        "No titles in this mix",
+        "Sort discoveries",
+        "Trakt recommendations"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/GenreChart.svelte",
+      "sha256": "42471ccbdb81758d7947edacba4af790db4459db21ff4570421b87e92669a763",
+      "lines": 372,
+      "components": [],
+      "accessibleNames": [
+        "Genre breakdown",
+        "Genre chart measure",
+        "Inspect {slice.genre}: {slice.count} {measure}, {slice.percent.toFixed(\n                1\n              )} percent",
+        "{slice.genre}: {slice.percent.toFixed(1)} percent"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/GenreShelves.svelte",
+      "sha256": "da89a16b910414d3de55dfd141a805ccddc72919ff05bd6443e56f9b9d5fdaf3",
+      "lines": 220,
+      "components": [
+        "TitleCard"
+      ],
+      "accessibleNames": [
+        "Next {shelf.genre} titles",
+        "Previous {shelf.genre} titles",
+        "Scroll {shelf.genre} titles",
+        "See all {shelf.genre} titles",
+        "{shelf.genre} titles",
+        "{shelf.titles.length} {shelf.titles.length === 1 ? 'title' : 'titles'}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/GlanceCard.svelte",
+      "sha256": "3167ae2ad39ed9368c6bf071c15e30bb42a811a0758b50ea50123d61577f90ea",
+      "lines": 458,
+      "components": [
+        "ArtworkWindow",
+        "Poster",
+        "TitleMenu"
+      ],
+      "accessibleNames": [
+        "Open {title.name}",
+        "Open {title.name} artwork",
+        "{progress.watched} episodes watched"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/HistoryList.svelte",
+      "sha256": "178a749734e458fc7e9b96299f6fba829f16d1f87d95d05e64c3145c3e09e175",
+      "lines": 186,
+      "components": [
+        "ArtworkWindow",
+        "Poster"
+      ],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/HomeSections.svelte",
+      "sha256": "4f466669204a52f6490e7d5a363ecaa1edf941114c2a2ef8792c2a825c1e522b",
+      "lines": 405,
+      "components": [
+        "Poster",
+        "RandomPickDialog",
+        "TitleCard"
+      ],
+      "accessibleNames": [
+        "This week's watch time, Monday to Sunday",
+        "{releaseDate.format(date(day.date))}: {day.count} watches, {watchDuration(\n              day.minutes\n            )}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/LibraryControls.svelte",
+      "sha256": "1f73e2fcca609f062269f73c63c7ff374f3ea518c4575ff9ca5fa25316586516",
+      "lines": 209,
+      "components": [],
+      "accessibleNames": [
+        "Disk filter",
+        "Genre filter",
+        "Library filters",
+        "Watch status filter"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/MetadataDialog.svelte",
+      "sha256": "a92885bf19e59ae63e059ca9b2401a8fa5ffd1cb52bdd6a7d8947f834b9bd6d5",
+      "lines": 634,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Back to results",
+        "Close add title",
+        "Find a movie or show…",
+        "Not rated",
+        "Search type",
+        "Unknown"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/MetadataShelf.svelte",
+      "sha256": "72dc787af354e2c26f75db77a3c41c734759cc733594dcead8c5a6b2bb69df07",
+      "lines": 155,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Open {item.name}",
+        "TMDB score {item.rating.toFixed(1)}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/Poster.svelte",
+      "sha256": "5ab93800a0a2d0c2059821f28b79e364f281313116e0eaf9782bdc9e57ab3d86",
+      "lines": 103,
+      "components": [
+        "ArtworkWindow"
+      ],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/RandomPickDialog.svelte",
+      "sha256": "4a7a2ef48f4dbb5f3cf9db9829155e1ae1f740c24c61b0fbf5b0dcce4b1bc757",
+      "lines": 291,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Close random pick"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/RelatedTitles.svelte",
+      "sha256": "92dce8e370044c2a97dd9b17312c358d3f6f00b8131615fd542df26272824bae",
+      "lines": 209,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "Loading related titles",
+        "Open {item.name}",
+        "Recommendations for this title",
+        "Related titles",
+        "TMDB score {item.rating.toFixed(1)}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/ScannerReview.svelte",
+      "sha256": "e874ac67b952784b0f0d446802f9b4635ff550e32db3cd6b9f540358dd01ff24",
+      "lines": 218,
+      "components": [
+        "DiarySearch",
+        "MetadataDialog"
+      ],
+      "accessibleNames": [
+        "Refresh unmatched scans"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/ScreenHeading.svelte",
+      "sha256": "08db0bd880ebf7d604e0cdca08e991244b3b7c1cbf97a6ba8101ed296256992f",
+      "lines": 181,
+      "components": [
+        "BrandMark"
+      ],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/SettingRow.svelte",
+      "sha256": "0b242bca27c4cfd8b5e2fc93c26b61ecebaa8d430f080c57a66d20f0ea449ed2",
+      "lines": 146,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/SettingsGroup.svelte",
+      "sha256": "4960fcc3cfad7d6f3c45640e76c353ef1641a2f662c658708a9fcf6a360b24e8",
+      "lines": 32,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/StatsDashboard.svelte",
+      "sha256": "85112361cf2936243c6006d73f3a6c0ddde0aa3d808b433643b5da1cc01d953c",
+      "lines": 910,
+      "components": [
+        "Poster",
+        "TitleCard"
+      ],
+      "accessibleNames": [
+        "Watch activity over the last 12 weeks; Monday to Sunday in each column",
+        "Watch time chart",
+        "Watch time period",
+        "Watch time range",
+        "Watch time year",
+        "Watches with dates",
+        "{bucket.description}: {watchDuration(bucket.minutes)}, {bucket.events\n            .length} watches",
+        "{day.date}: {day.count} watches"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/ThemePicker.svelte",
+      "sha256": "33125ac3a98275268d19b75e61593016b9acc35fd5d0bbab57b039aab5f389c2",
+      "lines": 319,
+      "components": [],
+      "accessibleNames": [
+        "App theme",
+        "{theme.name}: {theme.description}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/TitleCard.svelte",
+      "sha256": "13412e947f16ab76fa04a8a096292763f8f779a83c892a21eed6acb8e6c4bc16",
+      "lines": 497,
+      "components": [
+        "Poster"
+      ],
+      "accessibleNames": [
+        "In Queue",
+        "On your PC",
+        "Open {title.name}",
+        "Select {title.name}",
+        "{progress}% watched",
+        "{scoreSource}: {scoreText} out of 10"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/TitleMenu.svelte",
+      "sha256": "a2c7e7b2b4a8f34815b31a41ed91b341bec62f9d226b45762d240d880567dd74",
+      "lines": 202,
+      "components": [
+        "CollectionConfirm"
+      ],
+      "accessibleNames": [
+        "More options for {name}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/TitleRating.svelte",
+      "sha256": "05512b2bc8c32b5f3168f897ac6a9b5ca8563f03b54408e0a4e1ce32114c5541",
+      "lines": 175,
+      "components": [],
+      "accessibleNames": [
+        "Clear your rating",
+        "Your rating",
+        "Your rating out of 10"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/TmdbConnection.svelte",
+      "sha256": "b045d77fb851705c59bc6cc90081bb54d6210babff157785d41abce5b98c3542",
+      "lines": 171,
+      "components": [],
+      "accessibleNames": [
+        "Paste your TMDB token"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/TraktConnection.svelte",
+      "sha256": "f9cbc09d50bc0d0b14000e204aa42a86c57253c1e619f9ece9a0ac72bc370f1f",
+      "lines": 945,
+      "components": [],
+      "accessibleNames": [
+        "Decimal rating sync rule",
+        "Filter Trakt changes",
+        "Find a title in this review…",
+        "Search Trakt changes",
+        "Your Trakt app’s Client ID"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/WatchTime.svelte",
+      "sha256": "b3d0b5311b82fd58dd3e903d6a54ec4b60d49a34207e4ed95adef7bab10a3ec2",
+      "lines": 426,
+      "components": [
+        "TitleCard"
+      ],
+      "accessibleNames": [
+        "Titles watched in {active.description}",
+        "Watch time period",
+        "Watch time year",
+        "Watched movies and shows",
+        "{bucket.description}: {watchDuration(\n          bucket.minutes\n        )}, {bucket.viewings} {bucket.viewings === 1 ? 'watch' : 'watches'}"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/components/Wordmark.svelte",
+      "sha256": "7f280c4bff68b884fd82f7f42e12a77e307c088216d7231cbbe58d04077ac641",
+      "lines": 11,
+      "components": [],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/lib/discovery.ts",
+      "sha256": "e9b61fbf683daed32aa2050d331caf3af6aaf23c70b467bf82050940bb77cb40",
+      "lines": 110,
+      "exports": [
+        "DiscoveryItem",
+        "DiscoveryPage",
+        "DiscoveryQuery",
+        "dailyLibraryPick",
+        "dailyPick",
+        "discoveryGenres",
+        "exploreShelfQuery",
+        "exploreShelves",
+        "filterDiscovery",
+        "unwatchedLibraryTitles"
+      ]
+    },
+    {
+      "path": "src/lib/domain/activity.ts",
+      "sha256": "091fc69994d5a07d528022cb9c9e04cdf41fd11923b4c494ac9ed4fb0419cf9c",
+      "lines": 114,
+      "exports": [
+        "HistoryFilters",
+        "genreBreakdown",
+        "genreLegend",
+        "historyDateRange",
+        "viewingHistory",
+        "watchedGenres"
+      ]
+    },
+    {
+      "path": "src/lib/domain/collection.ts",
+      "sha256": "ee09e75522626ce977f56aa8df24d5f0fa491e22a74c764bb954c6222a4feb45",
+      "lines": 25,
+      "exports": [
+        "insertTitle"
+      ]
+    },
+    {
+      "path": "src/lib/domain/community-ratings.ts",
+      "sha256": "bcbfd68d77fa9d751dd2bb6d5672b9be6e035c38ea7a16d3f67ad49bafa299ab",
+      "lines": 28,
+      "exports": [
+        "CommunityRating",
+        "RATING_SOURCE_KEY",
+        "RatedTitle",
+        "RatingSource",
+        "TraktRating",
+        "communityRating",
+        "publicScore",
+        "ratingSource",
+        "ratingSourceLabel"
+      ]
+    },
+    {
+      "path": "src/lib/domain/glance.ts",
+      "sha256": "35f6036c84b815b39285e24b5c27e5c3747330b983c1009eaecb52ac8478d790",
+      "lines": 78,
+      "exports": [
+        "glanceProgress"
+      ]
+    },
+    {
+      "path": "src/lib/domain/history.ts",
+      "sha256": "2ab21fb546d8b306032676b7cc56f70a29da858fea5a883e85f8a29ddcd672cb",
+      "lines": 213,
+      "exports": [
+        "episodeHasAired",
+        "episodeProgress",
+        "localDate",
+        "nextEpisode",
+        "recordWatch",
+        "revokeWatch",
+        "setSeasonProgress",
+        "validDate",
+        "validInstant",
+        "watchedEpisodeIds"
+      ]
+    },
+    {
+      "path": "src/lib/domain/home.ts",
+      "sha256": "b9fdc76dc58c73b01b48b8e83c209387e670a4af171b259119339b7326dba0a5",
+      "lines": 67,
+      "exports": [
+        "homeOverview"
+      ]
+    },
+    {
+      "path": "src/lib/domain/library-display.ts",
+      "sha256": "de0e0947e474c9f71e1d114d50785d0097d2f10576b57b6aec9c45ba36941e72",
+      "lines": 45,
+      "exports": [
+        "libraryProgress"
+      ]
+    },
+    {
+      "path": "src/lib/domain/library-query.ts",
+      "sha256": "a761a6bf6c80344423dda323607245ed0cb3d90acedd1cd72230bed135db236b",
+      "lines": 96,
+      "exports": [
+        "chooseLibraryStatus",
+        "clearLibraryQuery",
+        "libraryFilterChips",
+        "libraryFilterKeys",
+        "libraryQuery",
+        "libraryStatusChoice",
+        "writeLibraryQuery"
+      ]
+    },
+    {
+      "path": "src/lib/domain/library.ts",
+      "sha256": "140c92e8e900886f3f6be40d6a330768a4e06f4b09253715b057b4448c2d1c3a",
+      "lines": 85,
+      "exports": [
+        "LibraryFilters",
+        "filterLibrary",
+        "genreShelves",
+        "libraryStartsOnExplore"
+      ]
+    },
+    {
+      "path": "src/lib/domain/locations.ts",
+      "sha256": "9d7c8161cd25540e6877f95ae4c76cd0df748b29cdb58621a9fdbe151e538268",
+      "lines": 151,
+      "exports": [
+        "DiskSummary",
+        "applyScanEvidence",
+        "availability",
+        "diskEvidence",
+        "diskKey",
+        "driveLabel",
+        "homeDisks",
+        "locationPath",
+        "needsDownload",
+        "serverAvailability",
+        "summarizeDisks",
+        "titlesOnDisk"
+      ]
+    },
+    {
+      "path": "src/lib/domain/management.ts",
+      "sha256": "47f038836cdfb65c88ab0216e754a2bdbc17562b6d61a689d1520e6462cb7fb9",
+      "lines": 107,
+      "exports": [
+        "CollectionAction",
+        "MAX_SELECTION",
+        "activeCollection",
+        "collectionFeedback",
+        "manageCollection"
+      ]
+    },
+    {
+      "path": "src/lib/domain/random-pick.ts",
+      "sha256": "167afbecba4d19348638b1429db1dec96f20b14feafdaa417bc4e0ff8872991d",
+      "lines": 24,
+      "exports": [
+        "randomPick",
+        "rapidTap"
+      ]
+    },
+    {
+      "path": "src/lib/domain/scanner-review.ts",
+      "sha256": "91eb18545758fd540d3690ed272d3191bafe52aa7e601a20b6f495e761e25958",
+      "lines": 16,
+      "exports": [
+        "UnmatchedScan"
+      ]
+    },
+    {
+      "path": "src/lib/domain/stats.ts",
+      "sha256": "5041b7db44f31229ef2ac7458a211d6bde304f6c97cce725c178c9292450abd1",
+      "lines": 386,
+      "exports": [
+        "StatsBucket",
+        "StatsDay",
+        "StatsPeriod",
+        "diaryStats",
+        "normalizeStatsPeriod",
+        "statsPeriods",
+        "statsRanges"
+      ]
+    },
+    {
+      "path": "src/lib/domain/themes.ts",
+      "sha256": "76fd13dc5d7079d30d9a8c6c1868c9aee787ec242542cc312ca924d7b21b2cc5",
+      "lines": 98,
+      "exports": [
+        "DEFAULT_THEME",
+        "THEME_KEY",
+        "ThemeId",
+        "readTheme",
+        "themeId",
+        "themes",
+        "writeTheme"
+      ]
+    },
+    {
+      "path": "src/lib/domain/title-progress.ts",
+      "sha256": "1771b99198a020d8497f108b00d29558f1915f284572dd39beedabce0eda7534",
+      "lines": 37,
+      "exports": [
+        "titleSeasonProgress"
+      ]
+    },
+    {
+      "path": "src/lib/domain/types.ts",
+      "sha256": "d6f2b5c18fee5b3743d77393c11270cc051252df35412aee7977ccaa78f8c011",
+      "lines": 107,
+      "exports": [
+        "CastMember",
+        "Category",
+        "DiarySnapshot",
+        "Episode",
+        "FileLocation",
+        "MediaTitle",
+        "WatchEvent",
+        "WatchStatus",
+        "categoryLabels",
+        "episodeCode",
+        "isSeries",
+        "statusLabels"
+      ]
+    },
+    {
+      "path": "src/lib/domain/watch-time.ts",
+      "sha256": "dbfeb9edfbf811be00af0998b99bf65c154b0a07f7ccd4ea1d3889fa847cfc82",
+      "lines": 207,
+      "exports": [
+        "WatchTimeBucket",
+        "WatchTimePeriod",
+        "WatchTimeTitle",
+        "watchDuration",
+        "watchTime"
+      ]
+    },
+    {
+      "path": "src/lib/explore-sections.ts",
+      "sha256": "99713ce9c44b97ad94ba5ac0809ce3ac1ec7f16914f14292674988552b3bf6bc",
+      "lines": 116,
+      "exports": [
+        "ExploreSection",
+        "ExploreSectionFilters",
+        "exploreSection",
+        "exploreSectionFilters",
+        "exploreSectionPath",
+        "exploreSections",
+        "filterExploreSection",
+        "mergeSectionPage"
+      ]
+    },
+    {
+      "path": "src/lib/metadata.ts",
+      "sha256": "2aed713a3027ab546dec9c40571e8899cc5751db407f3a3b8824a0d085b23951",
+      "lines": 54,
+      "exports": [
+        "MetadataBrowse",
+        "MetadataDetails",
+        "MetadataSeason",
+        "SearchMatch",
+        "SearchPage",
+        "metadataTitlePath",
+        "searchQuery",
+        "tmdbImage"
+      ]
+    },
+    {
+      "path": "src/lib/people.ts",
+      "sha256": "e60afa89c30caf5c4df3349950adeb456afe2a82facfbc0b78037f57f35dd44e",
+      "lines": 116,
+      "exports": [
+        "FilmographyKind",
+        "PersonCredit",
+        "PersonDetails",
+        "personFilmography",
+        "personFilmographyPath",
+        "personSections"
+      ]
+    },
+    {
+      "path": "src/lib/preview/artwork.ts",
+      "sha256": "9ef167f9fca3048eec0eab411f404569925d30c2e73ae9ebb98ca6cdd84d4361",
+      "lines": 12,
+      "exports": [
+        "backdropFor",
+        "hasCleanHero"
+      ]
+    },
+    {
+      "path": "src/lib/preview/fixtures.ts",
+      "sha256": "3a6195e74bfc82a709f5be9fdfc45d5fdc26feb4e9439a6db3624c0e1743964d",
+      "lines": 178,
+      "exports": [
+        "sampleDiary"
+      ]
+    },
+    {
+      "path": "src/lib/preview/reference-art.ts",
+      "sha256": "85bb340d3b3999b72e4df8fc15463db95bc834f5a1490e06d4633e8f60a79a27",
+      "lines": 35,
+      "exports": [
+        "ArtWindow",
+        "referenceArt",
+        "referenceAtlas",
+        "referencePoster"
+      ]
+    },
+    {
+      "path": "src/lib/preview/storage.ts",
+      "sha256": "9f8b81bf9c1c7785f31dd2764a0845934ae1ed22e2428daa5b7f443c009fa003",
+      "lines": 118,
+      "exports": [
+        "PreviewConflict",
+        "PreviewState",
+        "readPreview",
+        "readSpoilerPreference",
+        "writePreview",
+        "writeSpoilerPreference"
+      ]
+    },
+    {
+      "path": "src/lib/pwa/cache-policy.ts",
+      "sha256": "204b30705b6c6e4303963a4b459cd6a376f110f6935060ce09bad7f6d14a9b91",
+      "lines": 77,
+      "exports": [
+        "ART_CACHE_LIMIT",
+        "AssetKind",
+        "MAX_ART_BYTES",
+        "assetKind",
+        "cacheableAsset",
+        "offlinePreview",
+        "offlineShell"
+      ]
+    },
+    {
+      "path": "src/lib/screens/TitleScreen.svelte",
+      "sha256": "9e013ec3faac0e59f98bca5179e28cff0abe51c6e38d2e4868c44d81a63e07f1",
+      "lines": 1781,
+      "components": [
+        "ArtworkWindow",
+        "CastRow",
+        "EmptyState",
+        "EpisodeRequestNotice",
+        "EpisodeSynopsis",
+        "Poster",
+        "RelatedTitles",
+        "TitleMenu",
+        "TitleRating"
+      ],
+      "accessibleNames": [
+        "Back",
+        "Copy path for {title.name}",
+        "Episode {episode.number} details",
+        "Episode {next.number} details",
+        "Movie watched",
+        "No episode metadata yet",
+        "Season",
+        "Season {activeSeason} episodes watched",
+        "TMDb community rating",
+        "This story isn’t here",
+        "Watch status",
+        "What stayed with you?"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/lib/search.ts",
+      "sha256": "82064938ecc6be4143b43eaf1378bd369a054791ece529dff68b180b9152ea5d",
+      "lines": 18,
+      "exports": [
+        "DiarySearchPage",
+        "SearchTitle"
+      ]
+    },
+    {
+      "path": "src/lib/server/access.ts",
+      "sha256": "f50657bf224ddb3d383024e6a8344600b8d87dfb751ad8ced360f849ba8d706e",
+      "lines": 59,
+      "exports": [
+        "AccessConfiguration",
+        "AccessFailure",
+        "assertSameOriginWrite",
+        "createAccessVerifier"
+      ]
+    },
+    {
+      "path": "src/lib/server/api.ts",
+      "sha256": "90dbacc621d4df7fa433c394696af983c1a374a0c0495e60e70a324850922666",
+      "lines": 124,
+      "exports": [
+        "ApiContext",
+        "ApiError",
+        "ServerBindings",
+        "api",
+        "bindings",
+        "ownerApi",
+        "privateJson",
+        "readJson"
+      ]
+    },
+    {
+      "path": "src/lib/server/collection-management.ts",
+      "sha256": "75a16ec4bb2d99d35a2417c076370e04e810cda71da3e0c31606abaa0e4830fd",
+      "lines": 97,
+      "exports": [
+        "collectionInput",
+        "emptyTrash",
+        "manageTitles"
+      ]
+    },
+    {
+      "path": "src/lib/server/community-ratings.ts",
+      "sha256": "9eed6a701ae6d44870b7caba66f2acf8a953e7f7e30acc391328ea748efd6f11",
+      "lines": 74,
+      "exports": [
+        "RatingIdentity",
+        "createTraktRatings",
+        "ratingTitleIds"
+      ]
+    },
+    {
+      "path": "src/lib/server/dashboard.ts",
+      "sha256": "8f0ca95c91459a244ecdc19b1ea2f7fef34f8677ea9e76b36e36f8e7076cb227",
+      "lines": 285,
+      "exports": [
+        "diaryStats",
+        "glancePage",
+        "historyPage",
+        "homePage",
+        "singleWatchCard",
+        "watchCard"
+      ]
+    },
+    {
+      "path": "src/lib/server/database-failure.ts",
+      "sha256": "b337d084065b8f33e78428c971de2bc5ab308c5239cebb6936c81cadf1e0ee5f",
+      "lines": 26,
+      "exports": [
+        "databaseQuotaFailure"
+      ]
+    },
+    {
+      "path": "src/lib/server/db/index.ts",
+      "sha256": "bc8ffad0a415df20b1580ba13572bc19f1baf87c640557f5964688ed0e7960fb",
+      "lines": 9,
+      "exports": [
+        "database"
+      ]
+    },
+    {
+      "path": "src/lib/server/db/schema.ts",
+      "sha256": "b7161e5658412d62daf6f276df34b02eb42ecf6cccf18d9168c211e4edf2951a",
+      "lines": 444,
+      "exports": [
+        "episodes",
+        "fileLocations",
+        "metadataCredits",
+        "metadataPeople",
+        "metadataRecommendations",
+        "progressOperations",
+        "providerIdentities",
+        "scanRuns",
+        "scannerDevices",
+        "seasons",
+        "syncJobs",
+        "titles",
+        "traktConnections",
+        "traktOauthSessions",
+        "traktRemoteItems",
+        "traktSyncBaselines",
+        "traktSyncChanges",
+        "traktSyncRuns",
+        "unmatchedScans",
+        "watchEvents",
+        "watchOperations",
+        "workspaceMigrations",
+        "workspaceUi"
+      ]
+    },
+    {
+      "path": "src/lib/server/discovery-input.ts",
+      "sha256": "b70ac0956cb128e44c2b10036382f8f6180a0c9a164df0265d254177f091dd7c",
+      "lines": 37,
+      "exports": [
+        "discoveryInput"
+      ]
+    },
+    {
+      "path": "src/lib/server/disks.ts",
+      "sha256": "3d823a63f6e8f268437efb3da3344e3722185f0239c5f7800a70360082e50682",
+      "lines": 61,
+      "exports": [
+        "downloadFilter",
+        "listDisks"
+      ]
+    },
+    {
+      "path": "src/lib/server/library-input.ts",
+      "sha256": "ff4c55cfa84e136f3deb8958800fa2146b908ed4c94705ce472f2980acf8e63d",
+      "lines": 239,
+      "exports": [
+        "createInput",
+        "cursorFor",
+        "identity",
+        "libraryInput",
+        "name",
+        "object",
+        "patchInput",
+        "sortName",
+        "timestamp",
+        "version",
+        "watchInput"
+      ]
+    },
+    {
+      "path": "src/lib/server/library.ts",
+      "sha256": "d9eca0702aab68cdb6a8467190a87756f1ff912b4098e64fd197a596e86dc24e",
+      "lines": 485,
+      "exports": [
+        "addManualTitle",
+        "changeWatch",
+        "getTitle",
+        "listLibrary",
+        "logWatch",
+        "patchTitle",
+        "restoreTitle",
+        "searchIdentities",
+        "seasonPage",
+        "titleDetails",
+        "trashTitle"
+      ]
+    },
+    {
+      "path": "src/lib/server/local-development.ts",
+      "sha256": "89ca1bba41b35ae60b42fb9f4470e9b6bee7194a7fc3a1209a04147fd6fb8351",
+      "lines": 49,
+      "exports": [
+        "LocalNetworkConfig",
+        "localDevelopmentAllowed",
+        "localNetworkAllowed",
+        "privateIPv4"
+      ]
+    },
+    {
+      "path": "src/lib/server/metadata-browse.ts",
+      "sha256": "09ccd63944be9756b6a623415e060a4b6ff0c7689b8b148f7d72a311e2293e1a",
+      "lines": 38,
+      "exports": [
+        "browseMetadata",
+        "browseSeason"
+      ]
+    },
+    {
+      "path": "src/lib/server/metadata-cast.ts",
+      "sha256": "c0acf288a30439598cfa0314016625d18f14f122a0dc5bc50aa309d4950a3b74",
+      "lines": 30,
+      "exports": [
+        "castMetadata"
+      ]
+    },
+    {
+      "path": "src/lib/server/metadata-import.ts",
+      "sha256": "cf73ca3615a7373b506c54418973cd5d284447f9256226b4d42d06b7e8ffb22b",
+      "lines": 202,
+      "exports": [
+        "importTmdb",
+        "loadTmdbSeason"
+      ]
+    },
+    {
+      "path": "src/lib/server/metadata-person.ts",
+      "sha256": "aee1caa0193558780aa9c9c6f59ec85e2a61d7d4b9b04ba4a9656719b56dbe6c",
+      "lines": 28,
+      "exports": [
+        "personMetadata"
+      ]
+    },
+    {
+      "path": "src/lib/server/metadata-related.ts",
+      "sha256": "8e2b184d9e6b42e20f22dd5c8464de0f73a3b9673889b71793359edba3db0a63",
+      "lines": 53,
+      "exports": [
+        "relatedMetadata"
+      ]
+    },
+    {
+      "path": "src/lib/server/progress-status.ts",
+      "sha256": "c4192169af4fe71b80be5684847bf4d60248fbc609b862ccd52c0afc60c82d0d",
+      "lines": 296,
+      "exports": [
+        "progressStatus"
+      ]
+    },
+    {
+      "path": "src/lib/server/scanner-review.ts",
+      "sha256": "58c97befe2340e38e8989780d13db78dee3d544c650615b83899ca08037173ac",
+      "lines": 68,
+      "exports": [
+        "listUnmatched",
+        "resolveUnmatched"
+      ]
+    },
+    {
+      "path": "src/lib/server/search.ts",
+      "sha256": "8f3f46c15fd55c98be849dfe6d7c60e8027452607aa41c1e231dc8af27ef399a",
+      "lines": 66,
+      "exports": [
+        "searchDiary"
+      ]
+    },
+    {
+      "path": "src/lib/server/tmdb.ts",
+      "sha256": "fc7b0b6a5f348e0dd3065e41c35318e76b667b3dd8e0f2da902585109d1e038a",
+      "lines": 464,
+      "exports": [
+        "TmdbClient",
+        "createTmdb",
+        "personInput",
+        "providerInput"
+      ]
+    },
+    {
+      "path": "src/lib/server/trakt-auth.ts",
+      "sha256": "8c01d50ba62e3da95c3e5db813f7e84c66317f349a0621af7b53df2d659c0a67",
+      "lines": 369,
+      "exports": [
+        "authorizedTrakt",
+        "beginTrakt",
+        "connectionStatus",
+        "disconnectTrakt",
+        "finishTrakt",
+        "openTrakt",
+        "sealTrakt"
+      ]
+    },
+    {
+      "path": "src/lib/server/trakt-http.ts",
+      "sha256": "326291bbb1ae749e714f3b7b39b0207a497fac6aaac7d240e14eb6fe9d39d772",
+      "lines": 99,
+      "exports": [
+        "TraktError",
+        "traktRequest"
+      ]
+    },
+    {
+      "path": "src/lib/server/trakt-merge.ts",
+      "sha256": "3e6802b0387b4fa6a73b9faa894eda600144cbfc96f17043ca7cd24f0855cea7",
+      "lines": 130,
+      "exports": [
+        "RemoteTraktItem",
+        "SyncBaseline",
+        "mergeDecision",
+        "normalizeTraktItem",
+        "ratingForTrakt",
+        "remoteTitleKey",
+        "watchInstant"
+      ]
+    },
+    {
+      "path": "src/lib/server/trakt-sync.ts",
+      "sha256": "1a93c0d51417be08d7caf2b7d9c4bc96a6782b8dcd9dcf9a0b081b4036946a24",
+      "lines": 1735,
+      "exports": [
+        "applySyncChange",
+        "buildSyncStep",
+        "cancelSync",
+        "startSync",
+        "syncStatus"
+      ]
+    },
+    {
+      "path": "src/lib/server/trakt.ts",
+      "sha256": "61d5cbbd1c7b103be22ed75d3ffb5b8cd1e55e11df5bd34c5bb9af416b2fa182",
+      "lines": 95,
+      "exports": [
+        "personalTrakt"
+      ]
+    },
+    {
+      "path": "src/lib/server/watch-status.ts",
+      "sha256": "21cacc7b39ca77551ff606135938ca790d4d6a04eff3355be22de36943b1f5bd",
+      "lines": 37,
+      "exports": [
+        "watchStatusUpdate"
+      ]
+    },
+    {
+      "path": "src/lib/server/workspace-migration.ts",
+      "sha256": "d153dbc76ab501a69aba2ab7f843628c4fc73a645d2e20468e54c2a58e5a0b41",
+      "lines": 198,
+      "exports": [
+        "importPreviewWorkspace",
+        "migrationStatus"
+      ]
+    },
+    {
+      "path": "src/lib/server/workspace.ts",
+      "sha256": "cc1da635625679f7a385ddb67f58d498d43e441519cf9c3ec86fe6557da4fd43",
+      "lines": 179,
+      "exports": [
+        "workspacePage",
+        "workspaceTitle"
+      ]
+    },
+    {
+      "path": "src/routes/+layout.svelte",
+      "sha256": "2b8ec33eddbf40bf0e0a2864eb057cc6da332111f7ed2097b2b47f5859c3faca",
+      "lines": 86,
+      "components": [
+        "BrandMark",
+        "Celebration"
+      ],
+      "accessibleNames": [
+        "Loading page"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/+page.server.ts",
+      "sha256": "2d665a58bcc354bb7304d160547e89932a117a43e2285f5cd928606f54b2bbf8",
+      "lines": 3,
+      "exports": [
+        "load"
+      ]
+    },
+    {
+      "path": "src/routes/api/discovery/+server.ts",
+      "sha256": "f7c725ecab57cf5582bbdba1e7c580276e2a2bf6ac34339471c0931f8bc8d703",
+      "lines": 126,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/discovery/seeds/+server.ts",
+      "sha256": "5bbd07a8a3ea78817409232d1fac68751df42e66db2da83c3b42adc97bbb8d32",
+      "lines": 24,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/disks/+server.ts",
+      "sha256": "47b2d1d34d464ae3a907ebbcfb7cda2bb3b2caa6aba03850d58bf0c620bf2c58",
+      "lines": 5,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/files/+server.ts",
+      "sha256": "9eb9806c6b5a3eb17a0a64b26287dc585dd6b7ea12b7b3d5d7b1cb986b46d73a",
+      "lines": 19,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/glance/+server.ts",
+      "sha256": "3d22fba66f0694a7c44c842479b6790caf8b0e9fc148b8c19cda033bcafac40f",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/glance/[id]/+server.ts",
+      "sha256": "f99da0a3f74a446fa8f91b127d5bf59fcaf19c798c6d40ac17ff03ec12d9f6e3",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/history/+server.ts",
+      "sha256": "a8ea28ef46682f58defd92cfa6ea7159f13463b951e64a207a8a2e281a37c55a",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/home/+server.ts",
+      "sha256": "0ed9587630598645482d5e7f66b80c03baffb71e464921ad17fbe19986756d97",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/library/ratings/+server.ts",
+      "sha256": "cf1439c773e80a385e341290b60ce1b208782b39d416d1f6c3ef0403fb847f71",
+      "lines": 31,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/browse/+server.ts",
+      "sha256": "748ae9cac695e67020e99596168a68adec489acb5e877a44bacf679b868fcf8b",
+      "lines": 13,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/cast/+server.ts",
+      "sha256": "3d85ee1d02d6706402eec384f6fa2b395322c28efa0f9cccf7c6daa8172eaa67",
+      "lines": 13,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/import/+server.ts",
+      "sha256": "0a953e43e5e70b5a1684ecfbf478f1a82175b7736bb3bcd822a8e4084b2a66d4",
+      "lines": 17,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/person/+server.ts",
+      "sha256": "aeff7b1df5a4bbdff51612fac06eb9298068104a4f4d0469ac9def051e8b3ca9",
+      "lines": 13,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/related/+server.ts",
+      "sha256": "cd5fadb34dccec867c4417583ec1f606b62d051efd3d1de934856f9d36de6932",
+      "lines": 14,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/search/+server.ts",
+      "sha256": "b39aa3c3ac56d2b4975f0020cd8ec6f614d85cc3449f859875894748b7dfa2cc",
+      "lines": 11,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/season/+server.ts",
+      "sha256": "76238384ae57f1ef393e79267565d13963b0da34aa6edc9eac45d26edfb62d91",
+      "lines": 12,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/status/+server.ts",
+      "sha256": "40d84a13b8993679b951f7d4fcb537bd074f03cdcea8a94a1c8b3c1f74483e99",
+      "lines": 9,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/metadata/title/+server.ts",
+      "sha256": "6eb37e0ae5905262c448a762d0c1c23e6afe0ebf54e873efd75753b8d18d6ad3",
+      "lines": 16,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/progress/status/+server.ts",
+      "sha256": "ece71ec3d90481ddd585d492601752d22805b0b1c83f626fad7c86e2a11ce347",
+      "lines": 6,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/scanner/review/+server.ts",
+      "sha256": "4cd471b3e1e9b360be45d4fd8662a467077dd94ccd8674b2e0542f1abbbdd297",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/scanner/review/[id]/resolve/+server.ts",
+      "sha256": "391cfbc7f37685fe6ee941d2dc28a25d87bd7f7524ea54e7a8b45feee17f9d81",
+      "lines": 8,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/search/+server.ts",
+      "sha256": "6e0ed37370d10de0c02953ea88fc34ea30a695701e0d033c15a246725433c426",
+      "lines": 14,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/session/+server.ts",
+      "sha256": "3c2a9e34d1e89e3303ab57f13417c02643f7c80dff6df1798fb6f60b68ea4ba0",
+      "lines": 7,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/stats/+server.ts",
+      "sha256": "b0d3309a25f47cb274967d33bb550af4097e611fe3ea5744152aed478da0be89",
+      "lines": 5,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/+server.ts",
+      "sha256": "8dc7ae8fd2b886e46baeff7e4cae121877fdfe3144c4fac89320549ec8d13049",
+      "lines": 8,
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "exports": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/[id]/+server.ts",
+      "sha256": "a1928df2fc348af7ac78411575c20b7bc487afc44f9992fb43e3a7e0e4b3fb44",
+      "lines": 16,
+      "methods": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ],
+      "exports": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/[id]/restore/+server.ts",
+      "sha256": "195ae9e49275852b037fc2652f6fc83e7bd9e691d95879e246629c1a58d6d570",
+      "lines": 10,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/[id]/seasons/[number]/+server.ts",
+      "sha256": "e800abbd4fcdcf700b21cb8fe0c8cdf15030d46d43daf8cd74b909640a58c61c",
+      "lines": 16,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/[id]/seasons/[number]/metadata/+server.ts",
+      "sha256": "493b5507acce7c9217a1a2c961161e0e74fc005e9f6d63c36da898ef22cd293f",
+      "lines": 16,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/[id]/watches/+server.ts",
+      "sha256": "3fd6b87aecbe4d05b10085bf665ec93ea599c0386dfddce9d1bab82792075084",
+      "lines": 7,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/titles/bulk/+server.ts",
+      "sha256": "3a4a88bfed88985ea12458f284c6cac3dd9d47964dd94cca9114ab5aee501bda",
+      "lines": 6,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/callback/+server.ts",
+      "sha256": "8ba928e3534f46dab48c4cd94b5c1479862a3b811ed7193ddeef187c9572fb12",
+      "lines": 34,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/connect/+server.ts",
+      "sha256": "7734bb0658dc2877e8801e9cc12b3a322ba57b99a278f45c6add536e2e108e78",
+      "lines": 21,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/disconnect/+server.ts",
+      "sha256": "17f60f1f61b222214323508ffcdf9d02fc663c6274d204fda2a085e2e81ea40a",
+      "lines": 5,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/status/+server.ts",
+      "sha256": "5c22c25e1895773486167e4af73d69f6c49a1f15164a21813a58ffe058fe5cbd",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/sync/+server.ts",
+      "sha256": "2b3d376bf0b16a503cbe8676fa6cd014efbb988c3371705aff777cddad372b81",
+      "lines": 18,
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "exports": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/sync/[id]/apply/+server.ts",
+      "sha256": "e88f09a22cce3eb5b12e015b3e8a75a111183622de8f2eaac1a0cd07bab857ab",
+      "lines": 22,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/sync/[id]/cancel/+server.ts",
+      "sha256": "59e4e3f0fa556b1872caa9373b3718058f0662a7c7a95d1e79cb79cf221735c4",
+      "lines": 5,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trakt/sync/[id]/step/+server.ts",
+      "sha256": "2a695c77a18c0f2094c206929dc1945d2eb29a9635c74d27da9d1d82632ef613",
+      "lines": 6,
+      "methods": [
+        "POST"
+      ],
+      "exports": [
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/api/trash/+server.ts",
+      "sha256": "bf3d3538dd12878bd7c3b8aca340d9be3f9bacc951bf0537ca3fa7f1ae363612",
+      "lines": 17,
+      "methods": [
+        "DELETE"
+      ],
+      "exports": [
+        "DELETE"
+      ]
+    },
+    {
+      "path": "src/routes/api/watch-events/[id]/+server.ts",
+      "sha256": "7ced985e08e9e1c7263a04b51ecd21218d748ebaaf9c9a58ac58ff87e9fb8392",
+      "lines": 12,
+      "methods": [
+        "PATCH"
+      ],
+      "exports": [
+        "PATCH"
+      ]
+    },
+    {
+      "path": "src/routes/api/workspace/+server.ts",
+      "sha256": "0a598686da22d7c709fbec03b3fb009e421827ec499351203dbe674c9e09143f",
+      "lines": 6,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/api/workspace/migrate/+server.ts",
+      "sha256": "cce0bd6474644b3ca4cfe3999b8e33e36e39b4885b96550433569510a669a498",
+      "lines": 7,
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "exports": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "src/routes/diary/[...legacy]/+server.ts",
+      "sha256": "457128f19d63267923db23e7c992297f6d7b8e870119ded086220417706a1b87",
+      "lines": 14,
+      "methods": [
+        "GET"
+      ],
+      "exports": [
+        "GET"
+      ]
+    },
+    {
+      "path": "src/routes/preview/+layout.server.ts",
+      "sha256": "3d580ef90aca1d352731dfe19effec65febbb6f9cecf01463493b8dfd9e291a8",
+      "lines": 22,
+      "exports": [
+        "load"
+      ]
+    },
+    {
+      "path": "src/routes/preview/+layout.svelte",
+      "sha256": "9f9aabc6692493105a51291dc6d59bbc26c872eef21c1d2667fea1a031d23755",
+      "lines": 853,
+      "components": [
+        "BrandMark",
+        "DiarySearch",
+        "MetadataDialog",
+        "RandomPickDialog",
+        "Wordmark"
+      ],
+      "accessibleNames": [
+        "Back",
+        "Collection tools",
+        "Dismiss notification",
+        "Home",
+        "Loading TwilDiary",
+        "Main navigation",
+        "Mobile navigation",
+        "TwilDiary Home"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/+page.svelte",
+      "sha256": "e086f279b91633855752eacf272188719beb05d54b5ab7dcef75f4d9bc3f3cab",
+      "lines": 127,
+      "components": [
+        "EmptyState",
+        "GlanceCard",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "A clear little corner",
+        "Clear search",
+        "Find a current watch",
+        "Find a current watch…",
+        "Glance",
+        "Loading your workspace",
+        "Watch category"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/activity/+page.svelte",
+      "sha256": "4b99e6285432727cda5a9602d0128a899e432518761013a2a23c6a33f4d30440",
+      "lines": 9,
+      "components": [
+        "ScreenHeading",
+        "StatsDashboard"
+      ],
+      "accessibleNames": [
+        "Stats",
+        "Your watch story"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/discover/[type]/[id]/+page.svelte",
+      "sha256": "e9e1ecf2874d4b19bfaa18c9d83df9146d5a34bf6f02d11ab343c2f2288c143c",
+      "lines": 228,
+      "components": [
+        "BrandMark",
+        "TitleScreen"
+      ],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/explore/+page.svelte",
+      "sha256": "c9fda78a6cfb4495bfa687df5f89251b5e75ceca2ff2781c38ff41e176cd8091",
+      "lines": 21,
+      "components": [
+        "ExploreView",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Explore"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/explore/[section]/+page.svelte",
+      "sha256": "61b37513a9be0616300ffd5fbe30168a895a13b677c6c537ed1631b67ce23e5a",
+      "lines": 397,
+      "components": [
+        "BrowseHeading",
+        "DiscoveryCard",
+        "EmptyState",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Any year",
+        "Content type",
+        "Explore",
+        "Minimum rating",
+        "Release year",
+        "Section genre",
+        "Sort section"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/explore/[section]/+page.ts",
+      "sha256": "c1f142f12faa189873d1f52bd50a5390a685a71ad9a1932b749c5f3abdf352b3",
+      "lines": 9,
+      "exports": [
+        "load"
+      ]
+    },
+    {
+      "path": "src/routes/preview/files/+page.svelte",
+      "sha256": "799f978f6cad418fe43702af74dea862b4a900a0b397def49208fce966be6bc5",
+      "lines": 289,
+      "components": [
+        "EmptyState",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Copy path for {title?.name ?? 'mapped folder'}",
+        "Files & drives",
+        "No mapped folders"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/home/+page.svelte",
+      "sha256": "785194c1dc13bbc65ddb267e049c455afc8dffa8030016318884e34a7f51dbaa",
+      "lines": 101,
+      "components": [
+        "ContinueCarousel",
+        "HistoryList",
+        "HomeSections",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Home shortcuts",
+        "Twil",
+        "Your stories, at your pace."
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/library/+page.svelte",
+      "sha256": "f8a0db34f8b2909e53bca0175d65e5f87518094ae46cc223cbed6273ab1331c3",
+      "lines": 673,
+      "components": [
+        "CollectionConfirm",
+        "CollectionSelection",
+        "EmptyState",
+        "ExploreView",
+        "GenreShelves",
+        "LibraryControls",
+        "MetadataDialog",
+        "ScreenHeading",
+        "TitleCard"
+      ],
+      "accessibleNames": [
+        "Clear search",
+        "Delete permanently",
+        "Delete {title.name} permanently",
+        "Done selecting",
+        "Library category",
+        "Search your library",
+        "Search your library…",
+        "Sort library"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/more/+page.svelte",
+      "sha256": "b3c2d10d5b63ed9917202744eb2d9712424daa40a4b8178f1dc292cb531fe327",
+      "lines": 426,
+      "components": [
+        "ScreenHeading",
+        "SettingRow",
+        "SettingsGroup"
+      ],
+      "accessibleNames": [
+        "About",
+        "About TwilDiary",
+        "Appearance & region",
+        "Attribution & licenses",
+        "Community scores, not your rating",
+        "Connections",
+        "Data & backup",
+        "Diary storage",
+        "Export diary",
+        "Files & drives",
+        "Folders, seasons and local copies",
+        "Hide episode spoilers",
+        "Hide unwatched titles, summaries and images",
+        "History, ratings and watchlist",
+        "Library",
+        "Library ratings",
+        "More",
+        "Posters, details, seasons and episodes",
+        "Rating scale",
+        "Recently watched, dates and filters",
+        "Reduce motion",
+        "TMDB",
+        "Theme",
+        "Time zone",
+        "Titles, progress, notes and file mappings",
+        "Tracking",
+        "Trakt",
+        "Trash",
+        "Uses your device for dates and stats",
+        "Watch history",
+        "Week starts on"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/more/about/+page.svelte",
+      "sha256": "ff83d85e4d9fab00bba67871c6e884c88866d1621b4a4a1d5cfd95c3d9f8c5ee",
+      "lines": 71,
+      "components": [
+        "BrandMark",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "About"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/more/appearance/+page.svelte",
+      "sha256": "7b130bdbee48808d5a78dc657433df8aae72328da5882c0da960f11af2a228c6",
+      "lines": 16,
+      "components": [
+        "ScreenHeading",
+        "ThemePicker"
+      ],
+      "accessibleNames": [
+        "Appearance"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/more/tmdb/+page.svelte",
+      "sha256": "ca82ee3e098a35227317aa1fd37510ed28678752caa10d46e236a5c9faa71d78",
+      "lines": 19,
+      "components": [
+        "ScreenHeading",
+        "TmdbConnection"
+      ],
+      "accessibleNames": [
+        "TMDB"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/more/trakt/+page.svelte",
+      "sha256": "3b6e23f54b4387b056413791f6f4779b7dd0aca3ad37a332f47a73f47a7663ad",
+      "lines": 10,
+      "components": [
+        "ScreenHeading",
+        "TraktConnection"
+      ],
+      "accessibleNames": [
+        "Trakt"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/person/[id]/+page.svelte",
+      "sha256": "c77abec29600d1b8a12221b7b643397af6792633630f923975e87ad97e603f89",
+      "lines": 452,
+      "components": [
+        "BrandMark",
+        "MetadataShelf"
+      ],
+      "accessibleNames": [
+        "Back to title",
+        "Biography",
+        "Loading person",
+        "On your server"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/person/[id]/[section]/+page.svelte",
+      "sha256": "e569313984f87b027313512fe1d4f723839b0551479d422e6b3e87ee44287110",
+      "lines": 233,
+      "components": [
+        "BrandMark",
+        "BrowseHeading",
+        "DiscoveryCard",
+        "EmptyState",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Any year",
+        "Explore",
+        "Find a title…",
+        "No titles in this mix",
+        "Sort filmography"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/person/[id]/[section]/+page.ts",
+      "sha256": "2a16439be360008d54ea6b20e95d609a198d3301679fd3ef8857be90e6f369bc",
+      "lines": 13,
+      "exports": [
+        "load"
+      ]
+    },
+    {
+      "path": "src/routes/preview/recently-watched/+page.svelte",
+      "sha256": "f49e56adbdfbc2e3680b7f01c5a6aac3478a84cd011776373c42003db5eef2da",
+      "lines": 299,
+      "components": [
+        "EmptyState",
+        "HistoryList",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Date filters",
+        "Find a watched title…",
+        "No watches found",
+        "Quick watch dates",
+        "Recently watched",
+        "Search watch history",
+        "Watch date range"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/review/+page.svelte",
+      "sha256": "4ae16c7f30c101cbd06a5d5d6f500788bf624ae7969873016346d9db6dac8e25",
+      "lines": 10,
+      "components": [
+        "ScannerReview",
+        "ScreenHeading"
+      ],
+      "accessibleNames": [
+        "Fix mismatches"
+      ],
+      "exports": []
+    },
+    {
+      "path": "src/routes/preview/title/[id]/+page.svelte",
+      "sha256": "3f93de7b0345f99c25f111752934486b024f67ce31eef9de5e1b8a89801e77da",
+      "lines": 6,
+      "components": [
+        "TitleScreen"
+      ],
+      "accessibleNames": [],
+      "exports": []
+    },
+    {
+      "path": "src/service-worker/index.ts",
+      "sha256": "d6fb10577128214f0171b6dd20f8b03de9c23f9473980a3b26b5b6993ca38106",
+      "lines": 140,
+      "exports": []
+    },
+    {
+      "path": "src/service-worker/tsconfig.json",
+      "sha256": "e8406abfd719afb3c78ad562935f44764ab6c4d7d4fc1d0ffa0da857f45773f6",
+      "lines": 12,
+      "exports": []
+    },
+    {
+      "path": "src/themes.css",
+      "sha256": "c325e06e572f3ed8c9f03fcb61b13672520d0ac7e2abb6d8cef2fc2ef0a13394",
+      "lines": 252,
+      "exports": []
+    },
+    {
+      "path": "src/tokens.css",
+      "sha256": "b66f8da8263cbeef7704961fa1a86c9d5d41856a0a9cc9d4484095f453544c81",
+      "lines": 52,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0000_fuzzy_leech.sql",
+      "sha256": "58607a3729a9e50e457b31ed69c8ca6295f93d5764531a75f8d53a69c9a03073",
+      "lines": 148,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0001_wild_brood.sql",
+      "sha256": "cd67a657fd63dc739917fbda7cd5daefcd94d8baa990ffc721914e4c845404e3",
+      "lines": 14,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0002_legal_omega_flight.sql",
+      "sha256": "703b173fb0250313de346889f373fcb953d9a82cc159bf777c1a57377f57e03e",
+      "lines": 3,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0003_heavy_spirit.sql",
+      "sha256": "533f58cec63ec08e14a64153b63e5fd99de383d637a511df9f40de95d970bc8d",
+      "lines": 6,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0004_happy_darkstar.sql",
+      "sha256": "b4044c242434e5c576390093d97339b5ccabe89c8fa7ebf1b6aeb4c6190b2ea1",
+      "lines": 24,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0005_late_sumo.sql",
+      "sha256": "3c0ad86441c3cecf082c32e96013194877fb1690d1a0be280ec80e82a257385c",
+      "lines": 1,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0006_jittery_hellcat.sql",
+      "sha256": "e3c9578334d7929552c3980f56a2e72254462c98079604a1ebadc6b1300234c1",
+      "lines": 75,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0007_closed_agent_brand.sql",
+      "sha256": "63b5753fd5ec3bf5bd40f476dcecaae955c58eeb032f82fb0c955318f67e8732",
+      "lines": 3,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0008_funny_whirlwind.sql",
+      "sha256": "a637480f3d60b73cc0f264536341af38ab7ed9ed28fdf286c09e51e79b1da1fa",
+      "lines": 16,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0009_lovely_bucky.sql",
+      "sha256": "ce78260280e954f6177a78dcda4eed83cb53d9dcf6a2e66f26d019023a5e3a7e",
+      "lines": 8,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0010_familiar_slayback.sql",
+      "sha256": "b8683719c57b723d7ab56f5abd67cdbaff6845e843ecd3e515309f8db2cfec22",
+      "lines": 6,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0011_green_the_hand.sql",
+      "sha256": "02ddb96f84b2e7469158f92b25f5fa277a265f117fb4dc5e80958f66d18203e2",
+      "lines": 6,
+      "exports": []
+    },
+    {
+      "path": "drizzle/0012_material_sebastian_shaw.sql",
+      "sha256": "3ffc29f9b6cc62b99c43f1a7681acc083dbc0cc37d59ef7ae46fc570b67bdb6e",
+      "lines": 15,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0000_snapshot.json",
+      "sha256": "25b8d483461273c8bf0aff6619379737b94d6d7a48a86ba2524142faa8737ec2",
+      "lines": 1032,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0001_snapshot.json",
+      "sha256": "92cb7de129319e6c9c9e2618f72ac5c38eb06c757391b1160e92bdbe05cebefb",
+      "lines": 1138,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0002_snapshot.json",
+      "sha256": "f3a7b2f02df9b3f454c6b08a39b0b456a50a4f69124caab4e61697175a3454c5",
+      "lines": 1150,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0003_snapshot.json",
+      "sha256": "b488abd76b9498d97c9028b01d12edd945d8ed3b8ebbbc91435d12c7e692543a",
+      "lines": 1193,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0004_snapshot.json",
+      "sha256": "8f6319def8086913591ef5a91b4a8aaf7a14a8a363c5649c037430420a4dcf6c",
+      "lines": 1362,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0005_snapshot.json",
+      "sha256": "bff3943360ba9af392f92ff73b0c29802acd3ee99d126cb7956b2f7d21eb0a96",
+      "lines": 1370,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0006_snapshot.json",
+      "sha256": "337473856d1f5d034978ed79b7d1ccdc721272c823453d0336c8c1d3649b563c",
+      "lines": 1857,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0007_snapshot.json",
+      "sha256": "1a6a579930b465a7ba3d794ae0e6819f155e40a730853e935ad4654526c2e6dc",
+      "lines": 1882,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0008_snapshot.json",
+      "sha256": "58b5ba267097adae8ea1a7a774fdd4393358a702f9dd6fbf7092245e8760c2a1",
+      "lines": 1981,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0009_snapshot.json",
+      "sha256": "33862b784f27e59e7ebb43ff7870f4a54288391ffb56d3a2a7b9f64b4c89f307",
+      "lines": 2027,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0010_snapshot.json",
+      "sha256": "5b311a4972ed9e56f903fa56e9d10a7ad7b2007175f8bbf2fa12e29498c7117c",
+      "lines": 2058,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0011_snapshot.json",
+      "sha256": "5f5b1e62f658bc1792b46f76f7ec0f8f18e6578ddcf8d3ab4912b0c407152121",
+      "lines": 2089,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/0012_snapshot.json",
+      "sha256": "a2d9d6a5efbf6be9ad6501b61eeecb638e6cd36d395d0f7af7781df5f1d743b9",
+      "lines": 2134,
+      "exports": []
+    },
+    {
+      "path": "drizzle/meta/_journal.json",
+      "sha256": "aeeb02393ef2acf6b4ea2e2c59724165d0fe8832a3ac299b893f598dbd0c03ee",
+      "lines": 97,
+      "exports": []
+    },
+    {
+      "path": "tests/helpers/d1.ts",
+      "sha256": "e62990a73aa820c82cf6290fae8c0efcc2dd682bbc5b968aa69543c49b02ada7",
+      "lines": 61,
+      "exports": [
+        "d1Fixture"
+      ],
+      "cases": []
+    },
+    {
+      "path": "tests/helpers/owner-ui-server.ts",
+      "sha256": "2fbc48b286f0d38e214357b8ccf41b0197ae5cbbe00221664c88a3799eb33b67",
+      "lines": 150,
+      "exports": [],
+      "cases": []
+    },
+    {
+      "path": "tests/helpers/pwa-preview-server.ts",
+      "sha256": "9c3eb9dffb50bace2929fea708ca16b1e1e7e042681b05325b2ba952b010b9ce",
+      "lines": 54,
+      "exports": [],
+      "cases": []
+    },
+    {
+      "path": "tests/helpers/trakt.ts",
+      "sha256": "2bc69a92c9b507f8e7f6c113a239afbb4b30f7a1d553142fcf9cdd9a24200075",
+      "lines": 216,
+      "exports": [
+        "connectFixture",
+        "fakeTmdb",
+        "fakeTrakt",
+        "traktEnv"
+      ],
+      "cases": []
+    },
+    {
+      "path": "tests/pwa-runtime.test.ts",
+      "sha256": "a8b0203d5cf00550aada31f2c3b5aab56e02ab5dd389f10e2b93cc797c25b964",
+      "lines": 215,
+      "exports": [],
+      "cases": [
+        "built worker precaches code with bounded concurrency and restores only preview navigation offline",
+        "built worker rejects login HTML and oversized artwork and tolerates storage denial",
+        "built worker trims artwork cache and removes only obsolete caches owned by this app"
+      ]
+    },
+    {
+      "path": "tests/unit/access.test.ts",
+      "sha256": "59b8da7c768b703f78596c5da3e42b9cc4716b353dfdfa2c636ca2cecbbea445",
+      "lines": 135,
+      "exports": [],
+      "cases": [
+        "valid owner Access assertion is accepted",
+        "unsigned headers cannot substitute for an Access assertion",
+        "wrong owner, audience, issuer and token type are rejected",
+        "expired and tampered assertions are rejected",
+        "missing configuration and arbitrary key-server domains fail closed",
+        "assertions must have an expiry, issue time and nonempty subject",
+        "authenticated browser writes still require the same origin"
+      ]
+    },
+    {
+      "path": "tests/unit/artwork-continuity.test.ts",
+      "sha256": "9764bbb80ee76b71d42870a9ed64a3aa1f8d2083e4c09a2aae3486fc8ab668b2",
+      "lines": 136,
+      "exports": [],
+      "cases": [
+        "only previously visible cached artwork becomes eager and synchronous on remount",
+        "decoded artwork retains no more than its entry and pixel budgets with LRU eviction",
+        "invalid or oversized artwork is skipped and decode failure cannot block navigation",
+        "artwork warming and returning image hints never wait for an unfinished decoder",
+        "Home carousel snapshot restores the selected title and pause state without smooth-scrolling"
+      ]
+    },
+    {
+      "path": "tests/unit/cache-policy.test.ts",
+      "sha256": "96deb139bc74172c91a4884f3359cf53fc41ca79988ac0ec63aa0e91c0660232",
+      "lines": 83,
+      "exports": [],
+      "cases": [
+        "public cache accepts only exact shipped code/art paths",
+        "cache rejects navigation, writes, cross-origin URLs, query tokens and data requests",
+        "cache excludes auth redirects, failures, no-store and HTML even on an asset path",
+        "offline navigation is restricted to the isolated preview; shell is an exact generated path"
+      ]
+    },
+    {
+      "path": "tests/unit/cast-episode-ratings.test.ts",
+      "sha256": "80526d1a6d80f3a79421c9925e1dcc99353140d345fee3233d556a238c881ea1",
+      "lines": 149,
+      "exports": [],
+      "cases": [
+        "movie and aggregate TV cast are bounded, deduplicated, and accept only TMDB image paths",
+        "credits cache avoids repeat upstream requests, survives outages, and requires owner access",
+        "episode community scores upgrade cached metadata without changing watches, notes or spoiler protection"
+      ]
+    },
+    {
+      "path": "tests/unit/cloudflare-transport.test.ts",
+      "sha256": "c965fcc9f23cd76c1a4ec23a6a892ad9a127a2cd77db9dd804316b2134ec9a86",
+      "lines": 56,
+      "exports": [],
+      "cases": [
+        "provider clients use Workers-compatible requests and reject redirects without forwarding credentials"
+      ]
+    },
+    {
+      "path": "tests/unit/collection.test.ts",
+      "sha256": "0ac6750304e9323ab280c85719de1b661470d5d76dea14534c11d79ad42f7f1a",
+      "lines": 30,
+      "exports": [],
+      "cases": [
+        "an existing stable title ID cannot create a duplicate after its display name changes",
+        "normalised same-name/year/category selection opens the existing title",
+        "a different title is added immutably"
+      ]
+    },
+    {
+      "path": "tests/unit/community-ratings-controller.test.ts",
+      "sha256": "ee88c155e8ed522b3bbde290a5a97f0efed7ce241363f8bfb83739432a9b72f6",
+      "lines": 151,
+      "exports": [],
+      "cases": [
+        "device source choice persists, restores across controllers and follows cross-tab storage without diary writes",
+        "late Trakt replies cannot override TMDB selection, and repeated requests share cached batches",
+        "catalog IDs that resemble object properties still fetch and cache their own ratings"
+      ]
+    },
+    {
+      "path": "tests/unit/community-ratings.test.ts",
+      "sha256": "baa37a855a2a97fbb5cd4a2b650b4c9b83c569e69bf5df4234f474287ae3dc10",
+      "lines": 120,
+      "exports": [],
+      "cases": [
+        "Library public rating projection never falls back to the personal score or another provider",
+        "highest rating sorting follows the displayed public source, with missing scores last",
+        "Trakt reads public catalog scores, matches both media type and TMDB ID, and coalesces/cache reads",
+        "direct Trakt identity uses community ratings endpoint and zero-vote/missing catalog entries stay unrated",
+        "provider outages are isolated, briefly cached and retried after cooldown",
+        "rating batches are bounded and reject arbitrary upstream paths"
+      ]
+    },
+    {
+      "path": "tests/unit/daily-use.test.ts",
+      "sha256": "40c0db06bcf6cb4f4b266f3000ae0724058f5a72d9588b5ced9944ec430c4e92",
+      "lines": 182,
+      "exports": [],
+      "cases": [
+        "Genre shelves keep multi-genre titles, deduplicate entries, and retain uncategorized titles",
+        "History chronological order compares instants across timezone offsets",
+        "Missing-file diagnostic stays separate from the manual Queue",
+        "Disk Map keeps device + volume identity, multiple copies, and disconnected locations",
+        "Library intersects disk, category, availability, favorites and genres; unmapped is not missing",
+        "History excludes revoked and orphan events, keeps unknown dates, and sorts known watches by viewing time",
+        "Genre percentages deduplicate rewatches, titles and repeated genre names",
+        "Library defaults to All while Explore stays explicit"
+      ]
+    },
+    {
+      "path": "tests/unit/dashboard.test.ts",
+      "sha256": "55a25477f7de87c95095aa2b3e6f3a384f3824d6a9fb5db9b4a5dbe13e9a061b",
+      "lines": 180,
+      "exports": [],
+      "cases": [
+        "real Home/Glance/Stats start empty and refuse anonymous reads",
+        "Glance counts rewatches once and finds next episodes beyond the first page without leaking spoilers",
+        "Glance keeps specials explicit, skips skipped/future/undated episodes and preserves selected seasons",
+        "history is stably paged with Unicode search and respects local dates, unknown dates and revoked/trashed records",
+        "Stats aggregate distinct genres, unknown dates, rewatches and movie/episode viewings accurately",
+        "PC filtering is applied before pagination; invalid dates and filter values cannot change the diary"
+      ]
+    },
+    {
+      "path": "tests/unit/database.test.ts",
+      "sha256": "2da2922268793d395b2613e9967bd97f86ba1145c1cbac2d53571ee1e8ef3e54",
+      "lines": 156,
+      "exports": [],
+      "cases": [
+        "generated migrations create an empty diary without sample records",
+        "adding event versions preserves existing watches and operation receipts",
+        "database rejects invalid score, state and media category combinations",
+        "composite foreign keys stop cross-series episode and event mappings",
+        "watch operation keys are unique but distinct rewatches are preserved",
+        "provider identity matching cannot create two copies of one identified series",
+        "Glance and library order have usable covering query indexes",
+        "sync queue dedupe prevents repeated delivery intents"
+      ]
+    },
+    {
+      "path": "tests/unit/discovery.test.ts",
+      "sha256": "2d7c77878c5eedc200f47faac463132c5e4ba2c485ebc599568072519f5f4331",
+      "lines": 443,
+      "exports": [],
+      "cases": [
+        "Discovery filters validate provider types, supported genres, bounded years and numeric ranges",
+        "A daily pick is repeatable without fabricating a result for an empty catalog",
+        "daily library pick excludes started, completed, dropped, trashed and actively watched Planned titles",
+        "Explore shelves use the requested order and the correct movie/TV rating and popularity queries",
+        "Discovery intersects genre, year and known ratings, retaining provider order by default",
+        "Watch mix distinguishes title coverage from viewing share and excludes revoked/orphan events",
+        "TMDb discovery sends rating confidence and media-specific filters, drops adult results and unsafe artwork",
+        "TMDb related discovery validates a seed and uses the recommendation endpoint",
+        "Personal Trakt requires an account token, sends it only to the fixed API and bounds results",
+        "Trakt failures never expose upstream bodies or credentials",
+        "View more recommendations requests a larger bounded list without changing the shelf default",
+        "expanded recommendation API caps metadata concurrency and rejects oversized limits",
+        "Discovery and watched seed routes deny anonymous reads and require setup without leaking secrets",
+        "Because-you-watched seeds include only active, watched, TMDb-matched titles"
+      ]
+    },
+    {
+      "path": "tests/unit/disks-api.test.ts",
+      "sha256": "b5e0169928283f79a17844ac457049ed7f6ac79fda783bdd95d50c7bbfafb5f5",
+      "lines": 108,
+      "exports": [],
+      "cases": [
+        "Real genre browsing returns typed genre summaries and uses cursor-scoped exact filters",
+        "Private Disk Map aggregates unique titles without sending paths or credentials and filters all pages",
+        "Disk Map rejects malformed filter identities and fails closed without an owner"
+      ]
+    },
+    {
+      "path": "tests/unit/episode-window.test.ts",
+      "sha256": "44a1008713f1916b228117cf485d6a6801729a4993497701146af880e7534555",
+      "lines": 61,
+      "exports": [],
+      "cases": [
+        "catalog episode previews start at 1 in order even without library watch history",
+        "saved shows retain their next-episode window and completed-season ending",
+        "detail redesign shows the previous episode, up next and two following episodes"
+      ]
+    },
+    {
+      "path": "tests/unit/explore-sections.test.ts",
+      "sha256": "0f09a537392bca82a5f977c28b2a30854f11c0dfaf9a76e7ec82d023a48174ba",
+      "lines": 116,
+      "exports": [],
+      "cases": [
+        "every Explore section has a dedicated destination with preserved genre filters",
+        "fixed section types cannot turn shows into movies and invalid filters cannot query providers",
+        "recommendation pages intersect media, genre, year and ratings and sort the complete local set",
+        "Load more keeps provider ordering, removes overlaps and preserves movie/TV identity"
+      ]
+    },
+    {
+      "path": "tests/unit/glance.test.ts",
+      "sha256": "4bba48c39ebadf5610be3a04eab4dc57398ed03509c8bc73c50a529c864701ae",
+      "lines": 129,
+      "exports": [],
+      "cases": [
+        "Glance shows the watched season count and 4h 40m remaining in the reference example",
+        "rewatches, revoked logs, foreign-title references and specials cannot inflate Glance progress",
+        "partial or absent TMDB season metadata keeps remaining time unknown instead of guessing",
+        "missing runtimes stay unknown, but a known completed season has zero time left",
+        "after a completed season Glance follows the next regular season and keeps future episodes unwatchable",
+        "movie time left is its runtime until watched and is zero until all active views are removed"
+      ]
+    },
+    {
+      "path": "tests/unit/history-paint.test.ts",
+      "sha256": "8b6eea276c78e54e49f5170aa77697fbc2d6b3fe289d3a78adece1127d394c1b",
+      "lines": 154,
+      "exports": [],
+      "cases": [
+        "native and button history commit without a decoding promise, animation or delayed hook",
+        "replaced tabs resume scroll synchronously while native back keeps Kit scroll ownership",
+        "outgoing page is synchronously settled before capture; shallow filters retain the existing paint"
+      ]
+    },
+    {
+      "path": "tests/unit/history.test.ts",
+      "sha256": "a58f285b2f3a3fd745c960888f81bbc0f3e3560d1fc31542f4778c87812dc708",
+      "lines": 224,
+      "exports": [],
+      "cases": [
+        "selected-season progress and next actions stay within that season",
+        "next episode advances from individual watches without changing title completion",
+        "retry is idempotent and conflicting operation reuse is rejected",
+        "a second intentional viewing survives undo of the first",
+        "a fresh operation does not accidentally create a rewatch",
+        "undo targets exactly one event and retrying undo preserves its first timestamp",
+        "gaps stay visible; later watched episodes do not hide earlier unwatched ones",
+        "future, undated, and special episodes do not silently become Up Next",
+        "unavailable metadata does not fabricate a next episode",
+        "episode identity must belong to its series",
+        "unknown dates are preserved, invalid dates rejected",
+        "season slider batches progress without changing old dates or other titles",
+        "season slider moving backwards removes all active rewatches past the target and keeps other seasons",
+        "season slider rejects future or invalid progress before changing any history"
+      ]
+    },
+    {
+      "path": "tests/unit/home.test.ts",
+      "sha256": "b018d3d8a68e44c69c1a7999d27acaa6c3104d4ad26e134c8d6f1234181c78c4",
+      "lines": 150,
+      "exports": [],
+      "cases": [
+        "Home week totals and seven calendar cells match Stats, including future days and missing runtime",
+        "Up next and its random pool only include active Planned titles without active watch history",
+        "New episodes selects the earliest unwatched regular episode per library show and omits unsafe dates and dropped titles",
+        "upcoming dates use calendar days across year and DST boundaries, never elapsed local hours"
+      ]
+    },
+    {
+      "path": "tests/unit/id.test.ts",
+      "sha256": "793f06ef293b1065deb615ec92dea3b1434392039f6b16148e4e1c994512ee8f",
+      "lines": 12,
+      "exports": [],
+      "cases": [
+        "local HTTP fallback produces distinct RFC 4122 v4 IDs without randomUUID"
+      ]
+    },
+    {
+      "path": "tests/unit/input-modality.test.ts",
+      "sha256": "cb853eb8148f7e22fe044f0f0498de58a1fb03f787ef2126655fcaf28664ea7c",
+      "lines": 40,
+      "exports": [],
+      "cases": [
+        "pointer feedback updates immediately and keyboard navigation restores focus visibility",
+        "teardown removes listeners and restores the previous preference without focus changes"
+      ]
+    },
+    {
+      "path": "tests/unit/library-api.test.ts",
+      "sha256": "1c3f31d02a66e9832270a94ee16920747ad4de64bf37d798056498c3376e850e",
+      "lines": 392,
+      "exports": [],
+      "cases": [
+        "D1 library starts empty and creating the same identity is retry-safe",
+        "versioned partial updates preserve notes and reject stale or unsupported changes",
+        "keyset pagination is stable for tied names and excludes notes from list responses",
+        "search treats SQL wildcard characters as literal title text",
+        "Trash and restore preserve personal data and reject writes while trashed",
+        "season paging hides unwatched text by default and reveals only on request",
+        "watch retries and concurrent duplicates produce one viewing with durable no-op receipts",
+        "intentional rewatches survive targeted Undo and reused operation IDs cannot change payloads",
+        "Undo uses event versions so an old undo cannot reverse a newer unwatch",
+        "a failed receipt write rolls back its watch in the same D1 batch",
+        "movie and series watches reject mismatched episode identities",
+        "new movie watches complete the title atomically without replaying status changes on retries",
+        "show completion covers every regular season, counts rewatches once, and follows Undo",
+        "unknown episode totals do not auto-complete shows, and a failed unwatch rolls back status too",
+        "API denies missing owners before parsing or accessing D1 and keeps errors private",
+        "route handlers use the bound D1 database and enforce request validation",
+        "JSON reads reject malformed, non-JSON and oversized streamed bodies"
+      ]
+    },
+    {
+      "path": "tests/unit/library-display.test.ts",
+      "sha256": "3ec01080772d3fa51b5710d233f7381ad48c9dbc22a97f148617224ac1e0c9c3",
+      "lines": 49,
+      "exports": [],
+      "cases": [
+        "poster progress uses distinct regular episodes and movie watches, not rewatches, revoked or foreign logs",
+        "partially loaded seasons keep their own expected episode counts in poster progress"
+      ]
+    },
+    {
+      "path": "tests/unit/live-controller.test.ts",
+      "sha256": "71c1ab6ab168eb1fb724525e1f3d04980fcb54fcdca740a5091f6095688fc46e",
+      "lines": 635,
+      "exports": [],
+      "cases": [
+        "one real controller keeps preview art, persists edits in D1 and handles stale edits without false success",
+        "failed episode reveals report failure, retry successfully and reuse the loaded season",
+        "real episode progress, Undo and lost-response retries do not create duplicate watches",
+        "a partially interrupted multi-episode Undo retains its remaining work and can retry",
+        "turning off spoilers loads the actual episode details and subsequent reveals reuse them",
+        "loaded season cache expires so newly aired episodes are not hidden by a resolved promise forever",
+        "an older in-flight refresh cannot overwrite a confirmed local mutation",
+        "bulk review uses the versions the user saw even after a background refresh",
+        "real selection Queue, Trash/restore and manual creation all use backend identities",
+        "notes and decimal ratings save independently and clearing a rating preserves notes",
+        "movie slider removes only the latest logged viewing, preserves older history, and supports Undo",
+        "show slider and episode buttons update status immediately, including Undo of completion",
+        "show selector fills progress for Completed and resets all seasons for Planned with exact Undo",
+        "movie selector and its Undo reconcile lost responses without duplicate watches or resetting other titles",
+        "bulk status uses the same progress rules and respects the reviewed versions"
+      ]
+    },
+    {
+      "path": "tests/unit/local-network.test.ts",
+      "sha256": "fea7716dd4bd01d3c8c90467d04f1cad3123f66d592384e0b4785632aeee2e60",
+      "lines": 36,
+      "exports": [],
+      "cases": [
+        "direct phone testing requires explicit dev opt-in, private socket and exact configured host",
+        "private network parsing rejects public and malformed addresses"
+      ]
+    },
+    {
+      "path": "tests/unit/local-tmdb-fetch.test.ts",
+      "sha256": "9fc1d6413d570428b3bfd3d0b7548bad144e4e39525633f3cf429ae72c8099d8",
+      "lines": 85,
+      "exports": [],
+      "cases": [
+        "Local TMDB reads fail over between DNS addresses and reuse the working address",
+        "Local TMDB transport rejects other destinations, credentials, writes and API paths before DNS",
+        "HTTP errors are returned once; aborts and certificate failures never retry",
+        "DNS exhaustion has a bounded attempt count and remains recoverable"
+      ]
+    },
+    {
+      "path": "tests/unit/locations.test.ts",
+      "sha256": "0d5b73aab450053d79d674b74506829b771299dee4c61010ac3ea2977cdd6f1b",
+      "lines": 90,
+      "exports": [],
+      "cases": [
+        "only a complete matching root scan confirms missing",
+        "disconnect preserves last known path, count and checked date",
+        "seen evidence is positive even when a scan is partial",
+        "one available copy wins; missing plus unverified stays unknown",
+        "path joining normalizes separators without losing drive identity",
+        "server availability names every confirmed drive once, across seasons",
+        "server availability never advertises missing, offline or unverified copies as available"
+      ]
+    },
+    {
+      "path": "tests/unit/management.test.ts",
+      "sha256": "3f282db73e10f61d2b3a683da9c1f2525601866fbad3aefd9674aacd606da285",
+      "lines": 272,
+      "exports": [],
+      "cases": [
+        "Empty Trash removes archived records and linked history while preserving active titles and scanner devices",
+        "Empty Trash endpoint requires the owner and an explicit action body",
+        "library summaries include poster and backdrop paths without loading private notes",
+        "preview Trash hides progress, history, and disk records without losing them; restore is lossless",
+        "preview purge only accepts Trash and removes associated records without touching other titles",
+        "bulk input rejects empty, duplicate, oversized, stale-version and ambiguous requests",
+        "bulk updates are atomic when one version is stale or a title is missing",
+        "bulk status and favorites increment each version and preserve notes and episode viewings",
+        "bulk Trash and restore preserve relationships; a mixed active/Trash batch changes nothing",
+        "confirmed purge cascades through linked records and leaves scanner identity and other titles intact",
+        "bulk API requires the owner, JSON, configured D1, and no-store responses"
+      ]
+    },
+    {
+      "path": "tests/unit/metadata-browse.test.ts",
+      "sha256": "7a73cd639dffc70cdab2a77e9eb9655e8dc894f6be93d2f04f509203cb2bf3b9",
+      "lines": 100,
+      "exports": [],
+      "cases": [
+        "online details do not import or mutate diary data; movie and show identities remain separate",
+        "episode browsing redacts spoilers until explicitly revealed and rejects invalid seasons",
+        "online detail and episode APIs require owner authentication and forbid shared caching"
+      ]
+    },
+    {
+      "path": "tests/unit/metadata.test.ts",
+      "sha256": "a441f80aa1da79557d1b41383579a70c0d2fcf4fd49cc3633b292c603220ebe0",
+      "lines": 425,
+      "exports": [],
+      "cases": [
+        "import retains IMDb identity so library code/URL search works without TMDB",
+        "metadata search filters people, keeps movie/TV identities separate, and sends credentials only in headers",
+        "IMDb lookup uses external identity lookup and obeys the media filter",
+        "metadata validates query, page, type, provider ID and season coordinates before requesting",
+        "missing tokens, throttling, bad credentials and network failures produce safe actionable errors",
+        "upstream malformed JSON, oversized bodies and mismatched metadata do not reach D1",
+        "TMDb images hotlink only validated paths on the fixed image host",
+        "import stores metadata and season summaries without fetching every episode",
+        "reimport after edits opens the existing title and preserves personal data and watch history",
+        "concurrent provider imports produce one title and one added result",
+        "an import in Trash asks for restoration instead of duplicating the title",
+        "failed import is atomic and unsupported personal fields or category mismatches are rejected",
+        "season loading is retry-safe, preserves skipped flags and watches, and hides episode stills",
+        "season fetch failure keeps stored episodes and does not mark incomplete metadata loaded",
+        "manual creation saves initial personal fields atomically and reserves provider identities",
+        "the Anime category consistently includes anime movies in the real library",
+        "large seasons import with few statements and bounded D1 parameter sizes",
+        "long Unicode title searches do not depend on D1 LIKE pattern limits",
+        "metadata routes refuse unauthenticated calls before provider or body work",
+        "client distinguishes Access HTML, API failures and valid JSON without leaking server internals"
+      ]
+    },
+    {
+      "path": "tests/unit/navigation.test.ts",
+      "sha256": "d97f38ed97fa85950f13cc504a1151e42f480251ad56e067b85baa6a862a823a",
+      "lines": 322,
+      "exports": [],
+      "cases": [
+        "main tabs and shortcuts replace a single root; active tab taps do nothing",
+        "detail and nested drill-downs push; back traverses without adding entries",
+        "filters, search and section hashes replace without losing depth or state",
+        "catalog import replaces its entry; explicit root exits unwind then replace",
+        "cold detail / refresh ignores restored depth and replaces with Library",
+        "ordinary links share the policy; modified, canceled and external links retain native behavior",
+        "only the five main paths get tab navigation; invalid depth cannot traverse external history",
+        "filmography grids retain the shared header and safe area while person/title heroes own theirs",
+        "returning to Library resumes its remembered query without adding tab history or replacing explicit shortcuts",
+        "Recently watched is a separate drill-down and returns through a title to Home"
+      ]
+    },
+    {
+      "path": "tests/unit/people.test.ts",
+      "sha256": "f8678140eccba4bd083e2875dd67a51f5777fbc3a91b8cfa052dcac8f49c1f84",
+      "lines": 184,
+      "exports": [],
+      "cases": [
+        "person metadata validates combined credits, keeps movie/TV identities separate and merges roles",
+        "person pages cache biography and filmography, recover stale results and require owner access",
+        "person shelves include only matching confirmed disk copies and retain the full separate filmographies",
+        "person filmography retains a long list and filters/sorts the full set before vertical paging"
+      ]
+    },
+    {
+      "path": "tests/unit/press-select.test.ts",
+      "sha256": "90380d50718fa61ab9e5f7842cc216abec1e28d5e817b79643d0fd0007dbda4a",
+      "lines": 108,
+      "exports": [],
+      "cases": [
+        "Holding selects once and consumes release click; next ordinary tap remains native",
+        "Space selects a focused card link without hijacking Enter, repeats or child controls"
+      ]
+    },
+    {
+      "path": "tests/unit/progress-status.test.ts",
+      "sha256": "b5d2d93652d73fa6768b73db8c5ec1aaadcdd4fd532c6fd92abdde3925ed5591",
+      "lines": 238,
+      "exports": [],
+      "cases": [
+        "status progress API rejects anonymous calls",
+        "Completed logs one movie viewing; retries and Undo are durable and never create a rewatch",
+        "Planned resets all rewatches and Undo restores original dates, unknown dates and status exactly",
+        "show completion fills every regular season, preserves old dates, and Undo only removes added viewings",
+        "unreleased episodes, missing metadata and stale selections reject the whole operation without partial changes",
+        "a concurrent rewatch with unchanged title version prevents a stale reset and prevents stale Undo",
+        "an interrupted database batch rolls back the status, history and retry receipt together",
+        "a concurrent catalog refresh cannot mark a show Completed while its new episode stays unwatched",
+        "purging a title also removes progress receipts containing its history"
+      ]
+    },
+    {
+      "path": "tests/unit/queue-and-drives.test.ts",
+      "sha256": "1c224477f19baecc3143a7a48c0e38e1cdf467f2a6a6146aae773b73da9659f4",
+      "lines": 209,
+      "exports": [],
+      "cases": [
+        "Queue is opt-in for every watch status and survives progress/status changes",
+        "canonical Queue API filter composes with status and scopes pagination",
+        "Movies includes anime movies in both the library UI predicate and API",
+        "Preview Queue ignores disk presence and leaves history and watch state intact",
+        "Drive shortcuts match mapped titles once, compose with categories, and retain exact volume filters",
+        "Bulk Queue edits are atomic, preserve each watch status, and support removal"
+      ]
+    },
+    {
+      "path": "tests/unit/random-pick.test.ts",
+      "sha256": "ce69260a8e678343e1be651afea2fac3d50c8ba9f333c952cf1209dc073c83cb",
+      "lines": 43,
+      "exports": [],
+      "cases": [
+        "random pick handles empty collections and excludes Trash",
+        "reroll excludes the previous pick while preserving all other candidates",
+        "three taps in 850ms trigger once and the next gesture starts fresh",
+        "normal spaced clicks never open a random pick"
+      ]
+    },
+    {
+      "path": "tests/unit/related-titles.test.ts",
+      "sha256": "d984ba272388ed102fe5dea1575f2fafafdeb11c85c5ed61bc973dd87951e574",
+      "lines": 106,
+      "exports": [],
+      "cases": [
+        "related recommendations use the correct TV/movie seed, exclude adult/self/duplicates, and bound results",
+        "recommendation cache reuses fresh and empty results and retains stale data on an outage",
+        "related metadata rejects arbitrary IDs/types and the API requires owner access"
+      ]
+    },
+    {
+      "path": "tests/unit/route-feedback.test.ts",
+      "sha256": "cafc98c7f45b390bce0e49121e92c01473881b39cc7dc9eb86cf01a0c7de40a1",
+      "lines": 182,
+      "exports": [],
+      "cases": [
+        "root layout invokes browser timers on the global rather than the feedback host",
+        "back and forward history never start the route loader or leave a delayed timer",
+        "an interrupted forward transition is cleared immediately by history traversal",
+        "forward navigation retains its short feedback and a slow navigation hides it on completion",
+        "page-cache reset and unload clear outstanding feedback; filters do not start it",
+        "restored pages stay fully painted through filter/hash changes and resume motion only on a new route"
+      ]
+    },
+    {
+      "path": "tests/unit/scanner-review.test.ts",
+      "sha256": "46a8100f5325d6a533a310f59efbebdb30ba44fefd63d30968f1abcecebc13b2",
+      "lines": 77,
+      "exports": [],
+      "cases": [
+        "scanner review lists unresolved folders separately from the library and resolves to an existing identity",
+        "scanner resolution rejects stale scans and archived targets without adding a mapping",
+        "a failed scan resolution rolls back the file mapping as well as the queue change",
+        "scanner review API is owner guarded and does not expose paths to unauthenticated requests"
+      ]
+    },
+    {
+      "path": "tests/unit/search.test.ts",
+      "sha256": "8592d1f0d7e483d634cc06b1b668d1d37c4a25fdc114af79d865ea167d5f8dcb",
+      "lines": 122,
+      "exports": [],
+      "cases": [
+        "search normalizes IMDb IDs and title URLs without accepting arbitrary URL hosts",
+        "local IMDb search finds renamed titles without making an online request",
+        "unified search moves existing online identities into Library and distinguishes movie/TV and Trash",
+        "online failure preserves local matches and online-only identity resolution is bounded",
+        "unified search validates input before upstream calls and remains private/owner guarded"
+      ]
+    },
+    {
+      "path": "tests/unit/session-api.test.ts",
+      "sha256": "f4890c650ed9a778cafbbd750ba60fac82418c5cafd4be161dbf03960a0faffb",
+      "lines": 66,
+      "exports": [],
+      "cases": [
+        "session validation requires an owner and works without any database binding",
+        "nested D1 read and write limits return a private retryable response without query details",
+        "quota reset uses the next UTC midnight including month and year boundaries",
+        "unrelated or cyclic errors remain generic and cannot masquerade as authentication failures"
+      ]
+    },
+    {
+      "path": "tests/unit/stats-browse.test.ts",
+      "sha256": "a1aa5969ed937a66e69c17faa7da99174ac1b8037d3bc6d2fdf654db25951e2f",
+      "lines": 78,
+      "exports": [],
+      "cases": [
+        "watch mix shows five ranked genres, reveals a selected smaller slice, and can expand all",
+        "history shortcuts use local calendar days across months and years without mutating the clock",
+        "recent watches combine exact-date and title search, including both ends of the local day",
+        "Review dates includes malformed legacy dates and date filters never silently normalize them"
+      ]
+    },
+    {
+      "path": "tests/unit/stats-controls.test.ts",
+      "sha256": "4915e3ed3302cd06061718ee7133f15499feba97f32121b59c0b87bd4faa94d2",
+      "lines": 137,
+      "exports": [],
+      "cases": [
+        "Stats starts on Today and Home links override remembered periods while back retains them",
+        "the shipped control handler shares one selection, resets bar details, and preserves historical year",
+        "returning Stats pages upgrade saved 7D/30D/1Y states without losing year or expansion state"
+      ]
+    },
+    {
+      "path": "tests/unit/stats-dashboard.test.ts",
+      "sha256": "98f263b576e9636b3d1c9c718c88f2fa5e934797cb246008104ce49316f36df0",
+      "lines": 372,
+      "exports": [],
+      "cases": [
+        "calendar weeks count dated movies/episodes and rewatches, compare matching weekdays, and report missing data",
+        "calendar week spans New Year, historical leap years work and long charts remain bounded",
+        "streaks count distinct local active days, allow yesterday, and respect gaps and DST",
+        "backlog estimates aired regular episodes only and never guesses incomplete catalogue runtimes",
+        "genre bars measure title coverage and Other counts distinct titles without changing percentages",
+        "empty library gives honest zero states for every section",
+        "both Stats selectors use one canonical set and old remembered ranges migrate to calendar periods",
+        "calendar comparisons align elapsed weekdays, months and leap-year dates instead of unrelated trailing days",
+        "undated progress never produces a misleading stalled-title suggestion and missing runtime cannot name a busiest day",
+        "future watches, foreign-title episode references and invalid catalogue dates cannot manufacture completed progress",
+        "invalid calendar timestamps remain undated rather than rolling into March and corrupting streaks"
+      ]
+    },
+    {
+      "path": "tests/unit/swipe-snapshot.test.ts",
+      "sha256": "a4b27525bad14fcc3b87309456586ada6a6aef5cdb7abd3e79f00a962380173f",
+      "lines": 64,
+      "exports": [],
+      "cases": [
+        "iPhone and both iPad user agents keep departing history entries eligible for native snapshots",
+        "other browsers retain the framework scroll restoration mode"
+      ]
+    },
+    {
+      "path": "tests/unit/swipe-watch.test.ts",
+      "sha256": "edd4465fdd1cf280b16523da548462c9554b2e8630e660eb892b7f8c485e404a",
+      "lines": 250,
+      "exports": [],
+      "cases": [
+        "Glance swipes commit one captured watch and preserve scroll, edge gestures, controls and ordinary taps",
+        "release-click suppression expires and a fresh press clears it immediately"
+      ]
+    },
+    {
+      "path": "tests/unit/themes.test.ts",
+      "sha256": "bd9a899480bce762295cef94e328cf3e673382bd5f4322b9e79daacf94f1996e",
+      "lines": 90,
+      "exports": [],
+      "cases": [
+        "only known appearance IDs are restored; corrupt or denied storage is harmless",
+        "saving appearance touches only its dedicated key and tolerates blocked storage",
+        "the actual pre-paint script restores every theme before app initialization",
+        "theme accents and button lettering meet normal-text contrast on their intended colors"
+      ]
+    },
+    {
+      "path": "tests/unit/title-progress.test.ts",
+      "sha256": "b3526134671db716ae249218bc69b4da9043a46abfb7ea8110c7448d5d659c2b",
+      "lines": 93,
+      "exports": [],
+      "cases": [
+        "selected season matches the reference and counts each episode once",
+        "unloaded seasons retain manifest counts without inventing time or slider eligibility",
+        "unknown runtimes and catalogue metadata stay unknown; a completed season has no time left"
+      ]
+    },
+    {
+      "path": "tests/unit/tmdb-connection.test.ts",
+      "sha256": "b27078e92ca19d1227d9b6170e64f135e74db02e204688ded044c74c366d86c7",
+      "lines": 222,
+      "exports": [],
+      "cases": [
+        "Adapter 8 request-local bindings work without the legacy platform object",
+        "PC-only development cannot be enabled in production or reached using a LAN/proxy address",
+        "Metadata review is owner guarded, needs no D1 and returns typed title/season information",
+        "Connection validation exposes only a boolean, never the upstream configuration or credential",
+        "Local token form validates before saving, preserves unrelated secrets, and rejects forged/LAN requests"
+      ]
+    },
+    {
+      "path": "tests/unit/trakt-api-settings.test.ts",
+      "sha256": "ef7507ca4265b15a76c3e25e62b16c9319b070e710cc67c6f9365280469ea4d9",
+      "lines": 159,
+      "exports": [],
+      "cases": [
+        "every Trakt route refuses anonymous access before parsing bodies or contacting a provider",
+        "connection status returns only display fields and cannot report connected with its server key missing",
+        "parallel provider settings preserve unrelated credentials and Trakt setup stays PC-only"
+      ]
+    },
+    {
+      "path": "tests/unit/trakt-auth.test.ts",
+      "sha256": "da077af439468c3162fc2fe66059c96b94634cc58d93fe7716058afb646ea46b",
+      "lines": 175,
+      "exports": [],
+      "cases": [
+        "OAuth material is authenticated/encrypted and unreadable with a different key or modified payload",
+        "Trakt sign-in requires the owned HTTPS callback and uses PKCE with one-use owner-bound state",
+        "single-use refresh tokens rotate under a database lease, and disconnect retains the diary",
+        "merge baselines preserve reviewed differences and always review removals or simultaneous edits",
+        "a revoked access token marks the connection for sign-in again without losing the diary",
+        "history normalization keeps unknown dates and rejects unsafe numeric event identities"
+      ]
+    },
+    {
+      "path": "tests/unit/trakt-review-ui.test.ts",
+      "sha256": "7f9150153e780e92f11dcdbfea9b9c68cb05dea5e464036ca34a36d116dd57cf",
+      "lines": 55,
+      "exports": [],
+      "cases": [
+        "settings review count excludes link-only matches and closed scans",
+        "review categories and load more preserve source order and never alter pending changes"
+      ]
+    },
+    {
+      "path": "tests/unit/trakt-sync.test.ts",
+      "sha256": "724de7ec69bb97a856eacb5d20beba04ecaf5f50758f2bb37569d312f5196e14",
+      "lines": 777,
+      "exports": [],
+      "cases": [
+        "large sync reviews filter before paging and expose every change without applying it",
+        "legacy planning cursors resume at the same record in CPU-bounded batches",
+        "two-way history import preserves episode coordinates, Anime metadata, unknown dates and idempotent repeated syncs",
+        "Trakt watches update existing Planned titles and complete a series only after its regular episodes",
+        "a failed imported watch/status batch leaves neither a partial viewing nor a changed status",
+        "new local movie viewings export once and link the exact returned Trakt history event",
+        "a lost history response is reconciled without resending or duplicating the viewing",
+        "Trakt minute precision links existing watches without replacing exact local timestamps",
+        "minute-truncated exports and repeated sync retain two distinct plays in the same minute",
+        "history removals require explicit review and remove only the chosen play",
+        "remote history removals revoke the local play after review without deleting it",
+        "decimal ratings remain local, and simultaneous rating changes require a choice",
+        "whole-number-only scans expose their saved rule and never overwrite a local decimal",
+        "watchlist maps to Planned while accepted Trakt removal keeps Queue, notes and the diary title",
+        "partial pagination and changed remote activity cannot produce an applicable deletion plan",
+        "concurrent starts share one active run and concurrent apply cannot send a watch twice",
+        "many unknown-date rewatches match distinct local plays without a ten-event ceiling",
+        "skipping an unconfirmed send keeps its durable guard across a new preview",
+        "an edit made after preview is preserved and stale ratings cannot overwrite it",
+        "a returning remote watchlist item never silently downgrades an existing Watching title",
+        "rate limits preserve the preview and enforce the provider cooldown without retrying",
+        "unmatched provider titles remain distinct review items rather than collapsing into one null identity",
+        "old completed previews can retire, while unconfirmed sends and diary history remain recoverable",
+        "an explicitly throttled history POST can retry after cooldown without becoming an unresolvable uncertain send"
+      ]
+    },
+    {
+      "path": "tests/unit/ui-wiring.test.ts",
+      "sha256": "ed674b77d538c7c78ecd5278b5a645598f0786bb6d7dc1c9539b5d89353e24fe",
+      "lines": 244,
+      "exports": [],
+      "cases": [
+        "Home, Stats and Files links apply category, favorites, genre and disk filters together",
+        "Clear filters removes every linked filter while retaining Trash and map layout",
+        "simplified library filters round-trip without losing the selected disk or layout",
+        "open disk selector and category chips are not duplicated in the filter summary",
+        "Home Queue opens the dropdown choice without a Queue chip or fake disk filter",
+        "Queue choice filters download reminders across watch statuses without changing library data",
+        "Queue stays independent of real disks and clears when choosing a watch status or resetting",
+        "Device saves are durable and stale tab writes cannot overwrite newer notes or history",
+        "Two simultaneous first saves have exactly one winner without a split revision",
+        "Existing unversioned preview data upgrades on save; spoiler preference is independent",
+        "Episode controls exclude unknown, invalid and future air dates, while retaining today"
+      ]
+    },
+    {
+      "path": "tests/unit/view-memory.test.ts",
+      "sha256": "e5ac8a30e717b7fa07d24dd6f0b7c9947384d1d3930e67871a31b9ed8876b5b3",
+      "lines": 122,
+      "exports": [],
+      "cases": [
+        "bare tab returns remember their last filters while explicit Queue/Disk Map shortcuts retain their intent",
+        "view state and scroll are isolated by route, filters and component, ignoring hash and query order",
+        "captured state is copied rather than sharing live mutable arrays, and old views are bounded",
+        "horizontal rails and open disclosures restore exactly, including resetting a rail to its starting position",
+        "overwriting the same large view does not consume the entire session memory budget"
+      ]
+    },
+    {
+      "path": "tests/unit/watch-time.test.ts",
+      "sha256": "ead151ea8eca6b15da9761447d422912843235ff226a35a2159adbe92b175917",
+      "lines": 271,
+      "exports": [],
+      "cases": [
+        "today uses the local watch date, includes rewatches and episodes, and excludes undone or orphaned events",
+        "monthly estimates use the whole current calendar month and preserve missing-runtime coverage",
+        "year picker includes historic local years and always the current year, with twelve monthly buckets",
+        "monthly calendar handles leap years and midnight rollover without fixed day durations",
+        "repeated daylight-saving hours count both real viewings in the same local interval",
+        "empty periods and invalid runtimes never fabricate watch time",
+        "selected months reveal distinct titles with every episode/rewatch counted and newest watch first",
+        "This Week uses Monday–Sunday in the viewer calendar and retains daily watch details",
+        "weekly calendar spans month/year boundaries and starts a new week on Monday",
+        "weekly daily buckets include both repeated DST hours on Sunday and exclude next Monday"
+      ]
+    },
+    {
+      "path": "tests/unit/workspace-migration.test.ts",
+      "sha256": "2c63c074a3fa0eea04fc4cc3752e142d4a7a62fe8854f1a7648aed32e0b1f1fd",
+      "lines": 165,
+      "exports": [],
+      "cases": [
+        "workspace spoiler checks use indexed watch lookups rather than scanning all history for each episode",
+        "preview import retains artwork, history, Queue and mappings while preserving existing diary data",
+        "invalid preview history imports nothing and concurrent migration attempts cannot duplicate data",
+        "workspace serialization redacts unwatched episode spoilers and never emits credentials",
+        "malformed legacy fields fail as validation errors before writing any diary records"
+      ]
+    }
+  ]
+}

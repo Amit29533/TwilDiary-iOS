@@ -1,0 +1,15 @@
+# Local examples only. Do not commit .dev.vars or put secrets in wrangler.jsonc.
+ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
+ACCESS_AUDIENCE=your-new-access-application-audience
+ACCESS_OWNER_EMAIL=you@example.com
+TMDB_ACCESS_TOKEN=
+# Explicit opt-in; accepted only by the development server over a loopback socket/hostname.
+LOCAL_DIARY=0
+TRAKT_CLIENT_ID=
+# 32 random bytes, base64url encoded. The local connection form creates this automatically.
+# Back up securely and preserve it when moving D1; it encrypts OAuth tokens at rest.
+TRAKT_TOKEN_KEY=
+# Your fresh HTTPS app origin + /api/trakt/callback, also registered in your Trakt app.
+TRAKT_REDIRECT_URI=
+# Legacy optional access token, superseded by the encrypted PKCE connection above.
+TRAKT_PERSONAL_ACCESS_TOKEN=

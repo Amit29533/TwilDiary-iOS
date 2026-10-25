@@ -1,0 +1,10 @@
+{
+  "run": 40056346004,
+  "commit": "9c4b527b80f209e2b907dd310e158af1e86ab088",
+  "build": 14,
+  "bytes": 4033752,
+  "sha256": "224455180e83af72393c205584c2f1f7d245b0ea048ed9333c03fe39f38e7080",
+  "architecture": "arm64",
+  "minimumIOS": "26.0",
+  "unsigned": true
+}

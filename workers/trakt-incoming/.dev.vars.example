@@ -1,0 +1,4 @@
+# Synthetic placeholders only. Never commit real credentials.
+TRAKT_CLIENT_ID=replace-with-existing-client-id
+TRAKT_TOKEN_KEY=replace-with-existing-server-encryption-key
+TMDB_ACCESS_TOKEN=replace-with-existing-tmdb-read-token

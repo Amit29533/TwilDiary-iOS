@@ -1,0 +1,1555 @@
+{
+  "workspace": {
+    "schemaVersion": 1,
+    "titles": [
+      {
+        "id": "frieren",
+        "name": "Frieren: Beyond Journey’s End",
+        "category": "anime",
+        "year": 2023,
+        "overview": "An elven mage retraces a journey, discovering what the time she shared with her companions really meant.",
+        "poster": "/demo/frieren.jpg",
+        "genres": [
+          "Adventure",
+          "Fantasy"
+        ],
+        "runtimeMinutes": 24,
+        "status": "watching",
+        "favorite": true,
+        "score": 9.5,
+        "notes": "",
+        "tags": []
+      },
+      {
+        "id": "night",
+        "name": "Call of the Night",
+        "category": "anime",
+        "year": 2022,
+        "overview": "A sleepless teenager finds a different kind of life in the quiet streets after dark.",
+        "poster": "/demo/night.jpg",
+        "genres": [
+          "Romance",
+          "Supernatural"
+        ],
+        "runtimeMinutes": 24,
+        "status": "watching",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": []
+      },
+      {
+        "id": "severance",
+        "name": "Severance",
+        "category": "show",
+        "year": 2022,
+        "overview": "The employees of Lumon divide their work and personal memories. The boundary begins to unravel.",
+        "poster": "/demo/severance.jpg",
+        "genres": [
+          "Drama",
+          "Mystery"
+        ],
+        "runtimeMinutes": 50,
+        "status": "watching",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": []
+      },
+      {
+        "id": "again",
+        "name": "18 Again",
+        "category": "show",
+        "year": 2020,
+        "overview": "A father gets an unexpected chance to see his family’s life from a new perspective.",
+        "poster": "/demo/again.jpg",
+        "genres": [
+          "Drama",
+          "Romance"
+        ],
+        "runtimeMinutes": 50,
+        "status": "planned",
+        "favorite": false,
+        "score": 7.5,
+        "notes": "",
+        "tags": []
+      },
+      {
+        "id": "quiet-orbit",
+        "name": "A Quiet Orbit",
+        "category": "movie",
+        "year": 2025,
+        "overview": "A sample movie for trying the diary. This is fictional preview content.",
+        "poster": null,
+        "genres": [
+          "Science fiction",
+          "Drama"
+        ],
+        "runtimeMinutes": 112,
+        "status": "planned",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": [
+          "Weekend"
+        ],
+        "queued": true
+      },
+      {
+        "id": "after-rain",
+        "name": "After the Rain",
+        "category": "anime-movie",
+        "year": 2024,
+        "overview": "A fictional sample title for exploring your library.",
+        "poster": null,
+        "genres": [
+          "Animation",
+          "Romance"
+        ],
+        "runtimeMinutes": 96,
+        "status": "completed",
+        "favorite": true,
+        "score": 9,
+        "notes": "A sample note. Your own diary starts empty.",
+        "tags": [
+          "Comfort watches"
+        ]
+      },
+      {
+        "id": "zebra",
+        "name": "Unwatched zebra",
+        "category": "movie",
+        "year": 2025,
+        "overview": "A sample movie for trying the diary. This is fictional preview content.",
+        "poster": null,
+        "genres": [
+          "Science fiction",
+          "Drama"
+        ],
+        "runtimeMinutes": 112,
+        "status": "planned",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": [
+          "Weekend"
+        ],
+        "queued": true
+      },
+      {
+        "id": "alpha",
+        "name": "Unwatched alpha",
+        "category": "movie",
+        "year": 2025,
+        "overview": "A sample movie for trying the diary. This is fictional preview content.",
+        "poster": null,
+        "genres": [
+          "Science fiction",
+          "Drama"
+        ],
+        "runtimeMinutes": 112,
+        "status": "planned",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": [
+          "Weekend"
+        ],
+        "queued": true
+      },
+      {
+        "id": "delta",
+        "name": "Unwatched delta",
+        "category": "movie",
+        "year": 2025,
+        "overview": "A sample movie for trying the diary. This is fictional preview content.",
+        "poster": null,
+        "genres": [
+          "Science fiction",
+          "Drama"
+        ],
+        "runtimeMinutes": 112,
+        "status": "planned",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": [
+          "Weekend"
+        ],
+        "queued": true
+      },
+      {
+        "id": "beta",
+        "name": "Unwatched beta",
+        "category": "movie",
+        "year": 2025,
+        "overview": "A sample movie for trying the diary. This is fictional preview content.",
+        "poster": null,
+        "genres": [
+          "Science fiction",
+          "Drama"
+        ],
+        "runtimeMinutes": 112,
+        "status": "planned",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": [
+          "Weekend"
+        ],
+        "queued": true
+      },
+      {
+        "id": "trashed",
+        "name": "A Quiet Orbit",
+        "category": "movie",
+        "year": 2025,
+        "overview": "A sample movie for trying the diary. This is fictional preview content.",
+        "poster": null,
+        "genres": [
+          "Science fiction",
+          "Drama"
+        ],
+        "runtimeMinutes": 112,
+        "status": "planned",
+        "favorite": false,
+        "score": null,
+        "notes": "",
+        "tags": [
+          "Weekend"
+        ],
+        "queued": true,
+        "deletedAt": "2026-10-23T12:00:00Z"
+      }
+    ],
+    "episodes": [
+      {
+        "id": "frieren-s1e1",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 1,
+        "name": "Sample chapter 1",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e2",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 2,
+        "name": "Sample chapter 2",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e3",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 3,
+        "name": "Sample chapter 3",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e4",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 4,
+        "name": "Sample chapter 4",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e5",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 5,
+        "name": "Sample chapter 5",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e6",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 6,
+        "name": "Sample chapter 6",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e7",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 7,
+        "name": "Sample chapter 7",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e8",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 8,
+        "name": "Sample chapter 8",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e9",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 9,
+        "name": "Sample chapter 9",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e10",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 10,
+        "name": "Sample chapter 10",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e11",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 11,
+        "name": "Sample chapter 11",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e12",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 12,
+        "name": "Sample chapter 12",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e13",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 13,
+        "name": "Sample chapter 13",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e14",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 14,
+        "name": "Sample chapter 14",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e15",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 15,
+        "name": "Sample chapter 15",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e16",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 16,
+        "name": "Sample chapter 16",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e17",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 17,
+        "name": "Sample chapter 17",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e18",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 18,
+        "name": "Sample chapter 18",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e19",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 19,
+        "name": "Sample chapter 19",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e20",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 20,
+        "name": "Sample chapter 20",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e21",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 21,
+        "name": "Sample chapter 21",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e22",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 22,
+        "name": "Sample chapter 22",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e23",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 23,
+        "name": "Sample chapter 23",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e24",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 24,
+        "name": "Sample chapter 24",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e25",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 25,
+        "name": "Sample chapter 25",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e26",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 26,
+        "name": "Sample chapter 26",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e27",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 27,
+        "name": "Sample chapter 27",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "frieren-s1e28",
+        "titleId": "frieren",
+        "season": 1,
+        "number": 28,
+        "name": "Sample chapter 28",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e1",
+        "titleId": "night",
+        "season": 1,
+        "number": 1,
+        "name": "Sample chapter 1",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e2",
+        "titleId": "night",
+        "season": 1,
+        "number": 2,
+        "name": "Sample chapter 2",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e3",
+        "titleId": "night",
+        "season": 1,
+        "number": 3,
+        "name": "Sample chapter 3",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e4",
+        "titleId": "night",
+        "season": 1,
+        "number": 4,
+        "name": "Sample chapter 4",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e5",
+        "titleId": "night",
+        "season": 1,
+        "number": 5,
+        "name": "Sample chapter 5",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e6",
+        "titleId": "night",
+        "season": 1,
+        "number": 6,
+        "name": "Sample chapter 6",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e7",
+        "titleId": "night",
+        "season": 1,
+        "number": 7,
+        "name": "Sample chapter 7",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e8",
+        "titleId": "night",
+        "season": 1,
+        "number": 8,
+        "name": "Sample chapter 8",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e9",
+        "titleId": "night",
+        "season": 1,
+        "number": 9,
+        "name": "Sample chapter 9",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e10",
+        "titleId": "night",
+        "season": 1,
+        "number": 10,
+        "name": "Sample chapter 10",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e11",
+        "titleId": "night",
+        "season": 1,
+        "number": 11,
+        "name": "Sample chapter 11",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e12",
+        "titleId": "night",
+        "season": 1,
+        "number": 12,
+        "name": "Sample chapter 12",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "night-s1e13",
+        "titleId": "night",
+        "season": 1,
+        "number": 13,
+        "name": "Sample chapter 13",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e1",
+        "titleId": "severance",
+        "season": 1,
+        "number": 1,
+        "name": "Sample chapter 1",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e2",
+        "titleId": "severance",
+        "season": 1,
+        "number": 2,
+        "name": "Sample chapter 2",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e3",
+        "titleId": "severance",
+        "season": 1,
+        "number": 3,
+        "name": "Sample chapter 3",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e4",
+        "titleId": "severance",
+        "season": 1,
+        "number": 4,
+        "name": "Sample chapter 4",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e5",
+        "titleId": "severance",
+        "season": 1,
+        "number": 5,
+        "name": "Sample chapter 5",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e6",
+        "titleId": "severance",
+        "season": 1,
+        "number": 6,
+        "name": "Sample chapter 6",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e7",
+        "titleId": "severance",
+        "season": 1,
+        "number": 7,
+        "name": "Sample chapter 7",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e8",
+        "titleId": "severance",
+        "season": 1,
+        "number": 8,
+        "name": "Sample chapter 8",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "severance-s1e9",
+        "titleId": "severance",
+        "season": 1,
+        "number": 9,
+        "name": "Sample chapter 9",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e1",
+        "titleId": "again",
+        "season": 1,
+        "number": 1,
+        "name": "Sample chapter 1",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e2",
+        "titleId": "again",
+        "season": 1,
+        "number": 2,
+        "name": "Sample chapter 2",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e3",
+        "titleId": "again",
+        "season": 1,
+        "number": 3,
+        "name": "Sample chapter 3",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e4",
+        "titleId": "again",
+        "season": 1,
+        "number": 4,
+        "name": "Sample chapter 4",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e5",
+        "titleId": "again",
+        "season": 1,
+        "number": 5,
+        "name": "Sample chapter 5",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e6",
+        "titleId": "again",
+        "season": 1,
+        "number": 6,
+        "name": "Sample chapter 6",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e7",
+        "titleId": "again",
+        "season": 1,
+        "number": 7,
+        "name": "Sample chapter 7",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e8",
+        "titleId": "again",
+        "season": 1,
+        "number": 8,
+        "name": "Sample chapter 8",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e9",
+        "titleId": "again",
+        "season": 1,
+        "number": 9,
+        "name": "Sample chapter 9",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e10",
+        "titleId": "again",
+        "season": 1,
+        "number": 10,
+        "name": "Sample chapter 10",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e11",
+        "titleId": "again",
+        "season": 1,
+        "number": 11,
+        "name": "Sample chapter 11",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e12",
+        "titleId": "again",
+        "season": 1,
+        "number": 12,
+        "name": "Sample chapter 12",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e13",
+        "titleId": "again",
+        "season": 1,
+        "number": 13,
+        "name": "Sample chapter 13",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e14",
+        "titleId": "again",
+        "season": 1,
+        "number": 14,
+        "name": "Sample chapter 14",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e15",
+        "titleId": "again",
+        "season": 1,
+        "number": 15,
+        "name": "Sample chapter 15",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      },
+      {
+        "id": "again-s1e16",
+        "titleId": "again",
+        "season": 1,
+        "number": 16,
+        "name": "Sample chapter 16",
+        "overview": "Sample episode information for testing spoiler controls.",
+        "airedOn": "2024-01-01"
+      }
+    ],
+    "events": [
+      {
+        "id": "sample-frieren-1",
+        "operationId": "sample-frieren-1",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e1",
+        "watchedAt": null,
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-2",
+        "operationId": "sample-frieren-2",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e2",
+        "watchedAt": "2026-10-22T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-3",
+        "operationId": "sample-frieren-3",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e3",
+        "watchedAt": "2026-10-21T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-4",
+        "operationId": "sample-frieren-4",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e4",
+        "watchedAt": "2026-10-20T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-5",
+        "operationId": "sample-frieren-5",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e5",
+        "watchedAt": "2026-10-19T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-6",
+        "operationId": "sample-frieren-6",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e6",
+        "watchedAt": "2026-10-18T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-7",
+        "operationId": "sample-frieren-7",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e7",
+        "watchedAt": "2026-10-17T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-8",
+        "operationId": "sample-frieren-8",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e8",
+        "watchedAt": "2026-10-16T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-9",
+        "operationId": "sample-frieren-9",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e9",
+        "watchedAt": "2026-10-15T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-10",
+        "operationId": "sample-frieren-10",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e10",
+        "watchedAt": "2026-10-14T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-11",
+        "operationId": "sample-frieren-11",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e11",
+        "watchedAt": "2026-10-13T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-frieren-12",
+        "operationId": "sample-frieren-12",
+        "titleId": "frieren",
+        "episodeId": "frieren-s1e12",
+        "watchedAt": "2026-10-12T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-night-1",
+        "operationId": "sample-night-1",
+        "titleId": "night",
+        "episodeId": "night-s1e1",
+        "watchedAt": "2026-10-11T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-night-2",
+        "operationId": "sample-night-2",
+        "titleId": "night",
+        "episodeId": "night-s1e2",
+        "watchedAt": "2026-10-10T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-night-3",
+        "operationId": "sample-night-3",
+        "titleId": "night",
+        "episodeId": "night-s1e3",
+        "watchedAt": "2026-10-09T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-night-4",
+        "operationId": "sample-night-4",
+        "titleId": "night",
+        "episodeId": "night-s1e4",
+        "watchedAt": "2026-10-08T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-night-5",
+        "operationId": "sample-night-5",
+        "titleId": "night",
+        "episodeId": "night-s1e5",
+        "watchedAt": "2026-10-07T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-severance-1",
+        "operationId": "sample-severance-1",
+        "titleId": "severance",
+        "episodeId": "severance-s1e1",
+        "watchedAt": "2026-10-06T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-severance-2",
+        "operationId": "sample-severance-2",
+        "titleId": "severance",
+        "episodeId": "severance-s1e2",
+        "watchedAt": "2026-10-05T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-severance-3",
+        "operationId": "sample-severance-3",
+        "titleId": "severance",
+        "episodeId": "severance-s1e3",
+        "watchedAt": "2026-10-04T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-1",
+        "operationId": "sample-again-1",
+        "titleId": "again",
+        "episodeId": "again-s1e1",
+        "watchedAt": "2026-10-23T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-2",
+        "operationId": "sample-again-2",
+        "titleId": "again",
+        "episodeId": "again-s1e2",
+        "watchedAt": "2026-10-22T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-3",
+        "operationId": "sample-again-3",
+        "titleId": "again",
+        "episodeId": "again-s1e3",
+        "watchedAt": "2026-10-21T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-4",
+        "operationId": "sample-again-4",
+        "titleId": "again",
+        "episodeId": "again-s1e4",
+        "watchedAt": "2026-10-20T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-5",
+        "operationId": "sample-again-5",
+        "titleId": "again",
+        "episodeId": "again-s1e5",
+        "watchedAt": "2026-10-19T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-6",
+        "operationId": "sample-again-6",
+        "titleId": "again",
+        "episodeId": "again-s1e6",
+        "watchedAt": "2026-10-18T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-7",
+        "operationId": "sample-again-7",
+        "titleId": "again",
+        "episodeId": "again-s1e7",
+        "watchedAt": "2026-10-17T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      },
+      {
+        "id": "sample-again-8",
+        "operationId": "sample-again-8",
+        "titleId": "again",
+        "episodeId": "again-s1e8",
+        "watchedAt": "2026-10-16T12:00:00.000Z",
+        "recordedAt": "2026-10-21T00:00:00Z",
+        "revokedAt": null,
+        "origin": "sample"
+      }
+    ],
+    "skippedEpisodeIds": [],
+    "locations": [
+      {
+        "id": "loc-frieren",
+        "titleId": "frieren",
+        "deviceId": "sample-pc",
+        "deviceName": "Windows PC",
+        "volumeId": "sample-volume-e",
+        "driveLetter": "E:",
+        "root": "E:\\Media Server",
+        "relativePath": "Anime\\Frieren\\Season 01",
+        "season": 1,
+        "fileCount": 28,
+        "sizeBytes": 22400000000,
+        "evidence": "present",
+        "checkedAt": "2026-10-21T00:00:00Z"
+      },
+      {
+        "id": "loc-night",
+        "titleId": "night",
+        "deviceId": "sample-pc",
+        "deviceName": "Windows PC",
+        "volumeId": "sample-volume-e",
+        "driveLetter": "E:",
+        "root": "E:\\Media Server",
+        "relativePath": "Anime\\Call of the Night\\Season 01",
+        "season": 1,
+        "fileCount": 13,
+        "sizeBytes": 6500000000,
+        "evidence": "present",
+        "checkedAt": "2026-10-21T00:00:00Z"
+      },
+      {
+        "id": "loc-severance",
+        "titleId": "severance",
+        "deviceId": "sample-pc",
+        "deviceName": "Windows PC",
+        "volumeId": "sample-volume-f",
+        "driveLetter": "F:",
+        "root": "F:\\Media Server",
+        "relativePath": "Shows\\Severance\\Season 01",
+        "season": 1,
+        "fileCount": 9,
+        "sizeBytes": 9000000000,
+        "evidence": "unavailable",
+        "checkedAt": "2026-10-20T00:00:00Z"
+      }
+    ]
+  },
+  "unwatched": [
+    "alpha",
+    "beta",
+    "delta",
+    "quiet-orbit",
+    "zebra"
+  ],
+  "picks": [
+    {
+      "day": "2026-10-23",
+      "id": "zebra"
+    },
+    {
+      "day": "2026-10-24",
+      "id": "alpha"
+    },
+    {
+      "day": "2024-02-29",
+      "id": "alpha"
+    },
+    {
+      "day": "1900-01-01",
+      "id": "quiet-orbit"
+    },
+    {
+      "day": "2200-12-31",
+      "id": "beta"
+    }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "mediaType": "tv",
+      "name": "Beta",
+      "year": 2022,
+      "rating": 8,
+      "votes": 20,
+      "genres": [
+        "Drama"
+      ],
+      "overview": "",
+      "posterPath": null,
+      "backdropPath": null,
+      "source": "tmdb"
+    },
+    {
+      "id": 2,
+      "mediaType": "movie",
+      "name": "Alpha",
+      "year": 2024,
+      "rating": 8,
+      "votes": 40,
+      "genres": [
+        "Drama",
+        "Fantasy"
+      ],
+      "overview": "",
+      "posterPath": null,
+      "backdropPath": null,
+      "source": "tmdb"
+    },
+    {
+      "id": 3,
+      "mediaType": "tv",
+      "name": "Zebra",
+      "year": null,
+      "rating": null,
+      "votes": 0,
+      "genres": [
+        "Comedy"
+      ],
+      "overview": "",
+      "posterPath": null,
+      "backdropPath": null,
+      "source": "tmdb"
+    },
+    {
+      "id": 4,
+      "mediaType": "movie",
+      "name": "Delta",
+      "year": 2024,
+      "rating": 8,
+      "votes": 40,
+      "genres": [
+        "Drama"
+      ],
+      "overview": "",
+      "posterPath": null,
+      "backdropPath": null,
+      "source": "tmdb"
+    },
+    {
+      "id": 5,
+      "mediaType": "tv",
+      "name": "Gamma",
+      "year": 2023,
+      "rating": 9,
+      "votes": 1,
+      "genres": [
+        "Animation"
+      ],
+      "overview": "",
+      "posterPath": null,
+      "backdropPath": null,
+      "source": "tmdb"
+    }
+  ],
+  "cases": [
+    {
+      "section": "rated-shows",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "rating",
+        "error": ""
+      },
+      "expectedKeys": [
+        "tv:5",
+        "tv:1",
+        "tv:3"
+      ]
+    },
+    {
+      "section": "rated-movies",
+      "filters": {
+        "type": "movie",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "rating",
+        "error": ""
+      },
+      "expectedKeys": [
+        "movie:2",
+        "movie:4"
+      ]
+    },
+    {
+      "section": "popular-shows",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": [
+        "tv:1",
+        "tv:3",
+        "tv:5"
+      ]
+    },
+    {
+      "section": "popular-movies",
+      "filters": {
+        "type": "movie",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": [
+        "movie:2",
+        "movie:4"
+      ]
+    },
+    {
+      "section": "daily",
+      "filters": {
+        "type": "all",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": [
+        "tv:1",
+        "movie:2",
+        "tv:3",
+        "movie:4",
+        "tv:5"
+      ]
+    },
+    {
+      "section": "daily",
+      "filters": {
+        "type": "all",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "title",
+        "error": ""
+      },
+      "expectedKeys": [
+        "movie:2",
+        "tv:1",
+        "movie:4",
+        "tv:5",
+        "tv:3"
+      ]
+    },
+    {
+      "section": "daily",
+      "filters": {
+        "type": "all",
+        "genre": "",
+        "year": "",
+        "minimum": 8,
+        "sort": "rating",
+        "error": ""
+      },
+      "expectedKeys": [
+        "tv:5",
+        "movie:2",
+        "movie:4",
+        "tv:1"
+      ]
+    },
+    {
+      "section": "daily",
+      "filters": {
+        "type": "movie",
+        "genre": "Drama",
+        "year": "2024",
+        "minimum": 0,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": [
+        "movie:2",
+        "movie:4"
+      ]
+    },
+    {
+      "section": "recommended",
+      "filters": {
+        "type": "all",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "newest",
+        "error": ""
+      },
+      "expectedKeys": [
+        "movie:2",
+        "movie:4",
+        "tv:5",
+        "tv:1",
+        "tv:3"
+      ]
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "movie",
+        "genre": "Fantasy",
+        "year": "",
+        "minimum": 7.5,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": [
+        "movie:2"
+      ]
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "Fantasy",
+        "year": "",
+        "minimum": 0,
+        "sort": "popular",
+        "error": "Choose a supported genre."
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "1879",
+        "minimum": 0,
+        "sort": "popular",
+        "error": "Enter a year from 1880 to 2200."
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "2201",
+        "minimum": 0,
+        "sort": "popular",
+        "error": "Enter a year from 1880 to 2200."
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "20",
+        "minimum": 0,
+        "sort": "popular",
+        "error": "Enter a year from 1880 to 2200."
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "",
+        "minimum": 10.1,
+        "sort": "popular",
+        "error": "Choose a rating from 0 to 10."
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "",
+        "minimum": -1,
+        "sort": "popular",
+        "error": "Choose a rating from 0 to 10."
+      },
+      "expectedKeys": [
+        "tv:1",
+        "tv:5"
+      ]
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "",
+        "minimum": 10,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "",
+        "year": "",
+        "minimum": 0,
+        "sort": "popular",
+        "error": ""
+      },
+      "expectedKeys": [
+        "tv:1",
+        "tv:3",
+        "tv:5"
+      ]
+    },
+    {
+      "section": "daily",
+      "filters": {
+        "type": "all",
+        "genre": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "year": "",
+        "minimum": 0,
+        "sort": "popular",
+        "error": "Choose a shorter genre."
+      },
+      "expectedKeys": []
+    },
+    {
+      "section": "genres",
+      "filters": {
+        "type": "tv",
+        "genre": "invalid",
+        "year": "invalid",
+        "minimum": null,
+        "sort": "popular",
+        "error": "Enter a year from 1880 to 2200."
+      },
+      "expectedKeys": []
+    }
+  ],
+  "merged": [
+    "tv:1",
+    "movie:2",
+    "movie:1"
+  ]
+}

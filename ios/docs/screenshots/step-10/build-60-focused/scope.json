@@ -1,0 +1,36 @@
+{
+  "source": "e17189ebddd4392c87ac3d5fb33a44d00486b15d",
+  "run": "6ade2b024a72334e32e50d12",
+  "overall": "FAILED: 1 of 17 focused UI cases; primary/device/release not reached",
+  "scope": "Original attachments from individually passed cases only; not a stable-build claim",
+  "files": [
+    {
+      "file": "glass-compact-header.png",
+      "test": "LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField()",
+      "attachment": "4C4BB14E-3896-4CF8-959A-C447C5C948EE.png",
+      "device": "iPhone 17 Pro",
+      "sha256": "0a1a96e0e8693ca58ed7653e5fd94b5ca7e45860fccfb1ce6fb17b7f05ded9c8"
+    },
+    {
+      "file": "import-progress.png",
+      "test": "NativeScreensTests/testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause()",
+      "attachment": "B0E380A9-4EDE-4572-A74B-B0240DA4E6CD.png",
+      "device": "iPhone 17 Pro",
+      "sha256": "782192cdbd35516ed3b19c673d0a0a3f4780bd718d21dbac9bbac0eaede007ff"
+    },
+    {
+      "file": "episode-grid.png",
+      "test": "NativeScreensTests/testCollectionGridsKeepEpisodeActionsFoldersAndHistoryEntries()",
+      "attachment": "28C2022A-28DD-4341-817D-E40FF3C3D2EB.png",
+      "device": "iPhone 17 Pro",
+      "sha256": "0f85b00596d2299dc2fa29a776925cde490f7eb295296b49dcd2bd7bf3e326a4"
+    },
+    {
+      "file": "community-information.png",
+      "test": "NativeScreensTests/testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle()",
+      "attachment": "C1578A76-2153-4F02-B249-1CF3AEEBD115.png",
+      "device": "iPhone 17 Pro",
+      "sha256": "6f4cb2df69bb54b698f949b4e8167e81801034651ea47f5d4ebb81c039704c97"
+    }
+  ]
+}

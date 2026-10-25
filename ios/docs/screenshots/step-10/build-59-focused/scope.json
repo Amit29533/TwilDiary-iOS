@@ -1,0 +1,58 @@
+{
+  "source": "c12f24bf33712905a545b394915642f0c009bd36",
+  "run": "6ade213a4a72334e32e50a40",
+  "scope": "These individual focused cases passed; the overall candidate failed five other focused cases. Not release acceptance. Original unedited fixture screenshots.",
+  "screenshots": [
+    {
+      "path": "import-progress.png",
+      "sha256": "2b2efd8931f72e91371525a3815c1ec8f6629fa60179afeb41392755bc5e84e8",
+      "test": {
+        "testIdentifier": "NativeScreensTests/testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause()",
+        "testIdentifierURL": "test://com.apple.xcode/TwilDiary/TwilDiaryUITests/NativeScreensTests/testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause"
+      },
+      "attachment": {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "E35085EA-6FCB-4E87-8EF4-004E586A9F0F",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "A33E5FAD-D286-499B-A431-E66FFA4A22BE.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Approved Trakt import continues across native tabs with global percentage_0_7A4D12AC-62D4-4D7D-9C82-86D4F12D8457.png",
+        "timestamp": 1792942735.727
+      }
+    },
+    {
+      "path": "community-information.png",
+      "sha256": "5e77ecbbe1a77d686326fd928cd741304921dfa74cad64077f50b970794adf71",
+      "test": {
+        "testIdentifier": "NativeScreensTests/testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle()",
+        "testIdentifierURL": "test://com.apple.xcode/TwilDiary/TwilDiaryUITests/NativeScreensTests/testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle"
+      },
+      "attachment": {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "E35085EA-6FCB-4E87-8EF4-004E586A9F0F",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "15A4D98E-E488-4EB4-92DC-CE0247AAD8F9.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Trakt community information fixture_0_6B8F28B2-8BDF-45B7-9714-D1FC6B37528C.png",
+        "timestamp": 1792942790.53
+      }
+    },
+    {
+      "path": "home-native-tabs.png",
+      "sha256": "51f340100b3eb34c9fa657f6f3bba04854bfde6bebd0ad14aa3976ac09afb56b",
+      "test": {
+        "testIdentifier": "NativeScreensTests/testNativeTabsAndTitleNavigation()",
+        "testIdentifierURL": "test://com.apple.xcode/TwilDiary/TwilDiaryUITests/NativeScreensTests/testNativeTabsAndTitleNavigation"
+      },
+      "attachment": {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "E35085EA-6FCB-4E87-8EF4-004E586A9F0F",
+        "deviceName": "iPhone 17 Pro",
+        "exportedFileName": "512FDCB9-DDC6-4073-8F1A-F1D480022498.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "Home_0_42C974E7-AAA5-41BA-AD4E-114BDACA547A.png",
+        "timestamp": 1792942984.822
+      }
+    }
+  ]
+}

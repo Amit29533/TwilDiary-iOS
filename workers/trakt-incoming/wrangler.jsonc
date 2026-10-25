@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "twildiary-trakt-incoming",
+  "main": "index.ts",
+  "compatibility_date": "2026-10-21",
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "twildiary-v2",
+    "database_id": "00000000-0000-0000-0000-000000000000",
+    "migrations_dir": "../../drizzle"
+  }],
+  "observability": { "enabled": true }
+}

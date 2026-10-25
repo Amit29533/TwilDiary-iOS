@@ -1,0 +1,3 @@
+# Build33 early UI gate — ten passed cases only
+
+Source3cd25b01f75039cf502a78caa684953abdef343a, GitHub run40130893194. Original unmodified iPhone17Pro attachments from the successfully completed ten-case early gate; source/run/test scope is retained in scope.json. Search returns twice from a saved title through native content Back, retains its query and keeps the keyboard dismissed, then checks online return/cancellation and Glance-only search. The movie screenshot follows watch+Undo; the same passed test verifies9→8 and10→8 episode progress and the actual short Undo action. Full primary/all-phone/release acceptance remains pending. Synthetic preview data is explicitly test-only.
