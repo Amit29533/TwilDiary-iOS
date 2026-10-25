@@ -1,0 +1,57 @@
+{
+  "build": 62,
+  "sourceSHA": "50134fc9addcc243434ee5721eb74ea1eec13f61",
+  "provider": "Codemagic",
+  "completeRegression": "success",
+  "independentGithub": "failed; these remain original Codemagic evidence",
+  "images": [
+    {
+      "file": "home.png",
+      "originalAttachment": "78CEC40F-48E7-4D48-BCD1-865359031E31.png",
+      "caption": "Home carousel controls before opening_0_DE4F6779-29DB-4521-BF27-EDB6840ED26B.png",
+      "sha256": "4e494c2c7fc2f12e668efb381a0e9fe2311c2a7d23aac474614b7fcfd104398f"
+    },
+    {
+      "file": "glance.png",
+      "originalAttachment": "50F35DC8-6D9E-48A3-BC81-F411F9192774.png",
+      "caption": "Glance without saved-diary status overlay_0_6B119270-A99F-40D2-B130-EA154892C4CF.png",
+      "sha256": "c3b0b583b7f617cba07253d34c2034ac1fa53a9ffdf183376607f044ba46a16e"
+    },
+    {
+      "file": "title.png",
+      "originalAttachment": "F86FF99C-4387-4FFC-A39E-E1610378B054.png",
+      "caption": "Layout 402 Glass lowered title artwork and identity_0_8CB3A7E8-25B5-424D-BEE2-017727CE87C0.png",
+      "sha256": "f463273e6f5c2285d9411cb8d634cfb04a339cffc8ccbb8624bff4d2b07334b9"
+    },
+    {
+      "file": "glass-compact-header.png",
+      "originalAttachment": "7D3C89D0-92B9-441F-A0C7-14B3AB6D7CBC.png",
+      "caption": "Layout 402 Glass compact scrolled title header_0_8BE3F6DF-B046-4440-9B32-009DA9A0DAE7.png",
+      "sha256": "914277ee4437bf30e561f80f43cec26bec195778efc63abc39f8f26b31b8ed80"
+    },
+    {
+      "file": "episode-grid.png",
+      "originalAttachment": "84969998-449F-4F1C-8EB5-AC15FC01E79D.png",
+      "caption": "Expanded episode grid keeps captions watch controls and summaries together_0_3866F347-A01D-4897-966B-0D938B9A0A10.png",
+      "sha256": "c1e53198261674aa847ca80c9917785161dca0a385c2b1fd1ef7d91d10259f31"
+    },
+    {
+      "file": "community-information.png",
+      "originalAttachment": "193DFC1A-0234-41BC-A0E4-DDF7687DA97E.png",
+      "caption": "Trakt community information fixture_0_46EDCA8D-374B-4C3F-84A1-66C361785853.png",
+      "sha256": "4ee754f5e1fd4551bb913cfcfdc701e566b16e5a47758c7c10930e7b96bb9cc8"
+    },
+    {
+      "file": "import-progress.png",
+      "originalAttachment": "38627D6E-A513-420E-A2CC-49A75FFA30F2.png",
+      "caption": "Approved Trakt import continues across native tabs with global percentage_0_5465BD11-D923-4252-A98B-8787D89BED27.png",
+      "sha256": "7c7a0885e4d9fb72fd96e7b0dcfc9bee8e1591d289fb806ff5988e80d0c2359b"
+    },
+    {
+      "file": "compact-undo.png",
+      "originalAttachment": "30AE8E3F-5950-402D-830F-EBDB591E6440.png",
+      "caption": "Compact watch toast_0_8E5A7101-48FF-4008-BAB4-6D75F0CAB53E.png",
+      "sha256": "e9364401f4083001c7722b8da76e89bda6d1af74ef1a39130bbcb0d2453fab42"
+    }
+  ]
+}

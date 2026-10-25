@@ -18,3 +18,13 @@ test-results/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Native outputs from either the current ios/ layout or historical root project.
+.build/
+.swiftpm/
+*.xcodeproj/
+*.xcresult/
+**/xcuserdata/
+*.ipa
+*.p12
+*.mobileprovision

@@ -1,57 +1,83 @@
-# TwilDiary
+# TwilDiary for iOS
 
-A new personal media diary for iPhone and desktop. Built around quick episode updates, an artwork-led library, and Windows drive mapping.
+This is the complete native SwiftUI application and its existing Cloudflare backend,
+consolidated from [TwilDiary](https://github.com/Amit29533/TwilDiary). A fresh clone
+contains the native app, API/Worker source, incoming Trakt scheduler, all17D1
+migrations, tests, fixtures, design references, deployment tools and both CI pipelines.
+No sibling checkout is required to build either the iOS client or backend.
 
-The native SwiftUI app is developed separately in [TwilDiary-iOS](https://github.com/Amit29533/TwilDiary-iOS). This repository remains the web app and shared Cloudflare backend.
+## Current development and builds
 
-## Development status
+- `main`: latest development source, including the prepared native64changes.
+  Native64has not compiled/run on macOS yet; migration is not a stability claim.
+- Latest completed Codemagic build: **native62**, source`50134fc`. Its imported
+  unsigned iPhone IPA, SHA256 and test evidence are in the
+  [native62 prerelease](https://github.com/Amit29533/TwilDiary-iOS/releases/tag/native62-codemagic).
+  Its independent original GitHub iOS run failed; read its provenance before testing.
+- Native63failed its cold-quota Pause UI case. Native64and all outstanding phone
+  feedback remain in [PROGRESS.md](PROGRESS.md); the ten-step audit is in [ROADMAP.md](ROADMAP.md).
+- Both repositories' histories are preserved. The old root-level Swift project
+  is superseded by `ios/`; historical source is reachable from the
+  `archive/pre-consolidation-ios` tag and the merge ancestry.
 
-The polished `/preview` workspace is now the only application, backed by the real D1 APIs. The former `/diary` URLs redirect to it. Home, Library, Glance, Stats/history, Locations, Explore, More and title screens share one controller and design. The existing sample library was migrated once into D1 and remains marked as demo data so it is excluded from Trakt exports. Existing real titles and history are preserved.
+## Build the native application
 
-TMDB search/import, lazy season metadata, watches/Undo, notes, ratings, Queue and Trash use the backend. Trakt PKCE sign-in, reviewed two-way history/ratings/watchlist sync and personal recommendations are implemented. The final web audit and connected test-account sync audit passed; see the release and Trakt audit reports below for coverage and remaining physical iPhone and Capacitor checks. See [hosting and Trakt connection](docs/HOSTING-AND-TRAKT-CONNECTION.md) for hosting details; earlier reports describe previous development stages.
+Windows has no Xcode. Use the manually started Codemagic candidate workflow, then
+independent GitHub verification of that **same SHA**. Build setup and provider
+connection requirements are in [CODEMAGIC.md](CODEMAGIC.md).
 
-Selected stack: SvelteKit 3 + Svelte 5 + TypeScript, Cloudflare Workers/static assets, D1 with Drizzle, Cloudflare Access, and TMDB metadata/poster URLs. The owner approved Cloudflare account login while Google OAuth remains deferred. R2 is deferred. The fresh hosted project uses the free plans.
+On a Mac with the pinned Xcode26.6/iOS26.5 toolchain:
 
-## Run locally
+```sh
+bash ios/scripts/xcodegen.sh
+swift test --package-path ios/Packages/TwilDiaryCore
+bash ios/scripts/ci.sh inventory
+```
 
-Requires Node 24 or later.
+`ios/project.yml` is the XcodeGen project source. Generated `.xcodeproj`, compiled
+outputs and certificates stay out of Git. The app targets iPhone/iOS26+; its
+configured endpoint and bundle ID remain unchanged. Install the unsigned IPA
+using your existing LiveContainer setup; see
+[installation](ios/docs/INSTALL-WITHOUT-MAC.md) and [device checks](ios/docs/DEVICE-CHECKS.md).
+
+## Backend and database, independently from this clone
+
+Requires Node24+. These commands use a disposable local database, never hosted D1:
 
 ```sh
 npm ci
+npm run check
+npm test
+npm run build
 npm run db:migrate:local
-npm run dev
 ```
 
-Open `http://127.0.0.1:5180/preview/home`. This is the real local D1 workspace. On first use, the app migrates the existing Preview snapshot, or seeds the marked demo library if there is no snapshot. Local and hosted D1 are separate databases; local edits are not automatically uploaded to the host.
+For a local API server, copy `.dev.vars.example` to ignored `.dev.vars`, set
+`LOCAL_DIARY=1`, then `npm run dev`. Live provider credentials are optional for
+fixture-backed tests and must never be committed. See
+[original backend setup](docs/WEB-BACKEND-README.md) and
+[architecture](ios/docs/IOS-ARCHITECTURE.md).
 
-For direct phone testing on trusted Wi-Fi, follow [local phone testing](docs/LOCAL-PHONE-TESTING.md). For private HTTPS access, open [the hosted app](https://twildiary-v2.amit29533.workers.dev/preview/home) and sign in with the owner's Cloudflare account.
+`wrangler.production.jsonc` and `workers/trakt-incoming/wrangler.production.jsonc`
+identify the **existing** hosted D1/Workers. The consolidation creates no database,
+clones no hosted data, changes no Access policy, deploys nothing and copies no
+credentials. All migration SQL and metadata are present through0016. The tested
+0014–0016rollout is still pending on hosted D1; follow
+[the rollout runbook](ios/docs/BACKEND-ROLLOUT.md). Keep this project on Free and
+verify actual account usage; local test results do not certify production costs.
 
-For the owner-approved PC-only mode, set `LOCAL_DIARY=1` in ignored `.dev.vars` and apply local migrations. Open `/preview/more` for the masked TMDB and Trakt setup fields. Provider credential setup requires a loopback hostname and socket. Optional trusted LAN access is separately enabled and all development bypasses are compiled out of production. Deployed read/write routes require verified Cloudflare Access. Never commit `.dev.vars` or paste credentials into chat.
+## Pipelines and repository cutover
 
-```sh
-npm run verify
-```
+- `repository.yml`: inexpensive Node/API/database/release-tool verification for
+  `main` and pull requests; all database/provider tests use local fixtures.
+- `codemagic.yaml`: manual-only full native candidate regression and separate
+  explicitly labelled phone diagnostic. No automatic builds or deployment.
+- `ios.yml`: independent macOS verification, triggered on `ios-native` or manually
+  on a fully Codemagic-qualified SHA. Official checks must belong to this repository;
+  historical checks from the original repository cannot qualify a new commit.
+- No CI workflow deploys Cloudflare, signs an app or uses hosted diary credentials.
 
-This runs app/worker type checking, unit/database/auth tests, the Workers build, and runtime tests against the compiled service worker. The browser review procedure and verification limits are recorded separately in the phase reports.
-
-- [Five-phase development plan](docs/DEVELOPMENT-PLAN.md)
-- [Full application audit, cast browsing pages and remaining work](docs/FULL-AUDIT-2026-10-23.md)
-- [Final release audit, browser coverage and device checks](docs/RELEASE-AUDIT-2026-10-23.md)
-- [Connected Trakt audit, sync fixes and live results](docs/TRAKT-LIVE-AUDIT-2026-10-23.md)
-- [Status, slider progress and reversible completion/reset rules](docs/STATUS-AND-PROGRESS.md)
-- [Real Home/Glance/Stats, Trakt setup/sync and verification](docs/REAL-DIARY-AND-TRAKT.md)
-- [Live TMDB integration, credential setup and verification](docs/TMDB-INTEGRATION.md)
-- [Local preview and verification report](docs/PHASE-1-REPORT.md)
-- [Reference design alignment](docs/DESIGN-ALIGNMENT.md)
-- [Latest daily-use polish, Disk Map, genre rows and verification](docs/DAILY-USE-POLISH-REPORT.md)
-- [Explore, fixed headers, carousel and chart polish](docs/EXPLORE-AND-NAVIGATION-REPORT.md)
-- [Collection actions, Trash, TwilDiary branding and surprise picks](docs/COLLECTION-AND-BRANDING-REPORT.md)
-- [Latest interaction polish, inline search, scanner review and offline scope](docs/INTERACTION-AND-OFFLINE-REPORT.md)
-- [Library/history backend progress and API contract](docs/PHASE-2-REPORT.md)
-- [TMDb, real workspace and compact UI increment](docs/METADATA-WORKSPACE-REPORT.md)
-- [Product and interaction specification](docs/PRODUCT-SPEC.md)
-- [Research and reuse decisions](docs/RESEARCH.md)
-- [Selected architecture and hosting setup](docs/ARCHITECTURE.md)
-- [Earlier backend comparison (superseded)](docs/BACKEND-OPTIONS.md)
-
-This checkout is separate from the old Twil application and Netlify site. Only the new Cloudflare project is used. Local credentials, diary databases, exports and generated build artifacts are excluded from Git.
+The import commit uses `[skip ci]` to preserve the requested next-build hold.
+The latest development is not automatically promoted to `ios-native`.
+See [migration inventory and verification](ios/docs/REPOSITORY-MIGRATION.md),
+[parity](ios/docs/IOS-PARITY.md), and [release provenance](ios/docs/releases/).

@@ -1,0 +1,29 @@
+{
+  "kind": "imported-codemagic-candidate",
+  "build": 62,
+  "source_repository": "Amit29533/TwilDiary",
+  "sourceSHA": "50134fc9addcc243434ee5721eb74ea1eec13f61",
+  "destination_repository": "Amit29533/TwilDiary-iOS",
+  "ipaSHA256": "3ba1075f327170553344e94cf73de199e778c7c619029b855042c53b6f8d1cd2",
+  "ipaBytes": 5719316,
+  "codemagicBuild": "6ade49474a72334e32e515c7",
+  "officialCheck": "https://github.com/Amit29533/TwilDiary/runs/121268303837",
+  "tests": {
+    "core": 68,
+    "nativeUnit": 219,
+    "focusedUI": 17,
+    "earlyUI": 10,
+    "primaryUI": 53,
+    "compactLayout": 3,
+    "largeLayout": 3
+  },
+  "nativeBuildWarnings": 0,
+  "privacyManifest": true,
+  "fixtureExclusion": true,
+  "unsignedPhysicalIPhone": true,
+  "independentGithubRun": "https://github.com/Amit29533/TwilDiary/actions/runs/40228034161",
+  "independentGithubResult": "failure in four focused UI cases; not stable qualification",
+  "latestDevelopmentBuild": 64,
+  "latestDevelopmentCompiled": false,
+  "releaseURL": "https://github.com/Amit29533/TwilDiary-iOS/releases/tag/native62-codemagic"
+}

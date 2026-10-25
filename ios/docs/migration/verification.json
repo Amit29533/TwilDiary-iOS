@@ -1,0 +1,36 @@
+{
+  "status": "local_migration_verified",
+  "sourceCommit": "c14333f6e31473d6c428ab0b6640a6aa607a4657",
+  "exactImportCommit": "7dd0eff52aea43f234639775759e88a1788cce50",
+  "identicalInitialTree": "3c7cbe7e7250e5c7e2348ad9892037c70be56def",
+  "sourceTrackedEntries": 1178,
+  "missingSourceFiles": [],
+  "adaptedSourcePaths": [
+    ".gitignore",
+    "CODEMAGIC.md",
+    "PROGRESS.md",
+    "README.md",
+    "ROADMAP.md"
+  ],
+  "allRuntimeBackendNativeAndExistingPipelinesUnchanged": true,
+  "originalReadmesPreservedVerbatim": true,
+  "originalAndDestinationHistoryPreserved": true,
+  "forbiddenPrivateFiles": [],
+  "localValidation": {
+    "backendTests": 409,
+    "releaseToolTests": 27,
+    "typeErrors": 0,
+    "typeWarnings": 0,
+    "incomingWorkerTypecheck": "pass",
+    "workerBuild": "pass",
+    "pipelineYamlStructure": "pass"
+  },
+  "hostedD1TestReads": 0,
+  "hostedD1TestWrites": 0,
+  "newNativeBuildStarted": false,
+  "productionDeployment": false,
+  "sourceAcceptance": "native64development_not_macOS_qualified",
+  "latestImportedArtifact": "native62-codemagic",
+  "remoteReceipt": "release asset repository-migration-verification.json is generated after fresh remote verification",
+  "externalConnection": "Codemagic GitHub destination access awaits owner email/sudo verification"
+}

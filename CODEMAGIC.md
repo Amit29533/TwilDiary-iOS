@@ -1,20 +1,35 @@
-# Native iOS builds on Codemagic
+# Native candidate pipeline in TwilDiary-iOS
 
-On25October local time the user explicitly authorized concurrent providers. First Codemagic run [6add160a4a72334e32e4d39f](https://codemagic.io/app/6adcc927390bc3069c9e5490/build/6add160a4a72334e32e4d39f) checks out72f081cf59b13f23a17fb4626cef522222ff2b94, the native build32 source. Its M2 baseline runs while the next GitHub revision is prepared; completion/results/artifacts remain pending. Earlier setup checkpoints below are historical, not the current run state. No billing/signing/publishing/SSH settings changed.
+The repository-root `codemagic.yaml` is the complete pipeline. It generates
+`ios/project.yml` using pinned XcodeGen, tests Core/native/UI/layouts, compiles
+unsigned arm64 Release, verifies resources/privacy and retains IPA, logs,
+xcresults and screenshots. Xcode26.6, iOS26.5 and M2are pinned; no signing or
+Cloudflare secrets are needed. This is native iOS testing, not a PWA UI walkthrough.
 
+## Connection and branch policy
 
-GitHub Actions on `ios-native` remains the established pipeline. The user additionally permits Codemagic; root `codemagic.yaml` prepares a **manual-only** fallback. The user has linked Codemagic app `6adcc927390bc3069c9e5490` to `Amit29533/TwilDiary`. Its authenticated browser settings now select `ios-native` and recognize the committed YAML, showing Start your first build. No Codemagic run or successful artifact is claimed; the current GitHub build is allowed to finish without duplicate execution. No API token was requested, read or stored. Do not cancel an active GitHub run or use a second provider to bypass a failing test.
+1. Connect **Amit29533/TwilDiary-iOS** in the existing Codemagic account/team.
+   The prior app6adcc927390bc3069c9e5490points to the original TwilDiary repository
+   and is retained for historical evidence. Its existing GitHub integration
+   currently lists only TwilDiary; destination access must be enabled before
+   same-repository official checks can be posted.
+2. Choose `main` (or the explicit candidate branch) and workflow
+   `native-ios-regression`. Do not start a build until the owner's next-build
+   hold is lifted and native62phone feedback is incorporated. No automatic
+   triggers are configured in the YAML.
+3. Require the newest official `TwilDiary native iOS — unsigned regression`
+   GitHub check from `codemagic-ci-cd` to be complete/success for that exact SHA.
+   Initial checks can remain pending while a newer final check is created;
+   fetch all pages/filter=all and use the verifier in `ios/tools`.
+4. Only then run this repository's `ios.yml` manually on that same branch/SHA,
+   or fast-forward a verified commit onto `ios-native`. Its gate asks
+   `$GITHUB_REPOSITORY`, so checks on the original repo cannot silently qualify it.
+5. Only a completely successful independent regression publishes a stable IPA.
+   `native-ios-device-diagnostic` is for owner-authorized phone checks, never
+   promotion. The imported native62 prerelease retains its original provenance.
 
-To use the linked app, manually select branch `ios-native` and workflow `native-ios-regression`. It uses the standard M2 instance, pins Xcode 26.6 and reuses `ios/project.yml` plus **all** stages of `ios/scripts/ci.sh`: inventory, Core, simulator compile, early device regressions, unsigned arm64 Release, primary unit/UI, compact/large layout, screenshots and zero-warning diagnostics. The script derives simulator architecture from the machine, so an Apple silicon simulator build is distinct from the physical arm64 IPA. No signing credentials, Apple Developer membership, new subscription, deployment or production diary access is configured.
-
-The first actual run must confirm Xcode/tool versions, simulator inventory, Bash execution, all test counts, logs, exported screenshot/xcresult artifacts and the IPA build/hash/architecture before acceptance. The EXIT trap retains diagnostics and preserves the original failing exit status; an unsigned IPA produced before later tests fail is only a diagnostic/trial artifact. Do not call it a passed release. GitHub-specific `collect-build.py` run metadata cannot be fabricated for Codemagic; provider-specific completed-run provenance must be recorded before accepting its artifacts. No UI, domain behavior, API or server changes are involved in this fallback configuration.
-
-From build 30, `test-unit` runs before the early UI gate; `test` runs the complete primary UI suite. The manual fallback includes both stages and retains their separate xcresult/log evidence. This ordering does not bypass any failed test. No Codemagic execution has been started.
-
-Official references checked on 24 October 2026:
-
-- [Xcode 26.6 machine specifications](https://docs.codemagic.io/specs-macos/xcode-26-6/) list iOS 26.5 with iPhone 17 Pro, 17e and 17 Pro Max.
-- [YAML workflows and instance configuration](https://docs.codemagic.io/yaml-basic-configuration/yaml-getting-started/).
-- [CM_ENV propagation](https://docs.codemagic.io/yaml-basic-configuration/using-environment-variables/). The shared inventory stage's GITHUB_ENV output is mapped to CM_ENV, and this script also loads the simulator ID explicitly for its own shell.
-
-Leave automatic triggering and publishing unset. If Codemagic is already linked elsewhere, reuse that application rather than creating duplicate integrations. Account linking/access is an external setup prerequisite, not a reason to stop the working GitHub pipeline.
+No subscription, paid instance, signing, SSH key or API token is configured by
+this migration. Existing integration permissions must not be broadened silently.
+GitHub Actions is enabled on the destination; the local Node/database/release-tool
+checks can run without Codemagic. Historical setup notes are preserved in
+`ios/docs/legacy-repository/CODEMAGIC-BEFORE-CONSOLIDATION.md`.

@@ -17,6 +17,50 @@ CI. XcodeGen generates the project; no hand-written pbxproj. Swift6/Observation,
 iOS26+ for owner's iOS27, no third-party Swift packages. Toolchain: Xcode26.6,
 iOS26.5 iPhone17Pro/17e/17ProMax. CM M2candidate; GHA macos-26-intel independent.
 
+
+## Canonical repository after consolidation26October2026
+
+The owner explicitly requested all native development, backend and pipelines move
+into **Amit29533/TwilDiary-iOS**. This checkout is now the canonical complete
+project; local pathC:/Users/Amit Singh/Documents/ChatGPT/Track Everything/TwilDiary-iOS.
+The imported source is originalTwilDiaryc14333f(full native64draft/backend prep).
+Merge7dd0eff has the exact same tree3c7cbe7e7250e5c7e2348ad9892037c70be56def,
+with both original and destination history preserved. Main becomes latest
+**development**, not a newly accepted stable build. Existing source and failed
+CI evidence remain honest; no new native build/deployment is started here.
+
+Native62latest fully passed CMartifact downloaded from6ade49474a72334e32e515c7:
+actualIPA5,719,316bytes, build62,iPhoneOS,privacy/no-fixtures/ZIPCRC verified,
+SHA2563ba1075f327170553344e94cf73de199e778c7c619029b855042c53b6f8d1cd2.
+Full724,086,122byteartifact ZIPCRC and matching internalIPAchecksum verified.
+Actual logs prove68Core,219native,17focused,10early,53primary,3layouts each extra
+phone,0nativewarnings. Imported GitHub **prerelease** tag native62-codemagic
+points at its exact50134fcsource; assets includeIPA,checksum,provenance and282
+selected full logs/screenshots/manifests. Original GitHub62fourfocused failures
+still disqualify stable acceptance. Native64 remains uncompiled;63failure retained.
+Eight original62screenshots committed atios/docs/screenshots/step-10/build-62-codemagic-passed.
+
+Fresh independent target checkout npmci/audit0,409NodeAPI/database cases,27Python
+release-tool cases,0error/0warningtypecheck,scheduledWorkertsc and Workerbuild
+pass locally. Nodebuild prints the existing NO_COLOR/FORCE_COLOR environment
+notice; no macOS/production-budget claim follows. No hostedDBtestrows used.
+
+RootREADME/CODEMAGIC now explain standalone native/backend builds, main versus
+qualifiedios-native and same-repositoryofficialCMcheck policy. Original readmes
+and oldnativepreview/authnotes are preserved in docs/WEB-BACKEND-README.md and
+ios/docs/legacy-repository. Full source inventory and verification are in
+ios/docs/migration/source-inventory.json andios/docs/REPOSITORY-MIGRATION.md.
+New repository.yml cheaply verifies main/backend/API/tools without hosted access;
+ios.yml retains full native gates and codemagic.yaml remains manual only.
+Import uses[skip ci] to honor the next-build hold and avoid consuming Mac minutes.
+
+Codemagic currently lists only the oldTwilDiaryrepo. Its GitHub App configuration
+requires email/sudoverification; the owner was asked to verify and add only
+TwilDiary-iOSto existingselectedrepositories. This external connection is pending,
+not a missing source file. No new token/signing/Cloudflaresecret or billing change.
+Existing CloudflareWorkers/D1/Access/appbundleID/baseURL are unchanged; do not
+create a second hosted library or deploy merely because the repo moved.
+
 ## Current source/provider matrix — 26 October2026 IST
 
 - **61 complete Codemagic / delivered IPA:** source8c9514094e96498855b83034c52c4b4349af8fee,
@@ -56,7 +100,7 @@ iOS26.5 iPhone17Pro/17e/17ProMax. CM M2candidate; GHA macos-26-intel independent
   and0-error/0-warning typecheck pass. Not compiled/run on macOS. Do not publish
   it over63's candidate ref while that evidence is still being collected.
 
-Browser control currently reports disabled; GitHub CLI still works. CM62artifact
+Browser control works again during the repository consolidation; GitHub CLI works. The earlier disabled-browser notes below are historical. CM62artifact
 and full63hierarchy/attachment inspection need browser access. The owner pasted
 63failure summary, sufficient to isolate the failed control but not full hierarchy. Do not
 extract cookies/tokens or bypass that boundary. Browser ID2; CM62tab7/CM63tab8
@@ -262,7 +306,7 @@ pausedidle3ms and localqueryplans do not qualify. No paidupgrade/CI run started.
 
 ## Build/test/resume commands and safety
 
-Repo C:/Users/Amit Singh/Documents/ChatGPT/Track Everything/TwilDiary.
+Repo C:/Users/Amit Singh/Documents/ChatGPT/Track Everything/TwilDiary-iOS.
 Usegit status/log-20, gh run list --branchios-native, gh run view/log-failed,
 gh run download. AddC:/Program Files/GitHub CLItoPATHifneeded. Node24.21installed.
 Windows:python.local/validate58.py (grammar only); python-munittestdiscover-sios/tools

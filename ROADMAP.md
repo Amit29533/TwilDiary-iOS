@@ -1,6 +1,6 @@
 # Native TwilDiary roadmap
 
-Work branch: `ios-native`. Product source: `/preview/*` at web baseline `b43454e`. Native project: `/ios`. The separate `TwilDiary-iOS` repository is preserved as reusable, previously compiled source, not accepted as parity evidence. The user subsequently asked to prioritize building the app over the sequential procedural gates. This remains the parity checklist; checked subtasks are evidence-backed and do not imply an entire step is complete. No hosted writes or deployments are authorized by this plan.
+Canonical repository: `Amit29533/TwilDiary-iOS`. Latest development branch: `main`; qualified native verification remains `ios-native` or a manual same-SHA dispatch. Product source: `/preview/*` at web baseline `b43454e`. Native project: `/ios`. The26October consolidation imports the complete current app/backend/pipelines and preserves both histories; it supersedes the earlier separate-repo checkpoint. This remains the parity checklist; checked subtasks are evidence-backed and do not imply an entire step is complete. Source migration itself changes no hosted data or deployments.
 
 ## 1. Foundation and CI
 
