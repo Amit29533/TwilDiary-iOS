@@ -25,8 +25,8 @@ into **Amit29533/TwilDiary-iOS**. This checkout is now the canonical complete
 project; local pathC:/Users/Amit Singh/Documents/ChatGPT/Track Everything/TwilDiary-iOS.
 The imported source is originalTwilDiaryc14333f(full native64draft/backend prep).
 Merge7dd0eff has the exact same tree3c7cbe7e7250e5c7e2348ad9892037c70be56def,
-with both original and destination history preserved. Main becomes latest
-**development**, not a newly accepted stable build. Existing source and failed
+with both original and destination history preserved. Main holds the complete snapshot; `develop` is the active **unreleased**
+track. Neither is a newly accepted stable build. Existing source and failed
 CI evidence remain honest; no new native build/deployment is started here.
 
 Native62latest fully passed CMartifact downloaded from6ade49474a72334e32e515c7:
@@ -50,14 +50,15 @@ qualifiedios-native and same-repositoryofficialCMcheck policy. Original readmes
 and oldnativepreview/authnotes are preserved in docs/WEB-BACKEND-README.md and
 ios/docs/legacy-repository. Full source inventory and verification are in
 ios/docs/migration/source-inventory.json andios/docs/REPOSITORY-MIGRATION.md.
-New repository.yml cheaply verifies main/backend/API/tools without hosted access;
+New repository.yml cheaply verifies main/develop/backend/API/tools without hosted access;
 ios.yml retains full native gates and codemagic.yaml remains manual only.
 Import uses[skip ci] to honor the next-build hold and avoid consuming Mac minutes.
 
-Codemagic currently lists only the oldTwilDiaryrepo. Its GitHub App configuration
-requires email/sudoverification; the owner was asked to verify and add only
-TwilDiary-iOSto existingselectedrepositories. This external connection is pending,
-not a missing source file. No new token/signing/Cloudflaresecret or billing change.
+Owner completed GitHubemail/sudoverification and repository access. Created
+Codemagicdestinationapp6ade764b746d1dee285e9ce8forAmit29533/TwilDiary-iOSin the
+existingTwilDiaryteam. Originalapp6adcc927390bc3069c9e5490retained for history. Rootcodemagic.yaml
+detected onnewmainwithStartyourfirstbuildshown; no new native job.
+No new token/signing/Cloudflaresecret,billingchange or nativebuild started.
 Existing CloudflareWorkers/D1/Access/appbundleID/baseURL are unchanged; do not
 create a second hosted library or deploy merely because the repo moved.
 

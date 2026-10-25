@@ -2,15 +2,16 @@
 
 This is the complete native SwiftUI application and its existing Cloudflare backend,
 consolidated from [TwilDiary](https://github.com/Amit29533/TwilDiary). A fresh clone
-contains the native app, API/Worker source, incoming Trakt scheduler, all17D1
+contains the native app, API/Worker source, incoming Trakt scheduler, all 17 D1
 migrations, tests, fixtures, design references, deployment tools and both CI pipelines.
 No sibling checkout is required to build either the iOS client or backend.
 
 ## Current development and builds
 
-- `main`: latest development source, including the prepared native64changes.
-  Native64has not compiled/run on macOS yet; migration is not a stability claim.
-- Latest completed Codemagic build: **native62**, source`50134fc`. Its imported
+- `develop`: active unreleased development and manual Codemagic candidates.
+- `main`: complete consolidation snapshot, including the prepared native64 changes.
+  Native64 has not compiled/run on macOS yet; migration is not a stability claim.
+- Latest completed Codemagic build: **native62**, source `50134fc`. Its imported
   unsigned iPhone IPA, SHA256 and test evidence are in the
   [native62 prerelease](https://github.com/Amit29533/TwilDiary-iOS/releases/tag/native62-codemagic).
   Its independent original GitHub iOS run failed; read its provenance before testing.
@@ -69,7 +70,7 @@ verify actual account usage; local test results do not certify production costs.
 ## Pipelines and repository cutover
 
 - `repository.yml`: inexpensive Node/API/database/release-tool verification for
-  `main` and pull requests; all database/provider tests use local fixtures.
+  `main`, `develop` and pull requests; all database/provider tests use local fixtures.
 - `codemagic.yaml`: manual-only full native candidate regression and separate
   explicitly labelled phone diagnostic. No automatic builds or deployment.
 - `ios.yml`: independent macOS verification, triggered on `ios-native` or manually

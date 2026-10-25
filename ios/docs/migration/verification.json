@@ -32,5 +32,17 @@
   "sourceAcceptance": "native64development_not_macOS_qualified",
   "latestImportedArtifact": "native62-codemagic",
   "remoteReceipt": "release asset repository-migration-verification.json is generated after fresh remote verification",
-  "externalConnection": "Codemagic GitHub destination access awaits owner email/sudo verification"
+  "externalConnection": {
+    "codemagicAppId": "6ade764b746d1dee285e9ce8",
+    "repository": "Amit29533/TwilDiary-iOS",
+    "url": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/settings",
+    "ownerGitHubVerification": "completed",
+    "buildStarted": false,
+    "configurationDiscovery": "verified root codemagic.yaml on main; Start your first build shown"
+  },
+  "branchPolicy": {
+    "main": "complete consolidation snapshot; native64still uncompiled",
+    "develop": "unreleased development and manual Codemagic candidates",
+    "ios-native": "create/promote exact qualified SHA only; no unqualified release branch"
+  }
 }

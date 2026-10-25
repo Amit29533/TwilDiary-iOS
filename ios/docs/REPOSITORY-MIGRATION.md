@@ -64,18 +64,19 @@ Eight original passed screenshots and attachment digests are also committed unde
 
 ## Repository and service cutover
 
-- Main is current development. `repository.yml` checks Node24/API/database/Worker
-  and Python tooling on Ubuntu using local fixtures, with no hosted credentials.
+- `develop` is active unreleased work; `main` holds the complete consolidation
+  snapshot and is not yet a stable64release. `repository.yml` checks Node24/API/database/Worker
+  and Python tooling on main/develop and Ubuntu using local fixtures, with no hosted credentials.
 - The native `ios.yml` keeps official **same-repository/same-SHA** Codemagic proof,
   Core, native units, focused/full UI, extra phones, resource/privacy/warning and
   unsigned-device acceptance. Its trigger remains`ios-native`plus manual dispatch,
   which can target an accepted main SHA. Imported old-repo checks cannot qualify
   a new commit. No gate is weakened to make the migration green.
-- Codemagic YAML is complete and manual-only. Its existing GitHub connection
-  currently exposes only old TwilDiary. The owner must finish GitHub's email/sudo
-  verification and add only TwilDiary-iOS to that existing installation before
-  creating the destination application and posting official checks here. No
-  permission expansion, new key/token, subscription or build is performed silently.
+- Codemagic YAML is complete and manual-only. The owner completed GitHub's
+  email/sudo/repository-access step, then destination application
+  [6ade764b746d1dee285e9ce8](https://codemagic.io/app/6ade764b746d1dee285e9ce8/settings)
+  was created for TwilDiary-iOSin the existing team. The original app remains for
+  historical builds. No new key/token, subscription or build was started.
 - Original candidate/stability refs are retained as archival branches, avoiding
   automatic Mac runs on an unqualified imported SHA. The consolidation head uses
   `[skip ci]`; no new candidate run is started merely to move files.

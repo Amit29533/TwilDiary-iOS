@@ -8,14 +8,14 @@ Cloudflare secrets are needed. This is native iOS testing, not a PWA UI walkthro
 
 ## Connection and branch policy
 
-1. Connect **Amit29533/TwilDiary-iOS** in the existing Codemagic account/team.
-   The prior app6adcc927390bc3069c9e5490points to the original TwilDiary repository
-   and is retained for historical evidence. Its existing GitHub integration
-   currently lists only TwilDiary; destination access must be enabled before
-   same-repository official checks can be posted.
-2. Choose `main` (or the explicit candidate branch) and workflow
+1. Destination **Amit29533/TwilDiary-iOS** is connected in the existing account/team:
+   [Codemagic application6ade764b746d1dee285e9ce8](https://codemagic.io/app/6ade764b746d1dee285e9ce8/settings).
+   The owner completed GitHub verification/repository access before creation.
+   The prior app6adcc927390bc3069c9e5490still points to the original TwilDiary
+   repository and is retained for historical evidence. Root `codemagic.yaml` is detected on main; no build was started.
+2. Choose `develop` (or an explicit unreleased candidate branch) and workflow
    `native-ios-regression`. Do not start a build until the owner's next-build
-   hold is lifted and native62phone feedback is incorporated. No automatic
+   hold is lifted and native62 phone feedback is incorporated. No automatic
    triggers are configured in the YAML.
 3. Require the newest official `TwilDiary native iOS — unsigned regression`
    GitHub check from `codemagic-ci-cd` to be complete/success for that exact SHA.
