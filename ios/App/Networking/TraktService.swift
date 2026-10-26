@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 import TwilDiaryCore
 
 @MainActor protocol TraktServicing {
@@ -48,6 +49,10 @@ import TwilDiaryCore
     private let clock: @MainActor () -> Date
     private let sleep: @MainActor (TimeInterval) async throws -> Void
     private let onTransferFinished: @MainActor () async -> Void
+    /// Scans and approved imports run for minutes; auto-lock would suspend the app
+    /// and stop them. The screen stays awake only while such work is running.
+    private let keepAwake: @MainActor (Bool) -> Void
+    @ObservationIgnored private var awakeHolds = 0
     private var operationID = UUID()
     private(set) var applyingAll = false
     private(set) var restoringApproval = false
@@ -76,10 +81,17 @@ import TwilDiaryCore
     init(service: any TraktServicing, checkpoint: (any TraktApplyCheckpointStoring)? = nil,
          clock: @escaping @MainActor () -> Date = { .now },
          sleep: @escaping @MainActor (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
+         keepAwake: @escaping @MainActor (Bool) -> Void = { UIApplication.shared.isIdleTimerDisabled = $0 },
          onTransferFinished: @escaping @MainActor () async -> Void = {}) {
         self.service = service; self.checkpoint = checkpoint ?? MemoryTraktApplyCheckpoint()
-        self.clock = clock; self.sleep = sleep; self.onTransferFinished = onTransferFinished
+        self.clock = clock; self.sleep = sleep; self.keepAwake = keepAwake; self.onTransferFinished = onTransferFinished
     }
+    private func holdAwake() { awakeHolds += 1; if awakeHolds == 1 { keepAwake(true) } }
+    private func releaseAwake() { awakeHolds = max(0, awakeHolds - 1); if awakeHolds == 0 { keepAwake(false) } }
+    /// Pause between successful steps. Cooldowns and Retry-After are honoured
+    /// separately; the old fixed 1 s / 0.5 s waits added about 30 minutes to a
+    /// 2,000-change import without protecting anything.
+    private static let stepPacing: TimeInterval = 0.15
     func pauseApplying() {
         paused = true; checkpoint.runID = nil
         if restoringApproval { runningTask?.cancel() }
@@ -121,6 +133,7 @@ import TwilDiaryCore
     /// current review with GETs before it can authorize another write.
     private func restoreApprovedApply(id: String) async {
         guard !busy, checkpoint.runID == id else { return }
+        holdAwake(); defer { releaseAwake() }
         let ticket = UUID(); operationID = ticket; refreshID = UUID()
         busy = true; changingReview = true; restoringApproval = true; paused = false
         retryAttempt = 0; error = nil; retryMessage = nil
@@ -215,6 +228,7 @@ import TwilDiaryCore
     }
     func scan(start: Bool) async {
         guard !busy else { return }
+        holdAwake(); defer { releaseAwake() }
         let ticket = UUID(); operationID = ticket
         refreshID = UUID(); loading = false; busy = true; changingReview = true
         paused = false; error = nil; retryAttempt = 0
@@ -248,7 +262,7 @@ import TwilDiaryCore
                     let signature = "\(result.run?.stage ?? ""):\(result.run?.page ?? 0):\(result.run?.progress ?? 0)"
                     if signature == previousStep { paused = true; break }
                     previousStep = signature
-                    try await sleep(0.5)
+                    try await sleep(Self.stepPacing)
                 } catch is CancellationError { throw CancellationError() }
                 catch { try scheduleRecovery(error, ticket: ticket); reconcile = true }
             }
@@ -282,6 +296,7 @@ import TwilDiaryCore
     }
     private func applyAllReady() async {
         guard !busy, let current = sync, current.reviewing, let id = current.run?.id else { return }
+        holdAwake(); defer { releaseAwake() }
         let ticket = UUID(); operationID = ticket
         refreshID = UUID(); loading = false; busy = true; changingReview = true
         paused = false; applyingAll = true; checkpoint.runID = id
@@ -312,9 +327,9 @@ import TwilDiaryCore
                     if !result.reviewing { break }
                     if result.counts == before.counts { stagnant += 1 } else { stagnant = 0 }
                     if stagnant >= 2 { throw APIError.message("The server made no further progress. Your completed changes are saved; review the remaining items.") }
-                    // Yield and pace the approved job instead of stopping at100
-                    // requests or hammering a free-plan backend in a tight loop.
-                    try await sleep(1)
+                    // Yield and lightly pace the approved job instead of stopping at
+                    // 100 requests or running a tight loop against the free-plan backend.
+                    try await sleep(Self.stepPacing)
                 } catch is CancellationError { throw CancellationError() }
                 catch {
                     try scheduleRecovery(error, ticket: ticket)

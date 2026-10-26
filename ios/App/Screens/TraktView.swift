@@ -261,7 +261,8 @@ import TwilDiaryCore
         if change.state == "uncertain" { action("Check Trakt", change: change, choice: .local) }
         else if change.review && !change.blocked { action("Keep TwilDiary", change: change, choice: .local); action("Use Trakt", change: change, choice: .trakt) }
         else if !change.blocked { action("Apply", change: change, choice: .apply) }
-        Button("Skip") { Task { await controller.apply(change: change, choice: .skip); await store.refresh() } }.buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
+        // Skipping never changes the diary, so it no longer re-downloads it.
+        Button("Skip") { Task { await controller.apply(change: change, choice: .skip) } }.buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
             .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).accessibilityIdentifier("trakt-skip-" + change.id)
     }
     private func action(_ label: String, change: TraktChange, choice: TraktChoice) -> some View {
