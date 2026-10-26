@@ -39,6 +39,8 @@ import TwilDiaryCore
     @ObservationIgnored private var cachedHistory: (query: HistoryQuery, zone: String, value: [HistoryEntry])?
     @ObservationIgnored private var cachedActiveEventCount: Int?
     @ObservationIgnored private var cachedLibrary: (query: LibraryQuery, source: PublicRatingSource, value: [MediaTitle])?
+    @ObservationIgnored private var catalogLookup: (active: [String: Int], tmdb: [String: Int])?
+    @ObservationIgnored private var cachedPersonSections: (person: Int, credits: Int, value: PersonSections)?
     private var titleIndex: [String: MediaTitle] = [:]
     private var progressIndex: [String: Double] = [:]
     private var seasonProgressIndex: [String: [Int: SeasonProgress]] = [:]
@@ -344,7 +346,7 @@ import TwilDiaryCore
         apply(built.index, changed: built.changed)
     }
     private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
-        cachedHome = nil; cachedStats = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = nil
+        cachedHome = nil; cachedStats = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = nil; catalogLookup = nil; cachedPersonSections = nil
         titleIndex = index.titles
         progressIndex = index.progress
         seasonProgressIndex = index.seasonProgress
@@ -395,6 +397,37 @@ import TwilDiaryCore
         if cacheable, let saved = cachedLibrary, saved.query == query, saved.source == source { return saved.value }
         let value = query.titles(in: snapshot) { self.publicScore($0, source: source) }
         if cacheable { cachedLibrary = (query, source, value) }
+        return value
+    }
+    /// Same answer as `CatalogTools.libraryIdentity` (the first active title, in snapshot
+    /// order, matching the server-linked id or the TMDB identity), from two dictionaries
+    /// built once per snapshot instead of filtering the library for every catalog cell.
+    func libraryIdentity(_ item: CatalogItem) -> String? {
+        let snapshot = workspace
+        let lookup: (active: [String: Int], tmdb: [String: Int])
+        if let saved = catalogLookup { lookup = saved }
+        else {
+            var active: [String: Int] = [:], tmdb: [String: Int] = [:]
+            for (order, title) in snapshot.titles.enumerated() where title.deletedAt == nil {
+                if active[title.id] == nil { active[title.id] = order }
+                if let id = title.tmdbId {
+                    let key = (title.isSeries ? "tv:" : "movie:") + String(id)
+                    if tmdb[key] == nil { tmdb[key] = order }
+                }
+            }
+            lookup = (active, tmdb); catalogLookup = lookup
+        }
+        let linked = item.inLibraryId.flatMap { lookup.active[$0] }
+        let matched = lookup.tmdb[(item.mediaType == .tv ? "tv:" : "movie:") + String(item.id)]
+        guard let order = [linked, matched].compactMap({ $0 }).min() else { return nil }
+        return snapshot.titles[order].id
+    }
+    /// Person shelves are read by three parts of the person screen; build them once.
+    func personSections(_ person: PersonDetails) -> PersonSections {
+        let snapshot = workspace
+        if let saved = cachedPersonSections, saved.person == person.id, saved.credits == person.credits.count { return saved.value }
+        let value = PersonSections(person: person, workspace: snapshot)
+        cachedPersonSections = (person.id, person.credits.count, value)
         return value
     }
     var activeEventCount: Int {

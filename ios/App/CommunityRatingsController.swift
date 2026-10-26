@@ -4,13 +4,21 @@ import TwilDiaryCore
 
 /// Device-session public scores. Personal diary ratings never enter this cache.
 @MainActor @Observable final class CommunityRatingsController {
-    private(set) var entries: [String: PublicRating] = [:]
+    /// Every visible poster reads this dictionary, so it is replaced once per batch
+    /// (one observation change) rather than once per title.
+    private(set) var entries: [String: PublicRating] = [:] {
+        didSet {
+            let missing = entries.values.contains { $0.state == "unavailable" }
+            if unavailable != missing { unavailable = missing }
+        }
+    }
     private(set) var pending = 0
     var loading: Bool { pending > 0 }
-    var unavailable: Bool { entries.values.contains { $0.state == "unavailable" } }
-    private var expires: [String: Date] = [:]
-    private var inflight = Set<String>()
-    private var generation = UUID()
+    /// Stored, so the Library body no longer scans every entry on each read.
+    private(set) var unavailable = false
+    @ObservationIgnored private var expires: [String: Date] = [:]
+    @ObservationIgnored private var inflight = Set<String>()
+    @ObservationIgnored private var generation = UUID()
     private let clock: () -> Date
     init(clock: @escaping () -> Date = { Date() }) { self.clock = clock }
 
@@ -21,11 +29,14 @@ import TwilDiaryCore
         for (id, entry) in entries where entry.state == "unavailable" { expires.removeValue(forKey: id) }
     }
     private func markUnavailable(_ ids: ArraySlice<String>) {
+        var next = entries
+        let retry = clock().addingTimeInterval(60)
         for id in ids {
             // Keep a previously fetched community score visible during a transient outage.
-            if entries[id]?.state != "rated" { entries[id] = PublicRating(score: nil, state: "unavailable") }
-            expires[id] = clock().addingTimeInterval(60)
+            if next[id]?.state != "rated" { next[id] = PublicRating(score: nil, state: "unavailable") }
+            expires[id] = retry
         }
+        entries = next
     }
     func prepare(_ titleIDs: [String], fetch: ([String]) async throws -> [String: PublicRating]) async {
         var seen = Set<String>()
@@ -56,11 +67,13 @@ import TwilDiaryCore
                 markUnavailable(ids[offset...]); return
             }
             let received = clock()
+            var next = entries
             for id in batch {
                 let rating = results[id] ?? PublicRating(score: nil, state: "unavailable")
-                entries[id] = rating
+                next[id] = rating
                 expires[id] = received.addingTimeInterval(rating.state == "unavailable" ? 60 : 86_400)
             }
+            entries = next
         }
     }
 }

@@ -43,11 +43,14 @@ import TwilDiaryCore
             .refreshable { await controller.refresh(); if controller.status?.connected == true { await incoming.refresh() } }
             .task(id: "\(controller.status?.connected == true):\(controller.sync?.run?.state ?? "")") { if controller.status?.connected == true { await incoming.refresh() } }
             .task(id: controller.cooldownUntil) {
+                // One wake-up at the end of the cooldown re-enables the controls. The
+                // per-second countdown is a TimelineView, so the whole Trakt screen and
+                // its review rows are no longer rebuilt every second.
                 clock = .now
-                while controller.cooldownUntil > clock && !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                    clock = .now
-                }
+                let wait = controller.cooldownUntil.timeIntervalSince(clock)
+                guard wait > 0 else { return }
+                do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+                clock = .now
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy { Task { await controller.refresh() } } }
             .sheet(isPresented: $showSignIn) {
@@ -148,8 +151,10 @@ import TwilDiaryCore
                 Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
             } else if controller.status != nil { Text("Configure the Trakt Client ID on your server using the PC app. Sign-in uses PKCE; no client secret is needed.").font(.subheadline).foregroundStyle(.secondary) }
             if coolingDown {
-                Text("Waiting \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(clock))))) seconds before the next request.")
-                    .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text("Waiting \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(context.date))))) seconds before the next request.")
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
+                }
             }
         }.diaryPanel()
     }

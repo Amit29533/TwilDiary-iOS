@@ -101,7 +101,16 @@ struct SettingsView: View {
     private func settingsRow(_ icon: String, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
         HStack(spacing: 10) { settingsIcon(icon); VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white); if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) } }; Spacer(minLength: 4); if let value { Text(value).font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.trailing) }; if disclosure { DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary) } }.padding(14).frame(minHeight: 58).contentShape(Rectangle())
     }
-    private func exportDiary() { do { exportDocument = DiaryJSONDocument(data: try DiaryExport(workspace: store.workspace).encoded()); showExport = true } catch { store.error = error.localizedDescription } }
+    private func exportDiary() {
+        // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.
+        let snapshot = store.workspace
+        Task {
+            do {
+                let data = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
+                exportDocument = DiaryJSONDocument(data: data); showExport = true
+            } catch { store.error = error.localizedDescription }
+        }
+    }
 }
 
 struct DiaryJSONDocument: FileDocument {
