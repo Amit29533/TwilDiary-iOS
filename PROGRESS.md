@@ -3,17 +3,6 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
-Active request: **Trakt-first five-stage plan, Stage1(cost/refresh)**. Implementation
-adds migration0017 transaction-bound workspace revision triggers and a constant-row
-owner-only GET; native automatic refresh is60seconds, coalesced and revision-aware,
-with bounded consistency retry and old-backend404fallback. Manual refresh/mutation
-receipts remain immediate.413Node tests pass, backend/Worker typechecks pass.
-Ten new URLProtocol freshness/race/recovery cases await macOS compilation. Build65
-will use the new Codemagic native-ios-stage1 workflow, which cannot qualify a full
-stable release. A disposable workerd400-title/6400-episode/2k-import cost benchmark
-is running. Stage1is NOT yet complete; next: inspect benchmark, native CI and
-qualified migration/hosted read metrics. No Stage2or authority-switch work begun.
-
 Latest design verification: ios/docs/TRAKT-FIRST-PLAN.md records the corrected
 stages0–5. Foreground currently only reads D1 (10-second threshold); on-demand
 incoming catch-up and replacement-ID restore are new work. Index migrations
