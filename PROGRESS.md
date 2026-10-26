@@ -3,6 +3,19 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
+Owner-authorized live sample after rollout: **3 incoming changes applied and
+read back successfully** — two episode watches and one rating. Used individual
+ready-change controls through the protected production API; no bulk start,
+outgoing Trakt write, conflict choice or uncertain-send retry. Both original
+Trakt timestamps/history identities match the two stored active watches, with
+no duplicates. Rating is stored, progress increased by exactly3, pending fell
+by3 and all other review buckets are unchanged. No error/cooldown appeared.
+This is a small live backend test, not native phone UI or2,000-change throughput
+acceptance. Private bookmark, before/after rows, analytics and screenshot live
+in.local/cloudflare-live-apply-20261026. Public redacted receipt:
+ios/docs/releases/backend62-live-apply-verification.json. No code change or
+new iOS build was needed. Full bulk completion/day cost/active Cron CPU remain open.
+
 Latest hosted change: **26 October 2026, 09:41 IST — backend rollout completed**.
 From the new canonical repository's `develop` track, deployed frozen backend
 `50134fc9addcc243434ee5721eb74ea1eec13f61` as Worker version

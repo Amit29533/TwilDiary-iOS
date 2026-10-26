@@ -33,6 +33,22 @@ Private backups/bookmarks/operator logs and pinned source/build reside in ignore
 `.local/cloudflare-rollout-20261026`. No backup or credential enters Git/CI.
 The earlier preparation and repeatable operator procedure are retained below.
 
+### Subsequent owner-authorized live apply sample
+
+Applied exactly three ready incoming proposals: two episode histories and one
+rating, using individual review controls against the protected deployed API.
+All three became applied. Read-back confirms unique active watches with the
+exact original Trakt timestamps/history identities and the expected saved
+rating. Progress rose by three; only pending/applied incoming-safe buckets
+changed, by minus/plus three. No errors or cooldown messages appeared. A fresh
+recovery bookmark and all raw observations remain private.
+
+No outgoing Trakt writes, conflict choices, uncertain retries or bulk loop were
+started. These results do not certify native phone UI, restart recovery or the
+remaining large import. Query analytics are aggregated across other traffic;
+do not divide the rolling total by three and label it an import cost.
+See [the redacted live receipt](releases/backend62-live-apply-verification.json).
+
 Prepared 26 October 2026 IST for the D1 read amplification fixes. This is an
 operator procedure, not an automatic deployment or an iOS build trigger.
 
