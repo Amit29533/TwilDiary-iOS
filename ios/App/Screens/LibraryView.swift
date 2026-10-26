@@ -231,8 +231,11 @@ struct GlanceView: View {
     @State private var search = ""
     @State private var showSearch = false
     var body: some View {
+        // One pass over the library per update instead of three.
+        let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
+        let titles = watching.filter { category.includes($0) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
         VStack(spacing: 0) {
-            PageHeader(name: "Glance", count: "\(store.workspace.activeTitles.filter { $0.status == "watching" }.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } })
+            PageHeader(name: "Glance", count: "\(watching.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } })
             if showSearch { SearchField(placeholder: "Find a current watch…", text: $search, label: "Find a current watch", autoFocus: true).padding(.horizontal, 14).padding(.bottom, 10) }
             HStack(spacing: 0) { CategoryPicker(selection: $category); CollectionLayoutToggle(grid: $grid, collection: "glance").padding(.trailing, 8) }
             ScrollView {
@@ -241,5 +244,4 @@ struct GlanceView: View {
             }.accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
         }
     }
-    private var titles: [MediaTitle] { store.workspace.activeTitles.filter { $0.status == "watching" && category.includes($0) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) } }
 }

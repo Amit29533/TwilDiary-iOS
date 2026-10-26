@@ -137,19 +137,7 @@ struct RootView: View {
                         .tint(theme.accent).buttonStyle(.glass).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
                     .background(.black)
-                    .overlay(alignment: .top) {
-                        if let notice = store.mutationRefreshNotice {
-                            HStack(alignment: .top, spacing: 12) {
-                                Text(notice).font(.caption).accessibilityIdentifier("confirmed-write-notice")
-                                Spacer(minLength: 0)
-                                Button("Refresh") { Task { await store.refresh() } }
-                                    .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
-                            }.padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14)).padding()
-                        } else if let error = store.error {
-                            HStack { Text(error).font(.caption); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly) }
-                                .padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14)).padding()
-                        }
-                    }
+                    .overlay(alignment: .top) { RootNoticeBanner() }
             }
         }.accessibilityHidden(router.randomPick != nil).allowsHitTesting(router.randomPick == nil)
             .overlay {
@@ -202,5 +190,24 @@ struct RootView: View {
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })
+    }
+}
+
+/// Reads the write notice and error itself. A banner change now re-renders only
+/// the banner, not the root view, which reassigned all five tab pages each time.
+private struct RootNoticeBanner: View {
+    @Environment(DiaryStore.self) private var store
+    var body: some View {
+        if let notice = store.mutationRefreshNotice {
+            HStack(alignment: .top, spacing: 12) {
+                Text(notice).font(.caption).accessibilityIdentifier("confirmed-write-notice")
+                Spacer(minLength: 0)
+                Button("Refresh") { Task { await store.refresh() } }
+                    .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
+            }.padding(12).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14)).padding()
+        } else if let error = store.error {
+            HStack { Text(error).font(.caption); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly) }
+                .padding(12).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14)).padding()
+        }
     }
 }
