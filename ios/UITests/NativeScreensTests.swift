@@ -1073,7 +1073,10 @@ import UIKit
         // The floating toast is already onscreen. A semantic tap can ask XCTest
         // to scroll its gesture-containing ancestor, consuming the short window.
         // Touch the actual action's current bounds instead; never extend expiry.
-        let bounds = app.buttons["undo-action"].frame
+        let undo = app.buttons["undo-action"]
+        // Existence returns as soon as the toast is present; it never extends expiry.
+        XCTAssertTrue(undo.waitForExistence(timeout: 3), "The Undo toast did not appear")
+        let bounds = undo.frame
         XCTAssertFalse(bounds.isEmpty)
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()
     }

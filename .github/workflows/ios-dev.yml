@@ -107,9 +107,12 @@ jobs:
                       key = re.sub(r'^.*?/ios/', 'ios/', line.strip())
                       if key not in seen:
                           seen.add(key); found.append(key)
+                          # UI failures print the element hierarchy after the error line.
+                          if 'tests' in path.name and 'error:' in line:
+                              found.extend('      | ' + extra.strip()[:300] for extra in text[index + 1:index + 30] if extra.strip())
               if found:
                   lines.append(f'### {path.name}')
-                  lines.extend('    ' + item[:600] for item in found[:120])
+                  lines.extend('    ' + item[:600] for item in found[:400])
               elif text and ('FAILED' in text[-1] or path.name.endswith('build.log')):
                   lines.append(f'### {path.name} (tail)')
                   lines.extend('    ' + item[:400] for item in text[-40:])

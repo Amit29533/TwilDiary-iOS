@@ -35,20 +35,27 @@ import OSLog
         }
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
+            // Settle the bar if appearance ran before this page was attached.
+            applyTabBarVisibility(animated: false)
             publishWhenAttached()
         }
-        override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-            // Change chrome alongside the native push/pop, never a task after
-            // the destination has appeared. UIKit also animates cancelled Back.
+        override func viewIsAppearing(_ animated: Bool) {
+            super.viewIsAppearing(animated)
+            // viewWillAppear runs before the page is in the hierarchy, so the old
+            // containment check there often failed and title pages kept the tab bar.
+            // viewIsAppearing has the attached view and still runs alongside the
+            // native push/pop, including a cancelled interactive Back.
+            applyTabBarVisibility(animated: animated)
+        }
+        private func applyTabBarVisibility(animated: Bool) {
             guard let tabs = tabBarController, let selected = tabs.selectedViewController,
-                  view.isDescendant(of: selected.view) else { return }
+                  view.isDescendant(of: selected.view), tabs.isTabBarHidden != detail else { return }
             let previous = tabs.isTabBarHidden
             tabs.setTabBarHidden(detail, animated: animated)
             _ = transitionCoordinator?.animate(alongsideTransition: nil) { context in
-                if context.isCancelled {
-                    Task { @MainActor [weak tabs] in tabs?.setTabBarHidden(previous, animated: false) }
-                }
+                guard context.isCancelled else { return }
+                // Completion runs on the main thread: restore in the same frame.
+                MainActor.assumeIsolated { tabs.setTabBarHidden(previous, animated: false) }
             }
         }
         override func didMove(toParent parent: UIViewController?) {

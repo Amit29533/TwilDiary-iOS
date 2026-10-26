@@ -81,7 +81,11 @@ import UIKit
                 // Child carousels, text editing, sliders and the native tab bar
                 // keep their own recognizers. Vertical lists may page sideways.
                 if view is UITabBar || view is UISlider || view is UISwitch || view is UITextField || view is UITextView { return false }
-                if let scroll = view as? UIScrollView, scroll.alwaysBounceHorizontal || scroll.contentSize.width > scroll.bounds.width + 1 { return false }
+                // Only a real horizontal scroller owns the touch. A vertical list whose
+                // content is a few points wider than the screen (glass button padding,
+                // rounding) must still page between tabs.
+                if let scroll = view as? UIScrollView, !scroll.alwaysBounceVertical,
+                   scroll.alwaysBounceHorizontal || scroll.contentSize.width > scroll.bounds.width + 1 { return false }
                 if view === controller?.view { break }
                 ancestor = view.superview
             }
