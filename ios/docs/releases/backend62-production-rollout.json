@@ -1,0 +1,74 @@
+{
+  "status": "deployed_and_verified",
+  "sourceCommit": "50134fc9addcc243434ee5721eb74ea1eec13f61",
+  "repository": "Amit29533/TwilDiary-iOS",
+  "developmentBranch": "develop",
+  "deployedAtUtc": "2026-10-26T04:11:56.986494Z",
+  "mainWorkerVersion": "d21c2b88-a874-46fa-8dc4-61798d8544d8",
+  "previousMainWorkerVersion": "1dc0eced-83ac-4312-8d40-73aa6124cba5",
+  "trafficPercent": 100,
+  "appliedMigrations": [
+    "0014_trakt_review_counts.sql",
+    "0015_trakt_planning_cursor.sql",
+    "0016_native_query_bounds.sql"
+  ],
+  "backupVerification": {
+    "freshTimeTravelBookmarkRetainedPrivately": true,
+    "freshFullExportBytes": 9882173,
+    "realExportLocalUpgradeRehearsal": "pass",
+    "freshPostRolloutExportCompared": true,
+    "originalApplicationTablesPreserved": 26,
+    "everyOriginalColumnAndRowPreserved": true,
+    "integrityAndForeignKeys": "pass",
+    "ledgerEntries": 17,
+    "expectedSchemaObjects": 9,
+    "reviewAggregateMismatches": 0
+  },
+  "liveVerification": {
+    "authenticatedSession": "pass",
+    "authenticatedReviewGet": "pass",
+    "authenticatedIncomingGet": "pass",
+    "unauthenticatedSessionStatus": 403,
+    "activeReviewUnchanged": true,
+    "incomingEnabled": true,
+    "incomingPausedByExistingReview": true,
+    "reviewApplyOrSkipTriggered": false,
+    "schedulerRedeployed": false,
+    "accessPolicyChanged": false
+  },
+  "hostedReadOnlyQuerySamples": {
+    "scope": "Equivalent individual SQL statements on the real dataset, excluding other queries in the full API/apply path",
+    "reviewBuckets": { "rowsRead": 8, "rowsReturned": 7, "rowsWritten": 0 },
+    "nextReadyChange": { "rowsRead": 1, "rowsReturned": 1, "rowsWritten": 0 },
+    "planningSeekPage": { "rowsRead": 40, "rowsReturned": 40, "rowsWritten": 0 },
+    "expectedIndexesUsed": true,
+    "temporarySortUsed": false,
+    "allDiagnosticSqlRowsRead": 12207,
+    "allDiagnosticSqlRowsWritten": 0
+  },
+  "freeTierObservation": {
+    "windowStartUtc": "2026-10-26T00:00:00Z",
+    "windowEndUtc": "2026-10-26T04:16:00Z",
+    "databaseCountInAccount": 1,
+    "dashboardRoundedReads": "98k",
+    "dashboardRoundedWrites": "13k",
+    "includesMigrationOverhead": true,
+    "paidUpgrade": false,
+    "sustainedDailyBudgetCertified": false,
+    "activeScheduledCpuCertified": false
+  },
+  "qualification": {
+    "officialCodemagicCheck": 121268303837,
+    "originalGithubBackendTests": 407,
+    "destinationGithubRun": 40236806826,
+    "destinationBackendTests": 409,
+    "releaseToolTestsRerunBeforeRollout": 27,
+    "pinnedDependencyInstall": "pass",
+    "pinnedWorkerBuild": "pass",
+    "pinnedWorkerDryRun": "pass",
+    "retainedBundlingWarning": "Generated bare drizzle-orm import ignored because the package declares sideEffects:false",
+    "newIosBuildStarted": false,
+    "stableIosAcceptanceImplied": false
+  },
+  "privateArtifacts": "Ignored .local/cloudflare-rollout-20261026; no SQL exports, tokens, row values or Time Travel bookmarks in this receipt"
+}

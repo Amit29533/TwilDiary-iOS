@@ -195,6 +195,7 @@ uncompiled; no new acceptance checkbox or stable promotion is implied.
 - [ ] Complete bulk-import lifecycle/progress/cooldown repair and native macOS regression.
 - [ ] Validate D1 aggregate/index migration in local Workers runtime; deploy safely after quota recovery and verify actual metrics.
   - [x] Freeze qualified backend source, prepare hashed archives/read-only checks, rehearse0014–0016with2,000proposal localD1/export and preserve every original row; document backup/code rollback/Free-tier headroom. Hosted rollout and actual account costs remain open.
+  - [x]26October: fresh hosted export/restore rehearsal, apply0014–0016, deploy frozen backend50134fc, verify every original row via post-export, owner API/Access/review preservation and indexed read samples. Sustained full-day/active-Cron costs remain open.
 - [ ] Audit native navigation/layout/motion, metadata/search/cache, session boundaries and all mutation receipts.
 - [ ] Audit backend schema/API/data invariants, sync retry/leases/idempotence and free-plan query budget.
 - [ ] Run native UI/logic/release and supporting API/database suites; inspect artifacts and record remaining phone checks. Owner excludes further web/PWA UI walkthroughs.

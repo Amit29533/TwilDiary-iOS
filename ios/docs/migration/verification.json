@@ -1,5 +1,6 @@
 {
-  "status": "local_migration_verified",
+  "status": "local_and_remote_migration_verified",
+  "verificationScope": "Repository consolidation at b17de16; the subsequent authorized hosted rollout is recorded separately in releases/backend62-production-rollout.json",
   "sourceCommit": "c14333f6e31473d6c428ab0b6640a6aa607a4657",
   "exactImportCommit": "7dd0eff52aea43f234639775759e88a1788cce50",
   "identicalInitialTree": "3c7cbe7e7250e5c7e2348ad9892037c70be56def",
@@ -31,14 +32,27 @@
   "productionDeployment": false,
   "sourceAcceptance": "native64development_not_macOS_qualified",
   "latestImportedArtifact": "native62-codemagic",
-  "remoteReceipt": "release asset repository-migration-verification.json is generated after fresh remote verification",
+  "remoteReceipt": "Fresh remote tree at b17de16 verified all 1178 source entries with only five documented adaptations; both histories are ancestors; release IPA downloaded and checksum verified",
+  "destinationGitHubVerification": {
+    "runId": 40236806826,
+    "sourceCommit": "b17de16b4391708f9f76053f9692b4d7fc7a27ea",
+    "url": "https://github.com/Amit29533/TwilDiary-iOS/actions/runs/40236806826",
+    "conclusion": "success",
+    "backendTests": 409,
+    "releaseToolTests": 27,
+    "typeErrors": 0,
+    "typeWarnings": 0,
+    "incomingWorkerTypecheck": "pass",
+    "workerBuild": "pass",
+    "newNativeBuildStarted": false
+  },
   "externalConnection": {
     "codemagicAppId": "6ade764b746d1dee285e9ce8",
     "repository": "Amit29533/TwilDiary-iOS",
     "url": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/settings",
     "ownerGitHubVerification": "completed",
     "buildStarted": false,
-    "configurationDiscovery": "verified root codemagic.yaml on main; Start your first build shown"
+    "configurationDiscovery": "verified root codemagic.yaml on main and develop; develop selected; Start your first build shown"
   },
   "branchPolicy": {
     "main": "complete consolidation snapshot; native64still uncompiled",

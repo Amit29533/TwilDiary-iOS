@@ -3,6 +3,27 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
+Latest hosted change: **26 October 2026, 09:41 IST — backend rollout completed**.
+From the new canonical repository's `develop` track, deployed frozen backend
+`50134fc9addcc243434ee5721eb74ea1eec13f61` as Worker version
+`d21c2b88-a874-46fa-8dc4-61798d8544d8`. Applied exactly D1 migrations 0014–0016
+after a fresh Time Travel bookmark, private full export and successful local
+restore/rehearsal. Post-deployment export proves every original row/column in 26
+application tables is preserved; integrity/FKs pass and review buckets are exact.
+Authenticated `/api/session`, review and incoming GETs pass; unauthenticated
+session is denied 403. Review remains 735 applied / 1474 pending / 1466 safe / 1 link,
+and incoming remains enabled but paused behind that same unfinished review.
+No apply/skip, scheduler redeploy, Access change, paid upgrade or iOS build.
+Hosted read-only SQL samples: buckets 8 rows, next-ready 1 row, seek page 40 rows;
+expected indexes/no temporary sorts. These are individual SQL costs, not a full
+bulk-import/active-Cron budget certification. Dashboard 00:00–04:16 UTC shows
+approximately 98k reads / 13k writes for the account's only D1 database, including
+rollout overhead. Initial read-only diagnostics consumed 12207 rows, 0 writes.
+Full-day sustained cost, active 10ms CPU and native64 runtime remain open.
+See ios/docs/releases/backend62-production-rollout.json and BACKEND-ROLLOUT.md.
+Private exports/bookmarks/logs remain ignored in.local/cloudflare-rollout-20261026.
+Earlier "not deployed" notes below describe preparation before this rollout.
+
 Audit scope: **native iOS UI, its database/API/Trakt data flow and CI workflows**.
 Do not restart web/PWA UI walkthroughs. Tests use synthetic native fixtures,
 URLProtocol or disposable local D1/SQLite. Current hosted library stays untouched.
@@ -57,7 +78,9 @@ Import uses[skip ci] to honor the next-build hold and avoid consuming Mac minute
 Owner completed GitHubemail/sudoverification and repository access. Created
 Codemagicdestinationapp6ade764b746d1dee285e9ce8forAmit29533/TwilDiary-iOSin the
 existingTwilDiaryteam. Originalapp6adcc927390bc3069c9e5490retained for history. Rootcodemagic.yaml
-detected onnewmainwithStartyourfirstbuildshown; no new native job.
+detected on main and develop; develop is selected with Start your first build
+shown. No new native job. Destination Linux run40236806826 on b17de16 passed
+409backend tests,27Python tests, zero-error/warning typecheck and Workerbuild.
 No new token/signing/Cloudflaresecret,billingchange or nativebuild started.
 Existing CloudflareWorkers/D1/Access/appbundleID/baseURL are unchanged; do not
 create a second hosted library or deploy merely because the repo moved.
@@ -152,7 +175,8 @@ its file still finishes inD:/Downloads; inspect the file before retrying.
   before macOSartifact publication.17focused-case Intel budget35min is based on
   actual8-case12m37s/17-case M2~13m30s; individual test deadlines unchanged.
 
-**No0014–0016hosted migration/deployment during this audit.** Dashboard rolling24h
+Before the26October09:41ISTrollout, no0014–0016hosted migration/deployment had
+been applied. Current hosted evidence is at the top of this file. Dashboard rolling24h
 showed12.23Mreads,36.56kwrites/34.98kqueries. Five hot scans explained11.41Mreads;
 3counts6.70M. Rolling24h is not a current UTC/account quota measurement.
 FreeD1allowance5Mreads/100kwrites/account/day,00UTC=05:30IST reset. No fixed number

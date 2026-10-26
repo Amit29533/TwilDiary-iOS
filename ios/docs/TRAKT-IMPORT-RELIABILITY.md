@@ -1,5 +1,14 @@
 # Bulk import reliability and D1 read budget
 
+**Current hosted status, 26 October 2026:** migrations 0014–0016 and the frozen native62
+backend are deployed and verified. Full backup comparison preserved all original
+rows and the active review. Hosted equivalent samples use the new indexes:
+8 rows for buckets, 1 next-ready, 40 per 40-item planning page. Authenticated review
+and incoming APIs work; incoming still respects the active-review pause.
+See [the actual rollout receipt](releases/backend62-production-rollout.json).
+The dated "not deployed" sections below describe earlier preparation. Full-day
+free-budget and active scheduled CPU verification remain separate open checks.
+
 ## Observed on 25 October 2026
 
 Owner reported a roughly2,000-change review stopping without automatic recovery,

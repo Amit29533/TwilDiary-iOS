@@ -12,7 +12,8 @@ Cloudflare secrets are needed. This is native iOS testing, not a PWA UI walkthro
    [Codemagic application6ade764b746d1dee285e9ce8](https://codemagic.io/app/6ade764b746d1dee285e9ce8/settings).
    The owner completed GitHub verification/repository access before creation.
    The prior app6adcc927390bc3069c9e5490still points to the original TwilDiary
-   repository and is retained for historical evidence. Root `codemagic.yaml` is detected on main; no build was started.
+   repository and is retained for historical evidence. Root `codemagic.yaml` is
+   detected on main and develop; develop is selected. No build was started.
 2. Choose `develop` (or an explicit unreleased candidate branch) and workflow
    `native-ios-regression`. Do not start a build until the owner's next-build
    hold is lifted and native62 phone feedback is incorporated. No automatic
