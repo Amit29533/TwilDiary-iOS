@@ -3,6 +3,14 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
+Latest design verification: ios/docs/TRAKT-FIRST-PLAN.md records the corrected
+stages0–5. Foreground currently only reads D1 (10-second threshold); on-demand
+incoming catch-up and replacement-ID restore are new work. Index migrations
+0014–0016 are already deployed; longer refresh/change-check and whole-workload
+cost acceptance remain pending.73local database/sync/query tests pass,0fail.
+No authority switch, new native build, deployment or hosted mutation in this
+verification. Historical11.8Mreads is reported, not newly measured here.
+
 Latest cost assessment: captured Cloudflare Row Metrics for the actual test
 selection (10:08–10:17 IST):28,977reads/54writes, including5,650operator read-back
 rows. The three action minutes total21,715reads/54writes, including UI/search
