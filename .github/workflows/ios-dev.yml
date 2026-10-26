@@ -17,6 +17,7 @@ on:
         options: [none, repairs, full]
 permissions:
   contents: read
+  checks: write
 concurrency:
   group: ios-dev-${{ github.ref }}
   cancel-in-progress: true
@@ -86,6 +87,38 @@ jobs:
             ios/.artifacts/toolchain.txt
           if-no-files-found: warn
           retention-days: 7
+      - name: Publish diagnostics as a readable check run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          python3 - > "$RUNNER_TEMP/diagnostics.md" <<'PY'
+          import pathlib, re
+          logs = pathlib.Path('ios/.artifacts/logs')
+          seen, lines = set(), []
+          for path in sorted(logs.glob('*.log')):
+              text = path.read_text(errors='replace').splitlines()
+              found = []
+              for index, line in enumerate(text):
+                  hit = re.search(r'\berror:|Test Case .* failed|\*\* .*FAILED \*\*', line) or (
+                      ('build' in path.name or path.name == 'core-tests.log') and re.search(r'\bwarning:', line, re.I))
+                  if hit:
+                      key = re.sub(r'^.*?/ios/', 'ios/', line.strip())
+                      if key not in seen:
+                          seen.add(key); found.append(key)
+              if found:
+                  lines.append(f'### {path.name}')
+                  lines.extend('    ' + item[:600] for item in found[:120])
+              elif text and ('FAILED' in text[-1] or path.name.endswith('build.log')):
+                  lines.append(f'### {path.name} (tail)')
+                  lines.extend('    ' + item[:400] for item in text[-40:])
+          body = '\n'.join(lines) or 'No compile errors, warnings or failed tests were found in the logs.'
+          print(body[:60000])
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/check-runs" -f name="ios-dev diagnostics" -f head_sha="$GITHUB_SHA" \
+            -f status=completed -f conclusion=neutral -f "output[title]=ios-dev diagnostics" \
+            -F "output[summary]=@$RUNNER_TEMP/diagnostics.md" > /dev/null || true
       - name: Fail on any build warning, compile error or failed test
         if: always()
         run: |
