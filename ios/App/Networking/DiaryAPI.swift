@@ -130,12 +130,7 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
     }
     func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {
         let data = try await responseData(path, method: method, body: body, timeout: timeout)
-        // Decode off the main actor: glance cards, discovery pages and people
-        // responses arrive while the user is scrolling.
-        return try await Self.decode(data)
-    }
-    @concurrent nonisolated private static func decode<T: Decodable>(_ data: Data) async throws -> sending T {
-        try JSONDecoder().decode(T.self, from: data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
     private func responseData(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> Data {
         let generation = sessionGeneration
