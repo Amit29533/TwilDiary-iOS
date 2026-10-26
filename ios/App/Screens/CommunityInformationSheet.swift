@@ -16,7 +16,9 @@ struct CommunityInformationSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     Text(name).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    if let value = controller.value {
+                    // A cached page paints in the first frame; the sheet no longer shows a
+                    // 300 pt loading placeholder that is replaced a moment later.
+                    if let value = controller.value ?? identity.flatMap({ store.cachedCommunityInformation($0) }) {
                         VStack(alignment: .leading, spacing: 18) {
                             Text("Community stats").font(.title2.bold())
                             if let stats = value.stats {
@@ -44,7 +46,7 @@ struct CommunityInformationSheet: View {
                             Button("Retry community information") { retryRevision += 1 }.buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.loading)
                         }
                     }
-                    if controller.loading && controller.value == nil { DiaryLoadingPlaceholder(height: 300, label: "Loading community information") }
+                    if controller.loading && controller.value == nil && identity.flatMap({ store.cachedCommunityInformation($0) }) == nil { DiaryLoadingPlaceholder(height: 300, label: "Loading community information") }
                     if let error = controller.error { RetryNotice(message: error) { retryRevision += 1 } }
                     Text("Community information from Trakt. These are overall activity and comment summaries, independent of your personal rating.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

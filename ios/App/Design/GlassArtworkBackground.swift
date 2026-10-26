@@ -13,8 +13,20 @@ struct GlassArtworkBitmap: @unchecked Sendable {
     let blue: Double
 }
 
+/// Synchronous lookup for already-blurred backgrounds, so a pushed screen paints
+/// its background in the first frame instead of black followed by a fade-in.
+private final class ResidentGlassArtwork: @unchecked Sendable {
+    final class Entry: NSObject, @unchecked Sendable {
+        let bitmap: GlassArtworkBitmap
+        init(_ bitmap: GlassArtworkBitmap) { self.bitmap = bitmap; super.init() }
+    }
+    let values = NSCache<NSString, Entry>()
+    init() { values.countLimit = 24 }
+}
+
 actor GlassArtworkCache {
     static let shared = GlassArtworkCache()
+    private nonisolated let resident = ResidentGlassArtwork()
     private var images: [String: GlassArtworkBitmap] = [:]
     private var order: [String] = []
     private var pending: [String: Task<GlassArtworkBitmap?, Never>] = [:]
@@ -65,7 +77,13 @@ actor GlassArtworkCache {
         save(result, key: key)
         return result
     }
+    nonisolated func cached(_ path: String) -> GlassArtworkBitmap? {
+        if let value = resident.values.object(forKey: path as NSString) { return value.bitmap }
+        guard let url = Self.publicArtworkURL(path) else { return nil }
+        return resident.values.object(forKey: url.absoluteString as NSString)?.bitmap
+    }
     private func save(_ bitmap: GlassArtworkBitmap, key: String) {
+        resident.values.setObject(ResidentGlassArtwork.Entry(bitmap), forKey: key as NSString)
         if images[key] == nil { order.append(key) }
         images[key] = bitmap
         while order.count > 12 { images.removeValue(forKey: order.removeFirst()) }
@@ -128,7 +146,7 @@ struct DiaryScreenBackground: View {
         GeometryReader { geometry in
             ZStack {
                 Color.black
-                if (theme == .glass || forceGlass) && !reduceTransparency, let bitmap {
+                if (theme == .glass || forceGlass) && !reduceTransparency, let bitmap = bitmap ?? artwork.flatMap({ GlassArtworkCache.shared.cached($0) }) {
                     Color(red: bitmap.red, green: bitmap.green, blue: bitmap.blue).opacity(0.5)
                     Image(decorative: bitmap.image, scale: 1).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -138,8 +156,8 @@ struct DiaryScreenBackground: View {
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
             .task(id: BackgroundKey(path: artwork, glass: theme == .glass || forceGlass, reduced: reduceTransparency)) {
-                bitmap = nil
-                guard (theme == .glass || forceGlass), !reduceTransparency, let artwork else { return }
+                guard (theme == .glass || forceGlass), !reduceTransparency, let artwork else { bitmap = nil; return }
+                if let saved = GlassArtworkCache.shared.cached(artwork) { bitmap = saved; return }
                 let result: GlassArtworkBitmap?
                 if let local = localArtwork(artwork) {
                     result = await GlassArtworkCache.shared.local(GlassArtworkBitmap(image: local, red: 0, green: 0, blue: 0), key: artwork)

@@ -50,6 +50,11 @@ struct CommunityInformation: Decodable, Sendable {
         for read in pending.values { read.task.cancel() }
         pending = [:]
     }
+    /// A fresh saved page for this session, for a synchronous first frame.
+    func saved(_ identity: CommunityIdentity, scope: UUID) -> CommunityInformation? {
+        guard self.scope == scope, let saved = pages[identity], Date.now.timeIntervalSince(saved.at) < 300 else { return nil }
+        return saved.value
+    }
     func load(_ identity: CommunityIdentity, scope: UUID, retry: Bool, fetch: @escaping @MainActor @Sendable () async throws -> CommunityInformation) async throws -> CommunityInformation {
         if self.scope != scope { reset(); self.scope = scope }
         let epoch = generation
@@ -79,6 +84,9 @@ struct CommunityInformation: Decodable, Sendable {
 }
 
 extension DiaryStore {
+    func cachedCommunityInformation(_ identity: CommunityIdentity) -> CommunityInformation? {
+        communityCache.saved(identity, scope: sessionRevision)
+    }
     func communityInformation(_ identity: CommunityIdentity, retry: Bool) async throws -> CommunityInformation {
         let scope = sessionRevision
         return try await communityCache.load(identity, scope: scope, retry: retry) { [self] in
