@@ -3,6 +3,18 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
+Latest cost assessment: captured Cloudflare Row Metrics for the actual test
+selection (10:08–10:17 IST):28,977reads/54writes, including5,650operator read-back
+rows. The three action minutes total21,715reads/54writes, including UI/search
+refreshes; not per-POST meters. UTC day through10:30IST reports219,025reads/
+12,758writes; deployment bucket accounts for62,650reads/12,548writes. SQL Insights
+summary differs from Row Metrics; both raw datasets/filters saved privately,
+no invented reconciliation. Current observed normal traffic fits Free, but
+native2kbulk/day capacity remains unverified. Native bulk defers diary refresh
+until end; the live individual filtered sample must not be extrapolated as its
+cost. Full assessment/method/bounds in ios/docs/D1-FREE-TIER-ASSESSMENT-2026-10-26.md.
+No new mutations/build/deployment during this read-only assessment.
+
 Owner-authorized live sample after rollout: **3 incoming changes applied and
 read back successfully** — two episode watches and one rating. Used individual
 ready-change controls through the protected production API; no bulk start,
