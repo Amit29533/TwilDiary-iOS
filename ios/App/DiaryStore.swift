@@ -93,6 +93,8 @@ import TwilDiaryCore
     var sessionRevision: UUID { sessionGeneration }
     private var snapshotGeneration = UUID()
     private var lastForegroundRead: Date?
+    @ObservationIgnored private var foregroundReadID: UUID?
+    private var knownWorkspaceRevision: String?
     private var pendingWatches: [String: [String: Any]] = [:]
     private var pendingProgress: [String: [String: Any]] = [:]
     private var pendingRemovals: [String: WatchCard.Previous] = [:]
@@ -147,6 +149,7 @@ import TwilDiaryCore
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
         let generation = UUID(); sessionGeneration = generation; snapshotGeneration = UUID()
         lastForegroundRead = nil
+        foregroundReadID = nil; knownWorkspaceRevision = nil
         invalidateDiscovery()
         communityCache.reset()
         do {
@@ -207,18 +210,55 @@ import TwilDiaryCore
     /// No background polling on the phone. Coalesce rapid scene changes and
     /// wait for in-flight write receipts before reading the scheduled D1 result.
     func refreshOnForeground(at date: Date = .now) async {
-        guard !needsSignIn, !api.isQuotaBlocked, lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
+        guard !needsSignIn, !api.isQuotaBlocked, !loading, foregroundReadID == nil,
+              foregroundReadDue(at: date) else { return }
         let session = sessionGeneration
+        let ticket = UUID(); foregroundReadID = ticket
+        defer { if foregroundReadID == ticket { foregroundReadID = nil } }
         while busy && session == sessionGeneration && !Task.isCancelled {
             await withCheckedContinuation { mutationWaiters.append($0) }
         }
-        guard session == sessionGeneration, !Task.isCancelled, !api.isQuotaBlocked,
-              lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
+        guard session == sessionGeneration, !Task.isCancelled, !api.isQuotaBlocked, !loading,
+              foregroundReadDue(at: date) else { return }
         lastForegroundRead = date
         defer { if Task.isCancelled, session == sessionGeneration, lastForegroundRead == date { lastForegroundRead = nil } }
-        await refresh()
+        let snapshot = snapshotGeneration
+        loading = true; defer { if session == sessionGeneration { loading = false } }
+        do {
+            let revision = try await readWorkspaceRevision()
+            guard session == sessionGeneration, snapshot == snapshotGeneration,
+                  !Task.isCancelled else { return }
+            if let revision, revision == knownWorkspaceRevision, hasLoadedWorkspace, !needsMutationRefresh {
+                lastRefreshedAt = date; error = nil
+                return
+            }
+            try await reload(expectedRevision: revision)
+            if session == sessionGeneration { error = nil }
+        } catch is CancellationError { }
+        catch { if session == sessionGeneration { fail(error) } }
     }
-    func reload() async throws {
+    private func foregroundReadDue(at date: Date) -> Bool {
+        if needsMutationRefresh { return lastForegroundRead.map { date.timeIntervalSince($0) >= 60 } ?? true }
+        let latest = [lastForegroundRead, lastRefreshedAt].compactMap { $0 }.max()
+        return latest.map { date.timeIntervalSince($0) >= 60 } ?? true
+    }
+    private struct WorkspaceRevisionResponse: Decodable { let revision: String }
+    private func readWorkspaceRevision() async throws -> String? {
+        #if DEBUG
+        if fixture != nil || isPreview { return nil }
+        #endif
+        do {
+            let value: WorkspaceRevisionResponse = try await api.request("/api/workspace/revision")
+            guard value.revision.count == 32, value.revision.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+                throw APIError.message("The diary freshness check returned an invalid revision.")
+            }
+            return value.revision
+        } catch APIError.rejected(let status, _) where status == 404 {
+            // Rolling deployment: old backends retain the bounded 60s full read.
+            return nil
+        }
+    }
+    func reload(expectedRevision: String? = nil) async throws {
         #if DEBUG
         if let fixture {
             if failNextFixtureRefresh {
@@ -232,18 +272,33 @@ import TwilDiaryCore
         let session = sessionGeneration, revision = UUID()
         snapshotGeneration = revision
         // Publish only a complete snapshot. A failed page cannot replace good data with a partial diary.
-        let snapshot: Workspace
-        do { snapshot = try await readWorkspaceSnapshot() }
-        catch WorkspaceIntegrityError.incompleteSnapshot {
-            try Task.checkCancellation()
-            guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-            // A scheduled import may land between section reads. Retry GETs
-            // once; persistent inconsistency preserves the last complete diary.
-            snapshot = try await readWorkspaceSnapshot()
+        var snapshot: Workspace?
+        var expected = expectedRevision
+        for attempt in 0...1 {
+            do {
+                let value = try await readWorkspaceSnapshot()
+                if let before = expected {
+                    let after = try await readWorkspaceRevision()
+                    guard session == sessionGeneration, revision == snapshotGeneration, !Task.isCancelled else { throw CancellationError() }
+                    if after != before {
+                        guard attempt == 0, let after else { throw APIError.message("Your diary changed during refresh. Your saved view is kept; refresh again.") }
+                        expected = after
+                        continue
+                    }
+                }
+                snapshot = value
+                break
+            } catch WorkspaceIntegrityError.incompleteSnapshot {
+                guard attempt == 0 else { throw WorkspaceIntegrityError.incompleteSnapshot }
+                try Task.checkCancellation()
+                guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
+            }
         }
+        guard let snapshot else { throw APIError.message("Your diary changed during refresh. Your saved view is kept; refresh again.") }
         try Task.checkCancellation()
         guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
         workspace = snapshot; hasLoadedWorkspace = true; showingCachedSnapshot = false; lastRefreshedAt = .now
+        knownWorkspaceRevision = expected
         needsMutationRefresh = false
         if let scope = api.credential?.cacheScope {
             var cacheFailure: Error?

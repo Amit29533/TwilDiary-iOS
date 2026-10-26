@@ -66,6 +66,16 @@ PY
       -only-testing:TwilDiaryTests -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/UnitTests.xcresult" \
       2>&1 | tee "$ARTIFACTS/logs/unit-tests.log"
     ;;
+  test-stage1)
+    xcodebuild test-without-building "${COMMON[@]}" -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$SIM_ARCH" \
+      -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 240 \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testCachedDiaryStatusDoesNotCoverScreensAndRemainsAvailableInSettings \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeTabsAndTitleNavigation \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory \
+      -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/Stage1.xcresult" \
+      2>&1 | tee "$ARTIFACTS/logs/stage1-ui-tests.log"
+    ;;
   test-repairs)
     # Exercise the actually failing cases before spending time on the long suite.
     # No retry-until-pass; any failure stops the run and retains its evidence.

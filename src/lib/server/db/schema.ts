@@ -15,6 +15,16 @@ import {
 } from 'drizzle-orm/sqlite-core';
 
 // One private diary per deployment. No public Data API or client database credentials.
+/** Constant-size freshness check. SQL triggers cover every projected workspace table. */
+export const workspaceRevision = sqliteTable(
+  'workspace_revision',
+  {
+    id: integer('id').primaryKey(),
+    token: text('token').notNull()
+  },
+  (t) => [check('workspace_revision_singleton', sql`${t.id}=1`)]
+);
+
 export const titles = sqliteTable(
   'titles',
   {

@@ -276,19 +276,21 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
 
     func testForegroundRefreshReadsTheLatestDiaryAndCoalescesRapidSceneChanges() async {
         let storage = MemorySessionStorage(); storage.credential = credential
-        StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
+        StubProtocol.state.reset { request in request.url?.path == "/api/workspace/revision" ? .init(#"{"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#) : .init(#"{"items":[],"next":null}"#) }
         let store = DiaryStore(api: api(storage)), start = Date.now
         store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         await store.refreshOnForeground(at: start)
-        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertEqual(StubProtocol.state.recorded().count, 6)
         await store.refreshOnForeground(at: start.addingTimeInterval(1))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
-        await store.refreshOnForeground(at: start.addingTimeInterval(11))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 8)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 6)
+        await store.refreshOnForeground(at: start.addingTimeInterval(59))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 6)
+        await store.refreshOnForeground(at: start.addingTimeInterval(61))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 7)
     }
     func testForegroundReadWaitsForAnInFlightWriteBeforeLoadingTheServerSnapshot() async {
         let storage = MemorySessionStorage(); storage.credential = credential
-        StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
+        StubProtocol.state.reset { request in request.url?.path == "/api/workspace/revision" ? .init(404,"{}") : .init(#"{"items":[],"next":null}"#) }
         let store = DiaryStore(api: api(storage)); store.busy = true
         var started = false
         let pending = Task { started = true; await store.refreshOnForeground() }
@@ -297,11 +299,11 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         }
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty)
         store.busy = false; await pending.value
-        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
     }
     func testCancelledForegroundWaitDoesNotConsumeTheNextResumeRefresh() async {
         let storage = MemorySessionStorage(); storage.credential = credential
-        StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
+        StubProtocol.state.reset { request in request.url?.path == "/api/workspace/revision" ? .init(404,"{}") : .init(#"{"items":[],"next":null}"#) }
         let store = DiaryStore(api: api(storage)); store.busy = true
         var started = false
         let pending = Task { started = true; await store.refreshOnForeground() }
@@ -311,7 +313,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         pending.cancel(); store.busy = false; await pending.value
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty)
         await store.refreshOnForeground()
-        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
     }
 
     func testCatalogSeasonUsesReadOnlyEndpointAndExplicitSpoilerChoice() async throws {
@@ -1609,6 +1611,132 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertTrue(store.needsSignIn); XCTAssertFalse(store.hasLoadedWorkspace)
         XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertTrue(store.workspace.events.isEmpty)
         XCTAssertNil(cache.load(scope: credential.cacheScope))
+    }
+    func testStage1ChangedRevisionReloadsWhileUnchangedForegroundReadsOnlyOneRow() async throws {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let pages = try workspacePages(PreviewData.workspace)
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" { return .init(#"{"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#) }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let store = DiaryStore(api: api(storage)), start = Date.now
+        await store.refreshOnForeground(at: start)
+        XCTAssertFalse(store.workspace.titles.isEmpty)
+        let count = StubProtocol.state.recorded().count
+        await store.refreshOnForeground(at: start.addingTimeInterval(61))
+        XCTAssertEqual(StubProtocol.state.recorded().count, count + 1)
+        StubProtocol.state.reset { request in
+            request.url?.path == "/api/workspace/revision" ? .init(#"{"revision":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}"#) : .init(#"{"items":[],"next":null}"#)
+        }
+        await store.refreshOnForeground(at: start.addingTimeInterval(122))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 6)
+        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertNil(store.error)
+    }
+    func testStage1ManualRefreshBypassesFreshnessAndInvalidatesThePreviousRevision() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { request in
+            request.url?.path == "/api/workspace/revision" ? .init(#"{"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#) : .init(#"{"items":[],"next":null}"#)
+        }
+        let store = DiaryStore(api: api(storage)), start = Date.now
+        await store.refreshOnForeground(at: start)
+        await store.refresh()
+        XCTAssertEqual(StubProtocol.state.recorded().count, 10)
+        await store.refreshOnForeground(at: start.addingTimeInterval(61))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 16)
+    }
+    func testStage1ARecentSuccessfulManualSnapshotSuppressesAutomaticForegroundReads() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
+        let store = DiaryStore(api: api(storage))
+        await store.refresh()
+        await store.refreshOnForeground()
+        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+    }
+    func testStage1AnOldBackendFallsBackWithoutTreatingErrorsAsAnUnchangedDiary() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { request in
+            request.url?.path == "/api/workspace/revision" ? .init(404, "{}") : .init(#"{"items":[],"next":null}"#)
+        }
+        let store = DiaryStore(api: api(storage))
+        await store.refreshOnForeground()
+        XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertNil(store.error)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+    }
+    func testStage1RevisionErrorsDoNotTriggerFullReadsOrRapidAutomaticRetries() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { _ in .init(503, #"{"error":{"code":"workspace_revision_unavailable","message":"Unavailable"}}"#) }
+        let store = DiaryStore(api: api(storage)), start = Date.now
+        store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
+        await store.refreshOnForeground(at: start)
+        await store.refreshOnForeground(at: start.addingTimeInterval(1))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 1)
+        XCTAssertEqual(store.workspace.titles, PreviewData.workspace.titles); XCTAssertNotNil(store.error)
+        StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
+        await store.refresh()
+        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertNil(store.error)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+    }
+    func testStage1MalformedRevisionDoesNotDiscardTheSavedDiary() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { _ in .init(#"{"revision":"invalid"}"#) }
+        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        await store.refreshOnForeground()
+        XCTAssertEqual(StubProtocol.state.recorded().count, 1)
+        XCTAssertEqual(store.workspace.titles, PreviewData.workspace.titles); XCTAssertNotNil(store.error)
+    }
+    func testStage1OverlappingForegroundRequestsCoalesceWhileRevisionIsInFlight() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let gate = StubProtocol.ResponseGate()
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" { var reply = StubProtocol.Reply(#"{"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#); reply.gate = gate; return reply }
+            return .init(#"{"items":[],"next":null}"#)
+        }
+        let store = DiaryStore(api: api(storage))
+        let first = Task { await store.refreshOnForeground() }
+        guard await waitForRegressionCondition({ !StubProtocol.state.recorded().isEmpty }) else { gate.release(); await first.value; XCTFail("No revision request"); return }
+        await store.refreshOnForeground()
+        XCTAssertEqual(StubProtocol.state.recorded().count, 1)
+        gate.release(); await first.value
+        XCTAssertEqual(StubProtocol.state.recorded().count, 6)
+    }
+    func testStage1SignOutFencesAnInFlightRevisionResponse() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let gate = StubProtocol.ResponseGate()
+        StubProtocol.state.reset { _ in var reply = StubProtocol.Reply(#"{"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#); reply.gate = gate; return reply }
+        let store = DiaryStore(api: api(storage))
+        let task = Task { await store.refreshOnForeground() }
+        guard await waitForRegressionCondition({ !StubProtocol.state.recorded().isEmpty }) else { gate.release(); await task.value; XCTFail("No revision request"); return }
+        store.signOut(); gate.release(); await task.value
+        XCTAssertTrue(store.needsSignIn); XCTAssertTrue(store.workspace.titles.isEmpty)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 1)
+    }
+    func testStage1IncomingWriteDuringSnapshotRetriesOnceBeforePublishing() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" {
+                let count = StubProtocol.state.recorded().filter { $0.url?.path == "/api/workspace/revision" }.count
+                return .init(count == 1 ? #"{"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"# : #"{"revision":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}"#)
+            }
+            return .init(#"{"items":[],"next":null}"#)
+        }
+        let store = DiaryStore(api: api(storage)); await store.refreshOnForeground()
+        XCTAssertEqual(StubProtocol.state.recorded().count, 11)
+        XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertNil(store.error)
+    }
+    func testStage1RepeatedConcurrentChangesKeepThePreviousCompleteSnapshot() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" {
+                let count = StubProtocol.state.recorded().filter { $0.url?.path == "/api/workspace/revision" }.count
+                let revision = String(repeating: String(count), count: 32)
+                return .init("{\"revision\":\"\(revision)\"}")
+            }
+            return .init(#"{"items":[],"next":null}"#)
+        }
+        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        await store.refreshOnForeground()
+        XCTAssertEqual(StubProtocol.state.recorded().count, 11)
+        XCTAssertEqual(store.workspace.titles, PreviewData.workspace.titles); XCTAssertNotNil(store.error)
     }
     private func workspacePages(_ workspace: Workspace) throws -> [String: String] {
         let sections: [String: Any] = ["titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.titles)),

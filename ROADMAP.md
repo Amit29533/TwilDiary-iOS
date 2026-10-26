@@ -1,6 +1,6 @@
 # Native TwilDiary roadmap
 
-Canonical repository: `Amit29533/TwilDiary-iOS`. Latest development branch: `main`; qualified native verification remains `ios-native` or a manual same-SHA dispatch. Product source: `/preview/*` at web baseline `b43454e`. Native project: `/ios`. The26October consolidation imports the complete current app/backend/pipelines and preserves both histories; it supersedes the earlier separate-repo checkpoint. This remains the parity checklist; checked subtasks are evidence-backed and do not imply an entire step is complete. Source migration itself changes no hosted data or deployments.
+Canonical repository: `Amit29533/TwilDiary-iOS`. Latest development branch: `develop`; qualified native verification remains `ios-native` or a manual same-SHA dispatch. Product source: `/preview/*` at web baseline `b43454e`. Native project: `/ios`. The26October consolidation imports the complete current app/backend/pipelines and preserves both histories; it supersedes the earlier separate-repo checkpoint. This remains the parity checklist; checked subtasks are evidence-backed and do not imply an entire step is complete. Source migration itself changes no hosted data or deployments.
 
 ## 1. Foundation and CI
 
@@ -216,3 +216,4 @@ per extra phone;0warnings/0failures. Verified physical IPA delivered; original
 native screenshots/hash scope committed. No whole-project completion checkbox:
 62database/workflow/privacy/Catalog changes, hosted rollout and remaining physical
 and cold-quota bootstrap evidence are outstanding. UI testing scope is iOS only.
+

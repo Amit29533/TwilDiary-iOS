@@ -120,6 +120,13 @@
       "when": 1792950685842,
       "tag": "0016_native_query_bounds",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793011847319,
+      "tag": "0017_workspace_revision",
+      "breakpoints": true
     }
   ]
 }
