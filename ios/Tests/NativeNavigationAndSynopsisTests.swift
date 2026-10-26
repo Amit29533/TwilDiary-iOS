@@ -13,10 +13,11 @@ import SwiftUI
         XCTAssertFalse(SignInNavigationPolicy.allows(nil))
     }
     func testRootTabSwipeUsesTheRequestedDirectionAndStopsAtEitherEnd() {
+        // Native paging: the finger moving left reveals the next tab, right the previous one.
         let right = CGSize(width: 150, height: 10), left = CGSize(width: -150, height: 10)
         for (index, tab) in AppTab.allCases.enumerated() {
-            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: right, width: 390), index < 4 ? AppTab.allCases[index + 1] : nil)
-            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: left, width: 390), index > 0 ? AppTab.allCases[index - 1] : nil)
+            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: left, width: 390), index < 4 ? AppTab.allCases[index + 1] : nil)
+            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: right, width: 390), index > 0 ? AppTab.allCases[index - 1] : nil)
         }
     }
     func testRootTabSwipeRejectsShortVerticalAndInvalidDrags() {

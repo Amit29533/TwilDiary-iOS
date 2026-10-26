@@ -12,6 +12,7 @@ struct CommunityInformationSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             Text("Information").font(.headline).frame(maxWidth: .infinity).padding(.top, 24).padding(.bottom, 16)
+                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("community-information-heading")
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     Text(name).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)

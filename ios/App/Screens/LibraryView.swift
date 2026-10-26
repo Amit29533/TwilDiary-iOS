@@ -106,7 +106,8 @@ struct LibraryView: View {
                         }.font(.system(size: geometry.size.width < 331 ? 12 : 13, weight: .semibold))
                             .frame(width: geometry.size.width < 331 ? 110 : 145, height: 44)
                     }.padding(.horizontal, 9).frame(height: 46).contentShape(RoundedRectangle(cornerRadius: 14))
-                }.buttonStyle(.glass).accessibilityIdentifier("library-order")
+                        .background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 14)) }
+                }.buttonStyle(.plain).accessibilityIdentifier("library-order")
                 if selecting {
                     Button("Done selecting", systemImage: "xmark") { selecting = false; selected = [] }
                         .labelStyle(.iconOnly).frame(width: 42, height: 44)
@@ -116,7 +117,9 @@ struct LibraryView: View {
                     Button { genreRows.toggle(); list = false } label: { layoutIcon("rows-3", selected: genreRows, genre: true) }
                         .accessibilityLabel("Genre sections").accessibilityIdentifier("library-genres")
                 }
-            }.foregroundStyle(Color(webHex: "#c5c0cf")).buttonStyle(.glass)
+            // Native glass comes from DiaryControlSurface behind each label. The glass
+            // button style would add its own padding and break the fixed 46/44 pt sizes.
+            }.foregroundStyle(Color(webHex: "#c5c0cf")).buttonStyle(.plain)
         }.frame(height: 46).padding(.horizontal, 14).padding(.bottom, 12)
     }
     private var sortLabel: String {
@@ -189,6 +192,7 @@ struct LibraryView: View {
     private func layoutIcon(_ name: String, selected: Bool, genre: Bool = false) -> some View {
         DiaryIcon(name: name, size: 20).foregroundStyle(genre && selected ? theme.accent : Color(webHex: "#c5c0cf"))
             .frame(width: genre ? 36 : 42, height: 44)
+            .background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 14), selected: genre && selected) }
             .contentShape(Rectangle())
     }
     private var genres: [String] { LibraryShelf.make(collection).map(\.genre).filter { $0 != "Without a genre" } }

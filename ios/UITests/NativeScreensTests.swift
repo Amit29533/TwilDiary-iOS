@@ -104,12 +104,13 @@ import UIKit
     func testRootContentSwipesVisitEveryTabWithoutWrappingAndKeepCardGestures() {
         let app = launch(mutations: true)
         app.tabBars.buttons["Home"].tap()
-        func swipe(_ right: Bool) {
+        // `advance` pages forward like a native page view: the finger moves left.
+        func swipe(_ advance: Bool) {
             let logo = app.buttons["random-pick-logo"]
             XCTAssertTrue(logo.waitForExistence(timeout: 5))
             let y = app.frame.height * (app.tabBars.buttons["Home"].isSelected ? 0.68 : 0.43)
-            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (right ? 0.25 : 0.75), dy: y))
-            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (right ? 0.75 : 0.25), dy: y))
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.75 : 0.25), dy: y))
+            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.25 : 0.75), dy: y))
             start.press(forDuration: 0.05, thenDragTo: end)
         }
         swipe(false); XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
@@ -123,23 +124,23 @@ import UIKit
             wait(for: [expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons[tab.capitalized])], timeout: 5)
             if !app.tabBars.buttons[tab.capitalized].isSelected {
                 let hierarchy = XCTAttachment(string: app.debugDescription)
-                hierarchy.name = "Unexpected page after left swipe to " + tab
+                hierarchy.name = "Unexpected page after backward swipe to " + tab
                 hierarchy.lifetime = .keepAlways; add(hierarchy)
-                capture("Unexpected left swipe destination " + tab)
+                capture("Unexpected backward swipe destination " + tab)
             }
         }
         capture("Root tabs swiped both directions without wrapping")
         app.tabBars.buttons["Glance"].tap()
         let count = app.staticTexts["watch-count-again"]
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
-        let title = app.buttons["progress-title-again"]
-        let start = title.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 110, dy: 0)))
+        // Cards no longer own a horizontal swipe (it belongs to tab paging); the
+        // mark button logs exactly one watch and Undo restores it on the same tab.
+        app.buttons["Mark next watch for 18 Again"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 8)
-        XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "A reserved watch-card swipe must not change tabs")
+        XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "Marking a watch must not change tabs")
         app.buttons["Undo"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 8)
-        capture("Glance card swipe and Undo retain their original ownership")
+        capture("Glance mark and Undo stay on the Glance tab")
     }
     func testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause() {
         let app = launch(traktScenario: "large-import")
@@ -222,7 +223,9 @@ import UIKit
         XCTAssertTrue(negative.exists); XCTAssertEqual(negative.label, "Negative: Repetitive storyline")
         XCTAssertFalse(app.buttons["title-personal-rating"].isHittable)
         capture("Trakt community information fixture")
-        let sheetBar = app.navigationBars["Information"]
+        // The sheet uses a fixed heading instead of a navigation bar, so its title
+        // no longer fades across detents while dragging.
+        let sheetBar = app.staticTexts["community-information-heading"]
         XCTAssertTrue(sheetBar.isHittable)
         sheetBar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.96)), withVelocity: .slow, thenHoldForDuration: 0.1)
@@ -797,9 +800,7 @@ import UIKit
         let count = app.staticTexts["watch-count-again"], mark = app.buttons["Mark next watch for 18 Again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "8")
         let originalY = mark.frame.minY
-        let title = app.buttons["progress-title-again"]
-        let start = title.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 140, dy: 0)))
+        mark.tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 10)
         XCTAssertEqual(mark.frame.minY, originalY, accuracy: 1, "Release must not reflow the page")
         app.buttons["Undo"].tap()
@@ -1236,14 +1237,10 @@ import UIKit
         XCTAssertTrue(eighth.exists); XCTAssertTrue(ninth.exists)
         XCTAssertLessThan(eighth.frame.minX, ninth.frame.minX)
         XCTAssertTrue(app.buttons["Mark episode 9 watched"].exists); capture("Episode grid retains spoiler and watched controls")
-        eighth.tap(); ninth.tap()
+        // Watch controls stay inside each fixed-size grid tile.
         for number in [8, 9] {
-            let summary = app.staticTexts["episode-summary-\(number)"]
-            XCTAssertTrue(summary.waitForExistence(timeout: 5))
-            let details = app.buttons["title-episode-\(number)"]
             let watch = app.buttons["Mark episode \(number) " + (number == 8 ? "unwatched" : "watched")]
             XCTAssertTrue(watch.exists)
-            XCTAssertLessThan(details.frame.height, 210, "The artwork/caption button must not grow a vertical Spacer when its summary expands")
             let thumbnail = app.descendants(matching: .any)["episode-thumbnail-\(number)"]
             XCTAssertTrue(thumbnail.exists)
             XCTAssertGreaterThanOrEqual(watch.frame.minX, thumbnail.frame.minX)
@@ -1252,11 +1249,23 @@ import UIKit
             XCTAssertLessThanOrEqual(watch.frame.maxY, thumbnail.frame.maxY)
             XCTAssertLessThan(abs(watch.frame.maxY - thumbnail.frame.maxY), 8)
             XCTAssertLessThan(abs(watch.frame.maxX - thumbnail.frame.maxX), 8)
-            XCTAssertGreaterThan(summary.frame.minY, details.frame.maxY)
-            XCTAssertLessThan(summary.frame.minY - details.frame.maxY, 30)
         }
-        capture("Expanded episode grid keeps captions watch controls and summaries together")
-        eighth.tap(); ninth.tap()
+        // Summaries open in a sheet, so revealing or reading one never moves the grid.
+        let ninthFrame = ninth.frame
+        eighth.tap()
+        let eighthSummary = app.staticTexts["episode-summary-8"]
+        XCTAssertTrue(eighthSummary.waitForExistence(timeout: 5)); capture("Episode details sheet")
+        app.buttons["Done"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: eighthSummary)], timeout: 5)
+        XCTAssertEqual(ninth.frame.minY, ninthFrame.minY, accuracy: 1, "Opening episode details must not reflow the grid")
+        ninth.tap() // An unwatched, hidden episode is revealed in place first.
+        XCTAssertEqual(ninth.frame.height, ninthFrame.height, accuracy: 1, "Revealing must not change the tile height")
+        ninth.tap()
+        let ninthSummary = app.staticTexts["episode-summary-9"]
+        XCTAssertTrue(ninthSummary.waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: ninthSummary)], timeout: 5)
+        capture("Episode grid keeps captions and watch controls; details open in a sheet")
         episodes.tap()
         let recommendations = app.staticTexts["You might like"], recommendationLayout = app.buttons["catalog-layout"]
         for _ in 0..<10 { if recommendationLayout.isHittable { break }; app.swipeUp() }

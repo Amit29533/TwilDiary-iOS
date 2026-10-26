@@ -363,7 +363,9 @@ struct TitleDetailView: View {
     }
     private func episodeCaption(_ episode: Episode, watched: Bool, next: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Two reserved lines: revealing a spoiler-hidden name never changes the row height.
             Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 14, weight: .semibold))
+                .lineLimit(2, reservesSpace: true)
                 .foregroundStyle(.white).multilineTextAlignment(.leading)
                 .accessibilityIdentifier("episode-caption-\(episode.number)")
             InlineFlowLayout {
