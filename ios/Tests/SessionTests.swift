@@ -1095,6 +1095,52 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertEqual(full.count, 4, "An inconsistent targeted read must be replaced by one complete snapshot")
         XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
     }
+    func testCompletingAShowReloadsOnlyMissingOrPossiblyAiringSeasons() async throws {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(PreviewData.workspace)) as? [String: Any])
+        var titles = try XCTUnwrap(object["titles"] as? [[String: Any]])
+        let index = try XCTUnwrap(titles.firstIndex { $0["id"] as? String == "again" })
+        let recent = Date.now.addingTimeInterval(-3600).ISO8601Format(), old = Date.now.addingTimeInterval(-30 * 86_400).ISO8601Format()
+        titles[index]["tmdbId"] = 900002
+        titles[index]["seasons"] = [
+            ["number": 1, "name": "Season 1", "expectedEpisodes": 2, "metadataLoadedAt": recent, "metadataVersion": 2],
+            ["number": 2, "name": "Season 2", "expectedEpisodes": 2, "metadataLoadedAt": old, "metadataVersion": 2],
+            ["number": 3, "name": "Season 3", "expectedEpisodes": 2, "metadataLoadedAt": NSNull(), "metadataVersion": 2]
+        ] as [[String: Any]]
+        let original = try XCTUnwrap(object["episodes"] as? [[String: Any]])
+        let template = try XCTUnwrap(original.first { $0["titleId"] as? String == "again" })
+        var episodes = original.filter { $0["titleId"] as? String != "again" }
+        for season in 1...2 {
+            for number in 1...2 {
+                var episode = template
+                episode["id"] = "complete-\(season)-\(number)"; episode["season"] = season; episode["number"] = number
+                episode["airedOn"] = "2020-0\(season)-0\(number)"
+                episodes.append(episode)
+            }
+        }
+        object["titles"] = titles; object["episodes"] = episodes
+        object["events"] = try XCTUnwrap(object["events"] as? [[String: Any]]).filter { $0["titleId"] as? String != "again" }
+        let workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+        let pages = try workspacePages(workspace)
+        StubProtocol.state.reset { request in
+            if request.url?.path.hasSuffix("/metadata") == true { return .init("{}") }
+            if request.url?.path == "/api/progress/status" {
+                let body = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
+                let receipt: [String: Any] = ["operationId": body?["operationId"] as? String ?? "missing"]
+                return .init(String(decoding: (try? JSONSerialization.data(withJSONObject: receipt)) ?? Data(), as: UTF8.self))
+            }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let title = try XCTUnwrap(store.title("again"))
+        let saved = await store.setStatus(title, status: "completed")
+        XCTAssertTrue(saved, store.error ?? "")
+        let reloads = StubProtocol.state.recorded().filter { $0.url?.path.hasSuffix("/metadata") == true }.compactMap { $0.url?.path }
+        // Season 1 is fresh and season 2 ended long ago with every episode loaded;
+        // only the never-loaded season 3 is fetched before the status request.
+        XCTAssertEqual(reloads, ["/api/titles/again/seasons/3/metadata"])
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/api/progress/status" }.count, 1)
+    }
     func testSignOutDuringConfirmedWriteRefreshCannotRestoreTheSaveNoticeOrWorkspace() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
         let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true

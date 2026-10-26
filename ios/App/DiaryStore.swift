@@ -658,16 +658,7 @@ import TwilDiaryCore
         let request = try CollectionRequest(titles: reviewed, change: .status(status))
         let ids = Set(reviewed.map(\.id)), key = status + ":" + ids.sorted().joined(separator: ",")
         if pendingProgress[key] == nil {
-            if status == "completed" {
-                for title in reviewed where title.isSeries {
-                    for season in title.seasons ?? [] where season.number > 0 {
-                        let fresh = title.tmdbId == nil || ((season.metadataVersion ?? 1) >= 2 && (DiaryDate.parse(season.metadataLoadedAt).map { self.now.timeIntervalSince($0) < 6 * 60 * 60 } ?? false))
-                        if season.metadataLoadedAt == nil || !fresh {
-                            let _: EmptyResponse = try await read("/api/titles/\(title.id)/seasons/\(season.number)/metadata", method: "POST")
-                        }
-                    }
-                }
-            }
+            if status == "completed" { try await prepareSeasonsForCompletion(reviewed) }
             pendingProgress[key] = ["operationId": UUID().uuidString, "items": request.items.map { ["id": $0.id, "expectedVersion": $0.expectedVersion] as [String: Any] }, "status": status, "watchedAt": watchedAt.ISO8601Format(), "today": DiaryDate.day(now)]
         }
         let receipt: ProgressReceipt
@@ -682,6 +673,44 @@ import TwilDiaryCore
         undoLabel = status == "planned" ? "Progress reset" : "Marked completed"
         let undoBody: [String: Any] = ["operationId": UUID().uuidString, "undoOf": receipt.operationId]
         undoAction = { let _: ProgressReceipt = try await self.read("/api/progress/status", method: "POST", body: undoBody) }
+    }
+    /// Completing a show needs every regular season's episode list. Only seasons that
+    /// are missing, incomplete, in an old format, or possibly still airing with stale
+    /// metadata are reloaded, four at a time. Previously every season older than six
+    /// hours was reloaded one after another before the status request could start.
+    private func prepareSeasonsForCompletion(_ titles: [MediaTitle]) async throws {
+        let today = DiaryDate.day(now)
+        let recent = DiaryDate.day(now.addingTimeInterval(-21 * 24 * 60 * 60))
+        var needed: [(title: String, season: Int)] = []
+        for title in titles where title.isSeries {
+            for season in title.seasons ?? [] where season.number > 0 {
+                let rows = episodesForSeason(title.id, season: season.number)
+                let fresh = title.tmdbId == nil || ((season.metadataVersion ?? 1) >= 2 && (DiaryDate.parse(season.metadataLoadedAt).map { now.timeIntervalSince($0) < 6 * 60 * 60 } ?? false))
+                let incomplete = season.expectedEpisodes.map { rows.count < $0 } ?? true
+                let mayStillAir = rows.isEmpty || rows.contains { episode in
+                    guard let aired = episode.airedOn else { return true }
+                    return aired > today || aired >= recent
+                }
+                if season.metadataLoadedAt == nil || (!fresh && (incomplete || mayStillAir || (season.metadataVersion ?? 1) < 2)) {
+                    needed.append((title.id, season.number))
+                }
+            }
+        }
+        guard !needed.isEmpty else { return }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            var queue = needed.makeIterator(), running = 0
+            while true {
+                while running < 4, let next = queue.next() {
+                    group.addTask {
+                        let _: EmptyResponse = try await self.read("/api/titles/\(next.title)/seasons/\(next.season)/metadata", method: "POST")
+                    }
+                    running += 1
+                }
+                if running == 0 { break }
+                _ = try await group.next()
+                running -= 1
+            }
+        }
     }
     func undo() async {
         guard let action = undoAction else { return }
