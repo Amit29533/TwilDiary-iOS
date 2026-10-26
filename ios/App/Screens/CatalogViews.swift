@@ -59,7 +59,6 @@ struct CatalogPoster: View {
 struct CatalogSearchView: View {
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
-    var allowsManual = true
     var onClose: (() -> Void)? = nil
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -68,8 +67,6 @@ struct CatalogSearchView: View {
     @State private var results: [CatalogItem] = []
     @State private var loading = false
     @State private var failure: String?
-    @State private var showManual = false
-    @State private var savedManualID: String?
     @State private var dismissKeyboard = 0
     @AppStorage("searchGrid") private var grid = false
     @State private var page = 1
@@ -105,14 +102,9 @@ struct CatalogSearchView: View {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
             }
-            if allowsManual { Button("Add manually") { showManual = true }.font(.system(size: 14, weight: .semibold)).frame(minHeight: 44) }
         }.padding(.horizontal, 14).padding(.bottom, 12)
             .task(id: normalized) { if completedQuery != normalized || failure != nil { await search(number: 1, reset: true) } }
             .onDisappear { pageTask?.cancel(); generation = UUID(); loading = false }
-            .sheet(isPresented: $showManual, onDismiss: {
-                guard let id = savedManualID else { return }
-                savedManualID = nil; chooseLibrary(id)
-            }) { ManualTitleView(initialName: normalized) { id in savedManualID = id; showManual = false } }
     }
     private func onlineRow(_ item: CatalogItem) -> some View {
         let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
@@ -362,49 +354,6 @@ struct CastAndRelated: View {
         failure = nil
         do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled { failure = error.localizedDescription } }
         do { related = try await store.related(route).items } catch { if !Task.isCancelled { failure = error.localizedDescription } }
-    }
-}
-
-struct ManualTitleView: View {
-    var initialName = ""
-    var onSaved: ((String) -> Void)? = nil
-    @Environment(DiaryStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft = ManualTitleDraft()
-    @State private var failure: String?
-    @State private var identity = UUID().uuidString
-    @State private var saving = false
-    @State private var initialized = false
-    @State private var showRating = false
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Title", text: $draft.name).accessibilityIdentifier("manual-name")
-                TextField("Release year", text: $draft.year, prompt: Text("Unknown")).keyboardType(.numberPad).accessibilityIdentifier("manual-year")
-                Picker("Category", selection: $draft.category) { Text("Movie").tag("movie"); Text("Show").tag("show"); Text("Anime").tag("anime"); Text("Anime movie").tag("anime-movie") }.pickerStyle(.menu).accessibilityIdentifier("manual-category")
-                Picker("Watch status", selection: $draft.status) { ForEach(["planned", "watching", "completed", "dropped"], id: \.self) { Text($0.capitalized).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("manual-status")
-                DisclosureGroup("Rating", isExpanded: $showRating) { TextField("Your score / 10", text: $draft.score, prompt: Text("Not rated")).keyboardType(.decimalPad).accessibilityIdentifier("manual-score") }
-                if draft.status == "completed" { Text("Episode history is tracked separately.").font(.caption).foregroundStyle(.secondary) }
-                if let failure { Text(failure).font(.caption).foregroundStyle(.red).accessibilityIdentifier("manual-error") }
-                Button(saving ? "Saving…" : "Add to library") { Task { await save() } }.disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.busy || saving || !store.canMutate).accessibilityIdentifier("manual-save")
-            }.disabled(saving).navigationTitle("Add title").navigationBarTitleDisplayMode(.inline).toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }.accessibilityIdentifier("manual-keyboard-done") }
-            }.onAppear { if !initialized { initialized = true; draft.name = initialName } }.interactiveDismissDisabled(saving)
-        }
-    }
-    private func save() async {
-        guard !saving else { return }; failure = nil
-        do {
-            let input = try draft.validated(id: identity)
-            saving = true; defer { saving = false }
-            let id = try await store.createManualTitle(input)
-            if draft.status == "completed" {
-                guard let title = store.title(id), await store.setStatus(title, status: "completed") else { throw APIError.message("Added to your library, but could not complete its watch progress. " + (store.error ?? "Try again.")) }
-            }
-            dismiss(); onSaved?(id)
-        } catch is CancellationError { }
-        catch { failure = error.localizedDescription }
     }
 }
 

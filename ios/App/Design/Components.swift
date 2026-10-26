@@ -166,8 +166,12 @@ struct Artwork: View {
     let path: String?
     var title: String = ""
     var initialsOnly = true
+    @Environment(\.displayScale) private var displayScale
+    @State private var loadedArtwork: PublicArtworkBitmap?
+    @State private var loadedRequest: PublicArtworkRequest?
     var body: some View {
         GeometryReader { proxy in
+          let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale))
           ZStack {
             if initialsOnly { LinearGradient(colors: [tint, Color(webHex: "#1c1728")], startPoint: .topLeading, endPoint: .bottomTrailing) }
             else {
@@ -176,13 +180,21 @@ struct Artwork: View {
             }
             if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
             else if let image = fixtureImage(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
-            else if let path, let url = URL(string: path), url.scheme == "https" {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
-                    else if phase.error != nil { placeholder(size: proxy.size) }
-                }
+            else if let request {
+                if let bitmap = (loadedRequest == request ? loadedArtwork : nil) ?? PublicArtworkCache.shared.cached(request) {
+                    Image(decorative: bitmap.image, scale: displayScale).resizable().scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
+                } else { placeholder(size: proxy.size) }
             } else { placeholder(size: proxy.size) }
           }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
+            .task(id: request) {
+                guard fixtureImage(path) == nil else { return }
+                guard let request else { loadedArtwork = nil; loadedRequest = nil; return }
+                if let saved = PublicArtworkCache.shared.cached(request) { loadedRequest = request; loadedArtwork = saved; return }
+                let bitmap = await PublicArtworkCache.shared.image(request)
+                guard !Task.isCancelled else { return }
+                loadedRequest = request; loadedArtwork = bitmap
+            }
         }.contentShape(Rectangle()).accessibilityHidden(true)
     }
     private var tint: Color {

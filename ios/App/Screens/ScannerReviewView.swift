@@ -74,7 +74,7 @@ private struct ScannerMatchView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Match “\(scan.name)”").font(.title3.bold()).padding(.horizontal, 14)
                     if let failure { Text(failure).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 14) }
-                    CatalogSearchView(onLibraryChoose: choose, onCatalogChoose: { path.append($0) }, allowsManual: false).disabled(store.busy)
+                    CatalogSearchView(onLibraryChoose: choose, onCatalogChoose: { path.append($0) }).disabled(store.busy)
                 }
             }.navigationTitle("Match folder").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(store.busy) } }

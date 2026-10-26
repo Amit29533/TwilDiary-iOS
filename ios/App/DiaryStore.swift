@@ -36,6 +36,8 @@ import TwilDiaryCore
     private var progressIndex: [String: Double] = [:]
     private var seasonProgressIndex: [String: [Int: SeasonProgress]] = [:]
     private var presentTitleIDs = Set<String>()
+    private var episodesBySeason: [String: [Int: [Episode]]] = [:]
+    private var watchedEpisodesByTitle: [String: Set<String>] = [:]
     private struct CardInput: Equatable {
         let title: MediaTitle
         let episodes: [Episode]
@@ -288,6 +290,10 @@ import TwilDiaryCore
         titleIndex = Dictionary(workspace.titles.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
         let events = Dictionary(grouping: workspace.activeEvents, by: \.titleId)
         let episodes = Dictionary(grouping: workspace.episodes, by: \.titleId)
+        episodesBySeason = episodes.mapValues { rows in
+            Dictionary(grouping: rows, by: \.season).mapValues { $0.sorted { $0.number == $1.number ? $0.id < $1.id : $0.number < $1.number } }
+        }
+        watchedEpisodesByTitle = events.mapValues { Set($0.compactMap(\.episodeId)) }
         progressIndex = titleIndex.mapValues { title in
             LibraryProgress.fraction(title: title, episodes: episodes[title.id] ?? [], activeEvents: events[title.id] ?? [])
         }
@@ -306,6 +312,8 @@ import TwilDiaryCore
         presentTitleIDs = Set(workspace.locations.filter { $0.evidence == "present" }.map(\.titleId))
     }
     func title(_ id: String) -> MediaTitle? { titleIndex[id] }
+    func episodesForSeason(_ titleID: String, season: Int) -> [Episode] { episodesBySeason[titleID]?[season] ?? [] }
+    func watchedEpisodeIDs(_ titleID: String) -> Set<String> { watchedEpisodesByTitle[titleID] ?? [] }
     func homeProjection(at date: Date, calendar: Calendar = DiaryDate.calendar()) -> HomeProjection {
         // Reading the observed workspace keeps the view subscribed even on a
         // cache hit. Internal cache writes do not trigger another body pass.

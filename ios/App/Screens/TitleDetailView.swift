@@ -493,11 +493,11 @@ struct TitleDetailView: View {
     private func cardRevision(_ title: MediaTitle) -> CardRevision {
         CardRevision(season: season, events: store.workspace.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
     }
-    private var episodes: [Episode] { store.workspace.episodes.filter { $0.titleId == id && $0.season == season }.sorted { $0.number < $1.number } }
+    private var episodes: [Episode] { store.episodesForSeason(id, season: season) }
     private var visibleEpisodes: [Episode] {
         EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id)
     }
-    private var watched: Set<String> { Set(store.workspace.activeEvents.filter { $0.titleId == id }.compactMap(\.episodeId)) }
+    private var watched: Set<String> { store.watchedEpisodeIDs(id) }
     private var locations: [FileLocation] { store.workspace.locations.filter { $0.titleId == id } }
     private var serverLabel: String { ServerAvailability.label(locations) }
     private var percent: Int { guard let card, card.progress.total > 0 else { return 0 }; return Int((Double(card.progress.watched) / Double(card.progress.total) * 100).rounded()) }

@@ -167,7 +167,7 @@ struct RootView: View {
     }
     private func diaryStack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
         NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
-            content().background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
+            content().background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).toolbar(.visible, for: .tabBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 .rootTabSwipes(enabled: router.selectedTab == tab && (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil) { translation, width in
                     guard let next = RootTabSwipe.destination(from: tab, translation: translation, width: width) else { return }

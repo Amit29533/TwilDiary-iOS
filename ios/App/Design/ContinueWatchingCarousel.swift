@@ -28,7 +28,6 @@ struct ContinueWatchingCarousel: View {
     @State private var automaticSelection: String?
     @State private var visible = false
     @State private var scrollIdle = true
-    @State private var showControls = false
     @State private var initialized = false
     @State private var lastInteraction = Date.distantPast
     private struct RotationKey: Equatable { let enabled: Bool; let ids: [String]; let session: UUID }
@@ -39,26 +38,16 @@ struct ContinueWatchingCarousel: View {
     private var automatic: Bool {
         automaticAllowed && visible && scenePhase == .active && router.selectedTab == .home
             && (router.paths[.home]?.count ?? 0) == 0 && router.randomPick == nil
-            && !paused && !reduceMotion && !voiceOver && !showControls && scrollIdle
+            && !paused && !reduceMotion && !voiceOver && scrollIdle
             && !store.busy && store.cardActions.isEmpty && !store.needsSignIn && titles.count > 1
     }
     var body: some View {
         ZStack(alignment: .topTrailing) {
             track.zIndex(0)
-            if titles.count > 1 {
-                Button { showControls = true } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .background { DiaryControlSurface(shape: Circle()) }
-                        .frame(width: 44, height: 44).contentShape(Rectangle())
-                }.buttonStyle(.plain).padding(2).zIndex(1)
-                    .accessibilityLabel("Continue watching controls").accessibilityIdentifier("continue-controls")
-            }
         }
             .accessibilityElement(children: .contain).accessibilityIdentifier("continue-carousel")
             .accessibilityLabel("Continue watching")
             .accessibilityValue(titles.first { $0.id == selection }?.name ?? "")
-            .popover(isPresented: $showControls) { controls.presentationCompactAdaptation(.popover) }
             .onScrollVisibilityChange(threshold: 0.5) { visible = $0 }
             .onAppear {
                 if !initialized {
@@ -77,7 +66,6 @@ struct ContinueWatchingCarousel: View {
                 if value != automaticSelection { lastInteraction = .now }
                 automaticSelection = nil
             }
-            .onChange(of: showControls) { _, _ in lastInteraction = .now }
             .onChange(of: store.sessionRevision) { _, _ in
                 paused = false; selection = ids.first ?? ""
             }
@@ -104,19 +92,6 @@ struct ContinueWatchingCarousel: View {
                 scrollIdle = phase == .idle
                 if phase == .tracking || phase == .interacting { lastInteraction = .now }
             }
-    }
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Continue watching").font(.headline)
-            Button("Previous title", systemImage: "chevron.left") { move(forward: false); showControls = false }
-                .accessibilityIdentifier("continue-previous")
-            Button("Next title", systemImage: "chevron.right") { move(forward: true); showControls = false }
-                .accessibilityIdentifier("continue-next")
-            Button(paused ? "Start automatic carousel" : "Pause automatic carousel", systemImage: paused ? "play" : "pause") {
-                paused.toggle(); showControls = false
-            }.disabled(reduceMotion || voiceOver).accessibilityIdentifier("continue-pause")
-            if reduceMotion || voiceOver { Text("Automatic rotation is off while Reduce Motion or VoiceOver is on.").font(.caption).foregroundStyle(.secondary) }
-        }.buttonStyle(.bordered).buttonBorderShape(.capsule).padding(16).frame(width: 250)
     }
     private func reconcile() {
         if ids.contains(selection) { return }

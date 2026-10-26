@@ -42,44 +42,26 @@ import UIKit
         XCTAssertTrue(app.staticTexts["settings-cache-warning"].exists)
         capture("Cache information contained in Settings")
     }
-    func testContinueCarouselControlsPauseAdvanceReturnAndRestoreAcrossTabs() {
-        let app = launch(automaticCarousel: true)
+    func testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu() {
+        let app = launch()
         app.tabBars.buttons["Home"].tap()
         let carousel = app.descendants(matching: .any).matching(identifier: "continue-carousel").firstMatch
-        let controls = app.buttons["continue-controls"]
-        XCTAssertTrue(controls.waitForExistence(timeout: 5))
-        XCTAssertTrue(controls.isHittable)
-        capture("Home carousel controls before opening")
-        controls.tap()
-        let pause = app.buttons["continue-pause"]
-        if !pause.waitForExistence(timeout: 5) {
-            let attachment = XCTAttachment(string: app.debugDescription)
-            attachment.name = "Carousel controls presentation hierarchy"; attachment.lifetime = .keepAlways; add(attachment)
-        }
-        XCTAssertFalse(app.buttons["title-personal-rating"].exists, "Carousel controls must not open the cover underneath")
-        XCTAssertTrue(pause.waitForExistence(timeout: 5))
-        XCTAssertTrue(pause.label.hasPrefix("Pause")); pause.tap()
+        XCTAssertTrue(carousel.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["continue-controls"].exists)
         guard let original = carousel.value as? String, !original.isEmpty else { XCTFail("Carousel has no selected title"); return }
-        controls.tap(); app.buttons["continue-next"].tap()
-        let advanced = NSPredicate(format: "value != nil AND value != %@ AND value != ''", original)
-        expectation(for: advanced, evaluatedWith: carousel); waitForExpectations(timeout: 5)
+        carousel.swipeLeft()
+        expectation(for: NSPredicate(format: "value != nil AND value != %@ AND value != ''", original), evaluatedWith: carousel)
+        waitForExpectations(timeout: 5)
         assertContinueCardIsFullyVisible(app)
-        capture("Continue carousel next title")
-        controls.tap(); app.buttons["continue-previous"].tap()
-        expectation(for: NSPredicate(format: "value == %@", original), evaluatedWith: carousel); waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.buttons["title-personal-rating"].exists)
+        let advanced = carousel.value as? String
         app.tabBars.buttons["More"].tap(); app.tabBars.buttons["Home"].tap()
-        XCTAssertEqual(carousel.value as? String, original)
-        controls.tap()
-        XCTAssertTrue(pause.waitForExistence(timeout: 5)); XCTAssertTrue(pause.label.hasPrefix("Start"))
-        pause.tap()
-        expectation(for: advanced, evaluatedWith: carousel); waitForExpectations(timeout: 9)
+        XCTAssertEqual(carousel.value as? String, advanced)
+        carousel.swipeRight()
+        expectation(for: NSPredicate(format: "value == %@", original), evaluatedWith: carousel)
+        waitForExpectations(timeout: 5)
         assertContinueCardIsFullyVisible(app)
-        controls.tap(); XCTAssertTrue(pause.waitForExistence(timeout: 5)); XCTAssertTrue(pause.label.hasPrefix("Pause")); pause.tap()
-        guard let stopped = carousel.value as? String else { XCTFail("Carousel lost its selected title"); return }
-        let unexpectedMove = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", stopped), object: carousel)
-        unexpectedMove.isInverted = true
-        XCTAssertEqual(XCTWaiter.wait(for: [unexpectedMove], timeout: 6), .completed, "A paused carousel must not advance after the five-second interval")
-        capture("Continue carousel stays paused")
+        capture("Continuation carousel swipes without overflow menu")
     }
     private func assertContinueCardIsFullyVisible(_ app: XCUIApplication) {
         let visible = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "progress-cover-")).allElementsBoundByIndex.filter { $0.isHittable }
@@ -354,7 +336,7 @@ import UIKit
         XCTAssertFalse(app.buttons["random-pick-open"].exists); capture("Empty collection random pick")
         app.buttons["Add a title"].tap()
         XCTAssertTrue(app.textFields["Search library and online"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Add manually"].exists); capture("Library add search")
+        XCTAssertFalse(app.buttons["Add manually"].exists); capture("Library catalog-only add search")
         app.buttons["Close search"].tap()
         XCTAssertTrue(app.staticTexts["Nothing here just yet"].waitForExistence(timeout: 5))
     }
@@ -534,45 +516,17 @@ import UIKit
         capture("Title revealed episode collapsed")
     }
 
-    func testManualTitleYearValidationStatusRatingAndSavedNavigation() {
-        let app = launch(mutations: true); app.tabBars.buttons["Home"].tap(); app.buttons["search-twildiary"].tap(); app.buttons["Add manually"].tap()
-        let name = app.textFields["manual-name"], year = app.textFields["manual-year"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Manual reference movie")
-        year.tap(); year.typeText("1799"); app.buttons["manual-keyboard-done"].tap()
-        app.buttons["manual-save"].tap(); XCTAssertTrue(app.staticTexts["Choose a valid release year"].waitForExistence(timeout: 5)); capture("Manual invalid year")
-        year.tap(); year.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "1800"); app.buttons["manual-keyboard-done"].tap()
-        app.buttons["manual-category"].tap(); app.buttons["Movie"].tap()
-        app.buttons["manual-status"].tap(); app.buttons["Watching"].tap()
-        app.buttons["Rating"].tap()
-        let score = app.textFields["manual-score"]
-        XCTAssertTrue(score.waitForExistence(timeout: 5)); score.tap(); score.typeText("7.5"); app.buttons["manual-keyboard-done"].tap(); capture("Manual title review")
-        let save = app.buttons["manual-save"]
-        for _ in 0..<4 { if save.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(save.isHittable); save.tap()
-        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 10)); XCTAssertEqual(app.buttons["title-personal-rating"].value as? String, "7.5")
-        XCTAssertTrue(app.buttons["title-watch-status"].exists); capture("Manual title saved")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        if app.keyboards.firstMatch.exists { app.keyboards.buttons["Search"].tap() }
-        XCTAssertTrue(app.tabBars.buttons["Glance"].isHittable); app.tabBars.buttons["Glance"].tap()
-        XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected)
-        let quick = app.buttons["Log watch for Manual reference movie"]
-        for _ in 0..<10 {
-            if quick.isHittable && quick.frame.maxY < app.tabBars.buttons["Glance"].frame.minY { break }
-            app.scrollViews["glance-content"].swipeUp()
-        }
-        XCTAssertTrue(quick.isHittable, app.debugDescription)
-        XCTAssertLessThan(quick.frame.maxY, app.tabBars.buttons["Glance"].frame.minY, "The last Glance action must remain above the floating navigation")
-        wait(for: [expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: quick)], timeout: 5)
-        capture("Glance movie log action"); quick.tap()
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: quick)], timeout: 5)
-        XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5)); app.buttons["Undo"].tap()
-        app.tabBars.buttons["Library"].tap()
-        let created = app.buttons.matching(NSPredicate(format: "label == 'Manual reference movie'")).firstMatch
-        for _ in 0..<8 { if created.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(created.isHittable); created.tap()
-        let movieInput = app.sliders["movie-watch-input"]
-        XCTAssertTrue(movieInput.waitForExistence(timeout: 5)); XCTAssertEqual(movieInput.value as? String, "Not watched")
-        XCTAssertEqual(app.buttons["title-personal-rating"].value as? String, "7.5"); capture("Glance movie Undo restored")
+    func testCatalogSearchOmitsManualCreationEverywhere() {
+        let app = launch(mutations: true)
+        app.tabBars.buttons["Home"].tap(); app.buttons["search-twildiary"].tap()
+        XCTAssertTrue(app.textFields["Search library and online"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Add manually"].exists)
+        XCTAssertFalse(app.buttons["manual-save"].exists)
+        app.tabBars.buttons["Library"].tap(); app.buttons["search-library"].tap()
+        XCTAssertFalse(app.buttons["Add manually"].exists)
+        app.tabBars.buttons["Glance"].tap(); app.buttons["search-glance"].tap()
+        XCTAssertFalse(app.buttons["Add manually"].exists)
+        capture("Native searches expose catalog import without manual creation")
     }
 
     func testCatalogSeriesSeasonsSpoilersAndImport() {

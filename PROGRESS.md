@@ -3,6 +3,17 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
+Active26October owner request:13native experience issues from native62with8videos
+and4screenshots. Seeios/docs/DEVICE-RESULTS-BUILD62.md for exact scope/evidence.
+All8videos extracted/visually inspected. Cloudflare/D1issues are considered
+resolved by owner; complete import reportedlyunder200kreads. No new metering
+claim, backend/authority/migration change or revertedStage1work is authorized
+by this UI pass. Source now prepares shared public artwork cache/downsampling,
+indexed per-title episode lookup, explicit root tab visibility, no continuation
+overflow and no manual title creation. Native tests/runtime still pending.
+Next: finish13-item UI batch, tests and Swift self-review; notify before build.
+The old native62-feedback build hold below is superseded by this received chart.
+
 Latest design verification: ios/docs/TRAKT-FIRST-PLAN.md records the corrected
 stages0–5. Foreground currently only reads D1 (10-second threshold); on-demand
 incoming catch-up and replacement-ID restore are new work. Index migrations
