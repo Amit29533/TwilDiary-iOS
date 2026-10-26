@@ -228,7 +228,7 @@ private struct DiscoveryBrowser: View {
                 else { ContentUnavailableView(section == .daily ? "No unwatched titles in this mix" : "No titles in this mix", systemImage: "sparkles", description: Text("Try another genre, year or rating.")) }
             }
             if section.source == "tmdb" ? results.hasMore : localLimit < local.count {
-                Button("Load more") { if section.source == "tmdb" { Task { await results.load(filters.query(section: section), more: true) } } else { localLimit += 40 } }.buttonStyle(.bordered).disabled(busy).frame(maxWidth: .infinity)
+                Button("Load more") { if section.source == "tmdb" { Task { await results.load(filters.query(section: section), more: true) } } else { localLimit += 40 } }.buttonStyle(.glass).disabled(busy).frame(maxWidth: .infinity)
             }
         }
     }

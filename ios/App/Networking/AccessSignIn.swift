@@ -21,7 +21,7 @@ enum SignInNavigationPolicy {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(error).font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("sign-in-browser-error")
                     Button("Try again") { state.restart(); browserID = UUID() }
-                        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).accessibilityIdentifier("sign-in-browser-retry")
+                        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).accessibilityIdentifier("sign-in-browser-retry")
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(16).background(.regularMaterial)
             }
         }

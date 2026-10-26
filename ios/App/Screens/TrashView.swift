@@ -24,7 +24,7 @@ struct TrashView: View {
                     Text("Removed titles stay here with their history. Restore them to your Library, or review a permanent deletion. Files on your disks stay untouched.")
                         .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Button("Empty Trash", systemImage: "trash", role: .destructive) { confirmEmpty = true }
-                        .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(store.writesBlocked || archived.isEmpty).accessibilityIdentifier("empty-trash")
+                        .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(store.writesBlocked || archived.isEmpty).accessibilityIdentifier("empty-trash")
                 }.diaryPanel()
                 CategoryPicker(selection: $category).padding(.horizontal, -14)
                 HStack(spacing: 8) {
@@ -100,7 +100,7 @@ struct TrashView: View {
                     Spacer(minLength: 0)
                     Button("Delete permanently", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .purge) }
                         .labelStyle(.iconOnly).accessibilityIdentifier("trash-delete-" + title.id)
-                }.font(.caption.weight(.semibold)).buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
+                }.font(.caption.weight(.semibold)).buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("archived-title-" + title.id)
     }

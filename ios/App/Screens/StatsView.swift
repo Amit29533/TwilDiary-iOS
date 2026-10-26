@@ -67,7 +67,7 @@ struct StatsView: View {
                 heading("Watch time").lineLimit(1).minimumScaleFactor(0.85); Spacer(minLength: 0)
                 Menu {
                     Picker("Watch time period", selection: $period) { ForEach([Period.today, .week, .month, .year]) { Text($0.label).tag($0) } }
-                } label: { HStack(spacing: 5) { Text(period == .all || period == .ninetyDays ? "Calendar" : period.label); DiaryIcon(name: "chevron-down", size: 12) }.font(.system(size: 12)).padding(.horizontal, 8).frame(height: 44).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.13))) }.buttonStyle(.plain).accessibilityIdentifier("stats-calendar")
+                } label: { HStack(spacing: 5) { Text(period == .all || period == .ninetyDays ? "Calendar" : period.label); DiaryIcon(name: "chevron-down", size: 12) }.font(.system(size: 12)).padding(.horizontal, 8).frame(height: 44) }.buttonStyle(.glass).accessibilityIdentifier("stats-calendar")
                 if period == .year { Picker("Watch time year", selection: Binding(get: { data.selectedYear }, set: { year = $0 })) { ForEach(data.years, id: \.self) { Text(String($0)).tag($0) } }.pickerStyle(.menu).font(.system(size: 12)).fixedSize() }
             }
             StatsRangeSelector(selection: $period).padding(.top, 12).padding(.bottom, 18)
@@ -179,7 +179,7 @@ private struct StatsRangeSelector: View {
     private let ranges: [Period] = [.week, .month, .ninetyDays, .year, .all]
     var body: some View {
         HStack(spacing: 3) { ForEach(ranges) { range in
-            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 38) }.buttonStyle(DiaryPressStyle()).foregroundStyle(selection == range ? theme.ink : Color(webHex: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
+            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 38) }.buttonStyle(.glass).foregroundStyle(selection == range ? theme.ink : Color(webHex: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
         } }.frame(height: 38).background(alignment: .leading) {
             GeometryReader { geometry in
                 if let index = ranges.firstIndex(of: selection) {

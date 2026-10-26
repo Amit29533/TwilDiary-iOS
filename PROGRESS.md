@@ -14,6 +14,19 @@ overflow and no manual title creation. Native tests/runtime still pending.
 Next: finish13-item UI batch, tests and Swift self-review; notify before build.
 The old native62-feedback build hold below is superseded by this received chart.
 
+26October native65 source checkpoint (not a passed build): shared decoded public
+artwork cache, per-season indexes, isolated toolbar scroll observation, fixed
+Information heading/eager metrics, stable spoiler reveal with episode detail sheet,
+Library scrolling controls/progressive cells, public UIKit interactive tab paging
+and system tab bar, native glass action styles, no carousel overflow/manual add.
+The selected-season status menu now uses per-season watch transactions rather than
+the all-seasons status endpoint. Completed/Planned must preserve other seasons.
+Owner requested immediate commit/push; this checkpoint is deliberately unreleased.
+Known pending: adapt/add UI regressions for modal episode details and normal tab
+paging, check Swift6 compilation on macOS, complete screenshots/performance review.
+No macOS build started yet. Codemagic GitHub reconnection reported complete by
+owner; verify branch loading before scheduling. No hosted/backend change.
+
 Latest design verification: ios/docs/TRAKT-FIRST-PLAN.md records the corrected
 stages0–5. Foreground currently only reads D1 (10-second threshold); on-demand
 incoming catch-up and replacement-ID restore are new work. Index migrations

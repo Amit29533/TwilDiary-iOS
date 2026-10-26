@@ -27,18 +27,19 @@ struct TitleDetailView: View {
     @State private var ratingField = VersionedField<Double?>(value: nil, version: nil)
     @State private var showRating = false
     @State private var showInformation = false
-    @State private var headerProgress: CGFloat = 0
+    @State private var headerState = CompactHeaderState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var compactHeader: Bool { headerProgress >= 0.5 }
     @State private var resetConfirmation = false
     @State private var card: WatchCard?
     @State private var cardRequest = UUID()
+    @State private var cardError: String?
     @State private var showAllEpisodes = false
     @AppStorage("episodesGrid") private var episodesGrid = false
     @State private var watchDate = Date.now
     @State private var showDate = false
     @State private var sliderDraft: Double?
-    @State private var expandedEpisodes = Set<String>()
+    @State private var selectedEpisode: Episode?
+    @State private var episodeLimit = 40
     @State private var episodeDetails = SavedEpisodeDetailsController()
     @State private var revealedEpisodeIDs = Set<String>()
     @State private var preparingSeason = false
@@ -94,19 +95,17 @@ struct TitleDetailView: View {
                             .onChange(of: notesFocused) { _, focused in if focused { pendingScrollTarget = nil } }
                             .toolbar(.visible, for: .navigationBar).navigationBarTitleDisplayMode(.inline)
                             .toolbarBackground(.hidden, for: .navigationBar)
-                            .overlay(alignment: .top) { CompactHeaderBackdrop(progress: headerProgress, topInset: geometry.safeAreaInsets.top) }
+                            .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }
                             .toolbar {
                                 ToolbarItem(placement: .principal) {
-                                    CompactTitleNavigation(name: title.name, poster: title.poster, progress: headerProgress)
+                                    CompactTitleNavigation(name: title.name, poster: title.poster, state: headerState)
                                 }
                                 ToolbarItemGroup(placement: .topBarTrailing) {
-                                    TitleHeaderAction(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId, progress: headerProgress, informationPresented: $showInformation)
+                                    TitleHeaderAction(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId, state: headerState, informationPresented: $showInformation)
                                     Button { Task { await store.patch(title, values: ["favorite": !title.favorite]) } } label: { Image(systemName: title.favorite ? "heart.fill" : "heart") }.accessibilityLabel("Favorite").disabled(store.writesBlocked)
                                     Menu {
-                                        if compactHeader {
                                             Button("Community information", systemImage: "info.circle") { showInformation = true }
                                             Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patch(title, values: ["favorite": !title.favorite]) } }.disabled(store.writesBlocked)
-                                        }
                                         Button(title.queued == true ? "Remove from Queue" : "Queue") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         Button("Notes") { showNotes = true; pendingScrollTarget = "notes-editor" }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations") { showLocation = true; pendingScrollTarget = "files" }.accessibilityIdentifier("title-menu-files")
@@ -116,7 +115,7 @@ struct TitleDetailView: View {
                             .toolbar { ToolbarItemGroup(placement: .keyboard) { if notesFocused { Spacer(); Button("Done") { notesFocused = false }.accessibilityIdentifier("notes-keyboard-done") } } }
                             .task { if !initializedEditor { initializedEditor = true; watchDate = store.now; notesField = VersionedField(value: title.notes, version: title.version); ratingField = VersionedField(value: title.score, version: title.version) } }
                             .task(id: season) {
-                                if configuredSeason != season { configuredSeason = season; sliderDraft = nil; showAllEpisodes = false }
+                                if configuredSeason != season { configuredSeason = season; sliderDraft = nil; showAllEpisodes = false; episodeLimit = 40 }
                                 await prepareSeason(title)
                                 if focusEpisodes && !didFocusEpisodes && !Task.isCancelled {
                                     await Task.yield()
@@ -133,6 +132,7 @@ struct TitleDetailView: View {
                                     pendingScrollTarget = "notes-editor"
                                 }
                             }
+                            .sheet(item: $selectedEpisode) { episode in episodeInformation(title, episode: episode) }
                             .sheet(isPresented: $choosingWatchDate) {
                                 NavigationStack {
                                     ScrollView { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
@@ -150,8 +150,8 @@ struct TitleDetailView: View {
                                 notesField.observe(.init(value: title.notes, version: title.version))
                                 ratingField.observe(.init(value: title.score, version: title.version))
                             }
-                            .confirmationDialog("Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
-                                Button("Reset to Planned", role: .destructive) { Task { await store.setStatus(title, status: "planned"); await loadCard(title) } }
+                            .confirmationDialog(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
+                                Button("Reset to Planned", role: .destructive) { Task { await store.setSeasonStatus(title, season: season, status: "planned", watchedAt: watchInstant); await loadCard(title) } }
                             }
                     }
                 }
@@ -187,7 +187,7 @@ struct TitleDetailView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: title.communityScore, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerProgress = $0 }) { personalRating(title).frame(minHeight: 44) }
+        TitleHero(name: title.name, poster: title.poster, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: title.communityScore, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
     }
     private func personalRating(_ title: MediaTitle) -> some View { Button { openRating(title) } label: { HStack(spacing: 7) { DiaryIcon(name: "star", size: 21); Text("Your rating").foregroundStyle(.secondary); Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—") } }.buttonStyle(.plain).accessibilityIdentifier("title-personal-rating").accessibilityLabel("Your rating").accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated") }
     private func progressPanel(_ title: MediaTitle) -> some View {
@@ -197,16 +197,16 @@ struct TitleDetailView: View {
                     Button(title.queued == true ? "Remove from Queue" : "Queue") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }
                     ForEach(["planned", "watching", "completed", "dropped"], id: \.self) { status in
                     Button(status.capitalized) {
-                        if status == "planned" && title.status != "planned" { resetConfirmation = true }
-                        else { Task { await store.setStatus(title, status: status, watchedAt: watchInstant); await loadCard(title) } }
+                        if status == "planned" && store.seasonStatus(title, season: season) != "planned" { resetConfirmation = true }
+                        else { Task { await store.setSeasonStatus(title, season: season, status: status, watchedAt: watchInstant); await loadCard(title) } }
                     }
                 } } label: {
                     HStack(spacing: 8) {
-                        if title.status == "watching" { Image(systemName: "play.fill").font(.system(size: 12)) }
-                        else { Circle().fill(title.status == "completed" ? Color.mint : Color.secondary).frame(width: 8, height: 8) }
-                        Text(title.status.capitalized).font(.system(size: 14.4, weight: .semibold))
+                        if store.seasonStatus(title, season: season) == "watching" { Image(systemName: "play.fill").font(.system(size: 12)) }
+                        else { Circle().fill(store.seasonStatus(title, season: season) == "completed" ? Color.mint : Color.secondary).frame(width: 8, height: 8) }
+                        Text(store.seasonStatus(title, season: season).capitalized).font(.system(size: 14.4, weight: .semibold))
                         DiaryIcon(name: "chevron-down", size: 15)
-                    }.padding(.horizontal, 14).frame(minHeight: 46).background { DiaryControlSurface(shape: Capsule(), selected: true) }.overlay(Capsule().strokeBorder(theme == .glass ? .clear : theme.accent))
+                    }.padding(.horizontal, 14).frame(minHeight: 46).background { DiaryControlSurface(shape: Capsule(), selected: true) }
                 }.buttonStyle(.plain).disabled(store.writesBlocked).accessibilityIdentifier("title-watch-status")
                 Spacer(minLength: 0)
                 Text(title.isSeries ? remaining(title).map { "\(DiaryDate.duration($0)) left" } ?? "Time unknown" : movieViewings.isEmpty ? title.runtimeMinutes.map { "\(DiaryDate.duration($0)) left" } ?? "Movie" : "Movie")
@@ -243,8 +243,8 @@ struct TitleDetailView: View {
                 } } label: {
                     Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Log a rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                         .font(.system(size: 15.2, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 52)
-                        .foregroundStyle(theme.ink).background(theme.accent, in: RoundedRectangle(cornerRadius: 17))
-                }.buttonStyle(.plain).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).accessibilityIdentifier("mark-title-watch")
+
+                }.buttonStyle(.glassProminent).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).accessibilityIdentifier("mark-title-watch")
                 HStack(spacing: 8) {
                     Button { showDate.toggle() } label: {
                         HStack(spacing: 7) { DiaryIcon(name: "calendar-days", size: 16).foregroundStyle(theme.accent); Text(DiaryDate.day(watchDate) == DiaryDate.day(store.now) ? "Watched today" : DiaryDate.day(watchDate)) }.frame(maxWidth: .infinity, minHeight: 44)
@@ -264,6 +264,15 @@ struct TitleDetailView: View {
                     }
                 }
                 if showRating { ratingPanel(title).padding(.top, 10) }
+            } else if let cardError {
+                VStack(alignment: .leading, spacing: 12) {
+                    if title.isSeries {
+                        let progress = store.seasonProgress(title, season: season)
+                        Text("\(progress.watched) of \(progress.total) episodes watched").font(.headline)
+                        EpisodeProgressTrack(segments: EpisodeSegment.make(episodes: episodes, total: progress.total, watched: watched, nextID: nil), season: season).frame(height: 44)
+                    }
+                    RetryNotice(message: cardError) { Task { await loadCard(title) } }
+                }.padding(.vertical, 12)
             } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
         }.diaryPanel(padding: 15, radius: 24, accentBorder: true)
     }
@@ -293,7 +302,7 @@ struct TitleDetailView: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Episodes").font(.system(size: 22, weight: .bold))
-                    Text("\(card?.progress.watched ?? 0) / \(card?.progress.total ?? episodes.count) watched").font(.system(size: 13.6)).foregroundStyle(.secondary)
+                    Text("\(store.seasonProgress(title, season: season).watched) / \(store.seasonProgress(title, season: season).total) watched").font(.system(size: 13.6)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
                 if !seasonNumbers.isEmpty {
@@ -303,11 +312,12 @@ struct TitleDetailView: View {
                 }
                 CollectionLayoutToggle(grid: $episodesGrid, collection: "episodes")
             }
-            if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.bordered).disabled(store.writesBlocked) }
+            if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.glass).disabled(store.writesBlocked) }
             if let seasonLoadError { RetryNotice(message: seasonLoadError) { Task { await prepareSeason(title, force: true) } } }
             if let episodeError = episodeDetails.error(for: season) { Text(episodeError).font(.caption).foregroundStyle(.secondary); Button("Retry episode details") { Task { await revealSeason(title) } } }
             CollectionLayout(grid: episodesGrid, spacing: 8) { ForEach(visibleEpisodes) { episode in episodeRow(title, episode: episode) } }
             if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary) }
+            if showAllEpisodes && episodeLimit < episodes.count { Color.clear.frame(height: 1).onAppear { episodeLimit += 40 } }
             if episodes.count > 4 { Button(showAllEpisodes ? "Back to next episode" : "Show all \(episodes.count) episodes") { showAllEpisodes.toggle() }.frame(maxWidth: .infinity).frame(minHeight: 44) }
             if let pending = store.pendingSeasonAdjustments[title.id + ":" + String(season)] { Button("Retry progress to episode \(pending.count)") { Task { await store.setSeasonProgress(title, season: season, count: pending.count, watchedAt: watchInstant); await loadCard(title) } }.disabled(store.writesBlocked) }
         }
@@ -342,18 +352,7 @@ struct TitleDetailView: View {
                     episodeWatchControl(title, episode: episode, watched: isWatched)
                 }
             }
-            if expandedEpisodes.contains(episode.id) {
-                Text(episodeSummary(episode)).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 4).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("episode-summary-\(episode.number)")
-                if isWatched {
-                    Button {
-                        Task { await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: watchInstant); await loadCard(title) }
-                    } label: {
-                        Label("Log rewatch", systemImage: "arrow.counterclockwise").font(.system(size: 13, weight: .semibold)).frame(minHeight: 32)
-                    }.buttonStyle(.bordered).buttonBorderShape(.capsule).tint(theme.accent)
-                        .disabled(store.writesBlocked || !hasAired(episode))
-                        .accessibilityIdentifier("episode-rewatch-\(episode.number)")
-                }
-            }
+
         }.padding(.vertical, 8).frame(minHeight: 72).background(next ? theme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 18))
     }
     private func episodeCaption(_ episode: Episode, watched: Bool, next: Bool) -> some View {
@@ -402,8 +401,35 @@ struct TitleDetailView: View {
         return manifest.expectedEpisodes.map { $0 == episodes.count } ?? (manifest.metadataLoadedAt != nil)
     }
     private func toggleEpisode(_ title: MediaTitle, episode: Episode) {
-        if expandedEpisodes.contains(episode.id) { expandedEpisodes.remove(episode.id) }
-        else { expandedEpisodes.insert(episode.id); revealedEpisodeIDs.insert(episode.id); if episodeDetails.episodes[episode.id] == nil { Task { await revealSeason(title) } } }
+        // Revealing a spoiler changes only the fixed-size thumbnail and caption.
+        // Long synopses live in a sheet, never inside a scrolling grid row.
+        if isHidden(episode) { revealedEpisodeIDs.insert(episode.id) }
+        else { selectedEpisode = episode }
+        if episodeDetails.episodes[episode.id] == nil { Task { await revealSeason(title) } }
+    }
+    private func episodeInformation(_ title: MediaTitle, episode: Episode) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    episodeArtwork(episode).frame(height: 190).clipShape(RoundedRectangle(cornerRadius: 18))
+                    Text(episodeName(episode)).font(.title2.bold())
+                    Text(episodeSummary(episode)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("episode-summary-\(episode.number)")
+                    if watched.contains(episode.id) {
+                        Button {
+                            Task {
+                                await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: watchInstant)
+                                selectedEpisode = nil
+                                await loadCard(title)
+                            }
+                        } label: { Label("Log rewatch", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 44) }
+                            .buttonStyle(.glassProminent).disabled(store.writesBlocked || !hasAired(episode))
+                            .accessibilityIdentifier("episode-rewatch-\(episode.number)")
+                    }
+                }.padding(20)
+            }.navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
     private func prepareSeason(_ title: MediaTitle, force: Bool = false) async {
         if store.isPreview && !store.canMutate { return }
@@ -479,7 +505,7 @@ struct TitleDetailView: View {
             ViewThatFits(in: .horizontal) {
                 HStack { Button("Use saved", action: useSaved); Button("Keep my draft", action: keepDraft) }
                 VStack(alignment: .leading) { Button("Use saved", action: useSaved); Button("Keep my draft", action: keepDraft) }
-            }.buttonStyle(.bordered).buttonBorderShape(.capsule)
+            }.buttonStyle(.glass).buttonBorderShape(.capsule)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private struct CardRevision: Hashable {
@@ -495,7 +521,7 @@ struct TitleDetailView: View {
     }
     private var episodes: [Episode] { store.episodesForSeason(id, season: season) }
     private var visibleEpisodes: [Episode] {
-        EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id)
+        Array(EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id ?? episodes.first(where: { !watched.contains($0.id) && hasAired($0) })?.id).prefix(episodeLimit))
     }
     private var watched: Set<String> { store.watchedEpisodeIDs(id) }
     private var locations: [FileLocation] { store.workspace.locations.filter { $0.titleId == id } }
@@ -505,11 +531,14 @@ struct TitleDetailView: View {
     private func loadCard(_ title: MediaTitle) async {
         let request = UUID(), requestedSeason = season
         cardRequest = request
+        cardError = nil
+        if let cached = store.cachedCard(title, season: title.isSeries ? requestedSeason : nil) { card = cached }
+        else if title.isSeries && card?.season?.number != requestedSeason { card = nil }
         do {
             let loaded = try await store.card(title, season: title.isSeries ? requestedSeason : nil)
             guard cardRequest == request, requestedSeason == season, !Task.isCancelled else { return }
             card = loaded
         } catch is CancellationError { }
-        catch { if cardRequest == request, !Task.isCancelled { store.error = error.localizedDescription } }
+        catch { if cardRequest == request, !Task.isCancelled { cardError = error.localizedDescription } }
     }
 }

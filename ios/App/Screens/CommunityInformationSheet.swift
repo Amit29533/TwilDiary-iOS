@@ -10,7 +10,8 @@ struct CommunityInformationSheet: View {
     @State private var retryRevision = 0
     @State private var detent = PresentationDetent.large
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            Text("Information").font(.headline).frame(maxWidth: .infinity).padding(.top, 24).padding(.bottom, 16)
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     Text(name).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
@@ -18,9 +19,9 @@ struct CommunityInformationSheet: View {
                         VStack(alignment: .leading, spacing: 18) {
                             Text("Community stats").font(.title2.bold())
                             if let stats = value.stats {
-                                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), alignment: .leading, spacing: 24) {
-                                    metric("Watchers", stats.watchers); metric("Plays", stats.plays); metric("Collectors", stats.collectors)
-                                    metric("Comments", stats.comments); metric("Lists", stats.lists)
+                                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 24) {
+                                    GridRow { metric("Watchers", stats.watchers); metric("Plays", stats.plays); metric("Collectors", stats.collectors) }
+                                    GridRow { metric("Comments", stats.comments); metric("Lists", stats.lists); Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
                                 }
                             } else { notice(value.statsState, sentiment: false) }
                         }
@@ -39,7 +40,7 @@ struct CommunityInformationSheet: View {
                             } else { notice(value.sentimentsState, sentiment: true) }
                         }
                         if value.statsState == .unavailable || value.sentimentsState == .unavailable {
-                            Button("Retry community information") { retryRevision += 1 }.buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(controller.loading)
+                            Button("Retry community information") { retryRevision += 1 }.buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.loading)
                         }
                     }
                     if controller.loading && controller.value == nil { DiaryLoadingPlaceholder(height: 300, label: "Loading community information") }
@@ -48,16 +49,10 @@ struct CommunityInformationSheet: View {
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(20).padding(.bottom, 20)
             }.scrollContentBackground(.hidden).background(.clear)
-                .containerBackground(.clear, for: .navigation)
-                .navigationTitle("Information").navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-        }.containerBackground(.clear, for: .navigation).background {
+        }.background {
             if reduceTransparency { Color(webHex: "#1c1c1e").ignoresSafeArea() }
             else {
-                ZStack {
-                    DiaryScreenBackground(path: artwork, name: name, forceGlass: true)
-                    Rectangle().fill(.ultraThinMaterial).opacity(0.35)
-                }.ignoresSafeArea()
+                DiaryScreenBackground(path: artwork, name: name, forceGlass: true).ignoresSafeArea()
             }
         }.presentationDetents([.medium, .large], selection: $detent).presentationDragIndicator(.visible)
             .presentationBackground(.clear)
@@ -70,7 +65,7 @@ struct CommunityInformationSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value, format: .number.notation(.compactName)).font(.title3.weight(.semibold)).monospacedDigit()
             Text(label).font(.subheadline).foregroundStyle(.secondary)
-        }.accessibilityElement(children: .ignore).accessibilityLabel(label).accessibilityValue(value.formatted())
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .ignore).accessibilityLabel(label).accessibilityValue(value.formatted())
     }
     private func opinion(_ text: String, positive: Bool) -> some View {
         HStack(alignment: .top, spacing: 14) {

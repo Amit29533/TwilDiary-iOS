@@ -321,12 +321,10 @@ struct ProgressCard: View {
     @State private var loadedCard: WatchCard?
     private var card: WatchCard? { loadedCard ?? store.cachedCard(title) }
     @State private var watchFeedback = 0
-    @State private var drag: CGFloat = 0
     @State private var suppressNavigationUntil = Date.distantPast
     @Environment(AppRouter.self) private var router
     var body: some View {
         ZStack(alignment: .leading) {
-            if !compact { Label("Mark one watched", systemImage: "checkmark").font(.subheadline.bold()).foregroundStyle(.mint).padding(20) }
             Group { if compact { compactContent } else { glanceContent } }
                 .background {
                     GeometryReader { proxy in
@@ -339,21 +337,7 @@ struct ProgressCard: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: compact ? 12 : 14))
                 .overlay(RoundedRectangle(cornerRadius: compact ? 12 : 14).strokeBorder(.white.opacity(0.17)))
-                .offset(x: drag)
-        }.background(.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 14)).clipShape(RoundedRectangle(cornerRadius: 14))
-            .simultaneousGesture(DragGesture(minimumDistance: 22).onChanged { value in
-                guard !compact, value.startLocation.x > 24 else { return }
-                if abs(value.translation.width) > abs(value.translation.height) * 1.3 {
-                    // Both page directions must suppress a cover tap, including
-                    // completed/offline cards that cannot log a watch.
-                    suppressNavigationUntil = .now.addingTimeInterval(0.35)
-                    if canMark { drag = min(120, max(0, value.translation.width)) }
-                }
-            }.onEnded { value in
-                let mark = drag > 80 && value.translation.width < 160; if drag > 22 { suppressNavigationUntil = .now.addingTimeInterval(0.35) }; withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.8)) { drag = 0 }
-                if mark { Task { await markWatch() } }
-            })
-            .reservesHorizontalSwipe(!compact)
+        }.clipShape(RoundedRectangle(cornerRadius: 14))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .sensoryFeedback(.success, trigger: watchFeedback)
     }
@@ -369,9 +353,8 @@ struct ProgressCard: View {
                 }.padding(.bottom, 4)
                 Button { Task { await markWatch() } } label: {
                     actionIcon(.mark, symbol: title.isSeries ? "plus" : "checkmark", size: 24).foregroundStyle(theme.ink)
-                        .frame(width: 36, height: 36).background(.tint, in: RoundedRectangle(cornerRadius: 10))
                         .frame(width: 44, height: 44).contentShape(Rectangle())
-                }.buttonStyle(DiaryPressStyle()).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
             }
         }.padding(12).frame(height: 142)
     }
@@ -396,15 +379,15 @@ struct ProgressCard: View {
                 }
                 HStack(spacing: 6) {
                 if title.isSeries {
-                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 32, height: 32).background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.3))).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glass).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     Text("\(card?.progress.watched ?? 0)").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 34, height: 34).background(.tint, in: RoundedRectangle(cornerRadius: 10)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(DiaryPressStyle()).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
                             .font(.system(size: 13, weight: .semibold)).frame(width: 124, height: 44)
-                            .foregroundStyle(theme.ink).background(theme.accent, in: RoundedRectangle(cornerRadius: 12))
-                    }.buttonStyle(DiaryPressStyle()).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
+                            .foregroundStyle(theme.ink)
+                    }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
                 }.frame(height: title.isSeries ? 34 : 44)
             }

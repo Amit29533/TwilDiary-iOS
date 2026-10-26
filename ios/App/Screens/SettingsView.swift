@@ -121,7 +121,7 @@ struct TMDBConnectionView: View {
         ScrollView { VStack(alignment: .leading, spacing: 18) {
             HStack { DiaryIcon(name: "key-round", size: 22).foregroundStyle(.tint); Text("TMDB").font(.title2.bold()); Spacer(); Text(verified ? "Connected" : checking ? "Checking…" : "Not connected").font(.caption).foregroundStyle(verified ? Color.green : Color.secondary) }
             Text("Posters, title details, seasons and episodes.").font(.subheadline).foregroundStyle(.secondary)
-            Button(checking ? "Checking…" : "Check connection") { Task { await check() } }.buttonStyle(.bordered).disabled(checking)
+            Button(checking ? "Checking…" : "Check connection") { Task { await check() } }.buttonStyle(.glass).disabled(checking)
             if let error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
             Text("API credentials stay on your server. Use the PC app to configure or replace them.").font(.caption).foregroundStyle(.secondary)
         }.diaryPanel().padding(16) }.diaryScreenBackground().navigationTitle("TMDB").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar).task { await check() }

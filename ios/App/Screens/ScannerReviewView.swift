@@ -24,7 +24,7 @@ struct ScannerReviewView: View {
                     CollectionLayout(grid: grid) { ForEach(items) { scan in scanRow(scan) } }
                     if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading unmatched scans") }
                     else if !loading && items.isEmpty && failure == nil { ContentUnavailableView("No unmatched scans", systemImage: "folder.badge.questionmark", description: Text("New unresolved folders will appear here.")) }
-                    if next != nil { Button("Show more") { Task { await load(more: true) } }.buttonStyle(.bordered).disabled(loading) }
+                    if next != nil { Button("Show more") { Task { await load(more: true) } }.buttonStyle(.glass).disabled(loading) }
                 }.padding(14)
             }.refreshable { await load() }
         }.diaryScreenBackground().diaryPageNavigation("Fix mismatches", searchIdentifier: "search-scanner") { showSearch.toggle() }
@@ -42,7 +42,7 @@ struct ScannerReviewView: View {
                 Text("\(scan.deviceName) · \(scan.driveLetter) · \(scan.fileCount) files" + (scan.seasonNumber.map { " · Season \($0)" } ?? "")).font(.caption).foregroundStyle(.secondary)
                 Text(scan.root + "\\" + scan.relativePath).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                 Text("No confident TMDb / IMDb match").font(.caption).foregroundStyle(.secondary)
-                Button("Match") { selected = scan }.buttonStyle(.bordered).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)
+                Button("Match") { selected = scan }.buttonStyle(.glass).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.diaryPanel()
     }

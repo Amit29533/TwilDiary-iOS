@@ -155,7 +155,7 @@ struct PersonFilmographyView: View {
                             Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
                             if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
                             else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
-                            if shown < items.count { Button("Load more") { shown += 40 }.buttonStyle(.bordered).frame(maxWidth: .infinity) }
+                            if shown < items.count { Button("Load more") { shown += 40 }.buttonStyle(.glass).frame(maxWidth: .infinity) }
                         }
                     } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
                     else { DiaryLoadingPlaceholder(height: 240, label: "Loading filmography").padding(14) }

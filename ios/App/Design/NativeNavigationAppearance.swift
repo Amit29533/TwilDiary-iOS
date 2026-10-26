@@ -6,17 +6,21 @@ import OSLog
 /// visibility only once UIKit finishes presenting the owning destination.
 @MainActor private struct NativeNavigationAppearance: UIViewControllerRepresentable {
     let onPresented: @MainActor () -> Void
+    let detail: Bool
     func makeUIViewController(context: Context) -> Controller {
         let controller = Controller()
         controller.onPresented = onPresented
+        controller.detail = detail
         return controller
     }
     func updateUIViewController(_ controller: Controller, context: Context) {
         controller.onPresented = onPresented
+        controller.detail = detail
         controller.publishWhenAttached()
     }
     final class Controller: UIViewController {
         var onPresented: (@MainActor () -> Void)?
+        var detail = false
         private var publishing: Task<Void, Never>?
         private var transitionPending = false
         private var observing = [UIGestureRecognizer]()
@@ -32,6 +36,20 @@ import OSLog
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             publishWhenAttached()
+        }
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            // Change chrome alongside the native push/pop, never a task after
+            // the destination has appeared. UIKit also animates cancelled Back.
+            guard let tabs = tabBarController, let selected = tabs.selectedViewController,
+                  view.isDescendant(of: selected.view) else { return }
+            let previous = tabs.isTabBarHidden
+            tabs.setTabBarHidden(detail, animated: animated)
+            _ = transitionCoordinator?.animate(alongsideTransition: nil) { context in
+                if context.isCancelled {
+                    Task { @MainActor [weak tabs] in tabs?.setTabBarHidden(previous, animated: false) }
+                }
+            }
         }
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
@@ -107,6 +125,6 @@ import OSLog
 
 extension View {
     @MainActor func diaryNavigationAppearance(tab: AppTab, detail: Bool, router: AppRouter) -> some View {
-        background(NativeNavigationAppearance { router.setDetailVisibility(detail, tab: tab) }.frame(width: 0, height: 0))
+        background(NativeNavigationAppearance(onPresented: { router.setDetailVisibility(detail, tab: tab) }, detail: detail).frame(width: 0, height: 0))
     }
 }

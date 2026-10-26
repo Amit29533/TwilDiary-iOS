@@ -24,13 +24,14 @@ import TwilDiaryCore
         #endif
     }
     var body: some Scene {
-        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule) }
+        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonStyle(.glass).buttonBorderShape(.capsule) }
     }
 }
 
 enum AppTab: String, CaseIterable, Hashable {
     case home, library, glance, stats, more
     var label: String { rawValue.capitalized }
+    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "eye"; case .stats: "chart.bar"; case .more: "ellipsis" } }
     var icon: String {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
     }
@@ -107,7 +108,7 @@ struct RootView: View {
                     BrandMark().fill(.tint).frame(width: 56, height: 56)
                     Text("TwilDiary").font(.largeTitle.bold())
                     Text("Your diary, now on iOS.").foregroundStyle(.secondary)
-                    Button("Sign in to your diary") { showSignIn = true }.buttonStyle(.borderedProminent).controlSize(.large)
+                    Button("Sign in to your diary") { showSignIn = true }.buttonStyle(.glassProminent).controlSize(.large)
                     if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
                     .sheet(isPresented: $showSignIn) {
@@ -124,18 +125,17 @@ struct RootView: View {
                     if store.loading || store.restoringCache { ProgressView() }
                     else {
                         Text(store.error ?? "You’re signed in. Retry to load your diary.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        Button("Retry") { Task { await store.refresh() } }.buttonStyle(.borderedProminent).controlSize(.large)
+                        Button("Retry") { Task { await store.refresh() } }.buttonStyle(.glassProminent).controlSize(.large)
                         Button("Sign out") { store.signOut() }.foregroundStyle(.secondary)
                     }
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
             } else {
-                TabView(selection: $router.selectedTab) {
-                    Tab("Home", systemImage: "house", value: AppTab.home) { diaryStack(.home) { HomeView() } }.accessibilityIdentifier("tab-home")
-                    Tab("Library", systemImage: "books.vertical", value: AppTab.library) { diaryStack(.library) { LibraryView() } }.accessibilityIdentifier("tab-library")
-                    Tab("Glance", systemImage: "eye", value: AppTab.glance) { diaryStack(.glance) { GlanceView() } }.accessibilityIdentifier("tab-glance")
-                    Tab("Stats", systemImage: "chart.bar", value: AppTab.stats) { diaryStack(.stats) { StatsView() } }.accessibilityIdentifier("tab-stats")
-                    Tab("More", systemImage: "ellipsis", value: AppTab.more) { diaryStack(.more) { SettingsView() } }.accessibilityIdentifier("tab-more")
-                }.tabBarMinimizeBehavior(.never)
+                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent), canPage: { tab in
+                    (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
+                }, onReselect: { router.select($0) }) { tab in
+                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
+                        .tint(theme.accent).buttonStyle(.glass).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
+                }
                     .background(.black)
                     .overlay(alignment: .top) {
                         if let notice = store.mutationRefreshNotice {
@@ -165,23 +165,27 @@ struct RootView: View {
                 else { store.suspendTraktForBackground() }
             }
     }
+    @ViewBuilder private func tabPage(_ tab: AppTab) -> some View {
+        switch tab {
+        case .home: diaryStack(tab) { HomeView() }
+        case .library: diaryStack(tab) { LibraryView() }
+        case .glance: diaryStack(tab) { GlanceView() }
+        case .stats: diaryStack(tab) { StatsView() }
+        case .more: diaryStack(tab) { SettingsView() }
+        }
+    }
     private func diaryStack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
         NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
-            content().background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).toolbar(.visible, for: .tabBar).diaryPageChrome(detail: false)
+            content().background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
-                .rootTabSwipes(enabled: router.selectedTab == tab && (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil) { translation, width in
-                    guard let next = RootTabSwipe.destination(from: tab, translation: translation, width: width) else { return }
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    router.selectedTab = next
-                }
-                .navigationDestination(for: String.self) { TitleDetailView(id: $0).toolbar(.hidden, for: .tabBar).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes, focusNotes: $0.focusNotes).toolbar(.hidden, for: .tabBar).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).toolbar(.hidden, for: .tabBar).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).toolbar(.visible, for: .tabBar).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
-                .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).toolbar(.visible, for: .tabBar).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
-                .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).toolbar(.hidden, for: .tabBar).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: String.self) { TitleDetailView(id: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes, focusNotes: $0.focusNotes).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: HistoryRoute.self) { route in
-                    HistoryView(initialDay: route.day, initialUnknown: route.unknown).toolbar(.visible, for: .tabBar).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
+                    HistoryView(initialDay: route.day, initialUnknown: route.unknown).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {
@@ -194,7 +198,7 @@ struct RootView: View {
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()
                     case .about: AboutView()
-                    } }.toolbar(.visible, for: .tabBar).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
+                    } }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })

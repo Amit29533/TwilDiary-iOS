@@ -79,7 +79,7 @@ struct CatalogSearchView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
                 SearchField(placeholder: "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: true, dismissRevision: dismissKeyboard)
-                if let onClose { Button(action: onClose) { DiaryIcon(name: "x", size: 18).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Close search") }
+                if let onClose { Button(action: onClose) { DiaryIcon(name: "x", size: 18).frame(width: 44, height: 44) }.buttonStyle(.glass).accessibilityLabel("Close search") }
             }
             if !ready { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             else {
@@ -174,21 +174,21 @@ struct CatalogDetailView: View {
     @State private var loading = false
     @State private var showOverview = false
     @State private var showInformation = false
-    @State private var headerProgress: CGFloat = 0
+    @State private var headerState = CompactHeaderState()
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     if let details {
-                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerProgress = $0 }) { EmptyView() }
+                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
                         if details.libraryTitle?.trashed == true {
-                            NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.borderedProminent).controlSize(.large)
+                            NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.glassProminent).controlSize(.large)
                         } else if let saved = details.libraryTitle {
-                            Button("Open in Library") { accepted(saved.id) }.buttonStyle(.borderedProminent).controlSize(.large)
+                            Button("Open in Library") { accepted(saved.id) }.buttonStyle(.glassProminent).controlSize(.large)
                         } else {
                             Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { accepted(id) } } } label: {
                                 Text(store.busy ? "Adding…" : "Add to Planned").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink).frame(maxWidth: .infinity).frame(minHeight: 48)
-                            }.buttonStyle(.plain).background(theme.accent, in: RoundedRectangle(cornerRadius: 14)).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
+                            }.buttonStyle(.glassProminent).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
                         }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
                         CastAndRelated(route: route, sourceTitle: details.details.name)
@@ -200,14 +200,14 @@ struct CatalogDetailView: View {
                     }
             }.scrollClipDisabled().diaryScreenBackground(path: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") }, name: details?.details.name ?? "").navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .overlay(alignment: .top) { CompactHeaderBackdrop(progress: headerProgress, topInset: geometry.safeAreaInsets.top) }
+                .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }
                 .toolbar {
                     ToolbarItem(placement: .principal) {
-                        if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), progress: headerProgress) }
+                        if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), state: headerState) }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         TitleHeaderAction(name: details?.details.name ?? "Title", kind: route.kind, id: route.id,
-                            progress: headerProgress, informationPresented: $showInformation, informationIdentifier: "catalog-information")
+                            state: headerState, informationPresented: $showInformation, informationIdentifier: "catalog-information")
                     }
                 }
                 .sheet(isPresented: $showInformation) {
@@ -360,5 +360,5 @@ struct CastAndRelated: View {
 struct RetryNotice: View {
     let message: String
     let retry: () -> Void
-    var body: some View { VStack(alignment: .leading, spacing: 10) { Text(message).font(.subheadline).foregroundStyle(.secondary); Button("Retry", action: retry).buttonStyle(.bordered) }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel() }
+    var body: some View { VStack(alignment: .leading, spacing: 10) { Text(message).font(.subheadline).foregroundStyle(.secondary); Button("Retry", action: retry).buttonStyle(.glass) }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel() }
 }

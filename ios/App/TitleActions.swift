@@ -13,6 +13,28 @@ import TwilDiaryCore
 }
 
 extension DiaryStore {
+    /// The status menu on a show detail belongs to the selected season. The
+    /// whole-title progress endpoint deliberately edits every season, so it
+    /// must never be used here for Completed or Planned.
+    @discardableResult func setSeasonStatus(_ title: MediaTitle, season: Int, status: String, watchedAt: Date) async -> Bool {
+        guard title.isSeries else { return await setStatus(title, status: status, watchedAt: watchedAt) }
+        if status == "planned" { return await setSeasonProgress(title, season: season, count: 0, watchedAt: watchedAt) }
+        if status == "completed" {
+            return await perform {
+                try await self.prepareSavedSeason(title, number: season)
+                guard let current = self.title(title.id) else { throw CancellationError() }
+                try await self.applySeasonProgress(current, season: season, count: self.seasonProgress(current, season: season).total, watchedAt: watchedAt)
+            }
+        }
+        return await patch(title, values: ["status": status])
+    }
+    func seasonStatus(_ title: MediaTitle, season: Int) -> String {
+        guard title.isSeries else { return title.status }
+        if title.status == "dropped" { return "dropped" }
+        let progress = seasonProgress(title, season: season)
+        if progress.total > 0 && progress.watched >= progress.total { return "completed" }
+        return progress.watched > 0 ? "watching" : "planned"
+    }
     @discardableResult func setSeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async -> Bool {
         await perform { try await self.applySeasonProgress(title, season: season, count: count, watchedAt: watchedAt) }
     }

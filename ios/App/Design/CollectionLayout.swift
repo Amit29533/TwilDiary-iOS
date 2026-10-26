@@ -12,7 +12,7 @@ struct CollectionLayoutToggle: View {
             Image(systemName: grid ? "list.bullet" : "square.grid.2x2")
                 .font(.system(size: 17, weight: .medium)).contentTransition(.symbolEffect(.replace))
                 .frame(width: 44, height: 44)
-        }.buttonStyle(DiaryPressStyle())
+        }.buttonStyle(.glass)
             .accessibilityLabel("Show " + collection + (grid ? " as list" : " as grid"))
             .accessibilityValue(grid ? "Grid" : "List").accessibilityIdentifier(collection + "-layout")
             .sensoryFeedback(.selection, trigger: grid)

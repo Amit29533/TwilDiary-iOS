@@ -23,6 +23,7 @@ struct LibraryView: View {
         nonmutating set { categoryRaw = newValue.rawValue }
     }
     @State private var appliedShortcutRevision = 0
+    @State private var visibleLimit = 48
     @State private var selecting = false
     @State private var selected = Set<String>()
     @State private var review: CollectionReview?
@@ -33,27 +34,13 @@ struct LibraryView: View {
                 ScrollView { CatalogSearchView(onClose: { showSearch = false }).padding(.top, 2) }
             } else {
                 CategoryPicker(selection: Binding(get: { category }, set: { category = $0 }))
-                filterBar
-                if hasFilters {
-                    HStack(spacing: 12) { Text("\(filtered.count) \(filtered.count == 1 ? "title" : "titles")").foregroundStyle(.secondary); Button("Clear filters") { category = .all; status = "all"; genre = ""; drive = "" }; Spacer(minLength: 0) }.font(.system(size: 13)).padding(.horizontal, 14).padding(.bottom, 8)
-                }
-                orderingBar
-                if ratingSource == .trakt {
-                    if store.communityRatings.loading { ratingStatus("Loading Trakt community ratings…") }
-                    else if store.communityRatings.unavailable {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("Some Trakt ratings are unavailable.").font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            Button("Retry") { Task { await store.loadPublicRatings(collection, source: ratingSource, retry: true) } }.font(.system(size: 12, weight: .semibold)).accessibilityIdentifier("ratings-retry")
-                        }.padding(.horizontal, 14).padding(.bottom, 10)
-                    }
-                }
                 collectionContent
             }
         }.background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
             .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }
             .onAppear { initializeStorage(); applyShortcut() }
-            .onChange(of: filterScope) { _, _ in selecting = false; selected = [] }
+            .onChange(of: filterScope) { _, _ in selecting = false; selected = []; visibleLimit = 48 }
             .onChange(of: filtered.map(\.id)) { _, ids in selected.formIntersection(ids) }
             .sheet(isPresented: $showAdd, onDismiss: {
                 if let id = addedTitle { addedTitle = nil; router.openTitle(id, tab: .library) }
@@ -119,7 +106,7 @@ struct LibraryView: View {
                         }.font(.system(size: geometry.size.width < 331 ? 12 : 13, weight: .semibold))
                             .frame(width: geometry.size.width < 331 ? 110 : 145, height: 44)
                     }.padding(.horizontal, 9).frame(height: 46).contentShape(RoundedRectangle(cornerRadius: 14))
-                }.buttonStyle(.plain).accessibilityIdentifier("library-order")
+                }.buttonStyle(.glass).accessibilityIdentifier("library-order")
                 if selecting {
                     Button("Done selecting", systemImage: "xmark") { selecting = false; selected = [] }
                         .labelStyle(.iconOnly).frame(width: 42, height: 44)
@@ -129,7 +116,7 @@ struct LibraryView: View {
                     Button { genreRows.toggle(); list = false } label: { layoutIcon("rows-3", selected: genreRows, genre: true) }
                         .accessibilityLabel("Genre sections").accessibilityIdentifier("library-genres")
                 }
-            }.foregroundStyle(Color(webHex: "#c5c0cf")).buttonStyle(.plain)
+            }.foregroundStyle(Color(webHex: "#c5c0cf")).buttonStyle(.glass)
         }.frame(height: 46).padding(.horizontal, 14).padding(.bottom, 12)
     }
     private var sortLabel: String {
@@ -137,6 +124,22 @@ struct LibraryView: View {
     }
     private var collectionContent: some View {
         ScrollView {
+            VStack(spacing: 0) {
+                filterBar
+                if hasFilters {
+                    HStack(spacing: 12) { Text("\(filtered.count) \(filtered.count == 1 ? "title" : "titles")").foregroundStyle(.secondary); Button("Clear filters") { category = .all; status = "all"; genre = ""; drive = "" }; Spacer(minLength: 0) }.font(.system(size: 13)).padding(.horizontal, 14).padding(.bottom, 8)
+                }
+                orderingBar
+                if ratingSource == .trakt {
+                    if store.communityRatings.loading { ratingStatus("Loading Trakt community ratings…") }
+                    else if store.communityRatings.unavailable {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("Some Trakt ratings are unavailable.").font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Retry") { Task { await store.loadPublicRatings(collection, source: ratingSource, retry: true) } }.font(.system(size: 12, weight: .semibold)).accessibilityIdentifier("ratings-retry")
+                        }.padding(.horizontal, 14).padding(.bottom, 10)
+                    }
+                }
+            }
                 if selecting { CollectionSelectionPanel(titles: filtered, selected: $selected, onReview: prepareReview).padding(.horizontal, 14).padding(.bottom, 12) }
                 if genreRows && !selecting {
                     LazyVStack(alignment: .leading, spacing: 20) {
@@ -146,10 +149,11 @@ struct LibraryView: View {
                         }
                     }.padding(.horizontal, 14)
                 } else if list {
-                    LazyVStack(spacing: 12) { ForEach(filtered) { title in poster(title, row: true) } }.padding(.horizontal, 14)
+                    LazyVStack(spacing: 12) { ForEach(Array(filtered.prefix(visibleLimit))) { title in poster(title, row: true) } }.padding(.horizontal, 14)
                 } else {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 18) { ForEach(filtered) { poster($0) } }.padding(.horizontal, 14)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 18) { ForEach(Array(filtered.prefix(visibleLimit))) { poster($0) } }.padding(.horizontal, 14)
                 }
+                if !genreRows && visibleLimit < filtered.count { Color.clear.frame(height: 1).onAppear { visibleLimit += 48 } }
                 if filtered.isEmpty { DiaryEmptyState(title: "Nothing here just yet", description: "Try a different search or clear a filter to find your stories.").padding(.horizontal, 14).padding(.top, 20) }
             }.refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
     }
@@ -185,8 +189,6 @@ struct LibraryView: View {
     private func layoutIcon(_ name: String, selected: Bool, genre: Bool = false) -> some View {
         DiaryIcon(name: name, size: 20).foregroundStyle(genre && selected ? theme.accent : Color(webHex: "#c5c0cf"))
             .frame(width: genre ? 36 : 42, height: 44)
-            .background(genre ? (selected ? theme.accent.opacity(0.09) : .clear) : Color(webHex: "#211d2b"), in: RoundedRectangle(cornerRadius: 14))
-            .overlay { if genre && selected { RoundedRectangle(cornerRadius: 14).strokeBorder(theme.accent.opacity(0.45)) } }
             .contentShape(Rectangle())
     }
     private var genres: [String] { LibraryShelf.make(collection).map(\.genre).filter { $0 != "Without a genre" } }
