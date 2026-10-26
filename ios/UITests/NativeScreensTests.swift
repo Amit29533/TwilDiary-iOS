@@ -798,7 +798,8 @@ import UIKit
     func testGlanceSwipeLogsExactlyOneWatchAndUndoPreservesTheCardPosition() {
         let app = launch(mutations: true)
         let count = app.staticTexts["watch-count-again"], mark = app.buttons["Mark next watch for 18 Again"]
-        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "8")
+        XCTAssertTrue(count.waitForExistence(timeout: 5))
+        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
         let originalY = mark.frame.minY
         mark.tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 10)
@@ -1141,7 +1142,8 @@ import UIKit
     func testGlanceCurrentSeasonCompletionAndUndoPreserveTheUnwatchedLaterSeason() {
         let app = launch(mutations: true, upcoming: true)
         let count = app.staticTexts["watch-count-again"]
-        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "8")
+        XCTAssertTrue(count.waitForExistence(timeout: 5))
+        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
         app.buttons["progress-menu-again"].tap(); app.buttons["Mark complete"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertTrue(app.buttons["Undo"].exists); app.buttons["Undo"].tap()

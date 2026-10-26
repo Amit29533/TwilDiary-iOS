@@ -262,11 +262,13 @@ import TwilDiaryCore
         else if change.review && !change.blocked { action("Keep TwilDiary", change: change, choice: .local); action("Use Trakt", change: change, choice: .trakt) }
         else if !change.blocked { action("Apply", change: change, choice: .apply) }
         // Skipping never changes the diary, so it no longer re-downloads it.
-        Button("Skip") { Task { await controller.apply(change: change, choice: .skip) } }.buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
+        // Review rows can number in the thousands: per-row actions use bordered
+        // capsules (no live glass blur in every row); screen-level actions stay glass.
+        Button("Skip") { Task { await controller.apply(change: change, choice: .skip) } }.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
             .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).accessibilityIdentifier("trakt-skip-" + change.id)
     }
     private func action(_ label: String, change: TraktChange, choice: TraktChoice) -> some View {
-        Button(label) { Task { await controller.apply(change: change, choice: choice); await store.refresh() } }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
+        Button(label) { Task { await controller.apply(change: change, choice: choice); await store.refresh() } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
             .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).disabled(coolingDown).accessibilityIdentifier("trakt-" + choice.rawValue + "-" + change.id)
     }
     private func reviewValue(_ kind: String, _ value: String?) -> String {

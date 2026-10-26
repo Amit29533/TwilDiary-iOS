@@ -24,7 +24,10 @@ import TwilDiaryCore
         #endif
     }
     var body: some Scene {
-        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonStyle(.glass).buttonBorderShape(.capsule) }
+        // No app-wide glass button style: it turned every text link, toolbar item and
+        // card link into a glass capsule (glass on the system bars' own glass).
+        // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
+        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule) }
     }
 }
 
@@ -134,7 +137,7 @@ struct RootView: View {
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }) { tab in
                     AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
-                        .tint(theme.accent).buttonStyle(.glass).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
+                        .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
                     .background(.black)
                     .overlay(alignment: .top) { RootNoticeBanner() }

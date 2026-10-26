@@ -382,12 +382,14 @@ struct ProgressCard: View {
             actionLayout {
                 VStack(alignment: .leading, spacing: 5) {
                     GeometryReader { proxy in Capsule().fill(.white.opacity(0.16)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
-                    Text(title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    // Before the card loads, say so instead of showing a made-up zero.
+                    Text(card == nil ? "Checking progress…" : title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
                 }
-                HStack(spacing: 6) {
+                // One container lets the card's glass controls render and morph together.
+                GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
                     Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glass).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
-                    Text("\(card?.progress.watched ?? 0)").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
+                    Text(card.map { "\($0.progress.watched)" } ?? "–").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
                     Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
@@ -396,7 +398,7 @@ struct ProgressCard: View {
                             .foregroundStyle(theme.ink)
                     }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
-                }.frame(height: 44)
+                } }.frame(height: 44)
             }
         }.padding(10)
     }

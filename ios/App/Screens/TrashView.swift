@@ -100,7 +100,7 @@ struct TrashView: View {
                     Spacer(minLength: 0)
                     Button("Delete permanently", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .purge) }
                         .labelStyle(.iconOnly).accessibilityIdentifier("trash-delete-" + title.id)
-                }.font(.caption.weight(.semibold)).buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
+                }.font(.caption.weight(.semibold)).buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("archived-title-" + title.id)
     }
