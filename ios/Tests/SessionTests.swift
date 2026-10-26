@@ -1043,6 +1043,58 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertEqual(store.workspace.titles.first?.notes, title.notes)
         XCTAssertEqual(StubProtocol.state.recorded().filter { $0.httpMethod == "PATCH" }.count, 1)
     }
+    func testTitleScopedWriteRefreshesOnlyThatTitleWithoutAFullDiaryRead() async throws {
+        let workspace = PreviewData.workspace
+        let title = try XCTUnwrap(workspace.titles.first { $0.id == "again" })
+        let ownEvents = workspace.events.filter { $0.titleId == title.id }
+        let removed = try XCTUnwrap(ownEvents.last)
+        // The server's view after the write: only this title's rows differ.
+        let refreshed: [String: Any] = [
+            "ids": [title.id],
+            "titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode([title])),
+            "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.episodes.filter { $0.titleId == title.id })),
+            "events": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ownEvents.filter { $0.id != removed.id })),
+            "locations": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.locations.filter { $0.titleId == title.id }))
+        ]
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: refreshed), as: UTF8.self)
+        StubProtocol.state.reset { request in
+            if request.httpMethod == "PATCH" { return .init("{}") }
+            if request.url?.path == "/api/workspace/titles" { return .init(body) }
+            return .init(503, #"{"error":{"message":"A complete diary read is not expected"}}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let saved = await store.patch(title, values: ["favorite": !title.favorite])
+        XCTAssertTrue(saved); XCTAssertFalse(store.needsMutationRefresh); XCTAssertNil(store.error)
+        let reads = StubProtocol.state.recorded().filter { $0.httpMethod == "GET" }
+        XCTAssertEqual(reads.map { $0.url?.path }, ["/api/workspace/titles"])
+        let query = URLComponents(url: try XCTUnwrap(reads.first?.url), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(query?.first { $0.name == "ids" }?.value, title.id)
+        XCTAssertEqual(Set(store.workspace.events.map(\.id)), Set(workspace.events.map(\.id)).subtracting([removed.id]))
+        XCTAssertEqual(store.workspace.events.count, workspace.events.count - 1)
+        XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
+        XCTAssertEqual(Set(store.workspace.episodes.map(\.id)), Set(workspace.episodes.map(\.id)))
+        XCTAssertEqual(Set(store.workspace.locations.map(\.id)), Set(workspace.locations.map(\.id)))
+    }
+    func testTargetedRefreshThatOmitsARequestedTitleFallsBackToTheCompleteRead() async throws {
+        let workspace = PreviewData.workspace
+        let title = try XCTUnwrap(workspace.titles.first { $0.id == "again" })
+        let pages = try workspacePages(workspace)
+        StubProtocol.state.reset { request in
+            if request.httpMethod == "PATCH" { return .init("{}") }
+            if request.url?.path == "/api/workspace/titles" {
+                return .init(#"{"ids":["someone-else"],"titles":[],"episodes":[],"events":[],"locations":[]}"#)
+            }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let saved = await store.patch(title, values: ["favorite": !title.favorite])
+        XCTAssertTrue(saved); XCTAssertFalse(store.needsMutationRefresh)
+        let full = StubProtocol.state.recorded().filter { $0.url?.path == "/api/workspace" }
+        XCTAssertEqual(full.count, 4, "An inconsistent targeted read must be replaced by one complete snapshot")
+        XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
+    }
     func testSignOutDuringConfirmedWriteRefreshCannotRestoreTheSaveNoticeOrWorkspace() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
         let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true

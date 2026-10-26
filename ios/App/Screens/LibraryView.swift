@@ -202,7 +202,7 @@ struct LibraryView: View {
         query.status = status == "queue" ? "all" : status; query.queued = status == "queue"; query.genre = genre
         query.disk = drive.isEmpty ? "all" : ["mapped", "unmapped"].contains(drive) || drive.hasPrefix("[") || drive.hasPrefix("drive:") ? drive : "drive:" + drive.uppercased()
         query.sort = sort
-        return query.titles(in: store.workspace) { store.publicScore($0, source: ratingSource) }
+        return store.libraryTitles(query, source: ratingSource)
     }
     private func initializeStorage() {
         guard !initializedStorage else { return }

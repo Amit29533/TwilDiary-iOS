@@ -8,6 +8,12 @@
   // The owner-only Access application protects this Worker's production and preview traffic.
   "workers_dev": true,
   "preview_urls": false,
+  // Run the Worker near the D1 primary instead of near the phone. Each API call makes
+  // several D1 round trips; from India those hops dominate latency. One long user->Worker
+  // hop is cheaper than many long Worker->D1 hops. Available on the Free plan.
+  "placement": { "mode": "smart" },
+  // Workers Logs: unhandled API failures and Access rejections become visible.
+  "observability": { "enabled": true },
   "assets": {
     "directory": ".svelte-kit/cloudflare",
     "binding": "ASSETS",

@@ -435,7 +435,7 @@ struct TitleDetailView: View {
         if store.isPreview && !store.canMutate { return }
         let request = UUID(), selected = season
         seasonRequest = request; seasonLoadError = nil
-        guard force || SeasonMetadata.needsPreparation(title: title, workspace: store.workspace, season: selected, now: store.now) else { preparingSeason = false; return }
+        guard force || SeasonMetadata.needsPreparation(title: title, workspace: scope, season: selected, now: store.now) else { preparingSeason = false; return }
         preparingSeason = true; defer { if seasonRequest == request { preparingSeason = false } }
         do { try await store.prepareSavedSeason(title, number: selected, force: force) }
         catch is CancellationError { }
@@ -445,7 +445,7 @@ struct TitleDetailView: View {
         let selected = season
         await episodeDetails.load(selected) { try await store.revealedSeason(title, number: selected) }
     }
-    private var movieViewings: [WatchEvent] { store.workspace.activeEvents.filter { $0.titleId == id && $0.episodeId == nil }.sorted { ($0.recordedAt, $0.id) > ($1.recordedAt, $1.id) } }
+    private var movieViewings: [WatchEvent] { scope.activeEvents.filter { $0.titleId == id && $0.episodeId == nil }.sorted { ($0.recordedAt, $0.id) > ($1.recordedAt, $1.id) } }
     private var displayedWatched: Int { sliderDraft.map(Int.init) ?? card?.progress.watched ?? 0 }
     private var watchInstant: Date { let calendar = DiaryDate.calendar(); return calendar.isDate(watchDate, inSameDayAs: store.now) ? store.now : calendar.date(bySettingHour: 12, minute: 0, second: 0, of: watchDate) ?? watchDate }
     private var displayedPercent: Int { guard let total = card?.progress.total, total > 0 else { return 0 }; return Int((Double(displayedWatched) / Double(total) * 100).rounded()) }
@@ -514,17 +514,20 @@ struct TitleDetailView: View {
         let episodes: [Episode]
         let seasons: [Season]
     }
-    private var seasonNumbers: [Int] { EpisodeSelection.seasons(in: store.workspace, titleID: id) }
-    private var season: Int { chosenSeason ?? EpisodeSelection.preferredSeason(in: store.workspace, titleID: id, today: DiaryDate.day(store.now), linkedSeason: linkedSeason) }
+    /// This title's rows only. `season` is read many times per body pass; it no
+    /// longer scans every episode and watch in the diary each time.
+    private var scope: Workspace { store.titleScope(id) }
+    private var seasonNumbers: [Int] { EpisodeSelection.seasons(in: scope, titleID: id) }
+    private var season: Int { chosenSeason ?? EpisodeSelection.preferredSeason(in: scope, titleID: id, today: DiaryDate.day(store.now), linkedSeason: linkedSeason) }
     private func cardRevision(_ title: MediaTitle) -> CardRevision {
-        CardRevision(season: season, events: store.workspace.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
+        CardRevision(season: season, events: scope.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
     }
     private var episodes: [Episode] { store.episodesForSeason(id, season: season) }
     private var visibleEpisodes: [Episode] {
         Array(EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id ?? episodes.first(where: { !watched.contains($0.id) && hasAired($0) })?.id).prefix(episodeLimit))
     }
     private var watched: Set<String> { store.watchedEpisodeIDs(id) }
-    private var locations: [FileLocation] { store.workspace.locations.filter { $0.titleId == id } }
+    private var locations: [FileLocation] { scope.locations.filter { $0.titleId == id } }
     private var serverLabel: String { ServerAvailability.label(locations) }
     private var percent: Int { guard let card, card.progress.total > 0 else { return 0 }; return Int((Double(card.progress.watched) / Double(card.progress.total) * 100).rounded()) }
     private func remaining(_ title: MediaTitle) -> Int? { title.isSeries ? store.seasonProgress(title, season: season).remainingMinutes : title.runtimeMinutes.map { card?.progress.watched == 1 ? 0 : $0 } }

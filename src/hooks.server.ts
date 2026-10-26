@@ -37,7 +37,11 @@ export const handle: Handle = async ({ event, resolve }) => {
       response.headers.set('X-Content-Type-Options', 'nosniff');
       return response;
     }
-    if (event.url.pathname.startsWith('/diary') || event.url.pathname.startsWith('/preview') || event.url.pathname.startsWith('/api/'))
+    if (
+      event.url.pathname.startsWith('/diary') ||
+      event.url.pathname.startsWith('/preview') ||
+      event.url.pathname.startsWith('/api/')
+    )
       return new Response(
         'Local diary testing is restricted to this PC. The sample preview remains available over Wi-Fi.',
         { status: 403 }
@@ -75,6 +79,8 @@ export const handle: Handle = async ({ event, resolve }) => {
     return response;
   } catch (error) {
     if (!(error instanceof AccessFailure)) throw error;
+    // Status and path only; never the assertion, cookies or headers.
+    console.warn('access_rejected', { status: error.status, path: event.url.pathname });
     return new Response(error.message, {
       status: error.status,
       headers: {

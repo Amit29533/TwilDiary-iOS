@@ -31,18 +31,20 @@ import TwilDiaryCore
     }
     @ObservationIgnored private var cachedHome: (day: Date, calendar: Calendar, value: HomeProjection)?
     @ObservationIgnored private var cachedStats: (day: String, zone: String, period: Period, year: Int?, value: StatsOverview)?
-    var workspace = Workspace() { didSet { indexWorkspace() } }
+    /// Assigning a snapshot directly indexes it synchronously (tests, fixtures, sign-out).
+    /// Network snapshots are indexed off the main actor first; see `publishIndexed`.
+    var workspace = Workspace() { didSet { if !publishingIndexedSnapshot { indexWorkspace() } } }
+    @ObservationIgnored private var publishingIndexedSnapshot = false
+    @ObservationIgnored private var titleScopes: [String: Workspace] = [:]
+    @ObservationIgnored private var cachedHistory: (query: HistoryQuery, zone: String, value: [HistoryEntry])?
+    @ObservationIgnored private var cachedActiveEventCount: Int?
+    @ObservationIgnored private var cachedLibrary: (query: LibraryQuery, source: PublicRatingSource, value: [MediaTitle])?
     private var titleIndex: [String: MediaTitle] = [:]
     private var progressIndex: [String: Double] = [:]
     private var seasonProgressIndex: [String: [Int: SeasonProgress]] = [:]
     private var presentTitleIDs = Set<String>()
     private var episodesBySeason: [String: [Int: [Episode]]] = [:]
     private var watchedEpisodesByTitle: [String: Set<String>] = [:]
-    private struct CardInput: Equatable {
-        let title: MediaTitle
-        let episodes: [Episode]
-        let events: [WatchEvent]
-    }
     private struct CardKey: Hashable {
         let titleID: String
         let revision: UUID
@@ -50,10 +52,13 @@ import TwilDiaryCore
         let season: Int?
         let day: String
     }
-    private var cardInputs: [String: CardInput] = [:]
+    private var cardInputs: [String: WorkspaceCardInput] = [:] { didSet { cardInputsToken = UUID() } }
+    @ObservationIgnored private var cardInputsToken = UUID()
     private var cardRevisions: [String: UUID] = [:]
-    private var cachedCards: [CardKey: (at: Date, value: WatchCard)] = [:]
-    private var cardReads: [CardKey: (id: UUID, task: Task<WatchCard, Error>)] = [:]
+    // Not observed: every visible card read this dictionary, so one card's load
+    // re-rendered all of them. Cards keep their own loaded value; revisions stay observed.
+    @ObservationIgnored private var cachedCards: [CardKey: (at: Date, value: WatchCard)] = [:]
+    @ObservationIgnored private var cardReads: [CardKey: (id: UUID, task: Task<WatchCard, Error>)] = [:]
     func cardRevision(_ id: String) -> UUID? { cardRevisions[id] }
     private func clearCards() {
         for read in cardReads.values { read.task.cancel() }
@@ -182,6 +187,7 @@ import TwilDiaryCore
         invalidateDiscovery()
         communityCache.reset()
         needsMutationRefresh = false
+        Task { await PublicArtworkCache.shared.removeAll() }
         api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
         showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
         do { try cache.removeAll(); cacheWarning = nil }
@@ -243,9 +249,35 @@ import TwilDiaryCore
             // once; persistent inconsistency preserves the last complete diary.
             snapshot = try await readWorkspaceSnapshot()
         }
+        try await publish(snapshot, session: session, revision: revision)
+    }
+    /// Re-read only the titles a write touched and merge them into the current snapshot.
+    /// One small consistent request replaces a full multi-page diary download, so the
+    /// tapped card is confirmed in roughly one round trip instead of dozens.
+    private func reloadTitles(_ ids: Set<String>) async throws {
+        #if DEBUG
+        if fixture != nil { try await reload(); return }
+        #endif
+        let session = sessionGeneration, revision = UUID()
+        snapshotGeneration = revision
+        let base = workspace
+        var query = URLComponents(); query.queryItems = [URLQueryItem(name: "ids", value: ids.sorted().joined(separator: ","))]
+        let refresh: WorkspaceTitleRefresh = try await read("/api/workspace/titles?" + (query.percentEncodedQuery ?? ""))
         try Task.checkCancellation()
         guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-        workspace = snapshot; hasLoadedWorkspace = true; showingCachedSnapshot = false; lastRefreshedAt = .now
+        guard Set(refresh.ids) == ids else { throw WorkspaceIntegrityError.incompleteSnapshot }
+        let merging = Task.detached(priority: .userInitiated) { try refresh.merged(into: base) }
+        let snapshot = try await merging.value
+        try await publish(snapshot, session: session, revision: revision)
+    }
+    private func publish(_ snapshot: Workspace, session: UUID, revision: UUID) async throws {
+        try Task.checkCancellation()
+        guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
+        let built = await buildIndex(snapshot)
+        try Task.checkCancellation()
+        guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
+        publishIndexed(snapshot, built)
+        hasLoadedWorkspace = true; showingCachedSnapshot = false; lastRefreshedAt = .now
         needsMutationRefresh = false
         if let scope = api.credential?.cacheScope {
             var cacheFailure: Error?
@@ -264,7 +296,11 @@ import TwilDiaryCore
         async let locations = api.allPages("locations", as: FileLocation.self)
         let values = try await (titles, episodes, events, locations)
         try Task.checkCancellation()
-        return try Workspace(titles: values.0, episodes: values.1, events: values.2, locations: values.3).validatingIdentities()
+        // Identity validation builds sets over every row; keep it off the main actor.
+        let validating = Task.detached(priority: .userInitiated) {
+            try Workspace(titles: values.0, episodes: values.1, events: values.2, locations: values.3).validatingIdentities()
+        }
+        return try await validating.value
     }
     private func restoreCachedWorkspace() {
         guard let credential = api.credential, credential.isValid, !hasLoadedWorkspace else { return }
@@ -281,39 +317,93 @@ import TwilDiaryCore
             guard let snapshot = try? await self.cache.loadAsynchronously(scope: scope),
                   !Task.isCancelled, session == self.sessionGeneration, revision == self.snapshotGeneration,
                   !self.needsSignIn, !self.hasLoadedWorkspace, self.api.credential?.cacheScope == scope else { return }
-            self.workspace = snapshot.workspace; self.hasLoadedWorkspace = true
+            let built = await self.buildIndex(snapshot.workspace)
+            guard !Task.isCancelled, session == self.sessionGeneration, revision == self.snapshotGeneration,
+                  !self.needsSignIn, !self.hasLoadedWorkspace, self.api.credential?.cacheScope == scope else { return }
+            self.publishIndexed(snapshot.workspace, built); self.hasLoadedWorkspace = true
             self.showingCachedSnapshot = true; self.lastRefreshedAt = snapshot.savedAt
         }
     }
-    private func indexWorkspace() {
-        cachedHome = nil; cachedStats = nil
-        titleIndex = Dictionary(workspace.titles.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
-        let events = Dictionary(grouping: workspace.activeEvents, by: \.titleId)
-        let episodes = Dictionary(grouping: workspace.episodes, by: \.titleId)
-        episodesBySeason = episodes.mapValues { rows in
-            Dictionary(grouping: rows, by: \.season).mapValues { $0.sorted { $0.number == $1.number ? $0.id < $1.id : $0.number < $1.number } }
+    private func indexWorkspace() { apply(WorkspaceIndex(workspace), changed: nil) }
+    /// Derived lookups for a snapshot are computed on a background executor. Card
+    /// revision diffs are computed there too, against the inputs current at start;
+    /// if those inputs changed meanwhile, `apply` recomputes the diff on the main actor.
+    private func buildIndex(_ snapshot: Workspace) async -> (index: WorkspaceIndex, changed: Set<String>?) {
+        let previous = cardInputs, token = cardInputsToken
+        let work = Task.detached(priority: .userInitiated) { () -> (WorkspaceIndex, Set<String>) in
+            let index = WorkspaceIndex(snapshot)
+            return (index, index.changedTitles(since: previous))
         }
-        watchedEpisodesByTitle = events.mapValues { Set($0.compactMap(\.episodeId)) }
-        progressIndex = titleIndex.mapValues { title in
-            LibraryProgress.fraction(title: title, episodes: episodes[title.id] ?? [], activeEvents: events[title.id] ?? [])
-        }
-        seasonProgressIndex = titleIndex.mapValues { title in
-            let rows = episodes[title.id] ?? []
-            let scoped = Workspace(titles: [title], episodes: rows, events: events[title.id] ?? [])
-            let seasons = Set(rows.map(\.season)).union(title.seasons?.map(\.number) ?? [])
-            return Dictionary(uniqueKeysWithValues: seasons.map { ($0, SeasonProgress.calculate(title: title, workspace: scoped, season: $0)) })
-        }
-        let inputs = titleIndex.mapValues { title in CardInput(title: title, episodes: episodes[title.id] ?? [], events: events[title.id] ?? []) }
-        let changed = Set(cardInputs.keys).union(inputs.keys).filter { cardInputs[$0] != inputs[$0] }
+        let (index, changed) = await work.value
+        return (index, token == cardInputsToken ? changed : nil)
+    }
+    private func publishIndexed(_ snapshot: Workspace, _ built: (index: WorkspaceIndex, changed: Set<String>?)) {
+        publishingIndexedSnapshot = true
+        workspace = snapshot
+        publishingIndexedSnapshot = false
+        apply(built.index, changed: built.changed)
+    }
+    private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
+        cachedHome = nil; cachedStats = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = nil
+        titleIndex = index.titles
+        progressIndex = index.progress
+        seasonProgressIndex = index.seasonProgress
+        episodesBySeason = index.episodesBySeason
+        watchedEpisodesByTitle = index.watchedEpisodes
+        let inputs = index.cardInputs
+        let changed = precomputed ?? index.changedTitles(since: cardInputs)
         for id in changed { cardRevisions[id] = inputs[id] == nil ? nil : UUID() }
         cardInputs = inputs
         cachedCards = cachedCards.filter { cardRevisions[$0.key.titleID] == $0.key.revision }
         for (key, read) in cardReads where cardRevisions[key.titleID] != key.revision { read.task.cancel(); cardReads.removeValue(forKey: key) }
-        presentTitleIDs = Set(workspace.locations.filter { $0.evidence == "present" }.map(\.titleId))
+        presentTitleIDs = index.presentTitleIDs
+    }
+    /// Every row belonging to one title, as a small Workspace. The TwilDiaryCore
+    /// selection helpers filter by title ID, so they return identical answers on
+    /// this scope without scanning the whole diary on every SwiftUI body pass.
+    func titleScope(_ id: String) -> Workspace {
+        // Reading the observed workspace keeps the caller subscribed to changes.
+        let snapshot = workspace
+        if let saved = titleScopes[id] { return saved }
+        let scope = Workspace(titles: titleIndex[id].map { [$0] } ?? [],
+                              episodes: snapshot.episodes.filter { $0.titleId == id },
+                              events: snapshot.events.filter { $0.titleId == id },
+                              locations: snapshot.locations.filter { $0.titleId == id })
+        if titleScopes.count >= 24 { titleScopes.removeAll(keepingCapacity: true) }
+        titleScopes[id] = scope
+        return scope
     }
     func title(_ id: String) -> MediaTitle? { titleIndex[id] }
     func episodesForSeason(_ titleID: String, season: Int) -> [Episode] { episodesBySeason[titleID]?[season] ?? [] }
     func watchedEpisodeIDs(_ titleID: String) -> Set<String> { watchedEpisodesByTitle[titleID] ?? [] }
+    /// History rows for one filter state, reused until the diary or the filters change.
+    /// The History body previously re-ran the full query (parse, de-duplicate, sort)
+    /// on every update, including every scroll-triggered state change.
+    func historyEntries(_ query: HistoryQuery, timeZone: TimeZone = .current) -> [HistoryEntry] {
+        let snapshot = workspace
+        if let saved = cachedHistory, saved.query == query, saved.zone == timeZone.identifier { return saved.value }
+        let value = query.entries(in: snapshot, timeZone: timeZone)
+        cachedHistory = (query, timeZone.identifier, value)
+        return value
+    }
+    /// Filtered and sorted Library titles, reused across body passes until the diary or
+    /// the filters change. A Trakt-score sort depends on ratings that arrive separately,
+    /// so that one combination is always recomputed.
+    func libraryTitles(_ query: LibraryQuery, source: PublicRatingSource) -> [MediaTitle] {
+        let snapshot = workspace
+        let cacheable = query.sort != .score || source == .tmdb
+        if cacheable, let saved = cachedLibrary, saved.query == query, saved.source == source { return saved.value }
+        let value = query.titles(in: snapshot) { self.publicScore($0, source: source) }
+        if cacheable { cachedLibrary = (query, source, value) }
+        return value
+    }
+    var activeEventCount: Int {
+        let snapshot = workspace
+        if let saved = cachedActiveEventCount { return saved }
+        let value = snapshot.activeEvents.count
+        cachedActiveEventCount = value
+        return value
+    }
     func homeProjection(at date: Date, calendar: Calendar = DiaryDate.calendar()) -> HomeProjection {
         // Reading the observed workspace keeps the view subscribed even on a
         // cache hit. Internal cache writes do not trigger another body pass.
@@ -372,7 +462,7 @@ import TwilDiaryCore
         }
     }
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
-        await perform {
+        await perform(refreshing: [title.id]) {
             let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
             self.undoLabel = "Moved to Trash"
             self.undoAction = {
@@ -381,7 +471,7 @@ import TwilDiaryCore
         }
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
-        await perform {
+        await perform(refreshing: [title.id]) {
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
         }
     }
@@ -447,7 +537,7 @@ import TwilDiaryCore
         return value
     }
     func loadSeason(_ title: MediaTitle, number: Int) async {
-        await perform {
+        await perform(refreshing: [title.id]) {
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST")
         }
     }
@@ -500,7 +590,7 @@ import TwilDiaryCore
     func rejectPendingViewing(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingWatches.removeValue(forKey: key) } }
     func rejectPendingSeason(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingSeasonAdjustments.removeValue(forKey: key) } }
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
-        await perform {
+        await perform(refreshing: [title.id]) {
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
         }
@@ -514,10 +604,10 @@ import TwilDiaryCore
     }
     @discardableResult func setStatus(_ title: MediaTitle, status: String, watchedAt: Date? = nil) async -> Bool {
         if status != "planned" && status != "completed" { return await patch(title, values: ["status": status]) }
-        return await perform { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
+        return await perform(refreshing: [title.id]) { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
-        await perform {
+        await perform(refreshing: Set(reviewed.map(\.id))) {
             let request = try CollectionRequest(titles: reviewed, change: change)
             if case .status(let status) = change, ["planned", "completed"].contains(status) {
                 try await self.applyProgress(reviewed, status: status, watchedAt: self.now)
@@ -576,7 +666,8 @@ import TwilDiaryCore
             }
         }
     }
-    @discardableResult func perform(cardID: String? = nil, cardAction: CardAction = .menu, _ action: () async throws -> Void) async -> Bool {
+    @discardableResult func perform(cardID: String? = nil, cardAction: CardAction = .menu, refreshing titleIDs: Set<String>? = nil, _ action: () async throws -> Void) async -> Bool {
+        let scoped: Set<String>? = titleIDs ?? cardID.map { Set([$0]) }
         let generation = sessionGeneration
         if let cardID {
             guard cardActions[cardID] == nil, canMutate else { return false }
@@ -596,7 +687,7 @@ import TwilDiaryCore
             guard generation == sessionGeneration else { return false }
             // The action's receipt confirms the write. A later read failure cannot undo that fact.
             do {
-                try await reload()
+                try await refreshAfterWrite(scoped)
                 error = nil
             } catch {
                 guard generation == sessionGeneration else { return false }
@@ -610,11 +701,27 @@ import TwilDiaryCore
             if generation == sessionGeneration {
                 let failure = error
                 if case APIError.signIn = failure { fail(failure) }
-                else { try? await reload(); if generation == sessionGeneration { fail(failure) } }
+                else { try? await refreshAfterWrite(scoped); if generation == sessionGeneration { fail(failure) } }
             }
             return false
         }
     }
+    /// Title-scoped writes refresh just those titles; anything else, or any doubt about
+    /// the targeted read, falls back to the complete snapshot read.
+    func refreshAfterWrite(_ titleIDs: Set<String>?) async throws {
+        guard let titleIDs, !titleIDs.isEmpty, titleIDs.count <= Self.targetedRefreshLimit else { return try await reload() }
+        do { try await reloadTitles(titleIDs) }
+        catch let failure as APIError {
+            // Sign-in, quota and connectivity failures would fail the full read too.
+            // A rejected targeted read (for example an older backend without the
+            // endpoint) still gets the complete snapshot read.
+            guard case .rejected = failure else { throw failure }
+            try await reload()
+        }
+        catch is CancellationError { throw CancellationError() }
+        catch { try await reload() }
+    }
+    private static let targetedRefreshLimit = 50
     private func fail(_ cause: Error) {
         if case APIError.signIn = cause {
             retainedTraktController?.invalidateSession(); retainedTraktController = nil
@@ -634,5 +741,84 @@ import TwilDiaryCore
     private struct TitleReceipt: Decodable {
         struct Identity: Decodable { let id: String; let version: Int }
         let title: Identity
+    }
+}
+
+private struct WorkspaceCardInput: Equatable, Sendable {
+    let title: MediaTitle
+    let episodes: [Episode]
+    let events: [WatchEvent]
+}
+
+/// Everything derived from one snapshot. Plain values only, so it can be built on a
+/// background executor and handed to the main actor in one assignment.
+private struct WorkspaceIndex: Sendable {
+    let titles: [String: MediaTitle]
+    let progress: [String: Double]
+    let seasonProgress: [String: [Int: SeasonProgress]]
+    let cardInputs: [String: WorkspaceCardInput]
+    let presentTitleIDs: Set<String>
+    let episodesBySeason: [String: [Int: [Episode]]]
+    let watchedEpisodes: [String: Set<String>]
+    init(_ workspace: Workspace) {
+        let titles = Dictionary(workspace.titles.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+        let events = Dictionary(grouping: workspace.activeEvents, by: \.titleId)
+        let episodes = Dictionary(grouping: workspace.episodes, by: \.titleId)
+        self.titles = titles
+        episodesBySeason = episodes.mapValues { rows in
+            Dictionary(grouping: rows, by: \.season).mapValues { $0.sorted { $0.number == $1.number ? $0.id < $1.id : $0.number < $1.number } }
+        }
+        watchedEpisodes = events.mapValues { Set($0.compactMap(\.episodeId)) }
+        progress = titles.mapValues { title in
+            LibraryProgress.fraction(title: title, episodes: episodes[title.id] ?? [], activeEvents: events[title.id] ?? [])
+        }
+        seasonProgress = titles.mapValues { title in
+            let rows = episodes[title.id] ?? []
+            let scoped = Workspace(titles: [title], episodes: rows, events: events[title.id] ?? [])
+            let seasons = Set(rows.map(\.season)).union(title.seasons?.map(\.number) ?? [])
+            return Dictionary(uniqueKeysWithValues: seasons.map { ($0, SeasonProgress.calculate(title: title, workspace: scoped, season: $0)) })
+        }
+        cardInputs = titles.mapValues { title in
+            WorkspaceCardInput(title: title, episodes: episodes[title.id] ?? [], events: events[title.id] ?? [])
+        }
+        presentTitleIDs = Set(workspace.locations.filter { $0.evidence == "present" }.map(\.titleId))
+    }
+    func changedTitles(since previous: [String: WorkspaceCardInput]) -> Set<String> {
+        Set(previous.keys).union(cardInputs.keys).filter { previous[$0] != cardInputs[$0] }
+    }
+}
+
+/// `GET /api/workspace/titles?ids=` — every row of the requested titles, read in one
+/// consistent server batch. A requested ID that is absent was permanently deleted.
+private struct WorkspaceTitleRefresh: Decodable, Sendable {
+    let ids: [String]
+    let titles: [MediaTitle]
+    let episodes: [Episode]
+    let events: [WatchEvent]
+    let locations: [FileLocation]
+    /// Replace exactly the requested titles' rows, keeping SQLite's BINARY id order
+    /// (byte order) that complete snapshots use, then re-run the identity checks.
+    func merged(into base: Workspace) throws -> Workspace {
+        let requested = Set(ids)
+        func merge<Row: Identifiable>(_ current: [Row], _ fresh: [Row], owner: (Row) -> String) -> [Row] where Row.ID == String {
+            let kept = current.filter { !requested.contains(owner($0)) }
+            let added = fresh.sorted { $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) }
+            var result: [Row] = []; result.reserveCapacity(kept.count + added.count)
+            var i = 0, j = 0
+            while i < kept.count && j < added.count {
+                if added[j].id.utf8.lexicographicallyPrecedes(kept[i].id.utf8) { result.append(added[j]); j += 1 }
+                else { result.append(kept[i]); i += 1 }
+            }
+            result.append(contentsOf: kept[i...]); result.append(contentsOf: added[j...])
+            return result
+        }
+        guard titles.allSatisfy({ requested.contains($0.id) }),
+              episodes.allSatisfy({ requested.contains($0.titleId) }),
+              events.allSatisfy({ requested.contains($0.titleId) }),
+              locations.allSatisfy({ requested.contains($0.titleId) }) else { throw WorkspaceIntegrityError.incompleteSnapshot }
+        return try Workspace(titles: merge(base.titles, titles, owner: \.id),
+                             episodes: merge(base.episodes, episodes, owner: \.titleId),
+                             events: merge(base.events, events, owner: \.titleId),
+                             locations: merge(base.locations, locations, owner: \.titleId)).validatingIdentities()
     }
 }
