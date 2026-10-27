@@ -1076,8 +1076,20 @@ import UIKit
         let undo = app.buttons["undo-action"]
         // Existence returns as soon as the toast is present; it never extends expiry.
         XCTAssertTrue(undo.waitForExistence(timeout: 3), "The Undo toast did not appear")
-        let bounds = undo.frame
+        // Undo stays disabled while the write is still refreshing, and the toast's
+        // expiry only starts once it is enabled, so waiting here costs no window.
+        wait(for: [expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: undo)], timeout: 10)
+        // The toast slides up from the bottom edge. Tap its settled position only;
+        // a frame read mid-transition puts the touch below the button.
+        var bounds = undo.frame
+        for _ in 0..<8 {
+            Thread.sleep(forTimeInterval: 0.08)
+            let settled = undo.frame
+            if settled == bounds, app.frame.contains(settled) { break }
+            bounds = settled
+        }
         XCTAssertFalse(bounds.isEmpty)
+        XCTAssertTrue(app.frame.contains(bounds), "The Undo action must be fully on screen before it is tapped")
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()
     }
     private func completeContentBack(_ app: XCUIApplication, beside anchor: XCUIElement,

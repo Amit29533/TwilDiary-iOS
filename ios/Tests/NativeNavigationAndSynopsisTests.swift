@@ -26,6 +26,18 @@ import SwiftUI
         }
         XCTAssertNil(RootTabSwipe.destination(from: .library, translation: CGSize(width: 200, height: 0), width: 0))
     }
+    func testSwipePastEitherEndBouncesWithABoundedRubberBand() {
+        XCTAssertEqual(RootTabSwipe.edgeOffset(0, width: 390), 0)
+        let drags = stride(from: CGFloat(0), through: 2000, by: 50).map { RootTabSwipe.edgeOffset($0, width: 390) }
+        XCTAssertEqual(drags, drags.sorted(), "The page must keep following the finger")
+        for (drag, offset) in zip(stride(from: CGFloat(0), through: 2000, by: 50), drags) {
+            XCTAssertLessThanOrEqual(offset, drag, "The page moves slower than the finger")
+            XCTAssertLessThan(offset, 390 * 0.25)
+        }
+        XCTAssertEqual(RootTabSwipe.edgeOffset(-200, width: 390), -RootTabSwipe.edgeOffset(200, width: 390))
+        XCTAssertEqual(RootTabSwipe.edgeOffset(.nan, width: 390), 0)
+        XCTAssertEqual(RootTabSwipe.edgeOffset(200, width: 0), 0)
+    }
     func testCompactHeaderCrossfadesMonotonicallyAndReversesWithoutAThresholdJump() {
         XCTAssertEqual(CompactHeaderTransition.progress(nameBottom: 100), 0)
         XCTAssertEqual(CompactHeaderTransition.progress(nameBottom: -100), 1)

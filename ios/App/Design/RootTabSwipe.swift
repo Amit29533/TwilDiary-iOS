@@ -23,4 +23,14 @@ extension RootTabSwipe {
         if velocity < -120 { return false }
         return progress >= 0.35 || (progress > 0.05 && velocity > 500)
     }
+    /// Rubber-band offset for a swipe past the first or last tab, using the
+    /// UIScrollView edge curve. It follows the finger, slows, and stays under a
+    /// quarter of the width however far the drag goes.
+    static func edgeOffset(_ translation: CGFloat, width: CGFloat) -> CGFloat {
+        guard translation.isFinite, width.isFinite, width > 0 else { return 0 }
+        let limit = width * 0.25
+        let distance = abs(translation)
+        let offset = (1 - 1 / (distance * 0.55 / limit + 1)) * limit
+        return translation < 0 ? -offset : offset
+    }
 }
