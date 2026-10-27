@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { SQLiteAsyncDialect } from 'drizzle-orm/sqlite-core';
 import type { database } from './db/index.ts';
 import { titles, providerIdentities, seasons, episodes } from './db/schema.ts';
@@ -37,20 +37,29 @@ function jsonGroups(rows: unknown[]) {
   return groups;
 }
 
-async function existingIdentity(db: Db, kind: 'movie' | 'series', externalId: string) {
-  const identity = await db
+/** The title linked to a TMDb identity, read in one query (the identity is a subquery). */
+const linkedTitle = (db: Db, kind: 'movie' | 'series', externalId: string) =>
+  db
     .select()
-    .from(providerIdentities)
+    .from(titles)
     .where(
-      and(
-        eq(providerIdentities.provider, 'tmdb'),
-        eq(providerIdentities.kind, kind),
-        eq(providerIdentities.externalId, externalId)
+      inArray(
+        titles.id,
+        db
+          .select({ id: providerIdentities.titleId })
+          .from(providerIdentities)
+          .where(
+            and(
+              eq(providerIdentities.provider, 'tmdb'),
+              eq(providerIdentities.kind, kind),
+              eq(providerIdentities.externalId, externalId)
+            )
+          )
       )
-    )
-    .get();
-  if (!identity) return null;
-  const title = await getTitle(db, identity.titleId, true);
+    );
+type TitleRow = typeof titles.$inferSelect;
+function openable(title: TitleRow | undefined) {
+  if (!title) return null;
   if (title.deletedAt)
     throw new ApiError(
       409,
@@ -58,6 +67,9 @@ async function existingIdentity(db: Db, kind: 'movie' | 'series', externalId: st
       'This title is already in Trash. Restore it instead of adding a second copy.'
     );
   return title;
+}
+async function existingIdentity(db: Db, kind: 'movie' | 'series', externalId: string) {
+  return openable(await linkedTitle(db, kind, externalId).get());
 }
 type TmdbDetails = Awaited<ReturnType<TmdbClient['details']>>;
 export interface TitleImport {
@@ -156,6 +168,9 @@ export function seasonEpisodeStatements(
       SELECT json_extract(value,'$.id'),json_extract(value,'$.titleId'),json_extract(value,'$.seasonId'),json_extract(value,'$.number'),json_extract(value,'$.name'),json_extract(value,'$.overview'),json_extract(value,'$.airedOn'),json_extract(value,'$.tmdbId'),json_extract(value,'$.stillPath'),json_extract(value,'$.communityScore')
       FROM json_each(${group}) WHERE true ON CONFLICT(season_id,number) DO UPDATE SET
       name=excluded.name,overview=excluded.overview,aired_on=excluded.aired_on,tmdb_id=excluded.tmdb_id,still_path=excluded.still_path,community_score=excluded.community_score
+      WHERE episodes.name IS NOT excluded.name OR episodes.overview IS NOT excluded.overview
+        OR episodes.aired_on IS NOT excluded.aired_on OR episodes.tmdb_id IS NOT excluded.tmdb_id
+        OR episodes.still_path IS NOT excluded.still_path OR episodes.community_score IS NOT excluded.community_score
     `
     )
   ];
@@ -178,21 +193,28 @@ export async function importTmdb(db: Db, client: TmdbClient, value: unknown) {
   const details = await client.details(mediaType, id);
   // Provider-derived IDs plus one atomic batch make retry/concurrent import safe.
   // Personal data is only inserted once; importing again cannot overwrite notes/progress.
-  const results = await atomicBatch(
-    db,
-    titleImportStatements(db, [
-      {
-        mediaType,
-        id,
-        details,
-        category: input.category as 'movie' | 'anime-movie' | 'show' | 'anime',
-        status: patch.status!,
-        score: patch.score!,
-        favorite: patch.favorite!
-      }
-    ])
-  );
-  const title = await existingIdentity(db, kind, String(id));
+  // The batch ends by reading the linked title back, so no follow-up round trips.
+  const [insert, ...writes] = titleImportStatements(db, [
+    {
+      mediaType,
+      id,
+      details,
+      category: input.category as 'movie' | 'anime-movie' | 'show' | 'anime',
+      status: patch.status!,
+      score: patch.score!,
+      favorite: patch.favorite!
+    }
+  ]);
+  const read = linkedTitle(db, kind, String(id)).toSQL();
+  const results = await db.$client.batch([
+    ...[insert!, ...writes].map((statement) => {
+      const query = new SQLiteAsyncDialect().sqlToQuery(statement);
+      return db.$client.prepare(query.sql).bind(...query.params);
+    }),
+    db.$client.prepare(read.sql).bind(...read.params)
+  ]);
+  const row = (results.at(-1)?.results as Record<string, unknown>[] | undefined)?.[0];
+  const title = openable(row ? titleFromRow(row) : undefined);
   if (!title)
     throw new ApiError(
       409,
@@ -201,47 +223,94 @@ export async function importTmdb(db: Db, client: TmdbClient, value: unknown) {
     );
   return { title, added: (results[0]?.results.length ?? 0) > 0 };
 }
+/** Map a raw titles row exactly as drizzle does: column names and driver conversions. */
+function titleFromRow(row: Record<string, unknown>): TitleRow {
+  const title: Record<string, unknown> = {};
+  for (const [key, column] of Object.entries(getTableColumns(titles))) {
+    const value = row[column.name];
+    title[key] = value === null || value === undefined ? null : column.mapFromDriverValue(value);
+  }
+  return title as TitleRow;
+}
 
-/** Fetch just the selected season, never every episode during library navigation. */
-export async function loadTmdbSeason(db: Db, client: TmdbClient, titleId: string, number: number) {
-  await getTitle(db, titleId);
-  if (!Number.isInteger(number) || number < 0 || number > 999)
-    throw new ApiError(400, 'invalid_input', 'Choose a valid season');
-  const season = await db
-    .select()
-    .from(seasons)
-    .where(and(eq(seasons.titleId, titleId), eq(seasons.number, number)))
-    .get();
-  if (!season) throw new ApiError(404, 'not_found', 'This season is not in your diary');
+/**
+ * Fetch just the selected season, never every episode during library navigation.
+ * One read finds the live title, the season, its TMDb link and the latest local season.
+ * With `refreshManifest`, refreshing the latest season also asks TMDb for its season list
+ * and adds any new season (a continuing show), best effort and conflict-safe. Callers that
+ * budget provider requests per invocation (the Trakt sync) leave it off.
+ */
+export async function loadTmdbSeason(
+  db: Db,
+  client: TmdbClient,
+  titleId: string,
+  number: number,
+  options: { refreshManifest?: boolean } = {}
+) {
+  const valid = Number.isInteger(number) && number >= 0 && number <= 999;
+  const found = valid
+    ? await db
+        .select({
+          season: seasons,
+          externalId: providerIdentities.externalId,
+          latest: sql<number>`(SELECT max(latest.number) FROM seasons AS latest WHERE latest.title_id=${seasons.titleId})`
+        })
+        .from(seasons)
+        .innerJoin(titles, and(eq(titles.id, seasons.titleId), isNull(titles.deletedAt)))
+        .leftJoin(
+          providerIdentities,
+          and(
+            eq(providerIdentities.titleId, seasons.titleId),
+            eq(providerIdentities.provider, 'tmdb'),
+            eq(providerIdentities.kind, 'series')
+          )
+        )
+        .where(and(eq(seasons.titleId, titleId), eq(seasons.number, number)))
+        .get()
+    : undefined;
+  if (!found) {
+    // Error path only: keep the exact previous order (missing title, input, season).
+    await getTitle(db, titleId);
+    if (!valid) throw new ApiError(400, 'invalid_input', 'Choose a valid season');
+    throw new ApiError(404, 'not_found', 'This season is not in your diary');
+  }
+  const { season } = found;
   // A recent cache is usable even if the provider is temporarily unavailable.
   if (
     season.metadataLoadedAt &&
     season.metadataVersion >= 2 &&
     Date.now() - Date.parse(season.metadataLoadedAt) < 6 * 60 * 60 * 1000
   )
-    return { season, refreshed: false };
-  const identity = await db
-    .select()
-    .from(providerIdentities)
-    .where(
-      and(
-        eq(providerIdentities.titleId, titleId),
-        eq(providerIdentities.provider, 'tmdb'),
-        eq(providerIdentities.kind, 'series')
-      )
-    )
-    .get();
-  if (!identity)
+    return { season, refreshed: false, addedSeasons: 0 };
+  if (!found.externalId)
     throw new ApiError(
       409,
       'metadata_not_linked',
       'Link this title to TMDb before loading episodes'
     );
-  const rows = await client.season(+identity.externalId, number);
+  const externalId = +found.externalId;
+  const [rows, details] = await Promise.all([
+    client.season(externalId, number),
+    options.refreshManifest && number >= found.latest
+      ? client.details('tv', externalId).catch(() => null)
+      : null
+  ]);
   const now = new Date().toISOString();
-  await atomicBatch(db, seasonEpisodeStatements(db, [{ titleId, seasonId: season.id, rows }], now));
+  const manifest = details?.seasons.length
+    ? [
+        sql`INSERT INTO seasons(id,title_id,number,name,expected_episodes)
+        SELECT ${titleId}||'-s'||json_extract(value,'$.number'),${titleId},json_extract(value,'$.number'),
+          json_extract(value,'$.name'),json_extract(value,'$.expectedEpisodes')
+        FROM json_each(${JSON.stringify(details.seasons)}) WHERE true ON CONFLICT DO NOTHING`
+      ]
+    : [];
+  const results = await atomicBatch(db, [
+    ...seasonEpisodeStatements(db, [{ titleId, seasonId: season.id, rows }], now),
+    ...manifest
+  ]);
   return {
     season: { ...season, metadataLoadedAt: now, metadataVersion: 2, expectedEpisodes: rows.length },
-    refreshed: true
+    refreshed: true,
+    addedSeasons: manifest.length ? (results.at(-1)?.meta.changes ?? 0) : 0
   };
 }

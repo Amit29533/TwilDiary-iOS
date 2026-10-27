@@ -8,9 +8,11 @@ import {
   listLibrary,
   logWatch,
   patchTitle,
+  getTitle,
   seasonPage,
   trashTitle
 } from '../../src/lib/server/library.ts';
+import { database } from '../../src/lib/server/db/index.ts';
 import { tmdbImage } from '../../src/lib/metadata.ts';
 import { ClientError, requestJson } from '../../src/lib/client/api.ts';
 import { GET as searchRoute } from '../../src/routes/api/metadata/search/+server.ts';
@@ -421,4 +423,137 @@ test('client distinguishes Access HTML, API failures and valid JSON without leak
     }),
     { items: [] }
   );
+});
+
+/** Database round trips: a batch is one, every statement run outside a batch is one. */
+function roundTrips(f: ReturnType<typeof d1Fixture>) {
+  let trips = 0;
+  const binding = new Proxy(f.binding, {
+    get(target, property, receiver) {
+      if (property === 'batch')
+        return (statements: unknown[]) => {
+          trips++;
+          return (target.batch as (s: unknown[]) => unknown)(statements);
+        };
+      if (property === 'prepare')
+        return (query: string) => {
+          const wrap = (statement: object): object =>
+            new Proxy(statement, {
+              get(inner, key, original) {
+                const value = Reflect.get(inner, key, original);
+                if (key === 'bind')
+                  return (...values: unknown[]) =>
+                    wrap((value as (...v: unknown[]) => object).apply(inner, values));
+                if (['all', 'run', 'first', 'raw'].includes(String(key)))
+                  return (...args: unknown[]) => {
+                    trips++;
+                    return (value as (...a: unknown[]) => unknown).apply(inner, args);
+                  };
+                return value;
+              }
+            });
+          return wrap(target.prepare(query));
+        };
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  return { db: database(binding as typeof f.binding), trips: () => trips };
+}
+const changes = (f: ReturnType<typeof d1Fixture>) =>
+  Number(f.sqlite.prepare('SELECT total_changes() AS n').get()!.n);
+
+test('a TMDb import reads its title back inside the write batch, matching getTitle exactly', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const counted = roundTrips(f);
+  const { client } = fixtureClient();
+  const result = await importTmdb(counted.db, client, input);
+  assert.equal(counted.trips(), 2, 'one existence check and one write-and-read batch');
+  assert.deepEqual(result.title, await getTitle(f.db, 'tmdb-tv-42'));
+  assert.equal(result.added, true);
+  const again = await importTmdb(counted.db, client, input);
+  assert.equal(again.added, false);
+  assert.equal(counted.trips(), 3, 'an existing title is one query and no provider call');
+});
+
+test('season loading uses one read and rewrites only episodes whose metadata changed', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const { client } = fixtureClient();
+  const { title } = await importTmdb(f.db, client, input);
+  await loadTmdbSeason(f.db, client, title.id, 1);
+  const counted = roundTrips(f);
+  assert.equal((await loadTmdbSeason(counted.db, client, title.id, 1)).refreshed, false);
+  assert.equal(counted.trips(), 1, 'cached season: a single joined read');
+  f.sqlite.exec("UPDATE seasons SET metadata_loaded_at='2020-01-01T00:00:00Z'");
+  let before = changes(f);
+  await loadTmdbSeason(f.db, client, title.id, 1);
+  assert.equal(changes(f) - before, 1, 'identical TMDb data only restamps the season');
+  f.sqlite.exec("UPDATE seasons SET metadata_loaded_at='2020-01-01T00:00:00Z'");
+  const renamed = {
+    ...season,
+    episodes: season.episodes.map((e) => (e.episode_number === 2 ? { ...e, name: 'Renamed' } : e))
+  };
+  before = changes(f);
+  await loadTmdbSeason(f.db, fixtureClient({ season: renamed }).client, title.id, 1);
+  assert.equal(changes(f) - before, 2, 'the season stamp and the one renamed episode');
+  assert.equal(
+    f.sqlite.prepare("SELECT name FROM episodes WHERE id='tmdb-tv-42-s1-e2'").get()!.name,
+    'Renamed'
+  );
+});
+
+test("refreshing the latest season adds a continuing show's new season, best effort and opt-in", async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const { client } = fixtureClient();
+  const { title } = await importTmdb(f.db, client, input);
+  const renewed = {
+    ...show,
+    seasons: [...show.seasons, { season_number: 2, name: 'Season 2', episode_count: 10 }]
+  };
+  // Off by default (the Trakt sync budgets its provider requests): no details call.
+  const quiet = fixtureClient({ details: renewed });
+  await loadTmdbSeason(f.db, quiet.client, title.id, 1);
+  assert.deepEqual(quiet.calls, ['/3/tv/42/season/1']);
+  assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM seasons').get()!.n, 1);
+  f.sqlite.exec("UPDATE seasons SET metadata_loaded_at='2020-01-01T00:00:00Z'");
+  const opted = fixtureClient({ details: renewed });
+  const result = await loadTmdbSeason(f.db, opted.client, title.id, 1, { refreshManifest: true });
+  assert.equal(result.addedSeasons, 1);
+  assert.deepEqual(
+    { ...f.sqlite.prepare('SELECT id,name,expected_episodes FROM seasons WHERE number=2').get()! },
+    { id: 'tmdb-tv-42-s2', name: 'Season 2', expected_episodes: 10 }
+  );
+  // Season 1 is no longer the latest: refreshing it never asks for the season list.
+  f.sqlite.exec("UPDATE seasons SET metadata_loaded_at='2020-01-01T00:00:00Z'");
+  const older = fixtureClient({ details: renewed });
+  await loadTmdbSeason(f.db, older.client, title.id, 1, { refreshManifest: true });
+  assert.deepEqual(older.calls, ['/3/tv/42/season/1']);
+  // A failing season list never fails the season the viewer opened.
+  f.sqlite.exec("UPDATE seasons SET metadata_loaded_at='2020-01-01T00:00:00Z' WHERE number=2");
+  const flaky = createTmdb('test-only-token', async (request) =>
+    String(request).includes('/season/')
+      ? reply({ ...season, season_number: 2, episodes: [] })
+      : reply({}, 500)
+  );
+  const loaded = await loadTmdbSeason(f.db, flaky, title.id, 2, { refreshManifest: true });
+  assert.equal(loaded.refreshed, true);
+  assert.equal(loaded.addedSeasons, 0);
+});
+
+test('season loading keeps its error order for a missing title, invalid number and missing season', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const { client } = fixtureClient();
+  await assert.rejects(() => loadTmdbSeason(f.db, client, 'missing', 1), isError(404));
+  const { title } = await importTmdb(f.db, client, input);
+  await assert.rejects(() => loadTmdbSeason(f.db, client, title.id, -1), isError(400));
+  await assert.rejects(
+    () => loadTmdbSeason(f.db, client, title.id, 7),
+    (error: unknown) =>
+      error instanceof ApiError && error.message === 'This season is not in your diary'
+  );
+  await trashTitle(f.db, title.id, 1);
+  await assert.rejects(() => loadTmdbSeason(f.db, client, title.id, 1), isError(404));
 });

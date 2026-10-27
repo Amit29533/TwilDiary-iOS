@@ -10,6 +10,8 @@ export const POST: RequestHandler = (event) =>
       db,
       createTmdb(bindings(event).TMDB_ACCESS_TOKEN, event.locals.tmdbTransport),
       identity(event.params.id),
-      Number(event.params.number)
+      Number(event.params.number),
+      // Opening the latest season is when a continuing show's new season appears.
+      { refreshManifest: true }
     )
   );
