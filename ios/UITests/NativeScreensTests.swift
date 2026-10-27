@@ -108,26 +108,32 @@ import UIKit
         func swipe(_ advance: Bool) {
             let logo = app.buttons["random-pick-logo"]
             XCTAssertTrue(logo.waitForExistence(timeout: 5))
-            let y = app.frame.height * (app.tabBars.buttons["Home"].isSelected ? 0.68 : 0.43)
+            // Start on plain content, never on a control: a menu picker opens on
+            // touch-down before any swipe can be recognised. More's 43% line is
+            // the Library ratings picker, so More starts on its Trakt summary text.
+            let fraction: CGFloat = app.tabBars.buttons["Home"].isSelected ? 0.68 : app.tabBars.buttons["More"].isSelected ? 0.22 : 0.43
+            let y = app.frame.height * fraction
             let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.75 : 0.25), dy: y))
             let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.25 : 0.75), dy: y))
             start.press(forDuration: 0.05, thenDragTo: end)
         }
+        func expectTab(_ tab: String, after step: String) {
+            let button = app.tabBars.buttons[tab.capitalized]
+            let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: button)
+            guard XCTWaiter().wait(for: [reached], timeout: 5) != .completed else { return }
+            // Readable in the run's diagnostics: what was on screen instead.
+            print("DIAG \(step): menu open=\(app.buttons["Trakt"].exists) picker=\(app.buttons["settings-rating-source"].exists ? NSCoder.string(for: app.buttons["settings-rating-source"].frame) : "none") window=\(NSCoder.string(for: app.frame))")
+            for line in app.debugDescription.split(separator: "\n").prefix(140) { print("DIAG \(step) | " + String(line.prefix(170))) }
+            capture("Unexpected page after " + step)
+            XCTFail("The swipe did not reach \(tab) (\(step))")
+        }
         swipe(false); XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
         for tab in ["library", "glance", "stats", "more"] {
-            swipe(true)
-            wait(for: [expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons[tab.capitalized])], timeout: 5)
+            swipe(true); expectTab(tab, after: "forward swipe to " + tab)
         }
         swipe(true); XCTAssertTrue(app.tabBars.buttons["More"].isSelected)
         for tab in ["stats", "glance", "library", "home"] {
-            swipe(false)
-            wait(for: [expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons[tab.capitalized])], timeout: 5)
-            if !app.tabBars.buttons[tab.capitalized].isSelected {
-                let hierarchy = XCTAttachment(string: app.debugDescription)
-                hierarchy.name = "Unexpected page after backward swipe to " + tab
-                hierarchy.lifetime = .keepAlways; add(hierarchy)
-                capture("Unexpected backward swipe destination " + tab)
-            }
+            swipe(false); expectTab(tab, after: "backward swipe to " + tab)
         }
         capture("Root tabs swiped both directions without wrapping")
         app.tabBars.buttons["Glance"].tap()
@@ -1073,23 +1079,20 @@ import UIKit
         // The floating toast is already onscreen. A semantic tap can ask XCTest
         // to scroll its gesture-containing ancestor, consuming the short window.
         // Touch the actual action's current bounds instead; never extend expiry.
+        // Every XCTest query costs real time on Intel runners and the 4.5 s window
+        // is production behaviour, so use as few as possible: one existence check,
+        // then one snapshot per poll that reads enabled state and frame together.
+        // Undo is disabled while the write still refreshes and its expiry starts
+        // only afterwards, so waiting for enabled costs none of the window.
         let undo = app.buttons["undo-action"]
-        // Existence returns as soon as the toast is present; it never extends expiry.
-        XCTAssertTrue(undo.waitForExistence(timeout: 3), "The Undo toast did not appear")
-        // Undo stays disabled while the write is still refreshing, and the toast's
-        // expiry only starts once it is enabled, so waiting here costs no window.
-        wait(for: [expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: undo)], timeout: 10)
-        // The toast slides up from the bottom edge. Tap its settled position only;
-        // a frame read mid-transition puts the touch below the button.
-        var bounds = undo.frame
-        for _ in 0..<8 {
-            Thread.sleep(forTimeInterval: 0.08)
-            let settled = undo.frame
-            if settled == bounds, app.frame.contains(settled) { break }
-            bounds = settled
+        XCTAssertTrue(undo.exists || undo.waitForExistence(timeout: 3), "The Undo toast did not appear")
+        var target: CGRect?
+        for _ in 0..<40 {
+            guard let snapshot = try? undo.snapshot() else { break }
+            if snapshot.isEnabled, !snapshot.frame.isEmpty { target = snapshot.frame; break }
+            Thread.sleep(forTimeInterval: 0.05)
         }
-        XCTAssertFalse(bounds.isEmpty)
-        XCTAssertTrue(app.frame.contains(bounds), "The Undo action must be fully on screen before it is tapped")
+        guard let bounds = target else { XCTFail("The Undo action never became available"); return }
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()
     }
     private func completeContentBack(_ app: XCUIApplication, beside anchor: XCUIElement,

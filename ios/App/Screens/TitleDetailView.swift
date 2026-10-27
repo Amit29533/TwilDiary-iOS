@@ -425,9 +425,13 @@ struct TitleDetailView: View {
                         .accessibilityIdentifier("episode-summary-\(episode.number)")
                     if watched.contains(episode.id) {
                         Button {
+                            // Close the sheet at once so "Watch marked" and its Undo are
+                            // visible while the save runs, not hidden under the sheet.
+                            // A failed save still reports on the page's error banner.
+                            let instant = watchInstant
+                            selectedEpisode = nil
                             Task {
-                                await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: watchInstant)
-                                selectedEpisode = nil
+                                await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: instant)
                                 await loadCard(title)
                             }
                         } label: { Label("Log rewatch", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 44) }

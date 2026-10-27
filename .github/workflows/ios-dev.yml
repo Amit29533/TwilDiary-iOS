@@ -107,9 +107,15 @@ jobs:
                       key = re.sub(r'^.*?/ios/', 'ios/', line.strip())
                       if key not in seen:
                           seen.add(key); found.append(key)
-                          # UI failures print the element hierarchy after the error line.
+                          # The failing test's own activity precedes its error line.
                           if 'tests' in path.name and 'error:' in line:
-                              found.extend('      | ' + extra.strip()[:300] for extra in text[index + 1:index + 30] if extra.strip())
+                              noise = re.compile(r'Checking existence|IDELaunchParametersSnapshot|Checking `Expect|^\s*$|DIAG ')
+                              steps = [extra.strip()[:240] for extra in text[max(0, index - 80):index] if not noise.search(extra)]
+                              found.extend('      < ' + step for step in steps[-30:])
+              diagnostics = [line.strip()[:240] for line in text if line.lstrip().startswith('DIAG ')]
+              if diagnostics:
+                  found.append('DIAG lines printed by tests:')
+                  found.extend('      ' + line for line in diagnostics[:300])
               if found:
                   lines.append(f'### {path.name}')
                   lines.extend('    ' + item[:600] for item in found[:400])
