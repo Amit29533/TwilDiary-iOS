@@ -122,6 +122,8 @@ import UIKit
             let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: button)
             guard XCTWaiter().wait(for: [reached], timeout: 5) != .completed else { return }
             // Readable in the run's diagnostics: what was on screen instead.
+            let selectedTab = app.tabBars.buttons.matching(NSPredicate(format: "selected == true")).firstMatch
+            print("DIAG \(step): selected tab=\(selectedTab.exists ? selectedTab.label : "none") page=\(app.staticTexts["page-title"].exists ? app.staticTexts["page-title"].label : "none") pushed=\(app.navigationBars.count)")
             print("DIAG \(step): menu open=\(app.buttons["Trakt"].exists) picker=\(app.buttons["settings-rating-source"].exists ? NSCoder.string(for: app.buttons["settings-rating-source"].frame) : "none") window=\(NSCoder.string(for: app.frame))")
             for line in app.debugDescription.split(separator: "\n").prefix(140) { print("DIAG \(step) | " + String(line.prefix(170))) }
             capture("Unexpected page after " + step)
