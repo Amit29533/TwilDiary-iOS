@@ -88,14 +88,25 @@ import UIKit
                 // Only a real horizontal scroller owns the touch. A vertical list whose
                 // content is a few points wider than the screen (glass button padding,
                 // rounding) must still page between tabs.
-                if let scroll = view as? UIScrollView, !scroll.alwaysBounceVertical,
-                   scroll.alwaysBounceHorizontal || scroll.contentSize.width > scroll.bounds.width + 1 { return false }
+                if let scroll = view as? UIScrollView, Self.scrollsSideways(scroll) { return false }
                 if view === controller?.view { break }
                 ancestor = view.superview
             }
             return true
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            // More's list is 0.2 pt wider than its frame, so UIKit treats it as able
+            // to scroll sideways and its pan claimed every horizontal swipe first.
+            // A vertical list's pan now waits for the pager to decline; the pager
+            // declines any non-horizontal drag at its first movement.
+            guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
+            return !Self.scrollsSideways(scroll)
+        }
+        private static func scrollsSideways(_ scroll: UIScrollView) -> Bool {
+            RootTabSwipe.isHorizontalScroller(contentWidth: scroll.contentSize.width, boundsWidth: scroll.bounds.width,
+                                              bouncesHorizontally: scroll.alwaysBounceHorizontal, bouncesVertically: scroll.alwaysBounceVertical)
+        }
         @objc private func track(_ gesture: UIPanGestureRecognizer) {
             guard let controller else { return }
             let width = max(1, controller.view.bounds.width)

@@ -26,6 +26,15 @@ import SwiftUI
         }
         XCTAssertNil(RootTabSwipe.destination(from: .library, translation: CGSize(width: 200, height: 0), width: 0))
     }
+    func testOnlyRealSidewaysScrollersKeepHorizontalSwipesFromTheTabPager() {
+        // Home's carousel keeps its own horizontal drag.
+        XCTAssertTrue(RootTabSwipe.isHorizontalScroller(contentWidth: 1400, boundsWidth: 402, bouncesHorizontally: false, bouncesVertically: false))
+        XCTAssertTrue(RootTabSwipe.isHorizontalScroller(contentWidth: 402, boundsWidth: 402, bouncesHorizontally: true, bouncesVertically: false))
+        // More's list measured 402.5 content in a 402.3 frame; it must not claim the swipe.
+        XCTAssertFalse(RootTabSwipe.isHorizontalScroller(contentWidth: 402.5, boundsWidth: 402.3, bouncesHorizontally: false, bouncesVertically: false))
+        // A vertically bouncing list never owns horizontal swipes, even a few points too wide.
+        XCTAssertFalse(RootTabSwipe.isHorizontalScroller(contentWidth: 410, boundsWidth: 402, bouncesHorizontally: false, bouncesVertically: true))
+    }
     func testSwipePastEitherEndBouncesWithABoundedRubberBand() {
         XCTAssertEqual(RootTabSwipe.edgeOffset(0, width: 390), 0)
         let drags = stride(from: CGFloat(0), through: 2000, by: 50).map { RootTabSwipe.edgeOffset($0, width: 390) }
