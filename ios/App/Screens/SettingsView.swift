@@ -26,7 +26,7 @@ struct SettingsView: View {
                         Divider().padding(.leading, 58)
                         NavigationLink(value: AppDestination.files) { settingsRow("hard-drive", "Files & drives", subtitle: "Folders, seasons and local copies", disclosure: true) }.accessibilityIdentifier("settings-files")
                         Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.trash) { settingsRow("trash-2", "Trash", subtitle: store.workspace.titles.contains(where: { $0.deletedAt != nil }) ? "\(store.workspace.titles.filter { $0.deletedAt != nil }.count) removed \(store.workspace.titles.filter { $0.deletedAt != nil }.count == 1 ? "title" : "titles")" : "No removed titles", disclosure: true) }
+                        NavigationLink(value: AppDestination.trash) { settingsRow("trash-2", "Trash", subtitle: trashSubtitle, disclosure: true) }
                     }
                     settingsSection("Tracking") {
                         HStack(spacing: 8) { settingsIcon("eye-off"); Toggle(isOn: $hideSpoilers) { VStack(alignment: .leading, spacing: 3) { Text("Hide episode spoilers").font(.subheadline.weight(.semibold)); Text("Hide unwatched titles, summaries and images").font(.caption).foregroundStyle(.secondary) } }.tint(theme.accent) }.padding(14)
@@ -73,6 +73,11 @@ struct SettingsView: View {
             .task(id: store.sessionRevision) { summary = TraktController(service: makeTraktService(store: store)); await summary?.refresh() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
+    }
+    /// One pass over the library instead of three per render.
+    private var trashSubtitle: String {
+        let removed = store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) }
+        return removed == 0 ? "No removed titles" : "\(removed) removed \(removed == 1 ? "title" : "titles")"
     }
     private var storageDetail: String {
         if let reset = store.quotaBlockedUntil { return "Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again." }

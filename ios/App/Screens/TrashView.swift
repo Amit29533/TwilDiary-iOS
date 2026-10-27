@@ -16,6 +16,9 @@ struct TrashView: View {
     @State private var review: CollectionReview?
     @State private var confirmEmpty = false
     var body: some View {
+        // Filter and sort once per render; every use below shares these.
+        let archived = self.archived
+        let shown = self.shown
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
