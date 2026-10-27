@@ -89,7 +89,7 @@ struct TitleArtworkBackdrop: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         ZStack {
-            LinearGradient(stops: [.init(color: Color(webHex: "#3c2c48"), location: 0), .init(color: Color(webHex: "#473c37"), location: 0.45), .init(color: Color(webHex: "#253b3b"), location: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(stops: [.init(color: theme.heroFallbackLead, location: 0), .init(color: Color(webHex: "#473c37"), location: 0.45), .init(color: Color(webHex: "#253b3b"), location: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
             if let path { Artwork(path: path, title: name) }
         }.frame(height: 440 + topExtension)
             .overlay(LinearGradient(stops: [

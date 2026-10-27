@@ -106,9 +106,9 @@ struct RandomPickDialog: View {
         }.padding(.horizontal, compact ? 12 : 18).padding(.vertical, compact ? 20 : 26).frame(minHeight: 240)
             .background {
                 ZStack {
-                    Color(webHex: "#17121f")
+                    theme.pickBase
                     if let backdrop = title.backdrop { Artwork(path: backdrop).opacity(0.6) }
-                    LinearGradient(colors: [Color(webHex: "#15101966"), Color(webHex: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [theme.pickVeil, Color(webHex: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
                     LinearGradient(colors: [Color(webHex: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
                 }.allowsHitTesting(false)
             }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(.white.opacity(0.125)))

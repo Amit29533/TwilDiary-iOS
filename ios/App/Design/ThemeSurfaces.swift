@@ -22,6 +22,39 @@ struct DiaryPanelModifier: ViewModifier {
             .shadow(color: .black.opacity(theme == .glass ? 0.3 : 0), radius: theme == .glass ? 16 : 0, y: theme == .glass ? 12 : 0)
     }
 }
+/// Flat section and card backgrounds (Settings groups, Explore filters, Files
+/// rows, community cards). Glass uses the same translucent material as
+/// `diaryPanel`, so a screen never mixes frosted and solid panels; every other
+/// theme keeps its exact solid fill, stroke and radius.
+struct DiarySectionBackground: ViewModifier {
+    let radius: CGFloat
+    var fill = Color(webHex: "#111115")
+    var stroke = Color.white.opacity(0.13)
+    /// Selected rows keep their accent emphasis on glass too.
+    var emphasized = false
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius)
+        let glass = theme == .glass && !reduceTransparency
+        content
+            .background {
+                if glass {
+                    shape.fill(.ultraThinMaterial)
+                        .overlay(shape.fill(emphasized ? theme.accent.opacity(0.12) : .black.opacity(0.22)))
+                } else {
+                    shape.fill(fill)
+                }
+            }
+            .overlay(shape.strokeBorder(glass && !emphasized ? .white.opacity(28.0 / 255) : stroke))
+    }
+}
+extension View {
+    func diarySectionBackground(radius: CGFloat, fill: Color = Color(webHex: "#111115"),
+                                stroke: Color = .white.opacity(0.13), emphasized: Bool = false) -> some View {
+        modifier(DiarySectionBackground(radius: radius, fill: fill, stroke: stroke, emphasized: emphasized))
+    }
+}
 struct DiaryControlSurface<SurfaceShape: Shape>: View {
     let shape: SurfaceShape
     var selected = false
@@ -88,4 +121,17 @@ struct DiaryNavigationSelection: View {
             }.allowsHitTesting(false)
         }
     }
+}
+
+/// Fallback surfaces shown when a title has no artwork yet. Twilight keeps its
+/// original hand-tuned values; other themes derive the same roles from their own
+/// accent and ink instead of showing Twilight's violet in every theme.
+extension DiaryTheme {
+    var placeholderGlow: Color { self == .twilight ? Color(webHex: "#a27ac535") : accent.opacity(0x35 / 255.0) }
+    var initialsBase: Color { self == .twilight ? Color(webHex: "#1c1728") : ink.mix(with: .black, by: 0.15) }
+    /// First stop of the title hero's no-backdrop gradient (Twilight: deep violet).
+    var heroFallbackLead: Color { self == .twilight ? Color(webHex: "#3c2c48") : accent.mix(with: .black, by: 0.7) }
+    /// Random-pick card base under its optional backdrop.
+    var pickBase: Color { self == .twilight ? Color(webHex: "#17121f") : ink.mix(with: .black, by: 0.35) }
+    var pickVeil: Color { self == .twilight ? Color(webHex: "#15101966") : pickBase.opacity(0.4) }
 }

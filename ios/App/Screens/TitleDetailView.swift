@@ -218,7 +218,8 @@ struct TitleDetailView: View {
                 Text(title.isSeries ? remaining(title).map { "\(DiaryDate.duration($0)) left" } ?? "Time unknown" : movieViewings.isEmpty ? title.runtimeMinutes.map { "\(DiaryDate.duration($0)) left" } ?? "Movie" : "Movie")
                     .font(.system(size: 12.8)).foregroundStyle(Color(white: 0.75)).multilineTextAlignment(.trailing).shadow(color: .black, radius: 3)
             }.padding(.bottom, 22)
-            if let card {
+            // A cached card paints on the first frame instead of a 290 pt placeholder swap.
+            if let card = card ?? store.cachedCard(title, season: title.isSeries ? season : nil) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title.isSeries ? "Episode \(displayedWatched)" : "\(movieViewings.count)").font(.system(size: 20, weight: .bold))
                     Text(title.isSeries ? "of \(card.progress.total)" : movieViewings.count == 1 ? "view logged" : "views logged").font(.system(size: 15)).foregroundStyle(.secondary)
@@ -281,6 +282,7 @@ struct TitleDetailView: View {
                 }.padding(.vertical, 12)
             } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
         }.diaryPanel(padding: 15, radius: 24, accentBorder: true)
+            .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
     private func episodeSlider(_ title: MediaTitle, card: WatchCard) -> some View {
         let states = sliderDraft.map { draft in (0..<max(0, card.progress.total)).map { $0 < Int(draft) ? EpisodeSegment.watched : .unwatched } }

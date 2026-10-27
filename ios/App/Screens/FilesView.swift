@@ -41,7 +41,7 @@ struct FilesView: View {
                     Text("\(disk.folders) mapped folders · \(disk.titleCount) titles").font(.system(size: 12)).foregroundStyle(.secondary)
                     HStack(spacing: 5) { Circle().fill(disk.present > 0 ? Color.mint : .secondary).frame(width: 5, height: 5); Text(disk.evidence).font(.system(size: 12)).foregroundStyle(disk.present > 0 ? Color.mint : .secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(20).background(selected == disk.key ? theme.accent.opacity(0.12) : Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(selected == disk.key ? theme.accent.opacity(0.6) : .white.opacity(0.13)))
+            }.padding(20).diarySectionBackground(radius: 16, fill: selected == disk.key ? theme.accent.opacity(0.12) : Color(webHex: "#111115"), stroke: selected == disk.key ? theme.accent.opacity(0.6) : .white.opacity(0.13), emphasized: selected == disk.key)
         }.buttonStyle(.plain).accessibilityAddTraits(selected == disk.key ? .isSelected : [])
     }
     private func folderRow(_ location: FileLocation) -> some View {
@@ -55,7 +55,7 @@ struct FilesView: View {
                 Text(evidence(location.evidence)).font(.system(size: 11)).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             Button { UIPasteboard.general.string = location.path; copied = location.id } label: { DiaryIcon(name: copied == location.id ? "check" : "copy", size: 18).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Copy path for \(store.title(location.titleId)?.name ?? "mapped folder")")
-        }.padding(18).background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.13)))
+        }.padding(18).diarySectionBackground(radius: 16)
             .accessibilityElement(children: .contain).accessibilityIdentifier("file-folder-" + location.id)
     }
     private func evidence(_ value: String) -> String { switch value { case "present": "Confirmed in last scan"; case "unavailable": "Drive disconnected · location preserved"; case "missing": "Confirmed missing in last scan"; default: "Not yet verified" } }

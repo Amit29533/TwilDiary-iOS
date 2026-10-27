@@ -1,0 +1,121 @@
+name: Native iOS GitHub-verified prerelease
+# Publishes an unsigned iPhone IPA as a GitHub *prerelease* for owner phone
+# testing (LiveContainer), only for a tag whose exact commit passed a complete
+# ios-dev regression: every primary UI case plus the compact and large layouts.
+# Never signs, deploys or touches hosted data. Codemagic plus ios.yml (same-SHA
+# promotion to ios-native) remain the only stable channel.
+on:
+  push:
+    tags: ['native*-github']
+permissions:
+  contents: read
+concurrency:
+  group: ios-prerelease-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run_id: ${{ steps.verify.outputs.run_id }}
+    steps:
+      - name: Require a complete passing regression for this exact commit
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ios-dev.yml/runs?head_sha=$GITHUB_SHA&per_page=100" > runs.json
+          python3 - <<'PY'
+          import json, os
+          runs = json.load(open('runs.json'))['workflow_runs']
+          passed = [r for r in runs if r['head_sha'] == os.environ['GITHUB_SHA'] and r['event'] == 'workflow_dispatch'
+                    and r['status'] == 'completed' and r['conclusion'] == 'success' and r['display_title'].startswith('ios-dev ui=full ')]
+          if not passed:
+              raise SystemExit('No successful complete-scope (ui=full) ios-dev run exists for this exact commit; refusing to publish.')
+          run = max(passed, key=lambda r: r['run_number'])
+          print('Verified complete regression:', run['html_url'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"run_id={run['id']}\n")
+          PY
+  publish:
+    needs: proof
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record toolchain
+        run: |
+          mkdir -p ios/.artifacts/logs
+          { sw_vers; xcodebuild -version; swift --version; } | tee ios/.artifacts/toolchain.txt
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Compile unsigned physical iPhone application (warnings are errors)
+        run: bash ios/scripts/ci.sh build-device
+      - name: Package unsigned IPA
+        run: bash ios/scripts/ci.sh package
+      - name: Collect regression evidence and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGRESSION_RUN: ${{ needs.proof.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh run download "$REGRESSION_RUN" --repo "$GITHUB_REPOSITORY" -n TwilDiary-dev-results -D evidence-source
+          mkdir -p release
+          (cd evidence-source && zip -qr "../release/${GITHUB_REF_NAME}-test-evidence.zip" logs screenshots toolchain.txt)
+          cp ios/.artifacts/TwilDiary-unsigned.ipa "release/TwilDiary-${GITHUB_REF_NAME}.ipa"
+          (cd release && shasum -a 256 "TwilDiary-${GITHUB_REF_NAME}.ipa" > "TwilDiary-${GITHUB_REF_NAME}.ipa.sha256")
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, plistlib
+          tag = os.environ['GITHUB_REF_NAME']
+          ipa = pathlib.Path('release') / f'TwilDiary-{tag}.ipa'
+          info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app/Info.plist').read_bytes())
+          server = os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY']
+          proof = {
+              'sourceSHA': os.environ['GITHUB_SHA'],
+              'tag': tag,
+              'version': info.get('CFBundleShortVersionString'),
+              'build': info.get('CFBundleVersion'),
+              'completeRegressionRun': f"{server}/actions/runs/{os.environ['REGRESSION_RUN']}",
+              'packagingRun': f"{server}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              'ipaSHA256': hashlib.sha256(ipa.read_bytes()).hexdigest(),
+              'toolchain': pathlib.Path('ios/.artifacts/toolchain.txt').read_text().strip().splitlines(),
+              'signing': 'unsigned (for LiveContainer or your own re-signing)',
+              'channel': 'prerelease: GitHub-verified; Codemagic + ios.yml stable promotion still pending',
+          }
+          (pathlib.Path('release') / f'{tag}-provenance.json').write_text(json.dumps(proof, indent=2) + '\n')
+          PY
+          ls -la release
+      - name: Publish the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGRESSION_RUN: ${{ needs.proof.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          notes="release/notes.md"
+          {
+            echo "Unsigned iPhone build from \`$GITHUB_SHA\` for phone testing with your existing LiveContainer setup."
+            echo
+            echo "This exact commit passed the complete GitHub regression (every primary UI case plus compact and large iPhone layouts, native unit and core tests, zero build warnings): $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$REGRESSION_RUN."
+            echo
+            echo "**Prerelease:** the stable channel still requires a complete Codemagic pass and same-SHA promotion to \`ios-native\` (ios.yml)."
+            echo
+            echo "Assets: unsigned IPA, SHA256, provenance, and the regression's screenshots and logs. No credentials, signing identity, hosted data or backend deployment are included."
+          } > "$notes"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+            --title "$GITHUB_REF_NAME - GitHub-verified iPhone build" --notes-file "$notes" \
+            release/*.ipa release/*.sha256 release/*-provenance.json release/*-test-evidence.zip

@@ -116,7 +116,7 @@ private struct DiscoveryNotice: View {
     var retry: (() -> Void)? = nil
     var body: some View {
         HStack(spacing: 10) { Text(text).font(.system(size: 13)).foregroundStyle(.secondary).frame(minHeight: 21.5); Spacer(minLength: 0); if let retry { Button("Retry", action: retry).font(.system(size: 13)).frame(minHeight: 44) } }
-            .padding(.horizontal, 14).padding(.vertical, 12).background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 11)).overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(.white.opacity(0.13)))
+            .padding(.horizontal, 14).padding(.vertical, 12).diarySectionBackground(radius: 11)
     }
 }
 
@@ -210,7 +210,7 @@ private struct DiscoveryBrowser: View {
             Picker("Sort discoveries", selection: $filters.sort) { Text(section.source == "library" ? "Library order" : "Recommended order").tag("popular"); Text("Highest rated").tag("rating"); Text("Newest releases").tag("newest"); if section.source != "tmdb" { Text("Title A–Z").tag("title") } }
             Picker("Explore minimum rating", selection: $filters.minimum) { Text("Any rating").tag("0"); ForEach([6, 7, 8, 9], id: \.self) { Text("\($0)+").tag(String($0)) } }.accessibilityIdentifier("explore-minimum")
             Button("Reset filters") { filters = DiscoveryFilters(section: section) }.frame(minHeight: 44)
-        }.pickerStyle(.menu).font(.system(size: 13)).padding(14).background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 13)).overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(.white.opacity(0.13)))
+        }.pickerStyle(.menu).font(.system(size: 13)).padding(14).diarySectionBackground(radius: 13)
     }
     @ViewBuilder private var content: some View {
         if let error = filters.error(section: section) { DiscoveryNotice(text: error) }

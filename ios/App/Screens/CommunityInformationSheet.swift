@@ -35,7 +35,7 @@ struct CommunityInformationSheet: View {
                                     ForEach(Array(sentiments.good.enumerated()), id: \.offset) { index, text in opinion(text, positive: true).accessibilityIdentifier("community-positive-\(index)") }
                                     ForEach(Array(sentiments.bad.enumerated()), id: \.offset) { index, text in opinion(text, positive: false).accessibilityIdentifier("community-negative-\(index)") }
                                 }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                                    .background(Color(webHex: "#101013"), in: RoundedRectangle(cornerRadius: 22))
+                                    .diarySectionBackground(radius: 22, fill: Color(webHex: "#101013"), stroke: .clear)
                                     .accessibilityElement(children: .contain)
                                     .accessibilityIdentifier("community-sentiment-card")
                                 Text("Trakt’s community summary · \(sentiments.commentCount.formatted()) comments · Updated \(sentiments.analyzedAt.prefix(10))")
