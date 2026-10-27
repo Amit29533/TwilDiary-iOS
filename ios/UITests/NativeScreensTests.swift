@@ -454,7 +454,8 @@ import UIKit
         XCTAssertTrue(rewatch.isHittable); XCTAssertLessThan(rewatch.frame.maxY, app.frame.maxY - 40)
         capture("Visible watched episode rewatch action")
         rewatch.tap()
-        XCTAssertTrue(app.buttons["undo-action"].waitForExistence(timeout: 5))
+        // The helper itself waits for the toast; a separate existence query here
+        // spent ~1.8 s of the 4.5 s Undo window on Intel runners.
         tapVisibleUndo(app)
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["undo-action"])], timeout: 8)
         XCTAssertTrue(app.buttons["Mark episode 8 unwatched"].exists, "Undoing the rewatch must keep the original watch")
@@ -1081,25 +1082,23 @@ import UIKit
         // The floating toast is already onscreen. A semantic tap can ask XCTest
         // to scroll its gesture-containing ancestor, consuming the short window.
         // Touch the actual action's current bounds instead; never extend expiry.
-        // Every XCTest query costs real time on Intel runners and the 4.5 s window
-        // is production behaviour, so use as few as possible: one existence check,
-        // then one snapshot per poll that reads enabled state and frame together.
-        // Undo is disabled while the write still refreshes and its expiry starts
-        // only afterwards, so waiting for enabled costs none of the window.
+        // Every XCTest query costs 0.3–1.8 s on Intel runners and the 4.5 s window
+        // (production behaviour, kept) starts as soon as the write is confirmed —
+        // often while XCTest is still waiting out the previous action's animation.
+        // So no separate existence check and no settle delay: each poll is one
+        // snapshot (existence, enabled state and frame together), then tap at once.
+        // The action's own idle wait has already covered the toast's slide-in.
         let undo = app.buttons["undo-action"]
-        XCTAssertTrue(undo.exists || undo.waitForExistence(timeout: 3), "The Undo toast did not appear")
-        // In fixture mode the save is instant, so Undo can be enabled while the
-        // toast is still sliding up from the bottom edge. Tap only a settled frame:
-        // two enabled snapshots a quarter second apart (about 0.6 s of the window).
-        var target: CGRect?, previous: CGRect?
-        for _ in 0..<40 {
-            guard let snapshot = try? undo.snapshot() else { break }
-            guard snapshot.isEnabled, !snapshot.frame.isEmpty else { Thread.sleep(forTimeInterval: 0.05); continue }
-            if snapshot.frame == previous { target = snapshot.frame; break }
-            previous = snapshot.frame
-            Thread.sleep(forTimeInterval: 0.25)
+        let deadline = Date().addingTimeInterval(4)
+        var target: CGRect?
+        while target == nil, Date() < deadline {
+            if let snapshot = try? undo.snapshot(), snapshot.isEnabled, !snapshot.frame.isEmpty {
+                target = snapshot.frame
+            } else {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
         }
-        guard let bounds = target else { XCTFail("The Undo action never became available"); return }
+        guard let bounds = target else { XCTFail("The Undo action never appeared enabled"); return }
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()
     }
     private func completeContentBack(_ app: XCUIApplication, beside anchor: XCUIElement,
