@@ -1088,11 +1088,16 @@ import UIKit
         // only afterwards, so waiting for enabled costs none of the window.
         let undo = app.buttons["undo-action"]
         XCTAssertTrue(undo.exists || undo.waitForExistence(timeout: 3), "The Undo toast did not appear")
-        var target: CGRect?
+        // In fixture mode the save is instant, so Undo can be enabled while the
+        // toast is still sliding up from the bottom edge. Tap only a settled frame:
+        // two enabled snapshots a quarter second apart (about 0.6 s of the window).
+        var target: CGRect?, previous: CGRect?
         for _ in 0..<40 {
             guard let snapshot = try? undo.snapshot() else { break }
-            if snapshot.isEnabled, !snapshot.frame.isEmpty { target = snapshot.frame; break }
-            Thread.sleep(forTimeInterval: 0.05)
+            guard snapshot.isEnabled, !snapshot.frame.isEmpty else { Thread.sleep(forTimeInterval: 0.05); continue }
+            if snapshot.frame == previous { target = snapshot.frame; break }
+            previous = snapshot.frame
+            Thread.sleep(forTimeInterval: 0.25)
         }
         guard let bounds = target else { XCTFail("The Undo action never became available"); return }
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()

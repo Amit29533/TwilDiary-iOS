@@ -110,8 +110,8 @@ jobs:
                           # The failing test's own activity precedes its error line.
                           if 'tests' in path.name and 'error:' in line:
                               noise = re.compile(r'Checking existence|IDELaunchParametersSnapshot|Checking `Expect|^\s*$|DIAG ')
-                              steps = [extra.strip()[:240] for extra in text[max(0, index - 80):index] if not noise.search(extra)]
-                              found.extend('      < ' + step for step in steps[-30:])
+                              steps = [extra.strip()[:200] for extra in text[max(0, index - 160):index] if not noise.search(extra)]
+                              found.extend('      < ' + step for step in steps[-60:])
               diagnostics = [line.strip()[:240] for line in text if line.lstrip().startswith('DIAG ')]
               if diagnostics:
                   found.append('DIAG lines printed by tests:')
