@@ -180,8 +180,10 @@ private struct StatsRangeSelector: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ranges: [Period] = [.week, .month, .ninetyDays, .year, .all]
     var body: some View {
+        // Segments are plain: a glass capsule per segment washed out the sliding accent
+        // selection (native segmented controls keep one surface and one selection).
         HStack(spacing: 3) { ForEach(ranges) { range in
-            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 38) }.buttonStyle(.glass).foregroundStyle(selection == range ? theme.ink : Color(webHex: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
+            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? theme.ink : Color(webHex: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
         } }.frame(height: 38).background(alignment: .leading) {
             GeometryReader { geometry in
                 if let index = ranges.firstIndex(of: selection) {

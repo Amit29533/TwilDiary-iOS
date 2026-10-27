@@ -681,7 +681,12 @@ import UIKit
         for _ in 0..<8 { if useTrakt.isHittable { break }; app.swipeUp() }
         XCTAssertEqual(app.buttons.matching(identifier: "trakt-trakt-change-2").count, 1, "One conflict must expose exactly one Trakt action")
         XCTAssertTrue(useTrakt.isHittable); useTrakt.tap()
-        XCTAssertTrue(app.staticTexts["You’re up to date"].waitForExistence(timeout: 5))
+        if !app.staticTexts["You’re up to date"].waitForExistence(timeout: 8) {
+            // Readable in the run's diagnostics: the review state after the choice.
+            print("DIAG trakt conflict: useTrakt exists=\(useTrakt.exists) enabled=\(useTrakt.exists && useTrakt.isEnabled) remaining=\(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'remaining'")).firstMatch.label)")
+            for line in app.debugDescription.split(separator: "\n").prefix(120) { print("DIAG trakt conflict | " + String(line.prefix(170))) }
+            XCTFail("The last conflict choice must complete the review")
+        }
         capture("Trakt applied")
     }
     func testStatsCalendarRangesEmptyBucketsAndUndatedHistory() {
@@ -1169,8 +1174,10 @@ import UIKit
         XCTAssertTrue(count.waitForExistence(timeout: 5))
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
         app.buttons["progress-menu-again"].tap(); app.buttons["Mark complete"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '16'"), evaluatedWith: count)], timeout: 10)
-        XCTAssertTrue(app.buttons["Undo"].exists); app.buttons["Undo"].tap()
+        // Undo first (project rule: never spend the real 4.5 s window on slow value
+        // reads). A semantic tap tried to scroll the toast's ancestor and missed it.
+        // The helper waits for Undo to be enabled, i.e. the completion was saved.
+        tapVisibleUndo(app)
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 10)
         app.buttons["progress-title-again"].tap()
         let season = app.buttons["title-season"]

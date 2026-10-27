@@ -142,7 +142,6 @@ struct LibraryView: View {
                         }.padding(.horizontal, 14).padding(.bottom, 10)
                     }
                 }
-            }
                 if selecting { CollectionSelectionPanel(titles: filtered, selected: $selected, onReview: prepareReview).padding(.horizontal, 14).padding(.bottom, 12) }
                 if genreRows && !selecting {
                     LazyVStack(alignment: .leading, spacing: 20) {
@@ -158,7 +157,9 @@ struct LibraryView: View {
                 }
                 if !genreRows && visibleLimit < filtered.count { Color.clear.frame(height: 1).onAppear { visibleLimit += 48 } }
                 if filtered.isEmpty { DiaryEmptyState(title: "Nothing here just yet", description: "Try a different search or clear a filter to find your stories.").padding(.horizontal, 14).padding(.top, 20) }
-            }.refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
+            }
+            // One zero-spacing stack: the scroll view's implicit stack added 8 pt above the grid.
+        }.refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
     }
     private func applyShortcut() {
         guard router.libraryRevision > appliedShortcutRevision else { return }

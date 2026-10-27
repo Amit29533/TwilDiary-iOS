@@ -139,6 +139,11 @@ struct RootView: View {
                     AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
+                    // The UIKit tab controller must fill the screen and hand the real safe
+                    // areas to its pages. Left inside SwiftUI's safe area, every screen was
+                    // boxed between black status-bar and home-indicator bands: heroes and
+                    // Glass backgrounds stopped short and lists were cut above the indicator.
+                    .ignoresSafeArea()
                     .background(.black)
                     .overlay(alignment: .top) { RootNoticeBanner() }
             }
