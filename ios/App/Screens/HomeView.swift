@@ -9,6 +9,8 @@ struct HomeView: View {
     @State private var clock = Date.now
     @State private var showSearch = false
     @State private var upcomingLimit = 3
+    /// Changes only when vertical scrolling starts or settles, never per frame.
+    @State private var scrolling = false
     @AppStorage("homeHistoryGrid") private var historyGrid = false
     @AppStorage("upcomingGrid") private var upcomingGrid = false
     var body: some View {
@@ -24,7 +26,7 @@ struct HomeView: View {
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
                     if !watching.isEmpty { VStack(spacing: 10) {
                         SectionHeading(name: "Pick up where you left off") { Button("Glance →") { router.selectedTab = .glance } }
-                        ContinueWatchingCarousel(titles: watching, automaticAllowed: !showSearch)
+                        ContinueWatchingCarousel(titles: watching, automaticAllowed: !showSearch && !scrolling)
                     } }
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
@@ -75,7 +77,12 @@ struct HomeView: View {
                         } }
                     } }
                 }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 24)
-            }.refreshable { clock = store.now; await store.refresh() }
+            }.onScrollPhaseChange { _, phase in
+                // The automatic carousel step must not animate mid-fling under the finger.
+                let active = phase != .idle
+                if scrolling != active { scrolling = active }
+            }
+            .refreshable { clock = store.now; await store.refresh() }
         }.onChange(of: scenePhase) { _, phase in if phase == .active { clock = store.now } }
             .task {
                 clock = store.now

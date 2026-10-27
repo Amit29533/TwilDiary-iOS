@@ -23,7 +23,15 @@ export function createAccessVerifier(config: AccessConfiguration, getKey?: JWTVe
   ) {
     throw new AccessFailure(503, 'Private access is not configured');
   }
-  const jwks = getKey ?? createRemoteJWKSet(new URL(issuer + '/cdn-cgi/access/certs'));
+  // Access signing keys rotate rarely, and jose refetches immediately when it sees an
+  // unknown key id. The 10-minute default made a request wait on a JWKS fetch far
+  // more often than rotation requires.
+  const jwks =
+    getKey ??
+    createRemoteJWKSet(new URL(issuer + '/cdn-cgi/access/certs'), {
+      cacheMaxAge: 12 * 60 * 60 * 1000,
+      cooldownDuration: 30_000
+    });
   return async (request: Request) => {
     const assertion = request.headers.get('Cf-Access-Jwt-Assertion');
     if (!assertion) throw new AccessFailure(401, 'Sign in through Cloudflare Access');

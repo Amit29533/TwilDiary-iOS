@@ -261,7 +261,7 @@ export async function progressStatus(db: Db, value: unknown) {
       OR EXISTS(SELECT 1 FROM seasons s WHERE s.title_id=t.id AND s.number>0 AND
         (s.expected_episodes IS NULL OR (SELECT count(*) FROM episodes e WHERE e.season_id=s.id)<s.expected_episodes))
       OR EXISTS(SELECT 1 FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.title_id=t.id AND s.number>0
-        AND NOT EXISTS(SELECT 1 FROM watch_events w WHERE w.episode_id=e.id AND w.revoked_at IS NULL)
+        AND NOT EXISTS(SELECT 1 FROM watch_events w WHERE w.title_id=t.id AND w.episode_id=e.id AND w.revoked_at IS NULL)
         AND NOT (e.aired_on IS NOT NULL AND e.aired_on<=${String(data.today)} AND e.id IN(SELECT value FROM json_each(${JSON.stringify(plan.additions.map((e) => e.episodeId))}))))
     ))`
       : sql`1=1`;

@@ -24,7 +24,9 @@ struct ContinueWatchingCarousel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @SceneStorage("home.continue.title") private var selection = ""
-    @SceneStorage("home.continue.paused") private var paused = false
+    // The pause control was removed with the overflow menu. A new key keeps an old
+    // saved "paused" value from silently disabling rotation forever.
+    @SceneStorage("home.continue.paused.v2") private var paused = false
     @State private var automaticSelection: String?
     @State private var visible = false
     @State private var scrollIdle = true

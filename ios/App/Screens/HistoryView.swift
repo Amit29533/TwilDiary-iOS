@@ -16,7 +16,7 @@ struct HistoryView: View {
         _showRange = State(initialValue: initialDay != nil || initialUnknown)
     }
     var body: some View {
-        let entries = filters.entries(in: store.workspace)
+        let entries = store.historyEntries(filters)
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -54,7 +54,7 @@ struct HistoryView: View {
                     }
                     if filters.invalidRange { Text("The start date must come before the end date.").font(.system(size: 13)).foregroundStyle(.red) }
                     if filters.filtered {
-                        HStack { Text("Showing \(entries.count) of \(store.workspace.activeEvents.count) watches").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Clear filters") { filters = HistoryQuery() }.font(.system(size: 13, weight: .semibold)) }
+                        HStack { Text("Showing \(entries.count) of \(store.activeEventCount) watches").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Clear filters") { filters = HistoryQuery() }.font(.system(size: 13, weight: .semibold)) }
                     }
                     if entries.isEmpty {
                         DiaryEmptyState(title: "No watches found", description: "Try another title or date range. Unknown dates are excluded from date ranges.")

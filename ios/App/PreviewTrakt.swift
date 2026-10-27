@@ -46,7 +46,9 @@ import TwilDiaryCore
     func step(id: String) async throws -> TraktSync { snapshot.run?.state = "review"; return snapshot }
     func apply(id: String, change: String?, choice: TraktChoice) async throws -> TraktSync {
         if largeImport && change == nil {
-            try await Task.sleep(for: .milliseconds(200))
+            // A real batched apply on the free plan takes about a second. Model it,
+            // so the 50-batch import is still running while tests visit other tabs.
+            try await Task.sleep(for: .seconds(1))
             let saved = min(40, snapshot.counts["pending"] ?? 0)
             snapshot.counts["pending", default: 0] -= saved
             snapshot.counts["safe", default: 0] -= saved

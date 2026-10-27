@@ -16,6 +16,9 @@ struct TrashView: View {
     @State private var review: CollectionReview?
     @State private var confirmEmpty = false
     var body: some View {
+        // Filter and sort once per render; every use below shares these.
+        let archived = self.archived
+        let shown = self.shown
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
@@ -100,7 +103,7 @@ struct TrashView: View {
                     Spacer(minLength: 0)
                     Button("Delete permanently", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .purge) }
                         .labelStyle(.iconOnly).accessibilityIdentifier("trash-delete-" + title.id)
-                }.font(.caption.weight(.semibold)).buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
+                }.font(.caption.weight(.semibold)).buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("archived-title-" + title.id)
     }

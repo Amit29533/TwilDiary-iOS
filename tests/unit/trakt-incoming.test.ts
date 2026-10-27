@@ -875,3 +875,125 @@ test('rate limits without Retry-After use increasing jittered cooldowns instead 
   assert.equal((await f.tick()).state, 'idle');
   assert.equal(f.requests.length, 0);
 });
+
+test('one failing watch is backed off on its own while the next watch imports and the scheduler stays healthy', async (t) => {
+  const f = await fixture(t);
+  // The newest play (TMDb 555) is picked first and its metadata request fails.
+  f.fake.state.history = [
+    watch(201, 555, new Date(f.now()).toISOString()),
+    watch(202, 100, new Date(f.now() - 3600_000).toISOString())
+  ];
+  const tmdb = createTmdb('fixture', async (input, init) =>
+    String(input).includes('/movie/555')
+      ? new Response('{}', { status: 500 })
+      : fakeTmdb(input, init)
+  );
+  const tick = () =>
+    tickIncoming(f.binding, traktEnv, { transport: f.fake.transport, tmdb, now: f.now });
+  await configureIncoming(f.db, traktEnv, true, f.now());
+  assert.deepEqual(await tick(), { state: 'deferred', code: 'metadata_unavailable' });
+  const scheduler = f.sqlite.prepare('SELECT failures,next_at,lease FROM trakt_incoming').get()!;
+  assert.equal(scheduler.failures, 0, 'one watch must not back off the whole scheduler');
+  assert.equal(scheduler.next_at, f.now() + 55_000);
+  assert.equal(scheduler.lease, null);
+  const failed = () =>
+    f.sqlite
+      .prepare(
+        "SELECT state,next_at,json_extract(payload,'$.incomingAttempts') AS attempts FROM trakt_incoming_history WHERE remote_id='201'"
+      )
+      .get()!;
+  assert.deepEqual({ ...failed() }, { state: 'pending', next_at: f.now() + 60_000, attempts: 1 });
+  f.advance();
+  assert.equal((await tick()).state, 'imported', 'the next watch is not blocked');
+  assert.equal(
+    f.sqlite.prepare("SELECT count(*) AS n FROM watch_events WHERE remote_history_id='202'").get()!
+      .n,
+    1
+  );
+  f.advance();
+  assert.equal((await tick()).state, 'deferred');
+  assert.deepEqual({ ...failed() }, { state: 'pending', next_at: f.now() + 120_000, attempts: 2 });
+  f.advance();
+  assert.equal((await tick()).state, 'unchanged', 'the failing watch waits out its own backoff');
+});
+
+test('a watch is claimed with a durable backoff before any provider request', async (t) => {
+  const f = await fixture(t);
+  f.fake.state.history = [watch(301, 777)];
+  let seen: Record<string, unknown> | undefined;
+  const tmdb = createTmdb('fixture', async (input, init) => {
+    // A Worker stopped here (CPU limit) never reaches a catch block.
+    seen = {
+      ...f.sqlite
+        .prepare(
+          "SELECT next_at,json_extract(payload,'$.incomingAttempts') AS attempts FROM trakt_incoming_history WHERE remote_id='301'"
+        )
+        .get()!
+    };
+    return fakeTmdb(input, init);
+  });
+  await configureIncoming(f.db, traktEnv, true, f.now());
+  await tickIncoming(f.binding, traktEnv, { transport: f.fake.transport, tmdb, now: f.now });
+  assert.deepEqual(seen, { next_at: f.now() + 60_000, attempts: 1 });
+});
+
+test('review rechecks back off from one hour, doubling, instead of retrying hourly forever', async (t) => {
+  const f = await fixture(t);
+  f.fake.state.history = [watch()];
+  f.sqlite.exec("UPDATE titles SET deleted_at='2026-10-25' WHERE id='film'");
+  await configureIncoming(f.db, traktEnv, true, f.now());
+  const due = () =>
+    Number(f.sqlite.prepare('SELECT next_at FROM trakt_incoming_history').get()!.next_at) - f.now();
+  assert.equal((await f.tick()).state, 'review');
+  assert.equal(due(), 3600_000);
+  f.advance(3600_000);
+  assert.equal((await f.tick()).state, 'review');
+  assert.equal(due(), 2 * 3600_000);
+  f.advance(3600_000);
+  assert.equal((await f.tick()).state, 'unchanged');
+  f.advance(3600_000);
+  assert.equal((await f.tick()).state, 'review');
+  assert.equal(due(), 4 * 3600_000);
+  assert.equal(
+    f.sqlite.prepare('SELECT reason FROM trakt_incoming_history').get()!.reason,
+    'title_in_trash'
+  );
+});
+
+test('an idle minute writes only its lease claim and one closing checkpoint', async (t) => {
+  const f = await fixture(t);
+  f.fake.state.history = [watch()];
+  await configureIncoming(f.db, traktEnv, true, f.now());
+  assert.equal((await f.tick()).state, 'imported');
+  f.advance();
+  const changes = () => Number(f.sqlite.prepare('SELECT total_changes() AS n').get()!.n);
+  const before = changes();
+  assert.equal((await f.tick()).state, 'unchanged');
+  assert.equal(changes() - before, 2, 'claim + checkpoint-and-release');
+  const row = f.sqlite
+    .prepare('SELECT lease,lease_until,failures,error FROM trakt_incoming')
+    .get()!;
+  assert.deepEqual({ ...row }, { lease: null, lease_until: null, failures: 0, error: null });
+  // Not due yet: no write at all.
+  const idle = changes();
+  assert.deepEqual(await f.tick(), { state: 'idle' });
+  assert.equal(changes(), idle);
+});
+
+test('a TMDb rate limit still backs off the whole scheduler by its Retry-After', async (t) => {
+  const f = await fixture(t);
+  f.fake.state.history = [watch(401, 888)];
+  const tmdb = createTmdb(
+    'fixture',
+    async () => new Response('{}', { status: 429, headers: { 'Retry-After': '120' } })
+  );
+  await configureIncoming(f.db, traktEnv, true, f.now());
+  const result = await tickIncoming(f.binding, traktEnv, {
+    transport: f.fake.transport,
+    tmdb,
+    now: f.now
+  });
+  assert.deepEqual(result, { state: 'deferred', code: 'metadata_rate_limited' });
+  const row = f.sqlite.prepare('SELECT failures,next_at,lease FROM trakt_incoming').get()!;
+  assert.deepEqual({ ...row }, { failures: 1, next_at: f.now() + 120_000, lease: null });
+});

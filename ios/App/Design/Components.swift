@@ -181,10 +181,16 @@ struct Artwork: View {
             if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
             else if let image = fixtureImage(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
             else if let request {
-                if let bitmap = (loadedRequest == request ? loadedArtwork : nil) ?? PublicArtworkCache.shared.cached(request) {
+                // While loading, only the gradient shows: the named placeholder appears
+                // only after a load failed, so new cells no longer flash title text
+                // before their poster. A size change keeps the previous bitmap of the
+                // same image until the new size is decoded.
+                let current = loadedRequest == request ? loadedArtwork : nil
+                let sameImage = loadedRequest?.url == request.url ? loadedArtwork : nil
+                if let bitmap = current ?? PublicArtworkCache.shared.cached(request) ?? sameImage {
                     Image(decorative: bitmap.image, scale: displayScale).resizable().scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height).clipped()
-                } else { placeholder(size: proxy.size) }
+                } else if loadedRequest == request { placeholder(size: proxy.size) }
             } else { placeholder(size: proxy.size) }
           }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
             .task(id: request) {
@@ -231,7 +237,8 @@ struct RatingBadge: View {
             Text(score, format: .number.precision(.fractionLength(1))).frame(minHeight: community ? 17.25 : 18)
         }.font(.system(size: community ? 11.5 : 12, weight: community ? .medium : .semibold))
             .foregroundStyle(Color(webHex: community ? "#f5f5f5" : "#f3f0f7"))
-            .shadow(color: .black.opacity(0.9), radius: community ? 3 : 0, y: 1)
+            // No text shadow: the badge already sits on a dark capsule, and a blurred
+            // shadow costs an offscreen render pass for every poster in a scrolling grid.
             .padding(.horizontal, community ? 6 : 4).padding(.vertical, 3)
             .background(Color(webHex: community ? "#00000099" : "#07090cdd"), in: RoundedRectangle(cornerRadius: community ? 99 : 7))
     }
@@ -375,12 +382,14 @@ struct ProgressCard: View {
             actionLayout {
                 VStack(alignment: .leading, spacing: 5) {
                     GeometryReader { proxy in Capsule().fill(.white.opacity(0.16)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
-                    Text(title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    // Before the card loads, say so instead of showing a made-up zero.
+                    Text(card == nil ? "Checking progress…" : title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
                 }
-                HStack(spacing: 6) {
+                // One container lets the card's glass controls render and morph together.
+                GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
                     Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glass).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
-                    Text("\(card?.progress.watched ?? 0)").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
+                    Text(card.map { "\($0.progress.watched)" } ?? "–").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
                     Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
@@ -389,7 +398,7 @@ struct ProgressCard: View {
                             .foregroundStyle(theme.ink)
                     }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
-                }.frame(height: title.isSeries ? 34 : 44)
+                } }.frame(height: 44)
             }
         }.padding(10)
     }

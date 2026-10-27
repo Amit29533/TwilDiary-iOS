@@ -43,6 +43,15 @@ actor PublicArtworkCache {
         config.requestCachePolicy = .useProtocolCachePolicy
         session = URLSession(configuration: config)
     }
+    /// Artwork reveals what the owner watches. Sign-out drops decoded bitmaps,
+    /// in-flight transfers and the downloaded copies in the URL cache.
+    func removeAll() {
+        for task in pending.values { task.cancel() }
+        pending.removeAll()
+        failedUntil.removeAll()
+        resident.values.removeAllObjects()
+        session.configuration.urlCache?.removeAllCachedResponses()
+    }
     nonisolated func cached(_ request: PublicArtworkRequest) -> PublicArtworkBitmap? {
         resident.values.object(forKey: request.key as NSString)
     }

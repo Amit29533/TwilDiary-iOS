@@ -56,6 +56,9 @@ import UIKit
         private var origin = 0
         private var target = 0
         private var direction: CGFloat = 1
+        /// Swiping past the first or last tab bounces the page instead of failing.
+        /// A failed pan would let the touch fall through to a row or menu button.
+        private weak var edgePage: UIView?
         lazy var pan: UIPanGestureRecognizer = {
             let gesture = UIPanGestureRecognizer(target: self, action: #selector(track(_:)))
             gesture.maximumNumberOfTouches = 1
@@ -70,10 +73,11 @@ import UIKit
             guard let controller, interaction == nil, controller.transitionCoordinator == nil,
                   controller.presentedViewController == nil, !UIAccessibility.isVoiceOverRunning,
                   AppTab.allCases.indices.contains(controller.selectedIndex), canPage(AppTab.allCases[controller.selectedIndex]) else { return false }
+            // Claim every deliberate horizontal swipe on a root page, including one
+            // past either end (it bounces). Declining it would hand the delayed
+            // touch to the control underneath, e.g. open a picker's menu.
             let velocity = pan.velocity(in: controller.view)
-            guard abs(velocity.x) > abs(velocity.y) * 1.5 else { return false }
-            let next = controller.selectedIndex + (velocity.x < 0 ? 1 : -1)
-            return AppTab.allCases.indices.contains(next)
+            return abs(velocity.x) > abs(velocity.y) * 1.5
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
             var ancestor = touch.view
@@ -81,13 +85,28 @@ import UIKit
                 // Child carousels, text editing, sliders and the native tab bar
                 // keep their own recognizers. Vertical lists may page sideways.
                 if view is UITabBar || view is UISlider || view is UISwitch || view is UITextField || view is UITextView { return false }
-                if let scroll = view as? UIScrollView, scroll.alwaysBounceHorizontal || scroll.contentSize.width > scroll.bounds.width + 1 { return false }
+                // Only a real horizontal scroller owns the touch. A vertical list whose
+                // content is a few points wider than the screen (glass button padding,
+                // rounding) must still page between tabs.
+                if let scroll = view as? UIScrollView, Self.scrollsSideways(scroll) { return false }
                 if view === controller?.view { break }
                 ancestor = view.superview
             }
             return true
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            // More's list is 0.2 pt wider than its frame, so UIKit treats it as able
+            // to scroll sideways and its pan claimed every horizontal swipe first.
+            // A vertical list's pan now waits for the pager to decline; the pager
+            // declines any non-horizontal drag at its first movement.
+            guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
+            return !Self.scrollsSideways(scroll)
+        }
+        private static func scrollsSideways(_ scroll: UIScrollView) -> Bool {
+            RootTabSwipe.isHorizontalScroller(contentWidth: scroll.contentSize.width, boundsWidth: scroll.bounds.width,
+                                              bouncesHorizontally: scroll.alwaysBounceHorizontal, bouncesVertically: scroll.alwaysBounceVertical)
+        }
         @objc private func track(_ gesture: UIPanGestureRecognizer) {
             guard let controller else { return }
             let width = max(1, controller.view.bounds.width)
@@ -96,19 +115,34 @@ import UIKit
                 origin = controller.selectedIndex
                 direction = gesture.velocity(in: controller.view).x < 0 ? 1 : -1
                 target = origin + Int(direction)
-                guard AppTab.allCases.indices.contains(target) else { return }
+                guard AppTab.allCases.indices.contains(target) else {
+                    edgePage = controller.selectedViewController?.view
+                    return
+                }
                 let driver = UIPercentDrivenInteractiveTransition()
                 driver.completionCurve = .easeOut
                 interaction = driver
                 controller.selectedIndex = target
             case .changed:
+                if let page = edgePage {
+                    guard !UIAccessibility.isReduceMotionEnabled else { return }
+                    page.transform = CGAffineTransform(translationX: RootTabSwipe.edgeOffset(gesture.translation(in: controller.view).x, width: width), y: 0)
+                    return
+                }
                 interaction?.update(min(1, max(0, -gesture.translation(in: controller.view).x * direction / width)))
-            case .ended:
+            case .ended, .cancelled, .failed:
+                if let page = edgePage {
+                    edgePage = nil
+                    guard page.transform != .identity else { return }
+                    UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0,
+                                   options: [.allowUserInteraction, .beginFromCurrentState]) { page.transform = .identity }
+                    return
+                }
+                guard gesture.state == .ended else { interaction?.cancel(); return }
                 let progress = max(0, -gesture.translation(in: controller.view).x * direction / width)
                 let velocity = -gesture.velocity(in: controller.view).x * direction
                 if RootTabSwipe.shouldFinish(progress: progress, velocity: velocity) { interaction?.finish() }
                 else { interaction?.cancel() }
-            case .cancelled, .failed: interaction?.cancel()
             default: break
             }
         }

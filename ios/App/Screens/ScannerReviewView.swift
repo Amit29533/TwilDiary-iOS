@@ -42,7 +42,7 @@ struct ScannerReviewView: View {
                 Text("\(scan.deviceName) · \(scan.driveLetter) · \(scan.fileCount) files" + (scan.seasonNumber.map { " · Season \($0)" } ?? "")).font(.caption).foregroundStyle(.secondary)
                 Text(scan.root + "\\" + scan.relativePath).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                 Text("No confident TMDb / IMDb match").font(.caption).foregroundStyle(.secondary)
-                Button("Match") { selected = scan }.buttonStyle(.glass).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)
+                Button("Match") { selected = scan }.buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.diaryPanel()
     }

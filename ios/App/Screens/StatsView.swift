@@ -98,7 +98,9 @@ struct StatsView: View {
     }
     private func bucketDetails(_ bucket: StatsOverview.Bucket) -> some View {
         let grouped = Dictionary(grouping: bucket.events, by: \.titleId)
-        let ids = grouped.keys.sorted { a, b in (grouped[a]?.compactMap { DiaryDate.parse($0.watchedAt) }.max() ?? .distantPast) > (grouped[b]?.compactMap { DiaryDate.parse($0.watchedAt) }.max() ?? .distantPast) }
+        // Parse each watch date once, not inside every sort comparison.
+        let latest = grouped.mapValues { $0.compactMap { DiaryDate.parse($0.watchedAt) }.max() ?? .distantPast }
+        let ids = grouped.keys.sorted { a, b in (latest[a] ?? .distantPast) > (latest[b] ?? .distantPast) }
         return VStack(alignment: .leading, spacing: 12) {
             HStack { Text(bucket.description).font(.system(size: 15, weight: .bold)); Spacer(); Button("Close") { selectedBucket = nil }.font(.system(size: 13)) }
             if ids.isEmpty { caption("No watches logged in this period.") }

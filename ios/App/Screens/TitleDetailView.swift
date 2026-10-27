@@ -50,7 +50,7 @@ struct TitleDetailView: View {
             if let title = store.title(id) {
                 GeometryReader { geometry in
                     ScrollViewReader { proxy in
-                        ScrollView {
+                        detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 28) {
                                 header(title)
                                 progressPanel(title).padding(.top, -8)
@@ -132,31 +132,37 @@ struct TitleDetailView: View {
                                     pendingScrollTarget = "notes-editor"
                                 }
                             }
-                            .sheet(item: $selectedEpisode) { episode in episodeInformation(title, episode: episode) }
-                            .sheet(isPresented: $choosingWatchDate) {
-                                NavigationStack {
-                                    ScrollView { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
-                                        .navigationTitle("Watch date").navigationBarTitleDisplayMode(.inline)
-                                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } }
-                                }.presentationDetents([.medium, .large])
-                            }
-                            .sheet(isPresented: $showInformation) {
-                                CommunityInformationSheet(name: title.name, artwork: title.backdrop ?? title.poster, identity: CommunityIdentity(kind: title.isSeries ? .tv : .movie, id: title.tmdbId))
-                            }
-                            .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
-                            .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; expandedEpisodes = [] }
-                            .onChange(of: title.version) { _, _ in
-                                guard initializedEditor else { return }
-                                notesField.observe(.init(value: title.notes, version: title.version))
-                                ratingField.observe(.init(value: title.score, version: title.version))
-                            }
-                            .confirmationDialog(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
-                                Button("Reset to Planned", role: .destructive) { Task { await store.setSeasonStatus(title, season: season, status: "planned", watchedAt: watchInstant); await loadCard(title) } }
-                            }
+                        )
                     }
                 }
             } else { ContentUnavailableView("Title unavailable", systemImage: "film") }
         }
+    }
+    /// Sheets, dialogs and change observers live in their own function so the
+    /// type checker handles two shorter modifier chains instead of one very long one.
+    private func detailPresentations(title: MediaTitle, content: some View) -> some View {
+        content
+            .sheet(item: $selectedEpisode) { episode in episodeInformation(title, episode: episode) }
+            .sheet(isPresented: $choosingWatchDate) {
+                NavigationStack {
+                    ScrollView { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
+                        .navigationTitle("Watch date").navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } }
+                }.presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showInformation) {
+                CommunityInformationSheet(name: title.name, artwork: title.backdrop ?? title.poster, identity: CommunityIdentity(kind: title.isSeries ? .tv : .movie, id: title.tmdbId))
+            }
+            .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
+            .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
+            .onChange(of: title.version) { _, _ in
+                guard initializedEditor else { return }
+                notesField.observe(.init(value: title.notes, version: title.version))
+                ratingField.observe(.init(value: title.score, version: title.version))
+            }
+            .confirmationDialog(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
+                Button("Reset to Planned", role: .destructive) { Task { await store.setSeasonStatus(title, season: season, status: "planned", watchedAt: watchInstant); await loadCard(title) } }
+            }
     }
     private struct ScrollFocus: Equatable {
         let target: String?
@@ -357,7 +363,9 @@ struct TitleDetailView: View {
     }
     private func episodeCaption(_ episode: Episode, watched: Bool, next: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Two reserved lines: revealing a spoiler-hidden name never changes the row height.
             Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 14, weight: .semibold))
+                .lineLimit(2, reservesSpace: true)
                 .foregroundStyle(.white).multilineTextAlignment(.leading)
                 .accessibilityIdentifier("episode-caption-\(episode.number)")
             InlineFlowLayout {
@@ -417,9 +425,13 @@ struct TitleDetailView: View {
                         .accessibilityIdentifier("episode-summary-\(episode.number)")
                     if watched.contains(episode.id) {
                         Button {
+                            // Close the sheet at once so "Watch marked" and its Undo are
+                            // visible while the save runs, not hidden under the sheet.
+                            // A failed save still reports on the page's error banner.
+                            let instant = watchInstant
+                            selectedEpisode = nil
                             Task {
-                                await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: watchInstant)
-                                selectedEpisode = nil
+                                await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: instant)
                                 await loadCard(title)
                             }
                         } label: { Label("Log rewatch", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 44) }
@@ -435,7 +447,7 @@ struct TitleDetailView: View {
         if store.isPreview && !store.canMutate { return }
         let request = UUID(), selected = season
         seasonRequest = request; seasonLoadError = nil
-        guard force || SeasonMetadata.needsPreparation(title: title, workspace: store.workspace, season: selected, now: store.now) else { preparingSeason = false; return }
+        guard force || SeasonMetadata.needsPreparation(title: title, workspace: scope, season: selected, now: store.now) else { preparingSeason = false; return }
         preparingSeason = true; defer { if seasonRequest == request { preparingSeason = false } }
         do { try await store.prepareSavedSeason(title, number: selected, force: force) }
         catch is CancellationError { }
@@ -445,7 +457,7 @@ struct TitleDetailView: View {
         let selected = season
         await episodeDetails.load(selected) { try await store.revealedSeason(title, number: selected) }
     }
-    private var movieViewings: [WatchEvent] { store.workspace.activeEvents.filter { $0.titleId == id && $0.episodeId == nil }.sorted { ($0.recordedAt, $0.id) > ($1.recordedAt, $1.id) } }
+    private var movieViewings: [WatchEvent] { scope.activeEvents.filter { $0.titleId == id && $0.episodeId == nil }.sorted { ($0.recordedAt, $0.id) > ($1.recordedAt, $1.id) } }
     private var displayedWatched: Int { sliderDraft.map(Int.init) ?? card?.progress.watched ?? 0 }
     private var watchInstant: Date { let calendar = DiaryDate.calendar(); return calendar.isDate(watchDate, inSameDayAs: store.now) ? store.now : calendar.date(bySettingHour: 12, minute: 0, second: 0, of: watchDate) ?? watchDate }
     private var displayedPercent: Int { guard let total = card?.progress.total, total > 0 else { return 0 }; return Int((Double(displayedWatched) / Double(total) * 100).rounded()) }
@@ -514,17 +526,20 @@ struct TitleDetailView: View {
         let episodes: [Episode]
         let seasons: [Season]
     }
-    private var seasonNumbers: [Int] { EpisodeSelection.seasons(in: store.workspace, titleID: id) }
-    private var season: Int { chosenSeason ?? EpisodeSelection.preferredSeason(in: store.workspace, titleID: id, today: DiaryDate.day(store.now), linkedSeason: linkedSeason) }
+    /// This title's rows only. `season` is read many times per body pass; it no
+    /// longer scans every episode and watch in the diary each time.
+    private var scope: Workspace { store.titleScope(id) }
+    private var seasonNumbers: [Int] { EpisodeSelection.seasons(in: scope, titleID: id) }
+    private var season: Int { chosenSeason ?? EpisodeSelection.preferredSeason(in: scope, titleID: id, today: DiaryDate.day(store.now), linkedSeason: linkedSeason) }
     private func cardRevision(_ title: MediaTitle) -> CardRevision {
-        CardRevision(season: season, events: store.workspace.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
+        CardRevision(season: season, events: scope.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
     }
     private var episodes: [Episode] { store.episodesForSeason(id, season: season) }
     private var visibleEpisodes: [Episode] {
         Array(EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id ?? episodes.first(where: { !watched.contains($0.id) && hasAired($0) })?.id).prefix(episodeLimit))
     }
     private var watched: Set<String> { store.watchedEpisodeIDs(id) }
-    private var locations: [FileLocation] { store.workspace.locations.filter { $0.titleId == id } }
+    private var locations: [FileLocation] { scope.locations.filter { $0.titleId == id } }
     private var serverLabel: String { ServerAvailability.label(locations) }
     private var percent: Int { guard let card, card.progress.total > 0 else { return 0 }; return Int((Double(card.progress.watched) / Double(card.progress.total) * 100).rounded()) }
     private func remaining(_ title: MediaTitle) -> Int? { title.isSeries ? store.seasonProgress(title, season: season).remainingMinutes : title.runtimeMinutes.map { card?.progress.watched == 1 ? 0 : $0 } }
