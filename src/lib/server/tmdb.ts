@@ -4,6 +4,7 @@ import type { PersonDetails, PersonCredit } from '../people.ts';
 import { tmdbImage, searchQuery, type SearchMatch, type SearchPage } from '../metadata.ts';
 import {
   discoveryGenres,
+  filterDiscovery,
   type DiscoveryQuery,
   type DiscoveryItem,
   type DiscoveryPage
@@ -279,7 +280,9 @@ export function createTmdb(
       if (input.source === 'because') providerInput(input.type, seedId);
       const genre = discoveryGenres.find((g) => g.name === input.genre);
       const params: Record<string, string> = { page: String(input.page), include_adult: 'false' };
-      if (input.source !== 'because') {
+      // TMDb's weekly trending feed takes no filters; genre and year are applied to its page below.
+      const trending = input.source === 'tmdb' && input.sort === 'trending';
+      if (input.source !== 'because' && !trending) {
         params.sort_by =
           input.sort === 'rating'
             ? 'vote_average.desc'
@@ -289,6 +292,7 @@ export function createTmdb(
                 : 'first_air_date.desc'
               : 'popularity.desc';
         if (genre) params.with_genres = String(genre[input.type]);
+        if (input.network && input.type === 'tv') params.with_networks = String(input.network);
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
             input.year;
@@ -300,7 +304,9 @@ export function createTmdb(
       const data = await request(
         input.source === 'because'
           ? `${input.type}/${seedId}/recommendations`
-          : `discover/${input.type}`,
+          : trending
+            ? `trending/${input.type}/week`
+            : `discover/${input.type}`,
         params
       );
       if (!Array.isArray(data.results) || data.results.length > 100) throw upstream();
@@ -332,7 +338,7 @@ export function createTmdb(
         ];
       });
       return {
-        items,
+        items: trending ? filterDiscovery(items, input) : items,
         page: int(data.page, 1, 500),
         totalPages: Math.min(int(data.total_pages, 0, 1000000), 500),
         source: input.source
@@ -382,6 +388,14 @@ export function createTmdb(
         page: int(data.page, 1, 500),
         totalPages: Math.min(int(data.total_pages, 0, 1000000), 500)
       };
+    },
+    /** Name, year, poster and backdrop only: one small request for Canvas list collages. */
+    async artwork(mediaType: 'movie' | 'tv', id: number) {
+      providerInput(mediaType, id);
+      const data = await request(`${mediaType}/${id}`);
+      const base = match(data, mediaType);
+      if (!base || base.id !== id) throw upstream();
+      return { ...base, backdropPath: path(data.backdrop_path) };
     },
     async details(mediaType: 'movie' | 'tv', id: number) {
       providerInput(mediaType, id);

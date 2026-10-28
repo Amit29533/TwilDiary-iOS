@@ -56,15 +56,34 @@ export const discoveryGenres = [
   { name: 'Talk', movie: null, tv: 10767 },
   { name: 'Soap', movie: null, tv: 10766 }
 ] as const;
+/** TMDb network IDs Canvas offers for shows. */
+export const discoveryNetworks = [
+  { name: 'Netflix', id: 213 },
+  { name: 'HBO', id: 49 },
+  { name: 'Max', id: 3186 },
+  { name: 'Prime Video', id: 1024 },
+  { name: 'Apple TV+', id: 2552 },
+  { name: 'Disney+', id: 2739 },
+  { name: 'Hulu', id: 453 },
+  { name: 'Paramount+', id: 4330 },
+  { name: 'Peacock', id: 3353 },
+  { name: 'AMC', id: 174 },
+  { name: 'FX', id: 88 },
+  { name: 'BBC One', id: 4 },
+  { name: 'Crunchyroll', id: 1112 },
+  { name: 'Adult Swim', id: 80 }
+] as const;
 export interface DiscoveryQuery {
   source: 'tmdb' | 'trakt' | 'because';
   type: 'movie' | 'tv';
   genre: string;
   year: string;
-  sort: 'popular' | 'rating' | 'newest';
+  sort: 'popular' | 'rating' | 'newest' | 'trending';
   minimum: number;
   page: number;
   seed: string;
+  /** A TMDb network ID from discoveryNetworks; shows only. */
+  network?: number | undefined;
 }
 export interface DiscoveryItem extends SearchMatch {
   backdropPath: string | null;
@@ -99,7 +118,7 @@ export function filterDiscovery(
       (!query.year || String(item.year) === query.year) &&
       (!query.minimum || (item.rating !== null && item.rating >= query.minimum))
   );
-  return query.sort === 'popular'
+  return query.sort === 'popular' || query.sort === 'trending'
     ? filtered
     : filtered.toSorted((a, b) =>
         query.sort === 'rating'

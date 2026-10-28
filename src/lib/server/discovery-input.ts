@@ -1,5 +1,5 @@
 import { ApiError } from './api.ts';
-import { discoveryGenres, type DiscoveryQuery } from '../discovery.ts';
+import { discoveryGenres, discoveryNetworks, type DiscoveryQuery } from '../discovery.ts';
 export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   const source = params.get('source') ?? 'tmdb';
   const type = params.get('type') ?? 'movie';
@@ -9,10 +9,15 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   const minimum = params.get('minimum') ?? '0';
   const page = params.get('page') ?? '1';
   const seed = params.get('seed') ?? '';
+  const network = params.get('network') ?? '';
   if (
     !['tmdb', 'trakt', 'because'].includes(source) ||
     !['movie', 'tv'].includes(type) ||
-    !['popular', 'rating', 'newest'].includes(sort) ||
+    !['popular', 'rating', 'newest', 'trending'].includes(sort) ||
+    (network &&
+      (type !== 'tv' ||
+        source !== 'tmdb' ||
+        !discoveryNetworks.some((n) => String(n.id) === network))) ||
     (genre &&
       !discoveryGenres.some((g) => g.name === genre && g[type as 'movie' | 'tv'] !== null)) ||
     (year && (!/^\d{4}$/.test(year) || +year < 1880 || +year > 2200)) ||
@@ -31,6 +36,7 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
     sort,
     minimum: +minimum,
     page: +page,
-    seed
+    seed,
+    ...(network ? { network: +network } : {})
   } as DiscoveryQuery;
 }
