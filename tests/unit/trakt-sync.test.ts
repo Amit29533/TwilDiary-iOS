@@ -155,7 +155,8 @@ test('legacy planning cursors resume at the same record in CPU-bounded batches',
   assert.equal(converted.run?.page, 21);
   assert.equal(converted.items.length, 0);
   const batch = await buildSyncStep(f.db, traktEnv, 'resume-plan', fake.transport);
-  assert.equal(batch.run?.page, 26);
+  // Those were the last five rows, so the same step finishes the stage.
+  assert.equal(batch.run?.stage, 'plan-history-batch');
   assert.deepEqual(batch.items.map((item) => item.name).sort(), [
     'Movie 20',
     'Movie 21',
