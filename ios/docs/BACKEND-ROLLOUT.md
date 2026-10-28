@@ -17,8 +17,24 @@ unchanged; its imports are journaled by the triggers).
 
 After deploying: the first scan compares everything once and builds the snapshot. A
 review still open from before the deploy completes normally; completing it writes its
-stored records (about 11.5k) into the snapshot once and requests one full scan. Deploy
+stored records (about 3,700) into the snapshot once and requests one full scan. Deploy
 early in the UTC day so that one-off write burst falls in a fresh daily allowance.
+
+Local dress rehearsal (28 Oct, private): the morning export with 0017–0020 applied, the
+new code and a fake Trakt serving that export's real records (2,039 plays, 155 ratings,
+116 watchlist entries). Rows are D1 rows as metered by local workerd:
+
+| Step | Requests | Rows read | Rows written |
+| --- | --- | --- | --- |
+| First scan after deploy (full) | 425 | 116k | 27k |
+| Resolving that review (1,506 ready changes, 1,341 removals with Use Trakt) | 508 | 362k | 73k |
+| Next scan (plans what the first one imported) | 78 | 51k | 0.8k |
+| Later scans with 23 skipped items left | ~30 | ~13k | ~0.2k |
+| One play added and one removed on Trakt, one watch logged | 36 | 26k | 0.3k |
+| Requested full check | 361 | 193k | 0.6k |
+
+Most of the review's writes are the imported titles' seasons and episodes, the plays and
+their baselines. Skipped items are planned again on every scan by design.
 
 ## Planning CPU hotfix — deployed 28 October 2026
 
