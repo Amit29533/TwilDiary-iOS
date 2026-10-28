@@ -80,7 +80,9 @@ PY
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNavigationLensCanBeHeldAndSlidAcrossTheBarAndCancelledOutsideIt \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testCollectionGridsKeepEpisodeActionsFoldersAndHistoryEntries \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleMenuRevealsAndScrollsNotesAndLocationsAndCopiesAPath \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle       -only-testing:TwilDiaryUITests/NativeScreensTests/testTraktReviewResolvesAWholeGroupOnlyAfterConfirmation       -only-testing:TwilDiaryUITests/NativeScreensTests/testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTraktReviewResolvesAWholeGroupOnlyAfterConfirmation \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testColdQuotaImportRestoresAcrossTabsAfterResetWithoutManualRetry \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeBackReturnsFromEverySettingsDestination \
