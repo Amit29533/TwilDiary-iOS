@@ -1136,7 +1136,7 @@ import UIKit
         app.buttons["progress-menu-again"].tap()
         XCTAssertTrue(app.buttons["Favorite"].exists); XCTAssertTrue(app.buttons["Dropped"].exists)
         XCTAssertFalse(app.buttons["Open title"].exists)
-        XCTAssertTrue(app.buttons["Mark complete"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Complete Season'")).firstMatch.exists)
         app.buttons["Notes"].tap()
         XCTAssertTrue(app.textViews["title-notes"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textViews["title-notes"].isHittable); capture("Glance menu reveals Notes")
@@ -1173,7 +1173,7 @@ import UIKit
         let count = app.staticTexts["watch-count-again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
-        app.buttons["progress-menu-again"].tap(); app.buttons["Mark complete"].tap()
+        app.buttons["progress-menu-again"].tap(); app.buttons["Complete Season 1"].tap()
         // Undo first (project rule: never spend the real 4.5 s window on slow value
         // reads). A semantic tap tried to scroll the toast's ancestor and missed it.
         // The helper waits for Undo to be enabled, i.e. the completion was saved.
