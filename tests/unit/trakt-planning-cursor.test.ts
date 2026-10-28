@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { d1Fixture } from '../helpers/d1.ts';
 import { connectFixture, fakeTrakt, traktEnv } from '../helpers/trakt.ts';
-import { buildSyncStep, PLAN_ITEMS as N } from '../../src/lib/server/trakt-sync.ts';
+import { buildSyncStep, syncStatus, PLAN_ITEMS as N } from '../../src/lib/server/trakt-sync.ts';
 
 async function seed(f: ReturnType<typeof d1Fixture>, page = 1) {
   await connectFixture(f);
@@ -73,7 +73,9 @@ test('an interrupted offset review adopts the cursor and a replay cannot inflate
   t.after(f.close);
   await seed(f, 51);
   const fake = fakeTrakt();
-  const first = await buildSyncStep(f.db, traktEnv, 'cursor', fake.transport);
+  await buildSyncStep(f.db, traktEnv, 'cursor', fake.transport);
+  // Steps return counts only while building; the review read shows the proposals.
+  const first = await syncStatus(f.db, 'cursor');
   assert.deepEqual(
     first.items.map((x) => x.name).sort(),
     Array.from({ length: N }, (_, i) => 'Movie ' + (50 + i)).sort()
@@ -85,5 +87,6 @@ test('an interrupted offset review adopts the cursor and a replay cannot inflate
   const second = await buildSyncStep(f.db, traktEnv, 'cursor', fake.transport);
   assert.equal((second.counts as Record<string, number>).pending, 2 * N);
   assert.equal(second.run!.page, 51 + 2 * N);
-  assert.equal(new Set(second.items.map((x) => x.name)).size, 2 * N);
+  const review = await syncStatus(f.db, 'cursor');
+  assert.equal(new Set(review.items.map((x) => x.name)).size, 2 * N);
 });

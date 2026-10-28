@@ -70,18 +70,26 @@ class RolloutTests(unittest.TestCase):
             self.assertEqual(preflight[2][0][0], "review-fixture")
             self.assertEqual(before, rollout.snapshot(db))
         with fixture(20) as db:
+            # Hosted D1 before 0020: the earlier 17 objects only.
+            db.execute("PRAGMA query_only=ON")
+            self.assertEqual(len(run_operator_queries(db, "preflight-d1.sql")[1]), 17)
+        with fixture(21) as db:
             db.execute("PRAGMA query_only=ON")
             before = rollout.snapshot(db)
             postflight = run_operator_queries(db, "postflight-d1.sql")
-            self.assertEqual(len(postflight[0]), 20)
-            self.assertEqual(len(postflight[1]), 17)
-            self.assertEqual(postflight[2], [("plan_after", "TEXT", 0)])
+            self.assertEqual(len(postflight[0]), 21)
+            # 17 earlier objects plus 0020's four tables, two indexes and 13 triggers.
+            self.assertEqual(len(postflight[1]), 36)
+            self.assertEqual(postflight[2], [("plan_after", "TEXT", 0), ("mode", "TEXT", 0),
+                                             ("lists", "TEXT", 0), ("activity", "TEXT", 0),
+                                             ("journal_upto", "INTEGER", 0)])
             self.assertEqual(postflight[4], [], "No active review bucket may differ")
             self.assertEqual(postflight[6], [(1, 32)], "One workspace revision with a 32-hex token")
+            self.assertEqual(postflight[7], [(0, 0, 0, 0)], "Incremental sync starts empty")
             self.assertEqual(before, rollout.snapshot(db))
 
     def test_postflight_reports_a_corrupt_active_review_bucket(self):
-        with fixture(20) as db:
+        with fixture(21) as db:
             db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1 WHERE state='pending'")
             db.execute("PRAGMA query_only=ON")
             self.assertTrue(run_operator_queries(db, "postflight-d1.sql")[4])
@@ -127,24 +135,29 @@ class RolloutTests(unittest.TestCase):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
     def test_existing_damaged_aggregate_is_rejected(self):
-        for applied in (17, 18, 19, 20):
+        for applied in (17, 18, 19, 20, 21):
             with self.subTest(applied=applied), fixture(applied) as db:
                 db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1")
                 with self.assertRaisesRegex(ValueError, "aggregate counts"):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
     def test_pending_migrations_keep_every_existing_row(self):
-        # Hosted D1 already has 0014-0016. 0017/0018 add indexes; 0019 adds one new
-        # single-row table. Every table that existed before is byte-identical after.
-        with fixture(17) as db:
+        # Hosted D1 already has 0014-0019. 0020 adds four empty tables, nullable run columns
+        # and journal triggers. Every original column of every row is byte-identical after.
+        with fixture(20) as db:
             result = rollout.rehearse(dump(db), MIGRATIONS)
-        self.assertEqual(result["rehearsed_migrations"],
-                         ["0017_trakt_import_indexes.sql", "0018_trakt_remote_history_tmdb.sql",
-                          "0019_workspace_revision.sql"])
-        existing = {t: v for t, v in result["after"].items() if t in result["before"]}
-        self.assertEqual(result["before"], existing)
-        self.assertEqual(set(result["after"]) - set(result["before"]), {"workspace_revision"})
-        self.assertEqual(result["after"]["workspace_revision"]["rows"], 1)
+        self.assertEqual(result["rehearsed_migrations"], ["0020_trakt_incremental.sql"])
+        added = {"trakt_snapshot", "trakt_sync_checkpoint", "trakt_sync_journal", "trakt_sync_work"}
+        self.assertEqual(set(result["after"]) - set(result["before"]), added)
+        for table in added:
+            self.assertEqual(result["after"][table]["rows"], 0)
+        self.assertEqual(result["after"]["trakt_sync_runs"]["columns"][-4:],
+                         ["mode", "lists", "activity", "journal_upto"])
+        # From an older ledger the whole remaining sequence rehearses too.
+        with fixture(17) as db:
+            older = rollout.rehearse(dump(db), MIGRATIONS)
+        self.assertEqual(older["rehearsed_migrations"][-1], "0020_trakt_incremental.sql")
+        self.assertEqual(older["after"]["workspace_revision"]["rows"], 1)
 
     def test_migration_cannot_mutate_original_rows_unnoticed(self):
         migrations = dict(MIGRATIONS)

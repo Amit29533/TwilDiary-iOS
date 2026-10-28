@@ -1,5 +1,49 @@
 # Native client backend rollout — deployed 26 October 2026
 
+## Rollout 0020 (incremental Trakt scans) — prepared, not deployed
+
+Source: `main` after PR #8. Hosted D1 has 0000–0019; the pending set must be exactly
+`0020_trakt_incremental.sql`: four new empty tables (`trakt_snapshot`,
+`trakt_sync_checkpoint`, `trakt_sync_journal`, `trakt_sync_work`), four nullable
+`trakt_sync_runs` columns and 13 triggers that journal diary changes. Additive: the
+current Worker keeps working against the new schema (the triggers only add journal
+rows), so a code rollback needs no schema change.
+
+Same procedure as below: record the main Worker version, fresh Time Travel bookmark
+and export, `rehearse()` (the tool reviews 0014–0020), preflight (17 objects before),
+apply, postflight (21 migrations, 36 objects, the five run columns, empty incremental
+tables), then deploy the **main Worker only** (the incoming worker's code is
+unchanged; its imports are journaled by the triggers).
+
+After deploying: the first scan compares everything once and builds the snapshot. A
+review still open from before the deploy completes normally; completing it writes its
+stored records (about 3,700) into the snapshot once and requests one full scan. Deploy
+early in the UTC day so that one-off write burst falls in a fresh daily allowance.
+
+Local dress rehearsal (28 Oct, private): the morning export with 0017–0020 applied, the
+new code and a fake Trakt serving that export's real records (2,039 plays, 155 ratings,
+116 watchlist entries). Rows are D1 rows as metered by local workerd:
+
+| Step | Requests | Rows read | Rows written |
+| --- | --- | --- | --- |
+| First scan after deploy (full) | 425 | 116k | 27k |
+| Resolving that review (1,506 ready changes, 1,341 removals with Use Trakt) | 508 | 362k | 73k |
+| Next scan (plans what the first one imported) | 78 | 51k | 0.8k |
+| Later scans with 23 skipped items left | ~30 | ~13k | ~0.2k |
+| One play added and one removed on Trakt, one watch logged | 36 | 26k | 0.3k |
+| Requested full check | 361 | 193k | 0.6k |
+
+Most of the review's writes are the imported titles' seasons and episodes, the plays and
+their baselines. Skipped items are planned again on every scan by design.
+
+## Planning CPU hotfix — deployed 28 October 2026
+
+Main Worker `736df176-a76b-4c33-a4ac-0d927d5f9cb9` from PR #7 (`4f90bf6`), about
+11:25 UTC, no migration: planning windows of 20 rows with at most one per-item merge
+per request. Afterwards no request exceeded its CPU limit (the last
+`exceededResources` was 11:22 UTC, before the deploy); CPU per step was about
+9.5–11 ms at the median and 17 ms at p99 while a full scan compared history.
+
 ## Rollout 0017–0019 and main/incoming Workers — deployed 28 October 2026
 
 Completed 10:48–10:58 UTC. Main Worker `0483e8d7-5335-4bef-9c17-ba5f7f7d9c73`

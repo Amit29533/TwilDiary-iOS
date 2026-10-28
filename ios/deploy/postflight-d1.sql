@@ -1,5 +1,5 @@
--- Read-only. Requires migrations 0014-0019 (0017/0018 add indexes; 0019 adds the one-row
--- workspace_revision table). Retain results privately.
+-- Read-only. Requires migrations 0014-0020 (0020 adds the incremental-sync tables, four
+-- nullable trakt_sync_runs columns and the journal triggers). Retain results privately.
 SELECT name FROM d1_migrations ORDER BY name;
 SELECT type,name FROM sqlite_schema
 WHERE name IN (
@@ -9,9 +9,16 @@ WHERE name IN (
   'trakt_runs_recent','trakt_runs_account_created','watch_movie_latest',
   'trakt_changes_unconfirmed','trakt_changes_local_event','unmatched_matched_title',
   'watch_operations_title','watch_operations_result','watch_operations_episode',
-  'trakt_remote_history_tmdb','workspace_revision'
+  'trakt_remote_history_tmdb','workspace_revision',
+  'trakt_snapshot','trakt_snapshot_history_tmdb','trakt_sync_checkpoint','trakt_sync_journal',
+  'trakt_journal_key','trakt_sync_work','trakt_journal_watch_insert','trakt_journal_watch_update',
+  'trakt_journal_watch_delete','trakt_journal_title_insert','trakt_journal_title_update',
+  'trakt_journal_title_trash','trakt_checkpoint_title_delete','trakt_journal_identity_insert',
+  'trakt_checkpoint_identity_update','trakt_checkpoint_identity_delete',
+  'trakt_checkpoint_demo_insert','trakt_checkpoint_demo_update','trakt_checkpoint_demo_delete'
 ) ORDER BY type,name;
-SELECT name,type,"notnull" FROM pragma_table_info('trakt_sync_runs') WHERE name='plan_after';
+SELECT name,type,"notnull" FROM pragma_table_info('trakt_sync_runs')
+WHERE name IN ('plan_after','mode','lists','activity','journal_upto') ORDER BY cid;
 
 SELECT id,state,stage,page,progress,created_at,updated_at,plan_after
 FROM trakt_sync_runs WHERE state IN ('building','review','applying') LIMIT 5;
@@ -42,3 +49,9 @@ FROM trakt_incoming WHERE id='trakt' LIMIT 1;
 
 -- Exactly one row with a 32-hex token (0019).
 SELECT count(*) AS rows, min(length(token)) AS token_length FROM workspace_revision;
+
+-- 0020 starts empty: the first scan after it compares everything and builds the snapshot.
+SELECT (SELECT count(*) FROM trakt_snapshot) AS snapshot_rows,
+  (SELECT count(*) FROM trakt_sync_checkpoint) AS checkpoints,
+  (SELECT count(*) FROM trakt_sync_journal) AS journal_rows,
+  (SELECT count(*) FROM trakt_sync_work) AS work_rows;
