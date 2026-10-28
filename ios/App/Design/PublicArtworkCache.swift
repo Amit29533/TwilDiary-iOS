@@ -18,8 +18,18 @@ struct PublicArtworkRequest: Hashable, Sendable {
               url.host == "image.tmdb.org", url.user == nil, url.password == nil,
               url.port == nil, url.query == nil, url.fragment == nil,
               url.path.hasPrefix("/t/p/"), pixels.isFinite, pixels > 0 else { return nil }
-        self.url = url
-        self.pixels = pixels <= 256 ? 256 : pixels <= 512 ? 512 : pixels <= 1024 ? 1024 : 1536
+        let bucket = pixels <= 256 ? 256 : pixels <= 512 ? 512 : pixels <= 1024 ? 1024 : 1536
+        self.url = Self.sharper(url, pixels: bucket)
+        self.pixels = bucket
+    }
+    /// Large tiles and full-width backdrops ask TMDb for a bigger rendition than the saved
+    /// w500/w780 URL (w780 up to 1024 px, w1280 above), so they are not upscaled. Never smaller.
+    static func sharper(_ url: URL, pixels: Int) -> URL {
+        let parts = url.path.split(separator: "/")
+        guard parts.count == 4, parts[2].first == "w", let current = Int(parts[2].dropFirst()) else { return url }
+        let wanted = pixels >= 1536 ? 1280 : pixels >= 1024 ? 780 : current
+        guard wanted > current else { return url }
+        return URL(string: "https://image.tmdb.org/t/p/w\(wanted)/" + parts[3]) ?? url
     }
 }
 

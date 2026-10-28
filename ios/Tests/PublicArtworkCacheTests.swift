@@ -46,6 +46,14 @@ private final class ArtworkURLProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(PublicArtworkRequest(path:path, pixels:257)?.pixels, 512)
         XCTAssertEqual(PublicArtworkRequest(path:path, pixels:10000)?.pixels, 1536)
     }
+    func testLargeArtworkAsksTMDbForASharperRenditionButNeverASmallerOne() {
+        let poster = "https://image.tmdb.org/t/p/w500/a.jpg"
+        XCTAssertEqual(PublicArtworkRequest(path: poster, pixels: 400)?.url.absoluteString, poster)
+        XCTAssertEqual(PublicArtworkRequest(path: poster, pixels: 900)?.url.absoluteString, "https://image.tmdb.org/t/p/w780/a.jpg")
+        XCTAssertEqual(PublicArtworkRequest(path: poster, pixels: 1206)?.url.absoluteString, "https://image.tmdb.org/t/p/w1280/a.jpg")
+        XCTAssertEqual(PublicArtworkRequest(path: "https://image.tmdb.org/t/p/original/a.jpg", pixels: 1206)?.url.absoluteString, "https://image.tmdb.org/t/p/original/a.jpg")
+        XCTAssertEqual(PublicArtworkRequest(path: "https://image.tmdb.org/t/p/w1280/a.jpg", pixels: 300)?.url.absoluteString, "https://image.tmdb.org/t/p/w1280/a.jpg")
+    }
     func testArtworkIsDownsampledAndRetainedForSynchronousRecycledCellLookup() async throws {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         let image = UIGraphicsImageRenderer(size: CGSize(width:1200,height:800), format:format).image { context in
