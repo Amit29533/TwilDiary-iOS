@@ -28,7 +28,11 @@ struct HomeView: View {
                 if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: 28) {
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
-                    NavigationLink(value: AppDestination.explore) { exploreButton }.buttonStyle(.plain).accessibilityIdentifier("explore-shortcut")
+                    // Explore is systematic discovery; Canvas is for browsing artwork at random.
+                    HStack(spacing: 10) {
+                        NavigationLink(value: AppDestination.explore) { discoverButton("Explore", icon: "compass") }.buttonStyle(.plain).accessibilityIdentifier("explore-shortcut")
+                        NavigationLink(value: AppDestination.canvas) { discoverButton("Canvas", icon: "layout-grid") }.buttonStyle(.plain).accessibilityIdentifier("canvas-shortcut")
+                    }
                     VStack(spacing: 12) {
                         heading("This week") { Button("Stats →") { router.statsToday() }.accessibilityIdentifier("home-stats") }
                         weekPanel(overview, now: now)
@@ -105,14 +109,14 @@ struct HomeView: View {
                 .ignoresSafeArea(edges: .top).allowsHitTesting(false).accessibilityHidden(true)
         }
     }
-    private var exploreButton: some View {
-        HStack(spacing: 12) {
+    private func discoverButton(_ name: String, icon: String) -> some View {
+        HStack(spacing: 10) {
             Spacer(minLength: 0)
-            DiaryIcon(name: "compass", size: 16).foregroundStyle(theme.ink).frame(width: 30, height: 30).background(theme.accent, in: Circle())
-            Text("Explore").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+            DiaryIcon(name: icon, size: 16).foregroundStyle(theme.ink).frame(width: 30, height: 30).background(theme.accent, in: Circle())
+            Text(name).font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
             Spacer(minLength: 0)
         }.frame(height: 54).frame(maxWidth: .infinity)
-            .overlay(alignment: .trailing) { DiaryIcon(name: "chevron-right", size: 17).foregroundStyle(theme.accent).padding(.trailing, 20) }
+            .overlay(alignment: .trailing) { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(theme.accent).padding(.trailing, 16) }
             .background(theme.accent.opacity(0.1), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.55), lineWidth: 1.5))
             .contentShape(Capsule())
     }

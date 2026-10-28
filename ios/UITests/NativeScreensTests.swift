@@ -288,6 +288,31 @@ import UIKit
         XCTAssertTrue(season.isHittable); XCTAssertEqual(season.value as? String, "Season 1")
     }
 
+    func testCanvasShowsAMosaicForTitlesAndCollagesForTraktLists() {
+        let app = launch(); app.tabBars.buttons["Home"].tap()
+        let canvas = app.buttons["canvas-shortcut"]
+        for _ in 0..<4 { if canvas.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(canvas.isHittable); XCTAssertTrue(app.buttons["explore-shortcut"].isHittable)
+        capture("Home Explore and Canvas buttons"); canvas.tap()
+        XCTAssertTrue(app.buttons["canvas-tab-movies"].waitForExistence(timeout: 5))
+        let tiles = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'canvas-tile-'"))
+        XCTAssertTrue(tiles.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["canvas-sort"].exists); XCTAssertTrue(app.buttons["canvas-genre"].exists)
+        XCTAssertFalse(app.buttons["canvas-network"].exists, "Networks are for shows only")
+        // The first tile is a wide hero across the page; the next row holds three posters.
+        let hero = tiles.element(boundBy: 0), poster = tiles.element(boundBy: 1)
+        XCTAssertGreaterThan(hero.frame.width, app.frame.width * 0.85)
+        XCTAssertLessThan(poster.frame.width, app.frame.width * 0.4)
+        capture("Canvas Movies mosaic")
+        app.buttons["canvas-tab-shows"].tap()
+        XCTAssertTrue(app.buttons["canvas-network"].waitForExistence(timeout: 5)); capture("Canvas Shows with Networks")
+        app.buttons["canvas-tab-lists"].tap()
+        let list = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'canvas-list-'")).matching(NSPredicate(format: "identifier != 'canvas-list-sort' AND identifier != 'canvas-list-kind'")).firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 10)); XCTAssertTrue(app.buttons["canvas-list-sort"].exists)
+        capture("Canvas Lists collages"); list.tap()
+        XCTAssertTrue(app.staticTexts["by preview1"].waitForExistence(timeout: 5))
+        capture("Canvas list titles")
+    }
     func testRandomPickKeepsPlannedScopeAndLogoRerollsWithoutRepeating() throws {
         try XCTSkipIf(true, "Home's Pick for me button is not in the owner's Home design; skipped until the owner decides where it goes")
         let app = launch(); app.tabBars.buttons["Home"].tap()

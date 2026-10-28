@@ -31,6 +31,20 @@ enum PreviewCatalog {
         value["details"] = details
         return try! JSONDecoder().decode(CatalogBrowse.self, from: JSONSerialization.data(withJSONObject: value))
     }
+    /// Canvas Lists: six lists built from the catalog fixture's posters, one page.
+    static func canvasLists(page: Int) -> CanvasListsPage {
+        let posters = (decode("catalog-page") as CatalogPage).items.compactMap(\.posterPath)
+        let names = ["Weekend comfort watches", "Anime films worth a rewatch", "Slow-burn mysteries", "Short seasons", "Animated favourites", "Late-night picks"]
+        let lists = names.enumerated().map { index, name in
+            CanvasList(id: index + 1, name: name, user: "preview\(index + 1)", itemCount: 12 + index, likes: 40 - index,
+                       posters: posters.isEmpty ? [] : (0..<4).map { posters[(index + $0) % posters.count] })
+        }
+        return CanvasListsPage(lists: page == 1 ? lists : [], page: page, totalPages: 1)
+    }
+    static func canvasListItems(page: Int) -> CanvasListItemsPage {
+        let items = (decode("catalog-page") as CatalogPage).items.map { CanvasListItem(tmdbId: $0.id, mediaType: $0.mediaType, name: $0.name, year: $0.year, posterPath: $0.posterPath, backdropPath: $0.backdropPath) }
+        return CanvasListItemsPage(items: page == 1 ? items : [], page: page, totalPages: 1)
+    }
     static var cast: CastResponse { decode("catalog-cast") }
     static var related: RelatedResponse { decode("catalog-related") }
     static var person: PersonResponse { decode("catalog-person") }
