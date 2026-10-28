@@ -143,7 +143,9 @@ struct RootView: View {
                     // areas to its pages. Left inside SwiftUI's safe area, every screen was
                     // boxed between black status-bar and home-indicator bands: heroes and
                     // Glass backgrounds stopped short and lists were cut above the indicator.
-                    .ignoresSafeArea()
+                    // Container only: ignoring the keyboard region too let the keyboard
+                    // cover the tab bar and kept the app from going idle after text focus.
+                    .ignoresSafeArea(.container)
                     .background(.black)
                     .overlay(alignment: .top) { RootNoticeBanner() }
             }
