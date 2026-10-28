@@ -38,7 +38,7 @@ test('planning seeks after its durable ID without skipping or duplicating a hund
   t.after(f.close);
   await seed(f);
   const fake = fakeTrakt();
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 19; i++) {
     const status = await buildSyncStep(f.db, traktEnv, 'cursor', fake.transport);
     assert.equal(status.run!.page, i * 5 + 1);
     assert.equal(
@@ -52,6 +52,7 @@ test('planning seeks after its durable ID without skipping or duplicating a hund
       'remote-' + String(i * 5 - 1).padStart(3, '0')
     );
   }
+  // The batch that plans the last five rows also sees the end of the stage and moves on.
   const next = await buildSyncStep(f.db, traktEnv, 'cursor', fake.transport);
   assert.equal(next.run!.stage, 'plan-history-batch');
   assert.equal(next.run!.page, 1);

@@ -471,7 +471,11 @@ export const traktRemoteItems = sqliteTable(
     uniqueIndex('trakt_remote_run_key').on(t.runId, t.kind, t.remoteKey),
     index('trakt_remote_plan_order')
       .on(t.runId, t.id)
-      .where(sql`kind!='activities'`)
+      .where(sql`kind!='activities'`),
+    // Planning's "was this watchlist title already watched on Trakt" check within one run.
+    index('trakt_remote_history_tmdb')
+      .on(t.runId, sql`json_extract(payload,'$.tmdbId')`)
+      .where(sql`kind='history'`)
   ]
 );
 export const traktSyncBaselines = sqliteTable(

@@ -388,7 +388,9 @@ async function planItem(
       .where(
         and(
           eq(remote.runId, run.id),
-          eq(remote.kind, 'history'),
+          // Literal kind and expression match trakt_remote_history_tmdb; a bound kind would
+          // fall back to reading every history row of the run for each watchlist item.
+          sql`${remote.kind}='history'`,
           sql`json_extract(${remote.payload},'$.tmdbId')=${item.tmdbId}`,
           sql`json_extract(${remote.payload},'$.type')=${item.type}`
         )
@@ -760,6 +762,121 @@ async function assertSnapshot(db: Db, run: Run, trakt: Trakt) {
       'Trakt changed during this preview. Start a fresh preview before applying changes.'
     );
 }
+/**
+ * Planning examines PLAN_SCAN rows per request but runs the per-item merge (planItem, up to
+ * about a dozen D1 queries) for at most PLAN_ITEMS of them, which keeps every request inside
+ * the Free plan's per-invocation query limit. Rows already in sync are skipped in bulk.
+ */
+const PLAN_SCAN = 50;
+const PLAN_ITEMS = 5;
+type SyncedBaseline = { localValue: string | null; remoteValue: string | null };
+/**
+ * True only when planItem would certainly propose nothing: the local value, the Trakt value
+ * and the one baseline it would read are identical. mergeDecision returns null for exactly
+ * this state; anything ambiguous (two baselines, no provider ID, Trash) is left to planItem.
+ */
+function inSync(local: string | null, remote: string | null, baseline: SyncedBaseline | null) {
+  return (
+    local !== null &&
+    local === remote &&
+    baseline !== null &&
+    baseline.localValue === local &&
+    baseline.remoteValue === remote
+  );
+}
+/** planItem's baseline: the one matching the remote key, else the one matching the local key. */
+function plannedBaseline(
+  byRemote: number,
+  remoteBaseline: SyncedBaseline | null,
+  localBaseline: SyncedBaseline | null
+) {
+  return byRemote === 1 ? remoteBaseline : byRemote === 0 ? localBaseline : null;
+}
+/** Cut a batch where the (PLAN_ITEMS + 1)th row that needs planItem would start. */
+function planWindow<T>(rows: T[], needs: (row: T) => number) {
+  let used = 0;
+  for (const [index, row] of rows.entries()) {
+    used += needs(row);
+    if (used > PLAN_ITEMS && index > 0) return rows.slice(0, index);
+  }
+  return rows;
+}
+type RemoteRow = typeof remote.$inferSelect;
+type RemoteState = {
+  index: number;
+  identified: number;
+  watches: number;
+  imported: number;
+  byRemote: number;
+  deletedAt: string | null;
+  score: number | null;
+  status: string | null;
+  titleFound: number;
+  watchedAt: string | null;
+  revokedAt: string | null;
+  localValue: string | null;
+  remoteValue: string | null;
+};
+/**
+ * One read for a window of Trakt rows: what the "new incoming play" fast path needs and what
+ * proves a row already in sync. Keys travel as one JSON parameter (the Free plan allows 100
+ * bound parameters per statement), and every lookup is an index seek.
+ */
+async function remoteStates(db: Db, run: Run, rows: RemoteRow[]) {
+  if (!rows.length) return new Map<number, RemoteState>();
+  const lookup = JSON.stringify(
+    rows.map((row) => {
+      const item = row.payload as unknown as RemoteTraktItem;
+      return {
+        k: item.remoteKey,
+        c: item.kind,
+        p: item.type === 'movie' ? 'movie' : 'series',
+        x: item.tmdbId === null ? null : String(item.tmdbId),
+        h: item.kind === 'history' ? 1 : 0
+      };
+    })
+  );
+  const found = await db.all<RemoteState>(sql`
+    SELECT CAST(j.key AS INTEGER) AS "index",
+      EXISTS(SELECT 1 FROM provider_identities p WHERE p.provider='tmdb'
+        AND p.kind IN ('movie','series') AND p.external_id=json_extract(j.value,'$.x')) AS "identified",
+      (SELECT count(*) FROM watch_events w WHERE json_extract(j.value,'$.h')=1
+        AND w.remote_history_id=json_extract(j.value,'$.k')) AS "watches",
+      EXISTS(SELECT 1 FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
+        AND b.kind='history' AND b.local_key='trakt-history-'||json_extract(j.value,'$.k')) AS "imported",
+      (SELECT count(*) FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
+        AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')) AS "byRemote",
+      t.id IS NOT NULL AS "titleFound", t.deleted_at AS "deletedAt", t.score AS "score", t.status AS "status",
+      w.watched_at AS "watchedAt", w.revoked_at AS "revokedAt",
+      b.local_value AS "localValue", b.remote_value AS "remoteValue"
+    FROM json_each(${lookup}) j
+    LEFT JOIN titles t ON t.id=(SELECT p.title_id FROM provider_identities p WHERE p.provider='tmdb'
+      AND p.kind=json_extract(j.value,'$.p') AND p.external_id=json_extract(j.value,'$.x'))
+    LEFT JOIN watch_events w ON json_extract(j.value,'$.h')=1
+      AND w.id=(SELECT w2.id FROM watch_events w2 WHERE w2.remote_history_id=json_extract(j.value,'$.k') LIMIT 1)
+    LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId}
+      AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')`);
+  const states = new Map<number, RemoteState>();
+  for (const state of found) {
+    const index = Number(state.index);
+    // Several baselines for one remote key: never treat that row as settled.
+    if (states.has(index)) states.get(index)!.byRemote = 2;
+    else states.set(index, { ...state, index });
+  }
+  return states;
+}
+/** Mirrors planItem for a Trakt row: history by its play, ratings and watchlist by the title. */
+function remoteInSync(item: RemoteTraktItem, state: RemoteState | undefined) {
+  if (!state || state.byRemote !== 1 || item.tmdbId === null || state.deletedAt) return false;
+  const baseline = { localValue: state.localValue, remoteValue: state.remoteValue };
+  if (item.kind === 'history') {
+    if (Number(state.watches) !== 1 || state.revokedAt) return false;
+    return inSync(state.watchedAt ?? 'unknown', item.value, baseline);
+  }
+  if (!Number(state.titleFound)) return false;
+  const title = { deletedAt: state.deletedAt, score: state.score, status: state.status };
+  return inSync(localValue(title as LocalTitle, item.kind), item.value, baseline);
+}
 async function updateSnapshot(db: Db, run: Run, trakt: Trakt) {
   await db
     .update(remote)
@@ -875,95 +992,60 @@ export async function buildSyncStep(
           )
         )
         .orderBy(asc(remote.id))
-        .limit(5)
+        .limit(PLAN_SCAN)
         .offset(run.planAfter ? 0 : run.page - 1)
         .all();
-      const incoming = rows
-        .map((row) => ({ row, item: row.payload as unknown as RemoteTraktItem }))
-        .filter(({ item }) => item.kind === 'history' && item.tmdbId !== null);
-      const handled = new Set<string>();
-      if (incoming.length) {
-        // New incoming watches need no per-item merge reads. Check all possible existing
-        // identities first; linked history and baselines still use the full merge path.
-        const remoteKeys = incoming.map(({ item }) => item.remoteKey);
-        const localKeys = remoteKeys.map((key) => 'trakt-history-' + key);
-        // One D1 round trip (one query against the per-invocation limit) for all three checks.
-        const [identified, watched, saved] = await db.batch([
-          db
-            .select({ externalId: providerIdentities.externalId })
-            .from(providerIdentities)
-            .where(
-              and(
-                eq(providerIdentities.provider, 'tmdb'),
-                inArray(
-                  providerIdentities.externalId,
-                  incoming.map(({ item }) => String(item.tmdbId))
-                )
-              )
-            ),
-          db
-            .select({ remoteId: watchEvents.remoteHistoryId })
-            .from(watchEvents)
-            .where(inArray(watchEvents.remoteHistoryId, remoteKeys)),
-          db
-            .select({ remoteKey: baselines.remoteKey, localKey: baselines.localKey })
-            .from(baselines)
-            .where(
-              and(
-                eq(baselines.accountId, run.accountId),
-                eq(baselines.kind, 'history'),
-                or(inArray(baselines.remoteKey, remoteKeys), inArray(baselines.localKey, localKeys))
-              )
-            )
-        ]);
-        const titleIds = new Set(identified.map((row) => row.externalId));
-        const watchIds = new Set(watched.map((row) => row.remoteId));
-        const baselineKeys = new Set(saved.flatMap((row) => [row.remoteKey, row.localKey]));
-        const fresh = incoming.filter(
-          ({ item }) =>
-            !titleIds.has(String(item.tmdbId)) &&
-            !watchIds.has(item.remoteKey) &&
-            !baselineKeys.has(item.remoteKey) &&
-            !baselineKeys.has('trakt-history-' + item.remoteKey)
+      const states = await remoteStates(db, run, rows);
+      const item = (row: RemoteRow) => row.payload as unknown as RemoteTraktItem;
+      // New incoming watches need no per-item merge reads: no title, play or baseline knows them.
+      const fresh = (row: RemoteRow, index: number) => {
+        const value = item(row),
+          state = states.get(index);
+        return (
+          value.kind === 'history' &&
+          value.tmdbId !== null &&
+          !!state &&
+          !Number(state.identified) &&
+          !Number(state.watches) &&
+          !Number(state.byRemote) &&
+          !Number(state.imported)
         );
-        if (fresh.length) {
-          await db
-            .insert(changes)
-            .values(
-              await Promise.all(
-                fresh.map(async ({ row, item }) => {
-                  handled.add(row.id);
-                  const localKey = 'trakt-history-' + item.remoteKey;
-                  return {
-                    id: await hash(run.id + ':history:' + localKey),
-                    runId: run.id,
-                    kind: 'history',
-                    name: item.name,
-                    direction: 'pull' as const,
-                    review: false,
-                    detail: 'Import from Trakt',
-                    payload: {
-                      item,
-                      localKey,
-                      localTitleId: null,
-                      localValue: null,
-                      remoteValue: item.value
-                    },
-                    state: 'pending' as const
-                  };
-                })
-              )
-            )
-            .onConflictDoNothing();
-        }
-      }
-      for (const row of rows)
-        if (!handled.has(row.id))
-          await planItem(db, run, row.payload as unknown as RemoteTraktItem);
+      };
+      const settled = (row: RemoteRow, index: number) =>
+        fresh(row, index) || remoteInSync(item(row), states.get(index));
+      const window = planWindow(rows, (row) => (settled(row, rows.indexOf(row)) ? 0 : 1));
+      const imports = await Promise.all(
+        window
+          .filter((row, index) => fresh(row, index))
+          .map(async (row) => {
+            const value = item(row),
+              localKey = 'trakt-history-' + value.remoteKey;
+            return {
+              i: await hash(run.id + ':history:' + localKey),
+              n: value.name,
+              p: JSON.stringify({
+                item: value,
+                localKey,
+                localTitleId: null,
+                localValue: null,
+                remoteValue: value.value
+              })
+            };
+          })
+      );
+      if (imports.length)
+        await db.run(sql`
+          INSERT INTO trakt_sync_changes(id,run_id,kind,direction,name,detail,payload,review,state,error)
+          SELECT json_extract(j.value,'$.i'),${run.id},'history','pull',json_extract(j.value,'$.n'),
+            'Import from Trakt',json_extract(j.value,'$.p'),0,'pending',NULL
+          FROM json_each(${JSON.stringify(imports)}) j WHERE true ON CONFLICT DO NOTHING`);
+      for (const [index, row] of window.entries())
+        if (!settled(row, index)) await planItem(db, run, item(row));
+      const more = rows.length === PLAN_SCAN || window.length < rows.length;
       next = {
-        stage: rows.length === 5 ? 'plan-remote-batch' : 'plan-history-batch',
-        page: rows.length === 5 ? run.page + rows.length : 1,
-        planAfter: rows.length === 5 ? rows.at(-1)!.id : null
+        stage: more ? 'plan-remote-batch' : 'plan-history-batch',
+        page: more ? run.page + window.length : 1,
+        planAfter: more ? window.at(-1)!.id : null
       };
     } else if (run.stage === 'plan-history-batch') {
       const rows = await db
@@ -992,11 +1074,70 @@ export async function buildSyncStep(
           )
         )
         .orderBy(asc(watchEvents.id))
-        .limit(5)
+        .limit(PLAN_SCAN)
         .offset(run.planAfter ? 0 : run.page - 1)
         .all();
-      for (const row of rows) {
-        if (await planned(db, run, 'history', row.event.id)) continue;
+      // planItem's inputs for each local play, in one read: this run's Trakt value for the play
+      // and the baseline it would use (by remote key, else by the play itself).
+      const lookup = JSON.stringify(
+        rows.map((row) => ({ k: row.event.remoteHistoryId ?? '', e: row.event.id }))
+      );
+      const found = rows.length
+        ? await db.all<{
+            index: number;
+            payload: string | null;
+            byRemote: number;
+            remoteLocal: string | null;
+            remoteRemote: string | null;
+            localFound: number;
+            localLocal: string | null;
+            localRemote: string | null;
+          }>(sql`
+            SELECT CAST(j.key AS INTEGER) AS "index",
+              (SELECT r.payload FROM trakt_remote_items r WHERE r.run_id=${run.id} AND r.kind='history'
+                AND r.remote_key=json_extract(j.value,'$.k')) AS "payload",
+              (SELECT count(*) FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
+                AND b.kind='history' AND b.remote_key=json_extract(j.value,'$.k')) AS "byRemote",
+              b.local_value AS "remoteLocal", b.remote_value AS "remoteRemote",
+              l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote"
+            FROM json_each(${lookup}) j
+            LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId} AND b.kind='history'
+              AND b.remote_key=json_extract(j.value,'$.k')
+            LEFT JOIN trakt_sync_baselines l ON l.account_id=${run.accountId} AND l.kind='history'
+              AND l.local_key=json_extract(j.value,'$.e')`)
+        : [];
+      const facts = new Map<number, (typeof found)[number]>();
+      for (const fact of found) {
+        const index = Number(fact.index);
+        if (facts.has(index)) facts.get(index)!.byRemote = 2;
+        else facts.set(index, fact);
+      }
+      const settled = (index: number) => {
+        const row = rows[index]!,
+          fact = facts.get(index);
+        if (!fact) return false;
+        const local = row.event.revokedAt ? null : (row.event.watchedAt ?? 'unknown');
+        const remoteValue =
+          row.event.remoteHistoryId && fact.payload
+            ? (JSON.parse(fact.payload) as RemoteTraktItem).value
+            : null;
+        const byRemote = Number(fact.byRemote);
+        // planItem returns before reading anything else for a play nobody has a value for.
+        if (local === null && remoteValue === null && byRemote === 0 && !Number(fact.localFound))
+          return true;
+        if (!row.tmdbId) return false;
+        const baseline = plannedBaseline(
+          byRemote,
+          byRemote === 1 ? { localValue: fact.remoteLocal, remoteValue: fact.remoteRemote } : null,
+          Number(fact.localFound)
+            ? { localValue: fact.localLocal, remoteValue: fact.localRemote }
+            : null
+        );
+        return inSync(local, remoteValue, baseline);
+      };
+      const window = planWindow(rows, (row) => (settled(rows.indexOf(row)) ? 0 : 1));
+      for (const [index, row] of window.entries()) {
+        if (settled(index) || (await planned(db, run, 'history', row.event.id))) continue;
         await planItem(
           db,
           run,
@@ -1015,10 +1156,11 @@ export async function buildSyncStep(
           row.event
         );
       }
+      const more = rows.length === PLAN_SCAN || window.length < rows.length;
       next = {
-        stage: rows.length === 5 ? 'plan-history-batch' : 'plan-titles-batch',
-        page: rows.length === 5 ? run.page + rows.length : 1,
-        planAfter: rows.length === 5 ? rows.at(-1)!.event.id : null
+        stage: more ? 'plan-history-batch' : 'plan-titles-batch',
+        page: more ? run.page + window.length : 1,
+        planAfter: more ? window.at(-1)!.event.id : null
       };
     } else if (run.stage === 'plan-titles-batch') {
       const rows = await db
@@ -1036,7 +1178,8 @@ export async function buildSyncStep(
           )
         )
         .orderBy(asc(titles.id))
-        .limit(5)
+        // Two items (rating, watchlist) per title.
+        .limit(PLAN_SCAN / 2)
         .offset(run.planAfter ? 0 : run.page - 1)
         .all();
       const items = rows.flatMap((row) =>
@@ -1056,24 +1199,73 @@ export async function buildSyncStep(
           return { row, item };
         })
       );
-      // One indexed read for every rating/watchlist snapshot value of these five titles.
-      const keys = JSON.stringify(items.map(({ item }) => [item.kind, item.remoteKey]));
-      const snapshot = items.length
-        ? await db.all<{ kind: string; remoteKey: string; payload: string }>(
-            sql`SELECT r.kind AS "kind", r.remote_key AS "remoteKey", r.payload AS "payload"
-              FROM json_each(${keys}) j CROSS JOIN trakt_remote_items r
-              ON r.run_id=${run.id} AND r.kind=json_extract(j.value,'$[0]') AND r.remote_key=json_extract(j.value,'$[1]')`
-          )
-        : [];
-      const values = new Map(
-        snapshot.map((saved) => [
-          saved.kind + ':' + saved.remoteKey,
-          (JSON.parse(saved.payload) as RemoteTraktItem).value
-        ])
+      // One indexed read per item for its Trakt snapshot value and the baselines planItem reads.
+      const keys = JSON.stringify(
+        items.map(({ row, item }) => ({ c: item.kind, k: item.remoteKey, t: row.title.id }))
       );
-      // Existing proposals have deterministic IDs: one read replaces ten point lookups.
+      const found = items.length
+        ? await db.all<{
+            index: number;
+            payload: string | null;
+            byRemote: number;
+            remoteLocal: string | null;
+            remoteRemote: string | null;
+            localFound: number;
+            localLocal: string | null;
+            localRemote: string | null;
+          }>(sql`
+            SELECT CAST(j.key AS INTEGER) AS "index",
+              (SELECT r.payload FROM trakt_remote_items r WHERE r.run_id=${run.id}
+                AND r.kind=json_extract(j.value,'$.c') AND r.remote_key=json_extract(j.value,'$.k')) AS "payload",
+              (SELECT count(*) FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
+                AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')) AS "byRemote",
+              b.local_value AS "remoteLocal", b.remote_value AS "remoteRemote",
+              l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote"
+            FROM json_each(${keys}) j
+            LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId}
+              AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')
+            LEFT JOIN trakt_sync_baselines l ON l.account_id=${run.accountId}
+              AND l.kind=json_extract(j.value,'$.c') AND l.local_key=json_extract(j.value,'$.t')`)
+        : [];
+      const facts = new Map<number, (typeof found)[number]>();
+      for (const fact of found) {
+        const index = Number(fact.index);
+        if (facts.has(index)) facts.get(index)!.byRemote = 2;
+        else facts.set(index, fact);
+      }
+      for (const [index, entry] of items.entries()) {
+        const payload = facts.get(index)?.payload;
+        entry.item.value = payload ? (JSON.parse(payload) as RemoteTraktItem).value : null;
+      }
+      const settled = (index: number) => {
+        const { row, item } = items[index]!,
+          fact = facts.get(index);
+        if (!fact) return false;
+        const local = localValue(row.title, item.kind),
+          byRemote = Number(fact.byRemote);
+        // Most titles have no rating or watchlist entry on either side and no baseline.
+        if (local === null && item.value === null && byRemote === 0 && !Number(fact.localFound))
+          return true;
+        if (item.tmdbId === null) return false;
+        const baseline = plannedBaseline(
+          byRemote,
+          byRemote === 1 ? { localValue: fact.remoteLocal, remoteValue: fact.remoteRemote } : null,
+          Number(fact.localFound)
+            ? { localValue: fact.localLocal, remoteValue: fact.localRemote }
+            : null
+        );
+        return inSync(local, item.value, baseline);
+      };
+      const window = planWindow(rows, (row) => {
+        const first = rows.indexOf(row) * 2;
+        return (settled(first) ? 0 : 1) + (settled(first + 1) ? 0 : 1);
+      });
+      const open = items.flatMap((entry, index) =>
+        index < window.length * 2 && !settled(index) ? [entry] : []
+      );
+      // Existing proposals have deterministic IDs: one read replaces the point lookups.
       const proposalIds = await Promise.all(
-        items.map(({ row, item }) => hash(run.id + ':' + item.kind + ':' + row.title.id))
+        open.map(({ row, item }) => hash(run.id + ':' + item.kind + ':' + row.title.id))
       );
       const proposed = new Set(
         proposalIds.length
@@ -1086,13 +1278,12 @@ export async function buildSyncStep(
             ).map((existing) => existing.id)
           : []
       );
-      for (const [index, { row, item }] of items.entries()) {
+      for (const [index, { row, item }] of open.entries()) {
         if (proposed.has(proposalIds[index]!)) continue;
-        item.value = values.get(item.kind + ':' + item.remoteKey) ?? null;
         await planItem(db, run, item, row.title);
       }
-      if (rows.length === 5)
-        next = { page: run.page + rows.length, planAfter: rows.at(-1)!.title.id };
+      if (rows.length === PLAN_SCAN / 2 || window.length < rows.length)
+        next = { page: run.page + window.length, planAfter: window.at(-1)!.title.id };
       else {
         await assertSnapshot(db, run, trakt);
         next = { state: 'review', stage: 'ready', page: 1, planAfter: null };

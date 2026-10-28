@@ -97,7 +97,7 @@ class RolloutTests(unittest.TestCase):
         self.assertNotIn("Preserve this note", str(result))
 
     def test_partial_and_already_completed_rollouts_do_not_reapply_migrations(self):
-        for applied in (15, 16, 17, 18):
+        for applied in (15, 16, 17, 18, 19):
             with self.subTest(applied=applied), fixture(applied) as db:
                 result = rollout.rehearse(dump(db), MIGRATIONS)
                 self.assertEqual(result["rehearsed_migrations"], list(MIGRATIONS)[applied:])
@@ -126,17 +126,18 @@ class RolloutTests(unittest.TestCase):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
     def test_existing_damaged_aggregate_is_rejected(self):
-        for applied in (17, 18):
+        for applied in (17, 18, 19):
             with self.subTest(applied=applied), fixture(applied) as db:
                 db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1")
                 with self.assertRaisesRegex(ValueError, "aggregate counts"):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
-    def test_0017_adds_only_indexes_and_keeps_every_row(self):
-        # Hosted D1 already has 0014-0016; the pending release is 0017 alone.
+    def test_pending_index_migrations_keep_every_row(self):
+        # Hosted D1 already has 0014-0016; the pending release is 0017 and 0018, indexes only.
         with fixture(17) as db:
             result = rollout.rehearse(dump(db), MIGRATIONS)
-        self.assertEqual(result["rehearsed_migrations"], ["0017_trakt_import_indexes.sql"])
+        self.assertEqual(result["rehearsed_migrations"],
+                         ["0017_trakt_import_indexes.sql", "0018_trakt_remote_history_tmdb.sql"])
         self.assertEqual({t: v["columns"] for t, v in result["before"].items()},
                          {t: v["columns"] for t, v in result["after"].items()})
         self.assertEqual(result["before"], result["after"])

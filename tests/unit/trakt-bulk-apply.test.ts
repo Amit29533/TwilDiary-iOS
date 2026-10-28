@@ -562,3 +562,67 @@ test('Trakt GETs within one request share a lease renewal; a cancelled run never
   assert.equal(fake.state.posts.filter((post) => post.path === '/sync/history').length, 0);
   assert.ok(renewals.length > 0, 'the POST path renewed and checked the lease');
 });
+
+test('a re-sync skips settled plays and titles in bulk yet still finds every real change', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  const fake = fakeTrakt();
+  seedHistory(fake, 50, 1000);
+  const { id } = await preview(f, fake);
+  const tmdb = tmdbFixture();
+  let status = await syncStatus(f.db, id);
+  while (status.run?.state === 'applying' || status.run?.state === 'review')
+    status = await applySyncChange(
+      f.db,
+      traktEnv,
+      id,
+      undefined,
+      'apply',
+      tmdb.transport,
+      fake.transport
+    );
+  assert.equal(status.run?.state, 'complete');
+  // Three real changes since that sync: one play deleted on Trakt, one new play on Trakt,
+  // and one play removed locally. Everything else is unchanged on both sides.
+  const removed = fake.state.history.shift()!;
+  fake.state.history.push({
+    id: 50000,
+    type: 'movie',
+    watched_at: '2025-03-01T00:00:00.000Z',
+    movie: { title: 'Movie 29999', year: 2023, ids: { tmdb: 29999, trakt: 39999 } }
+  });
+  const revoked = f.sqlite
+    .prepare("SELECT id FROM watch_events WHERE remote_history_id='1500'")
+    .get()! as { id: string };
+  f.sqlite
+    .prepare(
+      "UPDATE watch_events SET revoked_at='2026-10-28T00:00:00Z',version=version+1 WHERE id=?"
+    )
+    .run(revoked.id);
+  const again = (await startSync(f.db, traktEnv, 'round', fake.transport)).id;
+  let steps = 0;
+  status = await syncStatus(f.db, again);
+  while (status.run?.state === 'building' && steps < 2000) {
+    status = await buildSyncStep(f.db, traktEnv, again, fake.transport);
+    steps++;
+  }
+  assert.equal(status.run?.state, 'review');
+  const proposals = f.sqlite
+    .prepare(
+      `SELECT json_extract(payload,'$.item.remoteKey') AS remote, direction, review
+       FROM trakt_sync_changes WHERE run_id=? ORDER BY remote`
+    )
+    .all(again)
+    .map((row) => ({ ...row }));
+  assert.deepEqual(proposals, [
+    { remote: '1', direction: 'pull', review: 1 },
+    { remote: '1500', direction: 'push', review: 1 },
+    { remote: '50000', direction: 'pull', review: 0 }
+  ]);
+  assert.equal(String(removed.id), '1');
+  // 2,000 plays and 1,050 titles: about 20 Trakt pages plus 50-row planning batches. One play
+  // or title per request (the previous five-row batches) would need over a thousand steps.
+  assert.ok(steps < 180, `the re-sync preview took ${steps} build requests`);
+  assert.equal(fake.state.posts.length, 0);
+});
