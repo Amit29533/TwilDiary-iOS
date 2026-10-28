@@ -133,19 +133,18 @@ struct RootView: View {
                     }
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
             } else {
-                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent), canPage: { tab in
+                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent),
+                               pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }) { tab in
                     AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
-                    // The UIKit tab controller must fill the screen and hand the real safe
-                    // areas to its pages. Left inside SwiftUI's safe area, every screen was
-                    // boxed between black status-bar and home-indicator bands: heroes and
-                    // Glass backgrounds stopped short and lists were cut above the indicator.
-                    // Container only: ignoring the keyboard region too let the keyboard
-                    // cover the tab bar and kept the app from going idle after text focus.
-                    .ignoresSafeArea(.container)
+                    // Title heroes and Glass backgrounds reach under the status bar. The bottom
+                    // stays inside the safe area: filling it too (6a2b723) made the title Undo
+                    // and Trakt Pause UI cases fail where they had passed, and ignoring the
+                    // keyboard region let the keyboard cover the tab bar.
+                    .ignoresSafeArea(.container, edges: .top)
                     .background(.black)
                     .overlay(alignment: .top) { RootNoticeBanner() }
             }
