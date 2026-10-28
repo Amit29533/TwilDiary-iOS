@@ -4,6 +4,8 @@ import SwiftUI
 struct CollectionLayoutToggle: View {
     @Binding var grid: Bool
     let collection: String
+    /// A small rounded square for sort rows; glass adds its own padding around the label.
+    var small = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Button {
@@ -11,8 +13,8 @@ struct CollectionLayoutToggle: View {
         } label: {
             Image(systemName: grid ? "list.bullet" : "square.grid.2x2")
                 .font(.system(size: 17, weight: .medium)).contentTransition(.symbolEffect(.replace))
-                .frame(width: 44, height: 44)
-        }.buttonStyle(.glass)
+                .frame(width: small ? 28 : 44, height: small ? 22 : 44)
+        }.buttonStyle(.glass).buttonBorderShape(small ? .roundedRectangle(radius: 12) : .automatic)
             .accessibilityLabel("Show " + collection + (grid ? " as list" : " as grid"))
             .accessibilityValue(grid ? "Grid" : "List").accessibilityIdentifier(collection + "-layout")
             .sensoryFeedback(.selection, trigger: grid)

@@ -368,9 +368,10 @@ struct ProgressCard: View {
                 .background {
                     GeometryReader { proxy in
                         Button { openTitle() } label: {
-                            Artwork(path: cardBackdrop, title: title.name).frame(width: proxy.size.width, height: proxy.size.height)
-                                .overlay(scrim)
-                                .contentShape(Rectangle())
+                            Group {
+                                if hero || compact { Artwork(path: cardBackdrop, title: title.name).overlay(scrim) }
+                                else { Rectangle().fill(theme.field) }
+                            }.frame(width: proxy.size.width, height: proxy.size.height).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("Open " + title.name).accessibilityIdentifier("progress-cover-" + title.id)
                     }
                 }
@@ -397,39 +398,59 @@ struct ProgressCard: View {
             }
         }.padding(12).frame(height: 142)
     }
-    private var topLayout: AnyLayout { grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12)) }
-    private var actionLayout: AnyLayout { grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12)) }
-    private var glanceContent: some View {
+    /// Poster on the left; title, progress and the − / + controls stacked beside it.
+    @ViewBuilder private var glanceContent: some View {
+        if grid { gridContent } else {
+            HStack(alignment: .top, spacing: 14) {
+                Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 80, height: 116).clipShape(RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 4) {
+                    Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
+                        .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
+                    subtitleLine.font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                    Spacer(minLength: 6)
+                    progressBlock
+                    HStack { Spacer(minLength: 0); controls }.padding(.top, 2)
+                }.frame(maxWidth: .infinity, alignment: .topLeading)
+                    .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
+            }.padding(12)
+        }
+    }
+    private var gridContent: some View {
         VStack(spacing: 10) {
-            topLayout {
-                Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: grid ? nil : 94, height: grid ? 154 : 118).frame(maxWidth: grid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 8) {
+                Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(height: 154).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 3) {
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
                     subtitleLine.font(.system(size: 13, weight: .semibold)).lineSpacing(3.5).fixedSize(horizontal: false, vertical: true).frame(minHeight: 20, alignment: .topLeading)
                     Spacer(minLength: 0)
-                }.padding(.top, grid ? 0 : 8).frame(maxWidth: .infinity, alignment: .topLeading)
+                }.frame(maxWidth: .infinity, alignment: .topLeading)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }
-            actionLayout {
+            VStack(alignment: .leading, spacing: 10) {
                 progressBlock
                 controls
             }
         }.padding(10)
     }
-    /// Full artwork with the text on a scrim at the bottom, so it stays readable on bright posters.
+    /// The backdrop fills the card and fades to black on the right, where the text sits,
+    /// so the artwork's subject stays visible on the left.
     private var heroContent: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack { Spacer(minLength: 0); cardMenu.background(.black.opacity(0.35), in: Circle()) }
-            Spacer(minLength: 110)
-            Button { openTitle() } label: {
-                Text(title.name).font(.system(size: 24, weight: .bold)).tracking(-0.6).foregroundStyle(.white)
-                    .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
-            }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-            subtitleLine.font(.system(size: 14, weight: .semibold))
-            progressBlock.padding(.top, 4)
-            HStack { Spacer(minLength: 0); controls }.padding(.top, 2)
-        }.padding(14).frame(minHeight: 320)
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 4) {
+                Spacer(minLength: 34)
+                Button { openTitle() } label: {
+                    Text(title.name).font(.system(size: 21, weight: .bold)).tracking(-0.5).foregroundStyle(.white)
+                        .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
+                }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
+                subtitleLine.font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                progressBlock.padding(.top, 8)
+                Spacer(minLength: 8)
+                HStack { Spacer(minLength: 0); controls }
+            }.containerRelativeFrame(.horizontal) { width, _ in width * 0.52 }
+        }.padding(14).frame(height: 228)
+            .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
     }
     /// The bar with "63% of season 1" and the time left; long-running seasons show no share.
     private var progressBlock: some View {
@@ -498,8 +519,9 @@ struct ProgressCard: View {
     private var cornerRadius: CGFloat { hero ? 20 : compact ? 12 : 14 }
     private var scrim: LinearGradient {
         hero
-            ? LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0), .init(color: .black.opacity(0.3), location: 0.45),
-                                     .init(color: .black.opacity(0.92), location: 1)], startPoint: .top, endPoint: .bottom)
+            ? LinearGradient(stops: [.init(color: .black.opacity(0), location: 0), .init(color: .black.opacity(0.2), location: 0.3),
+                                     .init(color: .black.opacity(0.82), location: 0.55), .init(color: .black.opacity(0.94), location: 1)],
+                             startPoint: .leading, endPoint: .trailing)
             : LinearGradient(colors: [.black.opacity(compact ? 0.05 : 0.35), .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
     }
     private var cardBusy: Bool { store.cardActions[title.id] != nil }

@@ -253,7 +253,7 @@ struct GlanceView: View {
             if showSearch { SearchField(placeholder: "Find a current watch…", text: $search, label: "Find a current watch", autoFocus: true).padding(.horizontal, 14).padding(.bottom, 10) }
             CategoryPicker(selection: $category)
             SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
-                CollectionLayoutToggle(grid: $grid, collection: "glance")
+                CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
             }
             ScrollView {
                 VStack(spacing: 8) {

@@ -1154,7 +1154,7 @@ import UIKit
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let cover = app.buttons["progress-cover-again"]
         XCTAssertTrue(cover.waitForExistence(timeout: 5))
-        cover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.86)).tap()
+        cover.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)).tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap(); app.tabBars.buttons["Home"].tap()
         let pickup = app.buttons["progress-cover-again"]
