@@ -46,7 +46,8 @@ async function preview(f: ReturnType<typeof d1Fixture>, fake: ReturnType<typeof 
   let status = await syncStatus(f.db, id);
   for (let i = 0; i < 100 && status.run?.state === 'building'; i++)
     status = await buildSyncStep(f.db, traktEnv, id, fake.transport);
-  assert.equal(status.run?.state, 'review');
+  // A scan with nothing to review completes on its own.
+  assert.ok(['review', 'complete'].includes(status.run!.state), status.run?.state);
   return { id, status };
 }
 async function safe(
@@ -160,7 +161,8 @@ test('legacy planning cursors resume at the same record in CPU-bounded batches',
   for (let i = 0; i < 10 && batch.run?.stage === 'plan-remote-batch'; i++)
     batch = await buildSyncStep(f.db, traktEnv, 'resume-plan', fake.transport);
   assert.equal(batch.run?.stage, 'plan-history-batch');
-  assert.deepEqual(batch.items.map((item) => item.name).sort(), [
+  const review = await syncStatus(f.db, 'resume-plan');
+  assert.deepEqual(review.items.map((item) => item.name).sort(), [
     'Movie 20',
     'Movie 21',
     'Movie 22',

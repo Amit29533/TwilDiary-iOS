@@ -61,6 +61,9 @@ export function fakeTrakt() {
           }
     );
   };
+  // Like Trakt, a new play never reuses the ID of one removed earlier.
+  let issued = 0;
+  const freshId = () => (issued = Math.max(9000 + state.history.length, issued + 1));
   const transport: typeof fetch = async (input, init) => {
     const url = new URL(String(input)),
       path = url.pathname;
@@ -68,11 +71,10 @@ export function fakeTrakt() {
     if (init?.method === 'POST') {
       const body = JSON.parse(String(init.body));
       state.posts.push({ path, body });
-      state.version++;
       if (path === '/sync/history') {
         for (const movie of body.movies ?? [])
           state.history.push({
-            id: 9000 + state.history.length,
+            id: freshId(),
             type: 'movie',
             watched_at:
               movie.watched_at === 'unknown'
@@ -84,7 +86,7 @@ export function fakeTrakt() {
           for (const season of show.seasons ?? [])
             for (const episode of season.episodes ?? [])
               state.history.push({
-                id: 9000 + state.history.length,
+                id: freshId(),
                 type: 'episode',
                 watched_at:
                   episode.watched_at === 'unknown'
@@ -126,11 +128,27 @@ export function fakeTrakt() {
       });
     }
     if (path === '/sync/last_activities') {
-      const value = new Date(Date.UTC(2026, 0, 1, 0, 0, state.version)).toISOString();
+      // Like Trakt, each list's timestamp moves only when that list changes (by a write or a
+      // test editing it directly); bumping state.version moves all of them.
+      const stamp = (content: unknown) => {
+        let hash = 0;
+        for (const char of JSON.stringify(content)) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+        return new Date(
+          Date.UTC(2026, 0, 1, 0, 0, state.version) + (Math.abs(hash) % 86400) * 1000
+        ).toISOString();
+      };
+      const history = stamp(state.history);
       return json({
-        movies: { watched_at: value, rated_at: value, watchlisted_at: value },
-        episodes: { watched_at: value },
-        shows: { rated_at: value, watchlisted_at: value }
+        movies: {
+          watched_at: history,
+          rated_at: stamp([...state.movieRatings]),
+          watchlisted_at: stamp([...state.movieWatchlist])
+        },
+        episodes: { watched_at: history },
+        shows: {
+          rated_at: stamp([...state.showRatings]),
+          watchlisted_at: stamp([...state.showWatchlist])
+        }
       });
     }
     if (path === '/sync/history') return page(state.history, url);

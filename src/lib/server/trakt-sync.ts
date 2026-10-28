@@ -6,6 +6,7 @@ import {
   traktSyncChanges as changes,
   traktSyncChangeCounts as changeCounts,
   traktSyncBaselines as baselines,
+  traktSyncCheckpoint as checkpoints,
   traktConnections,
   titles,
   providerIdentities,
@@ -35,7 +36,7 @@ import {
 import { createTmdb, TmdbRateLimit, type TmdbClient } from './tmdb.ts';
 import { patchTitle, changeWatch, getTitle } from './library.ts';
 import { watchStatusUpdate } from './watch-status.ts';
-import { SQLiteAsyncDialect } from 'drizzle-orm/sqlite-core';
+import { SQLiteAsyncDialect, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { traktDigest as hash, traktBaselineId } from './trakt-identity.ts';
 type Db = ReturnType<typeof database>;
@@ -53,6 +54,16 @@ function atomic(db: Db, statements: (SQL | { getSQL(): SQL })[]) {
       return db.$client.prepare(query.sql).bind(...query.params);
     })
   );
+}
+/** A parameterised raw statement inside db.batch (Drizzle's db.run cannot be batched on D1). */
+function rawItem(db: Db, statement: SQL) {
+  const query = dialect.sqlToQuery(statement);
+  const prepared = {
+    getQuery: () => query,
+    stmt: db.$client.prepare(query.sql),
+    mapResult: (result: unknown) => result
+  };
+  return { _prepare: () => prepared } as unknown as BatchItem<'sqlite'>;
 }
 interface Payload extends Record<string, unknown> {
   item: RemoteTraktItem;
@@ -72,6 +83,29 @@ const stages = [
   ['movie-watchlist', '/sync/watchlist/movies'],
   ['show-watchlist', '/sync/watchlist/shows']
 ] as const;
+type List = (typeof stages)[number][0];
+const lists = stages.map(([stage]) => stage) as List[];
+/** The last_activities timestamps that change when each list changes on Trakt. */
+const listActivity: Record<List, string[]> = {
+  history: ['movies.watched_at', 'episodes.watched_at'],
+  'movie-ratings': ['movies.rated_at'],
+  'show-ratings': ['shows.rated_at'],
+  'movie-watchlist': ['movies.watchlisted_at'],
+  'show-watchlist': ['shows.watchlisted_at']
+};
+/** Snapshot rows of one list: history by kind, ratings and watchlists by kind and type prefix. */
+const listFilter = (list: List, key: SQL) =>
+  list === 'history'
+    ? sql`1`
+    : list.startsWith('movie')
+      ? sql`${key} LIKE 'movie:%'`
+      : sql`${key} LIKE 'tv:%'`;
+const listKind = (list: List) =>
+  list === 'history' ? 'history' : list.includes('ratings') ? 'rating' : 'watchlist';
+/** An incremental scan still compares everything at least this often. */
+const FULL_EVERY = 30 * 86400000;
+/** Trakt pages downloaded per request (each one request plus one D1 batch). */
+export const DOWNLOAD_PAGES = 3;
 const record = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 function pageCount(data: unknown[], headers: Headers, page: number) {
@@ -118,7 +152,7 @@ async function activity(trakt: Trakt) {
       'trakt_incomplete',
       'Trakt activity timestamps were incomplete. No sync changes were applied.'
     );
-  return { hash: await hash(JSON.stringify(selected)) };
+  return { hash: await hash(JSON.stringify(selected)), lists: selected as Record<string, string> };
 }
 async function baseline(db: Db, run: Run, kind: string, localKey: string) {
   return db
@@ -281,65 +315,135 @@ async function planItem(
       : localValue(title, item.kind);
   let remoteValue = item.value;
   if (knownWatch !== undefined) {
-    const row = watch?.remoteHistoryId
-      ? await db
-          .select()
-          .from(remote)
-          .where(
-            and(
-              eq(remote.runId, run.id),
-              eq(remote.kind, 'history'),
-              eq(remote.remoteKey, watch.remoteHistoryId)
-            )
-          )
-          .get()
+    const found = watch?.remoteHistoryId
+      ? await db.get<{ payload: string | null }>(
+          sql`SELECT ${remotePayload(run, sql`'history'`, sql`${watch.remoteHistoryId}`)} AS "payload"`
+        )
       : null;
-    remoteValue = row ? (row.payload as unknown as RemoteTraktItem).value : null;
+    remoteValue = found?.payload ? (JSON.parse(found.payload) as RemoteTraktItem).value : null;
   }
+  const unconfirmed =
+    item.kind === 'history' && !!watch && local !== null && remoteValue === null
+      ? !!(await db
+          .select({ id: changes.id })
+          .from(changes)
+          .where(unconfirmedFor(watch.id))
+          .limit(1)
+          .get())
+      : false;
+  const watched =
+    item.kind === 'watchlist' && !!remoteValue && !title
+      ? !!(await db.get(
+          sql`SELECT 1 AS "found" WHERE ${watchedOnTrakt(run, item.tmdbId, item.type)}`
+        ))
+      : false;
+  const outcome = decide(run, {
+    item,
+    key,
+    title,
+    watch,
+    baseline: existingBaseline ?? null,
+    local,
+    remoteValue,
+    unconfirmed,
+    watched
+  });
+  if (outcome)
+    await addChange(
+      db,
+      run,
+      item,
+      outcome.payload,
+      outcome.direction,
+      outcome.review,
+      outcome.detail
+    );
+}
+/**
+ * Was this title watched on Trakt in this run's view of history: its own difference rows
+ * (removed records are 'null' and never match), else the snapshot rows it did not replace.
+ * Literal kinds and expressions keep both lookups on their tmdbId indexes.
+ */
+function watchedOnTrakt(run: Run, tmdbId: number | null, type: string) {
+  return sql`(EXISTS(SELECT 1 FROM trakt_remote_items o WHERE o.run_id=${run.id} AND o.kind='history'
+      AND json_extract(o.payload,'$.tmdbId')=${tmdbId} AND json_extract(o.payload,'$.type')=${type})
+    OR EXISTS(SELECT 1 FROM trakt_snapshot s WHERE s.account_id=${run.accountId} AND s.kind='history'
+      AND json_extract(s.payload,'$.tmdbId')=${tmdbId} AND json_extract(s.payload,'$.type')=${type}
+      AND NOT EXISTS(SELECT 1 FROM trakt_remote_items o WHERE o.run_id=${run.id}
+        AND o.kind='history' AND o.remote_key=s.remote_key)))`;
+}
+/**
+ * This run's Trakt payload (JSON text) for one record, or NULL when Trakt has none: the run's
+ * own difference row ('null' marks a removed record), else the last completed snapshot.
+ */
+function remotePayload(run: Run, kind: SQL, key: SQL) {
+  return sql`(SELECT CASE WHEN o.payload IS NOT NULL THEN nullif(o.payload,'null') ELSE s.payload END
+    FROM (SELECT 1) LEFT JOIN trakt_remote_items o ON o.run_id=${run.id} AND o.kind=${kind}
+      AND o.remote_key=${key}
+    LEFT JOIN trakt_snapshot s ON s.account_id=${run.accountId} AND s.kind=${kind}
+      AND s.remote_key=${key})`;
+}
+type Decision = {
+  direction: Change['direction'];
+  review: boolean;
+  detail: string;
+  payload: Payload;
+};
+/**
+ * planItem's decision once every fact is known. Pure, so bulk planning (one read for a whole
+ * window) and the per-item path reach exactly the same proposal for the same facts.
+ */
+function decide(
+  run: Run,
+  facts: {
+    item: RemoteTraktItem;
+    key: string;
+    title: Pick<LocalTitle, 'id' | 'status' | 'deletedAt'> | null;
+    watch: Pick<LocalWatch, 'id' | 'version' | 'revokedAt' | 'remoteHistoryId'> | null;
+    baseline: SyncedBaseline | null;
+    local: string | null;
+    remoteValue: string | null;
+    /** A pending unconfirmed send for this play (history with a local value only). */
+    unconfirmed: boolean;
+    /** The watchlist title was watched on Trakt (watchlist without a local title only). */
+    watched: boolean;
+  }
+): Decision | null {
+  const { item, title, watch, baseline: existingBaseline, local, remoteValue } = facts;
   const payload: Payload = {
     item,
-    localKey: key,
+    localKey: facts.key,
     localTitleId: title?.id ?? null,
     ...(watch ? { localEventId: watch.id, expectedVersion: watch.version } : {}),
     localValue: local,
     remoteValue
   };
-  if (local === null && remoteValue === null && !existingBaseline) return;
-  if (item.kind === 'history' && watch && local !== null && remoteValue === null) {
-    const pending = await db
-      .select({ id: changes.id })
-      .from(changes)
-      .where(unconfirmedFor(watch.id))
-      .limit(1)
-      .get();
-    if (pending) {
-      payload.reconcileOnly = true;
-      await addChange(
-        db,
-        run,
-        item,
-        payload,
-        'conflict',
-        true,
-        'An earlier send was not confirmed. Check Trakt before sending again.'
-      );
-      return;
-    }
+  if (local === null && remoteValue === null && !existingBaseline) return null;
+  if (
+    item.kind === 'history' &&
+    watch &&
+    local !== null &&
+    remoteValue === null &&
+    facts.unconfirmed
+  ) {
+    payload.reconcileOnly = true;
+    return {
+      direction: 'conflict',
+      review: true,
+      detail: 'An earlier send was not confirmed. Check Trakt before sending again.',
+      payload
+    };
   }
   if (!item.tmdbId || title?.deletedAt) {
     payload.blocked = true;
-    await addChange(
-      db,
-      run,
-      item,
-      payload,
-      'conflict',
-      true,
-      title?.deletedAt
+    return {
+      direction: 'conflict',
+      review: true,
+      detail: title?.deletedAt
         ? 'This title is in Trash. Restore it before syncing.'
-        : 'Match this title to TMDB before syncing.'
-    );
-    return;
+        : 'Match this title to TMDB before syncing.',
+      payload
+    };
   }
   if (
     item.kind === 'rating' &&
@@ -348,21 +452,17 @@ async function planItem(
     !Number.isInteger(Number(local))
   ) {
     payload.blocked = true;
-    await addChange(
-      db,
-      run,
-      item,
-      payload,
-      'conflict',
-      true,
-      'Decimal rating kept locally. Choose a whole-number rating to sync it.'
-    );
-    return;
+    return {
+      direction: 'conflict',
+      review: true,
+      detail: 'Decimal rating kept locally. Choose a whole-number rating to sync it.',
+      payload
+    };
   }
   let decision = mergeDecision(
     local,
     remoteValue,
-    existingBaseline,
+    existingBaseline ?? undefined,
     item.kind === 'rating'
       ? (a, b) => ratingForTrakt(a, run.ratingMode) === b
       : item.kind === 'history'
@@ -381,47 +481,52 @@ async function planItem(
     (!existingBaseline || decision?.direction === 'pull')
   )
     decision = { direction: 'conflict', review: true };
-  if (item.kind === 'watchlist' && remoteValue && !title) {
-    const watched = await db
-      .select({ id: remote.id })
-      .from(remote)
-      .where(
-        and(
-          eq(remote.runId, run.id),
-          // Literal kind and expression match trakt_remote_history_tmdb; a bound kind would
-          // fall back to reading every history row of the run for each watchlist item.
-          sql`${remote.kind}='history'`,
-          sql`json_extract(${remote.payload},'$.tmdbId')=${item.tmdbId}`,
-          sql`json_extract(${remote.payload},'$.type')=${item.type}`
-        )
-      )
-      .get();
-    if (watched) decision = { direction: 'conflict', review: true };
-  }
-  if (!decision) return;
-  await addChange(
-    db,
-    run,
-    item,
+  if (item.kind === 'watchlist' && remoteValue && !title && facts.watched)
+    decision = { direction: 'conflict', review: true };
+  if (!decision) return null;
+  return {
+    direction: decision.direction,
+    review: decision.review,
     payload,
-    decision.direction,
-    decision.review,
-    decision.direction === 'link'
-      ? 'Already matched · keep both sides linked'
-      : decision.direction === 'conflict'
-        ? 'Both sides differ. Choose which version to keep.'
-        : decision.review
-          ? decision.direction === 'pull'
-            ? 'Removed on Trakt. Review before changing your diary.'
-            : 'Removed in TwilDiary. Review before changing Trakt.'
-          : `${decision.direction === 'pull' ? 'Import from Trakt' : 'Send to Trakt'}${item.kind === 'rating' ? ` · rating ${decision.direction === 'pull' ? remoteValue : ratingForTrakt(local, run.ratingMode)}` : ''}`
+    detail:
+      decision.direction === 'link'
+        ? 'Already matched · keep both sides linked'
+        : decision.direction === 'conflict'
+          ? 'Both sides differ. Choose which version to keep.'
+          : decision.review
+            ? decision.direction === 'pull'
+              ? 'Removed on Trakt. Review before changing your diary.'
+              : 'Removed in TwilDiary. Review before changing Trakt.'
+            : `${decision.direction === 'pull' ? 'Import from Trakt' : 'Send to Trakt'}${item.kind === 'rating' ? ` · rating ${decision.direction === 'pull' ? remoteValue : ratingForTrakt(local, run.ratingMode)}` : ''}`
+  };
+}
+/** Proposals decided in bulk: one INSERT for a window, each skipped if already proposed. */
+async function addDecisions(db: Db, run: Run, decided: Decision[]) {
+  if (!decided.length) return;
+  const rows = await Promise.all(
+    decided.map(async ({ direction, review, detail, payload }) => ({
+      i: await hash(run.id + ':' + payload.item.kind + ':' + payload.localKey),
+      k: payload.item.kind,
+      d: direction,
+      n: payload.item.name,
+      t: detail,
+      p: JSON.stringify(payload),
+      r: review ? 1 : 0
+    }))
   );
+  await db.run(sql`
+    INSERT INTO trakt_sync_changes(id,run_id,kind,direction,name,detail,payload,review,state,error)
+    SELECT json_extract(j.value,'$.i'),${run.id},json_extract(j.value,'$.k'),json_extract(j.value,'$.d'),
+      json_extract(j.value,'$.n'),json_extract(j.value,'$.t'),json_extract(j.value,'$.p'),
+      json_extract(j.value,'$.r'),'pending',NULL
+    FROM json_each(${JSON.stringify(rows)}) j WHERE true ON CONFLICT DO NOTHING`);
 }
 export async function startSync(
   db: Db,
   env: ServerBindings,
   mode: string,
-  transport: typeof fetch = fetch
+  transport: typeof fetch = fetch,
+  options: { full?: boolean } = {}
 ) {
   if (!['round', 'integer-only'].includes(mode))
     throw new ApiError(400, 'invalid_input', 'Choose how decimal ratings should sync.');
@@ -466,7 +571,9 @@ export async function startSync(
       page: 1,
       createdAt: now(),
       updatedAt: now(),
-      ratingMode: mode
+      ratingMode: mode,
+      // A requested full check; otherwise the activities step chooses.
+      mode: options.full ? 'full' : null
     })
     .onConflictDoNothing();
   const active = await db
@@ -485,7 +592,7 @@ export async function startSync(
 function statusQueries(
   db: Db,
   id?: string,
-  options: { kind?: string; query?: string; after?: string } = {}
+  options: { kind?: string; query?: string; after?: string; items?: boolean } = {}
 ) {
   const kind = options.kind || 'all';
   const query = (options.query ?? '').trim();
@@ -537,7 +644,8 @@ function statusQueries(
         )
       )
       .orderBy(asc(changes.id))
-      .limit(51)
+      // While a scan is still comparing the app shows counts only, so steps skip the page.
+      .limit(options.items === false ? 0 : 51)
   ] as const;
 }
 type StatusQueries = ReturnType<typeof statusQueries>;
@@ -619,23 +727,20 @@ async function finishRun(
   extra: BatchItem<'sqlite'>[] = []
 ) {
   const leaseUntil = cooldown ? Date.now() + cooldown * 1000 : null;
+  // One write: the lease is always released, the saved values only while not cancelled.
+  const set: Record<string, unknown> = { lease: null, leaseUntil };
+  const columns = runs as unknown as Record<string, AnySQLiteColumn>;
+  if (values)
+    for (const [key, value] of Object.entries({ ...values, updatedAt: now() }))
+      set[key] =
+        sql`CASE WHEN ${runs.state}!='cancelled' THEN ${sql.param(value, columns[key])} ELSE ${columns[key]} END`;
   const results = await db.batch([
     ...extra,
-    ...(values
-      ? [
-          db
-            .update(runs)
-            .set({ ...values, updatedAt: now() })
-            .where(
-              and(eq(runs.id, run.id), eq(runs.lease, run.lease!), sql`${runs.state}!='cancelled'`)
-            )
-        ]
-      : []),
     db
       .update(runs)
-      .set({ lease: null, leaseUntil })
+      .set(set)
       .where(and(eq(runs.id, run.id), eq(runs.lease, run.lease!))),
-    ...statusQueries(db, run.id)
+    ...statusQueries(db, run.id, { items: (values?.state ?? run.state) !== 'building' })
   ] as unknown as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]);
   return statusResult(results.slice(-3) as unknown as StatusRows);
 }
@@ -763,17 +868,17 @@ async function assertSnapshot(db: Db, run: Run, trakt: Trakt) {
     );
 }
 /**
- * Planning examines PLAN_SCAN rows per request but runs the per-item merge (planItem, up to
- * about a dozen D1 queries) for at most PLAN_ITEMS of them. Rows already in sync are skipped
- * in bulk. The Free plan's limit that binds is CPU, not queries: at 50 rows and 5 merges a
- * request used 24-46 ms and some were killed for exceeding the CPU limit (28 Oct 2026).
- * Locally the merges dominate: one per request halves a first scan's slowest steps, while
- * bulk-skipping 20 rows stays cheap.
+ * Planning examines PLAN_SCAN rows per request. Nearly every row is decided from one bulk read
+ * per request (decide); only rows whose facts are ambiguous or need a search (two baselines for
+ * one Trakt record, a possible link to an unlinked local play, ratings and watchlist entries
+ * without a local title) run the per-item merge, planItem, and at most PLAN_ITEMS of those per
+ * request. The Free plan's binding limit is CPU: at 50 rows and 5 merges a request used
+ * 24-46 ms and some were killed (28 Oct 2026).
  */
 export const PLAN_SCAN = 20;
 export const PLAN_ITEMS = 1;
-/** Titles carry two items each (rating and watchlist). */
-const PLAN_TITLES = PLAN_SCAN / 2;
+/** Titles per request; each carries two items (rating and watchlist), decided in bulk. */
+const PLAN_TITLES = PLAN_SCAN;
 type SyncedBaseline = { localValue: string | null; remoteValue: string | null };
 /**
  * True only when planItem would certainly propose nothing: the local value, the Trakt value
@@ -806,55 +911,71 @@ function planWindow<T>(rows: T[], needs: (row: T) => number) {
   }
   return rows;
 }
-type RemoteRow = typeof remote.$inferSelect;
 type RemoteState = {
   index: number;
-  identified: number;
   watches: number;
   imported: number;
   byRemote: number;
+  titleId: string | null;
   deletedAt: string | null;
   score: number | null;
   status: string | null;
   titleFound: number;
+  /** A local play of the title without a Trakt link at the same episode and minute. */
+  candidate: number;
   watchedAt: string | null;
   revokedAt: string | null;
   localValue: string | null;
   remoteValue: string | null;
 };
 /**
- * One read for a window of Trakt rows: what the "new incoming play" fast path needs and what
- * proves a row already in sync. Keys travel as one JSON parameter (the Free plan allows 100
- * bound parameters per statement), and every lookup is an index seek.
+ * One read for a window of Trakt rows: everything that decides a new incoming play without
+ * planItem and what proves a row already in sync. Keys travel as one JSON parameter (the Free
+ * plan allows 100 bound parameters per statement), and every lookup is an index seek.
  */
-async function remoteStates(db: Db, run: Run, rows: RemoteRow[]) {
-  if (!rows.length) return new Map<number, RemoteState>();
-  const lookup = JSON.stringify(
-    rows.map((row) => {
-      const item = row.payload as unknown as RemoteTraktItem;
-      return {
-        k: item.remoteKey,
-        c: item.kind,
-        p: item.type === 'movie' ? 'movie' : 'series',
-        x: item.tmdbId === null ? null : String(item.tmdbId),
-        h: item.kind === 'history' ? 1 : 0
-      };
-    })
+async function remoteStates(db: Db, run: Run, items: (RemoteTraktItem | null)[]) {
+  const present = items.flatMap((item, index) =>
+    item
+      ? [
+          {
+            i: index,
+            k: item.remoteKey,
+            c: item.kind,
+            p: item.type === 'movie' ? 'movie' : 'series',
+            x: item.tmdbId === null ? null : String(item.tmdbId),
+            h: item.kind === 'history' ? 1 : 0,
+            s: item.season,
+            e: item.episode,
+            v: item.value
+          }
+        ]
+      : []
   );
+  if (!present.length) return new Map<number, RemoteState>();
+  // candidate mirrors planItem's link search but ignores this run's claims, so it can only
+  // send a row to planItem that did not need it, never skip one that did.
   const found = await db.all<RemoteState>(sql`
-    SELECT CAST(j.key AS INTEGER) AS "index",
-      EXISTS(SELECT 1 FROM provider_identities p WHERE p.provider='tmdb'
-        AND p.kind IN ('movie','series') AND p.external_id=json_extract(j.value,'$.x')) AS "identified",
+    SELECT json_extract(j.value,'$.i') AS "index",
       (SELECT count(*) FROM watch_events w WHERE json_extract(j.value,'$.h')=1
         AND w.remote_history_id=json_extract(j.value,'$.k')) AS "watches",
       EXISTS(SELECT 1 FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
         AND b.kind='history' AND b.local_key='trakt-history-'||json_extract(j.value,'$.k')) AS "imported",
       (SELECT count(*) FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
         AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')) AS "byRemote",
-      t.id IS NOT NULL AS "titleFound", t.deleted_at AS "deletedAt", t.score AS "score", t.status AS "status",
+      t.id AS "titleId", t.id IS NOT NULL AS "titleFound", t.deleted_at AS "deletedAt",
+      t.score AS "score", t.status AS "status",
+      CASE WHEN t.id IS NULL OR json_extract(j.value,'$.h')=0 THEN 0 ELSE EXISTS(
+        SELECT 1 FROM watch_events c LEFT JOIN episodes e ON e.id=c.episode_id
+          LEFT JOIN seasons n ON n.id=e.season_id
+        WHERE c.title_id=t.id AND c.remote_history_id IS NULL
+          AND CASE WHEN json_extract(j.value,'$.p')='movie' THEN c.episode_id IS NULL
+            ELSE n.number=json_extract(j.value,'$.s') AND e.number=json_extract(j.value,'$.e') END
+          AND CASE WHEN json_extract(j.value,'$.v')='unknown' THEN c.watched_at IS NULL
+            ELSE strftime('%Y-%m-%dT%H:%M',c.watched_at)=strftime('%Y-%m-%dT%H:%M',json_extract(j.value,'$.v')) END
+      ) END AS "candidate",
       w.watched_at AS "watchedAt", w.revoked_at AS "revokedAt",
       b.local_value AS "localValue", b.remote_value AS "remoteValue"
-    FROM json_each(${lookup}) j
+    FROM json_each(${JSON.stringify(present)}) j
     LEFT JOIN titles t ON t.id=(SELECT p.title_id FROM provider_identities p WHERE p.provider='tmdb'
       AND p.kind=json_extract(j.value,'$.p') AND p.external_id=json_extract(j.value,'$.x'))
     LEFT JOIN watch_events w ON json_extract(j.value,'$.h')=1
@@ -870,6 +991,20 @@ async function remoteStates(db: Db, run: Run, rows: RemoteRow[]) {
   }
   return states;
 }
+/**
+ * A new incoming play planItem would decide from these facts alone: no play, baseline or
+ * earlier import knows its Trakt record and no unlinked local play could be its match.
+ */
+function importable(item: RemoteTraktItem | null, state: RemoteState | undefined) {
+  return (
+    item?.kind === 'history' &&
+    !!state &&
+    !Number(state.watches) &&
+    !Number(state.byRemote) &&
+    !Number(state.imported) &&
+    !(Number(state.titleFound) && Number(state.candidate))
+  );
+}
 /** Mirrors planItem for a Trakt row: history by its play, ratings and watchlist by the title. */
 function remoteInSync(item: RemoteTraktItem, state: RemoteState | undefined) {
   if (!state || state.byRemote !== 1 || item.tmdbId === null || state.deletedAt) return false;
@@ -882,12 +1017,280 @@ function remoteInSync(item: RemoteTraktItem, state: RemoteState | undefined) {
   const title = { deletedAt: state.deletedAt, score: state.score, status: state.status };
   return inSync(localValue(title as LocalTitle, item.kind), item.value, baseline);
 }
+/**
+ * A send changes Trakt after this run's snapshot was taken, so the next scan must plan the
+ * local side again (for example if the sent record is removed on Trakt before then).
+ */
+async function journalSend(db: Db, change: Change) {
+  const payload = change.payload as Payload;
+  const key = change.kind === 'history' ? payload.localEventId : payload.localTitleId;
+  if (key)
+    await db.run(sql`REPLACE INTO trakt_sync_journal(kind,local_key)
+      VALUES(${change.kind === 'history' ? 'history' : 'title'},${key})`);
+}
 async function updateSnapshot(db: Db, run: Run, trakt: Trakt) {
   await db
     .update(remote)
     .set({ payload: await activity(trakt) })
     .where(and(eq(remote.runId, run.id), eq(remote.kind, 'activities')));
 }
+/**
+ * Store one Trakt page as differences from the snapshot: only new or changed records get a
+ * row, plus one 'seen' row listing the page's keys for the totals check and removals.
+ */
+async function storePage(db: Db, run: Run, list: List, page: number, items: RemoteTraktItem[]) {
+  const kind = listKind(list);
+  const rows = JSON.stringify(
+    items.map((item) => ({
+      i: run.id + '-' + kind + '-' + item.remoteKey,
+      k: item.remoteKey,
+      p: JSON.stringify(item)
+    }))
+  );
+  await atomic(db, [
+    sql`INSERT OR IGNORE INTO trakt_remote_items(id,run_id,kind,remote_key,payload)
+      SELECT json_extract(j.value,'$.i'),${run.id},${kind},json_extract(j.value,'$.k'),json_extract(j.value,'$.p')
+      FROM json_each(${rows}) j WHERE NOT EXISTS(SELECT 1 FROM trakt_snapshot s
+        WHERE s.account_id=${run.accountId} AND s.kind=${kind}
+        AND s.remote_key=json_extract(j.value,'$.k') AND s.payload=json_extract(j.value,'$.p'))`,
+    sql`INSERT OR IGNORE INTO trakt_remote_items(id,run_id,kind,remote_key,payload)
+      VALUES(${run.id + '-seen-' + list + '-' + page},${run.id},'seen',${list + ':' + page},
+        ${JSON.stringify(items.map((item) => item.remoteKey))})`
+  ]);
+}
+/**
+ * After a list's last page: every key Trakt counted must have been seen exactly once, then
+ * each snapshot record Trakt no longer lists gets a 'null' row (removed on Trakt).
+ */
+async function closeList(db: Db, run: Run, list: List, expected: number | null) {
+  const kind = listKind(list);
+  const seen = sql`SELECT k.value FROM trakt_remote_items p, json_each(p.payload) k
+    WHERE p.run_id=${run.id} AND p.kind='seen' AND p.remote_key LIKE ${list + ':%'}`;
+  if (expected !== null) {
+    const totals = await db.get<{ total: number; distinct: number }>(
+      sql`SELECT count(*) AS "total", count(DISTINCT value) AS "distinct" FROM (${seen})`
+    );
+    if (
+      !Number.isSafeInteger(expected) ||
+      expected < 0 ||
+      Number(totals?.total) !== expected ||
+      Number(totals?.distinct) !== expected
+    )
+      throw new ApiError(
+        502,
+        'trakt_incomplete',
+        'The Trakt page totals did not match. No removals will be inferred.'
+      );
+  }
+  await db.run(sql`INSERT OR IGNORE INTO trakt_remote_items(id,run_id,kind,remote_key,payload)
+    SELECT ${run.id}||'-'||s.kind||'-'||s.remote_key,${run.id},s.kind,s.remote_key,'null'
+    FROM trakt_snapshot s WHERE s.account_id=${run.accountId} AND s.kind=${kind}
+      AND ${listFilter(list, sql`s.remote_key`)} AND s.remote_key NOT IN (${seen})`);
+}
+/**
+ * An incremental run plans only what can differ from the last completed scan: Trakt records
+ * that changed, diary records the journal recorded (with the Trakt records they link to;
+ * a live title's rating and watchlist are planned from the title itself), records left
+ * unresolved, and the local side of every record Trakt removed. Everything else is exactly
+ * as the last completed scan left it: in sync, or applied and in sync since.
+ */
+function workSet(run: Run): SQL[] {
+  const id = run.id,
+    account = run.accountId,
+    upto = run.journalUpto ?? 0;
+  const into = sql`INSERT OR IGNORE INTO trakt_sync_work(run_id,kind,key)`;
+  return [
+    sql`${into} SELECT ${id},'remote:'||kind,remote_key FROM trakt_remote_items
+      WHERE run_id=${id} AND kind IN ('history','rating','watchlist') AND payload!='null'`,
+    sql`${into} SELECT ${id},'play',local_key FROM trakt_sync_journal
+      WHERE kind='history' AND seq<=${upto}`,
+    sql`${into} SELECT ${id},'remote:history',w.remote_history_id FROM trakt_sync_journal j
+      JOIN watch_events w ON w.id=j.local_key
+      WHERE j.kind='history' AND j.seq<=${upto} AND w.remote_history_id IS NOT NULL`,
+    sql`${into} SELECT ${id},'remote:history',b.remote_key FROM trakt_sync_journal j
+      JOIN trakt_sync_baselines b ON b.account_id=${account} AND b.kind='history' AND b.local_key=j.local_key
+      WHERE j.kind='history' AND j.seq<=${upto} AND coalesce(b.remote_key,'')!=''`,
+    sql`${into} SELECT ${id},'title',local_key FROM trakt_sync_journal
+      WHERE kind='title' AND seq<=${upto}`,
+    sql`${into} SELECT ${id},'remote:'||k.value,
+        CASE WHEN t.kind='movie' THEN 'movie' ELSE 'tv' END||':'||p.external_id
+      FROM trakt_sync_journal j JOIN titles t ON t.id=j.local_key AND t.deleted_at IS NOT NULL
+      JOIN provider_identities p ON p.title_id=t.id AND p.provider='tmdb'
+      JOIN json_each('["rating","watchlist"]') k
+      WHERE j.kind='title' AND j.seq<=${upto}`,
+    sql`${into} SELECT ${id},'remote:'||substr(local_key,1,instr(local_key,':')-1),
+        substr(local_key,instr(local_key,':')+1)
+      FROM trakt_sync_journal WHERE kind='remote' AND seq<=${upto}`,
+    sql`${into} SELECT ${id},'play',w.id FROM trakt_remote_items o
+      JOIN watch_events w ON w.remote_history_id=o.remote_key
+      WHERE o.run_id=${id} AND o.kind='history' AND o.payload='null'`,
+    sql`${into} SELECT ${id},'play',b.local_key FROM trakt_remote_items o
+      JOIN trakt_sync_baselines b ON b.account_id=${account} AND b.kind='history' AND b.remote_key=o.remote_key
+      WHERE o.run_id=${id} AND o.kind='history' AND o.payload='null'`,
+    sql`${into} SELECT ${id},'title',p.title_id FROM trakt_remote_items o
+      JOIN provider_identities p ON p.provider='tmdb'
+        AND p.kind=CASE WHEN o.remote_key LIKE 'movie:%' THEN 'movie' ELSE 'series' END
+        AND p.external_id=substr(o.remote_key,instr(o.remote_key,':')+1)
+      WHERE o.run_id=${id} AND o.kind IN ('rating','watchlist') AND o.payload='null'`
+  ];
+}
+const SEPARATOR = '\u001f';
+type RemoteSlice = { rows: { cursor: string; item: RemoteTraktItem | null }[]; done: boolean };
+const parseItem = (payload: string | null) =>
+  payload === null || payload === 'null' ? null : (JSON.parse(payload) as RemoteTraktItem);
+/**
+ * The next PLAN_SCAN Trakt records to plan. A full run walks the snapshot (with this run's
+ * replacements; removed records come back as null) and then the run's new records; an
+ * incremental run walks its work set. Cursors are 'S', 'N' or 'W' plus position, separated
+ * by U+001F.
+ */
+async function remoteSlice(db: Db, run: Run): Promise<RemoteSlice> {
+  const [phase, ...position] = (run.planAfter ?? '').split(SEPARATOR);
+  if (run.mode === 'incremental') {
+    const found = await db.all<{ kind: string; key: string; payload: string | null }>(sql`
+      SELECT w.kind AS "kind", w.key AS "key",
+        ${remotePayload(run, sql`substr(w.kind,8)`, sql`w.key`)} AS "payload"
+      FROM trakt_sync_work w WHERE w.run_id=${run.id}
+        AND w.kind IN ('remote:history','remote:rating','remote:watchlist')
+        ${phase === 'W' ? sql`AND (w.kind,w.key)>(${position[0]},${position[1]})` : sql``}
+      ORDER BY w.kind,w.key LIMIT ${PLAN_SCAN}`);
+    return {
+      rows: found.map((row) => ({
+        cursor: ['W', row.kind, row.key].join(SEPARATOR),
+        item: parseItem(row.payload)
+      })),
+      done: found.length < PLAN_SCAN
+    };
+  }
+  if (!run.mode) {
+    // Runs from before 0020 stored every record and use plain row IDs as cursors.
+    const found = await db.all<{ id: string; payload: string }>(sql`
+      SELECT o.id AS "id", o.payload AS "payload" FROM trakt_remote_items o
+      WHERE o.run_id=${run.id} AND o.kind!='activities' AND o.kind IN ('history','rating','watchlist')
+        ${run.planAfter ? sql`AND o.id>${run.planAfter}` : sql``}
+      ORDER BY o.id LIMIT ${PLAN_SCAN} OFFSET ${run.planAfter ? 0 : run.page - 1}`);
+    return {
+      rows: found.map((row) => ({ cursor: row.id, item: parseItem(row.payload) })),
+      done: found.length < PLAN_SCAN
+    };
+  }
+  if (phase !== 'N') {
+    const found = await db.all<{ kind: string; key: string; payload: string | null }>(sql`
+      SELECT s.kind AS "kind", s.remote_key AS "key",
+        CASE WHEN o.payload IS NULL THEN s.payload ELSE o.payload END AS "payload"
+      FROM trakt_snapshot s LEFT JOIN trakt_remote_items o ON o.run_id=${run.id}
+        AND o.kind=s.kind AND o.remote_key=s.remote_key
+      WHERE s.account_id=${run.accountId}
+        ${phase === 'S' ? sql`AND (s.kind,s.remote_key)>(${position[0]},${position[1]})` : sql``}
+      ORDER BY s.kind,s.remote_key LIMIT ${PLAN_SCAN}`);
+    const rows = found.map((row) => ({
+      cursor: ['S', row.kind, row.key].join(SEPARATOR),
+      item: parseItem(row.payload)
+    }));
+    // The snapshot is exhausted: continue with records the snapshot does not have.
+    if (found.length < PLAN_SCAN) rows.push({ cursor: 'N' + SEPARATOR, item: null });
+    return { rows, done: false };
+  }
+  const found = await db.all<{ id: string; payload: string }>(sql`
+    SELECT o.id AS "id", o.payload AS "payload" FROM trakt_remote_items o
+    WHERE o.run_id=${run.id} AND o.kind!='activities' AND o.kind IN ('history','rating','watchlist')
+      AND o.payload!='null' AND o.id>${position[0] ?? ''}
+      AND NOT EXISTS(SELECT 1 FROM trakt_snapshot s WHERE s.account_id=${run.accountId}
+        AND s.kind=o.kind AND s.remote_key=o.remote_key)
+    ORDER BY o.id LIMIT ${PLAN_SCAN}`);
+  return {
+    rows: found.map((row) => ({ cursor: 'N' + SEPARATOR + row.id, item: parseItem(row.payload) })),
+    done: found.length < PLAN_SCAN
+  };
+}
+/** An incremental run's next keys of one work kind ('play' or 'title'), in key order. */
+async function workKeys(db: Db, run: Run, kind: 'play' | 'title', limit: number) {
+  const found = await db.all<{ key: string }>(sql`
+    SELECT key AS "key" FROM trakt_sync_work WHERE run_id=${run.id} AND kind=${kind}
+      ${run.planAfter ? sql`AND key>${run.planAfter}` : sql``}
+    ORDER BY key LIMIT ${limit}`);
+  return found.map((row) => row.key);
+}
+/**
+ * A completed run becomes the next scan's starting point, in the same batch as its final
+ * state: its Trakt differences fold into the snapshot, the journal it covered is cleared and
+ * anything skipped is journaled again so the next scan plans it.
+ */
+function completion(db: Db, run: Run): BatchItem<'sqlite'>[] {
+  const upto = run.journalUpto ?? 0,
+    stamp = now();
+  const skipped = sql`FROM trakt_sync_changes WHERE run_id=${run.id} AND state='skipped'`;
+  return [
+    rawItem(
+      db,
+      sql`INSERT INTO trakt_snapshot(account_id,kind,remote_key,payload)
+      SELECT ${run.accountId},kind,remote_key,payload FROM trakt_remote_items
+      WHERE run_id=${run.id} AND kind IN ('history','rating','watchlist') AND payload!='null'
+      ON CONFLICT(account_id,kind,remote_key) DO UPDATE SET payload=excluded.payload`
+    ),
+    rawItem(
+      db,
+      sql`DELETE FROM trakt_snapshot WHERE account_id=${run.accountId} AND (kind,remote_key) IN
+      (SELECT kind,remote_key FROM trakt_remote_items WHERE run_id=${run.id} AND payload='null')`
+    ),
+    rawItem(db, sql`DELETE FROM trakt_sync_journal WHERE seq<=${upto}`),
+    // Plays this run imported or linked journal their own write. One still exactly as applied
+    // (its value and Trakt record match its baseline, title live) is in sync; a later edit
+    // journals it again. Sends are journaled after the fact (the snapshot predates them).
+    rawItem(
+      db,
+      sql`DELETE FROM trakt_sync_journal WHERE kind='history' AND local_key IN
+      (SELECT json_extract(payload,'$.localKey') FROM trakt_sync_changes
+        WHERE run_id=${run.id} AND kind='history' AND state='applied')
+      AND EXISTS(SELECT 1 FROM watch_events w JOIN titles t ON t.id=w.title_id AND t.deleted_at IS NULL
+        JOIN trakt_sync_baselines b ON b.account_id=${run.accountId} AND b.kind='history' AND b.local_key=w.id
+        WHERE w.id=trakt_sync_journal.local_key
+          AND b.local_value IS (CASE WHEN w.revoked_at IS NULL THEN coalesce(w.watched_at,'unknown') END)
+          AND coalesce(b.remote_key,'')=coalesce(w.remote_history_id,'')
+          AND b.remote_value IS (SELECT json_extract(s.payload,'$.value') FROM trakt_snapshot s
+            WHERE s.account_id=${run.accountId} AND s.kind='history' AND s.remote_key=w.remote_history_id))`
+    ),
+    rawItem(
+      db,
+      sql`REPLACE INTO trakt_sync_journal(kind,local_key)
+      SELECT 'history',json_extract(payload,'$.localEventId') ${skipped}
+        AND kind='history' AND json_extract(payload,'$.localEventId') IS NOT NULL
+      UNION SELECT 'title',json_extract(payload,'$.localTitleId') ${skipped}
+        AND kind!='history' AND json_extract(payload,'$.localTitleId') IS NOT NULL
+      UNION SELECT 'remote',kind||':'||json_extract(payload,'$.item.remoteKey') ${skipped}
+        AND coalesce(json_extract(payload,'$.item.remoteKey'),'')!=''`
+    ),
+    // Runs from before 0020 have no list activity or journal cutoff: compare everything next.
+    ...(run.mode
+      ? []
+      : [rawItem(db, sql`REPLACE INTO trakt_sync_journal(kind,local_key) VALUES('full','*')`)]),
+    db
+      .insert(checkpoints)
+      .values({
+        accountId: run.accountId,
+        runId: run.id,
+        activity: run.activity ?? null,
+        journalUpto: upto,
+        fullAt: run.createdAt,
+        updatedAt: stamp
+      })
+      .onConflictDoUpdate({
+        target: checkpoints.accountId,
+        set: {
+          runId: run.id,
+          activity: run.activity ?? null,
+          journalUpto: upto,
+          updatedAt: stamp,
+          ...(run.mode === 'incremental' ? {} : { fullAt: run.createdAt })
+        }
+      }),
+    db
+      .update(traktConnections)
+      .set({ lastSyncAt: stamp })
+      .where(and(eq(traktConnections.id, 'trakt'), eq(traktConnections.accountId, run.accountId)))
+  ] as unknown as BatchItem<'sqlite'>[];
+}
+const completed = { state: 'complete', stage: 'done', page: 1, planAfter: null } as const;
 export async function buildSyncStep(
   db: Db,
   env: ServerBindings,
@@ -901,6 +1304,28 @@ export async function buildSyncStep(
   try {
     if (run.state !== 'building') return await finishRun(db, run, null);
     if (run.stage === 'activities') {
+      const snapshot = await activity(trakt);
+      const checkpoint = await db
+        .select()
+        .from(checkpoints)
+        .where(eq(checkpoints.accountId, run.accountId))
+        .get();
+      const journal = await db.get<{ upto: number | null; full: number }>(
+        sql`SELECT (SELECT max(seq) FROM trakt_sync_journal) AS "upto",
+          EXISTS(SELECT 1 FROM trakt_sync_journal WHERE kind='full') AS "full"`
+      );
+      const previous = checkpoint?.activity;
+      const incremental =
+        run.mode !== 'full' &&
+        !!previous &&
+        !Number(journal?.full) &&
+        Date.parse(checkpoint!.fullAt) > Date.now() - FULL_EVERY;
+      // Lists whose Trakt activity is unchanged since the last completed scan stay as stored.
+      const selected = incremental
+        ? lists.filter((list) =>
+            listActivity[list].some((key) => previous![key] !== snapshot.lists[key])
+          )
+        : lists;
       await db
         .insert(remote)
         .values({
@@ -908,74 +1333,79 @@ export async function buildSyncStep(
           runId: run.id,
           kind: 'activities',
           remoteKey: 'snapshot',
-          payload: await activity(trakt)
+          payload: snapshot
         })
         .onConflictDoNothing();
-      next = { stage: 'history', page: 1 };
-    } else if (stages.some(([stage]) => stage === run.stage)) {
-      const index = stages.findIndex(([stage]) => stage === run.stage),
-        [stage, path] = stages[index]!;
-      const result = await trakt.request(path + `?page=${run.page}&limit=100`);
-      if (!Array.isArray(result.data) || result.data.length > 100)
-        throw new ApiError(502, 'trakt_incomplete', 'Trakt returned an incomplete sync page.');
-      const pages = pageCount(result.data, result.headers, run.page);
-      const kind =
-        stage === 'history' ? 'history' : stage.includes('ratings') ? 'rating' : 'watchlist';
-      const type = stage === 'history' ? undefined : stage.startsWith('movie') ? 'movie' : 'tv';
-      const items = result.data.map((raw) => {
-        try {
-          return normalizeTraktItem(raw, kind, type);
-        } catch {
-          throw new ApiError(
-            502,
-            'trakt_incomplete',
-            'Trakt returned an invalid sync item. Nothing has been applied.'
-          );
-        }
-      });
-      if (items.length)
-        await db.$client.batch(
-          items.map((item) =>
-            db.$client
-              .prepare(
-                'INSERT OR IGNORE INTO trakt_remote_items(id,run_id,kind,remote_key,payload) VALUES(?,?,?,?,?)'
-              )
-              .bind(
-                run.id + '-' + kind + '-' + item.remoteKey,
-                run.id,
-                kind,
-                item.remoteKey,
-                JSON.stringify(item)
-              )
-          )
-        );
-      if (run.page === pages && result.headers.has('X-Pagination-Item-Count')) {
-        const expected = Number(result.headers.get('X-Pagination-Item-Count'));
-        const stored = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(remote)
-          .where(
-            and(
-              eq(remote.runId, run.id),
-              eq(remote.kind, kind),
-              type ? sql`json_extract(${remote.payload},'$.type')=${type}` : undefined
-            )
-          )
-          .get();
-        if (!Number.isSafeInteger(expected) || expected < 0 || Number(stored?.count) !== expected)
-          throw new ApiError(
-            502,
-            'trakt_incomplete',
-            'The Trakt page totals did not match. No removals will be inferred.'
-          );
-      }
       next = {
-        page: run.page < pages ? run.page + 1 : 1,
-        stage: run.page < pages ? run.stage : (stages[index + 1]?.[0] ?? 'verify'),
-        progress: run.progress + result.data.length
+        stage: selected[0] ?? 'verify',
+        page: 1,
+        mode: incremental ? 'incremental' : 'full',
+        lists: selected,
+        activity: snapshot.lists,
+        journalUpto: Number(journal?.upto ?? 0)
       };
+    } else if (stages.some(([stage]) => stage === run.stage)) {
+      if (!run.mode || !run.lists)
+        throw new ApiError(
+          409,
+          'trakt_changed',
+          'This scan started before an update. Start a fresh scan.'
+        );
+      const list = run.stage as List,
+        path = stages.find(([stage]) => stage === list)![1];
+      const kind = listKind(list),
+        type = list === 'history' ? undefined : list.startsWith('movie') ? 'movie' : 'tv';
+      let page = run.page,
+        downloaded = 0,
+        finished = false;
+      for (let fetched = 0; fetched < DOWNLOAD_PAGES; fetched++, page++) {
+        const result = await trakt.request(path + `?page=${page}&limit=100`);
+        if (!Array.isArray(result.data) || result.data.length > 100)
+          throw new ApiError(502, 'trakt_incomplete', 'Trakt returned an incomplete sync page.');
+        const pages = pageCount(result.data, result.headers, page);
+        const items = result.data.map((raw) => {
+          try {
+            return normalizeTraktItem(raw, kind, type);
+          } catch {
+            throw new ApiError(
+              502,
+              'trakt_incomplete',
+              'Trakt returned an invalid sync item. Nothing has been applied.'
+            );
+          }
+        });
+        await storePage(db, run, list, page, items);
+        downloaded += result.data.length;
+        if (page === pages) {
+          await closeList(
+            db,
+            run,
+            list,
+            result.headers.has('X-Pagination-Item-Count')
+              ? Number(result.headers.get('X-Pagination-Item-Count'))
+              : null
+          );
+          finished = true;
+          break;
+        }
+      }
+      next = finished
+        ? {
+            stage: run.lists[run.lists.indexOf(list) + 1] ?? 'verify',
+            page: 1,
+            progress: run.progress + downloaded
+          }
+        : { page, progress: run.progress + downloaded };
     } else if (run.stage === 'verify') {
       await assertSnapshot(db, run, trakt);
+      if (run.mode === 'incremental') {
+        await atomic(db, workSet(run));
+        const work = await db.get(
+          sql`SELECT 1 AS "found" FROM trakt_sync_work WHERE run_id=${run.id} LIMIT 1`
+        );
+        // Nothing changed on either side since the last completed scan.
+        if (!work) return await finishRun(db, run, completed, 0, completion(db, run));
+      }
       next = { stage: 'plan-remote-batch', page: 1, planAfter: null };
     } else if (['plan-remote', 'plan-history', 'plan-titles'].includes(run.stage)) {
       // Old plans stored a 20-row page number. New plans store the next row offset + 1.
@@ -986,104 +1416,90 @@ export async function buildSyncStep(
         planAfter: null
       };
     } else if (run.stage === 'plan-remote-batch') {
-      const rows = await db
-        .select()
-        .from(remote)
-        .where(
-          and(
-            eq(remote.runId, run.id),
-            sql`${remote.kind}!='activities'`,
-            run.planAfter ? sql`${remote.id}>${run.planAfter}` : undefined
-          )
-        )
-        .orderBy(asc(remote.id))
-        .limit(PLAN_SCAN)
-        .offset(run.planAfter ? 0 : run.page - 1)
-        .all();
-      const states = await remoteStates(db, run, rows);
-      const item = (row: RemoteRow) => row.payload as unknown as RemoteTraktItem;
-      // New incoming watches need no per-item merge reads: no title, play or baseline knows them.
-      const fresh = (row: RemoteRow, index: number) => {
-        const value = item(row),
+      const slice = await remoteSlice(db, run);
+      const items = slice.rows.map((row) => row.item);
+      const states = await remoteStates(db, run, items);
+      // Settled rows need nothing; new incoming plays are decided here from the facts above.
+      const settled = (index: number) =>
+        !items[index] ||
+        importable(items[index], states.get(index)) ||
+        remoteInSync(items[index]!, states.get(index));
+      const window = planWindow(slice.rows, (row) => (settled(slice.rows.indexOf(row)) ? 0 : 1));
+      const decided = window.flatMap((row, index) => {
+        const item = items[index] ?? null,
           state = states.get(index);
-        return (
-          value.kind === 'history' &&
-          value.tmdbId !== null &&
-          !!state &&
-          !Number(state.identified) &&
-          !Number(state.watches) &&
-          !Number(state.byRemote) &&
-          !Number(state.imported)
-        );
-      };
-      const settled = (row: RemoteRow, index: number) =>
-        fresh(row, index) || remoteInSync(item(row), states.get(index));
-      const window = planWindow(rows, (row) => (settled(row, rows.indexOf(row)) ? 0 : 1));
-      const imports = await Promise.all(
-        window
-          .filter((row, index) => fresh(row, index))
-          .map(async (row) => {
-            const value = item(row),
-              localKey = 'trakt-history-' + value.remoteKey;
-            return {
-              i: await hash(run.id + ':history:' + localKey),
-              n: value.name,
-              p: JSON.stringify({
-                item: value,
-                localKey,
-                localTitleId: null,
-                localValue: null,
-                remoteValue: value.value
-              })
-            };
-          })
-      );
-      if (imports.length)
-        await db.run(sql`
-          INSERT INTO trakt_sync_changes(id,run_id,kind,direction,name,detail,payload,review,state,error)
-          SELECT json_extract(j.value,'$.i'),${run.id},'history','pull',json_extract(j.value,'$.n'),
-            'Import from Trakt',json_extract(j.value,'$.p'),0,'pending',NULL
-          FROM json_each(${JSON.stringify(imports)}) j WHERE true ON CONFLICT DO NOTHING`);
-      for (const [index, row] of window.entries())
-        if (!settled(row, index)) await planItem(db, run, item(row));
-      const more = rows.length === PLAN_SCAN || window.length < rows.length;
+        if (!importable(item, state)) return [];
+        const outcome = decide(run, {
+          item: item!,
+          key: 'trakt-history-' + item!.remoteKey,
+          title: Number(state!.titleFound)
+            ? {
+                id: state!.titleId!,
+                status: state!.status as LocalTitle['status'],
+                deletedAt: state!.deletedAt
+              }
+            : null,
+          watch: null,
+          baseline: null,
+          local: null,
+          remoteValue: item!.value,
+          unconfirmed: false,
+          watched: false
+        });
+        return outcome ? [outcome] : [];
+      });
+      await addDecisions(db, run, decided);
+      for (const index of window.keys())
+        if (!settled(index)) await planItem(db, run, items[index]!);
+      const more = !slice.done || window.length < slice.rows.length;
       next = {
         stage: more ? 'plan-remote-batch' : 'plan-history-batch',
         page: more ? run.page + window.length : 1,
-        planAfter: more ? window.at(-1)!.id : null
+        planAfter: more ? window.at(-1)!.cursor : null
       };
     } else if (run.stage === 'plan-history-batch') {
-      const rows = await db
-        .select({
-          event: watchEvents,
-          title: titles,
-          season: seasons.number,
-          episode: episodes.number,
-          tmdbId: providerIdentities.externalId
-        })
-        .from(watchEvents)
-        .innerJoin(titles, eq(titles.id, watchEvents.titleId))
-        .leftJoin(episodes, eq(episodes.id, watchEvents.episodeId))
-        .leftJoin(seasons, eq(seasons.id, episodes.seasonId))
-        .leftJoin(
-          providerIdentities,
-          and(eq(providerIdentities.titleId, titles.id), eq(providerIdentities.provider, 'tmdb'))
-        )
-        .where(
-          and(
-            // Unary + keeps SQLite on the watch_events primary-key seek. Indexing
-            // deleted_at would scan every live title's plays and sort them per step.
-            sql`+${titles.deletedAt} IS NULL`,
-            run.planAfter ? sql`${watchEvents.id}>${run.planAfter}` : undefined,
-            sql`NOT EXISTS(SELECT 1 FROM workspace_ui ui WHERE ui.title_id=${titles.id} AND ui.demo=1)`
-          )
-        )
-        .orderBy(asc(watchEvents.id))
-        .limit(PLAN_SCAN)
-        .offset(run.planAfter ? 0 : run.page - 1)
-        .all();
-      // planItem's inputs for each local play, in one read: this run's Trakt value for the play
-      // and the baseline it would use (by remote key, else by the play itself).
+      const keys = run.mode === 'incremental' ? await workKeys(db, run, 'play', PLAN_SCAN) : null;
+      const rows =
+        keys && !keys.length
+          ? []
+          : await db
+              .select({
+                event: watchEvents,
+                title: titles,
+                season: seasons.number,
+                episode: episodes.number,
+                tmdbId: providerIdentities.externalId
+              })
+              .from(watchEvents)
+              .innerJoin(titles, eq(titles.id, watchEvents.titleId))
+              .leftJoin(episodes, eq(episodes.id, watchEvents.episodeId))
+              .leftJoin(seasons, eq(seasons.id, episodes.seasonId))
+              .leftJoin(
+                providerIdentities,
+                and(
+                  eq(providerIdentities.titleId, titles.id),
+                  eq(providerIdentities.provider, 'tmdb')
+                )
+              )
+              .where(
+                and(
+                  // Unary + keeps SQLite on the watch_events primary-key seek. Indexing
+                  // deleted_at would scan every live title's plays and sort them per step.
+                  sql`+${titles.deletedAt} IS NULL`,
+                  keys
+                    ? inArray(watchEvents.id, keys)
+                    : run.planAfter
+                      ? sql`${watchEvents.id}>${run.planAfter}`
+                      : undefined,
+                  sql`NOT EXISTS(SELECT 1 FROM workspace_ui ui WHERE ui.title_id=${titles.id} AND ui.demo=1)`
+                )
+              )
+              .orderBy(asc(watchEvents.id))
+              .limit(PLAN_SCAN)
+              .offset(keys || run.planAfter ? 0 : run.page - 1)
+              .all();
+      // planItem's inputs for each local play, in one read: this run's Trakt value for the play,
+      // the baseline it would use (by remote key, else by the play) and any unconfirmed send.
       const lookup = JSON.stringify(
         rows.map((row) => ({ k: row.event.remoteHistoryId ?? '', e: row.event.id }))
       );
@@ -1097,14 +1513,17 @@ export async function buildSyncStep(
             localFound: number;
             localLocal: string | null;
             localRemote: string | null;
+            unconfirmed: number;
           }>(sql`
             SELECT CAST(j.key AS INTEGER) AS "index",
-              (SELECT r.payload FROM trakt_remote_items r WHERE r.run_id=${run.id} AND r.kind='history'
-                AND r.remote_key=json_extract(j.value,'$.k')) AS "payload",
+              ${remotePayload(run, sql`'history'`, sql`json_extract(j.value,'$.k')`)} AS "payload",
               (SELECT count(*) FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
                 AND b.kind='history' AND b.remote_key=json_extract(j.value,'$.k')) AS "byRemote",
               b.local_value AS "remoteLocal", b.remote_value AS "remoteRemote",
-              l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote"
+              l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote",
+              EXISTS(SELECT 1 FROM trakt_sync_changes c WHERE c.kind='history'
+                AND json_extract(c.payload,'$.sentUnconfirmed')=1
+                AND json_extract(c.payload,'$.localEventId')=json_extract(j.value,'$.e')) AS "unconfirmed"
             FROM json_each(${lookup}) j
             LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId} AND b.kind='history'
               AND b.remote_key=json_extract(j.value,'$.k')
@@ -1117,76 +1536,93 @@ export async function buildSyncStep(
         if (facts.has(index)) facts.get(index)!.byRemote = 2;
         else facts.set(index, fact);
       }
-      const settled = (index: number) => {
-        const row = rows[index]!,
-          fact = facts.get(index);
-        if (!fact) return false;
-        const local = row.event.revokedAt ? null : (row.event.watchedAt ?? 'unknown');
-        const remoteValue =
-          row.event.remoteHistoryId && fact.payload
-            ? (JSON.parse(fact.payload) as RemoteTraktItem).value
-            : null;
-        const byRemote = Number(fact.byRemote);
-        // planItem returns before reading anything else for a play nobody has a value for.
-        if (local === null && remoteValue === null && byRemote === 0 && !Number(fact.localFound))
-          return true;
-        if (!row.tmdbId) return false;
-        const baseline = plannedBaseline(
-          byRemote,
-          byRemote === 1 ? { localValue: fact.remoteLocal, remoteValue: fact.remoteRemote } : null,
-          Number(fact.localFound)
-            ? { localValue: fact.localLocal, remoteValue: fact.localRemote }
-            : null
-        );
-        return inSync(local, remoteValue, baseline);
-      };
-      const window = planWindow(rows, (row) => (settled(rows.indexOf(row)) ? 0 : 1));
+      // Two baselines for one Trakt record are ambiguous: only planItem reads which one wins.
+      const ambiguous = (index: number) => Number(facts.get(index)?.byRemote ?? 2) > 1;
+      const window = planWindow(rows, (row) => (ambiguous(rows.indexOf(row)) ? 1 : 0));
+      const decided: Decision[] = [];
       for (const [index, row] of window.entries()) {
-        if (settled(index) || (await planned(db, run, 'history', row.event.id))) continue;
-        await planItem(
-          db,
-          run,
-          {
-            kind: 'history',
-            remoteKey: row.event.remoteHistoryId ?? '',
-            type: row.title.kind === 'movie' ? 'movie' : 'tv',
-            tmdbId: row.tmdbId ? Number(row.tmdbId) : null,
-            traktId: null,
-            name: row.title.name,
-            season: row.season,
-            episode: row.episode,
-            value: null
-          },
-          row.title,
-          row.event
-        );
+        const item: RemoteTraktItem = {
+          kind: 'history',
+          remoteKey: row.event.remoteHistoryId ?? '',
+          type: row.title.kind === 'movie' ? 'movie' : 'tv',
+          tmdbId: row.tmdbId ? Number(row.tmdbId) : null,
+          traktId: null,
+          name: row.title.name,
+          season: row.season,
+          episode: row.episode,
+          value: null
+        };
+        if (ambiguous(index)) {
+          await planItem(db, run, item, row.title, row.event);
+          continue;
+        }
+        const fact = facts.get(index)!,
+          byRemote = Number(fact.byRemote);
+        const outcome = decide(run, {
+          item,
+          key: row.event.id,
+          title: row.title,
+          watch: row.event,
+          baseline: plannedBaseline(
+            byRemote,
+            byRemote === 1
+              ? { localValue: fact.remoteLocal, remoteValue: fact.remoteRemote }
+              : null,
+            Number(fact.localFound)
+              ? { localValue: fact.localLocal, remoteValue: fact.localRemote }
+              : null
+          ),
+          local: row.event.revokedAt ? null : (row.event.watchedAt ?? 'unknown'),
+          remoteValue:
+            row.event.remoteHistoryId && fact.payload
+              ? (JSON.parse(fact.payload) as RemoteTraktItem).value
+              : null,
+          unconfirmed: !!Number(fact.unconfirmed),
+          watched: false
+        });
+        if (outcome) decided.push(outcome);
       }
-      const more = rows.length === PLAN_SCAN || window.length < rows.length;
+      await addDecisions(db, run, decided);
+      // An incremental run's cursor is the work key, so plays filtered out are not revisited.
+      const whole = window.length === rows.length;
+      const more = keys ? keys.length === PLAN_SCAN || !whole : rows.length === PLAN_SCAN || !whole;
       next = {
         stage: more ? 'plan-history-batch' : 'plan-titles-batch',
         page: more ? run.page + window.length : 1,
-        planAfter: more ? window.at(-1)!.event.id : null
+        planAfter: more ? (keys && whole ? keys.at(-1)! : window.at(-1)!.event.id) : null
       };
     } else if (run.stage === 'plan-titles-batch') {
-      const rows = await db
-        .select({ title: titles, tmdbId: providerIdentities.externalId })
-        .from(titles)
-        .leftJoin(
-          providerIdentities,
-          and(eq(providerIdentities.titleId, titles.id), eq(providerIdentities.provider, 'tmdb'))
-        )
-        .where(
-          and(
-            sql`+${titles.deletedAt} IS NULL`,
-            run.planAfter ? sql`${titles.id}>${run.planAfter}` : undefined,
-            sql`NOT EXISTS(SELECT 1 FROM workspace_ui ui WHERE ui.title_id=${titles.id} AND ui.demo=1)`
-          )
-        )
-        .orderBy(asc(titles.id))
-        // Two items (rating, watchlist) per title.
-        .limit(PLAN_TITLES)
-        .offset(run.planAfter ? 0 : run.page - 1)
-        .all();
+      const keys =
+        run.mode === 'incremental' ? await workKeys(db, run, 'title', PLAN_TITLES) : null;
+      const rows =
+        keys && !keys.length
+          ? []
+          : await db
+              .select({ title: titles, tmdbId: providerIdentities.externalId })
+              .from(titles)
+              .leftJoin(
+                providerIdentities,
+                and(
+                  eq(providerIdentities.titleId, titles.id),
+                  eq(providerIdentities.provider, 'tmdb')
+                )
+              )
+              .where(
+                and(
+                  sql`+${titles.deletedAt} IS NULL`,
+                  keys
+                    ? inArray(titles.id, keys)
+                    : run.planAfter
+                      ? sql`${titles.id}>${run.planAfter}`
+                      : undefined,
+                  sql`NOT EXISTS(SELECT 1 FROM workspace_ui ui WHERE ui.title_id=${titles.id} AND ui.demo=1)`
+                )
+              )
+              .orderBy(asc(titles.id))
+              // Two items (rating, watchlist) per title.
+              .limit(PLAN_TITLES)
+              .offset(keys || run.planAfter ? 0 : run.page - 1)
+              .all();
       const items = rows.flatMap((row) =>
         (['rating', 'watchlist'] as const).map((kind) => {
           const item: RemoteTraktItem = {
@@ -1204,8 +1640,8 @@ export async function buildSyncStep(
           return { row, item };
         })
       );
-      // One indexed read per item for its Trakt snapshot value and the baselines planItem reads.
-      const keys = JSON.stringify(
+      // One indexed read per item for its Trakt value and the baselines planItem reads.
+      const lookup = JSON.stringify(
         items.map(({ row, item }) => ({ c: item.kind, k: item.remoteKey, t: row.title.id }))
       );
       const found = items.length
@@ -1220,13 +1656,12 @@ export async function buildSyncStep(
             localRemote: string | null;
           }>(sql`
             SELECT CAST(j.key AS INTEGER) AS "index",
-              (SELECT r.payload FROM trakt_remote_items r WHERE r.run_id=${run.id}
-                AND r.kind=json_extract(j.value,'$.c') AND r.remote_key=json_extract(j.value,'$.k')) AS "payload",
+              ${remotePayload(run, sql`json_extract(j.value,'$.c')`, sql`json_extract(j.value,'$.k')`)} AS "payload",
               (SELECT count(*) FROM trakt_sync_baselines b WHERE b.account_id=${run.accountId}
                 AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')) AS "byRemote",
               b.local_value AS "remoteLocal", b.remote_value AS "remoteRemote",
               l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote"
-            FROM json_each(${keys}) j
+            FROM json_each(${lookup}) j
             LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId}
               AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')
             LEFT JOIN trakt_sync_baselines l ON l.account_id=${run.accountId}
@@ -1242,55 +1677,60 @@ export async function buildSyncStep(
         const payload = facts.get(index)?.payload;
         entry.item.value = payload ? (JSON.parse(payload) as RemoteTraktItem).value : null;
       }
-      const settled = (index: number) => {
-        const { row, item } = items[index]!,
-          fact = facts.get(index);
-        if (!fact) return false;
-        const local = localValue(row.title, item.kind),
-          byRemote = Number(fact.byRemote);
-        // Most titles have no rating or watchlist entry on either side and no baseline.
-        if (local === null && item.value === null && byRemote === 0 && !Number(fact.localFound))
-          return true;
-        if (item.tmdbId === null) return false;
-        const baseline = plannedBaseline(
-          byRemote,
-          byRemote === 1 ? { localValue: fact.remoteLocal, remoteValue: fact.remoteRemote } : null,
-          Number(fact.localFound)
-            ? { localValue: fact.localLocal, remoteValue: fact.localRemote }
-            : null
-        );
-        return inSync(local, item.value, baseline);
-      };
+      const ambiguous = (index: number) => Number(facts.get(index)?.byRemote ?? 2) > 1;
       const window = planWindow(rows, (row) => {
         const first = rows.indexOf(row) * 2;
-        return (settled(first) ? 0 : 1) + (settled(first + 1) ? 0 : 1);
+        return (ambiguous(first) ? 1 : 0) + (ambiguous(first + 1) ? 1 : 0);
       });
-      const open = items.flatMap((entry, index) =>
-        index < window.length * 2 && !settled(index) ? [entry] : []
-      );
-      // Existing proposals have deterministic IDs: one read replaces the point lookups.
-      const proposalIds = await Promise.all(
-        open.map(({ row, item }) => hash(run.id + ':' + item.kind + ':' + row.title.id))
-      );
-      const proposed = new Set(
-        proposalIds.length
-          ? (
-              await db
-                .select({ id: changes.id })
-                .from(changes)
-                .where(inArray(changes.id, proposalIds))
-                .all()
-            ).map((existing) => existing.id)
-          : []
-      );
-      for (const [index, { row, item }] of open.entries()) {
-        if (proposed.has(proposalIds[index]!)) continue;
-        await planItem(db, run, item, row.title);
+      const decided: Decision[] = [];
+      for (const [index, { row, item }] of items.entries()) {
+        if (index >= window.length * 2) break;
+        if (ambiguous(index)) {
+          await planItem(db, run, item, row.title);
+          continue;
+        }
+        const fact = facts.get(index)!,
+          byRemote = Number(fact.byRemote);
+        const outcome = decide(run, {
+          item,
+          key: row.title.id,
+          title: row.title,
+          watch: null,
+          baseline: plannedBaseline(
+            byRemote,
+            byRemote === 1
+              ? { localValue: fact.remoteLocal, remoteValue: fact.remoteRemote }
+              : null,
+            Number(fact.localFound)
+              ? { localValue: fact.localLocal, remoteValue: fact.localRemote }
+              : null
+          ),
+          local: localValue(row.title, item.kind),
+          remoteValue: item.value,
+          unconfirmed: false,
+          watched: false
+        });
+        if (outcome) decided.push(outcome);
       }
-      if (rows.length === PLAN_TITLES || window.length < rows.length)
-        next = { page: run.page + window.length, planAfter: window.at(-1)!.title.id };
+      await addDecisions(db, run, decided);
+      const whole = window.length === rows.length;
+      const more = keys
+        ? keys.length === PLAN_TITLES || !whole
+        : rows.length === PLAN_TITLES || !whole;
+      if (more)
+        next = {
+          page: run.page + window.length,
+          planAfter: keys && whole ? keys.at(-1)! : window.at(-1)!.title.id
+        };
       else {
         await assertSnapshot(db, run, trakt);
+        const open = await db.get<{ total: number }>(
+          sql`SELECT coalesce(sum(amount),0) AS "total" FROM trakt_sync_change_counts
+            WHERE run_id=${run.id} AND state IN ('pending','failed','uncertain')`
+        );
+        // Nothing to review: this scan is the new starting point right away.
+        if (!Number(open?.total))
+          return await finishRun(db, run, completed, 0, completion(db, run));
         next = { state: 'review', stage: 'ready', page: 1, planAfter: null };
       }
     }
@@ -2276,14 +2716,7 @@ export async function applySyncChange(
         )
         .get();
       if (remaining?.count) return await finishRun(db, run, null);
-      return await finishRun(db, run, { state: 'complete', stage: 'done' }, 0, [
-        db
-          .update(traktConnections)
-          .set({ lastSyncAt: now() })
-          .where(
-            and(eq(traktConnections.id, 'trakt'), eq(traktConnections.accountId, run.accountId))
-          )
-      ]);
+      return await finishRun(db, run, completed, 0, completion(db, run));
     }
     if (['applied', 'skipped'].includes(chosen.state)) return await finishRun(db, run, null);
     if (bulk && batchablePull(chosen)) {
@@ -2405,6 +2838,7 @@ export async function applySyncChange(
         if (direction === 'push') {
           if (!marked) await markApplied(chosen.id);
           await updateSnapshot(db, run, trakt);
+          await journalSend(db, chosen);
         } else if (!marked) extra.push(markApplied(chosen.id));
       } catch (error) {
         const current = await db.select().from(changes).where(eq(changes.id, chosen.id)).get();

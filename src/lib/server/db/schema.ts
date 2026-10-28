@@ -455,7 +455,15 @@ export const traktSyncRuns = sqliteTable(
     error: text('error'),
     ratingMode: text('rating_mode').notNull(),
     progress: integer('progress').notNull().default(0),
-    planAfter: text('plan_after')
+    planAfter: text('plan_after'),
+    /** null before 0020; 'full' plans everything, 'incremental' only the changed work set. */
+    mode: text('mode', { enum: ['full', 'incremental'] }),
+    /** JSON list names this run downloads; unchanged lists are read from trakt_snapshot. */
+    lists: text('lists', { mode: 'json' }).$type<string[]>(),
+    /** Per-list Trakt activity when this run's snapshot was taken (never refreshed by sends). */
+    activity: text('activity', { mode: 'json' }).$type<Record<string, string>>(),
+    /** Diary journal entries up to this sequence are covered by this run. */
+    journalUpto: integer('journal_upto')
   },
   (t) => [
     index('trakt_runs_recent').on(t.createdAt, t.id),
@@ -558,6 +566,64 @@ export const traktSyncChangeCounts = sqliteTable(
     primaryKey({ columns: [t.runId, t.state, t.review, t.direction] }),
     check('trakt_count_nonnegative', sql`${t.amount} >= 0`)
   ]
+);
+
+/**
+ * Trakt as of the last completed scan, one row per record. A run stores only its differences
+ * from this in trakt_remote_items (changed or new payloads, and 'null' for removed records),
+ * and folds them in when it completes.
+ */
+export const traktSnapshot = sqliteTable(
+  'trakt_snapshot',
+  {
+    accountId: text('account_id').notNull(),
+    kind: text('kind').notNull(),
+    remoteKey: text('remote_key').notNull(),
+    payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.kind, t.remoteKey] }),
+    // Planning's "was this watchlist title already watched on Trakt" check.
+    index('trakt_snapshot_history_tmdb')
+      .on(t.accountId, sql`json_extract(payload,'$.tmdbId')`)
+      .where(sql`kind='history'`)
+  ]
+);
+/**
+ * Diary records changed since the last completed scan, written by triggers on every writer
+ * (API, scheduled import, sync itself). REPLACE moves a re-changed key past a run's cutoff.
+ * kind: 'history' (watch event id), 'title' (title id), 'remote' ('<kind>:<remote key>', an
+ * unresolved Trakt record) or 'full' ('*': a structural change, so the next scan plans all).
+ */
+export const traktSyncJournal = sqliteTable(
+  'trakt_sync_journal',
+  {
+    seq: integer('seq').primaryKey(),
+    kind: text('kind').notNull(),
+    localKey: text('local_key').notNull()
+  },
+  (t) => [uniqueIndex('trakt_journal_key').on(t.kind, t.localKey)]
+);
+/** The last completed scan: its Trakt activity, journal cutoff and last full comparison. */
+export const traktSyncCheckpoint = sqliteTable('trakt_sync_checkpoint', {
+  accountId: text('account_id').primaryKey(),
+  runId: text('run_id').notNull(),
+  activity: text('activity', { mode: 'json' }).$type<Record<string, string>>(),
+  journalUpto: integer('journal_upto').notNull(),
+  fullAt: text('full_at').notNull(),
+  updatedAt: text('updated_at').notNull()
+});
+/** An incremental run's work set: Trakt records ('remote:<kind>'), plays and titles to plan. */
+export const traktSyncWork = sqliteTable(
+  'trakt_sync_work',
+  {
+    runId: text('run_id')
+      .notNull()
+      .references(() => traktSyncRuns.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    key: text('key').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.kind, t.key] })]
 );
 
 /** Durable receipts keep a status/progress change and its Undo safe to retry. */

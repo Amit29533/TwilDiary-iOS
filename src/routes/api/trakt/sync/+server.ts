@@ -12,6 +12,8 @@ export const GET: RequestHandler = (event) =>
   );
 export const POST: RequestHandler = (event) =>
   api(event, async (db) => {
-    const input = object(await readJson(event.request), ['ratingMode']);
-    return startSync(db, bindings(event), String(input.ratingMode));
+    const input = object(await readJson(event.request), ['ratingMode', 'full']);
+    return startSync(db, bindings(event), String(input.ratingMode), fetch, {
+      full: input.full === true
+    });
   });
