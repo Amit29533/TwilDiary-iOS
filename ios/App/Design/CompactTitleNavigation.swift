@@ -2,12 +2,25 @@ import SwiftUI
 import UIKit
 import TwilDiaryCore
 
+/// Only the small toolbar leaves observe scrolling. Keeping this reference in
+/// the detail screen avoids invalidating every episode and cast cell per frame.
+@MainActor @Observable final class CompactHeaderState {
+    private(set) var progress: CGFloat = 0
+    func update(_ value: CGFloat) {
+        let next = value.isFinite ? min(1, max(0, value)) : 0
+        guard next != progress else { return }
+        var transaction = Transaction(); transaction.disablesAnimations = true
+        withTransaction(transaction) { progress = next }
+    }
+}
+
 /// Content-sized identity inside the system navigation bar. The system retains
 /// Back/interactive transitions and owns safe-area geometry during scrolling.
 struct CompactTitleNavigation: View {
     let name: String
     let poster: String?
-    var progress: CGFloat = 1
+    let state: CompactHeaderState
+    private var progress: CGFloat { state.progress }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(spacing: 8) {
@@ -34,12 +47,12 @@ enum CompactHeaderTransition {
 }
 
 struct CompactHeaderBackdrop: View {
-    let progress: CGFloat
+    let state: CompactHeaderState
     let topInset: CGFloat
     var body: some View {
         Rectangle().fill(.ultraThinMaterial)
             .overlay(.black.opacity(0.22))
-            .opacity(Double(progress))
+            .opacity(Double(state.progress))
             .frame(height: topInset).offset(y: -topInset)
             .allowsHitTesting(false).accessibilityHidden(true)
     }
@@ -51,10 +64,11 @@ struct TitleHeaderAction: View {
     let name: String
     let kind: MediaKind
     let id: Int?
-    let progress: CGFloat
+    let state: CompactHeaderState
     @Binding var informationPresented: Bool
     var informationIdentifier = "title-information"
     @State private var sharing = false
+    private var progress: CGFloat { state.progress }
     private var compact: Bool { progress >= 0.5 }
     var body: some View {
         Button {

@@ -222,7 +222,11 @@ export const watchOperations = sqliteTable(
       columns: [t.episodeId, t.titleId],
       foreignColumns: [episodes.id, episodes.titleId]
     }).onDelete('cascade'),
-    check('watch_operation_rewatch_boolean', sql`${t.rewatch} IN (0,1)`)
+    check('watch_operation_rewatch_boolean', sql`${t.rewatch} IN (0,1)`),
+    // Cascading deletes of a title, watch or episode must not scan every receipt.
+    index('watch_operations_title').on(t.titleId),
+    index('watch_operations_result').on(t.resultEventId),
+    index('watch_operations_episode').on(t.episodeId, t.titleId)
   ]
 );
 
@@ -334,6 +338,7 @@ export const unmatchedScans = sqliteTable(
   (t) => [
     uniqueIndex('unmatched_location_identity').on(t.deviceId, t.volumeId, t.root, t.relativePath),
     index('unmatched_pending').on(t.state, t.id),
+    index('unmatched_matched_title').on(t.matchedTitleId),
     check('unmatched_valid_count', sql`${t.fileCount} >= 0`),
     check('unmatched_valid_version', sql`${t.version} > 0`),
     check('unmatched_valid_state', sql`${t.state} IN ('pending','matched')`)
@@ -512,7 +517,15 @@ export const traktSyncChanges = sqliteTable(
         sql`CASE WHEN kind='history' AND direction='pull' THEN 0 WHEN direction='link' THEN 1 WHEN kind='rating' THEN 2 ELSE 3 END`,
         t.id
       )
-      .where(sql`state='pending' AND review=0`)
+      .where(sql`state='pending' AND review=0`),
+    // Unconfirmed sends are rare; this keeps their guard lookups off a full-table scan.
+    index('trakt_changes_unconfirmed')
+      .on(sql`json_extract(payload,'$.localEventId')`)
+      .where(sql`kind='history' AND json_extract(payload,'$.sentUnconfirmed')=1`),
+    // Planning's "already proposed for this local play" check within one run.
+    index('trakt_changes_local_event')
+      .on(t.runId, sql`json_extract(payload,'$.localEventId')`)
+      .where(sql`kind='history'`)
   ]
 );
 

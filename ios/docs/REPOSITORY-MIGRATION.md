@@ -88,6 +88,14 @@ Eight original passed screenshots and attachment digests are also committed unde
 
 ## Verification in the destination checkout
 
+Destination GitHub [Linux verification40236806826](https://github.com/Amit29533/TwilDiary-iOS/actions/runs/40236806826)
+also passed on b17de16:409backend and27Python tests, zero type errors/warnings,
+scheduled Worker typecheck and backend build. Codemagic detects the root YAML on
+both main/develop; develop is selected without starting a native build.
+The separately authorized hosted rollout is recorded in
+[BACKEND-ROLLOUT.md](BACKEND-ROLLOUT.md); the source migration itself did not change
+Cloudflare resources or copy hosted data/credentials into Git.
+
 - Exact initial import tree equality and full per-path source inventory.
 - `npm ci`from the destination lockfile; audit0vulnerabilities.
 -409NodeAPI/database/shared-rule tests pass,27release/migration-tool tests pass.

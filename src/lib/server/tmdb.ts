@@ -9,6 +9,24 @@ import {
   type DiscoveryPage
 } from '../discovery.ts';
 
+/** TMDb throttling: the request was refused, so nothing was applied. `retryAfter` is seconds. */
+export class TmdbRateLimit extends ApiError {
+  retryAfter: number;
+  constructor(retryAfter: number) {
+    super(429, 'metadata_rate_limited', 'TMDb is busy. Wait a moment before searching again.');
+    this.retryAfter = retryAfter;
+  }
+}
+/** Seconds or an HTTP date, clamped to 1 s–1 day; a missing/invalid header waits 10 s. */
+export function tmdbRetryAfter(header: string | null, now = Date.now()) {
+  const value = header?.trim() ?? '';
+  const seconds = /^\d+(?:\.\d+)?$/.test(value)
+    ? Number(value)
+    : value
+      ? (Date.parse(value) - now) / 1000
+      : Number.NaN;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(86_400, Math.ceil(seconds)) : 10;
+}
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw upstream();
@@ -78,11 +96,7 @@ export function createTmdb(
         redirect: 'manual'
       });
       if (response.status === 429)
-        throw new ApiError(
-          429,
-          'metadata_rate_limited',
-          'TMDb is busy. Wait a moment before searching again.'
-        );
+        throw new TmdbRateLimit(tmdbRetryAfter(response.headers.get('Retry-After')));
       if (response.status === 404)
         throw new ApiError(
           404,

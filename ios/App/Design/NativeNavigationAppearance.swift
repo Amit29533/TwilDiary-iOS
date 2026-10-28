@@ -6,17 +6,21 @@ import OSLog
 /// visibility only once UIKit finishes presenting the owning destination.
 @MainActor private struct NativeNavigationAppearance: UIViewControllerRepresentable {
     let onPresented: @MainActor () -> Void
+    let detail: Bool
     func makeUIViewController(context: Context) -> Controller {
         let controller = Controller()
         controller.onPresented = onPresented
+        controller.detail = detail
         return controller
     }
     func updateUIViewController(_ controller: Controller, context: Context) {
         controller.onPresented = onPresented
+        controller.detail = detail
         controller.publishWhenAttached()
     }
     final class Controller: UIViewController {
         var onPresented: (@MainActor () -> Void)?
+        var detail = false
         private var publishing: Task<Void, Never>?
         private var transitionPending = false
         private var observing = [UIGestureRecognizer]()
@@ -31,7 +35,28 @@ import OSLog
         }
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
+            // Settle the bar if appearance ran before this page was attached.
+            applyTabBarVisibility(animated: false)
             publishWhenAttached()
+        }
+        override func viewIsAppearing(_ animated: Bool) {
+            super.viewIsAppearing(animated)
+            // viewWillAppear runs before the page is in the hierarchy, so the old
+            // containment check there often failed and title pages kept the tab bar.
+            // viewIsAppearing has the attached view and still runs alongside the
+            // native push/pop, including a cancelled interactive Back.
+            applyTabBarVisibility(animated: animated)
+        }
+        private func applyTabBarVisibility(animated: Bool) {
+            guard let tabs = tabBarController, let selected = tabs.selectedViewController,
+                  view.isDescendant(of: selected.view), tabs.isTabBarHidden != detail else { return }
+            let previous = tabs.isTabBarHidden
+            tabs.setTabBarHidden(detail, animated: animated)
+            _ = transitionCoordinator?.animate(alongsideTransition: nil) { context in
+                guard context.isCancelled else { return }
+                // Completion runs on the main thread: restore in the same frame.
+                MainActor.assumeIsolated { tabs.setTabBarHidden(previous, animated: false) }
+            }
         }
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
@@ -107,6 +132,6 @@ import OSLog
 
 extension View {
     @MainActor func diaryNavigationAppearance(tab: AppTab, detail: Bool, router: AppRouter) -> some View {
-        background(NativeNavigationAppearance { router.setDetailVisibility(detail, tab: tab) }.frame(width: 0, height: 0))
+        background(NativeNavigationAppearance(onPresented: { router.setDetailVisibility(detail, tab: tab) }, detail: detail).frame(width: 0, height: 0))
     }
 }

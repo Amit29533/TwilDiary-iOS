@@ -37,26 +37,30 @@ export async function watchCard(
   dayValue(day);
   if (selected !== undefined && (!Number.isSafeInteger(selected) || selected < 0 || selected > 999))
     throw new ApiError(400, 'invalid_input', 'Choose a valid season');
-  const onPC = await db.$client
+  // Independent reads run concurrently: one D1 round trip of latency instead of two.
+  const presence = db.$client
     .prepare(
       "SELECT EXISTS(SELECT 1 FROM file_locations WHERE title_id=? AND evidence='present') AS present"
     )
     .bind(title.id)
     .first<number>('present');
   if (title.kind === 'movie') {
-    const previous = await db
-      .select({ id: watchEvents.id, version: watchEvents.version })
-      .from(watchEvents)
-      .where(
-        and(
-          eq(watchEvents.titleId, title.id),
-          isNull(watchEvents.episodeId),
-          isNull(watchEvents.revokedAt)
+    const [onPC, previous] = await Promise.all([
+      presence,
+      db
+        .select({ id: watchEvents.id, version: watchEvents.version })
+        .from(watchEvents)
+        .where(
+          and(
+            eq(watchEvents.titleId, title.id),
+            isNull(watchEvents.episodeId),
+            isNull(watchEvents.revokedAt)
+          )
         )
-      )
-      .orderBy(desc(watchEvents.recordedAt), desc(watchEvents.id))
-      .limit(1)
-      .get();
+        .orderBy(desc(watchEvents.recordedAt), desc(watchEvents.id))
+        .limit(1)
+        .get()
+    ]);
     return {
       title,
       season: null,
@@ -68,9 +72,11 @@ export async function watchCard(
     };
   }
   // Counts and next/previous coordinates stay on the server; no episode spoilers or full history download.
-  const result = await db.$client
-    .prepare(
-      `SELECT s.number,s.name,s.metadata_loaded_at AS metadataLoadedAt,
+  const [onPC, result] = await Promise.all([
+    presence,
+    db.$client
+      .prepare(
+        `SELECT s.number,s.name,s.metadata_loaded_at AS metadataLoadedAt,
     CASE WHEN s.metadata_loaded_at IS NULL THEN coalesce(s.expected_episodes,0) ELSE (SELECT count(*) FROM episodes e WHERE e.season_id=s.id) END AS total,
     (SELECT count(*) FROM episodes e WHERE e.season_id=s.id AND EXISTS(SELECT 1 FROM watch_events w WHERE w.title_id=s.title_id AND w.episode_id=e.id AND w.revoked_at IS NULL)) AS watched,
     (SELECT json_object('id',e.id,'number',e.number) FROM episodes e WHERE e.season_id=s.id AND e.skipped=0 AND e.aired_on IS NOT NULL AND e.aired_on<=?
@@ -78,9 +84,10 @@ export async function watchCard(
     (SELECT json_object('id',w.id,'version',w.version,'episodeId',e.id,'number',e.number) FROM episodes e JOIN watch_events w ON w.episode_id=e.id AND w.revoked_at IS NULL AND w.title_id=s.title_id
       WHERE e.season_id=s.id ORDER BY e.number DESC,w.recorded_at DESC,w.id DESC LIMIT 1) AS previous
     FROM seasons s WHERE s.title_id=? ORDER BY s.number`
-    )
-    .bind(day, title.id)
-    .all<SeasonRow>();
+      )
+      .bind(day, title.id)
+      .all<SeasonRow>()
+  ]);
   const rows = result.results;
   const normal = rows.filter((s) => s.number > 0);
   const choices = normal.length ? normal : rows;

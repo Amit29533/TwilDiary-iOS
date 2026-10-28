@@ -1043,6 +1043,104 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertEqual(store.workspace.titles.first?.notes, title.notes)
         XCTAssertEqual(StubProtocol.state.recorded().filter { $0.httpMethod == "PATCH" }.count, 1)
     }
+    func testTitleScopedWriteRefreshesOnlyThatTitleWithoutAFullDiaryRead() async throws {
+        let workspace = PreviewData.workspace
+        let title = try XCTUnwrap(workspace.titles.first { $0.id == "again" })
+        let ownEvents = workspace.events.filter { $0.titleId == title.id }
+        let removed = try XCTUnwrap(ownEvents.last)
+        // The server's view after the write: only this title's rows differ.
+        let refreshed: [String: Any] = [
+            "ids": [title.id],
+            "titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode([title])),
+            "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.episodes.filter { $0.titleId == title.id })),
+            "events": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ownEvents.filter { $0.id != removed.id })),
+            "locations": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.locations.filter { $0.titleId == title.id }))
+        ]
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: refreshed), as: UTF8.self)
+        StubProtocol.state.reset { request in
+            if request.httpMethod == "PATCH" { return .init("{}") }
+            if request.url?.path == "/api/workspace/titles" { return .init(body) }
+            return .init(503, #"{"error":{"message":"A complete diary read is not expected"}}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let saved = await store.patch(title, values: ["favorite": !title.favorite])
+        XCTAssertTrue(saved); XCTAssertFalse(store.needsMutationRefresh); XCTAssertNil(store.error)
+        let reads = StubProtocol.state.recorded().filter { $0.httpMethod == "GET" }
+        XCTAssertEqual(reads.map { $0.url?.path }, ["/api/workspace/titles"])
+        let query = URLComponents(url: try XCTUnwrap(reads.first?.url), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(query?.first { $0.name == "ids" }?.value, title.id)
+        XCTAssertEqual(Set(store.workspace.events.map(\.id)), Set(workspace.events.map(\.id)).subtracting([removed.id]))
+        XCTAssertEqual(store.workspace.events.count, workspace.events.count - 1)
+        XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
+        XCTAssertEqual(Set(store.workspace.episodes.map(\.id)), Set(workspace.episodes.map(\.id)))
+        XCTAssertEqual(Set(store.workspace.locations.map(\.id)), Set(workspace.locations.map(\.id)))
+    }
+    func testTargetedRefreshThatOmitsARequestedTitleFallsBackToTheCompleteRead() async throws {
+        let workspace = PreviewData.workspace
+        let title = try XCTUnwrap(workspace.titles.first { $0.id == "again" })
+        let pages = try workspacePages(workspace)
+        StubProtocol.state.reset { request in
+            if request.httpMethod == "PATCH" { return .init("{}") }
+            if request.url?.path == "/api/workspace/titles" {
+                return .init(#"{"ids":["someone-else"],"titles":[],"episodes":[],"events":[],"locations":[]}"#)
+            }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let saved = await store.patch(title, values: ["favorite": !title.favorite])
+        XCTAssertTrue(saved); XCTAssertFalse(store.needsMutationRefresh)
+        let full = StubProtocol.state.recorded().filter { $0.url?.path == "/api/workspace" }
+        XCTAssertEqual(full.count, 4, "An inconsistent targeted read must be replaced by one complete snapshot")
+        XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
+    }
+    func testCompletingAShowReloadsOnlyMissingOrPossiblyAiringSeasons() async throws {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(PreviewData.workspace)) as? [String: Any])
+        var titles = try XCTUnwrap(object["titles"] as? [[String: Any]])
+        let index = try XCTUnwrap(titles.firstIndex { $0["id"] as? String == "again" })
+        let recent = Date.now.addingTimeInterval(-3600).ISO8601Format(), old = Date.now.addingTimeInterval(-30 * 86_400).ISO8601Format()
+        titles[index]["tmdbId"] = 900002
+        titles[index]["seasons"] = [
+            ["number": 1, "name": "Season 1", "expectedEpisodes": 2, "metadataLoadedAt": recent, "metadataVersion": 2],
+            ["number": 2, "name": "Season 2", "expectedEpisodes": 2, "metadataLoadedAt": old, "metadataVersion": 2],
+            ["number": 3, "name": "Season 3", "expectedEpisodes": 2, "metadataLoadedAt": NSNull(), "metadataVersion": 2]
+        ] as [[String: Any]]
+        let original = try XCTUnwrap(object["episodes"] as? [[String: Any]])
+        let template = try XCTUnwrap(original.first { $0["titleId"] as? String == "again" })
+        var episodes = original.filter { $0["titleId"] as? String != "again" }
+        for season in 1...2 {
+            for number in 1...2 {
+                var episode = template
+                episode["id"] = "complete-\(season)-\(number)"; episode["season"] = season; episode["number"] = number
+                episode["airedOn"] = "2020-0\(season)-0\(number)"
+                episodes.append(episode)
+            }
+        }
+        object["titles"] = titles; object["episodes"] = episodes
+        object["events"] = try XCTUnwrap(object["events"] as? [[String: Any]]).filter { $0["titleId"] as? String != "again" }
+        let workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+        let pages = try workspacePages(workspace)
+        StubProtocol.state.reset { request in
+            if request.url?.path.hasSuffix("/metadata") == true { return .init("{}") }
+            if request.url?.path == "/api/progress/status" {
+                let body = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
+                let receipt: [String: Any] = ["operationId": body?["operationId"] as? String ?? "missing"]
+                return .init(String(decoding: (try? JSONSerialization.data(withJSONObject: receipt)) ?? Data(), as: UTF8.self))
+            }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let title = try XCTUnwrap(store.title("again"))
+        let saved = await store.setStatus(title, status: "completed")
+        XCTAssertTrue(saved, store.error ?? "")
+        let reloads = StubProtocol.state.recorded().filter { $0.url?.path.hasSuffix("/metadata") == true }.compactMap { $0.url?.path }
+        // Season 1 is fresh and season 2 ended long ago with every episode loaded;
+        // only the never-loaded season 3 is fetched before the status request.
+        XCTAssertEqual(reloads, ["/api/titles/again/seasons/3/metadata"])
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/api/progress/status" }.count, 1)
+    }
     func testSignOutDuringConfirmedWriteRefreshCannotRestoreTheSaveNoticeOrWorkspace() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
         let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
@@ -1410,6 +1508,33 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertFalse(recorded.isEmpty)
         XCTAssertFalse(StubProtocol.state.recorded().contains { $0.url?.path == "/api/titles/bulk" })
         XCTAssertEqual(store.workspace.episodes.filter { $0.titleId == "again" && $0.season == 2 }.count, 3)
+    }
+    /// Owner report: choosing Completed in a show's status menu completed every season.
+    /// The menu belongs to the selected season and must never call the whole-title endpoint.
+    func testTitleStatusMenuCompletedOnlyWritesTheSelectedSeason() async throws {
+        let workspace = PreviewData.upcomingWorkspace
+        let pages = try workspacePages(workspace)
+        StubProtocol.state.reset { request in
+            if request.url?.path.hasSuffix("/watches") == true {
+                let body = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
+                let id = body["episodeId"] as? String ?? "missing"
+                let event: [String: Any] = ["id": "status-" + id, "operationId": body["operationId"] ?? "missing", "titleId": "again", "episodeId": id, "watchedAt": "2026-10-23T12:00:00Z", "recordedAt": "2026-10-23T12:00:00Z", "origin": "manual", "version": 1]
+                return .init(String(decoding: try! JSONSerialization.data(withJSONObject: ["event": event, "added": true]), as: UTF8.self))
+            }
+            return .init(pages[request.url?.query ?? ""] ?? "{}")
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage)); store.workspace = workspace
+        let title = try XCTUnwrap(store.title("again"))
+        let result = await store.setSeasonStatus(title, season: 1, status: "completed", watchedAt: .now)
+        XCTAssertTrue(result)
+        let paths = StubProtocol.state.recorded().compactMap { $0.url?.path }
+        XCTAssertFalse(paths.contains("/api/progress/status"), "The whole-title progress endpoint completes every season")
+        XCTAssertFalse(paths.contains("/api/titles/bulk"))
+        let recorded = try StubProtocol.state.recorded().filter { $0.url?.path.hasSuffix("/watches") == true }.map(bodyObject)
+        let seasonOne = Set(workspace.episodes.filter { $0.titleId == "again" && $0.season == 1 && $0.number > 8 }.map(\.id))
+        XCTAssertFalse(recorded.isEmpty)
+        XCTAssertEqual(Set(recorded.compactMap { $0["episodeId"] as? String }), seasonOne)
     }
     func testAnOffscreenCardCanCacheItsValidReadWithoutPublishingIntoTheCancelledView() async throws {
         let gate = StubProtocol.ResponseGate()

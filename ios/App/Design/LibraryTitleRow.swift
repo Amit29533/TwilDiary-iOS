@@ -56,17 +56,28 @@ struct LibraryTitleRow: View {
 /// Source TitleCard uses its raw poster behind list rows, independently of the foreground Poster crop.
 private struct LibraryCoverArtwork: View {
     let path: String
+    @Environment(\.displayScale) private var displayScale
+    @State private var loadedArtwork: PublicArtworkBitmap?
+    @State private var loadedRequest: PublicArtworkRequest?
     var body: some View {
         GeometryReader { geometry in
+            // Same shared, downsampled cache as Artwork: no AsyncImage re-download
+            // or full-size main-thread decode when a row scrolls back into view.
+            let request = PublicArtworkRequest(path: path, pixels: Double(max(geometry.size.width, geometry.size.height) * displayScale))
             Group {
                 if path.hasPrefix("/demo/"), let image = DemoArtwork.image("asset:" + URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) {
                     crop(Image(uiImage: image), size: geometry.size)
-                } else if let url = URL(string: path), url.scheme == "https" {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image { crop(image, size: geometry.size) }
-                    }
+                } else if let request, let bitmap = (loadedRequest == request ? loadedArtwork : nil) ?? PublicArtworkCache.shared.cached(request) {
+                    crop(Image(decorative: bitmap.image, scale: displayScale), size: geometry.size)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                .task(id: request) {
+                    guard let request else { loadedArtwork = nil; loadedRequest = nil; return }
+                    if let saved = PublicArtworkCache.shared.cached(request) { loadedRequest = request; loadedArtwork = saved; return }
+                    let bitmap = await PublicArtworkCache.shared.image(request)
+                    guard !Task.isCancelled else { return }
+                    loadedRequest = request; loadedArtwork = bitmap
+                }
         }.allowsHitTesting(false).accessibilityHidden(true)
     }
     private func crop(_ image: Image, size: CGSize) -> some View {

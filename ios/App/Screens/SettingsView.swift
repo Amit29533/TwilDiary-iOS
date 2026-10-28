@@ -26,7 +26,7 @@ struct SettingsView: View {
                         Divider().padding(.leading, 58)
                         NavigationLink(value: AppDestination.files) { settingsRow("hard-drive", "Files & drives", subtitle: "Folders, seasons and local copies", disclosure: true) }.accessibilityIdentifier("settings-files")
                         Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.trash) { settingsRow("trash-2", "Trash", subtitle: store.workspace.titles.contains(where: { $0.deletedAt != nil }) ? "\(store.workspace.titles.filter { $0.deletedAt != nil }.count) removed \(store.workspace.titles.filter { $0.deletedAt != nil }.count == 1 ? "title" : "titles")" : "No removed titles", disclosure: true) }
+                        NavigationLink(value: AppDestination.trash) { settingsRow("trash-2", "Trash", subtitle: trashSubtitle, disclosure: true) }
                     }
                     settingsSection("Tracking") {
                         HStack(spacing: 8) { settingsIcon("eye-off"); Toggle(isOn: $hideSpoilers) { VStack(alignment: .leading, spacing: 3) { Text("Hide episode spoilers").font(.subheadline.weight(.semibold)); Text("Hide unwatched titles, summaries and images").font(.caption).foregroundStyle(.secondary) } }.tint(theme.accent) }.padding(14)
@@ -74,6 +74,11 @@ struct SettingsView: View {
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
     }
+    /// One pass over the library instead of three per render.
+    private var trashSubtitle: String {
+        let removed = store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) }
+        return removed == 0 ? "No removed titles" : "\(removed) removed \(removed == 1 ? "title" : "titles")"
+    }
     private var storageDetail: String {
         if let reset = store.quotaBlockedUntil { return "Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again." }
         let detail = store.showingCachedSnapshot ? "Using the saved copy on this device. Tap to refresh." : "Your diary is saved to your workspace. Tap to refresh."
@@ -95,13 +100,22 @@ struct SettingsView: View {
         }.diaryPanel()
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 9) { Text(name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4); VStack(spacing: 0, content: content).background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08))) }
+        VStack(alignment: .leading, spacing: 9) { Text(name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4); VStack(spacing: 0, content: content).diarySectionBackground(radius: 16, stroke: .white.opacity(0.08)) }
     }
     private func settingsIcon(_ icon: String) -> some View { DiaryIcon(name: icon, size: 18).foregroundStyle(theme.accent).frame(width: 34, height: 34).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10)) }
     private func settingsRow(_ icon: String, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
         HStack(spacing: 10) { settingsIcon(icon); VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white); if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) } }; Spacer(minLength: 4); if let value { Text(value).font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.trailing) }; if disclosure { DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary) } }.padding(14).frame(minHeight: 58).contentShape(Rectangle())
     }
-    private func exportDiary() { do { exportDocument = DiaryJSONDocument(data: try DiaryExport(workspace: store.workspace).encoded()); showExport = true } catch { store.error = error.localizedDescription } }
+    private func exportDiary() {
+        // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.
+        let snapshot = store.workspace
+        Task {
+            do {
+                let data = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
+                exportDocument = DiaryJSONDocument(data: data); showExport = true
+            } catch { store.error = error.localizedDescription }
+        }
+    }
 }
 
 struct DiaryJSONDocument: FileDocument {
@@ -121,7 +135,7 @@ struct TMDBConnectionView: View {
         ScrollView { VStack(alignment: .leading, spacing: 18) {
             HStack { DiaryIcon(name: "key-round", size: 22).foregroundStyle(.tint); Text("TMDB").font(.title2.bold()); Spacer(); Text(verified ? "Connected" : checking ? "Checking…" : "Not connected").font(.caption).foregroundStyle(verified ? Color.green : Color.secondary) }
             Text("Posters, title details, seasons and episodes.").font(.subheadline).foregroundStyle(.secondary)
-            Button(checking ? "Checking…" : "Check connection") { Task { await check() } }.buttonStyle(.bordered).disabled(checking)
+            Button(checking ? "Checking…" : "Check connection") { Task { await check() } }.buttonStyle(.glass).disabled(checking)
             if let error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
             Text("API credentials stay on your server. Use the PC app to configure or replace them.").font(.caption).foregroundStyle(.secondary)
         }.diaryPanel().padding(16) }.diaryScreenBackground().navigationTitle("TMDB").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar).task { await check() }

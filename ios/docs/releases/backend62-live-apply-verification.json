@@ -1,0 +1,39 @@
+{
+  "status": "pass",
+  "verifiedDate": "2026-10-26",
+  "backendSourceCommit": "50134fc9addcc243434ee5721eb74ea1eec13f61",
+  "workerVersion": "d21c2b88-a874-46fa-8dc4-61798d8544d8",
+  "authorization": "Owner explicitly requested a few live changes after rollout",
+  "scope": "Three individual ready incoming proposals through production review controls and the API used by iOS",
+  "changesApplied": 3,
+  "episodeHistoryImports": 2,
+  "ratingImports": 1,
+  "freshRecoveryBookmarkSavedPrivately": true,
+  "verification": {
+    "allSelectedProposalsApplied": true,
+    "storedActiveWatchCount": 2,
+    "originalTraktWatchDatesPreserved": true,
+    "exactRemoteHistoryIdentitiesPreserved": true,
+    "selectedWatchIdentitiesUnique": true,
+    "selectedWatchDuplicates": 0,
+    "expectedRatingStored": true,
+    "reviewProgressDelta": 3,
+    "pendingDelta": -3,
+    "appliedDelta": 3,
+    "allOtherReviewBucketsUnchanged": true,
+    "observedErrorOrCooldown": false
+  },
+  "boundaries": {
+    "bulkLoopStarted": false,
+    "outgoingTraktWritesRequested": false,
+    "conflictChoicesMade": false,
+    "uncertainWritesReplayed": false,
+    "nativePhoneUiTest": false,
+    "fullBulkThroughputTest": false,
+    "sustainedDailyFreeBudgetCertified": false,
+    "activeScheduledCpuCertified": false,
+    "newNativeBuildStarted": false
+  },
+  "analyticsScope": "Cloudflare query analytics cover other traffic and rollout overhead; they do not establish the exact end-to-end cost of these three applies",
+  "privateEvidence": "Ignored .local/cloudflare-live-apply-20261026; no personal title names, ratings, watch dates, IDs, row payloads, tokens or bookmarks are published"
+}

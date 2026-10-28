@@ -1,4 +1,53 @@
-# Native client backend rollout — prepared, not deployed
+# Native client backend rollout — deployed 26 October 2026
+
+## Completed rollout and measured evidence
+
+Deployed at 04:11:56 UTC (09:41 IST) on 26 October 2026 from the canonical
+TwilDiary-iOS checkout. Frozen backend source remains 50134fc; new main Worker
+version is `d21c2b88-a874-46fa-8dc4-61798d8544d8` at 100%. The prior version
+`1dc0eced-83ac-4312-8d40-73aa6124cba5` is retained for code rollback.
+The owner requested starting the planned setup; no additional approval is pending.
+
+- Fresh private full SQL export (9,882,173 bytes) and Time Travel bookmark captured.
+  Restoring/rehearsing the real export passes all schema, ledger, integrity,
+  foreign-key, original-row and aggregate checks before hosted mutation.
+- Exactly 0014–0016 applied. Hosted postflight verifies 17 migrations, all 9 expected
+  objects, nullable TEXT `plan_after`, unchanged active review/incoming settings
+  and zero counter mismatches. A fresh post-export independently verifies all
+  original columns/rows across 26 application tables unchanged.
+- Authenticated native session/review/incoming GETs succeed; unauthenticated
+  session request is denied 403. Review remains 735 applied / 1474 pending /
+  1466 safe / 1 link. Incoming is enabled and still paused by the existing review. No
+  proposal was applied/skipped, no scheduler deployment and no new iOS build.
+- Hosted equivalent-query samples read 8 rows for aggregate buckets, 1 for the next
+  ready proposal and 40 for a 40-item seek page, with 0 writes. EXPLAIN confirms the
+  expected indexes and no temporary sort. These samples exclude the rest of a
+  complete API/apply path; no full-import throughput/CPU claim follows.
+- Dashboard 00:00–04:16 UTC shows approximately 98k reads / 13k writes on the account's
+  only database, including migration overhead. Diagnostic SQL used 12207 reads /
+  0 writes; exports/DDL/provider API reads are additional rollout costs. Remaining
+  sustained account-day and active scheduler CPU acceptance is still open.
+
+Public receipt: [backend62-production-rollout.json](releases/backend62-production-rollout.json).
+Private backups/bookmarks/operator logs and pinned source/build reside in ignored
+`.local/cloudflare-rollout-20261026`. No backup or credential enters Git/CI.
+The earlier preparation and repeatable operator procedure are retained below.
+
+### Subsequent owner-authorized live apply sample
+
+Applied exactly three ready incoming proposals: two episode histories and one
+rating, using individual review controls against the protected deployed API.
+All three became applied. Read-back confirms unique active watches with the
+exact original Trakt timestamps/history identities and the expected saved
+rating. Progress rose by three; only pending/applied incoming-safe buckets
+changed, by minus/plus three. No errors or cooldown messages appeared. A fresh
+recovery bookmark and all raw observations remain private.
+
+No outgoing Trakt writes, conflict choices, uncertain retries or bulk loop were
+started. These results do not certify native phone UI, restart recovery or the
+remaining large import. Query analytics are aggregated across other traffic;
+do not divide the rolling total by three and label it an import cost.
+See [the redacted live receipt](releases/backend62-live-apply-verification.json).
 
 Prepared 26 October 2026 IST for the D1 read amplification fixes. This is an
 operator procedure, not an automatic deployment or an iOS build trigger.
@@ -104,6 +153,14 @@ Capture `ios/deploy/preflight-d1.sql` once with the production D1 CLI, redirecti
 results to private storage. It is read-only and records the active review's
 identity/stage/checkpoint/buckets and incoming configuration. Its one-time count
 of active proposals is deliberate; do not put it on the minute/polling path.
+
+Wrangler 4.151.3 `--file` uses the SQL ingestion path: its JSON contains aggregate
+execution statistics, not the SELECT result rows needed for comparison. For
+pre/postflight inspection use `--command=<SQL>` with comment lines removed, passing
+the whole value as one subprocess argument. Capture stdout privately and validate
+each result's `success`, `results` and `meta`; do not accept exit code alone. The
+executed rollout used this result-returning path and compared actual rows before
+deploying. A leading `--` comment must not be parsed as another CLI option.
 
 ## Apply database changes, then main API
 

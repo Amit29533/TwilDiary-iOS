@@ -30,7 +30,7 @@ struct CollectionReviewView: View {
                             if await store.manage(review.titles, change: review.change) { onSaved(); dismiss() }
                             else { failure = store.error ?? "Wait for the current change to finish." }
                         }
-                    } label: { Text(store.busy ? "Saving…" : review.change == .purge ? "Delete permanently" : "Confirm").font(.subheadline.bold()).frame(maxWidth: .infinity).frame(minHeight: 50) }.buttonStyle(.borderedProminent).disabled(store.writesBlocked).accessibilityIdentifier("confirm-collection")
+                    } label: { Text(store.busy ? "Saving…" : review.change == .purge ? "Delete permanently" : "Confirm").font(.subheadline.bold()).frame(maxWidth: .infinity).frame(minHeight: 50) }.buttonStyle(.glassProminent).disabled(store.writesBlocked).accessibilityIdentifier("confirm-collection")
                 }.padding(20)
             }.navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(store.busy) } }
         }.interactiveDismissDisabled(store.busy).presentationDetents([.medium, .large])
@@ -49,7 +49,7 @@ struct CollectionSelectionPanel: View {
             HStack { Text("\(selected.count) selected").font(.subheadline.bold()); Spacer(); Button(titles.count > CollectionRequest.limit ? "Select first 60" : "Select shown") { selected = Set(titles.prefix(CollectionRequest.limit).map(\.id)) }; Button("Clear") { selected = [] }.disabled(selected.isEmpty) }.font(.caption)
             Text("Selection applies to the titles shown here. Up to 60 at a time.").font(.caption).foregroundStyle(.secondary)
             if archived {
-                HStack { Button("Restore") { onReview(.restore) }; Button("Delete", role: .destructive) { onReview(.purge) } }.buttonStyle(.bordered).disabled(selected.isEmpty)
+                HStack { Button("Restore") { onReview(.restore) }; Button("Delete", role: .destructive) { onReview(.purge) } }.buttonStyle(.glass).disabled(selected.isEmpty)
             } else {
                 HStack {
                     Picker("Selection action", selection: $action) {
@@ -62,7 +62,7 @@ struct CollectionSelectionPanel: View {
                 ViewThatFits(in: .horizontal) {
                     HStack { actions }
                     VStack(alignment: .leading) { actions }
-                }.buttonStyle(.bordered).font(.caption).disabled(selected.isEmpty)
+                }.buttonStyle(.glass).font(.caption).disabled(selected.isEmpty)
             }
         }.diaryPanel().disabled(store.busy)
     }

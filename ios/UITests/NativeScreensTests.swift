@@ -42,44 +42,26 @@ import UIKit
         XCTAssertTrue(app.staticTexts["settings-cache-warning"].exists)
         capture("Cache information contained in Settings")
     }
-    func testContinueCarouselControlsPauseAdvanceReturnAndRestoreAcrossTabs() {
-        let app = launch(automaticCarousel: true)
+    func testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu() {
+        let app = launch()
         app.tabBars.buttons["Home"].tap()
         let carousel = app.descendants(matching: .any).matching(identifier: "continue-carousel").firstMatch
-        let controls = app.buttons["continue-controls"]
-        XCTAssertTrue(controls.waitForExistence(timeout: 5))
-        XCTAssertTrue(controls.isHittable)
-        capture("Home carousel controls before opening")
-        controls.tap()
-        let pause = app.buttons["continue-pause"]
-        if !pause.waitForExistence(timeout: 5) {
-            let attachment = XCTAttachment(string: app.debugDescription)
-            attachment.name = "Carousel controls presentation hierarchy"; attachment.lifetime = .keepAlways; add(attachment)
-        }
-        XCTAssertFalse(app.buttons["title-personal-rating"].exists, "Carousel controls must not open the cover underneath")
-        XCTAssertTrue(pause.waitForExistence(timeout: 5))
-        XCTAssertTrue(pause.label.hasPrefix("Pause")); pause.tap()
+        XCTAssertTrue(carousel.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["continue-controls"].exists)
         guard let original = carousel.value as? String, !original.isEmpty else { XCTFail("Carousel has no selected title"); return }
-        controls.tap(); app.buttons["continue-next"].tap()
-        let advanced = NSPredicate(format: "value != nil AND value != %@ AND value != ''", original)
-        expectation(for: advanced, evaluatedWith: carousel); waitForExpectations(timeout: 5)
+        carousel.swipeLeft()
+        expectation(for: NSPredicate(format: "value != nil AND value != %@ AND value != ''", original), evaluatedWith: carousel)
+        waitForExpectations(timeout: 5)
         assertContinueCardIsFullyVisible(app)
-        capture("Continue carousel next title")
-        controls.tap(); app.buttons["continue-previous"].tap()
-        expectation(for: NSPredicate(format: "value == %@", original), evaluatedWith: carousel); waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.buttons["title-personal-rating"].exists)
+        let advanced = carousel.value as? String
         app.tabBars.buttons["More"].tap(); app.tabBars.buttons["Home"].tap()
-        XCTAssertEqual(carousel.value as? String, original)
-        controls.tap()
-        XCTAssertTrue(pause.waitForExistence(timeout: 5)); XCTAssertTrue(pause.label.hasPrefix("Start"))
-        pause.tap()
-        expectation(for: advanced, evaluatedWith: carousel); waitForExpectations(timeout: 9)
+        XCTAssertEqual(carousel.value as? String, advanced)
+        carousel.swipeRight()
+        expectation(for: NSPredicate(format: "value == %@", original), evaluatedWith: carousel)
+        waitForExpectations(timeout: 5)
         assertContinueCardIsFullyVisible(app)
-        controls.tap(); XCTAssertTrue(pause.waitForExistence(timeout: 5)); XCTAssertTrue(pause.label.hasPrefix("Pause")); pause.tap()
-        guard let stopped = carousel.value as? String else { XCTFail("Carousel lost its selected title"); return }
-        let unexpectedMove = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", stopped), object: carousel)
-        unexpectedMove.isInverted = true
-        XCTAssertEqual(XCTWaiter.wait(for: [unexpectedMove], timeout: 6), .completed, "A paused carousel must not advance after the five-second interval")
-        capture("Continue carousel stays paused")
+        capture("Continuation carousel swipes without overflow menu")
     }
     private func assertContinueCardIsFullyVisible(_ app: XCUIApplication) {
         let visible = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "progress-cover-")).allElementsBoundByIndex.filter { $0.isHittable }
@@ -122,42 +104,51 @@ import UIKit
     func testRootContentSwipesVisitEveryTabWithoutWrappingAndKeepCardGestures() {
         let app = launch(mutations: true)
         app.tabBars.buttons["Home"].tap()
-        func swipe(_ right: Bool) {
+        // `advance` pages forward like a native page view: the finger moves left.
+        func swipe(_ advance: Bool) {
             let logo = app.buttons["random-pick-logo"]
             XCTAssertTrue(logo.waitForExistence(timeout: 5))
-            let y = app.frame.height * (app.tabBars.buttons["Home"].isSelected ? 0.68 : 0.43)
-            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (right ? 0.25 : 0.75), dy: y))
-            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (right ? 0.75 : 0.25), dy: y))
+            // Start on plain content, never on a control: a menu picker opens on
+            // touch-down before any swipe can be recognised. More's 43% line is
+            // the Library ratings picker, so More starts on its Trakt summary text.
+            let fraction: CGFloat = app.tabBars.buttons["Home"].isSelected ? 0.68 : app.tabBars.buttons["More"].isSelected ? 0.22 : 0.43
+            let y = app.frame.height * fraction
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.75 : 0.25), dy: y))
+            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.25 : 0.75), dy: y))
             start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        func expectTab(_ tab: String, after step: String) {
+            let button = app.tabBars.buttons[tab.capitalized]
+            let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: button)
+            guard XCTWaiter().wait(for: [reached], timeout: 5) != .completed else { return }
+            // Readable in the run's diagnostics: what was on screen instead.
+            let selectedTab = app.tabBars.buttons.matching(NSPredicate(format: "selected == true")).firstMatch
+            print("DIAG \(step): selected tab=\(selectedTab.exists ? selectedTab.label : "none") page=\(app.staticTexts["page-title"].exists ? app.staticTexts["page-title"].label : "none") pushed=\(app.navigationBars.count)")
+            print("DIAG \(step): menu open=\(app.buttons["Trakt"].exists) picker=\(app.buttons["settings-rating-source"].exists ? NSCoder.string(for: app.buttons["settings-rating-source"].frame) : "none") window=\(NSCoder.string(for: app.frame))")
+            for line in app.debugDescription.split(separator: "\n").prefix(140) { print("DIAG \(step) | " + String(line.prefix(170))) }
+            capture("Unexpected page after " + step)
+            XCTFail("The swipe did not reach \(tab) (\(step))")
         }
         swipe(false); XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
         for tab in ["library", "glance", "stats", "more"] {
-            swipe(true)
-            wait(for: [expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons[tab.capitalized])], timeout: 5)
+            swipe(true); expectTab(tab, after: "forward swipe to " + tab)
         }
         swipe(true); XCTAssertTrue(app.tabBars.buttons["More"].isSelected)
         for tab in ["stats", "glance", "library", "home"] {
-            swipe(false)
-            wait(for: [expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: app.tabBars.buttons[tab.capitalized])], timeout: 5)
-            if !app.tabBars.buttons[tab.capitalized].isSelected {
-                let hierarchy = XCTAttachment(string: app.debugDescription)
-                hierarchy.name = "Unexpected page after left swipe to " + tab
-                hierarchy.lifetime = .keepAlways; add(hierarchy)
-                capture("Unexpected left swipe destination " + tab)
-            }
+            swipe(false); expectTab(tab, after: "backward swipe to " + tab)
         }
         capture("Root tabs swiped both directions without wrapping")
         app.tabBars.buttons["Glance"].tap()
         let count = app.staticTexts["watch-count-again"]
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
-        let title = app.buttons["progress-title-again"]
-        let start = title.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 110, dy: 0)))
+        // Cards no longer own a horizontal swipe (it belongs to tab paging); the
+        // mark button logs exactly one watch and Undo restores it on the same tab.
+        app.buttons["Mark next watch for 18 Again"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 8)
-        XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "A reserved watch-card swipe must not change tabs")
+        XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "Marking a watch must not change tabs")
         app.buttons["Undo"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 8)
-        capture("Glance card swipe and Undo retain their original ownership")
+        capture("Glance mark and Undo stay on the Glance tab")
     }
     func testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause() {
         let app = launch(traktScenario: "large-import")
@@ -240,7 +231,9 @@ import UIKit
         XCTAssertTrue(negative.exists); XCTAssertEqual(negative.label, "Negative: Repetitive storyline")
         XCTAssertFalse(app.buttons["title-personal-rating"].isHittable)
         capture("Trakt community information fixture")
-        let sheetBar = app.navigationBars["Information"]
+        // The sheet uses a fixed heading instead of a navigation bar, so its title
+        // no longer fades across detents while dragging.
+        let sheetBar = app.staticTexts["community-information-heading"]
         XCTAssertTrue(sheetBar.isHittable)
         sheetBar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.96)), withVelocity: .slow, thenHoldForDuration: 0.1)
@@ -354,7 +347,7 @@ import UIKit
         XCTAssertFalse(app.buttons["random-pick-open"].exists); capture("Empty collection random pick")
         app.buttons["Add a title"].tap()
         XCTAssertTrue(app.textFields["Search library and online"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Add manually"].exists); capture("Library add search")
+        XCTAssertFalse(app.buttons["Add manually"].exists); capture("Library catalog-only add search")
         app.buttons["Close search"].tap()
         XCTAssertTrue(app.staticTexts["Nothing here just yet"].waitForExistence(timeout: 5))
     }
@@ -461,7 +454,8 @@ import UIKit
         XCTAssertTrue(rewatch.isHittable); XCTAssertLessThan(rewatch.frame.maxY, app.frame.maxY - 40)
         capture("Visible watched episode rewatch action")
         rewatch.tap()
-        XCTAssertTrue(app.buttons["undo-action"].waitForExistence(timeout: 5))
+        // The helper itself waits for the toast; a separate existence query here
+        // spent ~1.8 s of the 4.5 s Undo window on Intel runners.
         tapVisibleUndo(app)
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["undo-action"])], timeout: 8)
         XCTAssertTrue(app.buttons["Mark episode 8 unwatched"].exists, "Undoing the rewatch must keep the original watch")
@@ -534,45 +528,17 @@ import UIKit
         capture("Title revealed episode collapsed")
     }
 
-    func testManualTitleYearValidationStatusRatingAndSavedNavigation() {
-        let app = launch(mutations: true); app.tabBars.buttons["Home"].tap(); app.buttons["search-twildiary"].tap(); app.buttons["Add manually"].tap()
-        let name = app.textFields["manual-name"], year = app.textFields["manual-year"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Manual reference movie")
-        year.tap(); year.typeText("1799"); app.buttons["manual-keyboard-done"].tap()
-        app.buttons["manual-save"].tap(); XCTAssertTrue(app.staticTexts["Choose a valid release year"].waitForExistence(timeout: 5)); capture("Manual invalid year")
-        year.tap(); year.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "1800"); app.buttons["manual-keyboard-done"].tap()
-        app.buttons["manual-category"].tap(); app.buttons["Movie"].tap()
-        app.buttons["manual-status"].tap(); app.buttons["Watching"].tap()
-        app.buttons["Rating"].tap()
-        let score = app.textFields["manual-score"]
-        XCTAssertTrue(score.waitForExistence(timeout: 5)); score.tap(); score.typeText("7.5"); app.buttons["manual-keyboard-done"].tap(); capture("Manual title review")
-        let save = app.buttons["manual-save"]
-        for _ in 0..<4 { if save.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(save.isHittable); save.tap()
-        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 10)); XCTAssertEqual(app.buttons["title-personal-rating"].value as? String, "7.5")
-        XCTAssertTrue(app.buttons["title-watch-status"].exists); capture("Manual title saved")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        if app.keyboards.firstMatch.exists { app.keyboards.buttons["Search"].tap() }
-        XCTAssertTrue(app.tabBars.buttons["Glance"].isHittable); app.tabBars.buttons["Glance"].tap()
-        XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected)
-        let quick = app.buttons["Log watch for Manual reference movie"]
-        for _ in 0..<10 {
-            if quick.isHittable && quick.frame.maxY < app.tabBars.buttons["Glance"].frame.minY { break }
-            app.scrollViews["glance-content"].swipeUp()
-        }
-        XCTAssertTrue(quick.isHittable, app.debugDescription)
-        XCTAssertLessThan(quick.frame.maxY, app.tabBars.buttons["Glance"].frame.minY, "The last Glance action must remain above the floating navigation")
-        wait(for: [expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: quick)], timeout: 5)
-        capture("Glance movie log action"); quick.tap()
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: quick)], timeout: 5)
-        XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5)); app.buttons["Undo"].tap()
-        app.tabBars.buttons["Library"].tap()
-        let created = app.buttons.matching(NSPredicate(format: "label == 'Manual reference movie'")).firstMatch
-        for _ in 0..<8 { if created.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(created.isHittable); created.tap()
-        let movieInput = app.sliders["movie-watch-input"]
-        XCTAssertTrue(movieInput.waitForExistence(timeout: 5)); XCTAssertEqual(movieInput.value as? String, "Not watched")
-        XCTAssertEqual(app.buttons["title-personal-rating"].value as? String, "7.5"); capture("Glance movie Undo restored")
+    func testCatalogSearchOmitsManualCreationEverywhere() {
+        let app = launch(mutations: true)
+        app.tabBars.buttons["Home"].tap(); app.buttons["search-twildiary"].tap()
+        XCTAssertTrue(app.textFields["Search library and online"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Add manually"].exists)
+        XCTAssertFalse(app.buttons["manual-save"].exists)
+        app.tabBars.buttons["Library"].tap(); app.buttons["search-library"].tap()
+        XCTAssertFalse(app.buttons["Add manually"].exists)
+        app.tabBars.buttons["Glance"].tap(); app.buttons["search-glance"].tap()
+        XCTAssertFalse(app.buttons["Add manually"].exists)
+        capture("Native searches expose catalog import without manual creation")
     }
 
     func testCatalogSeriesSeasonsSpoilersAndImport() {
@@ -711,11 +677,27 @@ import UIKit
         capture("Trakt Apply visible"); ready.tap()
         XCTAssertTrue(app.staticTexts["1 remaining"].waitForExistence(timeout: 5))
         let useTrakt = app.buttons["trakt-trakt-change-2"]
-        for _ in 0..<8 { if useTrakt.isHittable { break }; app.swipeDown() }
-        for _ in 0..<8 { if useTrakt.isHittable { break }; app.swipeUp() }
+        // isHittable stays true while the button sits under the translucent navigation
+        // bar, so the tap landed on the bar (native62/65 runs: button at y 59–88, bar to 116).
+        // Drag in short steps until the whole button clears both bars.
+        let navigationBottom = app.navigationBars["Trakt"].frame.maxY
+        let tabBarTop = app.tabBars.firstMatch.frame.minY
+        for _ in 0..<12 {
+            let frame = useTrakt.frame
+            if useTrakt.isHittable && frame.minY > navigationBottom + 8 && frame.maxY < tabBarTop - 8 { break }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            // Dragging down reveals content above; dragging up reveals content below.
+            let step: CGFloat = !useTrakt.exists || frame.minY <= navigationBottom + 8 ? 180 : -180
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: step)))
+        }
         XCTAssertEqual(app.buttons.matching(identifier: "trakt-trakt-change-2").count, 1, "One conflict must expose exactly one Trakt action")
         XCTAssertTrue(useTrakt.isHittable); useTrakt.tap()
-        XCTAssertTrue(app.staticTexts["You’re up to date"].waitForExistence(timeout: 5))
+        if !app.staticTexts["You’re up to date"].waitForExistence(timeout: 8) {
+            // Readable in the run's diagnostics: the review state after the choice.
+            print("DIAG trakt conflict: useTrakt exists=\(useTrakt.exists) enabled=\(useTrakt.exists && useTrakt.isEnabled) remaining=\(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'remaining'")).firstMatch.label)")
+            for line in app.debugDescription.split(separator: "\n").prefix(120) { print("DIAG trakt conflict | " + String(line.prefix(170))) }
+            XCTFail("The last conflict choice must complete the review")
+        }
         capture("Trakt applied")
     }
     func testStatsCalendarRangesEmptyBucketsAndUndatedHistory() {
@@ -841,11 +823,10 @@ import UIKit
     func testGlanceSwipeLogsExactlyOneWatchAndUndoPreservesTheCardPosition() {
         let app = launch(mutations: true)
         let count = app.staticTexts["watch-count-again"], mark = app.buttons["Mark next watch for 18 Again"]
-        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "8")
+        XCTAssertTrue(count.waitForExistence(timeout: 5))
+        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
         let originalY = mark.frame.minY
-        let title = app.buttons["progress-title-again"]
-        let start = title.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 140, dy: 0)))
+        mark.tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 10)
         XCTAssertEqual(mark.frame.minY, originalY, accuracy: 1, "Release must not reflow the page")
         app.buttons["Undo"].tap()
@@ -1117,8 +1098,23 @@ import UIKit
         // The floating toast is already onscreen. A semantic tap can ask XCTest
         // to scroll its gesture-containing ancestor, consuming the short window.
         // Touch the actual action's current bounds instead; never extend expiry.
-        let bounds = app.buttons["undo-action"].frame
-        XCTAssertFalse(bounds.isEmpty)
+        // Every XCTest query costs 0.3–1.8 s on Intel runners and the 4.5 s window
+        // (production behaviour, kept) starts as soon as the write is confirmed —
+        // often while XCTest is still waiting out the previous action's animation.
+        // So no separate existence check and no settle delay: each poll is one
+        // snapshot (existence, enabled state and frame together), then tap at once.
+        // The action's own idle wait has already covered the toast's slide-in.
+        let undo = app.buttons["undo-action"]
+        let deadline = Date().addingTimeInterval(4)
+        var target: CGRect?
+        while target == nil, Date() < deadline {
+            if let snapshot = try? undo.snapshot(), snapshot.isEnabled, !snapshot.frame.isEmpty {
+                target = snapshot.frame
+            } else {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        guard let bounds = target else { XCTFail("The Undo action never appeared enabled"); return }
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()
     }
     private func completeContentBack(_ app: XCUIApplication, beside anchor: XCUIElement,
@@ -1151,7 +1147,7 @@ import UIKit
         app.buttons["progress-menu-again"].tap()
         XCTAssertTrue(app.buttons["Favorite"].exists); XCTAssertTrue(app.buttons["Dropped"].exists)
         XCTAssertFalse(app.buttons["Open title"].exists)
-        XCTAssertTrue(app.buttons["Mark complete"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Complete Season'")).firstMatch.exists)
         app.buttons["Notes"].tap()
         XCTAssertTrue(app.textViews["title-notes"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textViews["title-notes"].isHittable); capture("Glance menu reveals Notes")
@@ -1186,10 +1182,13 @@ import UIKit
     func testGlanceCurrentSeasonCompletionAndUndoPreserveTheUnwatchedLaterSeason() {
         let app = launch(mutations: true, upcoming: true)
         let count = app.staticTexts["watch-count-again"]
-        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "8")
-        app.buttons["progress-menu-again"].tap(); app.buttons["Mark complete"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '16'"), evaluatedWith: count)], timeout: 10)
-        XCTAssertTrue(app.buttons["Undo"].exists); app.buttons["Undo"].tap()
+        XCTAssertTrue(count.waitForExistence(timeout: 5))
+        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
+        app.buttons["progress-menu-again"].tap(); app.buttons["Complete Season 1"].tap()
+        // Undo first (project rule: never spend the real 4.5 s window on slow value
+        // reads). A semantic tap tried to scroll the toast's ancestor and missed it.
+        // The helper waits for Undo to be enabled, i.e. the completion was saved.
+        tapVisibleUndo(app)
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 10)
         app.buttons["progress-title-again"].tap()
         let season = app.buttons["title-season"]
@@ -1282,14 +1281,10 @@ import UIKit
         XCTAssertTrue(eighth.exists); XCTAssertTrue(ninth.exists)
         XCTAssertLessThan(eighth.frame.minX, ninth.frame.minX)
         XCTAssertTrue(app.buttons["Mark episode 9 watched"].exists); capture("Episode grid retains spoiler and watched controls")
-        eighth.tap(); ninth.tap()
+        // Watch controls stay inside each fixed-size grid tile.
         for number in [8, 9] {
-            let summary = app.staticTexts["episode-summary-\(number)"]
-            XCTAssertTrue(summary.waitForExistence(timeout: 5))
-            let details = app.buttons["title-episode-\(number)"]
             let watch = app.buttons["Mark episode \(number) " + (number == 8 ? "unwatched" : "watched")]
             XCTAssertTrue(watch.exists)
-            XCTAssertLessThan(details.frame.height, 210, "The artwork/caption button must not grow a vertical Spacer when its summary expands")
             let thumbnail = app.descendants(matching: .any)["episode-thumbnail-\(number)"]
             XCTAssertTrue(thumbnail.exists)
             XCTAssertGreaterThanOrEqual(watch.frame.minX, thumbnail.frame.minX)
@@ -1298,11 +1293,23 @@ import UIKit
             XCTAssertLessThanOrEqual(watch.frame.maxY, thumbnail.frame.maxY)
             XCTAssertLessThan(abs(watch.frame.maxY - thumbnail.frame.maxY), 8)
             XCTAssertLessThan(abs(watch.frame.maxX - thumbnail.frame.maxX), 8)
-            XCTAssertGreaterThan(summary.frame.minY, details.frame.maxY)
-            XCTAssertLessThan(summary.frame.minY - details.frame.maxY, 30)
         }
-        capture("Expanded episode grid keeps captions watch controls and summaries together")
-        eighth.tap(); ninth.tap()
+        // Summaries open in a sheet, so revealing or reading one never moves the grid.
+        let ninthFrame = ninth.frame
+        eighth.tap()
+        let eighthSummary = app.staticTexts["episode-summary-8"]
+        XCTAssertTrue(eighthSummary.waitForExistence(timeout: 5)); capture("Episode details sheet")
+        app.buttons["Done"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: eighthSummary)], timeout: 5)
+        XCTAssertEqual(ninth.frame.minY, ninthFrame.minY, accuracy: 1, "Opening episode details must not reflow the grid")
+        ninth.tap() // An unwatched, hidden episode is revealed in place first.
+        XCTAssertEqual(ninth.frame.height, ninthFrame.height, accuracy: 1, "Revealing must not change the tile height")
+        ninth.tap()
+        let ninthSummary = app.staticTexts["episode-summary-9"]
+        XCTAssertTrue(ninthSummary.waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: ninthSummary)], timeout: 5)
+        capture("Episode grid keeps captions and watch controls; details open in a sheet")
         episodes.tap()
         let recommendations = app.staticTexts["You might like"], recommendationLayout = app.buttons["catalog-layout"]
         for _ in 0..<10 { if recommendationLayout.isHittable { break }; app.swipeUp() }

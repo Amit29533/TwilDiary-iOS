@@ -3,6 +3,84 @@
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
+Active26October owner request:13native experience issues from native62with8videos
+and4screenshots. Seeios/docs/DEVICE-RESULTS-BUILD62.md for exact scope/evidence.
+All8videos extracted/visually inspected. Cloudflare/D1issues are considered
+resolved by owner; complete import reportedlyunder200kreads. No new metering
+claim, backend/authority/migration change or revertedStage1work is authorized
+by this UI pass. Source now prepares shared public artwork cache/downsampling,
+indexed per-title episode lookup, explicit root tab visibility, no continuation
+overflow and no manual title creation. Native tests/runtime still pending.
+Next: finish13-item UI batch, tests and Swift self-review; notify before build.
+The old native62-feedback build hold below is superseded by this received chart.
+
+26October native65 source checkpoint (not a passed build): shared decoded public
+artwork cache, per-season indexes, isolated toolbar scroll observation, fixed
+Information heading/eager metrics, stable spoiler reveal with episode detail sheet,
+Library scrolling controls/progressive cells, public UIKit interactive tab paging
+and system tab bar, native glass action styles, no carousel overflow/manual add.
+The selected-season status menu now uses per-season watch transactions rather than
+the all-seasons status endpoint. Completed/Planned must preserve other seasons.
+Owner requested immediate commit/push; this checkpoint is deliberately unreleased.
+Known pending: adapt/add UI regressions for modal episode details and normal tab
+paging, check Swift6 compilation on macOS, complete screenshots/performance review.
+No macOS build started yet. Codemagic GitHub reconnection reported complete by
+owner; verify branch loading before scheduling. No hosted/backend change.
+
+Latest design verification: ios/docs/TRAKT-FIRST-PLAN.md records the corrected
+stages0–5. Foreground currently only reads D1 (10-second threshold); on-demand
+incoming catch-up and replacement-ID restore are new work. Index migrations
+0014–0016 are already deployed; longer refresh/change-check and whole-workload
+cost acceptance remain pending.73local database/sync/query tests pass,0fail.
+No authority switch, new native build, deployment or hosted mutation in this
+verification. Historical11.8Mreads is reported, not newly measured here.
+
+Latest cost assessment: captured Cloudflare Row Metrics for the actual test
+selection (10:08–10:17 IST):28,977reads/54writes, including5,650operator read-back
+rows. The three action minutes total21,715reads/54writes, including UI/search
+refreshes; not per-POST meters. UTC day through10:30IST reports219,025reads/
+12,758writes; deployment bucket accounts for62,650reads/12,548writes. SQL Insights
+summary differs from Row Metrics; both raw datasets/filters saved privately,
+no invented reconciliation. Current observed normal traffic fits Free, but
+native2kbulk/day capacity remains unverified. Native bulk defers diary refresh
+until end; the live individual filtered sample must not be extrapolated as its
+cost. Full assessment/method/bounds in ios/docs/D1-FREE-TIER-ASSESSMENT-2026-10-26.md.
+No new mutations/build/deployment during this read-only assessment.
+
+Owner-authorized live sample after rollout: **3 incoming changes applied and
+read back successfully** — two episode watches and one rating. Used individual
+ready-change controls through the protected production API; no bulk start,
+outgoing Trakt write, conflict choice or uncertain-send retry. Both original
+Trakt timestamps/history identities match the two stored active watches, with
+no duplicates. Rating is stored, progress increased by exactly3, pending fell
+by3 and all other review buckets are unchanged. No error/cooldown appeared.
+This is a small live backend test, not native phone UI or2,000-change throughput
+acceptance. Private bookmark, before/after rows, analytics and screenshot live
+in.local/cloudflare-live-apply-20261026. Public redacted receipt:
+ios/docs/releases/backend62-live-apply-verification.json. No code change or
+new iOS build was needed. Full bulk completion/day cost/active Cron CPU remain open.
+
+Latest hosted change: **26 October 2026, 09:41 IST — backend rollout completed**.
+From the new canonical repository's `develop` track, deployed frozen backend
+`50134fc9addcc243434ee5721eb74ea1eec13f61` as Worker version
+`d21c2b88-a874-46fa-8dc4-61798d8544d8`. Applied exactly D1 migrations 0014–0016
+after a fresh Time Travel bookmark, private full export and successful local
+restore/rehearsal. Post-deployment export proves every original row/column in 26
+application tables is preserved; integrity/FKs pass and review buckets are exact.
+Authenticated `/api/session`, review and incoming GETs pass; unauthenticated
+session is denied 403. Review remains 735 applied / 1474 pending / 1466 safe / 1 link,
+and incoming remains enabled but paused behind that same unfinished review.
+No apply/skip, scheduler redeploy, Access change, paid upgrade or iOS build.
+Hosted read-only SQL samples: buckets 8 rows, next-ready 1 row, seek page 40 rows;
+expected indexes/no temporary sorts. These are individual SQL costs, not a full
+bulk-import/active-Cron budget certification. Dashboard 00:00–04:16 UTC shows
+approximately 98k reads / 13k writes for the account's only D1 database, including
+rollout overhead. Initial read-only diagnostics consumed 12207 rows, 0 writes.
+Full-day sustained cost, active 10ms CPU and native64 runtime remain open.
+See ios/docs/releases/backend62-production-rollout.json and BACKEND-ROLLOUT.md.
+Private exports/bookmarks/logs remain ignored in.local/cloudflare-rollout-20261026.
+Earlier "not deployed" notes below describe preparation before this rollout.
+
 Audit scope: **native iOS UI, its database/API/Trakt data flow and CI workflows**.
 Do not restart web/PWA UI walkthroughs. Tests use synthetic native fixtures,
 URLProtocol or disposable local D1/SQLite. Current hosted library stays untouched.
@@ -57,7 +135,9 @@ Import uses[skip ci] to honor the next-build hold and avoid consuming Mac minute
 Owner completed GitHubemail/sudoverification and repository access. Created
 Codemagicdestinationapp6ade764b746d1dee285e9ce8forAmit29533/TwilDiary-iOSin the
 existingTwilDiaryteam. Originalapp6adcc927390bc3069c9e5490retained for history. Rootcodemagic.yaml
-detected onnewmainwithStartyourfirstbuildshown; no new native job.
+detected on main and develop; develop is selected with Start your first build
+shown. No new native job. Destination Linux run40236806826 on b17de16 passed
+409backend tests,27Python tests, zero-error/warning typecheck and Workerbuild.
 No new token/signing/Cloudflaresecret,billingchange or nativebuild started.
 Existing CloudflareWorkers/D1/Access/appbundleID/baseURL are unchanged; do not
 create a second hosted library or deploy merely because the repo moved.
@@ -152,7 +232,8 @@ its file still finishes inD:/Downloads; inspect the file before retrying.
   before macOSartifact publication.17focused-case Intel budget35min is based on
   actual8-case12m37s/17-case M2~13m30s; individual test deadlines unchanged.
 
-**No0014–0016hosted migration/deployment during this audit.** Dashboard rolling24h
+Before the26October09:41ISTrollout, no0014–0016hosted migration/deployment had
+been applied. Current hosted evidence is at the top of this file. Dashboard rolling24h
 showed12.23Mreads,36.56kwrites/34.98kqueries. Five hot scans explained11.41Mreads;
 3counts6.70M. Rolling24h is not a current UTC/account quota measurement.
 FreeD1allowance5Mreads/100kwrites/account/day,00UTC=05:30IST reset. No fixed number

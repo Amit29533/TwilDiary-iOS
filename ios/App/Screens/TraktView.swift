@@ -43,11 +43,14 @@ import TwilDiaryCore
             .refreshable { await controller.refresh(); if controller.status?.connected == true { await incoming.refresh() } }
             .task(id: "\(controller.status?.connected == true):\(controller.sync?.run?.state ?? "")") { if controller.status?.connected == true { await incoming.refresh() } }
             .task(id: controller.cooldownUntil) {
+                // One wake-up at the end of the cooldown re-enables the controls. The
+                // per-second countdown is a TimelineView, so the whole Trakt screen and
+                // its review rows are no longer rebuilt every second.
                 clock = .now
-                while controller.cooldownUntil > clock && !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                    clock = .now
-                }
+                let wait = controller.cooldownUntil.timeIntervalSince(clock)
+                guard wait > 0 else { return }
+                do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+                clock = .now
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy { Task { await controller.refresh() } } }
             .sheet(isPresented: $showSignIn) {
@@ -72,7 +75,7 @@ import TwilDiaryCore
                     .font(.caption).foregroundStyle(.secondary)
             }
             Button("Pause import", systemImage: "pause.fill") { controller.pauseApplying() }
-                .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(controller.paused)
+                .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.paused)
                 .accessibilityIdentifier("trakt-pause-restoration")
         }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-restoring-import")
     }
@@ -99,10 +102,10 @@ import TwilDiaryCore
                         .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-auto-resume")
                 } else { Text("You can browse the other tabs while this continues. Keep the app open.").font(.caption).foregroundStyle(.secondary) }
                 Button(controller.paused ? "Pausing after this request…" : "Pause import", systemImage: "pause.fill") { controller.pauseApplying() }
-                    .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
+                    .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
             } else if controller.paused && sync.reviewing && (sync.counts["safe"] ?? 0) > 0 {
                 Button("Resume import", systemImage: "play.fill") { controller.startApprovedApply() }
-                    .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).accessibilityIdentifier("trakt-resume-import")
+                    .buttonStyle(.glassProminent).buttonBorderShape(.capsule).accessibilityIdentifier("trakt-resume-import")
             }
         }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-transfer-panel")
     }
@@ -128,7 +131,7 @@ import TwilDiaryCore
             }
             if let error = incoming.error { Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-incoming-error") }
             Button("Refresh status", systemImage: "arrow.clockwise") { Task { await incoming.refresh() } }
-                .font(.subheadline).buttonStyle(.bordered).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
+                .font(.subheadline).buttonStyle(.glass).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
         }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
     }
     private var connection: some View {
@@ -142,14 +145,16 @@ import TwilDiaryCore
             }
             if let date = DiaryDate.parse(controller.status?.lastSyncAt) { Text("Last synced \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
             if controller.status?.connected == true {
-                HStack { Button("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") { Task { await controller.scan(start: true) } }.buttonStyle(.borderedProminent).disabled(coolingDown); Button("Disconnect", role: .destructive) { Task { await controller.disconnect() } }.buttonStyle(.bordered) }.disabled(controller.busy)
+                HStack { Button("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") { Task { await controller.scan(start: true) } }.buttonStyle(.glassProminent).disabled(coolingDown); Button("Disconnect", role: .destructive) { Task { await controller.disconnect() } }.buttonStyle(.glass) }.disabled(controller.busy)
             } else if controller.status?.configured == true {
-                Button("Connect Trakt") { showSignIn = true }.buttonStyle(.borderedProminent).disabled(controller.busy)
+                Button("Connect Trakt") { showSignIn = true }.buttonStyle(.glassProminent).disabled(controller.busy)
                 Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
             } else if controller.status != nil { Text("Configure the Trakt Client ID on your server using the PC app. Sign-in uses PKCE; no client secret is needed.").font(.subheadline).foregroundStyle(.secondary) }
             if coolingDown {
-                Text("Waiting \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(clock))))) seconds before the next request.")
-                    .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text("Waiting \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(context.date))))) seconds before the next request.")
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
+                }
             }
         }.diaryPanel()
     }
@@ -182,8 +187,8 @@ import TwilDiaryCore
             if controller.busy { Button(controller.paused ? "Pausing…" : "Pause after this step") { controller.paused = true }.disabled(controller.paused) }
             else {
                 HStack {
-                    Button("Continue scan") { Task { await controller.scan(start: false) } }.buttonStyle(.borderedProminent).disabled(coolingDown)
-                    Button("Stop without applying") { Task { await controller.cancel() } }.buttonStyle(.bordered).accessibilityIdentifier("trakt-stop-manual-scan")
+                    Button("Continue scan") { Task { await controller.scan(start: false) } }.buttonStyle(.glassProminent).disabled(coolingDown)
+                    Button("Stop without applying") { Task { await controller.cancel() } }.buttonStyle(.glass).accessibilityIdentifier("trakt-stop-manual-scan")
                 }
                 Text("Stopping keeps your existing diary unchanged and lets automatic incoming watches resume.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -256,7 +261,10 @@ import TwilDiaryCore
         if change.state == "uncertain" { action("Check Trakt", change: change, choice: .local) }
         else if change.review && !change.blocked { action("Keep TwilDiary", change: change, choice: .local); action("Use Trakt", change: change, choice: .trakt) }
         else if !change.blocked { action("Apply", change: change, choice: .apply) }
-        Button("Skip") { Task { await controller.apply(change: change, choice: .skip); await store.refresh() } }.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
+        // Skipping never changes the diary, so it no longer re-downloads it.
+        // Review rows can number in the thousands: per-row actions use bordered
+        // capsules (no live glass blur in every row); screen-level actions stay glass.
+        Button("Skip") { Task { await controller.apply(change: change, choice: .skip) } }.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
             .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).accessibilityIdentifier("trakt-skip-" + change.id)
     }
     private func action(_ label: String, change: TraktChange, choice: TraktChoice) -> some View {

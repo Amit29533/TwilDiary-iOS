@@ -330,12 +330,23 @@ export async function seasonPage(
 }
 export async function logWatch(db: Db, titleId: string, value: unknown) {
   const input = watchInput(value);
-  const title = await getTitle(db, titleId);
-  const prior = await db
-    .select()
-    .from(watchEvents)
-    .where(eq(watchEvents.operationId, input.operationId))
-    .get();
+  // Independent pre-write reads share one round trip of latency. Results are still
+  // checked in the original order, so the same error wins as before.
+  const [titleRead, priorRead, episodeRead] = await Promise.allSettled([
+    getTitle(db, titleId),
+    db.select().from(watchEvents).where(eq(watchEvents.operationId, input.operationId)).get(),
+    input.episodeId
+      ? db
+          .select({ id: episodes.id })
+          .from(episodes)
+          .where(and(eq(episodes.id, input.episodeId), eq(episodes.titleId, titleId)))
+          .get()
+      : Promise.resolve(undefined)
+  ]);
+  if (titleRead.status === 'rejected') throw titleRead.reason;
+  if (priorRead.status === 'rejected') throw priorRead.reason;
+  const title = titleRead.value,
+    prior = priorRead.value;
   if (
     prior &&
     (prior.titleId !== titleId ||
@@ -353,14 +364,8 @@ export async function logWatch(db: Db, titleId: string, value: unknown) {
       'invalid_input',
       'Choose an episode for a series and no episode for a movie'
     );
-  if (
-    input.episodeId &&
-    !(await db
-      .select({ id: episodes.id })
-      .from(episodes)
-      .where(and(eq(episodes.id, input.episodeId), eq(episodes.titleId, titleId)))
-      .get())
-  )
+  if (episodeRead.status === 'rejected') throw episodeRead.reason;
+  if (input.episodeId && !episodeRead.value)
     throw new ApiError(400, 'invalid_input', 'This episode does not belong to the title');
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -392,11 +397,26 @@ export async function logWatch(db: Db, titleId: string, value: unknown) {
       return db.$client.prepare(query.sql).bind(...query.params);
     })
   );
-  const recorded = await db
-    .select()
-    .from(watchOperations)
-    .where(eq(watchOperations.operationId, input.operationId))
-    .get();
+  // Receipt, its event and the refreshed title are read concurrently (one latency stage).
+  const [recorded, receiptEvent, titleAfter] = await Promise.all([
+    db
+      .select()
+      .from(watchOperations)
+      .where(eq(watchOperations.operationId, input.operationId))
+      .get(),
+    db
+      .select()
+      .from(watchEvents)
+      .where(
+        sql`${watchEvents.id}=(SELECT result_event_id FROM watch_operations WHERE operation_id=${input.operationId})`
+      )
+      .get(),
+    // Settled so a concurrent delete keeps the original error precedence below.
+    getTitle(db, titleId).then(
+      (value) => ({ ok: true as const, value }),
+      (reason: unknown) => ({ ok: false as const, reason })
+    )
+  ]);
   if (recorded) {
     if (
       recorded.titleId !== titleId ||
@@ -409,17 +429,11 @@ export async function logWatch(db: Db, titleId: string, value: unknown) {
         'operation_conflict',
         'This operation identity belongs to a different watch'
       );
-    const event = await db
-      .select()
-      .from(watchEvents)
-      .where(eq(watchEvents.id, recorded.resultEventId))
-      .get();
-    if (event)
-      return {
-        event,
-        added: event.id === id,
-        title: await getTitle(db, titleId)
-      };
+    const event = receiptEvent?.id === recorded.resultEventId ? receiptEvent : undefined;
+    if (event) {
+      if (!titleAfter.ok) throw titleAfter.reason;
+      return { event, added: event.id === id, title: titleAfter.value };
+    }
   }
   throw conflict();
 }

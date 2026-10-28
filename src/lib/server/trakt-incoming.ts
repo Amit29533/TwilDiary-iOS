@@ -9,7 +9,7 @@ import { databaseQuotaFailure } from './database-failure.ts';
 import { watchStatusUpdate } from './watch-status.ts';
 import { sql } from 'drizzle-orm';
 import { SQLiteAsyncDialect } from 'drizzle-orm/sqlite-core';
-import { createTmdb, type TmdbClient } from './tmdb.ts';
+import { createTmdb, TmdbRateLimit, type TmdbClient } from './tmdb.ts';
 import { sortName } from './library-input.ts';
 import { traktBaselineId } from './trakt-identity.ts';
 
@@ -21,6 +21,17 @@ const WEEK = 7 * 86400_000;
 const NEVER = Number.MAX_SAFE_INTEGER;
 const OVERDUE_MS = 10 * 60_000;
 const SAME_VIEWING_MS = 6 * 3600_000;
+// Per-watch scheduling. Attempts live in the queued payload JSON (no schema change).
+const RETRY_BASE = 60_000;
+const RETRY_MAX = 6 * 3600_000;
+const REVIEW_BASE = 3600_000;
+const QUICK_METADATA_STEPS = 5;
+const doubling = (base: number, max: number, attempts: number) =>
+  Math.min(max, base * 2 ** (Math.min(Math.max(attempts, 1), 20) - 1));
+/** A claimed watch that fails retries next minute, then backs off to six hours. */
+export const retryDelay = (attempts: number) => doubling(RETRY_BASE, RETRY_MAX, attempts);
+/** A watch needing review is rechecked after an hour, then backs off to a week. */
+export const reviewDelay = (attempts: number) => doubling(REVIEW_BASE, WEEK, attempts);
 type State = {
   account_id: string;
   client_id: string;
@@ -243,6 +254,9 @@ export async function tickIncoming(
     .first<State>();
   if (!current) return { state: 'idle' as const };
   let guard = sql`0`;
+  // The closing checkpoint also releases the lease (one write instead of two);
+  // `finally` releases it only when that statement did not run or was fenced out.
+  let released = false;
   try {
     const trakt = await authorizedTrakt(database(binding), env, options.transport ?? fetch, {
       maxResponseBytes: 32_768
@@ -252,11 +266,12 @@ export async function tickIncoming(
     if (!valid) return { state: 'superseded' as const };
     const day = new Date(started).toISOString().slice(0, 10);
     if (current.budget_day === day && current.budget_used >= DAILY_WORK) {
-      await statement(
+      const parked = await statement(
         binding,
-        sql`UPDATE trakt_incoming SET next_at=${nextUTC(started)},error='daily_import_budget'
-        WHERE id='trakt' AND ${guard}`
+        sql`UPDATE trakt_incoming SET next_at=${nextUTC(started)},error='daily_import_budget',
+        lease=NULL,lease_until=NULL WHERE id='trakt' AND ${guard}`
       ).run();
+      released = parked.meta.changes > 0;
       return { state: 'budget' as const };
     }
     {
@@ -356,24 +371,53 @@ export async function tickIncoming(
         .bind(current.account_id, status, clock())
         .first<Job>();
     const job = (await dueJob('pending')) ?? (await dueJob('review'));
-    const outcome = job
-      ? await importWatch(
+    let outcome: Awaited<ReturnType<typeof importWatch>> | 'unchanged' = 'unchanged';
+    let itemError: string | null = null;
+    if (job) {
+      // Claim before any provider call or write. A Worker stopped mid-job (CPU or
+      // wall-time limit) never reaches a catch block, so its backoff must already
+      // be durable; other watches then proceed on the next tick instead of
+      // retrying the same one every minute. Delay matches retryDelay(attempts).
+      const at = clock();
+      guard = fence(current, lease, trakt.connectionVersion, at);
+      const prior = sql`coalesce(json_extract(payload,'$.incomingAttempts'),0)`;
+      const claimed = await statement(
+        binding,
+        sql`UPDATE trakt_incoming_history SET
+          payload=json_set(payload,'$.incomingAttempts',${prior}+1),
+          next_at=${at}+min(${RETRY_MAX},${RETRY_BASE}*(1<<min(${prior},19)))
+        WHERE account_id=${current.account_id} AND remote_id=${job.remote_id} AND state=${job.state}
+          AND next_at<=${at} AND ${guard}
+        RETURNING json_extract(payload,'$.incomingAttempts') AS attempts`
+      ).first<{ attempts: number }>();
+      if (!claimed) return { state: 'superseded' as const };
+      try {
+        outcome = await importWatch(
           binding,
           current,
           job,
+          claimed.attempts,
           lease,
           trakt.connectionVersion,
           clock(),
           options.tmdb ?? createTmdb(env.TMDB_ACCESS_TOKEN, fetch, { maxResponseBytes: 100_000 })
-        )
-      : 'unchanged';
+        );
+      } catch (error) {
+        // One watch's failure (a TMDb outage for one title, a rejected write) is
+        // recorded on that watch only. Account-wide conditions still back off globally.
+        if (!itemFailure(error)) throw error;
+        itemError = error instanceof ApiError ? error.code : 'incoming_item_failed';
+      }
+    }
     guard = fence(current, lease, trakt.connectionVersion, clock());
-    await statement(
+    const checkpoint = await statement(
       binding,
       sql`UPDATE trakt_incoming SET checked_at=${new Date(started).toISOString()},
-      failures=0,error=NULL,next_at=${started + 55_000} WHERE id='trakt' AND ${guard}`
+      failures=0,error=${itemError},next_at=${started + 55_000},lease=NULL,lease_until=NULL
+      WHERE id='trakt' AND ${guard}`
     ).run();
-    return { state: outcome };
+    released = checkpoint.meta.changes > 0;
+    return itemError ? { state: 'deferred' as const, code: itemError } : { state: outcome };
   } catch (error) {
     const quota = databaseQuotaFailure(error, new Date(clock()));
     const code = quota?.code ?? (error instanceof ApiError ? error.code : 'incoming_unavailable');
@@ -383,8 +427,9 @@ export async function tickIncoming(
         ? nextUTC(clock()) - clock()
         : quota
           ? quota.retryAfter * 1000
-          : error instanceof TraktError && error.retryAfterPresent && error.retryAfter
-            ? error.retryAfter * 1000
+          : (error instanceof TraktError && error.retryAfterPresent && error.retryAfter) ||
+              error instanceof TmdbRateLimit
+            ? (error as TraktError | TmdbRateLimit).retryAfter * 1000
             : Math.min(
                 3_600_000,
                 Math.ceil(
@@ -398,29 +443,45 @@ export async function tickIncoming(
     // Do not log raw exceptions: D1 errors can embed SQL parameters/history/tokens.
     // If D1 itself refuses writes this cannot persist; the next minute safely retries.
     try {
-      await binding
+      const recorded = await binding
         .prepare(
-          `UPDATE trakt_incoming SET failures=failures+1,error=?,next_at=?
+          `UPDATE trakt_incoming SET failures=failures+1,error=?,next_at=?,lease=NULL,lease_until=NULL
         WHERE id='trakt' AND generation=? AND lease=? AND enabled=1`
         )
         .bind(code, clock() + delay, current.generation, lease)
         .run();
+      released = recorded.meta.changes > 0;
     } catch {
       /* A D1 quota can also prevent recording the backoff. */
     }
     return { state: 'deferred' as const, code };
   } finally {
-    await binding
-      .prepare("UPDATE trakt_incoming SET lease=NULL,lease_until=NULL WHERE id='trakt' AND lease=?")
-      .bind(lease)
-      .run();
+    if (!released)
+      await binding
+        .prepare(
+          "UPDATE trakt_incoming SET lease=NULL,lease_until=NULL WHERE id='trakt' AND lease=?"
+        )
+        .bind(lease)
+        .run();
   }
+}
+
+/** Failures that belong to one queued watch. Quota, budget, provider throttling,
+ * Trakt and fencing conditions affect every watch and keep the global backoff. */
+function itemFailure(error: unknown) {
+  if (databaseQuotaFailure(error, new Date())) return false;
+  if (error instanceof TraktError || error instanceof TmdbRateLimit) return false;
+  return !(
+    error instanceof ApiError &&
+    (error.code === 'incoming_superseded' || error.code === 'incoming_daily_budget')
+  );
 }
 
 async function importWatch(
   binding: D1Database,
   current: State,
   job: Job,
+  attempts: number,
   lease: string,
   version: number,
   now: number,
@@ -428,10 +489,11 @@ async function importWatch(
 ) {
   const item = JSON.parse(job.payload) as RemoteTraktItem;
   const guard = fence(current, lease, version, now);
+  // Review items are rechecked after 1 h, 2 h, 4 h … up to a week, not hourly forever.
   const defer = async (reason: string) => {
     await statement(
       binding,
-      sql`UPDATE trakt_incoming_history SET state='review',reason=${reason},next_at=${now + 3600_000}
+      sql`UPDATE trakt_incoming_history SET state='review',reason=${reason},next_at=${now + reviewDelay(attempts)}
       WHERE account_id=${current.account_id} AND remote_id=${job.remote_id} AND ${guard}`
     ).run();
     return 'review' as const;
@@ -457,7 +519,23 @@ async function importWatch(
     return defer('title_removed');
   const prepare = async (value: Title | null) => {
     try {
-      return await prepareMetadata(binding, item, value, tmdb, guard, new Date(now).toISOString());
+      const result = await prepareMetadata(
+        binding,
+        item,
+        value,
+        tmdb,
+        guard,
+        new Date(now).toISOString()
+      );
+      // Title, season and watch normally take consecutive ticks: keep that pace
+      // for a few steps; a watch that never stops needing metadata backs off.
+      if (attempts < QUICK_METADATA_STEPS)
+        await statement(
+          binding,
+          sql`UPDATE trakt_incoming_history SET next_at=${now}
+          WHERE account_id=${current.account_id} AND remote_id=${job.remote_id} AND state='pending' AND ${guard}`
+        ).run();
+      return result;
     } catch (error) {
       if (
         error instanceof ApiError &&

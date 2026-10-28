@@ -87,7 +87,7 @@ test('existing partially applied reviews backfill without changing proposals or 
   assertCounts(f);
   assert.deepEqual(f.sqlite.prepare('SELECT * FROM trakt_sync_changes ORDER BY id').all(), before);
 });
-test('next-change dependency order uses the ready index with LIMIT 1 and no temporary sort', (t) => {
+test('next-change dependency order uses the ready index with a bounded LIMIT and no temporary sort', (t) => {
   const f = d1Fixture();
   t.after(f.close);
   seed(f);
@@ -107,10 +107,19 @@ test('next-change dependency order uses the ready index with LIMIT 1 and no temp
     'utf8'
   );
   const pick = source.slice(
-    source.indexOf('    const chosen = changeId'),
-    source.indexOf('    const uncertain =', source.indexOf('    const chosen = changeId'))
+    source.indexOf('    const picked = changeId'),
+    source.indexOf('    const chosen = picked[0]', source.indexOf('    const picked = changeId'))
   );
-  assert.match(pick, /\.limit\(1\)/);
+  // A bulk request reads at most one bounded batch of ready changes; a single change reads one.
+  assert.match(pick, /\.limit\(bulk \? PULL_BATCH : 1\)/);
+  assert.match(source, /export const PULL_BATCH = 8;/);
+  const batchPlan = f.sqlite
+    .prepare('EXPLAIN QUERY PLAN ' + sql.replace('LIMIT 1', 'LIMIT 8'))
+    .all('large')
+    .map((row) => String(row.detail))
+    .join('\n');
+  assert.match(batchPlan, /trakt_changes_ready_pick/);
+  assert.doesNotMatch(batchPlan, /TEMP B-TREE/);
 });
 
 test('planning uses the ordered per-run index rather than repeatedly sorting every remote record', (t) => {

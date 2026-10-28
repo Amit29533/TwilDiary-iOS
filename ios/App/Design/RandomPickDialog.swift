@@ -65,25 +65,24 @@ struct RandomPickDialog: View {
                             Text("A little surprise").font(.system(size: 14)).accessibilityHidden(true)
                             Spacer(minLength: 0)
                             Button(action: onClose) { DiaryIcon(name: "x", size: 21).frame(width: 44, height: 44) }
-                                .buttonStyle(.plain).accessibilityLabel("Close random pick")
+                                .buttonStyle(.glass).accessibilityLabel("Close random pick")
                         }.foregroundStyle(theme.accent).padding(.bottom, 7)
                         if let picked {
                             pickCard(picked, compact: compact).id(sequence)
                                 .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 14)))
                             HStack(spacing: 10) {
                                 Button { choose() } label: { HStack(spacing: 7) { DiaryIcon(name: "shuffle", size: 18); Text("Pick again") }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.plain).background(Color(webHex: "#131219"), in: RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(webHex: "#34313f")))
+                                    .buttonStyle(.glass)
                                     .disabled(active.count < 2 || rolling).accessibilityIdentifier("random-pick-again")
                                 Button { onOpen(picked.id) } label: { HStack(spacing: 7) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 18) }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.plain).foregroundStyle(theme.ink).background(theme.accent, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("random-pick-open")
+                                    .buttonStyle(.glassProminent).accessibilityIdentifier("random-pick-open")
                             }.font(.system(size: 14, weight: .semibold)).padding(.top, 16)
                         } else {
                             VStack(spacing: 14) {
                                 DiaryIcon(name: "sparkles", size: 32).foregroundStyle(theme.accent)
                                 Text("Your next story starts here").font(.system(size: 20, weight: .bold)).foregroundStyle(.primary)
                                 Text("Add some titles to your collection for a surprise pick.").font(.system(size: 14)).foregroundStyle(.secondary)
-                                Button("Add a title", action: onAdd).buttonStyle(.borderedProminent).controlSize(.large)
+                                Button("Add a title", action: onAdd).buttonStyle(.glassProminent).controlSize(.large)
                             }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.vertical, 28)
                         }
                     }.padding(16)
@@ -107,9 +106,9 @@ struct RandomPickDialog: View {
         }.padding(.horizontal, compact ? 12 : 18).padding(.vertical, compact ? 20 : 26).frame(minHeight: 240)
             .background {
                 ZStack {
-                    Color(webHex: "#17121f")
+                    theme.pickBase
                     if let backdrop = title.backdrop { Artwork(path: backdrop).opacity(0.6) }
-                    LinearGradient(colors: [Color(webHex: "#15101966"), Color(webHex: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [theme.pickVeil, Color(webHex: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
                     LinearGradient(colors: [Color(webHex: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
                 }.allowsHitTesting(false)
             }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(.white.opacity(0.125)))

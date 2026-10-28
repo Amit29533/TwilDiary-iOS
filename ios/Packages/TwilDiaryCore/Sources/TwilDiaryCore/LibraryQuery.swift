@@ -37,8 +37,10 @@ public struct LibraryQuery: Equatable, Sendable {
             return Self.nameBefore(left.name, right.name)
         }
     }
+    /// Built once: sorting compared names with a freshly constructed Locale per comparison.
+    private static let sortLocale = Locale(identifier: "en_US")
     static func nameBefore(_ left: String, _ right: String) -> Bool {
-        left.compare(right, options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US")) == .orderedAscending
+        left.compare(right, options: [.caseInsensitive, .diacriticInsensitive], locale: sortLocale) == .orderedAscending
     }
 }
 

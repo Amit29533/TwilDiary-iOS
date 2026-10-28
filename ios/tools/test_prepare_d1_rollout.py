@@ -69,18 +69,18 @@ class RolloutTests(unittest.TestCase):
             self.assertEqual(preflight[1], [])
             self.assertEqual(preflight[2][0][0], "review-fixture")
             self.assertEqual(before, rollout.snapshot(db))
-        with fixture(17) as db:
+        with fixture(18) as db:
             db.execute("PRAGMA query_only=ON")
             before = rollout.snapshot(db)
             postflight = run_operator_queries(db, "postflight-d1.sql")
-            self.assertEqual(len(postflight[0]), 17)
-            self.assertEqual(len(postflight[1]), 9)
+            self.assertEqual(len(postflight[0]), 18)
+            self.assertEqual(len(postflight[1]), 15)
             self.assertEqual(postflight[2], [("plan_after", "TEXT", 0)])
             self.assertEqual(postflight[4], [], "No active review bucket may differ")
             self.assertEqual(before, rollout.snapshot(db))
 
     def test_postflight_reports_a_corrupt_active_review_bucket(self):
-        with fixture(17) as db:
+        with fixture(18) as db:
             db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1 WHERE state='pending'")
             db.execute("PRAGMA query_only=ON")
             self.assertTrue(run_operator_queries(db, "postflight-d1.sql")[4])
@@ -97,7 +97,7 @@ class RolloutTests(unittest.TestCase):
         self.assertNotIn("Preserve this note", str(result))
 
     def test_partial_and_already_completed_rollouts_do_not_reapply_migrations(self):
-        for applied in (15, 16, 17):
+        for applied in (15, 16, 17, 18):
             with self.subTest(applied=applied), fixture(applied) as db:
                 result = rollout.rehearse(dump(db), MIGRATIONS)
                 self.assertEqual(result["rehearsed_migrations"], list(MIGRATIONS)[applied:])
@@ -126,10 +126,20 @@ class RolloutTests(unittest.TestCase):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
     def test_existing_damaged_aggregate_is_rejected(self):
+        for applied in (17, 18):
+            with self.subTest(applied=applied), fixture(applied) as db:
+                db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1")
+                with self.assertRaisesRegex(ValueError, "aggregate counts"):
+                    rollout.rehearse(dump(db), MIGRATIONS)
+
+    def test_0017_adds_only_indexes_and_keeps_every_row(self):
+        # Hosted D1 already has 0014-0016; the pending release is 0017 alone.
         with fixture(17) as db:
-            db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1")
-            with self.assertRaisesRegex(ValueError, "aggregate counts"):
-                rollout.rehearse(dump(db), MIGRATIONS)
+            result = rollout.rehearse(dump(db), MIGRATIONS)
+        self.assertEqual(result["rehearsed_migrations"], ["0017_trakt_import_indexes.sql"])
+        self.assertEqual({t: v["columns"] for t, v in result["before"].items()},
+                         {t: v["columns"] for t, v in result["after"].items()})
+        self.assertEqual(result["before"], result["after"])
 
     def test_migration_cannot_mutate_original_rows_unnoticed(self):
         migrations = dict(MIGRATIONS)

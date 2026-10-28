@@ -13,7 +13,7 @@ struct CatalogGrid: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: grid ? 3 : 1), alignment: .leading, spacing: grid ? 20 : 10) {
                 ForEach(items, id: \.displayKey) { item in
                     Group {
-                        if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) { NavigationLink(value: saved) { card(item) } }
+                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { card(item) } }
                         else { NavigationLink(value: item.route) { card(item) } }
                     }.buttonStyle(.plain).accessibilityIdentifier("catalog-" + item.displayKey)
                 }
@@ -59,7 +59,6 @@ struct CatalogPoster: View {
 struct CatalogSearchView: View {
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
-    var allowsManual = true
     var onClose: (() -> Void)? = nil
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -68,8 +67,6 @@ struct CatalogSearchView: View {
     @State private var results: [CatalogItem] = []
     @State private var loading = false
     @State private var failure: String?
-    @State private var showManual = false
-    @State private var savedManualID: String?
     @State private var dismissKeyboard = 0
     @AppStorage("searchGrid") private var grid = false
     @State private var page = 1
@@ -82,7 +79,7 @@ struct CatalogSearchView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
                 SearchField(placeholder: "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: true, dismissRevision: dismissKeyboard)
-                if let onClose { Button(action: onClose) { DiaryIcon(name: "x", size: 18).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Close search") }
+                if let onClose { Button(action: onClose) { DiaryIcon(name: "x", size: 18).frame(width: 44, height: 44) }.buttonStyle(.glass).accessibilityLabel("Close search") }
             }
             if !ready { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             else {
@@ -105,14 +102,9 @@ struct CatalogSearchView: View {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
             }
-            if allowsManual { Button("Add manually") { showManual = true }.font(.system(size: 14, weight: .semibold)).frame(minHeight: 44) }
         }.padding(.horizontal, 14).padding(.bottom, 12)
             .task(id: normalized) { if completedQuery != normalized || failure != nil { await search(number: 1, reset: true) } }
             .onDisappear { pageTask?.cancel(); generation = UUID(); loading = false }
-            .sheet(isPresented: $showManual, onDismiss: {
-                guard let id = savedManualID else { return }
-                savedManualID = nil; chooseLibrary(id)
-            }) { ManualTitleView(initialName: normalized) { id in savedManualID = id; showManual = false } }
     }
     private func onlineRow(_ item: CatalogItem) -> some View {
         let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
@@ -182,21 +174,21 @@ struct CatalogDetailView: View {
     @State private var loading = false
     @State private var showOverview = false
     @State private var showInformation = false
-    @State private var headerProgress: CGFloat = 0
+    @State private var headerState = CompactHeaderState()
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     if let details {
-                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerProgress = $0 }) { EmptyView() }
+                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
                         if details.libraryTitle?.trashed == true {
-                            NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.borderedProminent).controlSize(.large)
+                            NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.glassProminent).controlSize(.large)
                         } else if let saved = details.libraryTitle {
-                            Button("Open in Library") { accepted(saved.id) }.buttonStyle(.borderedProminent).controlSize(.large)
+                            Button("Open in Library") { accepted(saved.id) }.buttonStyle(.glassProminent).controlSize(.large)
                         } else {
                             Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { accepted(id) } } } label: {
                                 Text(store.busy ? "Adding…" : "Add to Planned").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink).frame(maxWidth: .infinity).frame(minHeight: 48)
-                            }.buttonStyle(.plain).background(theme.accent, in: RoundedRectangle(cornerRadius: 14)).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
+                            }.buttonStyle(.glassProminent).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
                         }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
                         CastAndRelated(route: route, sourceTitle: details.details.name)
@@ -208,14 +200,14 @@ struct CatalogDetailView: View {
                     }
             }.scrollClipDisabled().diaryScreenBackground(path: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") }, name: details?.details.name ?? "").navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .overlay(alignment: .top) { CompactHeaderBackdrop(progress: headerProgress, topInset: geometry.safeAreaInsets.top) }
+                .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }
                 .toolbar {
                     ToolbarItem(placement: .principal) {
-                        if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), progress: headerProgress) }
+                        if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), state: headerState) }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         TitleHeaderAction(name: details?.details.name ?? "Title", kind: route.kind, id: route.id,
-                            progress: headerProgress, informationPresented: $showInformation, informationIdentifier: "catalog-information")
+                            state: headerState, informationPresented: $showInformation, informationIdentifier: "catalog-information")
                     }
                 }
                 .sheet(isPresented: $showInformation) {
@@ -365,51 +357,8 @@ struct CastAndRelated: View {
     }
 }
 
-struct ManualTitleView: View {
-    var initialName = ""
-    var onSaved: ((String) -> Void)? = nil
-    @Environment(DiaryStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft = ManualTitleDraft()
-    @State private var failure: String?
-    @State private var identity = UUID().uuidString
-    @State private var saving = false
-    @State private var initialized = false
-    @State private var showRating = false
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Title", text: $draft.name).accessibilityIdentifier("manual-name")
-                TextField("Release year", text: $draft.year, prompt: Text("Unknown")).keyboardType(.numberPad).accessibilityIdentifier("manual-year")
-                Picker("Category", selection: $draft.category) { Text("Movie").tag("movie"); Text("Show").tag("show"); Text("Anime").tag("anime"); Text("Anime movie").tag("anime-movie") }.pickerStyle(.menu).accessibilityIdentifier("manual-category")
-                Picker("Watch status", selection: $draft.status) { ForEach(["planned", "watching", "completed", "dropped"], id: \.self) { Text($0.capitalized).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("manual-status")
-                DisclosureGroup("Rating", isExpanded: $showRating) { TextField("Your score / 10", text: $draft.score, prompt: Text("Not rated")).keyboardType(.decimalPad).accessibilityIdentifier("manual-score") }
-                if draft.status == "completed" { Text("Episode history is tracked separately.").font(.caption).foregroundStyle(.secondary) }
-                if let failure { Text(failure).font(.caption).foregroundStyle(.red).accessibilityIdentifier("manual-error") }
-                Button(saving ? "Saving…" : "Add to library") { Task { await save() } }.disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.busy || saving || !store.canMutate).accessibilityIdentifier("manual-save")
-            }.disabled(saving).navigationTitle("Add title").navigationBarTitleDisplayMode(.inline).toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }.accessibilityIdentifier("manual-keyboard-done") }
-            }.onAppear { if !initialized { initialized = true; draft.name = initialName } }.interactiveDismissDisabled(saving)
-        }
-    }
-    private func save() async {
-        guard !saving else { return }; failure = nil
-        do {
-            let input = try draft.validated(id: identity)
-            saving = true; defer { saving = false }
-            let id = try await store.createManualTitle(input)
-            if draft.status == "completed" {
-                guard let title = store.title(id), await store.setStatus(title, status: "completed") else { throw APIError.message("Added to your library, but could not complete its watch progress. " + (store.error ?? "Try again.")) }
-            }
-            dismiss(); onSaved?(id)
-        } catch is CancellationError { }
-        catch { failure = error.localizedDescription }
-    }
-}
-
 struct RetryNotice: View {
     let message: String
     let retry: () -> Void
-    var body: some View { VStack(alignment: .leading, spacing: 10) { Text(message).font(.subheadline).foregroundStyle(.secondary); Button("Retry", action: retry).buttonStyle(.bordered) }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel() }
+    var body: some View { VStack(alignment: .leading, spacing: 10) { Text(message).font(.subheadline).foregroundStyle(.secondary); Button("Retry", action: retry).buttonStyle(.glass) }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel() }
 }

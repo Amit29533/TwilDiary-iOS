@@ -166,23 +166,42 @@ struct Artwork: View {
     let path: String?
     var title: String = ""
     var initialsOnly = true
+    @Environment(\.displayScale) private var displayScale
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var loadedArtwork: PublicArtworkBitmap?
+    @State private var loadedRequest: PublicArtworkRequest?
     var body: some View {
         GeometryReader { proxy in
+          let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale))
           ZStack {
-            if initialsOnly { LinearGradient(colors: [tint, Color(webHex: "#1c1728")], startPoint: .topLeading, endPoint: .bottomTrailing) }
+            if initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
             else {
                 LinearGradient(colors: [Color(webHex: "#243638"), Color(webHex: "#17151e"), Color(webHex: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
-                RadialGradient(colors: [Color(webHex: "#a27ac535"), .clear], center: UnitPoint(x: 0.8, y: 0.05), startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.7)
+                RadialGradient(colors: [theme.placeholderGlow, .clear], center: UnitPoint(x: 0.8, y: 0.05), startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.7)
             }
             if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
             else if let image = fixtureImage(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
-            else if let path, let url = URL(string: path), url.scheme == "https" {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
-                    else if phase.error != nil { placeholder(size: proxy.size) }
-                }
+            else if let request {
+                // While loading, only the gradient shows: the named placeholder appears
+                // only after a load failed, so new cells no longer flash title text
+                // before their poster. A size change keeps the previous bitmap of the
+                // same image until the new size is decoded.
+                let current = loadedRequest == request ? loadedArtwork : nil
+                let sameImage = loadedRequest?.url == request.url ? loadedArtwork : nil
+                if let bitmap = current ?? PublicArtworkCache.shared.cached(request) ?? sameImage {
+                    Image(decorative: bitmap.image, scale: displayScale).resizable().scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
+                } else if loadedRequest == request { placeholder(size: proxy.size) }
             } else { placeholder(size: proxy.size) }
           }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
+            .task(id: request) {
+                guard fixtureImage(path) == nil else { return }
+                guard let request else { loadedArtwork = nil; loadedRequest = nil; return }
+                if let saved = PublicArtworkCache.shared.cached(request) { loadedRequest = request; loadedArtwork = saved; return }
+                let bitmap = await PublicArtworkCache.shared.image(request)
+                guard !Task.isCancelled else { return }
+                loadedRequest = request; loadedArtwork = bitmap
+            }
         }.contentShape(Rectangle()).accessibilityHidden(true)
     }
     private var tint: Color {
@@ -219,7 +238,8 @@ struct RatingBadge: View {
             Text(score, format: .number.precision(.fractionLength(1))).frame(minHeight: community ? 17.25 : 18)
         }.font(.system(size: community ? 11.5 : 12, weight: community ? .medium : .semibold))
             .foregroundStyle(Color(webHex: community ? "#f5f5f5" : "#f3f0f7"))
-            .shadow(color: .black.opacity(0.9), radius: community ? 3 : 0, y: 1)
+            // No text shadow: the badge already sits on a dark capsule, and a blurred
+            // shadow costs an offscreen render pass for every poster in a scrolling grid.
             .padding(.horizontal, community ? 6 : 4).padding(.vertical, 3)
             .background(Color(webHex: community ? "#00000099" : "#07090cdd"), in: RoundedRectangle(cornerRadius: community ? 99 : 7))
     }
@@ -309,12 +329,10 @@ struct ProgressCard: View {
     @State private var loadedCard: WatchCard?
     private var card: WatchCard? { loadedCard ?? store.cachedCard(title) }
     @State private var watchFeedback = 0
-    @State private var drag: CGFloat = 0
     @State private var suppressNavigationUntil = Date.distantPast
     @Environment(AppRouter.self) private var router
     var body: some View {
         ZStack(alignment: .leading) {
-            if !compact { Label("Mark one watched", systemImage: "checkmark").font(.subheadline.bold()).foregroundStyle(.mint).padding(20) }
             Group { if compact { compactContent } else { glanceContent } }
                 .background {
                     GeometryReader { proxy in
@@ -327,21 +345,7 @@ struct ProgressCard: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: compact ? 12 : 14))
                 .overlay(RoundedRectangle(cornerRadius: compact ? 12 : 14).strokeBorder(.white.opacity(0.17)))
-                .offset(x: drag)
-        }.background(.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 14)).clipShape(RoundedRectangle(cornerRadius: 14))
-            .simultaneousGesture(DragGesture(minimumDistance: 22).onChanged { value in
-                guard !compact, value.startLocation.x > 24 else { return }
-                if abs(value.translation.width) > abs(value.translation.height) * 1.3 {
-                    // Both page directions must suppress a cover tap, including
-                    // completed/offline cards that cannot log a watch.
-                    suppressNavigationUntil = .now.addingTimeInterval(0.35)
-                    if canMark { drag = min(120, max(0, value.translation.width)) }
-                }
-            }.onEnded { value in
-                let mark = drag > 80 && value.translation.width < 160; if drag > 22 { suppressNavigationUntil = .now.addingTimeInterval(0.35) }; withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.8)) { drag = 0 }
-                if mark { Task { await markWatch() } }
-            })
-            .reservesHorizontalSwipe(!compact)
+        }.clipShape(RoundedRectangle(cornerRadius: 14))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .sensoryFeedback(.success, trigger: watchFeedback)
     }
@@ -357,9 +361,8 @@ struct ProgressCard: View {
                 }.padding(.bottom, 4)
                 Button { Task { await markWatch() } } label: {
                     actionIcon(.mark, symbol: title.isSeries ? "plus" : "checkmark", size: 24).foregroundStyle(theme.ink)
-                        .frame(width: 36, height: 36).background(.tint, in: RoundedRectangle(cornerRadius: 10))
                         .frame(width: 44, height: 44).contentShape(Rectangle())
-                }.buttonStyle(DiaryPressStyle()).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
             }
         }.padding(12).frame(height: 142)
     }
@@ -380,21 +383,23 @@ struct ProgressCard: View {
             actionLayout {
                 VStack(alignment: .leading, spacing: 5) {
                     GeometryReader { proxy in Capsule().fill(.white.opacity(0.16)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
-                    Text(title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    // Before the card loads, say so instead of showing a made-up zero.
+                    Text(card == nil ? "Checking progress…" : title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
                 }
-                HStack(spacing: 6) {
+                // One container lets the card's glass controls render and morph together.
+                GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
-                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 32, height: 32).background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.3))).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
-                    Text("\(card?.progress.watched ?? 0)").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 34, height: 34).background(.tint, in: RoundedRectangle(cornerRadius: 10)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(DiaryPressStyle()).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glass).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+                    Text(card.map { "\($0.progress.watched)" } ?? "–").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
                             .font(.system(size: 13, weight: .semibold)).frame(width: 124, height: 44)
-                            .foregroundStyle(theme.ink).background(theme.accent, in: RoundedRectangle(cornerRadius: 12))
-                    }.buttonStyle(DiaryPressStyle()).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
+                            .foregroundStyle(theme.ink)
+                    }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
-                }.frame(height: title.isSeries ? 34 : 44)
+                } }.frame(height: 44)
             }
         }.padding(10)
     }
@@ -403,7 +408,8 @@ struct ProgressCard: View {
             Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patchCard(title.id, values: ["favorite": !title.favorite]) } }
             Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } }
             if title.isSeries, let season = card?.season?.number {
-                Button("Mark complete", systemImage: "checkmark.circle") { Task { await store.completeCardSeason(title.id, season: season) } }
+                // Name the season: this completes only the card's season, never the whole show.
+                Button(season == 0 ? "Complete Specials" : "Complete Season \(season)", systemImage: "checkmark.circle") { Task { await store.completeCardSeason(title.id, season: season) } }
             }
             Button("Dropped", systemImage: "stop.circle") { Task { await store.patchCard(title.id, values: ["status": "dropped"]) } }
             Button("Notes", systemImage: "note.text") {

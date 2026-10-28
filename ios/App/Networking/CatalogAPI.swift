@@ -62,7 +62,8 @@ extension DiaryStore {
         guard (0...999).contains(number) else { throw APIError.message("Choose a valid season.") }
         guard force || SeasonMetadata.needsPreparation(title: title, workspace: workspace, season: number, now: now) else { return }
         let _: EmptyResponse = try await read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST", body: [:])
-        try Task.checkCancellation(); try await reload()
+        // Season metadata only changes this title's rows; refresh just this title.
+        try Task.checkCancellation(); try await refreshAfterWrite([title.id])
     }
     func catalogEpisodes(_ route: CatalogRoute, season: Int, reveal: Bool) async throws -> CatalogEpisodesPage {
         guard route.kind == .tv, (0...999).contains(season) else { throw APIError.message("Choose a valid series season.") }
@@ -79,7 +80,7 @@ extension DiaryStore {
         do {
             let result: ImportedTitle = try await read("/api/metadata/import", method: "POST", body: ["mediaType": details.mediaType.rawValue, "tmdbId": details.id, "category": category, "status": "planned", "score": NSNull()])
             confirmed = true
-            try await reload()
+            try await refreshAfterWrite([result.title.id])
             error = nil
             return result.title.id
         } catch is CancellationError { return nil }

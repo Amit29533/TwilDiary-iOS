@@ -24,7 +24,7 @@ struct ScannerReviewView: View {
                     CollectionLayout(grid: grid) { ForEach(items) { scan in scanRow(scan) } }
                     if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading unmatched scans") }
                     else if !loading && items.isEmpty && failure == nil { ContentUnavailableView("No unmatched scans", systemImage: "folder.badge.questionmark", description: Text("New unresolved folders will appear here.")) }
-                    if next != nil { Button("Show more") { Task { await load(more: true) } }.buttonStyle(.bordered).disabled(loading) }
+                    if next != nil { Button("Show more") { Task { await load(more: true) } }.buttonStyle(.glass).disabled(loading) }
                 }.padding(14)
             }.refreshable { await load() }
         }.diaryScreenBackground().diaryPageNavigation("Fix mismatches", searchIdentifier: "search-scanner") { showSearch.toggle() }
@@ -42,7 +42,7 @@ struct ScannerReviewView: View {
                 Text("\(scan.deviceName) · \(scan.driveLetter) · \(scan.fileCount) files" + (scan.seasonNumber.map { " · Season \($0)" } ?? "")).font(.caption).foregroundStyle(.secondary)
                 Text(scan.root + "\\" + scan.relativePath).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                 Text("No confident TMDb / IMDb match").font(.caption).foregroundStyle(.secondary)
-                Button("Match") { selected = scan }.buttonStyle(.bordered).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)
+                Button("Match") { selected = scan }.buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.diaryPanel()
     }
@@ -74,7 +74,7 @@ private struct ScannerMatchView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Match “\(scan.name)”").font(.title3.bold()).padding(.horizontal, 14)
                     if let failure { Text(failure).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 14) }
-                    CatalogSearchView(onLibraryChoose: choose, onCatalogChoose: { path.append($0) }, allowsManual: false).disabled(store.busy)
+                    CatalogSearchView(onLibraryChoose: choose, onCatalogChoose: { path.append($0) }).disabled(store.busy)
                 }
             }.navigationTitle("Match folder").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(store.busy) } }

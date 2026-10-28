@@ -46,6 +46,9 @@ extension WorkspaceCaching {
     private let beforePrepare: (@Sendable () throws -> Void)?
     private let beforeLoad: (@Sendable () throws -> Void)?
     private var writeGeneration = UUID()
+    /// The device-only key is read from the Keychain once per process; every refresh
+    /// previously paid a synchronous Keychain lookup on the main actor.
+    private var residentKey: SymmetricKey?
     init(directory: URL? = nil, key: SymmetricKey? = nil, maximumBytes: Int = 50 * 1_024 * 1_024,
          beforePrepare: (@Sendable () throws -> Void)? = nil,
          beforeLoad: (@Sendable () throws -> Void)? = nil) {
@@ -113,19 +116,23 @@ extension WorkspaceCaching {
     }
     private func key(create: Bool) throws -> SymmetricKey {
         if let testKey { return testKey }
+        if let residentKey { return residentKey }
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                     kSecAttrService as String: "com.amit29533.TwilDiary.cache-key",
                                     kSecAttrAccount as String: "device-only"]
         var read = query; read[kSecReturnData as String] = true; read[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(read as CFDictionary, &result)
-        if status == errSecSuccess, let data = result as? Data, data.count == 32 { return SymmetricKey(data: data) }
+        if status == errSecSuccess, let data = result as? Data, data.count == 32 {
+            let key = SymmetricKey(data: data); residentKey = key; return key
+        }
         guard status == errSecItemNotFound, create else { throw APIError.message("The protected offline diary is unavailable.") }
         let key = SymmetricKey(size: .bits256)
         var add = query
         add[kSecValueData as String] = key.withUnsafeBytes { Data($0) }
         add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw APIError.message("Could not protect the offline diary.") }
+        residentKey = key
         return key
     }
 }

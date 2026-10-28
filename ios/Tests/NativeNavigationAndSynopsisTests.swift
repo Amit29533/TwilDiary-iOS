@@ -13,10 +13,11 @@ import SwiftUI
         XCTAssertFalse(SignInNavigationPolicy.allows(nil))
     }
     func testRootTabSwipeUsesTheRequestedDirectionAndStopsAtEitherEnd() {
+        // Native paging: the finger moving left reveals the next tab, right the previous one.
         let right = CGSize(width: 150, height: 10), left = CGSize(width: -150, height: 10)
         for (index, tab) in AppTab.allCases.enumerated() {
-            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: right, width: 390), index < 4 ? AppTab.allCases[index + 1] : nil)
-            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: left, width: 390), index > 0 ? AppTab.allCases[index - 1] : nil)
+            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: left, width: 390), index < 4 ? AppTab.allCases[index + 1] : nil)
+            XCTAssertEqual(RootTabSwipe.destination(from: tab, translation: right, width: 390), index > 0 ? AppTab.allCases[index - 1] : nil)
         }
     }
     func testRootTabSwipeRejectsShortVerticalAndInvalidDrags() {
@@ -24,6 +25,27 @@ import SwiftUI
             XCTAssertNil(RootTabSwipe.destination(from: .library, translation: drag, width: 390))
         }
         XCTAssertNil(RootTabSwipe.destination(from: .library, translation: CGSize(width: 200, height: 0), width: 0))
+    }
+    func testOnlyRealSidewaysScrollersKeepHorizontalSwipesFromTheTabPager() {
+        // Home's carousel keeps its own horizontal drag.
+        XCTAssertTrue(RootTabSwipe.isHorizontalScroller(contentWidth: 1400, boundsWidth: 402, bouncesHorizontally: false, bouncesVertically: false))
+        XCTAssertTrue(RootTabSwipe.isHorizontalScroller(contentWidth: 402, boundsWidth: 402, bouncesHorizontally: true, bouncesVertically: false))
+        // More's list measured 402.5 content in a 402.3 frame; it must not claim the swipe.
+        XCTAssertFalse(RootTabSwipe.isHorizontalScroller(contentWidth: 402.5, boundsWidth: 402.3, bouncesHorizontally: false, bouncesVertically: false))
+        // A vertically bouncing list never owns horizontal swipes, even a few points too wide.
+        XCTAssertFalse(RootTabSwipe.isHorizontalScroller(contentWidth: 410, boundsWidth: 402, bouncesHorizontally: false, bouncesVertically: true))
+    }
+    func testSwipePastEitherEndBouncesWithABoundedRubberBand() {
+        XCTAssertEqual(RootTabSwipe.edgeOffset(0, width: 390), 0)
+        let drags = stride(from: CGFloat(0), through: 2000, by: 50).map { RootTabSwipe.edgeOffset($0, width: 390) }
+        XCTAssertEqual(drags, drags.sorted(), "The page must keep following the finger")
+        for (drag, offset) in zip(stride(from: CGFloat(0), through: 2000, by: 50), drags) {
+            XCTAssertLessThanOrEqual(offset, drag, "The page moves slower than the finger")
+            XCTAssertLessThan(offset, 390 * 0.25)
+        }
+        XCTAssertEqual(RootTabSwipe.edgeOffset(-200, width: 390), -RootTabSwipe.edgeOffset(200, width: 390))
+        XCTAssertEqual(RootTabSwipe.edgeOffset(.nan, width: 390), 0)
+        XCTAssertEqual(RootTabSwipe.edgeOffset(200, width: 0), 0)
     }
     func testCompactHeaderCrossfadesMonotonicallyAndReversesWithoutAThresholdJump() {
         XCTAssertEqual(CompactHeaderTransition.progress(nameBottom: 100), 0)

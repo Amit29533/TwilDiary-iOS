@@ -26,7 +26,7 @@ struct PersonView: View {
                             }
                             facts(person)
                             server(person)
-                            let sections = PersonSections(person: person, workspace: store.workspace)
+                            let sections = store.personSections(person)
                             shelf("Known for", person: person, kind: .knownFor, items: sections.knownFor)
                             shelf("Shows", person: person, kind: .shows, items: sections.shows)
                             shelf("Movies", person: person, kind: .movies, items: sections.movies)
@@ -55,7 +55,7 @@ struct PersonView: View {
         }.padding(.horizontal, 14).padding(.top, 145).padding(.bottom, 10)
     }
     private func facts(_ person: PersonDetails) -> some View {
-        let sections = PersonSections(person: person, workspace: store.workspace)
+        let sections = store.personSections(person)
         let earliest = person.credits.filter { $0.mediaType == .movie && ($0.year ?? -1) >= (Int(person.birthday?.prefix(4) ?? "0") ?? 0) && ($0.year ?? Int.max) <= DiaryDate.calendar().component(.year, from: store.now) }.min { ($0.year ?? 0) < ($1.year ?? 0) }
         return VStack(alignment: .leading, spacing: 14) {
             Text("Facts & trivia").font(.system(size: 20, weight: .semibold))
@@ -80,7 +80,7 @@ struct PersonView: View {
         }
     }
     private func server(_ person: PersonDetails) -> some View {
-        let sections = PersonSections(person: person, workspace: store.workspace)
+        let sections = store.personSections(person)
         return VStack(alignment: .leading, spacing: 14) {
             sectionHeading("On your server", route: PersonFilmographyRoute(person: person.id, section: .credits, onServer: true))
             if sections.localShows.isEmpty && sections.localMovies.isEmpty { Text("None of these titles are on your disks yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
@@ -115,7 +115,7 @@ private struct PersonCreditShelf: View {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items, id: \.key) { item in
                     VStack(alignment: .leading, spacing: 4) {
-                        if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) { NavigationLink(value: saved) { CatalogPoster(item: item) } }
+                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item) } }
                         else { NavigationLink(value: item.route) { CatalogPoster(item: item) } }
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
                         if !role.isEmpty { Text(role).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
@@ -155,7 +155,7 @@ struct PersonFilmographyView: View {
                             Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
                             if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
                             else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
-                            if shown < items.count { Button("Load more") { shown += 40 }.buttonStyle(.bordered).frame(maxWidth: .infinity) }
+                            if shown < items.count { Button("Load more") { shown += 40 }.buttonStyle(.glass).frame(maxWidth: .infinity) }
                         }
                     } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
                     else { DiaryLoadingPlaceholder(height: 240, label: "Loading filmography").padding(14) }

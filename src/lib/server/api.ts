@@ -83,6 +83,11 @@ export async function ownerApi(context: ApiContext, action: () => Promise<unknow
       response.headers.set('Retry-After', String(retryAfter));
       return response;
     }
+    // Never log request bodies or SQL parameters: only the error class and message.
+    console.error('api_unhandled', {
+      name: error instanceof Error ? error.name : typeof error,
+      message: error instanceof Error ? error.message.slice(0, 300) : undefined
+    });
     return privateJson(
       {
         error: {

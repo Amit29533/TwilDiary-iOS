@@ -2,13 +2,15 @@
 -- Capture before the upgrade; never use this file to apply or cancel a review.
 SELECT name FROM d1_migrations ORDER BY name;
 
--- Schema identities only. Missing 0014-0016 objects are expected before upgrade.
+-- Schema identities only. Missing 0014-0017 objects are expected before upgrade.
 SELECT type,name FROM sqlite_schema
 WHERE name IN (
   'trakt_sync_change_counts','trakt_change_count_insert',
   'trakt_change_count_update','trakt_change_count_delete',
   'trakt_changes_ready_pick','trakt_remote_plan_order',
-  'trakt_runs_recent','trakt_runs_account_created','watch_movie_latest'
+  'trakt_runs_recent','trakt_runs_account_created','watch_movie_latest',
+  'trakt_changes_unconfirmed','trakt_changes_local_event','unmatched_matched_title',
+  'watch_operations_title','watch_operations_result','watch_operations_episode'
 ) ORDER BY type,name;
 
 SELECT id,state,stage,page,progress,created_at,updated_at
