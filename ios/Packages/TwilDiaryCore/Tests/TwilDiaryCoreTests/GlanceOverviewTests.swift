@@ -3,8 +3,8 @@ import Testing
 @testable import TwilDiaryCore
 import TwilDiaryTestSupport
 
-private func event(_ id: String, title: String, recorded: String, revoked: String? = nil) -> WatchEvent {
-    WatchEvent(id: id, operationId: id, titleId: title, episodeId: nil, watchedAt: nil, recordedAt: recorded,
+private func event(_ id: String, title: String, recorded: String, watched: String? = nil, revoked: String? = nil) -> WatchEvent {
+    WatchEvent(id: id, operationId: id, titleId: title, episodeId: nil, watchedAt: watched, recordedAt: recorded,
                revokedAt: revoked, origin: "manual", version: 1)
 }
 
@@ -16,15 +16,28 @@ private func event(_ id: String, title: String, recorded: String, revoked: Strin
         event("b1", title: "b", recorded: "not a date")
     ]
     let latest = GlanceOverview.lastActivity(events: events)
-    #expect(latest["a"] == DiaryDate.parse("2026-10-27T10:00:00.000Z"))
+    #expect(latest["a"]?.recorded == DiaryDate.parse("2026-10-27T10:00:00.000Z"))
     #expect(latest["b"] == nil)
+}
+
+@Test func importedPlaysLoggedTogetherOrderByWhenTheyWereWatched() throws {
+    let imported = "2026-10-21T00:00:00.000Z"
+    let events = [
+        event("a1", title: "a", recorded: imported, watched: "2026-09-01T12:00:00.000Z"),
+        event("b1", title: "b", recorded: imported, watched: "2026-10-20T12:00:00.000Z"),
+        event("b2", title: "b", recorded: imported, watched: "2026-08-01T12:00:00.000Z")
+    ]
+    let latest = GlanceOverview.lastActivity(events: events)
+    #expect(latest["b"]?.watched == DiaryDate.parse("2026-10-20T12:00:00.000Z"))
+    #expect(try #require(latest["b"]) > #require(latest["a"]))
 }
 
 @Test func glanceOrdersByRecentActivityThenNameAndSupportsOtherSorts() throws {
     let titles = SampleWorkspace.make().titles.filter { $0.deletedAt == nil }
     #expect(titles.count >= 3)
     let first = titles[0], second = titles[1], third = titles[2]
-    let activity = [second.id: Date(timeIntervalSince1970: 200), third.id: Date(timeIntervalSince1970: 100)]
+    let activity = [second.id: GlanceActivity(recorded: Date(timeIntervalSince1970: 200)),
+                    third.id: GlanceActivity(recorded: Date(timeIntervalSince1970: 100))]
     let recent = GlanceOverview.order([first, second, third], sort: .recentlyUpdated, lastActivity: activity, progress: [:])
     #expect(recent.map(\.id).prefix(2) == [second.id, third.id])
     #expect(recent.last?.id == first.id)

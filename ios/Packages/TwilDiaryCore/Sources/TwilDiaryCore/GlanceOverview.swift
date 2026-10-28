@@ -14,18 +14,29 @@ public enum GlanceSort: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// When a title was last logged, then when that watch happened. Imports log many plays at
+/// the same moment, so the watch date decides between them.
+public struct GlanceActivity: Comparable, Sendable {
+    public var recorded: Date, watched: Date
+    public init(recorded: Date, watched: Date? = nil) { self.recorded = recorded; self.watched = watched ?? .distantPast }
+    public static func < (left: Self, right: Self) -> Bool {
+        left.recorded == right.recorded ? left.watched < right.watched : left.recorded < right.recorded
+    }
+}
+
 public enum GlanceOverview {
-    /// When each title was last logged: the newest recordedAt of its active watches.
-    public static func lastActivity(events: [WatchEvent]) -> [String: Date] {
-        var latest: [String: Date] = [:]
+    /// Each title's newest active watch, by recordedAt and then watchedAt.
+    public static func lastActivity(events: [WatchEvent]) -> [String: GlanceActivity] {
+        var latest: [String: GlanceActivity] = [:]
         for event in events where event.revokedAt == nil {
-            guard let date = DiaryDate.parse(event.recordedAt) else { continue }
-            if latest[event.titleId].map({ date > $0 }) ?? true { latest[event.titleId] = date }
+            guard let recorded = DiaryDate.parse(event.recordedAt) else { continue }
+            let activity = GlanceActivity(recorded: recorded, watched: DiaryDate.parse(event.watchedAt))
+            if latest[event.titleId].map({ activity > $0 }) ?? true { latest[event.titleId] = activity }
         }
         return latest
     }
     /// Stable order: ties (and titles never logged) fall back to the name, then the ID.
-    public static func order(_ titles: [MediaTitle], sort: GlanceSort, lastActivity: [String: Date],
+    public static func order(_ titles: [MediaTitle], sort: GlanceSort, lastActivity: [String: GlanceActivity],
                              progress: [String: Double]) -> [MediaTitle] {
         let byName: (MediaTitle, MediaTitle) -> Bool = {
             let order = $0.name.localizedStandardCompare($1.name)
@@ -36,8 +47,12 @@ public enum GlanceOverview {
             return titles.sorted(by: byName)
         case .recentlyUpdated:
             return titles.sorted {
-                let left = lastActivity[$0.id] ?? .distantPast, right = lastActivity[$1.id] ?? .distantPast
-                return left == right ? byName($0, $1) : left > right
+                switch (lastActivity[$0.id], lastActivity[$1.id]) {
+                case let (left?, right?): return left == right ? byName($0, $1) : left > right
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return byName($0, $1)
+                }
             }
         case .almostDone:
             return titles.sorted {

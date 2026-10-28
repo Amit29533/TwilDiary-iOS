@@ -445,15 +445,16 @@ struct ProgressCard: View {
             }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf")).lineLimit(1).minimumScaleFactor(0.85)
         }
     }
-    /// − last watched episode + for shows; one Log watch button for movies.
+    /// − last watched episode + for shows; one Log watch button for movies. Glass adds its
+    /// own padding, so the 30 pt labels draw as 44 pt circles that stay inside the card.
     private var controls: some View {
                 // One container lets the card's glass controls render and morph together.
                 GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
-                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glass).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 30, height: 30).contentShape(Circle()) }.buttonStyle(.glass).buttonBorderShape(.circle).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 30, height: 30).contentShape(Circle()) }.buttonStyle(.glassProminent).buttonBorderShape(.circle).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
