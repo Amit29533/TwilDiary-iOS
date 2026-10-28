@@ -655,6 +655,26 @@ import UIKit
         XCTAssertFalse(app.staticTexts["Waiting for the first scheduled check."].exists)
         capture("Trakt incoming watches disabled")
     }
+    func testTraktReviewResolvesAWholeGroupOnlyAfterConfirmation() {
+        let app = launch(traktScenario: "removals"); app.tabBars.buttons["More"].tap()
+        XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))
+        app.buttons["settings-trakt-summary"].tap()
+        XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
+        let useTrakt = app.buttons["trakt-group-pull-trakt"]
+        let tabBarTop = app.tabBars.firstMatch.frame.minY
+        for _ in 0..<10 { if useTrakt.isHittable && useTrakt.frame.maxY < tabBarTop - 8 { break }; app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].exists)
+        XCTAssertTrue(useTrakt.isHittable); capture("Trakt review groups")
+        useTrakt.tap()
+        let confirm = app.buttons["Use Trakt for 30 items"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5)); capture("Trakt group confirmation")
+        XCTAssertTrue(app.staticTexts["Removes these items from your diary to match Trakt."].exists)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].waitForNonExistence(timeout: 10))
+        XCTAssertFalse(useTrakt.exists, "A resolved group leaves the panel")
+        XCTAssertTrue(app.staticTexts["8 remaining"].exists)
+        capture("Trakt group resolved")
+    }
     func testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice() {
         let app = launch(); app.tabBars.buttons["More"].tap()
         XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))

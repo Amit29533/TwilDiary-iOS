@@ -9,8 +9,15 @@ import TwilDiaryCore
     func start(mode: TraktRatingMode) async throws -> String
     func step(id: String) async throws -> TraktSync
     func apply(id: String, change: String?, choice: TraktChoice) async throws -> TraktSync
+    /// One bounded batch of a review group (pull, push or conflict) resolved with one choice.
+    func resolve(id: String, direction: String, choice: TraktChoice) async throws -> TraktSync
     func cancel(id: String) async throws
     func disconnect() async throws
+}
+extension TraktServicing {
+    func resolve(id: String, direction: String, choice: TraktChoice) async throws -> TraktSync {
+        throw APIError.message("Resolving a whole group is not available here.")
+    }
 }
 
 @MainActor final class LiveTraktService: TraktServicing {
@@ -34,6 +41,9 @@ import TwilDiaryCore
         if let change { body["changeId"] = change }
         return try await requireStore().read("/api/trakt/sync/\(id)/apply", method: "POST", body: body)
     }
+    func resolve(id: String, direction: String, choice: TraktChoice) async throws -> TraktSync {
+        try await requireStore().read("/api/trakt/sync/\(id)/resolve", method: "POST", body: ["direction": direction, "choice": choice.rawValue])
+    }
     func cancel(id: String) async throws { let _: EmptyResponse = try await requireStore().read("/api/trakt/sync/\(id)/cancel", method: "POST", body: [:]) }
     func disconnect() async throws {
         let store = try requireStore()
@@ -55,6 +65,8 @@ import TwilDiaryCore
     @ObservationIgnored private var awakeHolds = 0
     private var operationID = UUID()
     private(set) var applyingAll = false
+    /// The review group (pull, push or conflict) being resolved at once, if any.
+    private(set) var resolvingGroup: String?
     private(set) var restoringApproval = false
     private var refreshFailure: Error?
     private var runningTask: Task<Void, Never>?
@@ -343,6 +355,60 @@ import TwilDiaryCore
         applyingAll = false; retryMessage = nil
         if operationID == ticket { await finishChangingReview() }
         else { changingReview = false; busy = false }
+    }
+    /// Resolve every pending review item of one direction with one choice, a bounded batch
+    /// per request, until none remain. Items the server cannot resolve this way (blocked or
+    /// unconfirmed) stay for an individual choice. A finished review is then completed.
+    func resolveAll(direction: String, choice: TraktChoice) async {
+        guard !busy, let current = sync, current.reviewing, let id = current.run?.id,
+              choice != .apply, choice == .skip || cooldownUntil <= clock() else { return }
+        holdAwake(); defer { releaseAwake() }
+        let ticket = UUID(); operationID = ticket
+        refreshID = UUID(); loading = false; busy = true; changingReview = true
+        paused = false; resolvingGroup = direction
+        error = nil; retryAttempt = 0; retryMessage = nil
+        let key = "review:" + direction
+        var reconcile = false
+        do {
+            while !paused {
+                try Task.checkCancellation()
+                guard operationID == ticket else { throw CancellationError() }
+                try await waitForCooldown(ticket)
+                if paused { break }
+                do {
+                    if reconcile {
+                        let latest = try await service.review(kind: .all, query: "", after: nil)
+                        guard operationID == ticket else { throw CancellationError() }
+                        guard latest.run?.id == id else { throw APIError.message("The review changed. Open the current review before continuing.") }
+                        accept(latest); reconcile = false
+                        if cooldownUntil > clock() { continue }
+                    }
+                    guard let before = sync, before.run?.id == id, before.reviewing, (before.counts[key] ?? 0) > 0 else { break }
+                    let result = try await service.resolve(id: id, direction: direction, choice: choice)
+                    guard operationID == ticket else { throw CancellationError() }
+                    guard result.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
+                    accept(result); retryAttempt = 0; retryMessage = nil
+                    if !result.reviewing || (result.counts[key] ?? 0) == 0 { break }
+                    if result.counts == before.counts {
+                        throw APIError.message("\(result.counts[key] ?? 0) items need an individual choice (for example titles in Trash). Everything else is saved.")
+                    }
+                    try await sleep(Self.stepPacing)
+                } catch is CancellationError { throw CancellationError() }
+                catch {
+                    try scheduleRecovery(error, ticket: ticket)
+                    reconcile = true
+                }
+            }
+            if !paused, let result = sync, result.reviewing, (result.counts["safe"] ?? 0) == 0, result.unresolved == 0 {
+                accept(try await service.apply(id: id, change: nil, choice: .apply))
+            }
+            deferredRefresh = true; deferredStatus = true
+        } catch is CancellationError { paused = true }
+        catch { self.error = error.localizedDescription }
+        resolvingGroup = nil; retryMessage = nil
+        if operationID == ticket { await finishChangingReview() }
+        else { changingReview = false; busy = false }
+        if choice != .skip { await onTransferFinished() }
     }
     private func waitForCooldown(_ ticket: UUID) async throws {
         while cooldownUntil > clock() && !paused {

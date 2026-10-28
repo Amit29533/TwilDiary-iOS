@@ -665,6 +665,10 @@ function statusResult([found, buckets, rows]: StatusRows) {
     counts[bucket.state] = (counts[bucket.state] ?? 0) + bucket.amount;
     if (bucket.state === 'pending' && !bucket.review) safe += bucket.amount;
     if (bucket.state === 'pending' && bucket.direction === 'link') linked += bucket.amount;
+    // Review groups the app can resolve at once: review:pull, review:push, review:conflict.
+    if (bucket.state === 'pending' && bucket.review)
+      counts['review:' + bucket.direction] =
+        (counts['review:' + bucket.direction] ?? 0) + bucket.amount;
   }
   const page = rows.slice(0, 50);
   return {
@@ -2881,6 +2885,135 @@ export async function applySyncChange(
       },
       0,
       extra
+    );
+  } catch (error) {
+    await failRun(
+      db,
+      run,
+      error,
+      error instanceof ApiError ? error.message : 'This sync step was not confirmed.'
+    );
+    throw error;
+  }
+}
+/** Review proposals resolved per bulk request: database-only choices, and sends to Trakt. */
+export const RESOLVE_BATCH = 10;
+export const RESOLVE_SENDS = 3;
+/**
+ * Resolve every pending review proposal of one direction (pull: removed on Trakt, push:
+ * removed in TwilDiary, conflict: both changed) with one choice, a bounded batch per request.
+ * Skip is one statement. Unconfirmed sends keep their own check, and blocked proposals (Trash,
+ * no TMDB match) can only be skipped, so neither is picked for Keep or Use Trakt.
+ */
+export async function resolveReviewGroup(
+  db: Db,
+  env: ServerBindings,
+  id: string,
+  direction: string,
+  choice: string,
+  tmdbTransport?: typeof fetch,
+  transport: typeof fetch = fetch
+) {
+  if (
+    !['pull', 'push', 'conflict'].includes(direction) ||
+    !['local', 'trakt', 'skip'].includes(choice)
+  )
+    throw new ApiError(400, 'invalid_input', 'Choose a review group and how to resolve it.');
+  const access = await authorizedTrakt(db, env, transport),
+    run = await lockedRun(db, id, access),
+    trakt = leasedTrakt(db, run, access);
+  try {
+    if (run.state !== 'review' && run.state !== 'applying')
+      throw new ApiError(409, 'sync_not_ready', 'Finish building the preview first.');
+    const group = and(
+      eq(changes.runId, run.id),
+      sql`${changes.state}='pending'`,
+      sql`${changes.review}=1`,
+      eq(changes.direction, direction as Change['direction']),
+      sql`json_extract(${changes.payload},'$.reconcileOnly') IS NOT 1`,
+      sql`json_extract(${changes.payload},'$.sentUnconfirmed') IS NOT 1`
+    );
+    if (choice === 'skip') {
+      const skipped = await db.update(changes).set({ state: 'skipped', error: null }).where(group);
+      return await finishRun(db, run, {
+        state: 'applying',
+        progress: run.progress + Number(skipped.meta.changes ?? 0)
+      });
+    }
+    await assertSnapshot(db, run, trakt);
+    const send = choice === 'local';
+    const batch = await db
+      .select()
+      .from(changes)
+      .where(and(group, sql`json_extract(${changes.payload},'$.blocked') IS NOT 1`))
+      .orderBy(asc(changes.id))
+      .limit(send ? RESOLVE_SENDS : RESOLVE_BATCH)
+      .all();
+    const tmdb = createTmdb(env.TMDB_ACCESS_TOKEN, tmdbTransport);
+    const marks: BatchItem<'sqlite'>[] = [];
+    let settled = 0,
+      sent = false,
+      cooldown = 0;
+    for (const change of batch) {
+      try {
+        // A history pull marks itself applied inside its own write batch.
+        const marked = await applyOne(
+          db,
+          run,
+          change,
+          send ? 'push' : 'pull',
+          trakt,
+          tmdb,
+          send ? undefined : change.id
+        );
+        if (!marked)
+          marks.push(
+            db
+              .update(changes)
+              .set({ state: 'applied', error: null })
+              .where(eq(changes.id, change.id))
+          );
+        if (send) {
+          sent = true;
+          await journalSend(db, change);
+        }
+        settled++;
+      } catch (error) {
+        // A refused (throttled) request applied nothing: keep it pending and cool down.
+        if (throttled(error)) {
+          if (!settled) throw error;
+          cooldown = retryAfterOf(error);
+          break;
+        }
+        if (databaseQuotaFailure(error)) throw error;
+        // Never downgrade a change another path already applied or marked uncertain.
+        const current = await db.select().from(changes).where(eq(changes.id, change.id)).get();
+        marks.push(
+          db
+            .update(changes)
+            .set({
+              state:
+                current?.state === 'applied' || current?.state === 'uncertain'
+                  ? current.state
+                  : 'failed',
+              error:
+                error instanceof ApiError
+                  ? error.message
+                  : 'This change was not confirmed. Refresh the preview before retrying.'
+            })
+            .where(eq(changes.id, change.id))
+        );
+        settled++;
+        if (!(error instanceof ApiError)) break;
+      }
+    }
+    if (sent) await updateSnapshot(db, run, trakt);
+    return await finishRun(
+      db,
+      run,
+      { state: 'applying', progress: run.progress + settled },
+      cooldown,
+      marks
     );
   } catch (error) {
     await failRun(

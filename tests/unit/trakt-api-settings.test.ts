@@ -19,6 +19,7 @@ test('every Trakt route refuses anonymous access before parsing bodies or contac
     'sync',
     'sync/[id]/step',
     'sync/[id]/apply',
+    'sync/[id]/resolve',
     'sync/[id]/cancel'
   ];
   const original = globalThis.fetch;

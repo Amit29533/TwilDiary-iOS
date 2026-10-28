@@ -27,6 +27,23 @@ import TwilDiaryCore
             snapshot.counts = ["pending": 720, "links": 2]
         }
         if largeImport { snapshot.counts = ["pending": 2000, "safe": 2000, "applied": 0] }
+        if scenario == "removals" {
+            // Thirty plays removed on Trakt: the case bulk review actions exist for.
+            let removals = (0..<30).map { index in
+                #"{"id":"removed-\#(index)","kind":"history","direction":"pull","name":"Removed show \#(index + 1)","detail":"Removed on Trakt. Review before changing your diary.","review":true,"state":"pending","error":null,"blocked":false,"context":{"local":"2025-05-27T20:00:00.000Z","remote":null,"season":1,"episode":\#(index + 1)}}"#
+            }.joined(separator: ",")
+            snapshot.items = try! JSONDecoder().decode([TraktChange].self, from: Data("[\(removals)]".utf8)) + snapshot.items
+            recount()
+        }
+    }
+    /// Counts as the server reports them, including the review:<direction> groups.
+    private func recount() {
+        let pending = snapshot.items.filter { $0.state == "pending" }
+        snapshot.counts = ["pending": pending.count, "links": 0, "failed": 0, "uncertain": 0,
+            "safe": pending.filter { !$0.review && !$0.blocked }.count,
+            "skipped": snapshot.items.filter { $0.state == "skipped" }.count,
+            "applied": snapshot.items.filter { $0.state == "applied" }.count]
+        for item in pending where item.review { snapshot.counts["review:" + item.direction, default: 0] += 1 }
     }
     func status() async throws -> TraktStatus {
         if unavailable { throw APIError.message("The connection is temporarily unavailable. Try again.") }
@@ -63,11 +80,21 @@ import TwilDiaryCore
             if item.blocked && choice != .skip { throw APIError.message("This item needs to be skipped.") }
             snapshot.items[index].state = choice == .skip ? "skipped" : "applied"
         }
-        snapshot.counts["pending"] = snapshot.items.filter { $0.state == "pending" }.count
-        snapshot.counts["safe"] = snapshot.items.filter { $0.state == "pending" && !$0.review && !$0.blocked }.count
-        snapshot.counts["skipped"] = snapshot.items.filter { $0.state == "skipped" }.count
-        snapshot.counts["applied"] = snapshot.items.filter { $0.state == "applied" }.count
+        recount()
         if snapshot.counts["pending"] == 0 { snapshot.run?.state = "complete" }
+        return snapshot
+    }
+    func resolve(id: String, direction: String, choice: TraktChoice) async throws -> TraktSync {
+        // Like the server: a bounded batch per request, blocked items only for Skip.
+        var budget = choice == .skip ? Int.max : (choice == .local ? 3 : 10)
+        for index in snapshot.items.indices where budget > 0 {
+            let item = snapshot.items[index]
+            guard item.state == "pending", item.review, item.direction == direction, choice == .skip || !item.blocked else { continue }
+            snapshot.items[index].state = choice == .skip ? "skipped" : "applied"
+            budget -= 1
+        }
+        recount()
+        snapshot.run?.state = "applying"
         return snapshot
     }
     func cancel(id: String) async throws { snapshot.run?.state = "cancelled" }
