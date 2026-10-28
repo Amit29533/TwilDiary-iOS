@@ -670,8 +670,11 @@ import UIKit
         let labelled = app.buttons.matching(NSPredicate(format: "label == %@", "Use Trakt for 30 items"))
         XCTAssertTrue(labelled.firstMatch.waitForExistence(timeout: 5)); capture("Trakt group confirmation")
         XCTAssertTrue(app.staticTexts["Removes these items from your diary to match Trakt."].exists)
-        let identified = app.buttons["trakt-group-confirm"]
-        let confirm = identified.exists ? identified : labelled.element(boundBy: labelled.count - 1)
+        // iOS can keep a second, off-screen copy of the dialog's action: tap the visible one.
+        let identified = app.buttons.matching(identifier: "trakt-group-confirm")
+        let candidates = (0..<identified.count).map { identified.element(boundBy: $0) }
+            + (0..<labelled.count).map { labelled.element(boundBy: $0) }
+        let confirm = candidates.first { $0.isHittable } ?? labelled.element(boundBy: labelled.count - 1)
         confirm.tap()
         XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].waitForNonExistence(timeout: 10))
         XCTAssertFalse(useTrakt.exists, "A resolved group leaves the panel")
