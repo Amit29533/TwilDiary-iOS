@@ -22,6 +22,7 @@ MIGRATIONS = (
     "0015_trakt_planning_cursor.sql",
     "0016_native_query_bounds.sql",
     "0017_trakt_import_indexes.sql",
+    "0018_trakt_remote_history_tmdb.sql",
 )
 spec = importlib.util.spec_from_file_location(
     "promotion", Path(__file__).with_name("verify-codemagic.py"))
@@ -185,7 +186,7 @@ def prepare(source, checks, output, backup=None):
     migrations = {Path(name).name: git("show", source + ":" + name).decode("utf-8")
                   for name in sorted(files)}
     if tuple(list(migrations)[14:]) != MIGRATIONS:
-        raise ValueError("Release migration set differs from the reviewed 0014–0017 plan.")
+        raise ValueError("Release migration set differs from the reviewed 0014–0018 plan.")
     inputs = files + [name for name in names if name in (
         "package.json", "package-lock.json", "wrangler.production.jsonc", "wrangler.jsonc",
         "vite.config.ts", "svelte.config.js", "workers/trakt-incoming/wrangler.production.jsonc")]
