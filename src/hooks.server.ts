@@ -2,6 +2,7 @@ import { building, dev } from '$app/env';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { AccessFailure, assertSameOriginWrite, createAccessVerifier } from '#lib/server/access.ts';
 import { localDevelopmentAllowed, localNetworkAllowed } from '#lib/server/local-development.ts';
+import { bumpWorkspaceRevision, changesDiary } from '#lib/server/workspace-revision.ts';
 
 let cached: { key: string; verify: ReturnType<typeof createAccessVerifier> } | undefined;
 
@@ -33,6 +34,8 @@ export const handle: Handle = async ({ event, resolve }) => {
       };
       event.locals.tmdbTransport = (await import('../tooling/local-tmdb-fetch.ts')).localTmdbFetch;
       const response = await resolve(event);
+      if (changesDiary(event.request.method, event.url.pathname))
+        await bumpWorkspaceRevision(cloudflareEnv.DB);
       response.headers.set('Cache-Control', 'private, no-store');
       response.headers.set('X-Content-Type-Options', 'nosniff');
       return response;
@@ -72,6 +75,9 @@ export const handle: Handle = async ({ event, resolve }) => {
     event.locals.owner = await cached.verify(event.request);
     assertSameOriginWrite(event.request);
     const response = await resolve(event);
+    // After the write has finished, so a resumed app re-reads a diary that already has it.
+    if (changesDiary(event.request.method, event.url.pathname))
+      await bumpWorkspaceRevision(event.locals.bindings?.DB);
     response.headers.set('Cache-Control', 'private, no-store');
     if (!response.headers.has('Referrer-Policy'))
       response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');

@@ -274,17 +274,38 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         catch { XCTFail("Expected cancellation after read cancellation") }
     }
 
+    private static func revisionStub(_ digit: Character) -> @Sendable (URLRequest) -> StubProtocol.Reply {
+        let revision = #"{"revision":""# + String(repeating: digit, count: 32) + #""}"#
+        return { request in
+            request.url?.path == "/api/workspace/revision" ? .init(revision) : .init(#"{"items":[],"next":null}"#)
+        }
+    }
     func testForegroundRefreshReadsTheLatestDiaryAndCoalescesRapidSceneChanges() async {
         let storage = MemorySessionStorage(); storage.credential = credential
-        StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
+        StubProtocol.state.reset(Self.revisionStub("a"))
         let store = DiaryStore(api: api(storage)), start = Date.now
         store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         await store.refreshOnForeground(at: start)
-        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        // The revision check, then the complete four-section download.
+        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertEqual(StubProtocol.state.recorded().count, 5)
         await store.refreshOnForeground(at: start.addingTimeInterval(1))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
         await store.refreshOnForeground(at: start.addingTimeInterval(11))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 8)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 6, "An unchanged revision needs no diary download")
+    }
+    func testForegroundRefreshDownloadsAgainWhenTheRevisionChangesOrIsOld() async {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        StubProtocol.state.reset(Self.revisionStub("a"))
+        let store = DiaryStore(api: api(storage)), start = Date.now
+        await store.refreshOnForeground(at: start)
+        XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+        StubProtocol.state.reset(Self.revisionStub("b"))
+        await store.refreshOnForeground(at: start.addingTimeInterval(20))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5, "A changed revision downloads the diary again")
+        await store.refreshOnForeground(at: start.addingTimeInterval(40))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 6, "The new revision was remembered")
+        await store.refreshOnForeground(at: start.addingTimeInterval(20 + 6 * 3600))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 11, "A six-hour-old match still downloads in full")
     }
     func testForegroundReadWaitsForAnInFlightWriteBeforeLoadingTheServerSnapshot() async {
         let storage = MemorySessionStorage(); storage.credential = credential
@@ -297,7 +318,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         }
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty)
         store.busy = false; await pending.value
-        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
     }
     func testCancelledForegroundWaitDoesNotConsumeTheNextResumeRefresh() async {
         let storage = MemorySessionStorage(); storage.credential = credential
@@ -311,7 +332,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         pending.cancel(); store.busy = false; await pending.value
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty)
         await store.refreshOnForeground()
-        XCTAssertEqual(StubProtocol.state.recorded().count, 4)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
     }
 
     func testCatalogSeasonUsesReadOnlyEndpointAndExplicitSpoilerChoice() async throws {

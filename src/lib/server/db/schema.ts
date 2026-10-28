@@ -68,6 +68,15 @@ export const workspaceUi = sqliteTable('workspace_ui', {
   tags: text('tags', { mode: 'json' }).$type<string[]>().notNull().default([]),
   demo: integer('demo', { mode: 'boolean' }).notNull().default(false)
 });
+/** One row whose token changes after every diary write; the app compares it before a full read. */
+export const workspaceRevision = sqliteTable(
+  'workspace_revision',
+  {
+    id: integer('id').primaryKey(),
+    token: text('token').notNull()
+  },
+  (t) => [check('workspace_revision_singleton', sql`${t.id} = 1`)]
+);
 export const workspaceMigrations = sqliteTable('workspace_migrations', {
   id: text('id').primaryKey(),
   token: text('token').notNull(),

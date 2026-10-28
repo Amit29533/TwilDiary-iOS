@@ -102,6 +102,9 @@ import TwilDiaryCore
     var sessionRevision: UUID { sessionGeneration }
     private var snapshotGeneration = UUID()
     private var lastForegroundRead: Date?
+    /// The server's diary revision read just before the last complete foreground download.
+    @ObservationIgnored private var knownWorkspaceRevision: (token: String, at: Date)?
+    @ObservationIgnored private var completeReads = 0
     private var pendingWatches: [String: [String: Any]] = [:]
     private var pendingProgress: [String: [String: Any]] = [:]
     private var pendingRemovals: [String: WatchCard.Previous] = [:]
@@ -155,7 +158,7 @@ import TwilDiaryCore
         let previousScope = api.credential?.cacheScope
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
         let generation = UUID(); sessionGeneration = generation; snapshotGeneration = UUID()
-        lastForegroundRead = nil
+        lastForegroundRead = nil; knownWorkspaceRevision = nil
         invalidateDiscovery()
         communityCache.reset()
         do {
@@ -185,7 +188,7 @@ import TwilDiaryCore
         failNextFixtureRefresh = false
         #endif
         sessionGeneration = UUID(); snapshotGeneration = UUID()
-        lastForegroundRead = nil
+        lastForegroundRead = nil; knownWorkspaceRevision = nil
         invalidateDiscovery()
         communityCache.reset()
         needsMutationRefresh = false
@@ -226,7 +229,32 @@ import TwilDiaryCore
               lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
         lastForegroundRead = date
         defer { if Task.isCancelled, session == sessionGeneration, lastForegroundRead == date { lastForegroundRead = nil } }
+        // One primary-key read decides whether the multi-page diary download is needed.
+        let revision = await readWorkspaceRevision()
+        guard session == sessionGeneration, !Task.isCancelled else { return }
+        if let revision, let known = knownWorkspaceRevision, known.token == revision,
+           date.timeIntervalSince(known.at) < Self.revisionTrust,
+           hasLoadedWorkspace, !showingCachedSnapshot, !needsMutationRefresh { return }
+        let reads = completeReads
         await refresh()
+        // Remember the revision read before this download. A write that landed during it
+        // changes the server's token, so the next resume downloads again.
+        guard session == sessionGeneration else { return }
+        knownWorkspaceRevision = completeReads != reads ? revision.map { (token: $0, at: date) } : nil
+    }
+    /// Trust a matching revision for at most this long; then download in full anyway.
+    private static let revisionTrust: TimeInterval = 6 * 3600
+    private struct WorkspaceRevision: Decodable { let revision: String }
+    /// nil when the check is unavailable (an older backend, offline, an unexpected reply):
+    /// the caller then makes the complete download it always made.
+    private func readWorkspaceRevision() async -> String? {
+        #if DEBUG
+        if isPreview { return nil }
+        #endif
+        guard let value: WorkspaceRevision = try? await read("/api/workspace/revision"),
+              value.revision.count == 32,
+              value.revision.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
+        return value.revision
     }
     func reload() async throws {
         #if DEBUG
@@ -252,6 +280,7 @@ import TwilDiaryCore
             snapshot = try await readWorkspaceSnapshot()
         }
         try await publish(snapshot, session: session, revision: revision)
+        completeReads &+= 1
     }
     /// Re-read only the titles a write touched and merge them into the current snapshot.
     /// One small consistent request replaces a full multi-page diary download, so the
