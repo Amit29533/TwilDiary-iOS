@@ -764,11 +764,16 @@ async function assertSnapshot(db: Db, run: Run, trakt: Trakt) {
 }
 /**
  * Planning examines PLAN_SCAN rows per request but runs the per-item merge (planItem, up to
- * about a dozen D1 queries) for at most PLAN_ITEMS of them, which keeps every request inside
- * the Free plan's per-invocation query limit. Rows already in sync are skipped in bulk.
+ * about a dozen D1 queries) for at most PLAN_ITEMS of them. Rows already in sync are skipped
+ * in bulk. The Free plan's limit that binds is CPU, not queries: at 50 rows and 5 merges a
+ * request used 24-46 ms and some were killed for exceeding the CPU limit (28 Oct 2026).
+ * Locally the merges dominate: one per request halves a first scan's slowest steps, while
+ * bulk-skipping 20 rows stays cheap.
  */
-const PLAN_SCAN = 50;
-const PLAN_ITEMS = 5;
+export const PLAN_SCAN = 20;
+export const PLAN_ITEMS = 1;
+/** Titles carry two items each (rating and watchlist). */
+const PLAN_TITLES = PLAN_SCAN / 2;
 type SyncedBaseline = { localValue: string | null; remoteValue: string | null };
 /**
  * True only when planItem would certainly propose nothing: the local value, the Trakt value
@@ -1179,7 +1184,7 @@ export async function buildSyncStep(
         )
         .orderBy(asc(titles.id))
         // Two items (rating, watchlist) per title.
-        .limit(PLAN_SCAN / 2)
+        .limit(PLAN_TITLES)
         .offset(run.planAfter ? 0 : run.page - 1)
         .all();
       const items = rows.flatMap((row) =>
@@ -1282,7 +1287,7 @@ export async function buildSyncStep(
         if (proposed.has(proposalIds[index]!)) continue;
         await planItem(db, run, item, row.title);
       }
-      if (rows.length === PLAN_SCAN / 2 || window.length < rows.length)
+      if (rows.length === PLAN_TITLES || window.length < rows.length)
         next = { page: run.page + window.length, planAfter: window.at(-1)!.title.id };
       else {
         await assertSnapshot(db, run, trakt);

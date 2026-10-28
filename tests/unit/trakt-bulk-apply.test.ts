@@ -621,8 +621,8 @@ test('a re-sync skips settled plays and titles in bulk yet still finds every rea
     { remote: '50000', direction: 'pull', review: 0 }
   ]);
   assert.equal(String(removed.id), '1');
-  // 2,000 plays and 1,050 titles: about 20 Trakt pages plus 50-row planning batches. One play
-  // or title per request (the previous five-row batches) would need over a thousand steps.
-  assert.ok(steps < 180, `the re-sync preview took ${steps} build requests`);
+  // 2,000 plays and 1,050 titles: about 20 Trakt pages plus 20-row planning batches (10 titles).
+  // The previous five-row batches needed 1,039 steps for this preview.
+  assert.ok(steps < 400, `the re-sync preview took ${steps} build requests`);
   assert.equal(fake.state.posts.length, 0);
 });
