@@ -388,7 +388,9 @@ async function planItem(
       .where(
         and(
           eq(remote.runId, run.id),
-          eq(remote.kind, 'history'),
+          // Literal kind and expression match trakt_remote_history_tmdb; a bound kind would
+          // fall back to reading every history row of the run for each watchlist item.
+          sql`${remote.kind}='history'`,
           sql`json_extract(${remote.payload},'$.tmdbId')=${item.tmdbId}`,
           sql`json_extract(${remote.payload},'$.type')=${item.type}`
         )
@@ -887,14 +889,17 @@ export async function buildSyncStep(
         // identities first; linked history and baselines still use the full merge path.
         const remoteKeys = incoming.map(({ item }) => item.remoteKey);
         const localKeys = remoteKeys.map((key) => 'trakt-history-' + key);
-        // One D1 round trip (one query against the per-invocation limit) for all three checks.
-        const [identified, watched, saved] = await db.batch([
+        // One D1 round trip (one query against the per-invocation limit) for all four checks.
+        const [identified, watched, savedRemote, savedLocal] = await db.batch([
+          // Naming both kinds lets provider_unique_identity seek each ID; without the middle
+          // column every TMDB identity in the library was read on each five-item step.
           db
             .select({ externalId: providerIdentities.externalId })
             .from(providerIdentities)
             .where(
               and(
                 eq(providerIdentities.provider, 'tmdb'),
+                inArray(providerIdentities.kind, ['movie', 'series']),
                 inArray(
                   providerIdentities.externalId,
                   incoming.map(({ item }) => String(item.tmdbId))
@@ -905,6 +910,7 @@ export async function buildSyncStep(
             .select({ remoteId: watchEvents.remoteHistoryId })
             .from(watchEvents)
             .where(inArray(watchEvents.remoteHistoryId, remoteKeys)),
+          // Two indexed lookups instead of one OR: the OR read every history baseline.
           db
             .select({ remoteKey: baselines.remoteKey, localKey: baselines.localKey })
             .from(baselines)
@@ -912,13 +918,25 @@ export async function buildSyncStep(
               and(
                 eq(baselines.accountId, run.accountId),
                 eq(baselines.kind, 'history'),
-                or(inArray(baselines.remoteKey, remoteKeys), inArray(baselines.localKey, localKeys))
+                inArray(baselines.remoteKey, remoteKeys)
+              )
+            ),
+          db
+            .select({ remoteKey: baselines.remoteKey, localKey: baselines.localKey })
+            .from(baselines)
+            .where(
+              and(
+                eq(baselines.accountId, run.accountId),
+                eq(baselines.kind, 'history'),
+                inArray(baselines.localKey, localKeys)
               )
             )
         ]);
         const titleIds = new Set(identified.map((row) => row.externalId));
         const watchIds = new Set(watched.map((row) => row.remoteId));
-        const baselineKeys = new Set(saved.flatMap((row) => [row.remoteKey, row.localKey]));
+        const baselineKeys = new Set(
+          [...savedRemote, ...savedLocal].flatMap((row) => [row.remoteKey, row.localKey])
+        );
         const fresh = incoming.filter(
           ({ item }) =>
             !titleIds.has(String(item.tmdbId)) &&
