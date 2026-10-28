@@ -1,6 +1,15 @@
 # Native client backend rollout — deployed 26 October 2026
 
-## Next rollout: 0017–0019 and main/incoming Workers (prepared 28 October 2026)
+## Rollout 0017–0019 and main/incoming Workers — deployed 28 October 2026
+
+Completed 10:48–10:58 UTC. Main Worker `0483e8d7-5335-4bef-9c17-ba5f7f7d9c73`
+(previous `d21c2b88-…`), incoming worker `40e3d330-4b95-47c2-a393-62962c074c88`
+(previous `3150a352-…`), both at 100%. Fresh bookmark and export, offline
+rehearsal, postflight (20 migrations, 17 objects, zero mismatches, one revision
+row), Access denial, a 93-request owner phone session and three idle scheduled
+runs all passed. Receipt:
+[backend-0017-0019-production-rollout.json](releases/backend-0017-0019-production-rollout.json).
+The preparation notes below are kept as the record of what was planned.
 
 Source: `main` after PRs #2–#5 (8f82b28 or later). Hosted D1 has 0000–0016; the
 pending set must be exactly:
