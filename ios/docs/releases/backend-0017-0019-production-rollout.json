@@ -47,5 +47,14 @@
   },
   "qualification": "GitHub Actions on the merged stack: backend verification green; native full suite 53 of 54 UI cases, the failure a known Undo-timing flake. Owner chose this evidence in place of a Codemagic check for this backend rollout.",
   "rollback": "wrangler rollback to the previous version of each Worker; schema is additive and compatible with both previous versions. Do not restore D1 automatically.",
-  "privateArtifacts": ".local/rollout-20261028 (preflight, postflight, deploy logs, tails, rehearsal report, export, bookmark); never committed"
+  "privateArtifacts": ".local/rollout-20261028 (preflight, postflight, deploy logs, tails, rehearsal report, export, bookmark); never committed",
+  "hotfix": {
+    "sourceCommit": "4f90bf6",
+    "pullRequest": "Amit29533/TwilDiary-iOS#7",
+    "mainWorkerVersion": "736df176-a76b-4c33-a4ac-0d927d5f9cb9",
+    "previousMainWorkerVersion": "0483e8d7-5335-4bef-9c17-ba5f7f7d9c73",
+    "deployedAtUtc": "2026-10-28T11:25Z (approximate)",
+    "change": "Planning windows of 20 rows, at most one per-item merge per request; no migration",
+    "observed": "No exceededResources after deploy (last at 11:22 UTC, before it); CPU per step median about 9.5-11 ms, p99 about 17 ms during a full comparison"
+  }
 }
