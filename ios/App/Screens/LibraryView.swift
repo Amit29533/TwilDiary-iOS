@@ -151,11 +151,10 @@ struct LibraryView: View {
                         }
                     }.padding(.horizontal, 14)
                 } else if list {
-                    LazyVStack(spacing: 12) { ForEach(Array(filtered.prefix(visibleLimit))) { title in poster(title, row: true) } }.padding(.horizontal, 14)
+                    LazyVStack(spacing: 12) { ForEach(shown) { title in poster(title, row: true).onAppear { revealMore(after: title) } } }.padding(.horizontal, 14)
                 } else {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 18) { ForEach(Array(filtered.prefix(visibleLimit))) { poster($0) } }.padding(.horizontal, 14)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 18) { ForEach(shown) { title in poster(title).onAppear { revealMore(after: title) } } }.padding(.horizontal, 14)
                 }
-                if !genreRows && visibleLimit < filtered.count { Color.clear.frame(height: 1).onAppear { visibleLimit += 48 } }
                 if filtered.isEmpty { DiaryEmptyState(title: "Nothing here just yet", description: "Try a different search or clear a filter to find your stories.").padding(.horizontal, 14).padding(.top, 20) }
             }
             // One zero-spacing stack: the scroll view's implicit stack added 8 pt above the grid.
@@ -201,6 +200,14 @@ struct LibraryView: View {
     private var disks: [DiskSummary] { let ids = Set(collection.map(\.id)); return DiskSummary.make(store.workspace.locations.filter { ids.contains($0.titleId) }) }
     private var extraDisks: [DiskSummary] { disks.filter { disk in disk.key == drive || disk.letters.allSatisfy { letter in !HomeDiskShortcut.all.contains { $0.key == "drive:" + letter.uppercased() } } } }
     private var driveLabel: String { if drive.isEmpty { return "Disk" }; if drive == "mapped" { return "On disk" }; if drive == "unmapped" { return "No disk mapping" }; if let shortcut = HomeDiskShortcut.all.first(where: { $0.key == drive }) { return shortcut.label }; return disks.first { $0.key == drive }?.letters.joined(separator: " / ") ?? "Selected disk" }
+    private var shown: [MediaTitle] { Array(filtered.prefix(visibleLimit)) }
+    /// The last created cell of the lazy grid or list asks for the next 48. A sentinel
+    /// after the lazy container sat in an eager stack, appeared once and never again.
+    private func revealMore(after title: MediaTitle) {
+        let titles = filtered
+        guard visibleLimit < titles.count, title.id == titles[visibleLimit - 1].id else { return }
+        visibleLimit += 48
+    }
     private var filtered: [MediaTitle] {
         var query = LibraryQuery()
         query.category = category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all"

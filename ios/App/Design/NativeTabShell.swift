@@ -6,6 +6,9 @@ import UIKit
 @MainActor struct NativeTabShell: UIViewControllerRepresentable {
     @Binding var selection: AppTab
     let accent: UIColor
+    /// Every value `page` captures besides the observed store and router. Pages observe
+    /// those themselves, so the five roots are rebuilt only when this key changes.
+    let pageKey: String
     let canPage: @MainActor (AppTab) -> Bool
     let onReselect: @MainActor (AppTab) -> Void
     let page: @MainActor (AppTab) -> AnyView
@@ -24,6 +27,7 @@ import UIKit
         }
         let coordinator = context.coordinator
         coordinator.controller = controller
+        coordinator.renderedPageKey = pageKey
         controller.delegate = coordinator
         controller.view.addGestureRecognizer(coordinator.pan)
         controller.selectedIndex = AppTab.allCases.firstIndex(of: selection) ?? 0
@@ -35,8 +39,13 @@ import UIKit
         coordinator.selection = $selection; coordinator.canPage = canPage
         coordinator.onReselect = onReselect
         controller.tabBar.tintColor = accent
-        for (index, host) in (controller.viewControllers ?? []).enumerated() {
-            (host as? UIHostingController<AnyView>)?.rootView = page(AppTab.allCases[index])
+        // Reassigning a root re-diffs that whole tab. Doing all five on every root update
+        // (opening Surprise me, any state the root body read) rebuilt every screen.
+        if coordinator.renderedPageKey != pageKey {
+            coordinator.renderedPageKey = pageKey
+            for (index, host) in (controller.viewControllers ?? []).enumerated() {
+                (host as? UIHostingController<AnyView>)?.rootView = page(AppTab.allCases[index])
+            }
         }
         guard coordinator.interaction == nil, controller.transitionCoordinator == nil,
               let index = AppTab.allCases.firstIndex(of: selection), controller.selectedIndex != index else { return }
@@ -52,6 +61,7 @@ import UIKit
         var canPage: @MainActor (AppTab) -> Bool
         var onReselect: @MainActor (AppTab) -> Void
         weak var controller: UITabBarController?
+        var renderedPageKey: String?
         var interaction: UIPercentDrivenInteractiveTransition?
         private var origin = 0
         private var target = 0

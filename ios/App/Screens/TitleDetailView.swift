@@ -323,9 +323,16 @@ struct TitleDetailView: View {
             if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.glass).disabled(store.writesBlocked) }
             if let seasonLoadError { RetryNotice(message: seasonLoadError) { Task { await prepareSeason(title, force: true) } } }
             if let episodeError = episodeDetails.error(for: season) { Text(episodeError).font(.caption).foregroundStyle(.secondary); Button("Retry episode details") { Task { await revealSeason(title) } } }
-            CollectionLayout(grid: episodesGrid, spacing: 8) { ForEach(visibleEpisodes) { episode in episodeRow(title, episode: episode) } }
+            CollectionLayout(grid: episodesGrid, spacing: 8) {
+                let shown = visibleEpisodes
+                ForEach(shown) { episode in
+                    // The lazy grid creates the last row only as it nears the screen.
+                    episodeRow(title, episode: episode).onAppear {
+                        if showAllEpisodes, episode.id == shown.last?.id, episodeLimit < episodes.count { episodeLimit += 40 }
+                    }
+                }
+            }
             if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary) }
-            if showAllEpisodes && episodeLimit < episodes.count { Color.clear.frame(height: 1).onAppear { episodeLimit += 40 } }
             if episodes.count > 4 { Button(showAllEpisodes ? "Back to next episode" : "Show all \(episodes.count) episodes") { showAllEpisodes.toggle() }.frame(maxWidth: .infinity).frame(minHeight: 44) }
             if let pending = store.pendingSeasonAdjustments[title.id + ":" + String(season)] { Button("Retry progress to episode \(pending.count)") { Task { await store.setSeasonProgress(title, season: season, count: pending.count, watchedAt: watchInstant); await loadCard(title) } }.disabled(store.writesBlocked) }
         }
