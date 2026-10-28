@@ -408,7 +408,8 @@ struct ProgressCard: View {
             Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patchCard(title.id, values: ["favorite": !title.favorite]) } }
             Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } }
             if title.isSeries, let season = card?.season?.number {
-                Button("Mark complete", systemImage: "checkmark.circle") { Task { await store.completeCardSeason(title.id, season: season) } }
+                // Name the season: this completes only the card's season, never the whole show.
+                Button(season == 0 ? "Complete Specials" : "Complete Season \(season)", systemImage: "checkmark.circle") { Task { await store.completeCardSeason(title.id, season: season) } }
             }
             Button("Dropped", systemImage: "stop.circle") { Task { await store.patchCard(title.id, values: ["status": "dropped"]) } }
             Button("Notes", systemImage: "note.text") {

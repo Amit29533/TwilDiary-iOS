@@ -677,8 +677,19 @@ import UIKit
         capture("Trakt Apply visible"); ready.tap()
         XCTAssertTrue(app.staticTexts["1 remaining"].waitForExistence(timeout: 5))
         let useTrakt = app.buttons["trakt-trakt-change-2"]
-        for _ in 0..<8 { if useTrakt.isHittable { break }; app.swipeDown() }
-        for _ in 0..<8 { if useTrakt.isHittable { break }; app.swipeUp() }
+        // isHittable stays true while the button sits under the translucent navigation
+        // bar, so the tap landed on the bar (native62/65 runs: button at y 59–88, bar to 116).
+        // Drag in short steps until the whole button clears both bars.
+        let navigationBottom = app.navigationBars["Trakt"].frame.maxY
+        let tabBarTop = app.tabBars.firstMatch.frame.minY
+        for _ in 0..<12 {
+            let frame = useTrakt.frame
+            if useTrakt.isHittable && frame.minY > navigationBottom + 8 && frame.maxY < tabBarTop - 8 { break }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            // Dragging down reveals content above; dragging up reveals content below.
+            let step: CGFloat = !useTrakt.exists || frame.minY <= navigationBottom + 8 ? 180 : -180
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: step)))
+        }
         XCTAssertEqual(app.buttons.matching(identifier: "trakt-trakt-change-2").count, 1, "One conflict must expose exactly one Trakt action")
         XCTAssertTrue(useTrakt.isHittable); useTrakt.tap()
         if !app.staticTexts["You’re up to date"].waitForExistence(timeout: 8) {
@@ -1136,7 +1147,7 @@ import UIKit
         app.buttons["progress-menu-again"].tap()
         XCTAssertTrue(app.buttons["Favorite"].exists); XCTAssertTrue(app.buttons["Dropped"].exists)
         XCTAssertFalse(app.buttons["Open title"].exists)
-        XCTAssertTrue(app.buttons["Mark complete"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Complete Season'")).firstMatch.exists)
         app.buttons["Notes"].tap()
         XCTAssertTrue(app.textViews["title-notes"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textViews["title-notes"].isHittable); capture("Glance menu reveals Notes")
@@ -1173,7 +1184,7 @@ import UIKit
         let count = app.staticTexts["watch-count-again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
         wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
-        app.buttons["progress-menu-again"].tap(); app.buttons["Mark complete"].tap()
+        app.buttons["progress-menu-again"].tap(); app.buttons["Complete Season 1"].tap()
         // Undo first (project rule: never spend the real 4.5 s window on slow value
         // reads). A semantic tap tried to scroll the toast's ancestor and missed it.
         // The helper waits for Undo to be enabled, i.e. the completion was saved.
