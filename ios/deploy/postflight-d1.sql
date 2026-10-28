@@ -1,4 +1,5 @@
--- Read-only. Requires migrations 0014-0017 (0017 adds six indexes only). Retain results privately.
+-- Read-only. Requires migrations 0014-0019 (0017/0018 add indexes; 0019 adds the one-row
+-- workspace_revision table). Retain results privately.
 SELECT name FROM d1_migrations ORDER BY name;
 SELECT type,name FROM sqlite_schema
 WHERE name IN (
@@ -7,7 +8,8 @@ WHERE name IN (
   'trakt_changes_ready_pick','trakt_remote_plan_order',
   'trakt_runs_recent','trakt_runs_account_created','watch_movie_latest',
   'trakt_changes_unconfirmed','trakt_changes_local_event','unmatched_matched_title',
-  'watch_operations_title','watch_operations_result','watch_operations_episode'
+  'watch_operations_title','watch_operations_result','watch_operations_episode',
+  'trakt_remote_history_tmdb','workspace_revision'
 ) ORDER BY type,name;
 SELECT name,type,"notnull" FROM pragma_table_info('trakt_sync_runs') WHERE name='plan_after';
 
@@ -37,3 +39,6 @@ WHERE (a.amount IS NULL AND s.amount!=0) OR s.amount<0;
 
 SELECT enabled,generation,page,next_at,failures,budget_day,budget_used
 FROM trakt_incoming WHERE id='trakt' LIMIT 1;
+
+-- Exactly one row with a 32-hex token (0019).
+SELECT count(*) AS rows, min(length(token)) AS token_length FROM workspace_revision;

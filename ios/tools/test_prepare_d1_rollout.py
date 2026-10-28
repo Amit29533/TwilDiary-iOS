@@ -69,18 +69,19 @@ class RolloutTests(unittest.TestCase):
             self.assertEqual(preflight[1], [])
             self.assertEqual(preflight[2][0][0], "review-fixture")
             self.assertEqual(before, rollout.snapshot(db))
-        with fixture(18) as db:
+        with fixture(20) as db:
             db.execute("PRAGMA query_only=ON")
             before = rollout.snapshot(db)
             postflight = run_operator_queries(db, "postflight-d1.sql")
-            self.assertEqual(len(postflight[0]), 18)
-            self.assertEqual(len(postflight[1]), 15)
+            self.assertEqual(len(postflight[0]), 20)
+            self.assertEqual(len(postflight[1]), 17)
             self.assertEqual(postflight[2], [("plan_after", "TEXT", 0)])
             self.assertEqual(postflight[4], [], "No active review bucket may differ")
+            self.assertEqual(postflight[6], [(1, 32)], "One workspace revision with a 32-hex token")
             self.assertEqual(before, rollout.snapshot(db))
 
     def test_postflight_reports_a_corrupt_active_review_bucket(self):
-        with fixture(18) as db:
+        with fixture(20) as db:
             db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1 WHERE state='pending'")
             db.execute("PRAGMA query_only=ON")
             self.assertTrue(run_operator_queries(db, "postflight-d1.sql")[4])
