@@ -87,6 +87,8 @@ struct PageHeader: View {
     var onSearch: (() -> Void)? = nil
     /// The owner's designs put the search icon in a dark circle.
     var circledSearch = false
+    /// Home draws the header over the Continue watching backdrop.
+    var overArtwork = false
     var height: CGFloat = 56
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -113,9 +115,9 @@ struct PageHeader: View {
             } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
             if let count { Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1) }
             Spacer(minLength: 0)
-            if let onSearch { Button(action: onSearch) { DiaryIcon(name: "search", size: 22).frame(width: 44, height: 44).background(.white.opacity(circledSearch ? 0.08 : 0), in: Circle()) }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel(name == "Library" ? "Search library" : "Search").accessibilityIdentifier("search-" + name.lowercased()) }
+            if let onSearch { Button(action: onSearch) { DiaryIcon(name: "search", size: 22).frame(width: 44, height: 44).background(overArtwork ? Color.black.opacity(0.45) : .white.opacity(circledSearch ? 0.08 : 0), in: Circle()) }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel(name == "Library" ? "Search library" : "Search").accessibilityIdentifier("search-" + name.lowercased()) }
         }.frame(height: height).padding(.horizontal, 14).background {
-            if theme == .glass { Color.clear }
+            if theme == .glass || overArtwork { Color.clear }
             else { Color(webHex: ["Library", "Trash"].contains(name) ? "#0e0d13" : "#050507") }
         }
     }
@@ -371,34 +373,51 @@ struct ProgressCard: View {
                     GeometryReader { proxy in
                         Button { openTitle() } label: {
                             Group {
-                                if hero || compact { Artwork(path: cardBackdrop, title: title.name).overlay(scrim) }
+                                // Home's hero draws its backdrop behind the whole page header instead.
+                                if compact { Color.clear }
+                                else if hero { Artwork(path: cardBackdrop, title: title.name).overlay(scrim) }
                                 else { Rectangle().fill(theme.field) }
                             }.frame(width: proxy.size.width, height: proxy.size.height).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("Open " + title.name).accessibilityIdentifier("progress-cover-" + title.id)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(0.17)))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact ? 0 : 0.17)))
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .sensoryFeedback(.success, trigger: watchFeedback)
     }
+    /// Home's Continue watching text over the page backdrop (owner's design): title, "S2 · E3 of 8",
+    /// the bar with "38% complete" and the time left, then the same − / + controls as Glance.
     private var compactContent: some View {
-        VStack {
+        VStack(alignment: .leading, spacing: 6) {
             Spacer(minLength: 0)
-            HStack(alignment: .bottom, spacing: 10) {
-                Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 42, height: 62).clipShape(RoundedRectangle(cornerRadius: 6)) }.buttonStyle(.plain)
-                VStack(alignment: .leading, spacing: 7) {
-                    Button { openTitle() } label: { Text(title.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(1) }.buttonStyle(.plain)
-                    timeLine.font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                    GeometryReader { proxy in Capsule().fill(.white.opacity(0.15)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 4)
-                }.padding(.bottom, 4)
-                Button { Task { await markWatch() } } label: {
-                    actionIcon(.mark, symbol: title.isSeries ? "plus" : "checkmark", size: 24).foregroundStyle(theme.ink)
-                        .frame(width: 44, height: 44).contentShape(Rectangle())
-                }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
-            }
-        }.padding(12).frame(height: 142)
+            Button { openTitle() } label: {
+                Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.6).foregroundStyle(.white)
+                    .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
+            }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
+            Text(homeLine).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.88)).lineLimit(1)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    GeometryReader { proxy in Capsule().fill(.white.opacity(0.2)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
+                    HStack(spacing: 8) {
+                        // Share and episode count come from the same card, so they always agree.
+                        Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete")
+                        Spacer(minLength: 0)
+                        if let left = cardText?.timeLeft { Text(left).monospacedDigit() }
+                    }.font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                }.frame(maxWidth: 240)
+                Spacer(minLength: 0)
+                controls
+            }.padding(.top, 6)
+        }.padding(.horizontal, 12).padding(.bottom, 4).frame(height: 196)
+    }
+    /// "S2 · E3 of 8" for shows, "Movie · 1h 54m" for movies.
+    private var homeLine: String {
+        guard title.isSeries else { return (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · ") }
+        guard let card else { return title.categoryName }
+        let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
+        return [season, "E\(card.progress.watched) of \(card.progress.total)"].compactMap { $0 }.joined(separator: " · ")
     }
     /// Poster on the left; title, progress and the − / + controls stacked beside it.
     @ViewBuilder private var glanceContent: some View {
@@ -503,11 +522,6 @@ struct ProgressCard: View {
             }
         } label: { DiaryIcon(name: "ellipsis", size: 19).frame(width: 44, height: 44) }
             .disabled(cardBusy || store.needsMutationRefresh).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("More options for " + title.name).accessibilityIdentifier("progress-menu-" + title.id)
-    }
-    /// Home's compact card: the subtitle with the time left, when it is known.
-    private var timeLine: some View {
-        Text([cardText?.subtitle ?? (title.isSeries ? title.categoryName : "Movie"), cardText?.timeLeft].compactMap { $0 }.joined(separator: " · "))
-            .foregroundStyle(Color(webHex: "#c5c0cf")).shadow(color: .black.opacity(0.8), radius: 2, y: 1)
     }
     /// "S1 · Watched 5 of 8 · Next E6" (see GlanceCardText).
     private var subtitleLine: some View {

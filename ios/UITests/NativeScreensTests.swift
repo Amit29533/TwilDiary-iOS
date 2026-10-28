@@ -75,7 +75,7 @@ import UIKit
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '% complete'")).firstMatch.waitForExistence(timeout: 5))
         capture("Glance")
         app.tabBars.buttons["Home"].tap()
-        XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5)); capture("Home")
+        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5)); capture("Home")
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.buttons["Search library"].waitForExistence(timeout: 5)); capture("Library")
         XCTAssertEqual(app.tabBars.count, 1, "The system Liquid Glass tab bar must be the only tab bar")
@@ -157,7 +157,7 @@ import UIKit
         for _ in 0..<16 { if apply.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(apply.isHittable); apply.tap()
         app.tabBars.buttons["Home"].tap()
-        XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
         app.tabBars.buttons["More"].tap()
         let counts = app.staticTexts["trakt-apply-counts"]
         for _ in 0..<16 { if counts.isHittable { break }; app.swipeDown() }
@@ -189,7 +189,7 @@ import UIKit
         XCTAssertFalse(app.progressIndicators["trakt-apply-progress"].exists, "No invented percentage before review loads")
         capture("Cold quota restoration waits without a fake percentage")
         app.tabBars.buttons["Home"].tap()
-        XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
         app.tabBars.buttons["More"].tap()
         let counts = app.staticTexts["trakt-apply-counts"]
         let progressed = NSPredicate { _, _ in counts.exists && !counts.label.hasPrefix("0 saved") }
@@ -263,7 +263,7 @@ import UIKit
         XCTAssertTrue(app.staticTexts["A clear little corner"].waitForExistence(timeout: 5)); capture("Empty Glance")
         app.tabBars.buttons["Home"].tap()
         XCTAssertTrue(app.staticTexts["This week"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["Pick up where you left off"].exists); XCTAssertFalse(app.staticTexts["Recently watched"].exists)
+        XCTAssertFalse(app.staticTexts["Continue watching"].exists); XCTAssertFalse(app.staticTexts["Recently watched"].exists)
         XCTAssertTrue(app.staticTexts["0m"].exists); capture("Empty Home")
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.staticTexts["Nothing here just yet"].waitForExistence(timeout: 5)); capture("Empty Library")
@@ -288,7 +288,8 @@ import UIKit
         XCTAssertTrue(season.isHittable); XCTAssertEqual(season.value as? String, "Season 1")
     }
 
-    func testRandomPickKeepsPlannedScopeAndLogoRerollsWithoutRepeating() {
+    func testRandomPickKeepsPlannedScopeAndLogoRerollsWithoutRepeating() throws {
+        try XCTSkipIf(true, "Home's Pick for me button is not in the owner's Home design; skipped until the owner decides where it goes")
         let app = launch(); app.tabBars.buttons["Home"].tap()
         let planned = app.buttons["home-pick-planned"]
         func revealPlanned() {
@@ -737,7 +738,8 @@ import UIKit
         let confirm = app.buttons["confirm-collection"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); capture("Bulk Queue review"); confirm.tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Home"].tap(); app.buttons["queue-shortcut"].tap()
+        // Home no longer has a Queue shortcut (owner's design); Library's status filter is the way in.
+        app.buttons["library-status"].tap(); app.buttons["Queue"].tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["title-after-rain"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
         app.buttons["title-again"].press(forDuration: 1); app.buttons["Move to Trash"].tap()
@@ -1033,14 +1035,14 @@ import UIKit
         explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["explore-done"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
         explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Home"].tap()
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["Explore"])], timeout: 5)
         explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
         completeContentBack(app, beside: app.staticTexts["Recommendation of the day"], from: 0.12, velocity: .slow)
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["Explore"])], timeout: 5)
-        XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
         capture("Native Explore returned Home")
     }
     func testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped() {
@@ -1349,7 +1351,7 @@ import UIKit
         capture("Glass navigation scrub More")
         more.press(forDuration: 0.3, thenDragTo: app.tabBars.buttons["Home"])
         XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
-        XCTAssertTrue(app.staticTexts["Pick up where you left off"].exists)
+        XCTAssertTrue(app.staticTexts["Continue watching"].exists)
         let start = library.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -170)))
         XCTAssertEqual(["home", "library", "glance", "stats", "more"].filter { app.tabBars.buttons[$0.capitalized].isSelected }.count, 1)

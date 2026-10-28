@@ -17,13 +17,14 @@ enum ContinueCarouselPolicy {
 /// No timer runs offscreen, behind another tab/page, during a write or with VoiceOver.
 struct ContinueWatchingCarousel: View {
     let titles: [MediaTitle]
+    /// Owned by Home, which shows the selected title's backdrop behind the page header.
+    @Binding var selection: String
     var automaticAllowed = true
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
-    @SceneStorage("home.continue.title") private var selection = ""
     // The pause control was removed with the overflow menu. A new key keeps an old
     // saved "paused" value from silently disabling rotation forever.
     @SceneStorage("home.continue.paused.v2") private var paused = false
