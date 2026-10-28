@@ -296,20 +296,49 @@ struct PosterCard: View {
     }
 }
 
+/// All · Movies · Shows · Anime as pills: the selected one is filled with the theme accent.
+/// Shared by Glance and Library so both read and behave the same.
 struct CategoryPicker: View {
     @Binding var selection: LibraryCategory
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 6) {
             ForEach(LibraryCategory.allCases) { category in
+                let selected = selection == category
                 Button { selection = category } label: {
-                    Text(category.rawValue).font(.system(size: 15, weight: .semibold)).foregroundStyle(selection == category ? Color(webHex: "#f3f0f7") : Color(webHex: "#a09aa9"))
-                        .padding(.leading, category == .all ? 4 : 12).padding(.trailing, 12).frame(height: 40)
-                        .overlay(alignment: .bottom) { if category == selection { Rectangle().fill(.tint).frame(height: 3) } }
-                }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selection == category ? .isSelected : [])
+                    Text(category.rawValue).font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(selected ? theme.ink : Color(webHex: "#c5c0cf"))
+                        .padding(.horizontal, 16).frame(minHeight: 40)
+                        .background { if selected { Capsule().fill(theme.accent) } }
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selected ? .isSelected : [])
             }
             Spacer(minLength: 0)
-        }.padding(.horizontal, 14).padding(.bottom, 1)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color(webHex: "#2c2736")).frame(height: 1) }
+        }.padding(.horizontal, 14).padding(.vertical, 4)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: selection)
+    }
+}
+
+/// "Recently updated ▾" on the left, screen tools (layout toggle, filters) on the right.
+struct SortMenuRow<Option: Hashable & Identifiable, Trailing: View>: View {
+    let options: [Option]
+    @Binding var selection: Option
+    let label: (Option) -> String
+    let identifier: String
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Picker("Sort", selection: $selection) { ForEach(options) { Text(label($0)).tag($0) } }
+            } label: {
+                HStack(spacing: 6) { Text(label(selection)); DiaryIcon(name: "chevron-down", size: 14) }
+                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    .frame(minHeight: 44).contentShape(Rectangle())
+            }.accessibilityIdentifier(identifier).accessibilityLabel("Sort").accessibilityValue(label(selection))
+            Spacer(minLength: 0)
+            trailing
+        }.padding(.leading, 18).padding(.trailing, 8)
     }
 }
 
@@ -324,6 +353,8 @@ struct ProgressCard: View {
     let title: MediaTitle
     var compact = false
     var grid = false
+    /// Glance's large card for the most recently updated title: full artwork, text on a scrim.
+    var hero = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(DiaryStore.self) private var store
     @State private var loadedCard: WatchCard?
@@ -333,19 +364,19 @@ struct ProgressCard: View {
     @Environment(AppRouter.self) private var router
     var body: some View {
         ZStack(alignment: .leading) {
-            Group { if compact { compactContent } else { glanceContent } }
+            Group { if compact { compactContent } else if hero { heroContent } else { glanceContent } }
                 .background {
                     GeometryReader { proxy in
                         Button { openTitle() } label: {
                             Artwork(path: cardBackdrop, title: title.name).frame(width: proxy.size.width, height: proxy.size.height)
-                                .overlay(LinearGradient(colors: [.black.opacity(compact ? 0.05 : 0.35), .black.opacity(0.88)], startPoint: .top, endPoint: .bottom))
+                                .overlay(scrim)
                                 .contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("Open " + title.name).accessibilityIdentifier("progress-cover-" + title.id)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: compact ? 12 : 14))
-                .overlay(RoundedRectangle(cornerRadius: compact ? 12 : 14).strokeBorder(.white.opacity(0.17)))
-        }.clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(0.17)))
+        }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .sensoryFeedback(.success, trigger: watchFeedback)
     }
@@ -375,22 +406,53 @@ struct ProgressCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    timeLine.font(.system(size: 13, weight: .semibold)).lineSpacing(3.5).fixedSize(horizontal: false, vertical: true).frame(minHeight: 20, alignment: .topLeading)
+                    subtitleLine.font(.system(size: 13, weight: .semibold)).lineSpacing(3.5).fixedSize(horizontal: false, vertical: true).frame(minHeight: 20, alignment: .topLeading)
                     Spacer(minLength: 0)
                 }.padding(.top, grid ? 0 : 8).frame(maxWidth: .infinity, alignment: .topLeading)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }
             actionLayout {
-                VStack(alignment: .leading, spacing: 5) {
-                    GeometryReader { proxy in Capsule().fill(.white.opacity(0.16)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
-                    // Before the card loads, say so instead of showing a made-up zero.
-                    Text(card == nil ? "Checking progress…" : title.isSeries ? "\(Int((fraction * 100).rounded()))% complete" : fraction > 0 ? "Watched" : "Not watched yet").font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
-                }
+                progressBlock
+                controls
+            }
+        }.padding(10)
+    }
+    /// Full artwork with the text on a scrim at the bottom, so it stays readable on bright posters.
+    private var heroContent: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack { Spacer(minLength: 0); cardMenu.background(.black.opacity(0.35), in: Circle()) }
+            Spacer(minLength: 110)
+            Button { openTitle() } label: {
+                Text(title.name).font(.system(size: 24, weight: .bold)).tracking(-0.6).foregroundStyle(.white)
+                    .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
+            }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
+            subtitleLine.font(.system(size: 14, weight: .semibold))
+            progressBlock.padding(.top, 4)
+            HStack { Spacer(minLength: 0); controls }.padding(.top, 2)
+        }.padding(14).frame(minHeight: 320)
+    }
+    /// The bar with "63% of season 1" and the time left; long-running seasons show no share.
+    private var progressBlock: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if card == nil || cardText?.progressLabel != nil {
+                GeometryReader { proxy in Capsule().fill(.white.opacity(0.16)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
+            }
+            HStack(spacing: 8) {
+                // Before the card loads, say so instead of showing a made-up zero.
+                Text(card == nil ? "Checking progress…" : cardText?.progressLabel ?? "")
+                Spacer(minLength: 0)
+                if let left = cardText?.timeLeft { Text(left).monospacedDigit() }
+            }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf")).lineLimit(1).minimumScaleFactor(0.85)
+        }
+    }
+    /// − last watched episode + for shows; one Log watch button for movies.
+    private var controls: some View {
                 // One container lets the card's glass controls render and morph together.
                 GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
                     Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 18).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glass).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
-                    Text(card.map { "\($0.progress.watched)" } ?? "–").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
+                    // The last watched episode ("E5"); the subtitle carries "of 8".
+                    Text(cardText?.counter ?? "–").font(.system(size: 17, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
                     Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
@@ -400,8 +462,6 @@ struct ProgressCard: View {
                     }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
                 } }.frame(height: 44)
-            }
-        }.padding(10)
     }
     private var cardMenu: some View {
         Menu {
@@ -418,11 +478,28 @@ struct ProgressCard: View {
         } label: { DiaryIcon(name: "ellipsis", size: 19).frame(width: 44, height: 44) }
             .disabled(cardBusy || store.needsMutationRefresh).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("More options for " + title.name).accessibilityIdentifier("progress-menu-" + title.id)
     }
+    /// Home's compact card: the subtitle with the time left, when it is known.
     private var timeLine: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(card?.season.map { "S\($0.number) · E\(card?.progress.watched ?? 0) of \(card?.progress.total ?? 0)" } ?? (title.isSeries ? title.categoryName : "Movie")).foregroundStyle(Color(webHex: "#c5c0cf"))
-            Text(remaining.map { "· \(DiaryDate.duration($0)) left" } ?? "· Time unknown").foregroundStyle(Color(white: 0.75)).shadow(color: .black.opacity(0.8), radius: 2, y: 1)
-        }
+        Text([cardText?.subtitle ?? (title.isSeries ? title.categoryName : "Movie"), cardText?.timeLeft].compactMap { $0 }.joined(separator: " · "))
+            .foregroundStyle(Color(webHex: "#c5c0cf")).shadow(color: .black.opacity(0.8), radius: 2, y: 1)
+    }
+    /// "S1 · Watched 5 of 8 · Next E6" (see GlanceCardText).
+    private var subtitleLine: some View {
+        Text(cardText?.subtitle ?? (title.isSeries ? title.categoryName : "Movie"))
+            .foregroundStyle(Color(webHex: "#c5c0cf")).shadow(color: .black.opacity(hero ? 0.6 : 0), radius: 4, y: 1)
+    }
+    private var cardText: GlanceCardText? {
+        guard let card else { return nil }
+        if !title.isSeries { return .movie(watched: card.progress.watched > 0, runtimeMinutes: title.runtimeMinutes) }
+        return .series(season: card.season?.number, watched: card.progress.watched, total: card.progress.total,
+                       next: card.next?.number, remainingMinutes: remaining)
+    }
+    private var cornerRadius: CGFloat { hero ? 20 : compact ? 12 : 14 }
+    private var scrim: LinearGradient {
+        hero
+            ? LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0), .init(color: .black.opacity(0.3), location: 0.45),
+                                     .init(color: .black.opacity(0.92), location: 1)], startPoint: .top, endPoint: .bottom)
+            : LinearGradient(colors: [.black.opacity(compact ? 0.05 : 0.35), .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
     }
     private var cardBusy: Bool { store.cardActions[title.id] != nil }
     @ViewBuilder private func actionIcon(_ action: DiaryStore.CardAction, symbol: String, size: CGFloat) -> some View {
