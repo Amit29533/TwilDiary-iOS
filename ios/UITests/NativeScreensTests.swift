@@ -72,7 +72,7 @@ import UIKit
     }
     func testNativeTabsAndTitleNavigation() {
         let app = launch()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'complete'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '% of season'")).firstMatch.waitForExistence(timeout: 5))
         capture("Glance")
         app.tabBars.buttons["Home"].tap()
         XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5)); capture("Home")
@@ -1267,9 +1267,11 @@ import UIKit
         let app = launch(mutations: true, titleMetadata: true, longEpisodes: true); app.tabBars.buttons["Glance"].tap()
         let glance = app.buttons["glance-layout"]
         XCTAssertTrue(glance.waitForExistence(timeout: 5)); glance.tap(); XCTAssertEqual(glance.value as? String, "Grid")
-        let again = app.buttons["progress-menu-again"], frieren = app.buttons["progress-menu-frieren"]
-        XCTAssertTrue(again.waitForExistence(timeout: 5)); XCTAssertTrue(frieren.exists)
-        XCTAssertLessThan(again.frame.minX, frieren.frame.minX); XCTAssertEqual(again.frame.minY, frieren.frame.minY, accuracy: 2)
+        // The most recently updated title stays a full-width hero above the grid.
+        let again = app.buttons["progress-menu-again"], frieren = app.buttons["progress-menu-frieren"], night = app.buttons["progress-menu-night"]
+        XCTAssertTrue(again.waitForExistence(timeout: 5)); XCTAssertTrue(frieren.exists); XCTAssertTrue(night.exists)
+        XCTAssertLessThan(again.frame.maxY, frieren.frame.minY)
+        XCTAssertLessThan(frieren.frame.minX, night.frame.minX); XCTAssertEqual(frieren.frame.minY, night.frame.minY, accuracy: 2)
         XCTAssertTrue(app.buttons["Mark next watch for 18 Again"].isEnabled)
         XCTAssertTrue(app.buttons["Remove latest watch for 18 Again"].isEnabled)
         capture("Glance two-column grid with watch actions")

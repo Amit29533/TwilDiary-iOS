@@ -27,7 +27,7 @@ import XCTest
         XCTAssertEqual(layout.frame.width, 42, accuracy: 1); XCTAssertEqual(layout.frame.height, 44, accuracy: 1)
         XCTAssertEqual(genres.frame.width, 36, accuracy: 1); XCTAssertEqual(genres.frame.height, 44, accuracy: 1)
         XCTAssertEqual(app.buttons["category-all"].frame.minX, 14, accuracy: 1)
-        XCTAssertEqual(titles[0].frame.minY - app.buttons["random-pick-logo"].frame.minY, 204, accuracy: 2)
+        XCTAssertEqual(titles[0].frame.minY - app.buttons["random-pick-logo"].frame.minY, 211, accuracy: 2)
         capture("Library", app: app)
         titles[1].tap()
         let track = app.sliders["episode-progress"]
