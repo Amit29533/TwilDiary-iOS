@@ -93,7 +93,9 @@ import TwilDiaryCore
     private(set) var showingCachedSnapshot = false
     private(set) var lastRefreshedAt: Date?
     private(set) var cacheWarning: String?
-    private var undoAction: (() async throws -> Void)?
+    private var undoAction: (() async throws -> Void)? { didSet { undoTitles = nil } }
+    /// Titles an Undo changes, so it refreshes just those; nil means a complete diary read.
+    private var undoTitles: Set<String>?
     private let api: DiaryAPI
     private let cache: any WorkspaceCaching
     @ObservationIgnored private var cacheRestoration: Task<Void, Never>?
@@ -501,6 +503,7 @@ import TwilDiaryCore
             self.undoAction = {
                 let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": result.title.version])
             }
+            self.undoTitles = [title.id]
         }
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
@@ -592,6 +595,7 @@ import TwilDiaryCore
             if result.added || (result.event.operationId == operation["operationId"] as? String && result.event.version == 1 && result.event.revokedAt == nil) {
                 self.undoLabel = "Watch marked"
                 self.undoAction = { try await self.changeEvent(result.event, action: "revoke") }
+                self.undoTitles = [title.id]
             }
         }
     }
@@ -610,6 +614,7 @@ import TwilDiaryCore
             self.pendingRemovals.removeValue(forKey: title.id)
             self.undoLabel = "Watch removed"
             self.undoAction = { try await self.changeEvent(result.event, action: "restore") }
+            self.undoTitles = [title.id]
         }
     }
     private func changeEvent(_ event: WatchEvent, action: String) async throws {
@@ -673,6 +678,7 @@ import TwilDiaryCore
         undoLabel = status == "planned" ? "Progress reset" : "Marked completed"
         let undoBody: [String: Any] = ["operationId": UUID().uuidString, "undoOf": receipt.operationId]
         undoAction = { let _: ProgressReceipt = try await self.read("/api/progress/status", method: "POST", body: undoBody) }
+        undoTitles = ids
     }
     /// Completing a show needs every regular season's episode list. Only seasons that
     /// are missing, incomplete, in an old format, or possibly still airing with stale
@@ -714,7 +720,7 @@ import TwilDiaryCore
     }
     func undo() async {
         guard let action = undoAction else { return }
-        await perform { try await action(); self.undoAction = nil; self.undoLabel = nil }
+        await perform(refreshing: undoTitles) { try await action(); self.undoAction = nil; self.undoLabel = nil }
     }
     func dismissUndo() { undoLabel = nil; undoAction = nil }
     func installUndo(_ actions: [(event: WatchEvent, action: String)], label: String) {
@@ -727,6 +733,7 @@ import TwilDiaryCore
                 remaining.removeFirst()
             }
         }
+        undoTitles = Set(actions.map(\.event.titleId))
     }
     @discardableResult func perform(cardID: String? = nil, cardAction: CardAction = .menu, refreshing titleIDs: Set<String>? = nil, _ action: () async throws -> Void) async -> Bool {
         let scoped: Set<String>? = titleIDs ?? cardID.map { Set([$0]) }
