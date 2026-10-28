@@ -1,5 +1,39 @@
 # Native client backend rollout — deployed 26 October 2026
 
+## Rollout 0017–0019 and main/incoming Workers — deployed 28 October 2026
+
+Completed 10:48–10:58 UTC. Main Worker `0483e8d7-5335-4bef-9c17-ba5f7f7d9c73`
+(previous `d21c2b88-…`), incoming worker `40e3d330-4b95-47c2-a393-62962c074c88`
+(previous `3150a352-…`), both at 100%. Fresh bookmark and export, offline
+rehearsal, postflight (20 migrations, 17 objects, zero mismatches, one revision
+row), Access denial, a 93-request owner phone session and three idle scheduled
+runs all passed. Receipt:
+[backend-0017-0019-production-rollout.json](releases/backend-0017-0019-production-rollout.json).
+The preparation notes below are kept as the record of what was planned.
+
+Source: `main` after PRs #2–#5 (8f82b28 or later). Hosted D1 has 0000–0016; the
+pending set must be exactly:
+
+| Order | Migration | Result |
+| --- | --- | --- |
+|1|0017_trakt_import_indexes.sql|Six additive indexes (unconfirmed-send and local-event partial indexes, scanner/watch-operation lookups)|
+|2|0018_trakt_remote_history_tmdb.sql|One partial expression index for the watchlist "already watched on Trakt" check|
+|3|0019_workspace_revision.sql|New one-row `workspace_revision` table seeded with a random token|
+
+All three are additive; the 26 October Worker version stays schema-compatible
+for code rollback. Unlike that rollout, **both** Workers deploy this time: the
+incoming worker now bumps the workspace revision after ticks that may import.
+
+Follow the procedure below with these changes: record both Workers' current
+versions, expect 0017–0019 pending, rehearse with `prepare-d1-rollout.py`'s
+`rehearse()` (the tool now reviews 0014–0019), run the updated pre/postflight SQL
+(postflight requires 20 migrations, 17 objects, zero bucket mismatches and one
+32-hex revision row), deploy the main Worker, then
+`npx wrangler deploy --config workers/trakt-incoming/wrangler.production.jsonc --keep-vars`.
+Release gate for this backend rollout: GitHub Actions evidence on the merged
+stack (backend verification green; native 53/54, the failure a known Undo-timing
+flake) in place of a Codemagic check, by owner decision on 28 October 2026.
+
 ## Completed rollout and measured evidence
 
 Deployed at 04:11:56 UTC (09:41 IST) on 26 October 2026 from the canonical

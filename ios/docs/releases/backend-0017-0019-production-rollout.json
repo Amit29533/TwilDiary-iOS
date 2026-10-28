@@ -1,0 +1,51 @@
+{
+  "status": "deployed",
+  "sourceCommit": "8f82b28",
+  "operatorTooling": "chore/rollout-0017-0019 (PR #6); no app or Worker code beyond 8f82b28",
+  "repository": "Amit29533/TwilDiary-iOS",
+  "deployedAtUtc": {
+    "migrations": "2026-10-28T10:48:39Z",
+    "mainWorker": "2026-10-28T10:50:55Z",
+    "incomingWorker": "2026-10-28T10:58:24Z"
+  },
+  "mainWorkerVersion": "0483e8d7-5335-4bef-9c17-ba5f7f7d9c73",
+  "previousMainWorkerVersion": "d21c2b88-a874-46fa-8dc4-61798d8544d8",
+  "incomingWorkerVersion": "40e3d330-4b95-47c2-a393-62962c074c88",
+  "previousIncomingWorkerVersion": "3150a352-0013-4151-a93a-00d6266b9b46",
+  "trafficPercent": 100,
+  "appliedMigrations": [
+    "0017_trakt_import_indexes.sql",
+    "0018_trakt_remote_history_tmdb.sql",
+    "0019_workspace_revision.sql"
+  ],
+  "backupVerification": {
+    "timeTravelBookmark": "captured privately before migration",
+    "fullExport": "14,440,930 bytes, taken at the same bookmark, kept privately",
+    "offlineRehearsal": "integrity ok; 27 existing tables byte-identical after 0017-0019; review counts exact; only new table workspace_revision with 1 row",
+    "databaseRows": 26487
+  },
+  "postflight": {
+    "migrationsRecorded": 20,
+    "expectedObjects": "17 of 17",
+    "activeReviewBucketMismatches": 0,
+    "workspaceRevision": "1 row, 32-hex token",
+    "activeRunUnchanged": true,
+    "incomingSettingsUnchanged": true,
+    "rowsRead": 4253,
+    "rowsWritten": 0
+  },
+  "liveVerification": {
+    "unauthenticatedRequests": "302 to Cloudflare Access for /, /api/session, /api/workspace, /api/workspace/revision, /api/trakt/status and an unauthenticated POST",
+    "ownerPhoneSession": "93 requests in 5 minutes with the existing native62 app, all successful, 0 exceptions, 0 warn/error logs",
+    "incomingScheduledRuns": "3 consecutive minutes ok, state idle (fenced by the open manual review), 0 exceptions"
+  },
+  "freeTierObservation": {
+    "window": "2026-10-28T10:51:00Z to 10:57:14Z",
+    "rowsRead": 50839,
+    "rowsWritten": 12688,
+    "note": "Includes a fresh owner-started Trakt scan planning about half its remote items. Batched remote planning read about 570 rows per 50-item request. The 27 October peak with the previous code was 8.74 million reads, 8.7 million of them in two hours."
+  },
+  "qualification": "GitHub Actions on the merged stack: backend verification green; native full suite 53 of 54 UI cases, the failure a known Undo-timing flake. Owner chose this evidence in place of a Codemagic check for this backend rollout.",
+  "rollback": "wrangler rollback to the previous version of each Worker; schema is additive and compatible with both previous versions. Do not restore D1 automatically.",
+  "privateArtifacts": ".local/rollout-20261028 (preflight, postflight, deploy logs, tails, rehearsal report, export, bookmark); never committed"
+}
