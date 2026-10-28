@@ -63,41 +63,44 @@ public enum GlanceOverview {
     }
 }
 
-/// What a Glance progress card says. Every count names what it counts, the percentage says
-/// whose it is (the season's), and nothing is shown when a value is unknown.
+/// What a Glance progress card says, in the owner's wording: "S1 · E5 of 8", "63% complete",
+/// "4h 12m left" or "Time unknown", and "5 / 8" between − and +.
 public struct GlanceCardText: Equatable, Sendable {
-    /// "S1 · Watched 5 of 8 · Next E6", or "S1 · 35 watched · Next E36" for long-running seasons.
+    /// "S1 · E5 of 8"; very long seasons show their size as "1000+".
     public let subtitle: String
-    /// "63% of season 1"; nil for long-running seasons, where a share of 1000+ means little.
+    /// "63% complete".
     public let progressLabel: String?
-    /// "1h 20m left"; nil when the runtime is unknown or nothing is left.
+    /// "1h 20m left", "Time unknown" without a runtime, nil once nothing is left.
     public let timeLeft: String?
-    /// The middle of the − / + control: the last watched episode ("E5"), or "–" before any.
+    /// The middle of the − / + control: "5 / 8".
     public let counter: String
 
-    /// Seasons at least this long are shown as a running count instead of a share.
-    public static let longRunning = 100
+    /// Season sizes from this one up are shown as "1000+".
+    public static let cappedTotal = 1000
 
     public static func series(season: Int?, watched: Int, total: Int, next: Int?,
                               remainingMinutes: Int?) -> GlanceCardText {
         let prefix = season.map { $0 == 0 ? "Specials" : "S\($0)" }
-        let nextText = next.map { " · Next E\($0)" } ?? ""
-        let long = total >= longRunning
-        let count = long ? "\(watched) watched" : "Watched \(watched) of \(total)"
+        let size = total >= cappedTotal ? "\(cappedTotal)+" : String(total)
         let percent = total > 0 ? Int((Double(min(watched, total)) / Double(total) * 100).rounded()) : 0
-        let scope = season.map { $0 == 0 ? "specials" : "season \($0)" } ?? "this show"
         return GlanceCardText(
-            subtitle: [prefix, count].compactMap { $0 }.joined(separator: " · ") + nextText,
-            progressLabel: long || total == 0 ? nil : "\(percent)% of \(scope)",
-            timeLeft: remainingMinutes.flatMap { $0 > 0 ? "\(DiaryDate.duration($0)) left" : nil },
-            counter: watched > 0 ? "E\(watched)" : "–")
+            subtitle: [prefix, "E\(watched) of \(size)"].compactMap { $0 }.joined(separator: " · "),
+            progressLabel: "\(percent)% complete",
+            timeLeft: timeLeft(remainingMinutes, done: watched >= total && total > 0),
+            counter: "\(watched) / \(size)")
     }
 
     public static func movie(watched: Bool, runtimeMinutes: Int?) -> GlanceCardText {
         GlanceCardText(
             subtitle: "Movie",
-            progressLabel: watched ? "Watched" : "Not watched yet",
-            timeLeft: watched ? nil : runtimeMinutes.flatMap { $0 > 0 ? "\(DiaryDate.duration($0)) left" : nil },
-            counter: watched ? "1" : "–")
+            progressLabel: watched ? "100% complete" : "0% complete",
+            timeLeft: timeLeft(runtimeMinutes, done: watched),
+            counter: watched ? "1 / 1" : "0 / 1")
+    }
+
+    private static func timeLeft(_ minutes: Int?, done: Bool) -> String? {
+        if done { return nil }
+        guard let minutes else { return "Time unknown" }
+        return minutes > 0 ? "\(DiaryDate.duration(minutes)) left" : nil
     }
 }

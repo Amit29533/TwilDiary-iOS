@@ -48,32 +48,29 @@ private func event(_ id: String, title: String, recorded: String, watched: Strin
     #expect(almost.map(\.id) == [second.id, third.id, first.id])
 }
 
-@Test func cardTextNamesWhatItCountsAndHidesUnknowns() {
+@Test func cardTextUsesTheOwnersWording() {
     let text = GlanceCardText.series(season: 1, watched: 5, total: 8, next: 6, remainingMinutes: 80)
-    #expect(text.subtitle == "S1 · Watched 5 of 8 · Next E6")
-    #expect(text.progressLabel == "63% of season 1")
-    #expect(text.timeLeft == "1h 20m left")
-    #expect(text.counter == "E5")
+    #expect(text == GlanceCardText(subtitle: "S1 · E5 of 8", progressLabel: "63% complete", timeLeft: "1h 20m left", counter: "5 / 8"))
     let unknown = GlanceCardText.series(season: 2, watched: 0, total: 12, next: 1, remainingMinutes: nil)
-    #expect(unknown.timeLeft == nil)
-    #expect(unknown.counter == "–")
-    #expect(unknown.progressLabel == "0% of season 2")
-    let caughtUp = GlanceCardText.series(season: 3, watched: 10, total: 10, next: nil, remainingMinutes: 0)
-    #expect(caughtUp.subtitle == "S3 · Watched 10 of 10")
+    #expect(unknown.timeLeft == "Time unknown")
+    #expect(unknown.counter == "0 / 12")
+    #expect(unknown.progressLabel == "0% complete")
+    let caughtUp = GlanceCardText.series(season: 3, watched: 10, total: 10, next: nil, remainingMinutes: nil)
+    #expect(caughtUp.subtitle == "S3 · E10 of 10")
     #expect(caughtUp.timeLeft == nil)
-    #expect(GlanceCardText.series(season: 0, watched: 1, total: 2, next: 2, remainingMinutes: nil).progressLabel == "50% of specials")
+    #expect(GlanceCardText.series(season: 0, watched: 1, total: 2, next: 2, remainingMinutes: nil).subtitle == "Specials · E1 of 2")
 }
 
-@Test func longRunningSeasonsShowARunningCountInsteadOfAShare() {
+@Test func veryLongSeasonsShowTheirSizeAsOneThousandPlus() {
     let text = GlanceCardText.series(season: 1, watched: 35, total: 1100, next: 36, remainingMinutes: nil)
-    #expect(text.subtitle == "S1 · 35 watched · Next E36")
-    #expect(text.progressLabel == nil)
-    #expect(text.counter == "E35")
+    #expect(text.subtitle == "S1 · E35 of 1000+")
+    #expect(text.progressLabel == "3% complete")
+    #expect(text.counter == "35 / 1000+")
 }
 
-@Test func movieCardsSayWatchedOrHowLongIsLeft() {
+@Test func movieCardsSayHowMuchIsLeft() {
     #expect(GlanceCardText.movie(watched: false, runtimeMinutes: 114) ==
-            GlanceCardText(subtitle: "Movie", progressLabel: "Not watched yet", timeLeft: "1h 54m left", counter: "–"))
+            GlanceCardText(subtitle: "Movie", progressLabel: "0% complete", timeLeft: "1h 54m left", counter: "0 / 1"))
     #expect(GlanceCardText.movie(watched: true, runtimeMinutes: 114).timeLeft == nil)
-    #expect(GlanceCardText.movie(watched: false, runtimeMinutes: nil).timeLeft == nil)
+    #expect(GlanceCardText.movie(watched: false, runtimeMinutes: nil).timeLeft == "Time unknown")
 }

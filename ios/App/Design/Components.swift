@@ -85,6 +85,8 @@ struct PageHeader: View {
     let name: String
     var count: String? = nil
     var onSearch: (() -> Void)? = nil
+    /// The owner's designs put the search icon in a dark circle.
+    var circledSearch = false
     var height: CGFloat = 56
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -111,7 +113,7 @@ struct PageHeader: View {
             } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
             if let count { Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1) }
             Spacer(minLength: 0)
-            if let onSearch { Button(action: onSearch) { DiaryIcon(name: "search", size: 22).frame(width: 44, height: 44) }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel(name == "Library" ? "Search library" : "Search").accessibilityIdentifier("search-" + name.lowercased()) }
+            if let onSearch { Button(action: onSearch) { DiaryIcon(name: "search", size: 22).frame(width: 44, height: 44).background(.white.opacity(circledSearch ? 0.08 : 0), in: Circle()) }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel(name == "Library" ? "Search library" : "Search").accessibilityIdentifier("search-" + name.lowercased()) }
         }.frame(height: height).padding(.horizontal, 14).background {
             if theme == .glass { Color.clear }
             else { Color(webHex: ["Library", "Trash"].contains(name) ? "#0e0d13" : "#050507") }
@@ -406,7 +408,7 @@ struct ProgressCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    subtitleLine.font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                    subtitleLine.font(.system(size: 13)).lineLimit(2)
                     Spacer(minLength: 6)
                     progressBlock
                     HStack { Spacer(minLength: 0); controls }.padding(.top, 2)
@@ -422,7 +424,7 @@ struct ProgressCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    subtitleLine.font(.system(size: 13, weight: .semibold)).lineSpacing(3.5).fixedSize(horizontal: false, vertical: true).frame(minHeight: 20, alignment: .topLeading)
+                    subtitleLine.font(.system(size: 13)).lineSpacing(3.5).fixedSize(horizontal: false, vertical: true).frame(minHeight: 20, alignment: .topLeading)
                     Spacer(minLength: 0)
                 }.frame(maxWidth: .infinity, alignment: .topLeading)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
@@ -444,12 +446,12 @@ struct ProgressCard: View {
                     Text(title.name).font(.system(size: 21, weight: .bold)).tracking(-0.5).foregroundStyle(.white)
                         .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
                 }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-                subtitleLine.font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                subtitleLine.font(.system(size: 13)).lineLimit(2)
                 progressBlock.padding(.top, 8)
                 Spacer(minLength: 8)
                 HStack { Spacer(minLength: 0); controls }
             }.containerRelativeFrame(.horizontal) { width, _ in width * 0.52 }
-        }.padding(14).frame(height: 228)
+        }.padding(14).frame(height: 208)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
     }
     /// The bar with "63% of season 1" and the time left; long-running seasons show no share.
