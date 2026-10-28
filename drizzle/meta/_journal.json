@@ -134,6 +134,13 @@
       "when": 1793165356682,
       "tag": "0018_trakt_remote_history_tmdb",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1793168483565,
+      "tag": "0019_workspace_revision",
+      "breakpoints": true
     }
   ]
 }

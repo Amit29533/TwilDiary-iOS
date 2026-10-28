@@ -97,7 +97,7 @@ class RolloutTests(unittest.TestCase):
         self.assertNotIn("Preserve this note", str(result))
 
     def test_partial_and_already_completed_rollouts_do_not_reapply_migrations(self):
-        for applied in (15, 16, 17, 18, 19):
+        for applied in (15, 16, 17, 18, 19, 20):
             with self.subTest(applied=applied), fixture(applied) as db:
                 result = rollout.rehearse(dump(db), MIGRATIONS)
                 self.assertEqual(result["rehearsed_migrations"], list(MIGRATIONS)[applied:])
@@ -126,21 +126,24 @@ class RolloutTests(unittest.TestCase):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
     def test_existing_damaged_aggregate_is_rejected(self):
-        for applied in (17, 18, 19):
+        for applied in (17, 18, 19, 20):
             with self.subTest(applied=applied), fixture(applied) as db:
                 db.execute("UPDATE trakt_sync_change_counts SET amount=amount+1")
                 with self.assertRaisesRegex(ValueError, "aggregate counts"):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
-    def test_pending_index_migrations_keep_every_row(self):
-        # Hosted D1 already has 0014-0016; the pending release is 0017 and 0018, indexes only.
+    def test_pending_migrations_keep_every_existing_row(self):
+        # Hosted D1 already has 0014-0016. 0017/0018 add indexes; 0019 adds one new
+        # single-row table. Every table that existed before is byte-identical after.
         with fixture(17) as db:
             result = rollout.rehearse(dump(db), MIGRATIONS)
         self.assertEqual(result["rehearsed_migrations"],
-                         ["0017_trakt_import_indexes.sql", "0018_trakt_remote_history_tmdb.sql"])
-        self.assertEqual({t: v["columns"] for t, v in result["before"].items()},
-                         {t: v["columns"] for t, v in result["after"].items()})
-        self.assertEqual(result["before"], result["after"])
+                         ["0017_trakt_import_indexes.sql", "0018_trakt_remote_history_tmdb.sql",
+                          "0019_workspace_revision.sql"])
+        existing = {t: v for t, v in result["after"].items() if t in result["before"]}
+        self.assertEqual(result["before"], existing)
+        self.assertEqual(set(result["after"]) - set(result["before"]), {"workspace_revision"})
+        self.assertEqual(result["after"]["workspace_revision"]["rows"], 1)
 
     def test_migration_cannot_mutate_original_rows_unnoticed(self):
         migrations = dict(MIGRATIONS)
