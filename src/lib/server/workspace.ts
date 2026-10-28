@@ -44,6 +44,7 @@ export function workspaceTitle(
     notes: title.notes,
     tags: [],
     deletedAt: title.deletedAt,
+    createdAt: title.createdAt,
     version: title.version,
     seasons: seasonList
   };

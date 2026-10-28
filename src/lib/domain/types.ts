@@ -30,6 +30,8 @@ export interface MediaTitle {
   tags: string[];
   /** Optional for compatibility with previously saved preview workspaces. */
   deletedAt?: string | null;
+  /** When the title was added to the diary; drives Library's "Recently added". */
+  createdAt?: string;
 }
 
 export interface Episode {
