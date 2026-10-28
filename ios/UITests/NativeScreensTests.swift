@@ -666,9 +666,12 @@ import UIKit
         XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].exists)
         XCTAssertTrue(useTrakt.isHittable); capture("Trakt review groups")
         useTrakt.tap()
-        let confirm = app.buttons["Use Trakt for 30 items"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5)); capture("Trakt group confirmation")
+        // The dialog's title repeats the action's label, so pick the action itself.
+        let labelled = app.buttons.matching(NSPredicate(format: "label == %@", "Use Trakt for 30 items"))
+        XCTAssertTrue(labelled.firstMatch.waitForExistence(timeout: 5)); capture("Trakt group confirmation")
         XCTAssertTrue(app.staticTexts["Removes these items from your diary to match Trakt."].exists)
+        let identified = app.buttons["trakt-group-confirm"]
+        let confirm = identified.exists ? identified : labelled.element(boundBy: labelled.count - 1)
         confirm.tap()
         XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].waitForNonExistence(timeout: 10))
         XCTAssertFalse(useTrakt.exists, "A resolved group leaves the panel")
