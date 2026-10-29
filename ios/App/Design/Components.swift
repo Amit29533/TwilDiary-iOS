@@ -197,6 +197,8 @@ struct PageHeader: View {
         } label: {
             BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
                 .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
+                // The tap shape sits outside the glass, as on Glance's − / +; otherwise the interactive glass takes the tap.
+                .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
     }
     @ViewBuilder private var title: some View {
@@ -211,7 +213,7 @@ struct PageHeader: View {
     private func glassButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             DiaryIcon(name: icon, size: 20).foregroundStyle(Color(webHex: "#e6e2ec")).frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: Circle())
+                .glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(label).accessibilityIdentifier(id)
     }
     /// Under the status bar, so rows scrolling up behind the pinned buttons never clash with it.

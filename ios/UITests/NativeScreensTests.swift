@@ -715,8 +715,7 @@ import UIKit
     }
     func testTraktReviewResolvesAWholeGroupOnlyAfterConfirmation() {
         let app = launch(traktScenario: "removals"); app.tabBars.buttons["More"].tap()
-        XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))
-        app.buttons["settings-trakt-summary"].tap()
+        openTrakt(app)
         XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
         let useTrakt = app.buttons["trakt-group-pull-trakt"]
         let tabBarTop = app.tabBars.firstMatch.frame.minY

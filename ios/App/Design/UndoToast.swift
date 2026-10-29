@@ -24,8 +24,8 @@ struct UndoToast: View {
                 .frame(minWidth: 44, minHeight: 44).disabled(store.writesBlocked).accessibilityIdentifier("undo-action")
             Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 13).frame(width: 36, height: 44) }
                 .foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Dismiss undo")
-        // Hugs its content: a small pill, not a bar across the screen.
-        }.buttonStyle(.plain).padding(.leading, 12).padding(.trailing, 2).frame(height: 40).fixedSize()
+        // No spacer, so the row hugs its content: a small pill, not a bar across the screen.
+        }.buttonStyle(.plain).padding(.leading, 12).padding(.trailing, 2).frame(height: 40)
             .background(.black.opacity(0.3), in: Capsule())
             .glassEffect(in: Capsule())
             .shadow(color: .black.opacity(0.2), radius: 7, y: 3)
