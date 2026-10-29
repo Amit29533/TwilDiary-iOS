@@ -670,6 +670,39 @@ import UIKit
         XCTAssertTrue(reads.waitForExistence(timeout: 5)); XCTAssertTrue(reads.label.contains("Peak 4.5M"), reads.label)
         capture("Cloudflare usage 30 days")
     }
+    func testAPIsShowKeyEndingsReplaceAndTestAndJellyfinMapsOnlyMoviesAndShows() {
+        let app = launch(); app.tabBars.buttons["More"].tap()
+        let row = app.buttons["settings-apis"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(app.navigationBars["APIs"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["••••Q2xk"].waitForExistence(timeout: 5), "Only the last four characters are shown")
+        XCTAssertTrue(app.staticTexts["Saved here"].exists); XCTAssertTrue(app.staticTexts["Not set"].exists)
+        capture("APIs")
+        app.buttons["api-replace-TMDB_ACCESS_TOKEN"].tap()
+        let field = app.secureTextFields["api-key-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText("eyJhbGciOiJIUzI1NiJ9.new-token-ZZ91")
+        capture("APIs replace key")
+        app.buttons["api-key-save"].tap()
+        XCTAssertTrue(app.staticTexts["••••ZZ91"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["api-status-TMDB_ACCESS_TOKEN"].waitForExistence(timeout: 5))
+        let jellyfin = app.buttons["jellyfin-setup"]
+        for _ in 0..<6 { if jellyfin.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(jellyfin.isHittable); capture("APIs Jellyfin and server")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let files = app.buttons["settings-files"]
+        for _ in 0..<8 { if files.isHittable { break }; app.swipeDown() }
+        files.tap()
+        let card = app.descendants(matching: .any)["jellyfin-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["jellyfin-library-movies"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["jellyfin-library-shows"].isSelected)
+        XCTAssertFalse(app.buttons["jellyfin-library-photos"].exists, "Photos and home videos are never offered")
+        app.buttons["jellyfin-sync"].tap()
+        XCTAssertTrue(app.staticTexts["jellyfin-summary"].waitForExistence(timeout: 5))
+        capture("Files Jellyfin synced")
+    }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()
         openTrakt(app)
@@ -1013,7 +1046,7 @@ import UIKit
         app.buttons["Cancel"].tap()
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: editor)], timeout: 5)
         app.buttons["title-more"].tap(); app.buttons["title-menu-files"].tap()
-        let empty = app.staticTexts["No mapped files yet. A Windows scan will add matching locations here."]
+        let empty = app.staticTexts["No mapped files yet. A Jellyfin sync in Files & drives adds matching locations here."]
         XCTAssertTrue(empty.waitForExistence(timeout: 5)); XCTAssertTrue(empty.isHittable)
         app.buttons["title-all-files"].tap()
         XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).waitForExistence(timeout: 5)); app.navigationBars.buttons.element(boundBy: 0).tap()

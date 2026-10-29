@@ -3,6 +3,7 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { AccessFailure, assertSameOriginWrite, createAccessVerifier } from '#lib/server/access.ts';
 import { localDevelopmentAllowed, localNetworkAllowed } from '#lib/server/local-development.ts';
 import { bumpWorkspaceRevision, changesDiary } from '#lib/server/workspace-revision.ts';
+import { withSavedKeys } from '#lib/server/api-keys.ts';
 
 let cached: { key: string; verify: ReturnType<typeof createAccessVerifier> } | undefined;
 
@@ -33,6 +34,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         email: 'local@localhost'
       };
       event.locals.tmdbTransport = (await import('../tooling/local-tmdb-fetch.ts')).localTmdbFetch;
+      event.locals.bindings = await withSavedKeys(cloudflareEnv);
       const response = await resolve(event);
       if (changesDiary(event.request.method, event.url.pathname))
         await bumpWorkspaceRevision(cloudflareEnv.DB);
@@ -73,6 +75,8 @@ export const handle: Handle = async ({ event, resolve }) => {
         })
       };
     event.locals.owner = await cached.verify(event.request);
+    // Keys replaced in Settings → APIs stand in for their Worker secrets, for the owner only.
+    if (event.url.pathname.startsWith('/api/')) event.locals.bindings = await withSavedKeys(env);
     assertSameOriginWrite(event.request);
     const response = await resolve(event);
     // After the write has finished, so a resumed app re-reads a diary that already has it.

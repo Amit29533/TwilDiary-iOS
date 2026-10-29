@@ -634,3 +634,13 @@ export const progressOperations = sqliteTable('progress_operations', {
   payload: text('payload').notNull(),
   createdAt: text('created_at').notNull()
 });
+
+/** API keys replaced from Settings → APIs. Encrypted (AES-GCM, a key derived from
+ * TRAKT_TOKEN_KEY); only the last four characters are ever returned. A saved key wins over
+ * the Worker secret of the same name, and removing it falls back to that secret. */
+export const apiKeys = sqliteTable('api_keys', {
+  name: text('name').primaryKey(),
+  ciphertext: text('ciphertext').notNull(),
+  hint: text('hint').notNull(),
+  updatedAt: text('updated_at').notNull()
+});

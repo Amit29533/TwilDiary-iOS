@@ -15,6 +15,7 @@ struct FilesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+                    JellyfinCard()
                     ForEach(DiskSummary.make(activeLocations)) { disk in diskButton(disk) }
                     HStack { Text("Mapped folders").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); Button("Browse titles →") { router.libraryDisk(selected) }.font(.caption.bold()) }
                     if selected != "all" { Button("All drives") { selected = "all" }.font(.caption.bold()) }
@@ -47,7 +48,7 @@ struct FilesView: View {
     private func folderRow(_ location: FileLocation) -> some View {
         let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
         return layout {
-            DiaryIcon(name: "folder", size: 20).foregroundStyle(.tint)
+            if location.deviceId == "jellyfin" { BrandLogo(service: .jellyfin, size: 22) } else { DiaryIcon(name: "folder", size: 20).foregroundStyle(.tint) }
             VStack(alignment: .leading, spacing: 7) {
                 NavigationLink(value: location.titleId) { HStack(spacing: 5) { Text(store.title(location.titleId)?.name ?? "Unmatched title").font(.system(size: 14, weight: .semibold)); DiaryIcon(name: "chevron-right", size: 14) } }.buttonStyle(.plain)
                 Text("\(location.season.map { "Season \($0)" } ?? "Title folder") · \(location.fileCount.counted("file", "files")) · \(location.sizeBytes.map { String(format: "%.1f GB", Double($0) / 1e9) } ?? "Size unknown")").font(.system(size: 11)).foregroundStyle(.secondary)

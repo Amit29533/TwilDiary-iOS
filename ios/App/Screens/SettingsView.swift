@@ -73,6 +73,8 @@ struct SettingsView: View {
                         divider
                         NavigationLink(value: AppDestination.cloudflare) { settingsRow("cloud.fill", .cloudflare, "Cloudflare", subtitle: "Usage against the free plan", disclosure: true) }.accessibilityIdentifier("settings-cloudflare")
                         divider
+                        NavigationLink(value: AppDestination.apis) { settingsRow("key.fill", .yellow, "APIs", subtitle: "TMDB, Trakt, Cloudflare and Jellyfin keys", disclosure: true) }.accessibilityIdentifier("settings-apis")
+                        divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
                     }
                     VStack(spacing: 10) {

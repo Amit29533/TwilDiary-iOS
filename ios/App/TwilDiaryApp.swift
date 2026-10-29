@@ -15,7 +15,7 @@ import TwilDiaryCore
             for key in ["historyGrid", "homeHistoryGrid", "upcomingGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
-            for key in ["glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer"] { UserDefaults.standard.removeObject(forKey: key) }
+            for key in ["glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")
@@ -40,7 +40,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
     }
 }
-enum AppDestination: Hashable { case explore, canvas, history, files, trash, scanner, appearance, trakt, tmdb, cloudflare, about }
+enum AppDestination: Hashable { case explore, canvas, history, files, trash, scanner, appearance, trakt, tmdb, cloudflare, apis, about }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -202,6 +202,7 @@ struct RootView: View {
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()
                     case .cloudflare: CloudflareUsageView()
+                    case .apis: APIsView()
                     case .about: AboutView()
                     } }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }

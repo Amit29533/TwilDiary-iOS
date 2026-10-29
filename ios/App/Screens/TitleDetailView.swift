@@ -61,6 +61,7 @@ struct TitleDetailView: View {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title)
                                 progressPanel(title).padding(.top, -8)
+                                if !locations.isEmpty { driveRow(title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if let tmdbId = title.tmdbId { CastAndRelated(route: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId), sourceTitle: title.name) }
                             }.padding(.horizontal, 14).padding(.bottom, 32)
@@ -176,13 +177,34 @@ struct TitleDetailView: View {
         // A short sheet: the note field and its count, not half the screen.
         }.presentationDetents([.height(320)]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
     }
+    /// "On your drive": where the files are, at a glance; the full list opens in the locations sheet.
+    private func driveRow(_ title: MediaTitle) -> some View {
+        let present = locations.filter { $0.evidence == "present" }, shown = present.isEmpty ? locations : present
+        let drives = Array(Set(shown.map { $0.driveLetter.isEmpty ? $0.root : $0.driveLetter + ":" })).sorted()
+        let seasons = Set(shown.compactMap(\.season)).sorted(), files = shown.reduce(0) { $0 + $1.fileCount }
+        let detail = (seasons.count > 1 ? "Seasons \(seasons.first!)–\(seasons.last!)" : seasons.first.map { "Season \($0)" } ?? "")
+        return Button { showLocation = true } label: {
+            HStack(spacing: 12) {
+                if locations.contains(where: { $0.deviceId == "jellyfin" }) { BrandLogo(service: .jellyfin, size: 30) }
+                else { DiaryIcon(name: "hard-drive", size: 20).foregroundStyle(theme.accent).frame(width: 30, height: 30) }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(present.isEmpty ? "Not on your drives now" : "On your drive").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    Text(([drives.joined(separator: " · ")] + (detail.isEmpty ? [] : [detail]) + [files.counted("file", "files")]).joined(separator: " · "))
+                        .font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
+            }.padding(.horizontal, 14).padding(.vertical, 12).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.1))).contentShape(Rectangle())
+        }.buttonStyle(.springPress).accessibilityIdentifier("title-drive-row")
+    }
     private func locationsSheet(_ title: MediaTitle) -> some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(serverLabel).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).accessibilityIdentifier("title-locations")
                     ForEach(locations) { location in locationRow(location, title: title) }
-                    if locations.isEmpty { Text("No mapped files yet. A Windows scan will add matching locations here.").font(.system(size: 13)).foregroundStyle(.secondary) }
+                    if locations.isEmpty { Text("No mapped files yet. A Jellyfin sync in Files & drives adds matching locations here.").font(.system(size: 13)).foregroundStyle(.secondary) }
                     // The sheet has its own stack; Files opens on the page underneath.
                     Button("All files & drives →") { showLocation = false; router.paths[router.selectedTab, default: NavigationPath()].append(AppDestination.files) }
                         .font(.system(size: 14, weight: .semibold)).frame(minHeight: 48).accessibilityIdentifier("title-all-files")
@@ -200,6 +222,7 @@ struct TitleDetailView: View {
     private func locationRow(_ location: FileLocation, title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top, spacing: 8) {
+                if location.deviceId == "jellyfin" { BrandLogo(service: .jellyfin, size: 16) }
                 Text(location.driveLetter + " · " + (location.season.map { "Season \($0)" } ?? "Title folder")).font(.system(size: 13.6, weight: .semibold))
                 Spacer(minLength: 0)
                 HStack(spacing: 6) {

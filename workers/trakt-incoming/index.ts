@@ -2,6 +2,7 @@ import type { D1Database, ScheduledController } from '@cloudflare/workers-types'
 import { tickIncoming } from '../../src/lib/server/trakt-incoming.ts';
 import { bumpWorkspaceRevision } from '../../src/lib/server/workspace-revision.ts';
 import type { ServerBindings } from '../../src/lib/server/api.ts';
+import { withSavedKeys } from '../../src/lib/server/api-keys.ts';
 
 type Env = ServerBindings & { DB: D1Database };
 /** Ticks that cannot have written diary rows; the minute schedule is mostly these. */
@@ -14,7 +15,8 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env) {
     let state = 'failed';
     try {
-      const result = await tickIncoming(env.DB, env);
+      // A Trakt client ID replaced in Settings → APIs applies here too.
+      const result = await tickIncoming(env.DB, await withSavedKeys(env));
       state = result.state;
       // Only enumerated state/error codes. Never log raw D1/network exceptions.
       console.info(JSON.stringify(result));
