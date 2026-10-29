@@ -206,6 +206,8 @@ import UIKit
         let progress = app.staticTexts["trakt-scan-progress-detail"]
         for _ in 0..<6 { if progress.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(progress.exists); XCTAssertEqual(progress.label, "480 of 2,185 records compared")
+        // A connected account mid-scan never offers to connect again.
+        XCTAssertFalse(app.buttons["Connect Trakt"].exists)
         let stop = app.buttons["trakt-stop-manual-scan"]
         for _ in 0..<5 { if stop.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(stop.isEnabled)

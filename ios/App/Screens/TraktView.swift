@@ -206,14 +206,15 @@ import TwilDiaryCore
             if (controller.sync?.pendingChanges ?? 0) > 0 && controller.sync?.run?.state != "building" {
                 statPill("\(controller.sync?.pendingChanges ?? 0) to review", tint: .orange)
             }
-            if controller.status?.connected == true && !scanning {
-                HStack(spacing: 10) {
+            if controller.status?.connected == true {
+                // Hidden while a scan runs; the scan card has its own Continue and Stop.
+                if !scanning { HStack(spacing: 10) {
                     Button { Task { await controller.scan(start: true) } } label: {
                         Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48)
                     }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(coolingDown)
                     Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48) }
                         .buttonStyle(.glass).buttonBorderShape(.capsule)
-                }.disabled(controller.busy)
+                }.disabled(controller.busy) }
             } else if controller.status?.configured == true {
                 Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity, minHeight: 48) }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.busy)
                 Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
