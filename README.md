@@ -1,0 +1,1 @@
+Review screenshots for a26df412424c638552c4a3ba64e028138b89a3da (run https://github.com/Amit29533/TwilDiary-iOS/actions/runs/40912263677). 162 images, downscaled. Scratch branch: replaced by each complete run.
