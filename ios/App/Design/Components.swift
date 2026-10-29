@@ -202,7 +202,7 @@ struct PageHeader: View {
                 .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
                 // The tap shape sits outside the glass, as on Glance's − / +; otherwise the interactive glass takes the tap.
                 .frame(width: 44, height: 44).contentShape(Circle())
-        }.buttonStyle(.plain).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
+        }.buttonStyle(.plain).sensoryFeedback(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
     }
     @ViewBuilder private var title: some View {
         if name == "TwilDiary" {
@@ -426,6 +426,7 @@ struct CategoryPicker: View {
             Spacer(minLength: 0)
         }.padding(.horizontal, 14).padding(.vertical, 4)
             .animation(Motion.spring(reduceMotion), value: selection)
+            .sensoryFeedback(.selection, trigger: selection)
     }
 }
 
@@ -469,6 +470,8 @@ struct ProgressCard: View {
     @State private var loadedCard: WatchCard?
     private var card: WatchCard? { loadedCard ?? store.cachedCard(title) }
     @State private var watchFeedback = 0
+    /// New watches only (not removals): the mark button throws a star burst.
+    @State private var sparks = 0
     @State private var suppressNavigationUntil = Date.distantPast
     @Environment(AppRouter.self) private var router
     var body: some View {
@@ -603,13 +606,13 @@ struct ProgressCard: View {
                     Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 15, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).glassEffect(.regular.tint(theme.accent).interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).glassEffect(.regular.tint(theme.accent).interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
                             .font(.system(size: 13, weight: .semibold)).frame(height: 22).padding(.horizontal, 6)
                             .foregroundStyle(theme.ink)
-                    }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
+                    }.buttonStyle(.glassProminent).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
                 } }.frame(height: 44)
     }
@@ -674,7 +677,7 @@ struct ProgressCard: View {
     private func markWatch() async {
         let previous = card?.progress.watched
         await store.markNext(title, expectedEpisode: card?.next?.id); await loadCard()
-        if let previous, let current = card?.progress.watched, current > previous { watchFeedback += 1 }
+        if let previous, let current = card?.progress.watched, current > previous { watchFeedback += 1; sparks += 1 }
     }
     private func removeWatch() async {
         let previous = card?.progress.watched

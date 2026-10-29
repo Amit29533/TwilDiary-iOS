@@ -23,6 +23,10 @@ struct TitleDetailView: View {
     @FocusState private var notesFocused: Bool
     @State private var showOverview = false
     @State private var showNotes = false
+    /// A star burst from Mark watched each time a new watch is confirmed.
+    @State private var markSparks = 0
+    /// A perfect 10 deserves its own little burst.
+    @State private var perfectSparks = 0
     @State private var showLocation = false
     @State private var copiedLocation: String?
     @State private var notesField = VersionedField(value: "", version: nil)
@@ -266,13 +270,16 @@ struct TitleDetailView: View {
                 if let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { nextPreview(title, episode: episode).padding(.top, 8).padding(.bottom, 12) }
                 else if title.isSeries { Text(seasonCanEdit(title) ? "You’re caught up with available episodes." : "Load the season to see what’s next.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 12) }
                 Button { Task {
-                    if title.isSeries, let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
-                    else if !title.isSeries { await store.recordViewing(title, rewatch: !movieViewings.isEmpty, watchedAt: watchInstant) }
+                    var recorded = false
+                    if title.isSeries, let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { recorded = await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
+                    else if !title.isSeries { recorded = await store.recordViewing(title, rewatch: !movieViewings.isEmpty, watchedAt: watchInstant) }
+                    if recorded { markSparks += 1 }
                     await loadCard(title)
                 } } label: {
                     Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Log a rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                         .frame(maxWidth: .infinity)
-                }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).accessibilityIdentifier("mark-title-watch")
+                }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
+                    .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 HStack(spacing: 8) {
                     Button { showDate.toggle() } label: {
                         HStack(spacing: 7) { DiaryIcon(name: "calendar-days", size: 16).foregroundStyle(theme.accent); Text(DiaryDate.day(watchDate) == DiaryDate.day(store.now) ? "Watched today" : DiaryDate.day(watchDate)) }.frame(maxWidth: .infinity, minHeight: 44)
@@ -548,6 +555,8 @@ struct TitleDetailView: View {
                 HStack(spacing: 7) { DiaryIcon(name: "star", size: 16); Text("Your rating") }.foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text(ratingField.draft.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated").monospacedDigit()
+                    .contentTransition(.numericText(value: ratingField.draft ?? 0)).animation(Motion.press, value: ratingField.draft)
+                    .starBurst(trigger: perfectSparks)
                 if ratingField.draft != nil { Button("Clear") { Task { await saveRating(value: nil) } }.accessibilityLabel("Clear your rating") }
                 else { Button("Rate 7.0") { Task { await saveRating(value: 7) } } }
             }.font(.system(size: 14)).frame(minHeight: 32)
@@ -555,7 +564,7 @@ struct TitleDetailView: View {
                 Text("1").foregroundStyle(.secondary)
                 Slider(value: Binding(get: { ratingField.draft ?? 7 }, set: { ratingField.draft = $0 }), in: 1...10, step: 0.5) { editing in
                     if !editing { Task { await saveRating(value: ratingField.draft) } }
-                }.accessibilityLabel("Your rating out of 10").accessibilityIdentifier("title-rating-slider")
+                }.sensoryFeedback(.selection, trigger: ratingField.draft).accessibilityLabel("Your rating out of 10").accessibilityIdentifier("title-rating-slider")
                 Text("10").foregroundStyle(.secondary)
             }.font(.system(size: 12))
             if ratingField.conflict != nil {
@@ -567,6 +576,7 @@ struct TitleDetailView: View {
         }.disabled(store.writesBlocked || !store.canMutate).accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-panel")
     }
     private func saveRating(value: Double?) async {
+        if value == 10 { perfectSparks += 1 }
         ratingField.draft = value.map { ($0 * 2).rounded() / 2 }
         guard let current = store.title(id) else { return }
         ratingField.observe(.init(value: current.score, version: current.version))

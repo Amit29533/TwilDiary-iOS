@@ -80,7 +80,9 @@ extension DiaryStore {
     }
 
     @discardableResult func recordViewing(_ title: MediaTitle, episode: Episode? = nil, rewatch: Bool = false, watchedAt: Date) async -> Bool {
-        await perform(refreshing: [title.id]) {
+        var confirmed: WatchEvent?
+        defer { if let confirmed { celebrate(confirmed, title: title) } }
+        return await perform(refreshing: [title.id]) {
             guard DiaryDate.day(watchedAt) <= DiaryDate.day(self.now) else { throw APIError.message("Choose today or a past watch date") }
             if title.isSeries {
                 guard let episode, episode.titleId == title.id,
@@ -96,6 +98,7 @@ extension DiaryStore {
             self.clearPendingViewing(key: key)
             if receipt.added || (receipt.event.operationId == operation["operationId"] as? String && receipt.event.version == 1 && receipt.event.revokedAt == nil) {
                 self.installUndo([(receipt.event, "revoke")], label: "Watch marked")
+                confirmed = receipt.event
             }
         }
     }

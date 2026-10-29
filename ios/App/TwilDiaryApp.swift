@@ -149,6 +149,8 @@ struct RootView: View {
                     .ignoresSafeArea(.container, edges: .top)
                     .background(.black)
                     .overlay(alignment: .bottom) { RootNoticeBanner() }
+                    // Milestones (a season or show finished, round watch counts) get a starfall over everything.
+                    .overlay { CelebrationOverlay() }
             }
         }.accessibilityHidden(router.randomPick != nil).allowsHitTesting(router.randomPick == nil)
             .overlay {

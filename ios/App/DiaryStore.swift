@@ -608,6 +608,8 @@ import TwilDiaryCore
         }
     }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
+        var confirmed: WatchEvent?
+        defer { if let confirmed { celebrate(confirmed, title: title) } }
         await perform(cardID: title.id, cardAction: .mark) {
             let key = title.id
             if self.pendingWatches[key] == nil {
@@ -626,6 +628,7 @@ import TwilDiaryCore
                 self.undoLabel = "Watch marked"
                 self.undoAction = { try await self.changeEvent(result.event, action: "revoke") }
                 self.undoTitles = [title.id]
+                confirmed = result.event
             }
         }
     }
@@ -748,7 +751,20 @@ import TwilDiaryCore
             }
         }
     }
+    // MARK: Delight
+
+    struct Celebration: Identifiable, Equatable { let id = UUID(); let milestone: Milestone }
+    /// A milestone worth the starfall: a season or show finished, or a round number of watches.
+    private(set) var celebration: Celebration?
+    func dismissCelebration(_ id: UUID) { if celebration?.id == id { celebration = nil } }
+    /// After a confirmed new watch. The refresh may not have brought the event back yet, so it is added here.
+    func celebrate(_ event: WatchEvent, title: MediaTitle) {
+        var snapshot = workspace
+        if !snapshot.events.contains(where: { $0.id == event.id }) { snapshot.events.append(event) }
+        if let milestone = Milestone.after(event, title: title, workspace: snapshot) { celebration = Celebration(milestone: milestone) }
+    }
     func undo() async {
+        celebration = nil
         guard let action = undoAction else { return }
         await perform(refreshing: undoTitles) { try await action(); self.undoAction = nil; self.undoLabel = nil }
     }
