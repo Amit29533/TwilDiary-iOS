@@ -114,7 +114,7 @@ struct CharacterView: View {
             Spacer(minLength: 0)
             Button {
                 favourites.toggle(.character, ref: character.id, name: character.name, image: character.image,
-                                  subtitle: character.appearances.first.map { "In " + $0.title })
+                                  subtitle: character.appearances.first.map { "In " + $0.title }, store: store)
                 if !saved { hearts += 1 }
             } label: { RoundTool(icon: "heart", tint: saved ? theme.accent : Color(webHex: "#c5c0cf")) }
                 .buttonStyle(.springPress).starBurst(trigger: hearts).sensoryFeedback(.impact(weight: .light), trigger: saved)
@@ -190,6 +190,7 @@ struct CharacterView: View {
 
 /// Favourites: the cast and characters you've hearted, as two large tabs like Explore and Canvas.
 struct FavouritesView: View {
+    @Environment(DiaryStore.self) private var store
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
     private var favourites: FavouritesStore { .shared }
     var body: some View {
@@ -206,6 +207,8 @@ struct FavouritesView: View {
             }
         }.padding(.bottom, 100).diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ToolbarItem(placement: .principal) { tabs } }
+            .task { await favourites.sync(store: store) }
+            .refreshable { await favourites.sync(store: store) }
     }
     private var tabs: some View {
         HStack(spacing: 18) {

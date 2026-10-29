@@ -644,3 +644,17 @@ export const apiKeys = sqliteTable('api_keys', {
   hint: text('hint').notNull(),
   updatedAt: text('updated_at').notNull()
 });
+
+/** Hearted cast (TMDB people) and anime characters (AniList), shown under Favourites. */
+export const favourites = sqliteTable(
+  'favourites',
+  {
+    kind: text('kind', { enum: ['cast', 'character'] }).notNull(),
+    ref: integer('ref').notNull(),
+    name: text('name').notNull(),
+    image: text('image'),
+    subtitle: text('subtitle'),
+    savedAt: text('saved_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.kind, t.ref] }), index('favourites_saved').on(t.savedAt)]
+);

@@ -26,11 +26,12 @@ export async function readWorkspaceRevision(db: ReturnType<typeof database>) {
 
 /** Writes reach the diary only through /api write requests and the scheduled Trakt import. */
 export function changesDiary(method: string, path: string) {
-  // Settings → APIs writes (saving or testing a key) don't change the diary.
+  // Settings → APIs writes (saving or testing a key) and favourites don't change the diary.
   return (
     !['GET', 'HEAD', 'OPTIONS'].includes(method) &&
     path.startsWith('/api/') &&
-    !path.startsWith('/api/settings/')
+    !path.startsWith('/api/settings/') &&
+    !path.startsWith('/api/favourites')
   );
 }
 

@@ -57,7 +57,7 @@ struct PersonView: View {
             let saved = FavouritesStore.shared.contains(.cast, person.id)
             Button {
                 FavouritesStore.shared.toggle(.cast, ref: person.id, name: person.name, image: CatalogTools.image(person.profilePath, size: "w185"),
-                                              subtitle: person.department.isEmpty ? nil : person.department)
+                                              subtitle: person.department.isEmpty ? nil : person.department, store: store)
                 if !saved { hearts += 1 }
             } label: { RoundTool(icon: "heart", tint: saved ? theme.accent : Color(webHex: "#c5c0cf")) }
                 .buttonStyle(.springPress).starBurst(trigger: hearts).sensoryFeedback(.impact(weight: .light), trigger: saved)
