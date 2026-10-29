@@ -27,13 +27,14 @@ private struct CanvasContent: View {
     @State private var results: DiscoveryResults
     @State private var recommendations: DiscoveryRecommendations
     @State private var lists: CanvasListsLoader
-    @State private var sort = CanvasSort.popular
+    /// Sort and list choices are remembered between visits; one-off filters (genre, year, rating) start fresh.
+    @AppStorage("canvasSort") private var sort = CanvasSort.popular
     @State private var genre = ""
     @State private var network: Int?
     @State private var year = ""
     @State private var minimum = "0"
-    @State private var listSort = "trending"
-    @State private var listKind = "personal"
+    @AppStorage("canvasListSort") private var listSort = "trending"
+    @AppStorage("canvasListKind") private var listKind = "personal"
     init(store: DiaryStore, tab: Binding<CanvasTab>) {
         self.store = store; _tab = tab
         let service = LiveDiscoveryService(store: store)

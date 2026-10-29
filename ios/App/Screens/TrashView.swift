@@ -8,8 +8,8 @@ struct TrashView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("trashGrid") private var grid = true
-    @State private var category = LibraryCategory.all
-    @State private var sort = "library"
+    @AppStorage("trashCategory") private var category = LibraryCategory.all
+    @AppStorage("trashSort") private var sort = "library"
     @State private var showSearch = false
     @State private var selecting = false
     @State private var selected = Set<String>()

@@ -477,7 +477,8 @@ struct GlanceView: View {
     @AppStorage("glanceGrid") private var grid = false
     @AppStorage("glanceSort") private var sortRaw = GlanceSort.recentlyUpdated.rawValue
     @Environment(DiaryStore.self) private var store
-    @State private var category = LibraryCategory.all
+    /// Remembered between visits, like the layout and sort.
+    @AppStorage("glanceCategory") private var category = LibraryCategory.all
     @State private var search = ""
     @State private var showSearch = false
     var body: some View {

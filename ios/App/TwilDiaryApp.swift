@@ -15,6 +15,7 @@ import TwilDiaryCore
             for key in ["historyGrid", "homeHistoryGrid", "upcomingGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
+            for key in ["glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")
