@@ -30,7 +30,7 @@ test('Discovery filters validate provider types, supported genres, bounded years
     'source=public-trakt',
     'type=people',
     'genre=Injected',
-    'type=tv&genre=Romance',
+    'type=tv&genre=Horror',
     'year=18',
     'year=2201',
     'minimum=11',
@@ -233,6 +233,18 @@ test('TMDb discovery sends rating confidence and media-specific filters, drops a
   assert.equal(data.items[0]!.posterPath, null);
   assert.deepEqual(data.items[0]!.genres, ['Romance']);
   assert.equal(data.totalPages, 2);
+});
+test('Romance for shows reads TMDb discover by its keyword, even when trending is chosen', async () => {
+  const seen: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    seen.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(discoveryInput(new URLSearchParams('type=tv&genre=Romance&sort=trending')));
+  assert.equal(seen[0]!.pathname, '/3/discover/tv');
+  assert.equal(seen[0]!.searchParams.get('with_keywords'), '9840');
+  assert.equal(seen[0]!.searchParams.get('with_genres'), null);
+  assert.equal(seen[0]!.searchParams.get('sort_by'), 'popularity.desc');
 });
 test('TMDb related discovery validates a seed and uses the recommendation endpoint', async () => {
   let calls = 0;

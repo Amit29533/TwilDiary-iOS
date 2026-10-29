@@ -421,11 +421,15 @@ struct CategoryPicker: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The accent pill glides from one category to the next instead of jumping.
     @Namespace private var pill
+    /// The tapped category while its pill is still gliding. The cards change only once the pill
+    /// lands, so rebuilding them can't hold up the pill (it used to move a beat after the tap).
+    @State private var pending: LibraryCategory?
     var body: some View {
+        let shown = pending ?? selection
         HStack(spacing: 6) {
             ForEach(LibraryCategory.allCases) { category in
-                let selected = selection == category
-                Button { selection = category } label: {
+                let selected = shown == category
+                Button { choose(category) } label: {
                     Text(category.rawValue).font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(selected ? theme.ink : Color(webHex: "#c5c0cf"))
                         .padding(.horizontal, 16).frame(minHeight: 40)
@@ -435,10 +439,24 @@ struct CategoryPicker: View {
             }
             Spacer(minLength: 0)
         }.padding(.horizontal, 14).padding(.vertical, 4)
-            // Only the pill moves, glides without overshoot; the page under it swaps in place.
-            .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: selection)
-            .sensoryFeedback(.selection, trigger: selection)
+            // A side swipe changes the selection directly; the pill follows it the same way.
+            .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: selection)
+            .sensoryFeedback(.selection, trigger: shown)
+            .onChange(of: selection) { _, value in if pending == value { pending = nil } }
     }
+    private func choose(_ category: LibraryCategory) {
+        guard category != (pending ?? selection) else { return }
+        if reduceMotion { selection = category; return }
+        withAnimation(.snappy(duration: 0.22)) { pending = category } completion: {
+            if pending == category { selection = category }
+        }
+    }
+}
+
+private extension VerticalAlignment {
+    /// The centre line of Home's progress bar, so the − / + controls sit on it.
+    enum ProgressBarCenter: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] } }
+    static let progressBar = VerticalAlignment(ProgressBarCenter.self)
 }
 
 /// "Recently updated ▾" on the left, screen tools (layout toggle, filters) on the right.
@@ -519,9 +537,11 @@ struct ProgressCard: View {
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
             }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
             Text(homeLine).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.88)).lineLimit(1)
-            HStack(alignment: .center, spacing: 12) {
+            // The − / + controls line up with the bar itself, not the bar and its labels together.
+            HStack(alignment: .progressBar, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     GeometryReader { proxy in Capsule().fill(.white.opacity(0.2)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
+                        .alignmentGuide(.progressBar) { $0[VerticalAlignment.center] }
                     HStack(spacing: 8) {
                         // Share and episode count come from the same card, so they always agree.
                         Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete")
@@ -530,7 +550,7 @@ struct ProgressCard: View {
                     }.font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 }.frame(maxWidth: 240)
                 Spacer(minLength: 0)
-                controls
+                controls.alignmentGuide(.progressBar) { $0[VerticalAlignment.center] }
             }.padding(.top, 6)
         }.padding(.horizontal, 12).padding(.bottom, 4).frame(height: 196)
     }

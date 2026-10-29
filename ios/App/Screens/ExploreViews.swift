@@ -69,7 +69,7 @@ private struct DailyDiscoveryCard: View {
             LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0), .init(color: .black.opacity(0.2), location: 0.45), .init(color: .black.opacity(0.88), location: 1)], startPoint: .top, endPoint: .bottom)
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(title.name).font(.system(size: 30, weight: .bold)).tracking(-0.8).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.8)
+                    Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.8).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.8)
                     HStack(spacing: 8) {
                         Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).foregroundStyle(Color(webHex: "#d8d3e0"))
                         if let score = title.communityScore, score > 0 {
@@ -79,7 +79,7 @@ private struct DailyDiscoveryCard: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 DiaryIcon(name: "arrow-up-right", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).background(theme.accent, in: Circle()).accessibilityHidden(true)
             }.padding(18)
-        }.frame(height: 300).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
+        }.frame(height: 225).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
     }
 }
 

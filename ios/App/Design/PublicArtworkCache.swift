@@ -35,7 +35,8 @@ struct PublicArtworkRequest: Hashable, Sendable {
 
 private final class ArtworkResidentCache: @unchecked Sendable {
     let values = NSCache<NSString, PublicArtworkBitmap>()
-    init() { values.totalCostLimit = 64 * 1024 * 1024; values.countLimit = 256 }
+    // Room for a few screens of decoded posters, so scrolling back never decodes them again.
+    init() { values.totalCostLimit = 96 * 1024 * 1024; values.countLimit = 400 }
 }
 
 actor PublicArtworkCache {
@@ -49,7 +50,8 @@ actor PublicArtworkCache {
         config.httpShouldSetCookies = false; config.httpCookieAcceptPolicy = .never
         config.httpMaximumConnectionsPerHost = 6
         config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 25
-        config.urlCache = URLCache(memoryCapacity: 12 * 1024 * 1024, diskCapacity: 64 * 1024 * 1024, directory: nil)
+        // A larger disk copy keeps a big library's artwork across launches instead of downloading it again.
+        config.urlCache = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 256 * 1024 * 1024, directory: nil)
         config.requestCachePolicy = .useProtocolCachePolicy
         session = URLSession(configuration: config)
     }

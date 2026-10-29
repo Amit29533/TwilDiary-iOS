@@ -32,7 +32,9 @@ struct APIKeyCheck: Decodable, Sendable, Equatable { let ok: Bool; let message: 
             struct Page: Decodable { let keys: [APIKeyStatus] }
             let page: Page = try await store.read("/api/settings/apis")
             keys = page.keys; loaded = true; error = nil
-        } catch is CancellationError { } catch { self.error = error.localizedDescription; loaded = true }
+        } catch is CancellationError { }
+        catch APIError.rejected(404, _) { self.error = "Your server doesn’t have Settings → APIs yet. It arrives with the next server update."; loaded = true }
+        catch { self.error = error.localizedDescription; loaded = true }
     }
     /// Saves the new key, then asks its service whether it works.
     func save(_ name: String, value: String) async -> Bool {

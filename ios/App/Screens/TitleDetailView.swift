@@ -46,6 +46,8 @@ struct TitleDetailView: View {
     @State private var sliderDraft: Double?
     @State private var selectedEpisode: Episode?
     @State private var episodeSheetHeight: CGFloat = 420
+    /// Which way the last swipe in the episode sheet went, so the next episode slides in from that side.
+    @State private var episodeForward = true
     @State private var episodeLimit = 40
     @State private var episodeDetails = SavedEpisodeDetailsController()
     @State private var revealedEpisodeIDs = Set<String>()
@@ -127,7 +129,10 @@ struct TitleDetailView: View {
     /// type checker handles two shorter modifier chains instead of one very long one.
     private func detailPresentations(title: MediaTitle, content: some View) -> some View {
         content
-            .sheet(item: $selectedEpisode) { episode in episodeInformation(title, episode: episode) }
+            // Presented while an episode is chosen; swiping inside changes the episode, not the sheet.
+            .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
+                if let episode = selectedEpisode { episodeInformation(title, episode: episode) }
+            }
             .sheet(isPresented: $choosingWatchDate) {
                 NavigationStack {
                     ScrollView { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
@@ -559,11 +564,32 @@ struct TitleDetailView: View {
                     }
                 }.padding(20)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { episodeSheetHeight = $0 }
+                    .id(episode.id)
+                    .transition(.asymmetric(insertion: .move(edge: episodeForward ? .trailing : .leading).combined(with: .opacity),
+                                            removal: .move(edge: episodeForward ? .leading : .trailing).combined(with: .opacity)))
             }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
+                // Swipe left for the next episode, right for the previous one.
+                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 60, abs(dx) > abs(value.translation.height) * 1.5 else { return }
+                    showNeighbour(of: episode, forward: dx < 0, title: title)
+                })
+                .accessibilityAction(named: "Next episode") { showNeighbour(of: episode, forward: true, title: title) }
+                .accessibilityAction(named: "Previous episode") { showNeighbour(of: episode, forward: false, title: title) }
                 .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
         // As tall as the synopsis needs, on glass: never the opaque full-screen sheet, so the text colours never jump.
         }.presentationDetents([SheetFit.detent(episodeSheetHeight, chrome: 96)]).presentationDragIndicator(.visible)
+    }
+    /// The next or previous episode of this season in the open sheet. Swiping to it is a deliberate
+    /// choice, so a spoiler-hidden one is revealed, as tapping it would.
+    private func showNeighbour(of episode: Episode, forward: Bool, title: MediaTitle) {
+        guard let index = episodes.firstIndex(where: { $0.id == episode.id }), episodes.indices.contains(index + (forward ? 1 : -1)) else { return }
+        let next = episodes[index + (forward ? 1 : -1)]
+        revealedEpisodeIDs.insert(next.id)
+        if episodeDetails.episodes[next.id] == nil { Task { await revealSeason(title) } }
+        episodeForward = forward
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selectedEpisode = next }
     }
     private func prepareSeason(_ title: MediaTitle, force: Bool = false) async {
         if store.isPreview && !store.canMutate { return }

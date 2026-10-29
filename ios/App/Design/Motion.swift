@@ -95,19 +95,58 @@ private struct CategorySwipe: ViewModifier {
     func body(content: Content) -> some View {
         // The whole area takes the swipe, including the gaps around a short category's cards.
         content.contentShape(Rectangle()).coordinateSpace(.named(Motion.swipeSpace))
-            .simultaneousGesture(swipe, including: enabled ? .all : .subviews)
-    }
-    private var swipe: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .named(Motion.swipeSpace))
-            .onEnded { value in
-                let dx = value.translation.width, dy = value.translation.height
-                guard abs(dx) > 64, abs(dx) > abs(dy) * 1.6, !exempt.contains(value.startLocation), let next = neighbour(dx < 0 ? 1 : -1) else { return }
-                selection = next
-            }
+            .gesture(SidePan(enabled: enabled, exempt: exempt) { forward in
+                if let next = neighbour(forward ? 1 : -1) { selection = next }
+            })
     }
     private func neighbour(_ step: Int) -> LibraryCategory? {
         let all = LibraryCategory.allCases
         guard let index = all.firstIndex(of: selection), all.indices.contains(index + step) else { return nil }
         return all[index + step]
+    }
+}
+
+/// A UIKit pan for side swipes. SwiftUI's drag gesture inside a scroll view competed with scrolling,
+/// so a scroll could end as a tap on a poster. This one only begins when the finger moves
+/// sideways; a vertical drag fails it at once and the scroll view keeps the touch, and it never
+/// cancels or delays touches meant for the cards.
+private struct SidePan: UIGestureRecognizerRepresentable {
+    let enabled: Bool
+    let exempt: CGRect
+    let onSwipe: (_ forward: Bool) -> Void
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        pan.cancelsTouchesInView = false; pan.delaysTouchesBegan = false; pan.delaysTouchesEnded = false
+        return pan
+    }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        context.coordinator.enabled = enabled
+    }
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        let translation = recognizer.translation(in: recognizer.view)
+        switch recognizer.state {
+        case .began:
+            // Where the finger first went down, in the same space as the exempt row's frame.
+            let now = context.converter.location(in: .named(Motion.swipeSpace))
+            context.coordinator.start = CGPoint(x: now.x - translation.x, y: now.y - translation.y)
+        case .ended:
+            guard abs(translation.x) > 64, abs(translation.x) > abs(translation.y) * 1.6,
+                  !exempt.contains(context.coordinator.start) else { return }
+            onSwipe(translation.x < 0)
+        default: break
+        }
+    }
+    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var enabled = true
+        var start = CGPoint.zero
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard enabled, let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: pan.view)
+            return abs(velocity.x) > abs(velocity.y) * 1.6
+        }
+        // Side by side with the scroll view and the cards' own buttons.
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }

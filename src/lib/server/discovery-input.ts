@@ -1,5 +1,5 @@
 import { ApiError } from './api.ts';
-import { discoveryGenres, discoveryNetworks, type DiscoveryQuery } from '../discovery.ts';
+import { discoveryNetworks, genreAvailable, type DiscoveryQuery } from '../discovery.ts';
 export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   const source = params.get('source') ?? 'tmdb';
   const type = params.get('type') ?? 'movie';
@@ -18,8 +18,7 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
       (type !== 'tv' ||
         source !== 'tmdb' ||
         !discoveryNetworks.some((n) => String(n.id) === network))) ||
-    (genre &&
-      !discoveryGenres.some((g) => g.name === genre && g[type as 'movie' | 'tv'] !== null)) ||
+    (genre && !genreAvailable(genre, type as 'movie' | 'tv')) ||
     (year && (!/^\d{4}$/.test(year) || +year < 1880 || +year > 2200)) ||
     !/^(?:[0-9](?:\.\d)?|10(?:\.0)?)$/.test(minimum) ||
     !/^\d{1,3}$/.test(page) ||

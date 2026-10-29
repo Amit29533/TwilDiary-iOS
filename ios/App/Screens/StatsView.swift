@@ -25,7 +25,7 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     PageHeader(name: "Stats", onSearch: { showSearch.toggle() }, part: .title).padding(.horizontal, -16).padding(.bottom, -6)
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
-                    journey(data.coverage)
+                    journey(data.coverage, highlights: highlights)
                     trend(data, highlights: highlights)
                     streaks(data.streaks)
                     funFacts(highlights)
@@ -63,8 +63,10 @@ struct StatsView: View {
 
     /// "Your journey" (owner's design): the dated count large, its share as a glowing bar, and
     /// what is left out (undated, no runtime) as two chips with the way to review dates.
-    private func journey(_ value: StatsOverview.Coverage) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private func journey(_ value: StatsOverview.Coverage, highlights: StatsHighlights) -> some View {
+        // Over the backdrop of the period's most-watched title, as in the owner's design.
+        let art = highlights.topTitleIDs.lazy.compactMap { store.title($0) }.first { $0.backdrop != nil }
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 BrandMark().fill(theme.accent).frame(width: 16, height: 16).accessibilityHidden(true)
                 Text("YOUR JOURNEY").font(.system(size: 12, weight: .semibold)).tracking(2.4).foregroundStyle(theme.accent)
@@ -74,7 +76,7 @@ struct StatsView: View {
                     .foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
                 HStack(spacing: 6) { Image(systemName: "calendar").accessibilityHidden(true); Text("Dated") }
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 12).frame(height: 34)
-                    .background(theme.accent.opacity(0.12), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.35)))
+                    .background(.ultraThinMaterial, in: Capsule()).background(theme.accent.opacity(0.14), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.4)))
             }.padding(.top, 12)
             Text("of \(value.total.formatted())").font(.system(size: 18, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.75))
             Text("\(value.percent)%").font(.system(size: 13, weight: .bold)).monospacedDigit().foregroundStyle(theme.accent)
@@ -93,7 +95,7 @@ struct StatsView: View {
                     if value.unknown > 0 {
                         NavigationLink(value: HistoryRoute(unknown: true)) {
                             Image(systemName: "arrow.right").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                                .frame(width: 44, height: 44).overlay(Circle().strokeBorder(.white.opacity(0.45))).contentShape(Circle())
+                                .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle()).overlay(Circle().strokeBorder(.white.opacity(0.5))).contentShape(Circle())
                         }.buttonStyle(.springPress).accessibilityLabel("Review dates")
                     }
                 }.padding(.top, 18)
@@ -105,10 +107,14 @@ struct StatsView: View {
             .background {
                 ZStack {
                     Color(webHex: "#16141f")
-                    RadialGradient(colors: [theme.accent.opacity(0.2), .clear], center: .topLeading, startRadius: 0, endRadius: 280)
+                    if let art { Artwork(path: art.backdrop, title: art.name) }
+                    else { RadialGradient(colors: [theme.accent.opacity(0.25), .clear], center: .topLeading, startRadius: 0, endRadius: 280) }
+                    // Dimmed evenly so every line reads over the artwork, the left a touch darker.
+                    Color.black.opacity(art == nil ? 0 : 0.5)
+                    LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .leading, endPoint: .trailing)
                 }.allowsHitTesting(false).accessibilityHidden(true)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.14)))
+            .clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.2)))
             .accessibilityElement(children: .contain).accessibilityIdentifier("stats-journey")
     }
     private func journeyChip(_ symbol: String, _ count: Int, _ label: String) -> some View {
@@ -120,7 +126,8 @@ struct StatsView: View {
                 Text(label).font(.system(size: 11, weight: .medium)).tracking(0.6).foregroundStyle(.white.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.8)
             }
         }.padding(6).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.1)))
+            // Frosted glass over the artwork.
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.16)))
             .accessibilityElement(children: .combine)
     }
 

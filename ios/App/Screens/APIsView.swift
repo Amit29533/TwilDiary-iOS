@@ -18,8 +18,19 @@ struct APIsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if let error = model?.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
-                if let model, model.loaded {
+                if let model, model.loaded, model.keys.isEmpty, let error = model.error {
+                    // Nothing to list: one clear card instead of empty service sections.
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(webHex: "#e7ca90")).accessibilityHidden(true)
+                            Text("Keys couldn’t be loaded").font(.system(size: 15, weight: .semibold))
+                        }
+                        Text(error).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button("Try again") { Task { await model.load() } }.buttonStyle(.diaryRowSecondary)
+                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).accessibilityIdentifier("apis-unavailable")
+                } else if let model, model.loaded {
+                    if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out; connect again from the Trakt page.")
                     service(nil, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
@@ -109,7 +120,8 @@ struct APIsView: View {
                 HStack(spacing: 8) {
                     Text(BackendEndpoint.production.host ?? "").font(.system(size: 14, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
-                    if let model, model.loaded { status(model.error == nil, model.error == nil ? "Connected" : "Unreachable") }
+                    // The diary itself proves the connection; a keys error (an older server) doesn't mean it's down.
+                    status(store.hasLoadedWorkspace && store.error == nil, store.hasLoadedWorkspace && store.error == nil ? "Connected" : "Not connected")
                 }
                 Text("Your sign-in is only ever sent to this address, so it can’t be changed in the app.").font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(14)

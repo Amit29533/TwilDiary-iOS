@@ -56,6 +56,12 @@ export const discoveryGenres = [
   { name: 'Talk', movie: null, tv: 10767 },
   { name: 'Soap', movie: null, tv: 10766 }
 ] as const;
+/** TMDb has no TV genre for these; its keyword of the same name finds the shows instead. */
+export const tvGenreKeywords: Readonly<Record<string, number>> = { Romance: 9840 };
+/** Whether a genre can filter this type: a TMDb genre, or for shows a keyword stand-in. */
+export const genreAvailable = (name: string, type: 'movie' | 'tv') =>
+  discoveryGenres.some((g) => g.name === name && g[type] !== null) ||
+  (type === 'tv' && Object.hasOwn(tvGenreKeywords, name));
 /** TMDb network IDs Canvas offers for shows. */
 export const discoveryNetworks = [
   { name: 'Netflix', id: 213 },

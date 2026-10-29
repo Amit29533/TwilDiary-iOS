@@ -41,7 +41,9 @@ public struct DiscoveryGenre: Sendable {
         .init(name: "Kids", movie: nil, tv: 10762), .init(name: "News", movie: nil, tv: 10763),
         .init(name: "Talk", movie: nil, tv: 10767), .init(name: "Soap", movie: nil, tv: 10766)
     ]
-    public static func names(type: String) -> [String] { all.filter { type == "all" || (type == "movie" ? $0.movie : $0.tv) != nil }.map(\.name) }
+    /// TMDB has no TV genre for these; the server finds the shows by TMDB's keyword of the same name.
+    public static let tvKeywordGenres: Set<String> = ["Romance"]
+    public static func names(type: String) -> [String] { all.filter { type == "all" || (type == "movie" ? $0.movie : $0.tv) != nil || (type == "tv" && tvKeywordGenres.contains($0.name)) }.map(\.name) }
 }
 
 public struct DiscoveryFilters: Codable, Hashable, Sendable {

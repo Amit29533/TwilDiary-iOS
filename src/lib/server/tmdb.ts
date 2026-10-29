@@ -5,6 +5,7 @@ import { tmdbImage, searchQuery, type SearchMatch, type SearchPage } from '../me
 import {
   discoveryGenres,
   filterDiscovery,
+  tvGenreKeywords,
   type DiscoveryQuery,
   type DiscoveryItem,
   type DiscoveryPage
@@ -280,8 +281,12 @@ export function createTmdb(
       if (input.source === 'because') providerInput(input.type, seedId);
       const genre = discoveryGenres.find((g) => g.name === input.genre);
       const params: Record<string, string> = { page: String(input.page), include_adult: 'false' };
+      // A show genre TMDb lacks (Romance) is its keyword instead, which only discover can filter.
+      const keyword =
+        input.type === 'tv' && input.genre && !genre?.tv ? tvGenreKeywords[input.genre] : undefined;
       // TMDb's weekly trending feed takes no filters; genre and year are applied to its page below.
-      const trending = input.source === 'tmdb' && input.sort === 'trending';
+      // A keyword genre can't be checked on that page, so it reads discover by popularity instead.
+      const trending = input.source === 'tmdb' && input.sort === 'trending' && !keyword;
       if (input.source !== 'because' && !trending) {
         params.sort_by =
           input.sort === 'rating'
@@ -291,7 +296,8 @@ export function createTmdb(
                 ? 'primary_release_date.desc'
                 : 'first_air_date.desc'
               : 'popularity.desc';
-        if (genre) params.with_genres = String(genre[input.type]);
+        if (keyword) params.with_keywords = String(keyword);
+        else if (genre) params.with_genres = String(genre[input.type]);
         if (input.network && input.type === 'tv') params.with_networks = String(input.network);
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
