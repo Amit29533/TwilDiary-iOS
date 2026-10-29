@@ -114,21 +114,40 @@ struct HomeView: View {
             // "CONTINUE WATCHING" sits inside each page, right above its title.
             ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !showSearch && !scrolling).padding(.horizontal, 8)
         }.background(alignment: .top) {
-            // Scroll content starts below the status bar, so the art is drawn taller and lifted
-            // into it (and shows a little more when the page is pulled down).
+            // Scroll content starts below the status bar, so the art is lifted into it. Its height stays
+            // close to the artwork's own shape (about 4:3 of the width): filling the whole tall section
+            // blew a 16:9 backdrop up ~2× and cut off half of it. It fades to black under the text.
             GeometryReader { proxy in
             Artwork(path: current.backdrop ?? current.poster, title: current.name)
-                .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
+                .frame(width: proxy.size.width, height: min(proxy.size.height + Self.artLift, proxy.size.width * 0.75))
                 .overlay {
                     LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .black.opacity(0.05), location: 0.28),
                                            .init(color: .black.opacity(0.35), location: 0.62), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
                 }
                 .overlay { LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .leading, endPoint: .center) }
-                .offset(y: -Self.artLift).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+                .offset(y: -Self.artLift).modifier(StretchOnPull()).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
             }.allowsHitTesting(false).accessibilityHidden(true)
         }
     }
-    private static let artLift: CGFloat = 140
+    /// Just enough to reach under the status bar; pulling down stretches the art instead.
+    private static let artLift: CGFloat = 64
+}
+
+/// Pulling the page down to refresh zooms the artwork from its bottom edge: it grows by exactly the
+/// pull, so its top stays at the top of the screen instead of sliding down and leaving a gap.
+private struct StretchOnPull: ViewModifier {
+    @State private var restingY: CGFloat?
+    func body(content: Content) -> some View {
+        let rest = restingY
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
+            .visualEffect { view, proxy in
+                let height = proxy.size.height
+                guard let rest, height > 0 else { return view.scaleEffect(1, anchor: .bottom) }
+                let pull = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest)
+                return view.scaleEffect(1 + pull / height, anchor: .bottom)
+            }
+    }
     private func discoverButton(_ name: String, icon: String) -> some View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
