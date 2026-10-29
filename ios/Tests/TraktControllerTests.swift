@@ -53,6 +53,30 @@ import TwilDiaryCore
             XCTAssertNil(controller.error)
         }
     }
+    func testConflictDefaultSettlesConflictsAfterReadyChanges() async throws {
+        for (side, choice) in [(TraktConflictDefault.local, "local"), (.trakt, "trakt")] {
+            let controller = TraktController(service: FixtureTraktService(), defaults: try XCTUnwrap(UserDefaults(suiteName: "trakt-\(UUID())")))
+            controller.conflictDefault = side
+            await controller.refresh(); await controller.apply()
+            XCTAssertEqual(controller.sync?.run?.state, "complete", choice)
+            XCTAssertTrue(controller.sync?.items.allSatisfy { $0.state == "applied" } == true, choice)
+            XCTAssertNil(controller.error, choice)
+        }
+    }
+    func testConflictDefaultIsRememberedAndAsksByDefault() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "trakt-\(UUID())"))
+        XCTAssertEqual(TraktController(service: FixtureTraktService(), defaults: defaults).conflictDefault, .ask)
+        TraktController(service: FixtureTraktService(), defaults: defaults).conflictDefault = .trakt
+        XCTAssertEqual(TraktController(service: FixtureTraktService(), defaults: defaults).conflictDefault, .trakt)
+    }
+    func testScanWithAConflictDefaultAppliesItselfToTheEnd() async throws {
+        let controller = TraktController(service: FixtureTraktService(), defaults: try XCTUnwrap(UserDefaults(suiteName: "trakt-\(UUID())")))
+        controller.conflictDefault = .local
+        await controller.refresh(); await controller.scan(start: true)
+        for _ in 0..<100 where controller.sync?.run?.state != "complete" { try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(controller.sync?.run?.state, "complete")
+        XCTAssertEqual(controller.sync?.items.filter { $0.state == "pending" }.count, 0)
+    }
     func testSkippingLeavesOtherItemsPendingAndFiltersDoNotChangeCounts() async throws {
         let controller = TraktController(service: FixtureTraktService())
         await controller.refresh()

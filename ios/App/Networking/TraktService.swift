@@ -71,6 +71,9 @@ import TwilDiaryCore
     var kind = TraktKind.all
     var query = ""
     var mode = TraktRatingMode.round
+    var conflictDefault: TraktConflictDefault { didSet { defaults.set(conflictDefault.rawValue, forKey: Self.conflictDefaultKey) } }
+    @ObservationIgnored private let defaults: UserDefaults
+    static let conflictDefaultKey = "traktConflictDefault"
     var error: String?
     var paused = false
     private var refreshID = UUID()
@@ -82,8 +85,11 @@ import TwilDiaryCore
          clock: @escaping @MainActor () -> Date = { .now },
          sleep: @escaping @MainActor (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
          keepAwake: @escaping @MainActor (Bool) -> Void = { UIApplication.shared.isIdleTimerDisabled = $0 },
-         onTransferFinished: @escaping @MainActor () async -> Void = {}) {
+         onTransferFinished: @escaping @MainActor () async -> Void = {},
+         defaults: UserDefaults = .standard) {
         self.service = service; self.checkpoint = checkpoint ?? MemoryTraktApplyCheckpoint()
+        self.defaults = defaults
+        conflictDefault = TraktConflictDefault(rawValue: defaults.string(forKey: Self.conflictDefaultKey) ?? "") ?? .ask
         self.clock = clock; self.sleep = sleep; self.keepAwake = keepAwake; self.onTransferFinished = onTransferFinished
     }
     private func holdAwake() { awakeHolds += 1; if awakeHolds == 1 { keepAwake(true) } }
@@ -270,7 +276,9 @@ import TwilDiaryCore
         catch { if operationID == ticket { self.error = error.localizedDescription; paused = true } }
         retryMessage = nil
         if operationID == ticket { await finishChangingReview() }
-        else { changingReview = false; busy = false }
+        else { changingReview = false; busy = false; return }
+        // With a conflict default the whole review applies itself, conflicts included.
+        if conflictDefault.choice != nil, error == nil, !paused, sync?.reviewing == true, sync?.run?.id != nil { startApprovedApply() }
     }
     func apply(change: TraktChange? = nil, choice: TraktChoice = .apply) async {
         if change == nil && choice == .apply { await applyAllReady(); return }
@@ -301,7 +309,7 @@ import TwilDiaryCore
         refreshID = UUID(); loading = false; busy = true; changingReview = true
         paused = false; applyingAll = true; checkpoint.runID = id
         error = nil; retryAttempt = 0; retryMessage = nil
-        var reconcile = false, stagnant = 0
+        var reconcile = false, stagnant = 0, conflicts = ConflictQueue()
         do {
             while !paused {
                 try Task.checkCancellation()
@@ -319,7 +327,16 @@ import TwilDiaryCore
                         if cooldownUntil > clock() { continue }
                     }
                     guard let before = sync, before.run?.id == id, before.reviewing else { break }
-                    if (before.counts["safe"] ?? 0) == 0 && before.unresolved > 0 { break }
+                    if (before.counts["safe"] ?? 0) == 0 && before.unresolved > 0 {
+                        // Ready changes are done; settle conflicts one at a time with the chosen side.
+                        guard let choice = conflictDefault.choice, let conflict = try await nextConflict(&conflicts, id: id, ticket: ticket) else { break }
+                        let result = try await service.apply(id: id, change: conflict, choice: choice)
+                        guard operationID == ticket else { throw CancellationError() }
+                        guard result.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
+                        accept(result); retryAttempt = 0; retryMessage = nil; error = nil
+                        if !result.reviewing { break }
+                        try await sleep(Self.stepPacing); continue
+                    }
                     let result = try await service.apply(id: id, change: nil, choice: .apply)
                     guard operationID == ticket else { throw CancellationError() }
                     guard result.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
@@ -343,6 +360,20 @@ import TwilDiaryCore
         applyingAll = false; retryMessage = nil
         if operationID == ticket { await finishChangingReview() }
         else { changingReview = false; busy = false }
+    }
+    /// Pending conflicts, read page by page from the review; each is tried once per run.
+    private struct ConflictQueue { var ids: [String] = []; var after: String?; var exhausted = false; var tried: Set<String> = [] }
+    private func nextConflict(_ queue: inout ConflictQueue, id: String, ticket: UUID) async throws -> String? {
+        while true {
+            while let next = queue.ids.first { queue.ids.removeFirst(); if queue.tried.insert(next).inserted { return next } }
+            if queue.exhausted { return nil }
+            let page = try await service.review(kind: .all, query: "", after: queue.after)
+            try Task.checkCancellation()
+            guard operationID == ticket else { throw CancellationError() }
+            guard page.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
+            queue.ids = page.items.filter { $0.direction == "conflict" && $0.state == "pending" && !$0.blocked }.map(\.id)
+            queue.after = page.next; queue.exhausted = page.next == nil
+        }
     }
     private func waitForCooldown(_ ticket: UUID) async throws {
         while cooldownUntil > clock() && !paused {

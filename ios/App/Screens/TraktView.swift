@@ -25,9 +25,10 @@ import TwilDiaryCore
                 connection
                 if controller.restoringApproval { restoringImport }
                 if controller.status?.connected == true {
+                    // A running scan leads the page; settings follow it.
+                    if scanning { scanProgress; foundSoFar }
                     preferences
                     incomingWatches
-                    if controller.sync?.run?.state == "building" { scanProgress; foundSoFar }
                     if let sync = controller.sync, sync.run != nil {
                         if sync.reviewing || sync.run?.state == "complete" { transferProgress(sync) }
                         review(sync)
@@ -204,7 +205,7 @@ import TwilDiaryCore
             if (controller.sync?.pendingChanges ?? 0) > 0 && controller.sync?.run?.state != "building" {
                 statPill("\(controller.sync?.pendingChanges ?? 0) to review", tint: .orange)
             }
-            if controller.status?.connected == true {
+            if controller.status?.connected == true && !scanning {
                 HStack(spacing: 10) {
                     Button { Task { await controller.scan(start: true) } } label: {
                         Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48)
@@ -225,6 +226,7 @@ import TwilDiaryCore
         }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
     }
+    private var scanning: Bool { controller.sync?.run?.state == "building" }
     private var preferences: some View {
         @Bindable var controller = controller
         return VStack(alignment: .leading, spacing: 12) {
@@ -232,6 +234,15 @@ import TwilDiaryCore
             VStack(alignment: .leading, spacing: 12) {
                 Picker("Decimal ratings", selection: $controller.mode) { ForEach(TraktRatingMode.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(controller.busy)
                 Text("For the next scan; decimals stay in TwilDiary").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                HStack {
+                    Text("Conflicts").font(.subheadline)
+                    Spacer(minLength: 8)
+                    Picker("Conflicts", selection: $controller.conflictDefault) { ForEach(TraktConflictDefault.allCases) { Text($0.label).tag($0) } }
+                        .pickerStyle(.menu).tint(theme.accent).fixedSize().accessibilityIdentifier("trakt-conflict-default")
+                }
+                Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans apply on their own, conflicts included")
+                    .font(.caption).foregroundStyle(.secondary)
                 Divider(); Text("Included in each scan").font(.caption).foregroundStyle(.secondary)
                 Text("Watch history · Ratings · Watchlist").font(.subheadline)
             }.diaryPanel()
@@ -364,7 +375,7 @@ import TwilDiaryCore
                 CollectionLayout(grid: grid, spacing: 10) { ForEach(Array(controller.visibleItems.prefix(controller.limit))) { change in reviewItem(change, sync: sync) } }
                 if controller.visibleItems.isEmpty { Text("No matching changes in this review.").font(.subheadline).foregroundStyle(.secondary) }
                 HStack { Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.caption).foregroundStyle(.secondary); Spacer(); if controller.limit < controller.visibleItems.count || sync.next != nil { Button("Load more") { Task { await controller.loadMore() } }.font(.subheadline).disabled(controller.busy) } }
-                if sync.reviewing && (sync.counts["safe"] ?? 0) > 0 { applyPanel(sync).padding(.top, 10) }
+                if sync.reviewing && ((sync.counts["safe"] ?? 0) > 0 || controller.conflictDefault != .ask) { applyPanel(sync).padding(.top, 10) }
                 if sync.reviewing || sync.run?.state == "building" { Button("Stop this scan") { Task { await controller.cancel() } }.font(.subheadline).disabled(controller.busy) }
             }
         }
@@ -372,11 +383,11 @@ import TwilDiaryCore
     private func applyPanel(_ sync: TraktSync) -> some View {
         VStack(spacing: 9) {
             Button { controller.startApprovedApply() } label: {
-                Text(sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
+                Text(controller.conflictDefault != .ask ? "Apply all \(sync.unresolved) changes" : sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
                     .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 50)
                     .foregroundStyle(theme.ink).background(theme.accent, in: Capsule())
             }.buttonStyle(.plain).disabled(controller.busy || coolingDown).accessibilityIdentifier("trakt-apply-ready")
-            Text("Conflicts still need your choice above.").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(controller.conflictDefault == .ask ? "Conflicts still need your choice above." : "Conflicts: \(controller.conflictDefault.label)").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
     }
     private func reviewItem(_ change: TraktChange, sync: TraktSync) -> some View {

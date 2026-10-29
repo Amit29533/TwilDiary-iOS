@@ -64,6 +64,13 @@ public enum TraktKind: String, CaseIterable, Identifiable, Sendable {
     public var label: String { switch self { case .all: "All"; case .history: "History"; case .rating: "Ratings"; case .watchlist: "Watchlist" } }
 }
 public enum TraktChoice: String, Sendable { case apply, local, trakt, skip }
+/// How conflicts are settled. Anything but `ask` also makes a scan apply itself when it finishes.
+public enum TraktConflictDefault: String, CaseIterable, Identifiable, Sendable {
+    case ask, local, trakt
+    public var id: Self { self }
+    public var label: String { switch self { case .ask: "Ask me"; case .local: "Keep TwilDiary"; case .trakt: "Use Trakt" } }
+    public var choice: TraktChoice? { switch self { case .ask: nil; case .local: .local; case .trakt: .trakt } }
+}
 public enum TraktRatingMode: String, CaseIterable, Identifiable, Sendable {
     case round, integerOnly = "integer-only"
     public var id: Self { self }
