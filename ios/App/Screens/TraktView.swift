@@ -7,6 +7,7 @@ import TwilDiaryCore
     @State private var incoming: IncomingTraktController
     @State private var showSignIn = false
     @State private var clock = Date.now
+    @State private var groupAction: GroupAction?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -372,6 +373,7 @@ import TwilDiaryCore
             else {
                 SearchField(placeholder: "Find a title in this review…", text: $controller.query, label: "Search Trakt changes")
                 Picker("Filter Trakt changes", selection: $controller.kind) { ForEach(TraktKind.allCases) { Text($0.label).tag($0) } }.pickerStyle(.segmented).accessibilityIdentifier("trakt-kind")
+                groupPanel(sync)
                 CollectionLayout(grid: grid, spacing: 10) { ForEach(Array(controller.visibleItems.prefix(controller.limit))) { change in reviewItem(change, sync: sync) } }
                 if controller.visibleItems.isEmpty { Text("No matching changes in this review.").font(.subheadline).foregroundStyle(.secondary) }
                 HStack { Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.caption).foregroundStyle(.secondary); Spacer(); if controller.limit < controller.visibleItems.count || sync.next != nil { Button("Load more") { Task { await controller.loadMore() } }.font(.subheadline).disabled(controller.busy) } }
@@ -426,6 +428,78 @@ import TwilDiaryCore
     private func action(_ label: String, change: TraktChange, choice: TraktChoice) -> some View {
         Button(label) { Task { await controller.apply(change: change, choice: choice); await store.refresh() } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
             .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).disabled(coolingDown).accessibilityIdentifier("trakt-" + choice.rawValue + "-" + change.id)
+    }
+    /// One choice for a whole review group, confirmed first because it can change many items.
+    struct GroupAction: Identifiable, Sendable {
+        let direction: String, choice: TraktChoice, count: Int
+        var id: String { direction + ":" + choice.rawValue }
+    }
+    struct ReviewGroup: Identifiable, Sendable {
+        let direction: String, title: String
+        var id: String { direction }
+    }
+    private static let reviewGroups = [ReviewGroup(direction: "pull", title: "Removed on Trakt"),
+                                       ReviewGroup(direction: "push", title: "Removed in TwilDiary"),
+                                       ReviewGroup(direction: "conflict", title: "Changed on both sides")]
+    /// Shown once a group has at least two items; a single item is decided in its own row.
+    @ViewBuilder private func groupPanel(_ sync: TraktSync) -> some View {
+        let present = Self.reviewGroups.filter { (sync.counts["review:" + $0.direction] ?? 0) >= 2 }
+        if sync.reviewing && !present.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Decide a whole group").font(.headline)
+                ForEach(present) { group in
+                    let direction = group.direction, count = sync.counts["review:" + direction] ?? 0
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(group.title) · \(count.formatted())").font(.subheadline.bold())
+                        if controller.resolvingGroup == direction {
+                            ProgressView().accessibilityLabel("Working through the remaining items")
+                        }
+                        HStack(spacing: 8) {
+                            groupButton("Keep TwilDiary", direction: direction, choice: .local, count: count)
+                            groupButton("Use Trakt", direction: direction, choice: .trakt, count: count)
+                            groupButton("Skip all", direction: direction, choice: .skip, count: count)
+                        }
+                    }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-group-" + direction)
+                }
+            }
+            .diaryPanel()
+            .confirmationDialog(groupAction.map { groupTitle($0) } ?? "", isPresented: Binding(get: { groupAction != nil }, set: { if !$0 { groupAction = nil } }),
+                                titleVisibility: .visible, presenting: groupAction) { action in
+                Button(groupTitle(action), role: groupRemoves(action) ? .destructive : nil) {
+                    Task { await controller.resolveAll(direction: action.direction, choice: action.choice) }
+                }.accessibilityIdentifier("trakt-group-confirm")
+                Button("Cancel", role: .cancel) {}
+            } message: { action in Text(groupMessage(action)) }
+        }
+    }
+    private func groupButton(_ label: String, direction: String, choice: TraktChoice, count: Int) -> some View {
+        Button(label) { groupAction = GroupAction(direction: direction, choice: choice, count: count) }
+            .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
+            .frame(minHeight: 44).disabled(controller.busy || (choice != .skip && coolingDown))
+            .accessibilityIdentifier("trakt-group-" + direction + "-" + choice.rawValue)
+    }
+    private func groupTitle(_ action: GroupAction) -> String {
+        let items = action.count == 1 ? "1 item" : "\(action.count.formatted()) items"
+        switch action.choice {
+        case .local: return "Keep TwilDiary for \(items)"
+        case .trakt: return "Use Trakt for \(items)"
+        default: return "Skip \(items)"
+        }
+    }
+    /// Choices that delete something: Trakt's removal applied to the diary, or the diary's to Trakt.
+    private func groupRemoves(_ action: GroupAction) -> Bool {
+        (action.direction == "pull" && action.choice == .trakt) || (action.direction == "push" && action.choice == .local)
+    }
+    private func groupMessage(_ action: GroupAction) -> String {
+        switch (action.direction, action.choice) {
+        case (_, .skip): return "Nothing changes on either side. They come back in your next scan."
+        case ("pull", .trakt): return "Removes these items from your diary to match Trakt."
+        case ("pull", .local): return "Sends these items back to Trakt. Trakt accepts about one change a second, so a large group takes a while; you can keep using the app."
+        case ("push", .local): return "Removes these items from Trakt to match your diary."
+        case ("push", .trakt): return "Restores these items in your diary from Trakt."
+        case (_, .local): return "Sends your diary’s version of these items to Trakt."
+        default: return "Replaces your diary’s version of these items with Trakt’s."
+        }
     }
     private func reviewValue(_ kind: String, _ value: String?) -> String {
         if kind == "rating" { return value ?? "No rating" }

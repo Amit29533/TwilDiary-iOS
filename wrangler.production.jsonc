@@ -14,6 +14,10 @@
   "placement": { "mode": "smart" },
   // Workers Logs: unhandled API failures and Access rejections become visible.
   "observability": { "enabled": true },
+  // Settings → Cloudflare reads this account's analytics; the token is the CF_ANALYTICS_TOKEN secret.
+  "vars": { "CF_ACCOUNT_ID": "2e8626da5c1177fdfc53aadaef4ec1f7" },
+  // Keep any variables set in the dashboard when deploying.
+  "keep_vars": true,
   "assets": {
     "directory": ".svelte-kit/cloudflare",
     "binding": "ASSETS",

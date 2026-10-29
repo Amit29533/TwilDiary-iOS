@@ -28,6 +28,9 @@ export interface ServerBindings {
   TRAKT_TOKEN_KEY?: string;
   TRAKT_REDIRECT_URI?: string;
   TRAKT_PERSONAL_ACCESS_TOKEN?: string;
+  /** Account Analytics: Read. Settings → Cloudflare shows nothing without it. */
+  CF_ANALYTICS_TOKEN?: string;
+  CF_ACCOUNT_ID?: string;
 }
 export const bindings = (context: ApiContext): ServerBindings =>
   context.locals.bindings ?? context.platform?.env ?? {};
