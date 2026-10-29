@@ -682,13 +682,13 @@ import UIKit
         if (toggle.value as? String) != "1" { print("Incoming fixture post-touch hierarchy:\n" + app.debugDescription) }
         let enabled = expectation(for: NSPredicate(format: "value == '1'"), evaluatedWith: toggle)
         wait(for: [enabled], timeout: 5)
-        XCTAssertTrue(app.staticTexts["Waiting for the first scheduled check."].exists)
+        XCTAssertTrue(app.staticTexts["Waiting for the first scheduled check"].exists)
         XCTAssertFalse(app.staticTexts["Saved diary"].exists)
         capture("Trakt incoming watches enabled awaiting scheduler")
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         let disabled = expectation(for: NSPredicate(format: "value == '0'"), evaluatedWith: toggle)
         wait(for: [disabled], timeout: 5)
-        XCTAssertFalse(app.staticTexts["Waiting for the first scheduled check."].exists)
+        XCTAssertFalse(app.staticTexts["Waiting for the first scheduled check"].exists)
         capture("Trakt incoming watches disabled")
     }
     func testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice() {
@@ -841,7 +841,8 @@ import UIKit
     func testStatsMoreAndFilesOfferInlineSearchWithoutChangingTheActiveTab() {
         let app = launch()
         for tab in ["stats", "more"] {
-            app.tabBars.buttons[tab.capitalized].tap(); app.buttons["search-" + tab].tap()
+            // The More tab's page is headed Settings, so its search button is search-settings.
+            app.tabBars.buttons[tab.capitalized].tap(); app.buttons[tab == "more" ? "search-settings" : "search-" + tab].tap()
             let field = app.textFields["Search library and online"]
             XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText("Frieren\n")
             XCTAssertTrue(app.buttons["search-library-frieren"].waitForExistence(timeout: 5))
