@@ -241,8 +241,10 @@ private struct CatalogSeasonPreview: View {
     @State private var selected: Int
     @State private var showAll = false
     @AppStorage("episodesGrid") private var episodesGrid = false
-    @State private var expanded = Set<Int>()
     @State private var revealed = Set<Int>()
+    /// The episode whose details sheet is open (the same sheet as a saved title's episodes).
+    @State private var selectedEpisode: Int?
+    @State private var sheetHeight: CGFloat = 360
     init(route: CatalogRoute, details: CatalogDetails, store: DiaryStore) {
         self.route = route; self.details = details
         _selected = State(initialValue: details.seasons?.first(where: { $0.number > 0 })?.number ?? details.seasons?.first?.number ?? 1)
@@ -283,34 +285,67 @@ private struct CatalogSeasonPreview: View {
                 }
             }
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
-            .onChange(of: selected) { _, _ in showAll = false; expanded = []; revealed = [] }
+            .onChange(of: selected) { _, _ in showAll = false; revealed = []; selectedEpisode = nil }
+            .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
+                if let number = selectedEpisode, let episode = controller.items.first(where: { $0.number == number }) { episodeSheet(episode) }
+            }
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await controller.load(selected, reveal: true) } } }
     }
+    /// The same tiles as a saved title's episodes: a 16:10 thumbnail with a one-line caption in the
+    /// grid, a 132 × 74 thumbnail with two lines in the list. Details open in a sheet, never inline.
     private func episodeRow(_ episode: CatalogEpisode) -> some View {
         let hidden = hideSpoilers && !revealed.contains(episode.number)
-        let layout = episodesGrid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
-        return VStack(alignment: .leading, spacing: 12) {
-            Button {
-                if expanded.contains(episode.number) { expanded.remove(episode.number) }
-                else { expanded.insert(episode.number); revealed.insert(episode.number); Task { await controller.load(selected, reveal: true) } }
-            } label: {
-                layout {
-                    Group {
-                        if hidden { DiaryIcon(name: "eye-off", size: 23).frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(.secondary).background(Color(webHex: "#242030")) }
-                        else { Artwork(path: CatalogTools.image(episode.stillPath) ?? CatalogTools.image(details.backdropPath), title: details.name) }
-                    }.frame(width: episodesGrid ? nil : 132, height: episodesGrid ? 96 : 74).frame(maxWidth: episodesGrid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(episode.number) · " + (hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name)).font(.system(size: 16, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: 5) {
-                            Text(episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true ? "Not watched" : "Not aired yet").foregroundStyle(.secondary)
-                            if let score = episode.communityScore, score > 0 { Text("★ " + score.formatted(.number.precision(.fractionLength(1))) + " TMDb").foregroundStyle(.yellow) }
-                        }.font(.system(size: 13))
-                    }
-                    if !episodesGrid { Spacer(minLength: 0) }
-                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).foregroundStyle(.primary)
-            }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details").accessibilityValue(expanded.contains(episode.number) ? "Expanded" : "Collapsed").accessibilityIdentifier("catalog-episode-\(episode.number)")
-            if expanded.contains(episode.number) { Text(controller.loading ? "Loading episode…" : episode.overview.isEmpty ? "No synopsis available yet." : episode.overview).font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(4) }
-        }.padding(.vertical, 10).frame(minHeight: 94)
+        return Button { open(episode) } label: {
+            if episodesGrid {
+                VStack(alignment: .leading, spacing: 10) {
+                    Color.clear.aspectRatio(16 / 10, contentMode: .fit).overlay { episodeArtwork(episode, hidden: hidden) }.clipShape(RoundedRectangle(cornerRadius: 14))
+                    episodeCaption(episode, hidden: hidden)
+                }.contentShape(Rectangle())
+            } else {
+                HStack(spacing: 12) {
+                    episodeArtwork(episode, hidden: hidden).frame(width: 132, height: 74).clipShape(RoundedRectangle(cornerRadius: 12))
+                    episodeCaption(episode, hidden: hidden)
+                }.padding(.vertical, 10).padding(.horizontal, 4).frame(minHeight: 92).contentShape(Rectangle())
+            }
+        }.buttonStyle(.springPress).accessibilityLabel("Episode \(episode.number) details").accessibilityIdentifier("catalog-episode-\(episode.number)")
+    }
+    private func open(_ episode: CatalogEpisode) {
+        revealed.insert(episode.number); selectedEpisode = episode.number
+        Task { await controller.load(selected, reveal: true) }
+    }
+    @ViewBuilder private func episodeArtwork(_ episode: CatalogEpisode, hidden: Bool) -> some View {
+        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 23).foregroundStyle(.secondary) } }
+        else { Artwork(path: CatalogTools.image(episode.stillPath) ?? CatalogTools.image(details.backdropPath), title: details.name) }
+    }
+    private func episodeCaption(_ episode: CatalogEpisode, hidden: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : "\(episode.number). \(episode.name)")
+                .font(.system(size: 17, weight: .semibold)).lineLimit(episodesGrid ? 1 : 2).foregroundStyle(.white).multilineTextAlignment(.leading)
+            HStack(spacing: 6) {
+                Text(episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true ? "Not watched" : "Not aired yet").foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let score = episode.communityScore, score > 0 {
+                    HStack(spacing: 4) { Image(systemName: "star.fill").foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                        .accessibilityElement(children: .ignore).accessibilityLabel("TMDb " + score.formatted(.number.precision(.fractionLength(1))))
+                }
+            }.font(.system(size: 14)).lineLimit(1)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func episodeSheet(_ episode: CatalogEpisode) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    episodeArtwork(episode, hidden: false).frame(height: 200).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 18))
+                    Text(episode.name.isEmpty ? "Episode \(episode.number)" : episode.name).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    Text(episode.overview.isEmpty ? (controller.loading ? "Loading episode…" : "No synopsis available yet.") : episode.overview)
+                        .font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(webHex: "#c5c0cf")).fixedSize(horizontal: false, vertical: true)
+                }.padding(20)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sheetHeight = $0 }
+            }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
+                .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
+        // As tall as the synopsis needs, on glass, like a saved title's episode sheet.
+        }.presentationDetents([SheetFit.detent(sheetHeight, chrome: 96)]).presentationDragIndicator(.visible)
     }
 }
 

@@ -9,6 +9,7 @@ struct CommunityInformationSheet: View {
     @State private var controller = CommunityInformationController()
     @State private var retryRevision = 0
     @State private var detent = PresentationDetent.medium
+    @State private var contentHeight: CGFloat = 600
     var body: some View {
         VStack(spacing: 0) {
             Text("Information").font(.headline).frame(maxWidth: .infinity).padding(.top, 24).padding(.bottom, 16)
@@ -50,10 +51,11 @@ struct CommunityInformationSheet: View {
                     Text("Community information from Trakt. These are overall activity and comment summaries, independent of your personal rating.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(20).padding(.bottom, 20)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }.scrollContentBackground(.hidden).background(.clear)
-        // Half height only, on the system glass: it never switches to the opaque large
-        // sheet, so it stays see-through instead of flashing between the two.
-        }.presentationDetents([.medium], selection: $detent).presentationDragIndicator(.visible)
+        // Opens at half height; pulling up shows everything at once (as tall as the content, short of
+        // full screen), so it stays on the system glass instead of flashing to the opaque large sheet.
+        }.presentationDetents([.medium, SheetFit.detent(contentHeight, chrome: 100)], selection: $detent).presentationDragIndicator(.visible)
             .modifier(SolidSheetBackground(enabled: reduceTransparency))
             .task(id: TaskIdentity(identity: identity, session: store.sessionRevision, retry: retryRevision)) {
                 await controller.load(identity, retry: retryRevision > 0) { identity, retry in try await store.communityInformation(identity, retry: retry) }

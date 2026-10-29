@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TwilDiaryCore
 
 /// One spring for the whole app: quick to settle, with a little bounce.
@@ -9,6 +10,19 @@ enum Motion {
     static func spring(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : spring }
     /// The coordinate space a category swipe measures in; rows that scroll sideways report their frame in it.
     static let swipeSpace = "category-swipe"
+}
+
+/// Sheet heights that follow their content: short text gets a short sheet, long text a tall one.
+/// Capped below full screen, so the sheet stays on the system glass (the opaque full-height sheet
+/// is what made text colours jump); longer content scrolls inside.
+enum SheetFit {
+    @MainActor static var maxHeight: CGFloat {
+        ((UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 800) * 0.88
+    }
+    /// `content` is the measured scroll content; `chrome` the title bar and bottom inset around it.
+    @MainActor static func detent(_ content: CGFloat, chrome: CGFloat) -> PresentationDetent {
+        .height(min(max(content, 160) + chrome, maxHeight))
+    }
 }
 
 /// Source IDs for the zoom from a poster into its title page.
@@ -72,32 +86,23 @@ extension ButtonStyle where Self == SpringPressStyle {
     static var springPress: SpringPressStyle { SpringPressStyle() }
 }
 
-/// The content follows the finger a little (rubber band), then springs to the next category.
+/// A side swipe moves to the next category. The page itself stays still (no rubber band, no
+/// bounce): the cards swap in place and only the category pill slides, as a segmented control does.
 private struct CategorySwipe: ViewModifier {
     @Binding var selection: LibraryCategory
     let enabled: Bool
     let exempt: CGRect
-    /// Springs back (the bounce) when the finger lifts; follows the finger exactly while dragging.
-    @GestureState(resetTransaction: Transaction(animation: Motion.spring)) private var pull: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
         // The whole area takes the swipe, including the gaps around a short category's cards.
-        content.contentShape(Rectangle()).coordinateSpace(.named(Motion.swipeSpace)).offset(x: reduceMotion ? 0 : pull)
+        content.contentShape(Rectangle()).coordinateSpace(.named(Motion.swipeSpace))
             .simultaneousGesture(swipe, including: enabled ? .all : .subviews)
     }
     private var swipe: some Gesture {
         DragGesture(minimumDistance: 24, coordinateSpace: .named(Motion.swipeSpace))
-            .updating($pull) { value, state, _ in
-                let dx = value.translation.width, dy = value.translation.height
-                guard abs(dx) > abs(dy) * 1.6, !exempt.contains(value.startLocation) else { return }
-                // Resistance: the page moves a fraction of the finger, more so at the ends.
-                let atEnd = neighbour(dx < 0 ? 1 : -1) == nil
-                state = dx * (atEnd ? 0.12 : 0.28)
-            }
             .onEnded { value in
                 let dx = value.translation.width, dy = value.translation.height
                 guard abs(dx) > 64, abs(dx) > abs(dy) * 1.6, !exempt.contains(value.startLocation), let next = neighbour(dx < 0 ? 1 : -1) else { return }
-                withAnimation(Motion.spring(reduceMotion)) { selection = next }
+                selection = next
             }
     }
     private func neighbour(_ step: Int) -> LibraryCategory? {

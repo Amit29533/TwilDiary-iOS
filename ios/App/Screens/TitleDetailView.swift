@@ -45,6 +45,7 @@ struct TitleDetailView: View {
     @State private var showDate = false
     @State private var sliderDraft: Double?
     @State private var selectedEpisode: Episode?
+    @State private var episodeSheetHeight: CGFloat = 420
     @State private var episodeLimit = 40
     @State private var episodeDetails = SavedEpisodeDetailsController()
     @State private var revealedEpisodeIDs = Set<String>()
@@ -530,12 +531,12 @@ struct TitleDetailView: View {
                             .accessibilityIdentifier("episode-rewatch-\(episode.number)")
                     }
                 }.padding(20)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { episodeSheetHeight = $0 }
             }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
                 .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
-        // One tall glass size, like the community sheet: the whole synopsis fits, and it never
-        // switches to the opaque full-screen sheet, so the text colours never jump.
-        }.presentationDetents([.fraction(0.86)]).presentationDragIndicator(.visible)
+        // As tall as the synopsis needs, on glass: never the opaque full-screen sheet, so the text colours never jump.
+        }.presentationDetents([SheetFit.detent(episodeSheetHeight, chrome: 96)]).presentationDragIndicator(.visible)
     }
     private func prepareSeason(_ title: MediaTitle, force: Bool = false) async {
         if store.isPreview && !store.canMutate { return }

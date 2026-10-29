@@ -424,7 +424,7 @@ struct CategoryPicker: View {
         HStack(spacing: 6) {
             ForEach(LibraryCategory.allCases) { category in
                 let selected = selection == category
-                Button { withAnimation(Motion.spring(reduceMotion)) { selection = category } } label: {
+                Button { selection = category } label: {
                     Text(category.rawValue).font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(selected ? theme.ink : Color(webHex: "#c5c0cf"))
                         .padding(.horizontal, 16).frame(minHeight: 40)
@@ -434,7 +434,8 @@ struct CategoryPicker: View {
             }
             Spacer(minLength: 0)
         }.padding(.horizontal, 14).padding(.vertical, 4)
-            .animation(Motion.spring(reduceMotion), value: selection)
+            // Only the pill moves, glides without overshoot; the page under it swaps in place.
+            .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: selection)
             .sensoryFeedback(.selection, trigger: selection)
     }
 }

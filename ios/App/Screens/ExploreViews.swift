@@ -58,22 +58,28 @@ private struct ExploreHeading: View {
     }
 }
 
+/// The day's pick as a large artwork card, like Home's Continue watching: full-bleed backdrop,
+/// the title large over a soft scrim, and its year, type and score underneath.
 private struct DailyDiscoveryCard: View {
     let title: MediaTitle
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomLeading) {
             Artwork(path: title.backdrop ?? title.poster, title: title.name)
-            LinearGradient(colors: [.black.opacity(0.07), .black.opacity(0.13), .black.opacity(0.87)], startPoint: .top, endPoint: .bottom)
-            HStack(alignment: .bottom, spacing: 11) {
-                Artwork(path: title.poster, title: title.name).frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 6))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title.name).font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
-                    Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
-                    if let score = title.communityScore, score > 0 { HStack(spacing: 5) { DiaryIcon(name: "star", size: 14); Text(String(format: "%.1f", score)); Text("TMDb").font(.system(size: 12)).foregroundStyle(.secondary) }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#e7ca90")) }
+            LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0), .init(color: .black.opacity(0.2), location: 0.45), .init(color: .black.opacity(0.88), location: 1)], startPoint: .top, endPoint: .bottom)
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title.name).font(.system(size: 30, weight: .bold)).tracking(-0.8).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.8)
+                    HStack(spacing: 8) {
+                        Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).foregroundStyle(Color(webHex: "#d8d3e0"))
+                        if let score = title.communityScore, score > 0 {
+                            HStack(spacing: 4) { DiaryIcon(name: "star", size: 13); Text(String(format: "%.1f", score)); Text("TMDb").foregroundStyle(.white.opacity(0.6)) }.foregroundStyle(Color(webHex: "#e7ca90"))
+                        }
+                    }.font(.system(size: 14))
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                DiaryIcon(name: "arrow-up-right", size: 23).foregroundStyle(.white)
-            }.padding(13)
-        }.frame(height: 150).clipShape(RoundedRectangle(cornerRadius: 13)).overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(.white.opacity(0.14))).contentShape(Rectangle())
+                DiaryIcon(name: "arrow-up-right", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).background(theme.accent, in: Circle()).accessibilityHidden(true)
+            }.padding(18)
+        }.frame(height: 300).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
     }
 }
 

@@ -586,6 +586,8 @@ import UIKit
         for _ in 0..<6 { if first.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(first.waitForExistence(timeout: 5)); capture("Catalog spoiler-safe episodes")
         first.tap(); XCTAssertTrue(app.staticTexts["Reference episode summary."].waitForExistence(timeout: 5)); capture("Catalog revealed episode")
+        // Details open in the same sheet as a saved title's episodes.
+        app.buttons["Done"].tap(); XCTAssertTrue(season.waitForExistence(timeout: 5))
         season.tap(); app.buttons["Season 2"].tap()
         XCTAssertTrue(app.buttons["catalog-episode-1"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Reference episode summary."].exists, "Expansion state must reset on season change")

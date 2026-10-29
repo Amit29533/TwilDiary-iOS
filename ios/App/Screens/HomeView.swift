@@ -101,16 +101,21 @@ struct HomeView: View {
             // "CONTINUE WATCHING" sits inside each page, right above its title.
             ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !showSearch && !scrolling).padding(.horizontal, 8)
         }.background(alignment: .top) {
+            // Scroll content starts below the status bar, so the art is drawn taller and lifted
+            // into it (and shows a little more when the page is pulled down).
+            GeometryReader { proxy in
             Artwork(path: current.backdrop ?? current.poster, title: current.name)
+                .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
                 .overlay {
                     LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .black.opacity(0.05), location: 0.28),
                                            .init(color: .black.opacity(0.35), location: 0.62), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
                 }
                 .overlay { LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .leading, endPoint: .center) }
-                .id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
-                .ignoresSafeArea(edges: .top).allowsHitTesting(false).accessibilityHidden(true)
+                .offset(y: -Self.artLift).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+            }.allowsHitTesting(false).accessibilityHidden(true)
         }
     }
+    private static let artLift: CGFloat = 140
     private func discoverButton(_ name: String, icon: String) -> some View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
