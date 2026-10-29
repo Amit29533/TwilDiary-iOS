@@ -655,6 +655,32 @@ import UIKit
         XCTAssertFalse(app.staticTexts["Waiting for the first scheduled check."].exists)
         capture("Trakt incoming watches disabled")
     }
+    func testTraktReviewResolvesAWholeGroupOnlyAfterConfirmation() {
+        let app = launch(traktScenario: "removals"); app.tabBars.buttons["More"].tap()
+        XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))
+        app.buttons["settings-trakt-summary"].tap()
+        XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
+        let useTrakt = app.buttons["trakt-group-pull-trakt"]
+        let tabBarTop = app.tabBars.firstMatch.frame.minY
+        for _ in 0..<10 { if useTrakt.isHittable && useTrakt.frame.maxY < tabBarTop - 8 { break }; app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].exists)
+        XCTAssertTrue(useTrakt.isHittable); capture("Trakt review groups")
+        useTrakt.tap()
+        // The dialog's title repeats the action's label, so pick the action itself.
+        let labelled = app.buttons.matching(NSPredicate(format: "label == %@", "Use Trakt for 30 items"))
+        XCTAssertTrue(labelled.firstMatch.waitForExistence(timeout: 5)); capture("Trakt group confirmation")
+        XCTAssertTrue(app.staticTexts["Removes these items from your diary to match Trakt."].exists)
+        // iOS can keep a second, off-screen copy of the dialog's action: tap the visible one.
+        let identified = app.buttons.matching(identifier: "trakt-group-confirm")
+        let candidates = (0..<identified.count).map { identified.element(boundBy: $0) }
+            + (0..<labelled.count).map { labelled.element(boundBy: $0) }
+        let confirm = candidates.first { $0.isHittable } ?? labelled.element(boundBy: labelled.count - 1)
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].waitForNonExistence(timeout: 10))
+        XCTAssertFalse(useTrakt.exists, "A resolved group leaves the panel")
+        XCTAssertTrue(app.staticTexts["8 remaining"].exists)
+        capture("Trakt group resolved")
+    }
     func testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice() {
         let app = launch(); app.tabBars.buttons["More"].tap()
         XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))

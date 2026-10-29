@@ -25,6 +25,22 @@ import TwilDiaryCore
     func disconnect() async throws { try await fixture.disconnect() }
 }
 
+@MainActor private final class CountingResolveService: TraktServicing {
+    let fixture = FixtureTraktService(scenario: "removals")
+    var resolves = 0
+    func status() async throws -> TraktStatus { try await fixture.status() }
+    func review(kind: TraktKind, query: String, after: String?) async throws -> TraktSync { try await fixture.review(kind: kind, query: query, after: after) }
+    func start(mode: TraktRatingMode) async throws -> String { try await fixture.start(mode: mode) }
+    func step(id: String) async throws -> TraktSync { try await fixture.step(id: id) }
+    func apply(id: String, change: String?, choice: TraktChoice) async throws -> TraktSync { try await fixture.apply(id: id, change: change, choice: choice) }
+    func resolve(id: String, direction: String, choice: TraktChoice) async throws -> TraktSync {
+        resolves += 1
+        return try await fixture.resolve(id: id, direction: direction, choice: choice)
+    }
+    func cancel(id: String) async throws { try await fixture.cancel(id: id) }
+    func disconnect() async throws { try await fixture.disconnect() }
+}
+
 @MainActor final class TraktControllerTests: XCTestCase {
     func testScanPreparesReviewWithoutApplyingAnyChanges() async {
         let controller = TraktController(service: FixtureTraktService())
@@ -64,6 +80,27 @@ import TwilDiaryCore
         XCTAssertEqual(controller.visibleItems.count, 3)
         XCTAssertTrue(controller.visibleItems.allSatisfy { $0.kind == "rating" })
         XCTAssertEqual(controller.sync?.pendingChanges, 7)
+    }
+    func testResolveAllWorksThroughAWholeGroupInBatchesAndLeavesOtherItems() async {
+        let service = CountingResolveService(), controller = TraktController(service: service)
+        await controller.refresh()
+        XCTAssertEqual(controller.sync?.counts["review:pull"], 30)
+        await controller.resolveAll(direction: "pull", choice: .trakt)
+        XCTAssertNil(controller.error)
+        XCTAssertEqual(controller.sync?.counts["review:pull"] ?? 0, 0)
+        XCTAssertEqual(service.resolves, 3, "Thirty removals in batches of ten")
+        XCTAssertTrue(controller.sync?.items.filter { $0.id.hasPrefix("removed-") }.allSatisfy { $0.state == "applied" } == true)
+        XCTAssertEqual(controller.sync?.items.filter { !$0.id.hasPrefix("removed-") && $0.state == "pending" }.count, 8)
+        XCTAssertNil(controller.resolvingGroup)
+        XCTAssertFalse(controller.busy)
+    }
+    func testSkipAllIsOneRequestAndNeverWaitsForACooldown() async {
+        let service = CountingResolveService(), controller = TraktController(service: service)
+        await controller.refresh()
+        await controller.resolveAll(direction: "pull", choice: .skip)
+        XCTAssertEqual(service.resolves, 1)
+        XCTAssertEqual(controller.sync?.counts["skipped"], 30)
+        XCTAssertNil(controller.error)
     }
     func testDisconnectKeepsTheDiaryOutsideProviderState() async {
         let controller = TraktController(service: FixtureTraktService())
