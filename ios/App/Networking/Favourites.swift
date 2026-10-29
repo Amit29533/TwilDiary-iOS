@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TwilDiaryCore
 
 /// A hearted cast member (TMDB person) or anime character (AniList).
 struct Favourite: Codable, Hashable, Sendable, Identifiable {
