@@ -238,6 +238,7 @@ struct LibraryView: View {
 
 struct GlanceView: View {
     @AppStorage("glanceGrid") private var grid = false
+    @AppStorage("glanceSort") private var sortRaw = GlanceSort.recentlyUpdated.rawValue
     @Environment(DiaryStore.self) private var store
     @State private var category = LibraryCategory.all
     @State private var search = ""
@@ -246,14 +247,31 @@ struct GlanceView: View {
         // One pass over the library per update instead of three.
         let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
         let titles = watching.filter { category.includes($0) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
+        let ordered = order(titles)
         VStack(spacing: 0) {
-            PageHeader(name: "Glance", count: "\(watching.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } })
+            PageHeader(name: "Glance", count: "\(watching.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } }, circledSearch: true)
             if showSearch { SearchField(placeholder: "Find a current watch…", text: $search, label: "Find a current watch", autoFocus: true).padding(.horizontal, 14).padding(.bottom, 10) }
-            HStack(spacing: 0) { CategoryPicker(selection: $category); CollectionLayoutToggle(grid: $grid, collection: "glance").padding(.trailing, 8) }
+            CategoryPicker(selection: $category)
+            SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
+                CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
+            }
             ScrollView {
-                CollectionLayout(grid: grid, spacing: 8) { ForEach(titles) { ProgressCard(title: $0, grid: grid) } }.padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 100)
+                VStack(spacing: 8) {
+                    // The title you logged last (or first in the chosen order) gets the large card.
+                    if let first = ordered.first { ProgressCard(title: first, hero: true) }
+                    CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid) } }
+                }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category or clear your search.").padding(.horizontal, 14).padding(.top, 20) }
             }.accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
         }
+    }
+    private var sort: Binding<GlanceSort> {
+        Binding(get: { GlanceSort(rawValue: sortRaw) ?? .recentlyUpdated }, set: { sortRaw = $0.rawValue })
+    }
+    private func order(_ titles: [MediaTitle]) -> [MediaTitle] {
+        let chosen = sort.wrappedValue
+        let progress = chosen == .almostDone ? Dictionary(uniqueKeysWithValues: titles.map { ($0.id, store.libraryProgress($0)) }) : [:]
+        let activity = chosen == .recentlyUpdated ? GlanceOverview.lastActivity(events: store.workspace.events) : [:]
+        return GlanceOverview.order(titles, sort: chosen, lastActivity: activity, progress: progress)
     }
 }

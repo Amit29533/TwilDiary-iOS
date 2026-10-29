@@ -72,7 +72,7 @@ import UIKit
     }
     func testNativeTabsAndTitleNavigation() {
         let app = launch()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'complete'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '% complete'")).firstMatch.waitForExistence(timeout: 5))
         capture("Glance")
         app.tabBars.buttons["Home"].tap()
         XCTAssertTrue(app.staticTexts["Pick up where you left off"].waitForExistence(timeout: 5)); capture("Home")
@@ -140,14 +140,14 @@ import UIKit
         capture("Root tabs swiped both directions without wrapping")
         app.tabBars.buttons["Glance"].tap()
         let count = app.staticTexts["watch-count-again"]
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 5)
         // Cards no longer own a horizontal swipe (it belongs to tab paging); the
         // mark button logs exactly one watch and Undo restores it on the same tab.
         app.buttons["Mark next watch for 18 Again"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 8)
+        wait(for: [expectation(for: NSPredicate(format: "label == '9 / 16'"), evaluatedWith: count)], timeout: 8)
         XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "Marking a watch must not change tabs")
         app.buttons["Undo"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 8)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 8)
         capture("Glance mark and Undo stay on the Glance tab")
     }
     func testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause() {
@@ -824,18 +824,18 @@ import UIKit
         let app = launch(mutations: true)
         let count = app.staticTexts["watch-count-again"], mark = app.buttons["Mark next watch for 18 Again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 5)
         let originalY = mark.frame.minY
         mark.tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '9 / 16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertEqual(mark.frame.minY, originalY, accuracy: 1, "Release must not reflow the page")
         app.buttons["Undo"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertEqual(mark.frame.minY, originalY, accuracy: 1)
         app.buttons["Remove latest watch for 18 Again"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '7'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '7 / 16'"), evaluatedWith: count)], timeout: 10)
         app.buttons["Undo"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected); XCTAssertTrue(count.isHittable)
         capture("Glance Undo restored")
     }
@@ -1154,7 +1154,7 @@ import UIKit
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let cover = app.buttons["progress-cover-again"]
         XCTAssertTrue(cover.waitForExistence(timeout: 5))
-        cover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.86)).tap()
+        cover.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)).tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap(); app.tabBars.buttons["Home"].tap()
         let pickup = app.buttons["progress-cover-again"]
@@ -1173,23 +1173,23 @@ import UIKit
         XCTAssertTrue(other.isEnabled, "An unrelated card must remain available during this write")
         other.tap()
         let firstCount = app.staticTexts["watch-count-again"], otherCount = app.staticTexts["watch-count-frieren"]
-        wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: firstCount), expectation(for: NSPredicate(format: "label == '13'"), evaluatedWith: otherCount)], timeout: 15)
+        wait(for: [expectation(for: NSPredicate(format: "label == '9 / 16'"), evaluatedWith: firstCount), expectation(for: NSPredicate(format: "label == '13 / 28'"), evaluatedWith: otherCount)], timeout: 15)
         XCTAssertTrue(again.isEnabled); XCTAssertTrue(other.isEnabled)
-        app.buttons["category-anime"].tap(); XCTAssertEqual(otherCount.label, "13")
+        app.buttons["category-anime"].tap(); XCTAssertEqual(otherCount.label, "13 / 28")
         app.buttons["category-movies"].tap(); app.buttons["category-anime"].tap()
-        XCTAssertEqual(otherCount.label, "13"); capture("Glance cached category counts")
+        XCTAssertEqual(otherCount.label, "13 / 28"); capture("Glance cached category counts")
     }
     func testGlanceCurrentSeasonCompletionAndUndoPreserveTheUnwatchedLaterSeason() {
         let app = launch(mutations: true, upcoming: true)
         let count = app.staticTexts["watch-count-again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 5)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 5)
         app.buttons["progress-menu-again"].tap(); app.buttons["Complete Season 1"].tap()
         // Undo first (project rule: never spend the real 4.5 s window on slow value
         // reads). A semantic tap tried to scroll the toast's ancestor and missed it.
         // The helper waits for Undo to be enabled, i.e. the completion was saved.
         tapVisibleUndo(app)
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 10)
         app.buttons["progress-title-again"].tap()
         let season = app.buttons["title-season"]
         XCTAssertTrue(season.waitForExistence(timeout: 5)); season.tap(); app.buttons["Season 2"].tap()
@@ -1267,9 +1267,11 @@ import UIKit
         let app = launch(mutations: true, titleMetadata: true, longEpisodes: true); app.tabBars.buttons["Glance"].tap()
         let glance = app.buttons["glance-layout"]
         XCTAssertTrue(glance.waitForExistence(timeout: 5)); glance.tap(); XCTAssertEqual(glance.value as? String, "Grid")
-        let again = app.buttons["progress-menu-again"], frieren = app.buttons["progress-menu-frieren"]
-        XCTAssertTrue(again.waitForExistence(timeout: 5)); XCTAssertTrue(frieren.exists)
-        XCTAssertLessThan(again.frame.minX, frieren.frame.minX); XCTAssertEqual(again.frame.minY, frieren.frame.minY, accuracy: 2)
+        // The most recently updated title stays a full-width hero above the grid.
+        let again = app.buttons["progress-menu-again"], frieren = app.buttons["progress-menu-frieren"], night = app.buttons["progress-menu-night"]
+        XCTAssertTrue(again.waitForExistence(timeout: 5)); XCTAssertTrue(frieren.exists); XCTAssertTrue(night.exists)
+        XCTAssertLessThan(again.frame.maxY, frieren.frame.minY)
+        XCTAssertLessThan(frieren.frame.minX, night.frame.minX); XCTAssertEqual(frieren.frame.minY, night.frame.minY, accuracy: 2)
         XCTAssertTrue(app.buttons["Mark next watch for 18 Again"].isEnabled)
         XCTAssertTrue(app.buttons["Remove latest watch for 18 Again"].isEnabled)
         capture("Glance two-column grid with watch actions")
@@ -1360,10 +1362,10 @@ import UIKit
         let count = app.staticTexts["watch-count-again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
         app.buttons["Mark next watch for 18 Again"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label == '9'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '9 / 16'"), evaluatedWith: count)], timeout: 10)
         let undo = app.buttons["Undo"]
         undo.press(forDuration: 3)
-        wait(for: [expectation(for: NSPredicate(format: "label == '8'"), evaluatedWith: count)], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 10)
         capture("Undo survives held touch")
     }
     private func sample(_ image: CGImage, at point: CGPoint, scale: CGFloat) -> [Int] {
