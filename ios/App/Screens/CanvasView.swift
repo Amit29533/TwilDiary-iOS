@@ -209,9 +209,9 @@ struct CanvasMosaic: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 12)).contentShape(RoundedRectangle(cornerRadius: 12))
         Group {
-            if let id = item.inLibraryId { NavigationLink(value: id) { label } }
-            else { NavigationLink(value: item.route) { label } }
-        }.buttonStyle(.plain).accessibilityLabel(item.name).accessibilityIdentifier("canvas-tile-" + item.displayKey)
+            if let id = item.inLibraryId { NavigationLink(value: id) { label.zoomSource(ZoomID.title(id)) } }
+            else { NavigationLink(value: item.route) { label.zoomSource(ZoomID.catalog(item.route)) } }
+        }.buttonStyle(.springPress).accessibilityLabel(item.name).accessibilityIdentifier("canvas-tile-" + item.displayKey)
     }
 }
 

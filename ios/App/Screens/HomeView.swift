@@ -43,7 +43,7 @@ struct HomeView: View {
                         ScrollView(.horizontal) {
                             HStack(alignment: .top, spacing: 12) {
                                 ForEach(overview.planned.prefix(12)) { title in
-                                    NavigationLink(value: title.id) { plannedTile(title) }.buttonStyle(.plain).accessibilityIdentifier("home-planned-" + title.id)
+                                    NavigationLink(value: title.id) { plannedTile(title).zoomSource(ZoomID.title(title.id)) }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id)
                                 }
                             }
                         }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -67,8 +67,8 @@ struct HomeView: View {
                         heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history"); NavigationLink("All history →", value: AppDestination.history) }
                         CollectionLayout(grid: historyGrid) { ForEach(recent) { entry in
                             NavigationLink(value: entry.title.id) {
-                                if historyGrid { HistoryRow(entry: entry, grid: true) } else { recentRow(entry) }
-                            }.buttonStyle(.plain)
+                                Group { if historyGrid { HistoryRow(entry: entry, grid: true) } else { recentRow(entry) } }.zoomSource(ZoomID.title(entry.title.id))
+                            }.buttonStyle(.springPress)
                         } }
                     } }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)

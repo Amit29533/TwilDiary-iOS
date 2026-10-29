@@ -115,11 +115,11 @@ private struct PersonCreditShelf: View {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items, id: \.key) { item in
                     VStack(alignment: .leading, spacing: 4) {
-                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item) } }
-                        else { NavigationLink(value: item.route) { CatalogPoster(item: item) } }
+                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item).zoomSource(ZoomID.title(saved)) } }
+                        else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
                         if !role.isEmpty { Text(role).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
-                    }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.plain)
+                    }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress)
                 }
             }
         }.scrollIndicators(.hidden)

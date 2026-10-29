@@ -101,48 +101,39 @@ import UIKit
         app.tabBars.buttons["More"].tap()
         XCTAssertTrue(app.staticTexts["Appearance"].waitForExistence(timeout: 5)); capture("More")
     }
-    func testRootContentSwipesVisitEveryTabWithoutWrappingAndKeepCardGestures() {
+    func testSideSwipesChangeCategoriesNotTabsAndKeepCardGestures() {
         let app = launch(mutations: true)
-        app.tabBars.buttons["Home"].tap()
-        // `advance` pages forward like a native page view: the finger moves left.
-        func swipe(_ advance: Bool) {
-            let logo = app.buttons["random-pick-logo"]
-            XCTAssertTrue(logo.waitForExistence(timeout: 5))
-            // Start on plain content, never on a control: a menu picker opens on
-            // touch-down before any swipe can be recognised. More's 43% line is
-            // the Library ratings picker, so More starts on its Trakt summary text.
-            let fraction: CGFloat = app.tabBars.buttons["Home"].isSelected ? 0.68 : app.tabBars.buttons["More"].isSelected ? 0.22 : 0.43
+        // `advance` moves forward like a page view: the finger travels left, on plain content.
+        func swipe(_ advance: Bool, at fraction: CGFloat) {
             let y = app.frame.height * fraction
-            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.75 : 0.25), dy: y))
-            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.25 : 0.75), dy: y))
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.8 : 0.2), dy: y))
+            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * (advance ? 0.2 : 0.8), dy: y))
             start.press(forDuration: 0.05, thenDragTo: end)
         }
-        func expectTab(_ tab: String, after step: String) {
-            let button = app.tabBars.buttons[tab.capitalized]
-            let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: button)
-            guard XCTWaiter().wait(for: [reached], timeout: 5) != .completed else { return }
-            // Readable in the run's diagnostics: what was on screen instead.
-            let selectedTab = app.tabBars.buttons.matching(NSPredicate(format: "selected == true")).firstMatch
-            print("DIAG \(step): selected tab=\(selectedTab.exists ? selectedTab.label : "none") page=\(app.staticTexts["page-title"].exists ? app.staticTexts["page-title"].label : "none") pushed=\(app.navigationBars.count)")
-            print("DIAG \(step): menu open=\(app.buttons["Trakt"].exists) picker=\(app.buttons["settings-rating-source"].exists ? NSCoder.string(for: app.buttons["settings-rating-source"].frame) : "none") window=\(NSCoder.string(for: app.frame))")
-            for line in app.debugDescription.split(separator: "\n").prefix(140) { print("DIAG \(step) | " + String(line.prefix(170))) }
-            capture("Unexpected page after " + step)
-            XCTFail("The swipe did not reach \(tab) (\(step))")
+        func expectCategory(_ name: String) {
+            let chip = app.buttons["category-" + name]
+            wait(for: [expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: chip)], timeout: 5)
+            XCTAssertTrue(app.tabBars.buttons["Library"].isSelected, "A side swipe must never change app tabs")
         }
-        swipe(false); XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
-        for tab in ["library", "glance", "stats", "more"] {
-            swipe(true); expectTab(tab, after: "forward swipe to " + tab)
-        }
-        swipe(true); XCTAssertTrue(app.tabBars.buttons["More"].isSelected)
-        for tab in ["stats", "glance", "library", "home"] {
-            swipe(false); expectTab(tab, after: "backward swipe to " + tab)
-        }
-        capture("Root tabs swiped both directions without wrapping")
+        // Home has no categories: a side swipe leaves it where it is.
+        app.tabBars.buttons["Home"].tap()
+        XCTAssertTrue(app.buttons["random-pick-logo"].waitForExistence(timeout: 5))
+        swipe(true, at: 0.68)
+        XCTAssertTrue(app.tabBars.buttons["Home"].isSelected, "Home must not page to Library")
+        // Library: All → Movies → Shows, then back to Movies; the tab stays Library throughout.
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.buttons["category-all"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["category-all"].isSelected)
+        swipe(true, at: 0.62); expectCategory("movies")
+        swipe(true, at: 0.62); expectCategory("shows")
+        swipe(false, at: 0.62); expectCategory("movies")
+        capture("Side swipes move between Library categories")
+        app.buttons["category-all"].tap()
         app.tabBars.buttons["Glance"].tap()
         let count = app.staticTexts["watch-count-again"]
         wait(for: [expectation(for: NSPredicate(format: "label == '8 / 16'"), evaluatedWith: count)], timeout: 5)
-        // Cards no longer own a horizontal swipe (it belongs to tab paging); the
-        // mark button logs exactly one watch and Undo restores it on the same tab.
+        // Cards keep their own buttons: the mark button logs exactly one watch and
+        // Undo restores it on the same tab.
         app.buttons["Mark next watch for 18 Again"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label == '9 / 16'"), evaluatedWith: count)], timeout: 8)
         XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "Marking a watch must not change tabs")

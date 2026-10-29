@@ -29,7 +29,7 @@ import UIKit
         coordinator.controller = controller
         coordinator.renderedPageKey = pageKey
         controller.delegate = coordinator
-        controller.view.addGestureRecognizer(coordinator.pan)
+        // No content swipe between tabs: a sideways swipe belongs to the page (All, Movies, Shows, Anime).
         controller.selectedIndex = AppTab.allCases.firstIndex(of: selection) ?? 0
         controller.tabBar.tintColor = accent
         return controller

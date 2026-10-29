@@ -103,6 +103,8 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showSignIn = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
+    @Namespace private var zoom
     var body: some View {
         @Bindable var router = router
         Group {
@@ -175,9 +177,9 @@ struct RootView: View {
         NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
             content().background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
-                .navigationDestination(for: String.self) { TitleDetailView(id: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes, focusNotes: $0.focusNotes).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: String.self) { TitleDetailView(id: $0).navigationTransition(.zoom(sourceID: ZoomID.title($0), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes, focusNotes: $0.focusNotes).navigationTransition(.zoom(sourceID: ZoomID.title($0.id), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.catalog($0), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
@@ -202,6 +204,7 @@ struct RootView: View {
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })
+            .environment(\.zoomNamespace, zoom)
     }
 }
 

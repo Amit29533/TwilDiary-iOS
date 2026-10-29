@@ -76,7 +76,7 @@ PY
       -only-testing:TwilDiaryUITests/NativeScreensTests/testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testToastExpiresAndCardCoverAndUsefulMenuWork \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeTabsAndTitleNavigation \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testRootContentSwipesVisitEveryTabWithoutWrappingAndKeepCardGestures \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testSideSwipesChangeCategoriesNotTabsAndKeepCardGestures \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNavigationLensCanBeHeldAndSlidAcrossTheBarAndCancelledOutsideIt \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testCollectionGridsKeepEpisodeActionsFoldersAndHistoryEntries \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleMenuRevealsAndScrollsNotesAndLocationsAndCopiesAPath \

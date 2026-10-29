@@ -87,6 +87,7 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
         let prominent: Bool
         @AppStorage("theme") private var theme = DiaryTheme.twilight
         @Environment(\.isEnabled) private var enabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
         var body: some View {
             let destructive = configuration.role == .destructive
             configuration.label.font(.system(size: 15, weight: .semibold)).lineLimit(1)
@@ -94,7 +95,9 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
                 .foregroundStyle(prominent ? theme.ink : destructive ? Color(webHex: "#ff8a80") : theme.accent)
                 .background(prominent ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
                 .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
-                .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.45).contentShape(Capsule())
+                .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+                .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
         }
     }
 }
@@ -406,21 +409,23 @@ struct CategoryPicker: View {
     @Binding var selection: LibraryCategory
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The accent pill glides from one category to the next instead of jumping.
+    @Namespace private var pill
     var body: some View {
         HStack(spacing: 6) {
             ForEach(LibraryCategory.allCases) { category in
                 let selected = selection == category
-                Button { selection = category } label: {
+                Button { withAnimation(Motion.spring(reduceMotion)) { selection = category } } label: {
                     Text(category.rawValue).font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(selected ? theme.ink : Color(webHex: "#c5c0cf"))
                         .padding(.horizontal, 16).frame(minHeight: 40)
-                        .background { if selected { Capsule().fill(theme.accent) } }
+                        .background { if selected { Capsule().fill(theme.accent).matchedGeometryEffect(id: "category-pill", in: pill) } }
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selected ? .isSelected : [])
             }
             Spacer(minLength: 0)
         }.padding(.horizontal, 14).padding(.vertical, 4)
-            .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: selection)
+            .animation(Motion.spring(reduceMotion), value: selection)
     }
 }
 

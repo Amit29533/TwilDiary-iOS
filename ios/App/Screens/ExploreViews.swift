@@ -29,7 +29,7 @@ private struct ExploreContent: View {
             VStack(spacing: 10) {
                 ExploreHeading(section: .daily)
                 if let title = DiscoveryTools.dailyPick(store.workspace, day: DiaryDate.day(store.now)) {
-                    NavigationLink(value: title.id) { DailyDiscoveryCard(title: title) }.buttonStyle(.plain).accessibilityIdentifier("explore-daily-pick")
+                    NavigationLink(value: title.id) { DailyDiscoveryCard(title: title).zoomSource(ZoomID.title(title.id)) }.buttonStyle(.springPress).accessibilityIdentifier("explore-daily-pick")
                 } else {
                     VStack(spacing: 10) { Text("No unwatched titles in your library."); Button("Open library") { openLibrary() } }
                         .font(.system(size: 14)).diaryPanel().frame(maxWidth: .infinity, minHeight: 150)
@@ -101,9 +101,9 @@ private struct DiscoveryTrack: View {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(items, id: \.displayKey) { item in
                         Group {
-                            if let id = item.inLibraryId { NavigationLink(value: id) { CatalogPoster(item: item) } }
-                            else { NavigationLink(value: item.route) { CatalogPoster(item: item) } }
-                        }.buttonStyle(.plain).containerRelativeFrame(.horizontal, count: 3, spacing: 12).accessibilityIdentifier("catalog-" + item.displayKey)
+                            if let id = item.inLibraryId { NavigationLink(value: id) { CatalogPoster(item: item).zoomSource(ZoomID.title(id)) } }
+                            else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
+                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: 3, spacing: 12).accessibilityIdentifier("catalog-" + item.displayKey)
                     }
                 }
             }.scrollIndicators(.hidden).padding(.bottom, 10)

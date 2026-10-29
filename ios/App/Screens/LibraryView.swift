@@ -182,6 +182,8 @@ struct LibraryView: View {
                     }
                 }
             }.padding(.bottom, selecting ? 90 : 24)
+                // Genre shelves scroll sideways themselves, so they keep the swipe.
+                .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting)
         }.refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
     }
     private func ratingStatus(_ message: String) -> some View {
@@ -218,8 +220,8 @@ struct LibraryView: View {
             }.buttonStyle(.plain).disabled(store.busy || (!on && selected.count >= CollectionRequest.limit))
                 .accessibilityIdentifier("select-title-" + title.id).accessibilityAddTraits(on ? .isSelected : [])
         } else {
-            NavigationLink(value: title.id) { if row { LibraryListRow(title: title) } else { LibraryPosterCard(title: title) } }
-                .buttonStyle(.plain).contentShape(Rectangle()).accessibilityIdentifier("title-" + title.id)
+            NavigationLink(value: title.id) { Group { if row { LibraryListRow(title: title) } else { LibraryPosterCard(title: title) } }.zoomSource(ZoomID.title(title.id)) }
+                .buttonStyle(.springPress).contentShape(Rectangle()).accessibilityIdentifier("title-" + title.id)
                 .contextMenu {
                     Button("Select", systemImage: "checkmark.circle") { selecting = true; selected = [title.id] }
                     Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { review = CollectionReview(titles: [title], change: .favorite(!title.favorite)) }
@@ -495,11 +497,11 @@ struct GlanceView: View {
                 }
                 VStack(spacing: 8) {
                     // The title you logged last (or first in the chosen order) gets the large card.
-                    if let first = ordered.first { ProgressCard(title: first, hero: true) }
-                    CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid) } }
+                    if let first = ordered.first { ProgressCard(title: first, hero: true).zoomSource(ZoomID.title(first.id)) }
+                    CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid).zoomSource(ZoomID.title($0.id)) } }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category or clear your search.").padding(.horizontal, 14).padding(.top, 20) }
-            }.accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
+            }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
             .overlay(alignment: .top) { header(.buttons) }
     }
     private var sort: Binding<GlanceSort> {

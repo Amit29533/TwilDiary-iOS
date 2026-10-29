@@ -9,10 +9,10 @@ struct CollectionLayoutToggle: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Button {
-            withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) { grid.toggle() }
+            withAnimation(Motion.spring(reduceMotion)) { grid.toggle() }
         } label: {
             RoundTool(icon: grid ? "list" : "layout-grid", size: small ? 36 : 44)
-        }.buttonStyle(.plain)
+        }.buttonStyle(.springPress)
             .accessibilityLabel("Show " + collection + (grid ? " as list" : " as grid"))
             .accessibilityValue(grid ? "Grid" : "List").accessibilityIdentifier(collection + "-layout")
             .sensoryFeedback(.selection, trigger: grid)
