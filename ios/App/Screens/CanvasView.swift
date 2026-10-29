@@ -34,7 +34,6 @@ private struct CanvasContent: View {
     @State private var minimum = "0"
     @State private var listSort = "trending"
     @State private var listKind = "personal"
-    @State private var showFilters = false
     init(store: DiaryStore, tab: Binding<CanvasTab>) {
         self.store = store; _tab = tab
         let service = LiveDiscoveryService(store: store)
@@ -74,7 +73,6 @@ private struct CanvasContent: View {
                 if tab != .lists && sort == .recommended { await recommendations.load(limit: 24) }
             }
             .task(id: [tab.rawValue, listSort, listKind]) { if tab == .lists { await lists.load(sort: listSort, kind: listKind) } }
-            .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.medium]) }
     }
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
     private var tabs: some View {
@@ -106,8 +104,10 @@ private struct CanvasContent: View {
                             label: { pill(CanvasNetwork.all.first { $0.id == network }?.name ?? "Networks", active: network != nil) }
                             .disabled(sort == .recommended).accessibilityIdentifier("canvas-network")
                     }
-                    Button { showFilters = true } label: { pill(nil, icon: "sliders-horizontal", active: !year.isEmpty || minimum != "0") }
-                        .buttonStyle(.plain).accessibilityLabel("More filters").accessibilityIdentifier("canvas-filters")
+                    Menu { Picker("Release year", selection: $year) { Text("Any year").tag(""); ForEach(Self.years, id: \.self) { Text(String($0)).tag(String($0)) } } }
+                        label: { pill(year.isEmpty ? "Year" : year, active: !year.isEmpty) }.accessibilityLabel("Release year").accessibilityIdentifier("canvas-year")
+                    Menu { Picker("Minimum rating", selection: $minimum) { Text("Any rating").tag("0"); ForEach([6, 7, 8, 9], id: \.self) { Text("\($0)+").tag(String($0)) } } }
+                        label: { pill(minimum == "0" ? "Rating" : minimum + "+", active: minimum != "0") }.accessibilityLabel("Minimum rating").accessibilityIdentifier("canvas-rating")
                 }
             }.padding(.horizontal, 2)
         }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -155,17 +155,7 @@ private struct CanvasContent: View {
             if let retry { Button("Retry", action: retry).font(.system(size: 14, weight: .semibold)).frame(minHeight: 44) }
         }.padding(.horizontal, 14).padding(.vertical, 10).diaryPanel(padding: 0, radius: 14)
     }
-    private var filterSheet: some View {
-        NavigationStack {
-            Form {
-                TextField("Any year", text: $year).keyboardType(.numberPad).accessibilityLabel("Release year")
-                Picker("Minimum rating", selection: $minimum) { Text("Any rating").tag("0"); ForEach([6, 7, 8, 9], id: \.self) { Text("\($0)+").tag(String($0)) } }
-                if !year.isEmpty && (year.count != 4 || Int(year).map { !(1880...2200).contains($0) } ?? true) { Text("Enter a year from 1880 to 2200.").foregroundStyle(.secondary) }
-                Button("Reset filters") { year = ""; minimum = "0" }
-            }.navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showFilters = false } } }
-        }
-    }
+    private static let years = Array((1950...Calendar.current.component(.year, from: .now)).reversed())
 }
 
 /// TMDb network IDs offered for shows; mirrors discoveryNetworks on the server.

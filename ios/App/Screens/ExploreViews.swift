@@ -197,10 +197,13 @@ private struct DiscoveryBrowser: View {
         }.task(id: store.discoveryRevision) { if section == .recommended { await recommendations.load(limit: 24) } }
     }
     private var genreToolbar: some View {
-        HStack(spacing: 10) {
-            Picker("Explore genre", selection: $filters.genre) { Text("Choose a genre").tag(""); ForEach(genres, id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("explore-genre")
-            Picker("Explore media type", selection: $filters.type) { Text("Shows").tag("tv"); Text("Movies").tag("movie") }.pickerStyle(.segmented).frame(width: 145).accessibilityIdentifier("explore-type").onChange(of: filters.type) { _, _ in filters.genre = "" }
-        }.font(.system(size: 13))
+        HStack(spacing: 8) {
+            Menu { Picker("Explore genre", selection: $filters.genre) { Text("Choose a genre").tag(""); ForEach(genres, id: \.self) { Text($0).tag($0) } } }
+                label: { FilterPill(label: filters.genre.isEmpty ? "Choose a genre" : filters.genre, active: !filters.genre.isEmpty) }.accessibilityLabel("Explore genre").accessibilityIdentifier("explore-genre")
+            Menu { Picker("Explore media type", selection: $filters.type) { Text("Shows").tag("tv"); Text("Movies").tag("movie") } }
+                label: { FilterPill(label: filters.type == "movie" ? "Movies" : "Shows") }.accessibilityLabel("Explore media type").accessibilityIdentifier("explore-type")
+            Spacer(minLength: 0)
+        }.onChange(of: filters.type) { _, _ in if promptForGenre { filters.genre = "" } }
     }
     /// Filters as pill menus in one scrolling row, like Canvas.
     private var filterForm: some View {
