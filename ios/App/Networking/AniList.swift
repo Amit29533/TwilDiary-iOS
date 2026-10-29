@@ -139,8 +139,9 @@ actor AniListClient {
             return year.map { "\(day) \(name) \($0)" } ?? "\(day) \(name)"
         }
     }
+    /// AniList's GraphQL reply: the answer under `data`.
+    private struct Envelope<D: Decodable>: Decodable { let data: D? }
     private func query<T: Decodable>(_ text: String, _ variables: [String: any Sendable]) async throws -> T {
-        struct Envelope<D: Decodable>: Decodable { let data: D? }
         var request = URLRequest(url: URL(string: "https://graphql.anilist.co")!, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
