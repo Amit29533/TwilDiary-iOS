@@ -11,6 +11,8 @@ import TwilDiaryCore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("traktGrid") private var grid = false
+    @State private var scanPace = ProgressPace()
+    @State private var applyPace = ProgressPace()
     init(store: DiaryStore) {
         self.store = store
         _controller = State(initialValue: store.traktController)
@@ -25,7 +27,7 @@ import TwilDiaryCore
                 if controller.status?.connected == true {
                     preferences
                     incomingWatches
-                    if controller.sync?.run?.state == "building" { scanProgress }
+                    if controller.sync?.run?.state == "building" { scanProgress; foundSoFar }
                     if let sync = controller.sync, sync.run != nil {
                         if sync.reviewing || sync.run?.state == "complete" { transferProgress(sync) }
                         review(sync)
@@ -53,6 +55,7 @@ import TwilDiaryCore
                 clock = .now
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy { Task { await controller.refresh() } } }
+            .onChange(of: paceKey) { _, _ in recordPace() }
             .sheet(isPresented: $showSignIn) {
                 if let credential = store.browserCredential() {
                     NavigationStack {
@@ -81,82 +84,146 @@ import TwilDiaryCore
     }
     private func transferProgress(_ sync: TraktSync) -> some View {
         let progress = TraktApplyProgress(sync)
+        let left = controller.applyingAll ? ProgressPace.label(seconds: applyPace.secondsLeft(remaining: progress.remaining)) : nil
         return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(controller.applyingAll ? "Importing reviewed changes" : "Import progress").font(.headline)
-                Spacer(minLength: 8)
-                Text("\(progress.percent)%").font(.headline).monospacedDigit().foregroundStyle(theme.accent)
-                    .accessibilityIdentifier("trakt-apply-percent")
-            }
-            ProgressView(value: progress.fraction).accessibilityLabel("Reviewed sync progress")
-                .accessibilityValue("\(progress.finished) of \(progress.total) processed")
-                .accessibilityIdentifier("trakt-apply-progress")
-            Text("\(progress.applied.formatted()) saved · \(progress.skipped.formatted()) skipped · \(progress.remaining.formatted()) remaining")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("trakt-apply-counts")
-            if progress.failed > 0 { Text("\(progress.failed.formatted()) changes need attention; they are kept for review.").font(.caption).foregroundStyle(.orange) }
-            if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(controller.applyingAll ? "Applying changes" : "Import progress").font(.system(size: 17, weight: .semibold))
+                    Spacer(minLength: 8)
+                    Text("\(progress.percent)%").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(theme.accent)
+                        .accessibilityIdentifier("trakt-apply-percent")
+                }
+                ProgressView(value: progress.fraction).tint(theme.accent).accessibilityLabel("Reviewed sync progress")
+                    .accessibilityValue("\(progress.finished) of \(progress.total) processed")
+                    .accessibilityIdentifier("trakt-apply-progress")
+                HStack {
+                    Text("\(progress.finished.formatted()) of \(progress.total.formatted())").foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    if let left { Text(left).foregroundStyle(theme.accent) }
+                }.font(.system(size: 13)).monospacedDigit()
+                InlineFlowLayout(spacing: 6, rowSpacing: 6) {
+                    statPill("\(progress.applied.formatted()) saved", tint: .mint)
+                    statPill("\(progress.skipped.formatted()) skipped", tint: Color(webHex: "#c5c0cf"))
+                    if progress.failed > 0 { statPill("\(progress.failed.formatted()) need you", tint: .orange) }
+                }
+                // The plain sentence stays for VoiceOver and for checks on what was saved.
+                Text("\(progress.applied.formatted()) saved · \(progress.skipped.formatted()) skipped · \(progress.remaining.formatted()) remaining")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("trakt-apply-counts")
+            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+            if coolingDown { cooldownCard }
+            else if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             if controller.applyingAll {
-                if coolingDown {
-                    Text("Resuming automatically after \(controller.cooldownUntil.formatted(date: .omitted, time: .standard)).")
-                        .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-auto-resume")
-                } else { Text("You can browse the other tabs while this continues. Keep the app open.").font(.caption).foregroundStyle(.secondary) }
-                Button(controller.paused ? "Pausing after this request…" : "Pause import", systemImage: "pause.fill") { controller.pauseApplying() }
-                    .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
+                Button { controller.pauseApplying() } label: {
+                    Label(controller.paused ? "Pausing after this request…" : "Pause", systemImage: "pause.fill").frame(maxWidth: .infinity, minHeight: 50)
+                }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
+                Text("You can use the other tabs while this continues. Keep the app open.").font(.caption).foregroundStyle(.secondary)
             } else if controller.paused && sync.reviewing && (sync.counts["safe"] ?? 0) > 0 {
-                Button("Resume import", systemImage: "play.fill") { controller.startApprovedApply() }
-                    .buttonStyle(.glassProminent).buttonBorderShape(.capsule).accessibilityIdentifier("trakt-resume-import")
+                Button { controller.startApprovedApply() } label: {
+                    Label("Resume import", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 50)
+                }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).accessibilityIdentifier("trakt-resume-import")
             }
-        }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-transfer-panel")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-transfer-panel")
+    }
+    /// "Trakt asked us to slow down", with a ring counting down the seconds.
+    private var cooldownCard: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let left = max(0, controller.cooldownUntil.timeIntervalSince(context.date))
+            let total = max(1, Double(controller.sync?.run?.retryAfter ?? 0), left)
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().stroke(Color.orange.opacity(0.25), lineWidth: 4)
+                    Circle().trim(from: 0, to: left / total).stroke(Color.orange, style: StrokeStyle(lineWidth: 4, lineCap: .round)).rotationEffect(.degrees(-90))
+                    Text("\(Int(ceil(left)))s").font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                }.frame(width: 40, height: 40)
+                Text("Trakt asked us to slow down. Continuing in \(Int(ceil(left))) seconds; nothing is lost.")
+                    .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            }.foregroundStyle(Color(webHex: "#fac775")).padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(webHex: "#2b2516"), in: RoundedRectangle(cornerRadius: 16))
+                .accessibilityElement(children: .combine).accessibilityIdentifier("trakt-cooldown-card")
+        }
+    }
+    private func statPill(_ text: String, tint: Color) -> some View {
+        Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(tint)
+            .padding(.horizontal, 10).frame(height: 26).background(tint.opacity(0.14), in: Capsule())
     }
     private var incomingWatches: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle("Incoming watches", isOn: Binding(get: { incoming.status?.enabled ?? false }, set: { enabled in
-                Task { await incoming.configure(enabled: enabled) }
-            })).disabled(incoming.busy || incoming.status == nil || controller.status?.needsReconnect == true).accessibilityIdentifier("trakt-incoming-toggle")
-            Text("Import completed plays from Trakt automatically. Ratings, watchlist changes and deletions still use review.")
-                .font(.caption).foregroundStyle(.secondary)
-            if incoming.status?.enabled == true {
-                Text("Usually within a few minutes. New titles may need extra metadata checks. Your diary refreshes when you open the app.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let explanation = incoming.pauseExplanation {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Automatic").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    tile("activity", background: Color(webHex: "#3C3489"), foreground: Color(webHex: "#CECBF6"))
+                    Toggle(isOn: Binding(get: { incoming.status?.enabled ?? false }, set: { enabled in
+                        Task { await incoming.configure(enabled: enabled) }
+                    })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Incoming watches").font(.system(size: 15, weight: .semibold))
+                            Text(incomingSubtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.tint(theme.accent).disabled(incoming.busy || incoming.status == nil || controller.status?.needsReconnect == true).accessibilityIdentifier("trakt-incoming-toggle")
+                }
+                Text("Completed plays from Trakt arrive on their own. Ratings, watchlist changes and deletions still use review.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if incoming.status?.enabled == true, let explanation = incoming.pauseExplanation {
                     Text(explanation).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                } else if let date = DiaryDate.parse(incoming.status?.checkedAt) {
-                    Text("Last checked \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                } else { Text("Waiting for the first scheduled check.").font(.caption).foregroundStyle(.secondary) }
-                if let status = incoming.status, status.pending > 0 || status.review > 0 {
+                }
+                if let status = incoming.status, incoming.status?.enabled == true, status.pending > 0 || status.review > 0 {
                     Text("\(status.pending) waiting · \(status.review) need manual review").font(.caption).foregroundStyle(.secondary)
                 }
                 if let health = incoming.health { Text(health).font(.caption).foregroundStyle(.secondary) }
-            }
-            if let error = incoming.error { Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-incoming-error") }
-            Button("Refresh status", systemImage: "arrow.clockwise") { Task { await incoming.refresh() } }
-                .font(.subheadline).buttonStyle(.glass).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
-        }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
+                if let error = incoming.error { Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-incoming-error") }
+                Button("Refresh status", systemImage: "arrow.clockwise") { Task { await incoming.refresh() } }
+                    .font(.subheadline).buttonStyle(.glass).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
+            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
+    }
+    private var incomingSubtitle: String {
+        guard incoming.status?.enabled == true else { return "Off" }
+        if controller.sync?.run?.state == "building" || controller.sync?.reviewing == true { return "Paused during this scan" }
+        if let date = DiaryDate.parse(incoming.status?.checkedAt) { return "Last checked " + date.formatted(date: .abbreviated, time: .shortened) }
+        return "Waiting for the first scheduled check"
+    }
+    private func tile(_ icon: String, background: Color, foreground: Color) -> some View {
+        DiaryIcon(name: icon, size: 17).foregroundStyle(foreground).frame(width: 34, height: 34).background(background, in: RoundedRectangle(cornerRadius: 10))
     }
     private var connection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                DiaryIcon(name: "link-2", size: 22).foregroundStyle(theme.accent).padding(12).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-                VStack(alignment: .leading, spacing: 4) { Text(controller.status?.needsReconnect == true ? "Reconnect Trakt" : controller.status?.connected == true ? "Connected" : controller.loading ? "Checking connection…" : "Connect to Trakt").font(.title3.bold()); Text(controller.status?.username.map { "@" + $0 } ?? "Your watches, together").font(.caption).foregroundStyle(.secondary) }
+                tile("link-2", background: Color(webHex: "#3C3489"), foreground: Color(webHex: "#CECBF6"))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(controller.status?.needsReconnect == true ? "Reconnect Trakt" : controller.status?.connected == true ? "Trakt" : controller.loading ? "Checking connection…" : "Connect to Trakt").font(.system(size: 20, weight: .bold))
+                    if let date = DiaryDate.parse(controller.status?.lastSyncAt) { Text("Last synced \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
+                    else if controller.status?.connected != true { Text("Your watches, together").font(.caption).foregroundStyle(.secondary) }
+                }
                 Spacer(minLength: 0)
-                if controller.status?.needsReconnect == true { Text("Reconnect").font(.caption.bold()).foregroundStyle(.yellow) }
-                else if (controller.sync?.pendingChanges ?? 0) > 0 { Text("Review").font(.caption.bold()).foregroundStyle(.yellow) }
+                if controller.status?.needsReconnect == true { statPill("Reconnect", tint: .orange) }
+                else if let name = controller.status?.username, controller.status?.connected == true { statPill("@" + name, tint: .mint) }
             }
-            if let date = DiaryDate.parse(controller.status?.lastSyncAt) { Text("Last synced \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
+            if (controller.sync?.pendingChanges ?? 0) > 0 && controller.sync?.run?.state != "building" {
+                statPill("\(controller.sync?.pendingChanges ?? 0) to review", tint: .orange)
+            }
             if controller.status?.connected == true {
-                HStack { Button("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") { Task { await controller.scan(start: true) } }.buttonStyle(.glassProminent).disabled(coolingDown); Button("Disconnect", role: .destructive) { Task { await controller.disconnect() } }.buttonStyle(.glass) }.disabled(controller.busy)
+                HStack(spacing: 10) {
+                    Button { Task { await controller.scan(start: true) } } label: {
+                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").frame(maxWidth: .infinity, minHeight: 48)
+                    }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(coolingDown)
+                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").frame(minHeight: 48).padding(.horizontal, 6) }
+                        .buttonStyle(.glass).buttonBorderShape(.capsule)
+                }.disabled(controller.busy)
             } else if controller.status?.configured == true {
-                Button("Connect Trakt") { showSignIn = true }.buttonStyle(.glassProminent).disabled(controller.busy)
+                Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity, minHeight: 48) }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.busy)
                 Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
             } else if controller.status != nil { Text("Configure the Trakt Client ID on your server using the PC app. Sign-in uses PKCE; no client secret is needed.").font(.subheadline).foregroundStyle(.secondary) }
-            if coolingDown {
+            if coolingDown && controller.sync?.reviewing != true {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text("Waiting \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(context.date))))) seconds before the next request.")
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
                 }
             }
-        }.diaryPanel()
+        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
     }
     private var preferences: some View {
         @Bindable var controller = controller
@@ -174,26 +241,104 @@ import TwilDiaryCore
         VStack(alignment: .leading, spacing: 12) {
             if let run = controller.sync?.run {
                 let progress = TraktScanProgress(run: run)
-                Text(progress.title).font(.subheadline.weight(.semibold))
-                Text(progress.detail).font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("trakt-scan-progress-detail")
-                if let fraction = progress.fraction {
-                    ProgressView(value: fraction).accessibilityLabel("Comparison progress")
-                    Text("\(Int((fraction * 100).rounded(.down)))% of this comparison stage").font(.caption).monospacedDigit()
-                } else { Text("This stage has no reliable total yet.").font(.caption).foregroundStyle(.secondary) }
+                let stages = scanStages(run)
+                let remaining = stages.done.flatMap { done in stages.total.map { $0 - done } }
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle().stroke(.white.opacity(0.1), lineWidth: 6)
+                            Circle().trim(from: 0, to: stages.compare ?? 0).stroke(theme.accent, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
+                            if let share = stages.compare { Text("\(Int((share * 100).rounded(.down)))%").font(.system(size: 15, weight: .semibold)).monospacedDigit() }
+                            else { ProgressView().controlSize(.small) }
+                        }.frame(width: 64, height: 64).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(progress.title).font(.system(size: 16, weight: .semibold))
+                            Text(progress.detail).font(.system(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("trakt-scan-progress-detail")
+                            if let left = ProgressPace.label(seconds: remaining.flatMap { scanPace.secondsLeft(remaining: $0) }) {
+                                Text(left).font(.system(size: 13, weight: .medium)).foregroundStyle(theme.accent)
+                            } else if stages.current == .download { Text("Time left appears once comparing starts").font(.system(size: 12)).foregroundStyle(.secondary) }
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        stageBar("Download", share: stages.current == .download ? nil : 1, active: stages.current == .download)
+                        stageBar("Compare", share: stages.current == .download ? 0 : stages.compare, active: stages.current == .compare)
+                        stageBar("Review", share: stages.current == .review ? 1 : 0, active: stages.current == .review)
+                    }
+                    HStack(spacing: 14) {
+                        if let rate = scanPace.perSecond { Label("\(Int(rate.rounded())) per sec", systemImage: "bolt.fill") }
+                        if let started = scanPace.startedAt {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in Label(ProgressPace.elapsed(context.date.timeIntervalSince(started)) + " so far", systemImage: "clock") }
+                        }
+                    }.font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+                }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+                    .accessibilityElement(children: .contain).accessibilityIdentifier("trakt-scan-card")
             }
-            if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
-            Text("Manual full-library comparison. Nothing is applied until the review is ready. Automatic incoming watches pause during this scan and review.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if controller.busy { Button(controller.paused ? "Pausing…" : "Pause after this step") { controller.paused = true }.disabled(controller.paused) }
-            else {
-                HStack {
-                    Button("Continue scan") { Task { await controller.scan(start: false) } }.buttonStyle(.glassProminent).disabled(coolingDown)
-                    Button("Stop without applying") { Task { await controller.cancel() } }.buttonStyle(.glass).accessibilityIdentifier("trakt-stop-manual-scan")
+            if coolingDown { cooldownCard }
+            else if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
+            if controller.busy {
+                Button { controller.paused = true } label: { Label(controller.paused ? "Pausing…" : "Pause after this step", systemImage: "pause.fill").frame(maxWidth: .infinity, minHeight: 48) }
+                    .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.paused)
+            } else {
+                HStack(spacing: 10) {
+                    Button { Task { await controller.scan(start: false) } } label: { Label("Continue scan", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 48) }
+                        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(coolingDown)
+                    Button { Task { await controller.cancel() } } label: { Label("Stop", systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 48) }
+                        .buttonStyle(.glass).buttonBorderShape(.capsule).accessibilityLabel("Stop without applying").accessibilityIdentifier("trakt-stop-manual-scan")
                 }
-                Text("Stopping keeps your existing diary unchanged and lets automatic incoming watches resume.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-        }.diaryPanel()
+            Text("Nothing is applied until you review. Stopping keeps your diary unchanged. You can use other tabs meanwhile.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+    /// What the comparison has turned up so far: ready to apply, to decide, and links.
+    private var foundSoFar: some View {
+        let counts = controller.sync?.counts ?? [:]
+        let decide = (counts["review:conflict"] ?? 0) + (counts["review:pull"] ?? 0) + (counts["review:push"] ?? 0)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Found so far").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
+            HStack(spacing: 0) {
+                foundFigure(counts["safe"] ?? 0, "ready")
+                foundFigure(decide, "to decide", tint: decide > 0 ? Color(webHex: "#fac775") : nil)
+                foundFigure(counts["links"] ?? 0, "to link")
+            }.padding(.vertical, 14).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-found-so-far")
+    }
+    private func foundFigure(_ value: Int, _ label: String, tint: Color? = nil) -> some View {
+        VStack(spacing: 3) {
+            Text(value.formatted()).font(.system(size: 20, weight: .semibold)).monospacedDigit().foregroundStyle(tint ?? Color(webHex: "#f3f0f7"))
+            Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity).accessibilityElement(children: .combine)
+    }
+    private func stageBar(_ name: String, share: Double?, active: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Capsule().fill(.white.opacity(0.1)).frame(height: 6).overlay(alignment: .leading) {
+                if let share { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * share) } }
+                else { Capsule().fill(theme.accent.opacity(0.45)) }
+            }
+            HStack(spacing: 3) {
+                if share == 1 && !active { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)) }
+                Text(name)
+            }.font(.system(size: 12, weight: active ? .semibold : .regular)).foregroundStyle(active ? theme.accent : .secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func scanStages(_ run: TraktSync.Run) -> TraktScanStages {
+        TraktScanStages(run: run, localPlays: store.workspace.activeEvents.count, localTitles: store.workspace.activeTitles.count)
+    }
+    /// Changes when the scan or the apply moves; each change adds a pace sample.
+    private var paceKey: String {
+        let run = controller.sync?.run
+        return [run?.stage ?? "", String(run?.page ?? 0), String(run?.progress ?? 0), String(controller.sync.map { TraktApplyProgress($0).finished } ?? 0)].joined(separator: ":")
+    }
+    private func recordPace() {
+        guard let sync = controller.sync, let run = sync.run else { return }
+        let now = Date.now
+        if run.state == "building" {
+            let stages = scanStages(run)
+            if let done = stages.done { scanPace.record(done, at: now, scope: run.id + run.stage) }
+        }
+        if controller.applyingAll { applyPace.record(TraktApplyProgress(sync).finished, at: now, scope: run.id) }
     }
     private func review(_ sync: TraktSync) -> some View {
         @Bindable var controller = controller
