@@ -165,6 +165,11 @@ struct TitleDetailView: View {
                     if count > 20_000 { Text("Keep notes within 20,000 characters.").foregroundStyle(.orange) }
                     Spacer(minLength: 0)
                     Text("\(count.formatted())/20,000").monospacedDigit().foregroundStyle(.secondary)
+                    // A keyboard toolbar does not show inside a sheet, so Done lives here.
+                    if notesFocused {
+                        Button("Done") { notesFocused = false }.font(.system(size: 15, weight: .semibold)).tint(theme.accent)
+                            .frame(minHeight: 44).padding(.leading, 8).accessibilityIdentifier("notes-keyboard-done")
+                    }
                 }.font(.caption)
             }.padding(.horizontal, 20).padding(.vertical, 12)
                 .navigationTitle("My Note").navigationBarTitleDisplayMode(.inline)
@@ -177,7 +182,6 @@ struct TitleDetailView: View {
                             .accessibilityLabel("Save notes")
                             .disabled(store.writesBlocked || !notesField.isDirty || notesField.submission == nil || count > 20_000)
                     }
-                    ToolbarItemGroup(placement: .keyboard) { if notesFocused { Spacer(); Button("Done") { notesFocused = false }.accessibilityIdentifier("notes-keyboard-done") } }
                 }
         }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
     }
