@@ -658,6 +658,24 @@ import UIKit
         XCTAssertFalse(app.buttons["1Y"].isSelected)
         capture("Stats from Home")
     }
+    func testCloudflareUsageShowsTodayAndDailyChartsFromSettings() {
+        let app = launch(); app.tabBars.buttons["More"].tap()
+        let row = app.buttons["settings-cloudflare"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Cloudflare"].waitForExistence(timeout: 10))
+        for key in ["requests", "reads", "writes", "storage"] { XCTAssertTrue(app.descendants(matching: .any)["cloudflare-today-\(key)"].waitForExistence(timeout: 5), key) }
+        XCTAssertTrue(app.descendants(matching: .any)["cloudflare-reset"].exists)
+        capture("Cloudflare usage today")
+        let range = app.segmentedControls["cloudflare-range"]
+        for _ in 0..<4 { if range.isHittable { break }; app.swipeUp() }
+        range.buttons["30 days"].tap()
+        let reads = app.descendants(matching: .any)["cloudflare-chart-reads"]
+        for _ in 0..<4 { if reads.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(reads.waitForExistence(timeout: 5)); XCTAssertTrue(reads.label.contains("Peak 4.5M"), reads.label)
+        capture("Cloudflare usage 30 days")
+    }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()
         openTrakt(app)

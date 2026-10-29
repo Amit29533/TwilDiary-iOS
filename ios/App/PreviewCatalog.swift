@@ -41,6 +41,23 @@ enum PreviewCatalog {
         }
         return CanvasListsPage(lists: page == 1 ? lists : [], page: page, totalPages: 1)
     }
+    /// Settings → Cloudflare: steady traffic with one read spike yesterday; storage reported until yesterday.
+    static func cloudflareUsage(range: Int) -> CloudflareUsage {
+        let now = Date.now
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "UTC")!
+        let days = (0..<range).map { index -> CloudflareUsage.Day in
+            let date = calendar.date(byAdding: .day, value: index - range + 1, to: now)!
+            let wave = [1840, 2310, 1975, 2620, 3105, 2480, 2210][index % 7]
+            let today = index == range - 1, spike = index == range - 2
+            return CloudflareUsage.Day(date: CloudflareUsage.day(date), requests: today ? 1290 : wave, errors: index % 5 == 0 ? 3 : 0,
+                                       rowsRead: spike ? 4_520_000 : today ? 612_000 : 380_000 + (wave * 90), rowsWritten: today ? 1_840 : 900 + wave / 2,
+                                       storageBytes: today ? nil : 41_800_000 + index * 120_000)
+        }
+        let reset = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: now)!)
+        return CloudflareUsage(configured: true, range: range, days: days,
+                               limits: .init(requests: 100_000, rowsRead: 5_000_000, rowsWritten: 100_000, storageBytes: 5_000_000_000),
+                               resetsAt: ISO8601DateFormatter().string(from: reset), fetchedAt: ISO8601DateFormatter().string(from: now), unavailable: [])
+    }
     static func canvasListItems(page: Int) -> CanvasListItemsPage {
         let items = (decode("catalog-page") as CatalogPage).items.map { CanvasListItem(tmdbId: $0.id, mediaType: $0.mediaType, name: $0.name, year: $0.year, posterPath: $0.posterPath, backdropPath: $0.backdropPath) }
         return CanvasListItemsPage(items: page == 1 ? items : [], page: page, totalPages: 1)

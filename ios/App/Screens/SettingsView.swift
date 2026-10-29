@@ -73,6 +73,8 @@ struct SettingsView: View {
                         divider
                         NavigationLink(value: AppDestination.tmdb) { settingsRow(.tmdb, "TMDB", subtitle: "Posters, details, seasons and episodes", disclosure: true) }.accessibilityIdentifier("settings-tmdb")
                         divider
+                        NavigationLink(value: AppDestination.cloudflare) { settingsRow("cloud.fill", .cloudflare, "Cloudflare", subtitle: "Usage against the free plan", disclosure: true) }.accessibilityIdentifier("settings-cloudflare")
+                        divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
                     }
                     VStack(spacing: 10) {
@@ -139,7 +141,7 @@ struct SettingsView: View {
     private var divider: some View { Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 60) }
     /// iOS Settings-style tiles: a white SF Symbol on a solid colour, fixed across themes.
     enum TileTint {
-        case purple, indigo, blue, cyan, teal, mint, green, yellow, orange, red, pink
+        case purple, indigo, blue, cyan, teal, mint, green, yellow, orange, red, pink, cloudflare
         var color: Color {
             switch self {
             case .purple: Color(webHex: "#8E5CF0")
@@ -153,6 +155,7 @@ struct SettingsView: View {
             case .orange: Color(webHex: "#FF8A1F")
             case .red: Color(webHex: "#FF453A")
             case .pink: Color(webHex: "#FF375F")
+            case .cloudflare: Color(webHex: "#F38020")
             }
         }
     }
