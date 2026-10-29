@@ -183,7 +183,8 @@ import TwilDiaryCore
     }
     private var incomingSubtitle: String {
         guard incoming.status?.enabled == true else { return "Off" }
-        if controller.sync?.run?.state == "building" || controller.sync?.reviewing == true { return "Paused during this scan" }
+        // Incoming watches pause only while a scan builds; an open review leaves them scheduled.
+        if controller.sync?.run?.state == "building" { return "Paused during this scan" }
         if let date = DiaryDate.parse(incoming.status?.checkedAt) { return "Last checked " + date.formatted(date: .abbreviated, time: .shortened) }
         return "Waiting for the first scheduled check"
     }
