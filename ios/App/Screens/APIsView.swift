@@ -64,7 +64,7 @@ struct APIsView: View {
             }
             HStack(spacing: 8) {
                 Text(key.hint.map { "••••" + $0 } ?? "No key").font(.system(size: 14, design: .monospaced)).foregroundStyle(.secondary)
-                if let updated = key.updatedAt.flatMap { DiaryDate.parse($0) } { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(.secondary) }
+                if let updated = key.updatedAt.flatMap({ DiaryDate.parse($0) }) { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
                 if testing { ProgressView().controlSize(.small) }
                 else if let check { status(check.ok, check.message).accessibilityIdentifier("api-status-" + key.name) }
