@@ -24,6 +24,8 @@ declare global {
         TRAKT_TOKEN_KEY?: string;
         TRAKT_REDIRECT_URI?: string;
         TRAKT_PERSONAL_ACCESS_TOKEN?: string;
+        CF_ANALYTICS_TOKEN?: string;
+        CF_ACCOUNT_ID?: string;
       };
       context?: ExecutionContext;
       cf?: CfProperties;
