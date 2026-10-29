@@ -191,7 +191,8 @@ struct CatalogDetailView: View {
                             }.buttonStyle(.glassProminent).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
                         }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
-                        CastAndRelated(route: route, sourceTitle: details.details.name)
+                        CastAndRelated(route: route, sourceTitle: details.details.name,
+                                       anime: details.details.suggestedCategory.hasPrefix("anime") ? (details.details.year, route.kind == .movie) : nil)
                     } else if loading { DiaryLoadingPlaceholder(height: 320, label: "Loading title").padding(16) }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 }.padding(.horizontal, 14).padding(.bottom, 32)
@@ -355,6 +356,8 @@ private struct CatalogSeasonPreview: View {
 struct CastAndRelated: View {
     let route: CatalogRoute
     var sourceTitle: String? = nil
+    /// Anime show their characters (AniList) above the cast.
+    var anime: (year: Int?, movie: Bool)? = nil
     @Environment(DiaryStore.self) private var store
     @AppStorage("catalogGrid") private var grid = true
     @State private var cast: [CastPerson] = []
@@ -362,6 +365,7 @@ struct CastAndRelated: View {
     @State private var failure: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie).padding(.bottom, 8) }
             if !cast.isEmpty {
                 Text("Cast").font(.system(size: 20, weight: .semibold))
                 ScrollView(.horizontal) {

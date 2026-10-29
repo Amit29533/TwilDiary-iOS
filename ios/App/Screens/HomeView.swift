@@ -71,6 +71,17 @@ struct HomeView: View {
                             }.buttonStyle(.springPress)
                         } }
                     } }
+                    // Recently hearted cast and characters together; › opens them by kind.
+                    let favourites = FavouritesStore.shared.items
+                    if !favourites.isEmpty { VStack(spacing: 12) {
+                        heading("Favourites") {
+                            NavigationLink(value: AppDestination.favourites) { RoundTool(icon: "chevron-right", size: 36) }
+                                .buttonStyle(.springPress).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
+                        }
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 14) { ForEach(favourites.prefix(12)) { FavouriteLink(item: $0) } }
+                        }.scrollIndicators(.hidden).scrollClipDisabled()
+                    } }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)
             }
         }.overlay(alignment: .top) { PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() }, overArtwork: true, part: .buttons) }

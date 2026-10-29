@@ -703,6 +703,30 @@ import UIKit
         XCTAssertTrue(app.staticTexts["jellyfin-summary"].waitForExistence(timeout: 5))
         capture("Files Jellyfin synced")
     }
+    func testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites() {
+        let app = launch(); app.tabBars.buttons["Library"].tap()
+        let show = app.buttons["title-frieren"]
+        XCTAssertTrue(show.waitForExistence(timeout: 5)); show.tap()
+        let character = app.buttons["anime-character-2"]
+        for _ in 0..<10 { if character.exists && character.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(character.isHittable, "Anime pages list their characters"); capture("Anime characters row")
+        character.tap()
+        let heart = app.buttons["character-favourite"]
+        XCTAssertTrue(heart.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'spoiler'")).firstMatch.exists, "Spoilers stay hidden")
+        capture("Anime character page")
+        heart.tap()
+        XCTAssertEqual(heart.label, "Remove from favourites")
+        app.tabBars.buttons["Home"].tap()
+        let all = app.buttons["home-favourites"]
+        for _ in 0..<12 { if all.exists && all.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(all.isHittable, "Home shows recent favourites"); capture("Home favourites")
+        all.tap()
+        XCTAssertTrue(app.buttons["favourites-tab-character"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["favourite-character:2"].exists)
+        app.buttons["favourites-tab-cast"].tap()
+        XCTAssertFalse(app.buttons["favourite-character:2"].exists); capture("Favourites cast tab")
+    }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()
         openTrakt(app)

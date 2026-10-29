@@ -15,7 +15,8 @@ import TwilDiaryCore
             for key in ["historyGrid", "homeHistoryGrid", "upcomingGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
-            for key in ["canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
+            FavouritesStore.shared.reset()
+            for key in ["favouritesTab", "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")
@@ -40,7 +41,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
     }
 }
-enum AppDestination: Hashable { case explore, canvas, history, files, trash, scanner, appearance, trakt, tmdb, cloudflare, apis, about }
+enum AppDestination: Hashable { case explore, canvas, history, files, trash, scanner, appearance, trakt, tmdb, cloudflare, apis, favourites, about }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -188,6 +189,7 @@ struct RootView: View {
                 .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: CharacterRoute.self) { CharacterView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: HistoryRoute.self) { route in
                     HistoryView(initialDay: route.day, initialUnknown: route.unknown).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
@@ -205,6 +207,7 @@ struct RootView: View {
                     case .tmdb: TMDBConnectionView()
                     case .cloudflare: CloudflareUsageView()
                     case .apis: APIsView()
+                    case .favourites: FavouritesView()
                     case .about: AboutView()
                     } }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }

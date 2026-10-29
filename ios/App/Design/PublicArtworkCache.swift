@@ -14,13 +14,15 @@ struct PublicArtworkRequest: Hashable, Sendable {
     let pixels: Int
     var key: String { url.absoluteString + "#" + String(pixels) }
     init?(path: String?, pixels: Double) {
-        guard let path, let url = URL(string: path), url.scheme == "https",
-              url.host == "image.tmdb.org", url.user == nil, url.password == nil,
-              url.port == nil, url.query == nil, url.fragment == nil,
-              url.path.hasPrefix("/t/p/"), pixels.isFinite, pixels > 0 else { return nil }
+        guard let path, let url = URL(string: path), Self.publicArtwork(url), pixels.isFinite, pixels > 0 else { return nil }
         let bucket = pixels <= 256 ? 256 : pixels <= 512 ? 512 : pixels <= 1024 ? 1024 : 1536
         self.url = Self.sharper(url, pixels: bucket)
         self.pixels = bucket
+    }
+    /// Only public artwork hosts: TMDB images and AniList's character and cover images.
+    static func publicArtwork(_ url: URL) -> Bool {
+        guard url.scheme == "https", url.user == nil, url.password == nil, url.port == nil, url.query == nil, url.fragment == nil else { return false }
+        return (url.host == "image.tmdb.org" && url.path.hasPrefix("/t/p/")) || (url.host == "s4.anilist.co" && url.path.hasPrefix("/file/anilistcdn/"))
     }
     /// Large tiles and full-width backdrops ask TMDb for a bigger rendition than the saved
     /// w500/w780 URL (w780 up to 1024 px, w1280 above), so they are not upscaled. Never smaller.
@@ -79,7 +81,7 @@ actor PublicArtworkCache {
             do {
                 let (data, response) = try await session.data(from: request.url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                      http.url?.scheme == "https", http.url?.host == "image.tmdb.org",
+                      let landed = http.url, PublicArtworkRequest.publicArtwork(landed),
                       http.mimeType?.hasPrefix("image/") == true, data.count <= 12 * 1024 * 1024,
                       let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
                       let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [

@@ -8,6 +8,8 @@ struct PersonView: View {
     @State private var person: PersonDetails?
     @State private var failure: String?
     @State private var expanded = false
+    @State private var hearts = 0
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
@@ -52,6 +54,14 @@ struct PersonView: View {
                 if !person.birthplace.isEmpty { Text(person.birthplace).font(.system(size: 13)).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 0)
+            let saved = FavouritesStore.shared.contains(.cast, person.id)
+            Button {
+                FavouritesStore.shared.toggle(.cast, ref: person.id, name: person.name, image: CatalogTools.image(person.profilePath, size: "w185"),
+                                              subtitle: person.department.isEmpty ? nil : person.department)
+                if !saved { hearts += 1 }
+            } label: { RoundTool(icon: "heart", tint: saved ? theme.accent : Color(webHex: "#c5c0cf")) }
+                .buttonStyle(.springPress).starBurst(trigger: hearts).sensoryFeedback(.impact(weight: .light), trigger: saved)
+                .accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites").accessibilityIdentifier("person-favourite")
         }.padding(.horizontal, 14).padding(.top, 145).padding(.bottom, 10)
     }
     private func facts(_ person: PersonDetails) -> some View {

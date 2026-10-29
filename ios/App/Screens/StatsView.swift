@@ -28,10 +28,11 @@ struct StatsView: View {
                     journey(data.coverage, highlights: highlights)
                     trend(data, highlights: highlights)
                     streaks(data.streaks)
-                    funFacts(highlights)
                     backlog(data.backlog)
                     goneQuiet(data.backlog.stale)
                     genres(data.genres)
+                    // Owner's layout: fun facts at the bottom, just above Watch history.
+                    funFacts(highlights)
                     NavigationLink(value: AppDestination.history) {
                         HStack(spacing: 12) {
                             DiaryIcon(name: "history", size: 18).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
@@ -292,17 +293,9 @@ struct StatsView: View {
             heading("Fun facts")
             if value.episodes + value.movies == 0 { caption("Watch something in this period to unlock its fun facts.") }
             else {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Image(systemName: fact.0).font(.system(size: 17)).foregroundStyle(theme.accent)
-                            Text(fact.1).font(.system(size: 15, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8)
-                            Text(fact.2).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
-                        }.frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading).padding(12)
-                            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
-                            .accessibilityElement(children: .combine)
-                    }
-                }
+                // Four at a time; swipe for the next four.
+                let pages = stride(from: 0, to: facts.count, by: 4).map { Array(facts[$0..<min($0 + 4, facts.count)]) }
+                FunFactPager(pages: pages.map { $0.map { FunFact(symbol: $0.0, title: $0.1, detail: $0.2) } })
             }
         }.statsPanel().accessibilityIdentifier("stats-fun-facts")
     }
@@ -401,6 +394,45 @@ struct StatsView: View {
     private func localDay(_ value: String) -> Date { let fields = value.split(separator: "-").compactMap { Int($0) }; return fields.count == 3 ? DiaryDate.calendar().date(from: DateComponents(year: fields[0], month: fields[1], day: fields[2], hour: 12)) ?? store.now : store.now }
     private var statuses: [String] { ["planned", "watching", "completed", "dropped"] }
     private func statusColor(_ status: String) -> Color { status == "dropped" ? Color(webHex: "#646075") : theme.accent.opacity(status == "planned" ? 0.65 : status == "watching" ? 0.85 : 1) }
+}
+
+struct FunFact: Hashable { let symbol: String, title: String, detail: String }
+
+/// Fun facts four to a page (2 × 2), paging sideways, with dots when there's more than one page.
+private struct FunFactPager: View {
+    let pages: [[FunFact]]
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var page: Int? = 0
+    var body: some View {
+        VStack(spacing: 10) {
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 0) {
+                    ForEach(pages.indices, id: \.self) { index in
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(pages[index], id: \.self) { fact in tile(fact) }
+                        }.containerRelativeFrame(.horizontal).id(index)
+                    }
+                }.scrollTargetLayout()
+            }.scrollTargetBehavior(.paging).scrollIndicators(.hidden).scrollPosition(id: $page)
+                .accessibilityIdentifier("stats-fun-facts-pager")
+            if pages.count > 1 {
+                HStack(spacing: 6) {
+                    ForEach(pages.indices, id: \.self) { index in
+                        Capsule().fill(index == (page ?? 0) ? theme.accent : .white.opacity(0.25)).frame(width: index == (page ?? 0) ? 16 : 6, height: 6)
+                    }
+                }.animation(.snappy(duration: 0.25), value: page).accessibilityHidden(true)
+            }
+        }
+    }
+    private func tile(_ fact: FunFact) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: fact.symbol).font(.system(size: 17)).foregroundStyle(theme.accent)
+            Text(fact.title).font(.system(size: 15, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8)
+            Text(fact.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading).padding(12)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .accessibilityElement(children: .combine)
+    }
 }
 
 private extension View {

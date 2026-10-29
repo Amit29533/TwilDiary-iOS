@@ -66,6 +66,8 @@ struct TitleDetailView: View {
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
+                                // Anime characters come from AniList and need no TMDB link; the cast row follows.
+                                if title.category.hasPrefix("anime") { AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries) }
                                 if let tmdbId = title.tmdbId { CastAndRelated(route: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId), sourceTitle: title.name) }
                             }.padding(.horizontal, 14).padding(.bottom, 32)
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
