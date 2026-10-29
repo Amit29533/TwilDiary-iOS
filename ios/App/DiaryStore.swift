@@ -808,7 +808,7 @@ import TwilDiaryCore
         await perform(refreshing: titles) {
             try await action(); self.undoAction = nil; self.undoLabel = nil
             // An undone season edit is over: its unfinished rest must not be offered as a retry.
-            self.pendingSeasonAdjustments = self.pendingSeasonAdjustments.filter { entry in !titles.contains { entry.key.hasPrefix($0 + ":") } }
+            self.pendingSeasonAdjustments = self.pendingSeasonAdjustments.filter { entry in titles.map { !$0.contains { entry.key.hasPrefix($0 + ":") } } ?? false }
         }
     }
     func dismissUndo() { undoLabel = nil; undoAction = nil }
