@@ -131,23 +131,6 @@ struct HomeView: View {
     }
     /// Just enough to reach under the status bar; pulling down stretches the art instead of revealing a gap.
     private static let artLift: CGFloat = 64
-}
-
-/// Pulling the page down to refresh zooms the artwork from its bottom edge: it grows by exactly the
-/// pull, so its top stays at the top of the screen instead of sliding down and leaving a gap.
-private struct StretchOnPull: ViewModifier {
-    @State private var restingY: CGFloat?
-    func body(content: Content) -> some View {
-        let rest = restingY
-        content
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
-            .visualEffect { view, proxy in
-                let height = proxy.size.height
-                guard let rest, height > 0 else { return view.scaleEffect(1, anchor: .bottom) }
-                let pull = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest)
-                return view.scaleEffect(1 + pull / height, anchor: .bottom)
-            }
-    }
     private func discoverButton(_ name: String, icon: String) -> some View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
@@ -239,6 +222,23 @@ private struct StretchOnPull: ViewModifier {
     private var divider: some View { Rectangle().fill(.white.opacity(0.1)).frame(width: 1, height: 44).padding(.horizontal, 14) }
     private func metric(_ value: String, _ label: String, accent: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) { Text(value).font(.system(size: 24, weight: .bold)).tracking(-0.7).foregroundStyle(accent ? theme.accent : .primary).lineLimit(1).minimumScaleFactor(0.7); Text(label).font(.system(size: 13)).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Pulling the page down to refresh zooms the artwork from its bottom edge: it grows by exactly the
+/// pull, so its top stays at the top of the screen instead of sliding down and leaving a gap.
+private struct StretchOnPull: ViewModifier {
+    @State private var restingY: CGFloat?
+    func body(content: Content) -> some View {
+        let rest = restingY
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
+            .visualEffect { view, proxy in
+                let height = proxy.size.height
+                guard let rest, height > 0 else { return view.scaleEffect(1, anchor: .bottom) }
+                let pull = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest)
+                return view.scaleEffect(1 + pull / height, anchor: .bottom)
+            }
     }
 }
 
