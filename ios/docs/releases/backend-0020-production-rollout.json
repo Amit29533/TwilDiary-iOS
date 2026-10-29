@@ -1,0 +1,40 @@
+{
+  "rollout": "0020_trakt_incremental",
+  "date": "2026-10-29",
+  "source": "9f4d93f (main, PR #8)",
+  "window_utc": "00:12-00:14",
+  "main_worker": {
+    "version": "da0273f3-ab8c-4ea4-a7f6-6aa11724525e",
+    "previous": "736df176-a76b-4c33-a4ac-0d927d5f9cb9",
+    "traffic": "100%"
+  },
+  "incoming_worker": "unchanged",
+  "before": {
+    "time_travel_bookmark": "000000bc-00000004-00005113-178f4ad145c976c898ab07755060a314",
+    "export_rows": 35986,
+    "preflight": {
+      "migrations": 20,
+      "objects": 17,
+      "rows_written": 0
+    },
+    "offline_rehearsal": {
+      "migrations": [
+        "0020_trakt_incremental.sql"
+      ],
+      "integrity": "ok",
+      "original_rows_preserved": true,
+      "review_counts": "exact"
+    }
+  },
+  "after": {
+    "postflight": {
+      "migrations": 21,
+      "objects": 36,
+      "run_columns": 5,
+      "count_mismatches": 0,
+      "revision_rows": 1,
+      "incremental_tables_empty": true
+    },
+    "access_denial": "signed-out requests redirect to Cloudflare Access"
+  }
+}

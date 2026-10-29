@@ -1,6 +1,20 @@
 # Native client backend rollout — deployed 26 October 2026
 
-## Rollout 0020 (incremental Trakt scans) — prepared, not deployed
+## Rollout 0020 (incremental Trakt scans) — deployed 29 October 2026
+
+Completed 00:12–00:14 UTC, right after the daily D1 reset. Main Worker
+`da0273f3-ab8c-4ea4-a7f6-6aa11724525e` from `main` 9f4d93f (previous `736df176-…`), 100%;
+the incoming worker is unchanged. Before: Time Travel bookmark
+`000000bc-00000004-00005113-178f4ad145c976c898ab07755060a314`, a fresh private export
+(35,986 rows), preflight (20 migrations, 17 objects, nothing written) and an offline
+rehearsal of 0020 on that export (integrity ok, every original row preserved, review counts
+exact). After: postflight 21 migrations, 36 objects, the five run columns, zero count
+mismatches, one revision row, empty snapshot/checkpoint/journal/work tables; signed-out
+requests still go to Cloudflare Access. The review left in `applying` from 28 Oct
+(progress 3,692) finishes under the new code. Receipt:
+[backend-0020-production-rollout.json](releases/backend-0020-production-rollout.json).
+The preparation notes below are kept as the record of what was planned.
+
 
 Source: `main` after PR #8. Hosted D1 has 0000–0019; the pending set must be exactly
 `0020_trakt_incremental.sql`: four new empty tables (`trakt_snapshot`,
