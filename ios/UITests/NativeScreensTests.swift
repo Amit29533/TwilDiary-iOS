@@ -555,6 +555,10 @@ import UIKit
         let episode = app.buttons["title-episode-9"]
         for _ in 0..<8 { if episode.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(episode.isHittable); XCTAssertEqual(episode.value as? String, "A story for later")
+        // Episode tiles are taller now; nudge the lazy grid until the next one is created too.
+        let tenth = app.buttons["title-episode-10"]
+        if !tenth.exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))) }
+        XCTAssertTrue(tenth.waitForExistence(timeout: 5)); XCTAssertTrue(episode.isHittable)
         episode.tap()
         XCTAssertEqual(episode.value as? String, "Episode 9"); capture("Title revealed episode")
         episode.tap()

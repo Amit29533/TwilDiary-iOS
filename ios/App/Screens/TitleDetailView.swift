@@ -152,33 +152,18 @@ struct TitleDetailView: View {
         return NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title.name).font(.system(size: 15)).foregroundStyle(.secondary)
-                TextEditor(text: $notesField.draft).scrollContentBackground(.hidden).padding(10)
-                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(alignment: .topLeading) {
-                        if notesField.draft.isEmpty { Text("Add your personal note…").foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 18).allowsHitTesting(false) }
-                    }
-                    .focused($notesFocused).accessibilityIdentifier("title-notes").accessibilityLabel("Title notes")
+                NotesEditor(text: $notesField.draft, accent: theme.accent)
                 if notesField.conflict != nil {
                     fieldConflict("Notes changed elsewhere.", useSaved: { notesField.useSaved() }, keepDraft: { notesField.keepDraft() })
                 }
-                HStack {
-                    if count > 20_000 { Text("Keep notes within 20,000 characters.").foregroundStyle(.orange) }
-                    Spacer(minLength: 0)
-                    Text("\(count.formatted())/20,000").monospacedDigit().foregroundStyle(.secondary)
-                    // A keyboard toolbar does not show inside a sheet, so Done lives here.
-                    if notesFocused {
-                        Button("Done") { notesFocused = false }.font(.system(size: 15, weight: .semibold)).tint(theme.accent)
-                            .frame(minHeight: 44).padding(.leading, 8).accessibilityIdentifier("notes-keyboard-done")
-                    }
-                }.font(.caption)
             }.padding(.horizontal, 20).padding(.vertical, 12)
                 .navigationTitle("My Note").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { notesFocused = false; notesField = VersionedField(value: title.notes, version: title.version); showNotes = false }
+                        Button("Cancel") { notesField = VersionedField(value: title.notes, version: title.version); showNotes = false }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { Task { await saveNotes(); if !notesField.isDirty { notesFocused = false; showNotes = false } } }
+                        Button("Save") { Task { await saveNotes(); if !notesField.isDirty { showNotes = false } } }
                             .accessibilityLabel("Save notes")
                             .disabled(store.writesBlocked || !notesField.isDirty || notesField.submission == nil || count > 20_000)
                     }
@@ -650,5 +635,33 @@ struct TitleDetailView: View {
             card = loaded
         } catch is CancellationError { }
         catch { if cardRequest == request, !Task.isCancelled { cardError = error.localizedDescription } }
+    }
+}
+
+/// The Notes sheet's editor. It keeps its own focus: a page's FocusState does not reach
+/// into a sheet, so the page could never show this Done button.
+private struct NotesEditor: View {
+    @Binding var text: String
+    let accent: Color
+    @FocusState private var focused: Bool
+    var body: some View {
+        let count = text.utf16.count
+        VStack(alignment: .leading, spacing: 12) {
+            TextEditor(text: $text).scrollContentBackground(.hidden).padding(10)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(alignment: .topLeading) {
+                    if text.isEmpty { Text("Add your personal note…").foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 18).allowsHitTesting(false) }
+                }
+                .focused($focused).accessibilityIdentifier("title-notes").accessibilityLabel("Title notes")
+            HStack {
+                if count > 20_000 { Text("Keep notes within 20,000 characters.").foregroundStyle(.orange) }
+                Spacer(minLength: 0)
+                Text("\(count.formatted())/20,000").monospacedDigit().foregroundStyle(.secondary)
+                if focused {
+                    Button("Done") { focused = false }.font(.system(size: 15, weight: .semibold)).tint(accent)
+                        .frame(minHeight: 44).padding(.leading, 8).accessibilityIdentifier("notes-keyboard-done")
+                }
+            }.font(.caption)
+        }
     }
 }
