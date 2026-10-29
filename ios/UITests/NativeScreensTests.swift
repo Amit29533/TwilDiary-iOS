@@ -290,7 +290,7 @@ import UIKit
         XCTAssertTrue(app.buttons["canvas-tab-movies"].waitForExistence(timeout: 5))
         let tiles = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'canvas-tile-'"))
         XCTAssertTrue(tiles.firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["canvas-sort"].exists); XCTAssertTrue(app.buttons["canvas-genre"].exists)
+        XCTAssertTrue(app.buttons["canvas-sort"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["canvas-genre"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["canvas-network"].exists, "Networks are for shows only")
         // The first tile is a wide hero across the page; the next row holds three posters.
         let hero = tiles.element(boundBy: 0), poster = tiles.element(boundBy: 1)
@@ -1514,6 +1514,12 @@ import UIKit
         return bytes.map(Int.init)
     }
     private func assertRangeHighlight(_ button: XCUIElement, app: XCUIApplication) {
+        // The range bar sits under the chart; lift it clear of the floating tab bar before sampling.
+        let bar = app.tabBars.firstMatch
+        for _ in 0..<4 where bar.exists && button.frame.maxY > bar.frame.minY - 12 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)))
+        }
         guard let source = XCUIScreen.main.screenshot().image.cgImage else { XCTFail("Missing screenshot"); return }
         let scale = CGFloat(source.width) / app.frame.width
         // Sample the clear left side of the segment, away from label glyphs and borders.
