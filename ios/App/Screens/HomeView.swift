@@ -114,12 +114,12 @@ struct HomeView: View {
             // "CONTINUE WATCHING" sits inside each page, right above its title.
             ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !showSearch && !scrolling).padding(.horizontal, 8)
         }.background(alignment: .top) {
-            // Scroll content starts below the status bar, so the art is lifted into it. Its height stays
-            // close to the artwork's own shape (about 4:3 of the width): filling the whole tall section
-            // blew a 16:9 backdrop up ~2× and cut off half of it. It fades to black under the text.
+            // The art fills the section and reaches just under the status bar. It used to reach 140 pt
+            // higher, which enlarged a 16:9 backdrop about 2x and cut off half of it; with only the
+            // status bar's height it is enlarged about 1.7x, so more of the picture shows.
             GeometryReader { proxy in
             Artwork(path: current.backdrop ?? current.poster, title: current.name)
-                .frame(width: proxy.size.width, height: min(proxy.size.height + Self.artLift, proxy.size.width * 0.75))
+                .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
                 .overlay {
                     LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .black.opacity(0.05), location: 0.28),
                                            .init(color: .black.opacity(0.35), location: 0.62), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
@@ -129,7 +129,7 @@ struct HomeView: View {
             }.allowsHitTesting(false).accessibilityHidden(true)
         }
     }
-    /// Just enough to reach under the status bar; pulling down stretches the art instead.
+    /// Just enough to reach under the status bar; pulling down stretches the art instead of revealing a gap.
     private static let artLift: CGFloat = 64
 }
 
