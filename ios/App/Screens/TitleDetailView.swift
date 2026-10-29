@@ -13,8 +13,10 @@ struct TitleDetailView: View {
     @State private var choosingWatchDate = false
     @State private var didFocusEpisodes = false
     @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @State private var unwatchedOnly = false
     @State private var chosenSeason: Int?
     @State private var initializedEditor = false
     @State private var configuredSeason: Int?
@@ -56,27 +58,6 @@ struct TitleDetailView: View {
                                 progressPanel(title).padding(.top, -8)
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if let tmdbId = title.tmdbId { CastAndRelated(route: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId), sourceTitle: title.name) }
-                                VStack(spacing: 20) {
-                                    DisclosureGroup("Notes", isExpanded: $showNotes) {
-                                        VStack(alignment: .leading, spacing: 12) {
-                                            TextEditor(text: $notesField.draft).frame(minHeight: 110).scrollContentBackground(.hidden).focused($notesFocused).accessibilityIdentifier("title-notes").accessibilityLabel("Title notes").id("notes-editor")
-                                            if notesField.draft.utf16.count > 20_000 { Text("Keep notes within 20,000 characters.").font(.caption).foregroundStyle(.orange) }
-                                            if notesField.conflict != nil {
-                                                fieldConflict("Notes changed elsewhere.", useSaved: { notesField.useSaved() }, keepDraft: { notesField.keepDraft() })
-                                            }
-                                            Button("Save notes") { Task { await saveNotes() } }.disabled(store.writesBlocked || !notesField.isDirty || notesField.submission == nil || notesField.draft.utf16.count > 20_000)
-                                        }.padding(.top, 12)
-                                    }.id("notes")
-                                    Divider()
-                                    DisclosureGroup(isExpanded: $showLocation) {
-                                        VStack(alignment: .leading, spacing: 10) {
-                                            ForEach(locations) { location in locationRow(location, title: title) }
-                                            if locations.isEmpty { Text("No mapped files yet. A Windows scan will add matching locations here.").font(.system(size: 13)).foregroundStyle(.secondary) }
-                                            NavigationLink("All files & drives →", value: AppDestination.files).font(.system(size: 14, weight: .semibold)).frame(minHeight: 48).accessibilityIdentifier("title-all-files")
-                                        }.padding(.top, 12)
-                                    } label: { Text(serverLabel).font(.subheadline.weight(.semibold)).accessibilityIdentifier("title-locations") }
-                                        .id("files")
-                                }.diaryPanel()
                             }.padding(.horizontal, 14).padding(.bottom, 32)
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
                                 .background(alignment: .top) {
@@ -107,12 +88,11 @@ struct TitleDetailView: View {
                                             Button("Community information", systemImage: "info.circle") { showInformation = true }
                                             Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patch(title, values: ["favorite": !title.favorite]) } }.disabled(store.writesBlocked)
                                         Button(title.queued == true ? "Remove from Queue" : "Queue") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
-                                        Button("Notes") { showNotes = true; pendingScrollTarget = "notes-editor" }.accessibilityIdentifier("title-menu-notes")
-                                        Button("File locations") { showLocation = true; pendingScrollTarget = "files" }.accessibilityIdentifier("title-menu-files")
+                                        Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
+                                        Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
                                     } label: { Image(systemName: "ellipsis") }.accessibilityLabel("More options for " + title.name).accessibilityIdentifier("title-more")
                                 }
                             }
-                            .toolbar { ToolbarItemGroup(placement: .keyboard) { if notesFocused { Spacer(); Button("Done") { notesFocused = false }.accessibilityIdentifier("notes-keyboard-done") } } }
                             .task { if !initializedEditor { initializedEditor = true; watchDate = store.now; notesField = VersionedField(value: title.notes, version: title.version); ratingField = VersionedField(value: title.score, version: title.version) } }
                             .task(id: season) {
                                 if configuredSeason != season { configuredSeason = season; sliderDraft = nil; showAllEpisodes = false; episodeLimit = 40 }
@@ -129,7 +109,6 @@ struct TitleDetailView: View {
                                 if focusNotes && !didFocusNotes {
                                     showNotes = true
                                     didFocusNotes = true
-                                    pendingScrollTarget = "notes-editor"
                                 }
                             }
                         )
@@ -150,6 +129,8 @@ struct TitleDetailView: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } }
                 }.presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showNotes) { notesSheet(title) }
+            .sheet(isPresented: $showLocation) { locationsSheet(title) }
             .sheet(isPresented: $showInformation) {
                 CommunityInformationSheet(name: title.name, artwork: title.backdrop ?? title.poster, identity: CommunityIdentity(kind: title.isSeries ? .tv : .movie, id: title.tmdbId))
             }
@@ -163,6 +144,57 @@ struct TitleDetailView: View {
             .confirmationDialog(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
                 Button("Reset to Planned", role: .destructive) { Task { await store.setSeasonStatus(title, season: season, status: "planned", watchedAt: watchInstant); await loadCard(title) } }
             }
+    }
+    /// "My Note": Cancel discards the draft, Save keeps it and closes. A dirty draft can't be
+    /// swiped away by accident.
+    private func notesSheet(_ title: MediaTitle) -> some View {
+        let count = notesField.draft.utf16.count
+        return NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(title.name).font(.system(size: 15)).foregroundStyle(.secondary)
+                TextEditor(text: $notesField.draft).scrollContentBackground(.hidden).padding(10)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(alignment: .topLeading) {
+                        if notesField.draft.isEmpty { Text("Add your personal note…").foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 18).allowsHitTesting(false) }
+                    }
+                    .focused($notesFocused).accessibilityIdentifier("title-notes").accessibilityLabel("Title notes")
+                if notesField.conflict != nil {
+                    fieldConflict("Notes changed elsewhere.", useSaved: { notesField.useSaved() }, keepDraft: { notesField.keepDraft() })
+                }
+                HStack {
+                    if count > 20_000 { Text("Keep notes within 20,000 characters.").foregroundStyle(.orange) }
+                    Spacer(minLength: 0)
+                    Text("\(count.formatted())/20,000").monospacedDigit().foregroundStyle(.secondary)
+                }.font(.caption)
+            }.padding(.horizontal, 20).padding(.vertical, 12)
+                .navigationTitle("My Note").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { notesFocused = false; notesField = VersionedField(value: title.notes, version: title.version); showNotes = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { Task { await saveNotes(); if !notesField.isDirty { notesFocused = false; showNotes = false } } }
+                            .accessibilityLabel("Save notes")
+                            .disabled(store.writesBlocked || !notesField.isDirty || notesField.submission == nil || count > 20_000)
+                    }
+                    ToolbarItemGroup(placement: .keyboard) { if notesFocused { Spacer(); Button("Done") { notesFocused = false }.accessibilityIdentifier("notes-keyboard-done") } }
+                }
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
+    }
+    private func locationsSheet(_ title: MediaTitle) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(serverLabel).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).accessibilityIdentifier("title-locations")
+                    ForEach(locations) { location in locationRow(location, title: title) }
+                    if locations.isEmpty { Text("No mapped files yet. A Windows scan will add matching locations here.").font(.system(size: 13)).foregroundStyle(.secondary) }
+                    // The sheet has its own stack; Files opens on the page underneath.
+                    Button("All files & drives →") { showLocation = false; router.paths[router.selectedTab, default: NavigationPath()].append(AppDestination.files) }
+                        .font(.system(size: 14, weight: .semibold)).frame(minHeight: 48).accessibilityIdentifier("title-all-files")
+                }.padding(.horizontal, 20).padding(.vertical, 12)
+            }.navigationTitle("File locations").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showLocation = false } } }
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
     private struct ScrollFocus: Equatable {
         let target: String?
@@ -305,26 +337,49 @@ struct TitleDetailView: View {
             }.padding(.vertical, 12).padding(.horizontal, 10).background(.white.opacity(5.0 / 255), in: RoundedRectangle(cornerRadius: 17))
         }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
     }
+    /// Owner's Episodes layout: heading, a season card with its progress, All / Unwatched
+    /// chips beside a grid–list switch, then the episodes.
     private func episodeSection(_ title: MediaTitle) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Episodes").font(.system(size: 22, weight: .bold))
-                    Text("\(store.seasonProgress(title, season: season).watched) / \(store.seasonProgress(title, season: season).total) watched").font(.system(size: 13.6)).foregroundStyle(.secondary)
+        let progress = store.seasonProgress(title, season: season)
+        let share = progress.total > 0 ? Int((Double(progress.watched) / Double(progress.total) * 100).rounded()) : 0
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Episodes").font(.system(size: 30, weight: .bold)).tracking(-0.8)
+                Text("Your next story awaits").font(.system(size: 16)).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    seasonMenu
+                    Spacer(minLength: 0)
+                    Text("\(share)%").font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
                 }
+                HStack {
+                    Text("\(progress.watched) of \(progress.total) watched")
+                    Spacer(minLength: 0)
+                    Text("\(max(0, progress.total - progress.watched)) remaining")
+                }.font(.system(size: 14)).foregroundStyle(.secondary)
+                Capsule().fill(.white.opacity(0.1)).frame(height: 8)
+                    .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * progress.fraction) } }
+                    .padding(.top, 6).accessibilityHidden(true)
+            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+            HStack(spacing: 10) {
+                episodeFilter("All episodes", on: !unwatchedOnly) { unwatchedOnly = false }
+                episodeFilter("Unwatched", on: unwatchedOnly) { unwatchedOnly = true }
                 Spacer(minLength: 0)
-                if !seasonNumbers.isEmpty {
-                    Picker("Season", selection: Binding(get: { season }, set: { chosenSeason = $0 })) {
-                        ForEach(seasonNumbers, id: \.self) { number in Text(number == 0 ? "Specials" : "Season \(number)").tag(number) }
-                    }.pickerStyle(.menu).accessibilityIdentifier("title-season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)")
-                }
-                CollectionLayoutToggle(grid: $episodesGrid, collection: "episodes")
+                Button { episodesGrid.toggle() } label: {
+                    HStack(spacing: 2) {
+                        DiaryIcon(name: "layout-grid", size: 18).frame(width: 40, height: 34).background(episodesGrid ? .white.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        DiaryIcon(name: "list", size: 18).frame(width: 40, height: 34).background(episodesGrid ? .clear : .white.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    }.foregroundStyle(Color(webHex: "#c5c0cf")).padding(4).background(theme.field, in: RoundedRectangle(cornerRadius: 13))
+                        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(.white.opacity(0.1))).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("Show episodes as " + (episodesGrid ? "list" : "grid")).accessibilityValue(episodesGrid ? "Grid" : "List").accessibilityIdentifier("episodes-layout")
             }
             if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.glass).disabled(store.writesBlocked) }
             if let seasonLoadError { RetryNotice(message: seasonLoadError) { Task { await prepareSeason(title, force: true) } } }
             if let episodeError = episodeDetails.error(for: season) { Text(episodeError).font(.caption).foregroundStyle(.secondary); Button("Retry episode details") { Task { await revealSeason(title) } } }
-            CollectionLayout(grid: episodesGrid, spacing: 8) {
-                let shown = visibleEpisodes
+            CollectionLayout(grid: episodesGrid, spacing: 12) {
+                let shown = unwatchedOnly ? visibleEpisodes.filter { !watched.contains($0.id) } : visibleEpisodes
                 ForEach(shown) { episode in
                     // The lazy grid creates the last row only as it nears the screen.
                     episodeRow(title, episode: episode).onAppear {
@@ -333,23 +388,41 @@ struct TitleDetailView: View {
                 }
             }
             if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary) }
+            else if unwatchedOnly && episodes.allSatisfy({ watched.contains($0.id) }) { Text("Every episode in this season is watched.").font(.subheadline).foregroundStyle(.secondary) }
             if episodes.count > 4 { Button(showAllEpisodes ? "Back to next episode" : "Show all \(episodes.count) episodes") { showAllEpisodes.toggle() }.frame(maxWidth: .infinity).frame(minHeight: 44) }
             if let pending = store.pendingSeasonAdjustments[title.id + ":" + String(season)] { Button("Retry progress to episode \(pending.count)") { Task { await store.setSeasonProgress(title, season: season, count: pending.count, watchedAt: watchInstant); await loadCard(title) } }.disabled(store.writesBlocked) }
         }
+    }
+    private var seasonMenu: some View {
+        Menu {
+            Picker("Season", selection: Binding(get: { season }, set: { chosenSeason = $0 })) {
+                ForEach(seasonNumbers, id: \.self) { number in Text(number == 0 ? "Specials" : "Season \(number)").tag(number) }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 20, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                if seasonNumbers.count > 1 { DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(theme.accent) }
+            }.frame(minHeight: 44).contentShape(Rectangle())
+        }.disabled(seasonNumbers.count < 2).accessibilityLabel("Season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)").accessibilityIdentifier("title-season")
+    }
+    private func episodeFilter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(name).font(.system(size: 15, weight: .medium)).foregroundStyle(on ? theme.ink : Color(webHex: "#c5c0cf"))
+                .padding(.horizontal, 16).frame(height: 40)
+                .background(on ? theme.accent : .clear, in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? .clear : .white.opacity(0.16)))
+        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("episodes-filter-" + (name == "Unwatched" ? "unwatched" : "all"))
     }
     private func episodeRow(_ title: MediaTitle, episode: Episode) -> some View {
         let isWatched = watched.contains(episode.id), next = card?.next?.id == episode.id
         return VStack(alignment: .leading, spacing: 10) {
             if episodesGrid {
                 Button { toggleEpisode(title, episode: episode) } label: {
-                    episodeArtwork(episode).frame(height: 96).frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Color.clear.aspectRatio(16 / 10, contentMode: .fit).overlay { episodeArtwork(episode) }
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .accessibilityIdentifier("episode-thumbnail-\(episode.number)")
                 }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) artwork")
-                    .overlay(alignment: .bottomTrailing) {
-                        episodeWatchControl(title, episode: episode, watched: isWatched)
-                            .background(.black.opacity(0.65), in: Circle())
-                    }
+                    .overlay(alignment: .bottomTrailing) { episodeWatchControl(title, episode: episode, watched: isWatched) }
                 Button { toggleEpisode(title, episode: episode) } label: {
                     episodeCaption(episode, watched: isWatched, next: next)
                 }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
@@ -368,23 +441,29 @@ struct TitleDetailView: View {
                 }
             }
 
-        }.padding(.vertical, 8).frame(minHeight: 72).background(next ? theme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 18))
+        }.padding(.vertical, episodesGrid ? 0 : 8).frame(minHeight: 72).background(next && !episodesGrid ? theme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 18))
     }
     private func episodeCaption(_ episode: Episode, watched: Bool, next: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Two reserved lines: revealing a spoiler-hidden name never changes the row height.
-            Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 14, weight: .semibold))
-                .lineLimit(2, reservesSpace: true)
-                .foregroundStyle(.white).multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 3) {
+            // One fixed line: revealing a spoiler-hidden name never changes the row height.
+            Text(captionName(episode)).font(.system(size: 16, weight: .semibold))
+                .lineLimit(1).foregroundStyle(.white).multilineTextAlignment(.leading)
                 .accessibilityIdentifier("episode-caption-\(episode.number)")
-            InlineFlowLayout {
+            HStack(spacing: 6) {
                 Text(watched ? "Watched" : next ? "Up next" : hasAired(episode) ? "Not watched" : "Not aired yet")
                     .foregroundStyle(next ? theme.accent : Color.secondary)
+                Spacer(minLength: 0)
                 if let score = episodeDetails.episodes[episode.id]?.communityScore ?? episode.communityScore, score > 0 {
-                    Text("★ " + score.formatted(.number.precision(.fractionLength(1))) + " TMDb").foregroundStyle(.yellow)
+                    HStack(spacing: 4) { Image(systemName: "star.fill").foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                        .accessibilityElement(children: .ignore).accessibilityLabel("TMDb " + score.formatted(.number.precision(.fractionLength(1))))
                 }
-            }.font(.system(size: 11))
+            }.font(.system(size: 13)).lineLimit(1)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    /// "Episode 4" when that's all the name says, otherwise "4. The Ghost Bride".
+    private func captionName(_ episode: Episode) -> String {
+        let name = episodeName(episode)
+        return name.hasPrefix("Episode ") || isHidden(episode) ? name : "\(episode.number). \(name)"
     }
     private func episodeWatchControl(_ title: MediaTitle, episode: Episode, watched: Bool) -> some View {
         Button {
@@ -394,8 +473,11 @@ struct TitleDetailView: View {
                 await loadCard(title)
             }
         } label: {
-            Image(systemName: watched ? "checkmark.circle.fill" : "circle").font(.system(size: episodesGrid ? 32 : 24))
-                .foregroundStyle(watched ? theme.accent : Color.secondary).frame(width: 44, height: 44)
+            ZStack {
+                Circle().fill(watched ? theme.accent : .black.opacity(episodesGrid ? 0.45 : 0)).frame(width: 30, height: 30)
+                Circle().strokeBorder(watched ? .black.opacity(0.35) : .white.opacity(0.8), lineWidth: watched ? 2 : 1.5).frame(width: 30, height: 30)
+                if watched { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(theme.ink) }
+            }.frame(width: 44, height: 44)
         }.buttonStyle(.plain).disabled(store.writesBlocked || (!watched && !hasAired(episode)))
             .accessibilityLabel("Mark episode \(episode.number) \(watched ? "unwatched" : "watched")")
             .accessibilityIdentifier("episode-watch-\(episode.number)")

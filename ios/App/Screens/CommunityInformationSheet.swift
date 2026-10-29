@@ -52,13 +52,10 @@ struct CommunityInformationSheet: View {
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(20).padding(.bottom, 20)
             }.scrollContentBackground(.hidden).background(.clear)
-        }.background {
-            if reduceTransparency { Color(webHex: "#1c1c1e").ignoresSafeArea() }
-            else {
-                DiaryScreenBackground(path: artwork, name: name, forceGlass: true).ignoresSafeArea()
-            }
+        // A system material from the first frame: the late-loading artwork backdrop let the
+        // sheet show through as transparent before it painted.
         }.presentationDetents([.medium, .large], selection: $detent).presentationDragIndicator(.visible)
-            .presentationBackground(.clear)
+            .presentationBackground(reduceTransparency ? AnyShapeStyle(Color(webHex: "#1c1c1e")) : AnyShapeStyle(.regularMaterial))
             .task(id: TaskIdentity(identity: identity, session: store.sessionRevision, retry: retryRevision)) {
                 await controller.load(identity, retry: retryRevision > 0) { identity, retry in try await store.communityInformation(identity, retry: retry) }
             }

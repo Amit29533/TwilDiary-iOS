@@ -967,6 +967,8 @@ import UIKit
         XCTAssertFalse(editor.exists)
         app.buttons["title-more"].tap(); app.buttons["title-menu-notes"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 5)); XCTAssertTrue(editor.isHittable); capture("Title menu Notes revealed")
+        app.buttons["Cancel"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: editor)], timeout: 5)
         app.buttons["title-more"].tap(); app.buttons["title-menu-files"].tap()
         let empty = app.staticTexts["No mapped files yet. A Windows scan will add matching locations here."]
         XCTAssertTrue(empty.waitForExistence(timeout: 5)); XCTAssertTrue(empty.isHittable)
@@ -994,30 +996,25 @@ import UIKit
         XCTAssertEqual(personal.value as? String, "7.0")
         XCTAssertEqual(app.sliders["episode-progress"].value as? String, "8 of 16 episodes watched")
     }
-    func testNotesDraftSurvivesOpeningACastProfileAndReturning() {
+    func testNotesSheetSavesTheDraftAndCancelDiscardsIt() {
         let app = launch(mutations: true, titleMetadata: true); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].tap()
-        let notes = app.buttons["Notes"]
-        for _ in 0..<14 { if notes.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(notes.isHittable); notes.tap()
+        app.buttons["title-more"].tap(); app.buttons["title-menu-notes"].tap()
         let editor = app.textViews["title-notes"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap(); editor.typeText("Native draft survives cast navigation")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap(); editor.typeText("Native note saved from the sheet")
         let done = app.buttons["notes-keyboard-done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
-        let actor = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Reference Actor 1'")).firstMatch
-        for _ in 0..<10 { if actor.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(actor.isHittable); actor.tap()
-        XCTAssertTrue(app.staticTexts["Facts & trivia"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        for _ in 0..<10 { if editor.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue((editor.value as? String)?.contains("Native draft survives cast navigation") == true)
-        capture("Notes draft retained")
-        // Favorite changes the title version, but must not conflict with an unchanged
-        // saved Notes field or discard this still-unsaved local draft.
-        if !app.buttons["Favorite"].exists { app.buttons["title-more"].tap() }
-        app.buttons["Favorite"].tap()
-        XCTAssertTrue((editor.value as? String)?.contains("Native draft survives cast navigation") == true)
+        XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap(); capture("Notes sheet draft")
         app.buttons["Save notes"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: app.buttons["Save notes"])], timeout: 10)
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: editor)], timeout: 10)
+        app.buttons["title-more"].tap(); app.buttons["title-menu-notes"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue((editor.value as? String)?.contains("Native note saved from the sheet") == true)
+        editor.tap(); editor.typeText(" and an unsaved line")
+        app.buttons["notes-keyboard-done"].tap(); app.buttons["Cancel"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: editor)], timeout: 5)
+        app.buttons["title-more"].tap(); app.buttons["title-menu-notes"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertFalse((editor.value as? String)?.contains("unsaved line") == true, "Cancel must discard the draft")
+        capture("Notes sheet after Cancel")
     }
     /// Status chips scroll sideways; later ones start past the right edge.
     private func tapStatusChip(_ app: XCUIApplication, _ key: String) {
@@ -1200,6 +1197,8 @@ import UIKit
         app.buttons["Notes"].tap()
         XCTAssertTrue(app.textViews["title-notes"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textViews["title-notes"].isHittable); capture("Glance menu reveals Notes")
+        app.buttons["Cancel"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.textViews["title-notes"])], timeout: 5)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let cover = app.buttons["progress-cover-again"]
         XCTAssertTrue(cover.waitForExistence(timeout: 5))
@@ -1257,8 +1256,6 @@ import UIKit
         }
         capture("Title clear art before scroll")
         app.swipeUp(); app.swipeUp()
-        app.buttons["title-more"].tap(); app.buttons["title-menu-notes"].tap()
-        XCTAssertTrue(app.textViews["title-notes"].waitForExistence(timeout: 5)); XCTAssertTrue(app.textViews["title-notes"].isHittable)
         guard let scrolled = XCUIScreen.main.screenshot().image.cgImage else { XCTFail("Missing scrolled screenshot"); return }
         for y in [170.0, 220, 270] {
             let margin = sample(scrolled, at: CGPoint(x: 5, y: y), scale: scale)
@@ -1306,6 +1303,7 @@ import UIKit
         editor.tap(); editor.typeText("Visible from Glance")
         XCTAssertTrue(app.buttons["notes-keyboard-done"].waitForExistence(timeout: 5)); app.buttons["notes-keyboard-done"].tap()
         app.buttons["Save notes"].tap()
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: editor)], timeout: 10)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["progress-menu-again"].waitForExistence(timeout: 5))
         app.buttons["progress-menu-again"].tap(); app.buttons["Notes"].tap()
