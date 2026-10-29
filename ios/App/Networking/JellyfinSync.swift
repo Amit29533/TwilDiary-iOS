@@ -154,7 +154,8 @@ struct JellyfinClient: Sendable {
         if store.isPreview { libraries = Self.previewLibraries; return }
         #endif
         guard let client else { return }
-        do { libraries = try await client.libraries(); error = nil } catch { self.error = error.localizedDescription }
+        // Quiet when Jellyfin can't be reached (away from home): Sync now reports it if tried.
+        if let found = try? await client.libraries() { libraries = found; error = nil }
     }
     func run() async {
         guard !running else { return }
@@ -170,7 +171,7 @@ struct JellyfinClient: Sendable {
             let chosen = libraries.filter(isOn)
             guard !chosen.isEmpty else { error = "Turn on at least one Movies or Shows library."; return }
             let startedAt = Date.now.formatted(.iso8601)
-            var items: [[String: Any]] = [], personal = 0
+            var items: [[String: Any]] = [], movieFiles: [(ids: [String: String], file: String)] = [], personal = 0
             for (index, library) in chosen.enumerated() {
                 progress = "Reading \(library.name) (\(index + 1) of \(chosen.count))…"
                 let found = try await client.items(in: library.id, types: "Movie,Series")
@@ -179,7 +180,7 @@ struct JellyfinClient: Sendable {
                     let ids = Self.ids(item.ProviderIds)
                     guard !ids.isEmpty, let path = item.Path else { personal += 1; continue }
                     if item.kind == "Series" { series[item.Id] = (ids, path) }
-                    else { items.append(["kind": "movie", "ids": ids, "folder": Self.parent(path), "fileCount": 1]) }
+                    else { movieFiles.append((ids, path)) }
                 }
                 guard !series.isEmpty else { continue }
                 // Season folders and their file counts, from the episodes themselves.
@@ -196,9 +197,17 @@ struct JellyfinClient: Sendable {
                                   "seasons": present.map { ["number": $0.key, "folder": $0.value.folder, "fileCount": $0.value.count] }])
                 }
             }
+            // A movie's location is its folder, unless several movies share that folder (a flat
+            // "Movies" directory): then each keeps its own file, so one doesn't take over another's.
+            let shared = Dictionary(grouping: movieFiles, by: { Self.parent($0.file) }).filter { $0.value.count > 1 }
+            for movie in movieFiles {
+                let folder = Self.parent(movie.file)
+                items.append(["kind": "movie", "ids": movie.ids, "folder": shared[folder] == nil ? folder : movie.file, "fileCount": 1])
+            }
             struct Receipt: Decodable { let mapped: Int; let notInDiary: Int }
             var mapped = 0, notInDiary = 0
-            let pages = stride(from: 0, to: max(items.count, 1), by: 200).map { Array(items[$0..<min($0 + 200, items.count)]) }
+            // Small pages keep each request's database statements well inside the Worker's limits.
+            let pages = stride(from: 0, to: max(items.count, 1), by: 50).map { Array(items[$0..<min($0 + 50, items.count)]) }
             for (index, page) in pages.enumerated() {
                 progress = "Matching with your diary (\(index + 1) of \(pages.count))…"
                 let receipt: Receipt = try await store.read("/api/files/jellyfin", method: "POST", body: ["startedAt": startedAt, "done": index == pages.count - 1, "items": page])

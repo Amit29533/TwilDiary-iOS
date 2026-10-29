@@ -64,9 +64,9 @@ test('Jellyfin folders map onto diary titles by TMDB or IMDb ID, one location pe
       row.file_count
     ]),
     [
-      ['film', 'E', 'Movies\\Arrival (2016)', null, 1],
-      ['show', 'D', 'TV\\Severance\\Season 1', 's1', 9],
-      ['show', 'D', 'TV\\Severance\\Season 2', 's2', 10]
+      ['film', 'E:', 'Movies\\Arrival (2016)', null, 1],
+      ['show', 'D:', 'TV\\Severance\\Season 1', 's1', 9],
+      ['show', 'D:', 'TV\\Severance\\Season 2', 's2', 10]
     ]
   );
   assert.ok(rows.every((row) => row.device_id === 'jellyfin' && row.evidence === 'present'));
@@ -141,6 +141,34 @@ test('a later sync updates folders in place and marks the ones it no longer sees
   );
 });
 
+test('seasons kept together in one folder become one location instead of overwriting each other', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await seed(f);
+  await importJellyfin(
+    f.binding,
+    batch([
+      {
+        kind: 'series',
+        ids: { tmdb: '95396' },
+        folder: 'D:\\TV\\Severance',
+        fileCount: 19,
+        seasons: [
+          { number: 1, folder: 'D:\\TV\\Severance', fileCount: 9 },
+          { number: 2, folder: 'D:\\TV\\Severance', fileCount: 10 }
+        ]
+      }
+    ]),
+    NOW
+  );
+  const rows = f.sqlite
+    .prepare('SELECT relative_path,season_id,file_count FROM file_locations')
+    .all();
+  assert.deepEqual(
+    rows.map((row) => [row.relative_path, row.season_id, row.file_count]),
+    [['TV\\Severance', null, 19]]
+  );
+});
 test('the import accepts only bounded, well-formed pages', () => {
   const invalid = (e: unknown) => e instanceof ApiError && e.status === 400;
   assert.throws(
@@ -148,6 +176,7 @@ test('the import accepts only bounded, well-formed pages', () => {
     invalid
   );
   assert.throws(() => batch([{ kind: 'photo', folder: 'D:\\Pictures' }]), invalid);
+  assert.throws(() => batch([null]), invalid);
   assert.throws(() => batch([{ kind: 'movie', folder: '' }]), invalid);
   assert.throws(() => parseBatch({ startedAt: '2020-01-01T00:00:00Z', items: [] }, NOW), invalid);
   // Malformed IDs are dropped rather than trusted.

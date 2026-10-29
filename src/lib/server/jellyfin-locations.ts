@@ -62,6 +62,8 @@ export function parseBatch(value: unknown, now = new Date()): JellyfinBatch {
   if (!Number.isFinite(started) || Math.abs(started - now.getTime()) > 86_400_000)
     throw new ApiError(400, 'invalid_input', 'Invalid sync start');
   const items = input.items.map((raw): Item => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+      throw new ApiError(400, 'invalid_input', 'Invalid item');
     const item = raw as Record<string, unknown>;
     if (item.kind !== 'movie' && item.kind !== 'series')
       throw new ApiError(400, 'invalid_input', 'Invalid item kind');
@@ -98,12 +100,13 @@ export function parseBatch(value: unknown, now = new Date()): JellyfinBatch {
   return { startedAt: new Date(started).toISOString(), done: input.done === true, items };
 }
 
-/** "D:\TV\Show" → drive D; "\\nas\media\TV" → share root; "/mnt/media/TV" → POSIX root. */
+/** "D:\TV\Show" → drive "D:" (as the Windows scanner stores it, which Library's drive filter
+ * matches); "\\nas\media\TV" → share root; "/mnt/media/TV" → POSIX root. */
 export function splitFolder(folder: string) {
   const drive = /^([A-Za-z]):[\\/]*(.*)$/.exec(folder);
   if (drive)
     return {
-      letter: drive[1]!.toUpperCase(),
+      letter: drive[1]!.toUpperCase() + ':',
       root: drive[1]!.toUpperCase() + ':\\',
       relative: drive[2]!
     };
@@ -188,11 +191,23 @@ export async function importJellyfin(db: D1Database, batch: JellyfinBatch, now =
       continue;
     }
     mapped++;
-    // A show is one location per season folder (so "8 of 10 episodes" stays exact); a movie, its folder.
-    if (item.kind === 'series' && item.seasons.length)
+    // A show is one location per season folder (so "8 of 10 episodes" stays exact); a movie, its
+    // folder. Seasons kept together in one folder share one location: a folder is one row.
+    if (item.kind === 'series' && item.seasons.length) {
+      const folders = new Map<string, Season[]>();
       for (const season of item.seasons)
-        statements.push(upsert(titleId, season.folder, season.number, season.fileCount, null));
-    else statements.push(upsert(titleId, item.folder, null, item.fileCount, item.sizeBytes));
+        folders.set(season.folder, [...(folders.get(season.folder) ?? []), season]);
+      for (const [folder, together] of folders)
+        statements.push(
+          upsert(
+            titleId,
+            folder,
+            together.length === 1 ? together[0]!.number : null,
+            together.reduce((sum, season) => sum + season.fileCount, 0),
+            null
+          )
+        );
+    } else statements.push(upsert(titleId, item.folder, null, item.fileCount, item.sizeBytes));
   }
   // The last page marks Jellyfin folders this sync didn't see as missing (never deletes them).
   if (batch.done)

@@ -20,6 +20,8 @@ struct LibraryView: View {
     @State private var showFilters = false
     /// The status chips scroll sideways, so a drag that starts on them never changes the category.
     @State private var chipRow = CGRect.null
+    /// The visible height of the scroll view, so a short category still fills it and takes the swipe.
+    @State private var viewport: CGFloat = 0
     @AppStorage("library.list") private var list = false
     @AppStorage("library.genreRows") private var genreRows = false
     @AppStorage("library.sort") private var sort = LibraryQuery.Sort.added
@@ -184,10 +186,14 @@ struct LibraryView: View {
                     }
                 }
             }.padding(.bottom, selecting ? 90 : 24)
+                // On the content, whose coordinates don't move while scrolling (so the chip row's frame
+                // only changes with layout, not every scroll frame), at least as tall as the visible area
+                // so a short category's empty space still takes the swipe.
+                // Genre shelves scroll sideways themselves, so they keep the swipe.
+                .frame(minHeight: viewport, alignment: .top)
+                .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting, ignoring: chipRow)
         }
-        // On the scroll view, so a short category's empty space still takes the swipe.
-        // Genre shelves scroll sideways themselves, so they keep the swipe.
-        .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting, ignoring: chipRow)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height - $0.contentInsets.top - $0.contentInsets.bottom } action: { _, height in viewport = max(0, height) }
         .refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
     }
     private func ratingStatus(_ message: String) -> some View {

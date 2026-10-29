@@ -30,7 +30,15 @@ struct APIsView: View {
         }.diaryScreenBackground().navigationTitle("APIs").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .refreshable { await model?.load() }
             .task { if model == nil { model = APIKeysModel(store: store) }; await model?.load() }
-            .sheet(item: $editing) { key in ReplaceKeySheet(key: key) { value in await model?.save(key.name, value: value) ?? false } }
+            .sheet(item: $editing) { key in
+                ReplaceKeySheet(key: key) { value in
+                    // An error belongs in the sheet, not on the page hidden behind it.
+                    guard let model else { return "Not loaded yet" }
+                    if await model.save(key.name, value: value) { return nil }
+                    defer { model.error = nil }
+                    return model.error ?? "The key couldn’t be saved."
+                }
+            }
             .sheet(isPresented: $editingJellyfin, onDismiss: { jellyfinRevision += 1 }) { JellyfinSetupSheet() }
             .confirmationDialog("Go back to the server’s own key?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible, presenting: removing) { key in
                 Button("Remove saved key", role: .destructive) { Task { await model?.remove(key.name) } }
@@ -124,11 +132,13 @@ struct APIsView: View {
 /// Paste a new key: a hidden field, Save checks it with its service straight after.
 private struct ReplaceKeySheet: View {
     let key: APIKeyStatus
-    let save: (String) async -> Bool
+    /// nil when saved; otherwise what went wrong.
+    let save: (String) async -> String?
     @Environment(\.dismiss) private var dismiss
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var value = ""
     @State private var saving = false
+    @State private var failure: String?
     @FocusState private var focused: Bool
     var body: some View {
         NavigationStack {
@@ -137,9 +147,10 @@ private struct ReplaceKeySheet: View {
                 SecureField("New key", text: $value).font(.system(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .focused($focused).padding(.horizontal, 14).frame(height: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12))).accessibilityIdentifier("api-key-field")
+                if let failure { Text(failure).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")).fixedSize(horizontal: false, vertical: true) }
                 Button {
                     saving = true
-                    Task { let saved = await save(value); saving = false; if saved { dismiss() } }
+                    Task { failure = await save(value); saving = false; if failure == nil { dismiss() } }
                 } label: { Text(saving ? "Saving…" : "Save and test").frame(maxWidth: .infinity) }
                     .buttonStyle(.diaryPrimary).disabled(saving || value.trimmingCharacters(in: .whitespaces).count < 8).accessibilityIdentifier("api-key-save")
                 Spacer(minLength: 0)

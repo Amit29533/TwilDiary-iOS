@@ -110,6 +110,17 @@ test('a dataset Cloudflare refuses is reported as unavailable and the rest still
   assert.equal(usage.days.at(-1)!.requests, 1200);
 });
 
+test('a dropped connection marks only that dataset unavailable', async () => {
+  const healthy = analytics([], []);
+  const flaky = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(init?.body).includes('d1StorageAdaptiveGroups')) throw new TypeError('network lost');
+    return healthy(input, init);
+  }) as typeof fetch;
+  const usage = await cloudflareUsage('token', 'acct', 7, flaky, now);
+  assert.deepEqual(usage.unavailable, ['storage']);
+  assert.equal(usage.days.at(-1)!.requests, 1200);
+});
+
 test('a token without analytics access is a clear error', async () => {
   await assert.rejects(
     cloudflareUsage('token', 'acct', 7, (async () => reply({}, 403)) as typeof fetch, now),

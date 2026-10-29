@@ -30,6 +30,12 @@ test('only API write requests count as diary changes', () => {
   for (const method of ['GET', 'HEAD', 'OPTIONS'])
     assert.equal(changesDiary(method, '/api/workspace'), false, method);
   assert.equal(changesDiary('POST', '/preview/library'), false);
+  assert.equal(
+    changesDiary('PUT', '/api/settings/apis/TMDB_ACCESS_TOKEN'),
+    false,
+    'keys are not diary data'
+  );
+  assert.equal(changesDiary('POST', '/api/files/jellyfin'), true, 'file locations are');
 });
 
 test('a failed bump never fails the write it follows', async () => {

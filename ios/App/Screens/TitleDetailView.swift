@@ -180,7 +180,11 @@ struct TitleDetailView: View {
     /// "On your drive": where the files are, at a glance; the full list opens in the locations sheet.
     private func driveRow(_ title: MediaTitle) -> some View {
         let present = locations.filter { $0.evidence == "present" }, shown = present.isEmpty ? locations : present
-        let drives = Array(Set(shown.map { $0.driveLetter.isEmpty ? $0.root : $0.driveLetter + ":" })).sorted()
+        // Letters arrive as "E:" from the scanner and Jellyfin; trim and add the colon once either way.
+        let drives = Array(Set(shown.map { location -> String in
+            let letter = location.driveLetter.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ":", with: "")
+            return letter.isEmpty ? location.root : letter.uppercased() + ":"
+        })).sorted()
         let seasons = Set(shown.compactMap(\.season)).sorted(), files = shown.reduce(0) { $0 + $1.fileCount }
         let detail = (seasons.count > 1 ? "Seasons \(seasons.first!)–\(seasons.last!)" : seasons.first.map { "Season \($0)" } ?? "")
         return Button { showLocation = true } label: {

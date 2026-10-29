@@ -55,7 +55,8 @@ struct CelebrationOverlay: View {
             }
         }.animation(.easeOut(duration: 0.3), value: store.celebration?.id)
             .allowsHitTesting(false)
-            .sensoryFeedback(.success, trigger: store.celebration?.id)
+            // Only when a milestone arrives, not again when it fades away.
+            .sensoryFeedback(.success, trigger: store.celebration?.id) { _, new in new != nil }
     }
 }
 
