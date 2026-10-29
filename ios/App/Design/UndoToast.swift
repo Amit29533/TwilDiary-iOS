@@ -18,14 +18,14 @@ struct UndoToast: View {
         HStack(spacing: 5) {
             DiaryIcon(name: "check", size: 15).foregroundStyle(Color(webHex: "#79d8bc"))
             Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
-                .lineLimit(2).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
-            Spacer(minLength: 4)
+                .lineLimit(1).layoutPriority(1)
             Button("Undo") { Task { await store.undo() } }
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
                 .frame(minWidth: 44, minHeight: 44).disabled(store.writesBlocked).accessibilityIdentifier("undo-action")
-            Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 14).frame(width: 44, height: 44) }
+            Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 13).frame(width: 36, height: 44) }
                 .foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Dismiss undo")
-        }.buttonStyle(.plain).padding(.leading, 10).padding(.trailing, 2).frame(maxWidth: 330)
+        // Hugs its content: a small pill, not a bar across the screen.
+        }.buttonStyle(.plain).padding(.leading, 12).padding(.trailing, 2).frame(height: 40).fixedSize()
             .background(.black.opacity(0.3), in: Capsule())
             .glassEffect(in: Capsule())
             .shadow(color: .black.opacity(0.2), radius: 7, y: 3)

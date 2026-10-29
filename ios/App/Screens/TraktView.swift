@@ -80,7 +80,7 @@ import TwilDiaryCore
                     .font(.caption).foregroundStyle(.secondary)
             }
             Button("Pause import", systemImage: "pause.fill") { controller.pauseApplying() }
-                .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.paused)
+                .buttonStyle(.diarySecondary).disabled(controller.paused)
                 .accessibilityIdentifier("trakt-pause-restoration")
         }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-restoring-import")
     }
@@ -118,13 +118,13 @@ import TwilDiaryCore
             else if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             if controller.applyingAll {
                 Button { controller.pauseApplying() } label: {
-                    Label(controller.paused ? "Pausing…" : "Pause", systemImage: "pause.fill").frame(maxWidth: .infinity, minHeight: 50)
-                }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
+                    Label(controller.paused ? "Pausing…" : "Pause", systemImage: "pause.fill").frame(maxWidth: .infinity)
+                }.buttonStyle(.diaryPrimary).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
                 Text("Keep the app open; other tabs still work.").font(.caption).foregroundStyle(.secondary)
             } else if controller.paused && sync.reviewing && (sync.counts["safe"] ?? 0) > 0 {
                 Button { controller.startApprovedApply() } label: {
-                    Label("Resume import", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 50)
-                }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).accessibilityIdentifier("trakt-resume-import")
+                    Label("Resume import", systemImage: "play.fill").frame(maxWidth: .infinity)
+                }.buttonStyle(.diaryPrimary).accessibilityIdentifier("trakt-resume-import")
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-transfer-panel")
     }
@@ -175,8 +175,8 @@ import TwilDiaryCore
                 }
                 if let health = incoming.health { Text(health).font(.caption).foregroundStyle(.secondary) }
                 if let error = incoming.error { Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-incoming-error") }
-                Button { Task { await incoming.refresh() } } label: { Label("Refresh status", systemImage: "arrow.clockwise").frame(maxWidth: .infinity, minHeight: 44) }
-                    .font(.subheadline).buttonStyle(.glass).buttonBorderShape(.capsule).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
+                Button { Task { await incoming.refresh() } } label: { Label("Refresh status", systemImage: "arrow.clockwise").frame(maxWidth: .infinity) }
+                    .font(.subheadline).buttonStyle(.diarySecondary).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
             }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
         }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
@@ -210,13 +210,13 @@ import TwilDiaryCore
                 // Hidden while a scan runs; the scan card has its own Continue and Stop.
                 if !scanning { HStack(spacing: 10) {
                     Button { Task { await controller.scan(start: true) } } label: {
-                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48)
-                    }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(coolingDown)
-                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48) }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule)
+                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity)
+                    }.buttonStyle(.diaryPrimary).disabled(coolingDown)
+                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity) }
+                        .buttonStyle(.diarySecondary)
                 }.disabled(controller.busy) }
             } else if controller.status?.configured == true {
-                Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity, minHeight: 48) }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.busy)
+                Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity) }.buttonStyle(.diaryPrimary).disabled(controller.busy)
                 Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
             } else if controller.status != nil { Text("Add a Trakt Client ID on your server first.").font(.subheadline).foregroundStyle(.secondary) }
             if coolingDown && controller.sync?.reviewing != true {
@@ -234,14 +234,19 @@ import TwilDiaryCore
         return VStack(alignment: .leading, spacing: 12) {
             Text("Sync preferences").font(.subheadline.bold()).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Decimal ratings", selection: $controller.mode) { ForEach(TraktRatingMode.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu).disabled(controller.busy)
+                HStack {
+                    Text("Decimal ratings").font(.subheadline)
+                    Spacer(minLength: 8)
+                    Menu { Picker("Decimal ratings", selection: $controller.mode) { ForEach(TraktRatingMode.allCases) { Text($0.label).tag($0) } } }
+                        label: { FilterPill(label: controller.mode.label) }.disabled(controller.busy).accessibilityIdentifier("trakt-rating-mode")
+                }
                 Text("For the next scan; decimals stay in TwilDiary").font(.caption).foregroundStyle(.secondary)
                 Divider()
                 HStack {
                     Text("Conflicts").font(.subheadline)
                     Spacer(minLength: 8)
-                    Picker("Conflicts", selection: $controller.conflictDefault) { ForEach(TraktConflictDefault.allCases) { Text($0.label).tag($0) } }
-                        .pickerStyle(.menu).tint(theme.accent).fixedSize().accessibilityIdentifier("trakt-conflict-default")
+                    Menu { Picker("Conflicts", selection: $controller.conflictDefault) { ForEach(TraktConflictDefault.allCases) { Text($0.label).tag($0) } } }
+                        label: { FilterPill(label: controller.conflictDefault.label, active: controller.conflictDefault != .ask) }.accessibilityIdentifier("trakt-conflict-default")
                 }
                 Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans apply on their own, conflicts included")
                     .font(.caption).foregroundStyle(.secondary)
@@ -290,14 +295,14 @@ import TwilDiaryCore
             if coolingDown { cooldownCard }
             else if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             if controller.busy {
-                Button { controller.paused = true } label: { Label(controller.paused ? "Pausing…" : "Pause after this step", systemImage: "pause.fill").frame(maxWidth: .infinity, minHeight: 48) }
-                    .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(controller.paused)
+                Button { controller.paused = true } label: { Label(controller.paused ? "Pausing…" : "Pause after this step", systemImage: "pause.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.diarySecondary).disabled(controller.paused)
             } else {
                 HStack(spacing: 10) {
-                    Button { Task { await controller.scan(start: false) } } label: { Label("Continue scan", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 48) }
-                        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(coolingDown)
-                    Button { Task { await controller.cancel() } } label: { Label("Stop", systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 48) }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule).accessibilityLabel("Stop without applying").accessibilityIdentifier("trakt-stop-manual-scan")
+                    Button { Task { await controller.scan(start: false) } } label: { Label("Continue scan", systemImage: "play.fill").frame(maxWidth: .infinity) }
+                        .buttonStyle(.diaryPrimary).disabled(coolingDown)
+                    Button { Task { await controller.cancel() } } label: { Label("Stop", systemImage: "xmark").frame(maxWidth: .infinity) }
+                        .buttonStyle(.diarySecondary).accessibilityLabel("Stop without applying").accessibilityIdentifier("trakt-stop-manual-scan")
                 }
             }
             Text("Nothing changes until you review.")
@@ -387,7 +392,7 @@ import TwilDiaryCore
         VStack(spacing: 9) {
             Button { controller.startApprovedApply() } label: {
                 Text(controller.conflictDefault != .ask ? "Apply all \(sync.unresolved) changes" : sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
-                    .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 50)
+                    .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 44)
                     .foregroundStyle(theme.ink).background(theme.accent, in: Capsule())
             }.buttonStyle(.plain).disabled(controller.busy || coolingDown).accessibilityIdentifier("trakt-apply-ready")
             Text(controller.conflictDefault == .ask ? "Conflicts still need your choice above." : "Conflicts: \(controller.conflictDefault.label)").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)

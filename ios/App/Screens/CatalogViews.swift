@@ -79,7 +79,7 @@ struct CatalogSearchView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
                 SearchField(placeholder: "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: true, dismissRevision: dismissKeyboard)
-                if let onClose { Button(action: onClose) { DiaryIcon(name: "x", size: 18).frame(width: 44, height: 44) }.buttonStyle(.glass).accessibilityLabel("Close search") }
+                if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
             if !ready { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             else {
@@ -178,7 +178,7 @@ struct CatalogDetailView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 20) {
                     if let details {
                         TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
                         if details.libraryTitle?.trashed == true {
@@ -251,7 +251,7 @@ private struct CatalogSeasonPreview: View {
     private var total: Int { max(controller.items.count, details.seasons?.first(where: { $0.number == selected })?.expectedEpisodes ?? 0) }
     private var visible: [CatalogEpisode] { showAll ? controller.items : Array(controller.items.prefix(4)) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Episode 0").font(.system(size: 20, weight: .bold)); Text("of \(total)").font(.system(size: 15)).foregroundStyle(.secondary)
@@ -260,7 +260,7 @@ private struct CatalogSeasonPreview: View {
                 EpisodeProgressTrack(segments: Array(repeating: .unwatched, count: total), season: selected)
             }.padding(.top, 20).padding(.bottom, 8).diaryPanel(padding: 15, radius: 24, accentBorder: true)
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Episodes").font(.system(size: 22, weight: .bold))
                         Text("\(controller.items.count) episodes").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -269,11 +269,11 @@ private struct CatalogSeasonPreview: View {
                     Picker("Season", selection: $selected) {
                         ForEach(details.seasons ?? [], id: \.number) { season in Text(season.number == 0 ? "Specials" : "Season \(season.number)").tag(season.number) }
                     }.pickerStyle(.menu).accessibilityIdentifier("catalog-season")
+                    CollectionLayoutToggle(grid: $episodesGrid, collection: "catalog-episodes")
                 }
                 if controller.loading && controller.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
                 if let error = controller.error { RetryNotice(message: error) { Task { await controller.load(selected, reveal: !hideSpoilers || controller.revealed, force: true) } } }
                 if controller.items.isEmpty && !controller.loading && controller.error == nil { ContentUnavailableView("No episode metadata yet", systemImage: "film", description: Text("No episodes are available for this season yet.")) }
-                HStack { Spacer(); CollectionLayoutToggle(grid: $episodesGrid, collection: "catalog-episodes") }
                 CollectionLayout(grid: episodesGrid) { ForEach(visible) { episode in episodeRow(episode) } }
                 if controller.items.count > 4 {
                     Button(showAll ? "Show fewer episodes" : "Show all \(controller.items.count) episodes") { showAll.toggle() }.font(.system(size: 14)).frame(maxWidth: .infinity).frame(minHeight: 44)
@@ -320,7 +320,7 @@ struct CastAndRelated: View {
     @State private var related: [CatalogItem] = []
     @State private var failure: String?
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             if !cast.isEmpty {
                 Text("Cast").font(.system(size: 20, weight: .semibold))
                 ScrollView(.horizontal) {

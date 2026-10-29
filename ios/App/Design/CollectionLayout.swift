@@ -4,17 +4,15 @@ import SwiftUI
 struct CollectionLayoutToggle: View {
     @Binding var grid: Bool
     let collection: String
-    /// A small rounded square for sort rows; glass adds its own padding around the label.
+    /// A 36 pt circle for sort rows; the tap target stays 44 pt.
     var small = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Button {
             withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) { grid.toggle() }
         } label: {
-            Image(systemName: grid ? "list.bullet" : "square.grid.2x2")
-                .font(.system(size: 17, weight: .medium)).contentTransition(.symbolEffect(.replace))
-                .frame(width: small ? 28 : 44, height: small ? 22 : 44)
-        }.buttonStyle(.glass).buttonBorderShape(small ? .roundedRectangle(radius: 12) : .automatic)
+            RoundTool(icon: grid ? "list" : "layout-grid", size: small ? 36 : 44)
+        }.buttonStyle(.plain)
             .accessibilityLabel("Show " + collection + (grid ? " as list" : " as grid"))
             .accessibilityValue(grid ? "Grid" : "List").accessibilityIdentifier(collection + "-layout")
             .sensoryFeedback(.selection, trigger: grid)

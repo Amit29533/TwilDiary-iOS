@@ -17,10 +17,7 @@ struct LibraryView: View {
     @SceneStorage("library.drive") private var drive = ""
     @SceneStorage("library.favorites") private var favoritesOnly = false
     @State private var showSearch = false
-    @State private var showAdd = false
     @State private var showFilters = false
-    @State private var addedTitle: String?
-    @State private var addedCatalog: CatalogRoute?
     @AppStorage("library.list") private var list = false
     @AppStorage("library.genreRows") private var genreRows = false
     @AppStorage("library.sort") private var sort = LibraryQuery.Sort.added
@@ -56,19 +53,7 @@ struct LibraryView: View {
             .onAppear { initializeStorage(); applyShortcut() }
             .onChange(of: filterScope) { _, _ in selected.formIntersection(filtered.map(\.id)); visibleLimit = 48 }
             .onChange(of: filtered.map(\.id)) { _, ids in selected.formIntersection(ids) }
-            .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.large]).presentationDragIndicator(.visible) }
-            .sheet(isPresented: $showAdd, onDismiss: {
-                if let id = addedTitle { addedTitle = nil; router.openTitle(id, tab: .library) }
-                else if let route = addedCatalog { addedCatalog = nil; router.paths[.library, default: NavigationPath()].append(route) }
-            }) {
-                NavigationStack {
-                    ScrollView {
-                        CatalogSearchView(onLibraryChoose: { id in addedTitle = id; showAdd = false },
-                            onCatalogChoose: { route in addedCatalog = route; showAdd = false },
-                            onClose: { showAdd = false }).padding(.top, 14)
-                    }.navigationTitle("Add title").navigationBarTitleDisplayMode(.inline)
-                }
-            }
+            .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.medium]).presentationDragIndicator(.visible) }
             .sheet(item: $review) { value in CollectionReviewView(review: value) { selecting = false; selected = [] } }
     }
 
@@ -296,16 +281,19 @@ struct LibraryView: View {
                         .pickerStyle(.segmented).accessibilityIdentifier("filter-rating-source")
                     sheetLabel("Show")
                     Toggle("Favorites only", isOn: $favoritesOnly).tint(theme.accent).accessibilityIdentifier("filter-favorites")
-                    Button { showFilters = false } label: {
-                        Text("Show \(filtered.count) \(filtered.count == 1 ? "title" : "titles")").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.ink)
-                            .frame(maxWidth: .infinity, minHeight: 50).background(theme.accent, in: Capsule())
-                    }.buttonStyle(.plain).padding(.top, 22).accessibilityIdentifier("filter-show")
                     Button { showFilters = false; openTrash() } label: {
                         HStack(spacing: 6) { DiaryIcon(name: "trash-2", size: 15); Text("Trash · \(trashCount) \(trashCount == 1 ? "title" : "titles")") }
                             .font(.system(size: 14)).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
                     }.buttonStyle(.plain).accessibilityLabel("Open Trash").padding(.top, 6)
                 }.padding(.horizontal, 20).padding(.bottom, 20)
-            }.navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
+            }.scrollContentBackground(.hidden)
+            // A half-height glass sheet: the result button stays pinned while the filters scroll.
+            .safeAreaInset(edge: .bottom) {
+                Button { showFilters = false } label: { Text("Show \(filtered.count) \(filtered.count == 1 ? "title" : "titles")").frame(maxWidth: .infinity) }
+                    .buttonStyle(.diaryPrimary).padding(.horizontal, 20).padding(.vertical, 8).accessibilityIdentifier("filter-show")
+            }
+            .containerBackground(Color.clear, for: .navigation)
+            .navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Clear all") { genres = []; drive = ""; favoritesOnly = false }.tint(theme.accent).disabled(activeFilterCount == 0) } }
         }
     }
@@ -329,7 +317,7 @@ struct LibraryView: View {
         guard router.libraryRevision > appliedShortcutRevision else { return }
         appliedShortcutRevision = router.libraryRevision
         category = .all; genres = router.libraryGenreShortcut.isEmpty ? [] : [router.libraryGenreShortcut]; drive = router.libraryDiskShortcut; status = "all"; favoritesOnly = false
-        switch router.libraryShortcut { case "queue": status = "queue"; case "planned", "watching", "completed", "dropped": status = router.libraryShortcut ?? "all"; case "disk": drive = HomeDiskShortcut.all.first?.key ?? ""; case "add": showAdd = true; default: break }
+        switch router.libraryShortcut { case "queue": status = "queue"; case "planned", "watching", "completed", "dropped": status = router.libraryShortcut ?? "all"; case "disk": drive = HomeDiskShortcut.all.first?.key ?? ""; case "add": showSearch = true; default: break }
     }
     private var filterScope: String { [category.rawValue, status, genresRaw, drive, String(favoritesOnly), sort.rawValue].joined(separator: "\n") }
     private var collection: [MediaTitle] { store.workspace.activeTitles }

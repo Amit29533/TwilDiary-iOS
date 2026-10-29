@@ -8,7 +8,7 @@ struct CommunityInformationSheet: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var controller = CommunityInformationController()
     @State private var retryRevision = 0
-    @State private var detent = PresentationDetent.large
+    @State private var detent = PresentationDetent.medium
     var body: some View {
         VStack(spacing: 0) {
             Text("Information").font(.headline).frame(maxWidth: .infinity).padding(.top, 24).padding(.bottom, 16)
@@ -34,8 +34,7 @@ struct CommunityInformationSheet: View {
                                 VStack(alignment: .leading, spacing: 16) {
                                     ForEach(Array(sentiments.good.enumerated()), id: \.offset) { index, text in opinion(text, positive: true).accessibilityIdentifier("community-positive-\(index)") }
                                     ForEach(Array(sentiments.bad.enumerated()), id: \.offset) { index, text in opinion(text, positive: false).accessibilityIdentifier("community-negative-\(index)") }
-                                }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                                    .diarySectionBackground(radius: 22, fill: Color(webHex: "#101013"), stroke: .clear)
+                                }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
                                     .accessibilityElement(children: .contain)
                                     .accessibilityIdentifier("community-sentiment-card")
                                 Text("Trakt’s community summary · \(sentiments.commentCount.formatted()) comments · Updated \(sentiments.analyzedAt.prefix(10))")
@@ -52,10 +51,10 @@ struct CommunityInformationSheet: View {
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(20).padding(.bottom, 20)
             }.scrollContentBackground(.hidden).background(.clear)
-        // A system material from the first frame: the late-loading artwork backdrop let the
-        // sheet show through as transparent before it painted.
-        }.presentationDetents([.medium, .large], selection: $detent).presentationDragIndicator(.visible)
-            .presentationBackground(reduceTransparency ? AnyShapeStyle(Color(webHex: "#1c1c1e")) : AnyShapeStyle(.regularMaterial))
+        // Half height only, on the system glass: it never switches to the opaque large
+        // sheet, so it stays see-through instead of flashing between the two.
+        }.presentationDetents([.medium], selection: $detent).presentationDragIndicator(.visible)
+            .modifier(SolidSheetBackground(enabled: reduceTransparency))
             .task(id: TaskIdentity(identity: identity, session: store.sessionRevision, retry: retryRevision)) {
                 await controller.load(identity, retry: retryRevision > 0) { identity, retry in try await store.communityInformation(identity, retry: retry) }
             }
@@ -83,5 +82,13 @@ struct CommunityInformationSheet: View {
         case .available: text = "Community information was incomplete. Please retry."
         }
         return Text(text).foregroundStyle(.secondary).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Reduce Transparency gets a solid sheet; otherwise the system glass shows through.
+private struct SolidSheetBackground: ViewModifier {
+    let enabled: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled { content.presentationBackground(Color(webHex: "#1c1c1e")) } else { content }
     }
 }

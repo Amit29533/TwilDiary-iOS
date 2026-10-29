@@ -75,18 +75,20 @@ struct CloudflareUsageView: View {
     private func gauge(_ title: String, used: Int?, limit: Int, bytes: Bool = false, key: String) -> some View {
         let share = used.map { min(1, Double($0) / Double(max(1, limit))) }
         let tint = level(share ?? 0)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().stroke(.white.opacity(0.1), lineWidth: 5)
-                    Circle().trim(from: 0, to: share ?? 0).stroke(tint, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
-                    Text(share.map(percent) ?? "–").font(.system(size: 11, weight: .semibold)).monospacedDigit()
-                }.frame(width: 44, height: 44)
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
+        // The ring leads on the left; the name, amount and allowance read down the right.
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle().stroke(.white.opacity(0.1), lineWidth: 6)
+                Circle().trim(from: 0, to: share ?? 0).stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
+                Text(share.map(percent) ?? "–").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+            }.frame(width: 58, height: 58)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
+                Text(used.map { amount($0, bytes: bytes) } ?? "Not yet").font(.system(size: 19, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                Text("of " + amount(limit, bytes: bytes) + (bytes ? "" : " a day")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }
-            Text(used.map { amount($0, bytes: bytes) } ?? "Not yet").font(.system(size: 20, weight: .semibold)).monospacedDigit().lineLimit(1)
-            Text("of " + amount(limit, bytes: bytes) + (bytes ? "" : " a day")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
+        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
             .accessibilityElement(children: .combine).accessibilityIdentifier("cloudflare-today-\(key)")
     }
@@ -155,7 +157,7 @@ struct CloudflareUsageView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(message).font(.subheadline).foregroundStyle(.secondary)
             Button { Task { await loader?.load(range: range) } } label: { Label("Try again", systemImage: "arrow.clockwise").frame(maxWidth: .infinity, minHeight: 44) }
-                .buttonStyle(.glass).buttonBorderShape(.capsule)
+                .buttonStyle(.diarySecondary)
         }.diaryPanel().accessibilityIdentifier("cloudflare-error")
     }
 

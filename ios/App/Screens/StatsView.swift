@@ -145,7 +145,7 @@ struct StatsView: View {
             if let difference = value.difference {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(difference > 0 ? "↑" : difference < 0 ? "↓" : "—") \(DiaryDate.duration(abs(difference)))").font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(difference > 0 ? Color(webHex: "#87d9aa") : Color(webHex: "#c5c0cf"))
+                        .foregroundStyle(difference > 0 ? Color(webHex: "#5fe0b0") : difference < 0 ? Color(webHex: "#ff6b6b") : Color(webHex: "#c5c0cf"))
                     Text(value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                 }.padding(.top, 4)
             }
@@ -163,7 +163,7 @@ struct StatsView: View {
                 }.chartXAxis(.hidden).chartYAxis {
                     AxisMarks(position: .trailing, values: [0, Double(peak) / 2, Double(peak)]) { mark in
                         AxisGridLine().foregroundStyle(.white.opacity(0.08))
-                        AxisValueLabel { if let minutes = mark.as(Double.self) { Text(minutes == 0 ? "0h" : "\(Int((minutes / 60).rounded()))h").font(.system(size: 10)).foregroundStyle(.secondary) } }
+                        AxisValueLabel { if let minutes = mark.as(Double.self) { Text(minutes == 0 ? "0h" : minutes < 60 ? "\(Int(minutes.rounded()))m" : "\(Int((minutes / 60).rounded()))h").font(.system(size: 10)).foregroundStyle(.secondary) } }
                     }
                 }.chartXScale(domain: -0.5...(Double(max(1, buckets.count)) - 0.5), range: .plotDimension(padding: 0)).chartYScale(domain: 0...Double(peak)).accessibilityHidden(true)
                     .chartOverlay { _ in

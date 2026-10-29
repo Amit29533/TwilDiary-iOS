@@ -22,13 +22,15 @@ struct TrashView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Removed titles", systemImage: "trash").font(.headline)
-                    Text("Removed titles stay here with their history. Restore them to your Library, or review a permanent deletion. Files on your disks stay untouched.")
-                        .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("Empty Trash", systemImage: "trash", role: .destructive) { confirmEmpty = true }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule).disabled(store.writesBlocked || archived.isEmpty).accessibilityIdentifier("empty-trash")
-                }.diaryPanel()
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("Removed titles", systemImage: "trash").font(.headline)
+                        Text("Kept with their history; disk files stay untouched.").font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    Button("Empty", role: .destructive) { confirmEmpty = true }
+                        .buttonStyle(.diarySecondary).disabled(store.writesBlocked || archived.isEmpty).accessibilityLabel("Empty Trash").accessibilityIdentifier("empty-trash")
+                }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
                 CategoryPicker(selection: $category).padding(.horizontal, -14)
                 HStack(spacing: 8) {
                     Text("In Trash").font(.headline)
@@ -40,7 +42,7 @@ struct TrashView: View {
                             Text("Title A–Z").tag("name")
                             Text("Newest year").tag("year")
                         }
-                    } label: { Image(systemName: "arrow.up.arrow.down").frame(width: 44, height: 44) }.accessibilityLabel("Sort Trash")
+                    } label: { RoundTool(icon: "arrow-down-up") }.accessibilityLabel("Sort Trash")
                     CollectionLayoutToggle(grid: $grid, collection: "trash")
                 }
                 if selecting {
@@ -99,11 +101,11 @@ struct TrashView: View {
             if !selecting {
                 HStack {
                     Button("Restore", systemImage: "arrow.uturn.backward") { review = CollectionReview(titles: [title], change: .restore) }
-                        .accessibilityIdentifier("trash-restore-" + title.id)
+                        .buttonStyle(.diarySecondary).accessibilityIdentifier("trash-restore-" + title.id)
                     Spacer(minLength: 0)
-                    Button("Delete permanently", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .purge) }
-                        .labelStyle(.iconOnly).accessibilityIdentifier("trash-delete-" + title.id)
-                }.font(.caption.weight(.semibold)).buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.large).disabled(store.writesBlocked)
+                    Button(role: .destructive) { review = CollectionReview(titles: [title], change: .purge) } label: { RoundTool(icon: "trash-2", tint: Color(webHex: "#ff8a80")) }
+                        .buttonStyle(.plain).accessibilityLabel("Delete permanently").accessibilityIdentifier("trash-delete-" + title.id)
+                }.disabled(store.writesBlocked)
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("archived-title-" + title.id)
     }

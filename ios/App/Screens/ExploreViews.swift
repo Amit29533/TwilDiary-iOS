@@ -202,15 +202,33 @@ private struct DiscoveryBrowser: View {
             Picker("Explore media type", selection: $filters.type) { Text("Shows").tag("tv"); Text("Movies").tag("movie") }.pickerStyle(.segmented).frame(width: 145).accessibilityIdentifier("explore-type").onChange(of: filters.type) { _, _ in filters.genre = "" }
         }.font(.system(size: 13))
     }
+    /// Filters as pill menus in one scrolling row, like Canvas.
     private var filterForm: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 12) {
-            if !promptForGenre && section.fixedType == nil { Picker("Content type", selection: $filters.type) { if section.source != "tmdb" { Text("All titles").tag("all") }; Text("Shows").tag("tv"); Text("Movies").tag("movie") }.onChange(of: filters.type) { _, _ in filters.genre = "" } }
-            if !promptForGenre { Picker("Section genre", selection: $filters.genre) { Text("All genres").tag(""); ForEach(genres, id: \.self) { Text($0).tag($0) } } }
-            VStack(alignment: .leading, spacing: 5) { Text("Released year").font(.system(size: 12)).foregroundStyle(.secondary); TextField("Any year", text: $filters.year).textFieldStyle(.roundedBorder).keyboardType(.numberPad).accessibilityLabel("Explore release year") }
-            Picker("Sort discoveries", selection: $filters.sort) { Text(section.source == "library" ? "Library order" : "Recommended order").tag("popular"); Text("Highest rated").tag("rating"); Text("Newest releases").tag("newest"); if section.source != "tmdb" { Text("Title A–Z").tag("title") } }
-            Picker("Explore minimum rating", selection: $filters.minimum) { Text("Any rating").tag("0"); ForEach([6, 7, 8, 9], id: \.self) { Text("\($0)+").tag(String($0)) } }.accessibilityIdentifier("explore-minimum")
-            Button("Reset filters") { filters = DiscoveryFilters(section: section) }.frame(minHeight: 44)
-        }.pickerStyle(.menu).font(.system(size: 13)).padding(14).diarySectionBackground(radius: 13)
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                if filters != DiscoveryFilters(section: section) {
+                    Button("Reset filters") { filters = DiscoveryFilters(section: section) }.font(.system(size: 14, weight: .medium)).padding(.horizontal, 6).frame(minHeight: 44)
+                }
+                if !promptForGenre && section.fixedType == nil {
+                    Menu { Picker("Content type", selection: $filters.type) { if section.source != "tmdb" { Text("All titles").tag("all") }; Text("Shows").tag("tv"); Text("Movies").tag("movie") } }
+                        label: { FilterPill(label: filters.type == "tv" ? "Shows" : filters.type == "movie" ? "Movies" : "All titles") }
+                }
+                if !promptForGenre {
+                    Menu { Picker("Section genre", selection: $filters.genre) { Text("All genres").tag(""); ForEach(genres, id: \.self) { Text($0).tag($0) } } }
+                        label: { FilterPill(label: filters.genre.isEmpty ? "All genres" : filters.genre, active: !filters.genre.isEmpty) }
+                }
+                Menu { Picker("Explore minimum rating", selection: $filters.minimum) { Text("Any rating").tag("0"); ForEach([6, 7, 8, 9], id: \.self) { Text("\($0)+").tag(String($0)) } } }
+                    label: { FilterPill(label: filters.minimum == "0" ? "Any rating" : filters.minimum + "+", active: filters.minimum != "0") }.accessibilityIdentifier("explore-minimum")
+                Menu { Picker("Released year", selection: $filters.year) { Text("Any year").tag(""); ForEach(Self.years, id: \.self) { Text(String($0)).tag(String($0)) } } }
+                    label: { FilterPill(label: filters.year.isEmpty ? "Any year" : filters.year, active: !filters.year.isEmpty) }.accessibilityLabel("Explore release year")
+                Menu { Picker("Sort discoveries", selection: $filters.sort) { Text(section.source == "library" ? "Library order" : "Recommended order").tag("popular"); Text("Highest rated").tag("rating"); Text("Newest releases").tag("newest"); if section.source != "tmdb" { Text("Title A–Z").tag("title") } } }
+                    label: { FilterPill(label: sortLabel, icon: "arrow-down-up") }
+            }.padding(.vertical, 2)
+        }.scrollIndicators(.hidden).onChange(of: filters.type) { _, _ in if !promptForGenre { filters.genre = "" } }
+    }
+    private static let years = Array((1950...Calendar.current.component(.year, from: .now)).reversed())
+    private var sortLabel: String {
+        switch filters.sort { case "rating": "Highest rated"; case "newest": "Newest"; case "title": "Title A–Z"; default: section.source == "library" ? "Library order" : "Recommended" }
     }
     @ViewBuilder private var content: some View {
         if let error = filters.error(section: section) { DiscoveryNotice(text: error) }
@@ -218,7 +236,7 @@ private struct DiscoveryBrowser: View {
         else {
             if !displayed.isEmpty {
                 Text("\(section.source == "tmdb" ? displayed.count : local.count) titles").font(.system(size: 12)).foregroundStyle(.secondary)
-                CatalogGrid(items: displayed)
+                CatalogGrid(items: displayed, showsLayoutToggle: false)
             }
             if busy && displayed.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading titles") }
             if let error = section == .recommended ? recommendations.error : results.error {

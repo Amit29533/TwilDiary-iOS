@@ -441,7 +441,9 @@ import UIKit
         app.buttons["library-filters"].tap()
         let romance = app.buttons["filter-genre-Romance"]
         XCTAssertTrue(romance.waitForExistence(timeout: 5)); romance.tap()
-        app.buttons["E: Toshiba (4TB)"].tap()
+        let toshiba = app.buttons["E: Toshiba (4TB)"]
+        for _ in 0..<5 { if toshiba.isHittable { break }; scrollSheet(app) }
+        toshiba.tap()
         XCTAssertTrue(app.buttons["filter-show"].label.hasPrefix("Show 1 title")); capture("Library filter sheet")
         app.buttons["filter-show"].tap()
         XCTAssertTrue(app.buttons["title-night"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["title-again"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
@@ -825,7 +827,9 @@ import UIKit
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         // Trash is reached from the bottom of the filter sheet.
         let trash = app.buttons["Open Trash"]
-        app.buttons["library-filters"].tap(); XCTAssertTrue(trash.waitForExistence(timeout: 5)); trash.tap()
+        app.buttons["library-filters"].tap(); XCTAssertTrue(trash.waitForExistence(timeout: 5))
+        for _ in 0..<6 { if trash.isHittable { break }; scrollSheet(app) }
+        trash.tap()
         XCTAssertTrue(app.staticTexts["In Trash"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["Trash"].exists)
         let trashLayout = app.buttons["trash-layout"]
@@ -1076,6 +1080,11 @@ import UIKit
             start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * 0.2, dy: y)))
         }
         XCTAssertLessThanOrEqual(chip.frame.maxX, app.frame.width); chip.tap()
+    }
+    /// Half-height sheets scroll inside their lower half; dragging there never moves the sheet itself.
+    private func scrollSheet(_ app: XCUIApplication) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66)))
     }
     /// Settings keeps Trakt as a row under Connections; scroll to it and open the Trakt page.
     private func openTrakt(_ app: XCUIApplication) {

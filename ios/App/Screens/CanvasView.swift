@@ -59,11 +59,12 @@ private struct CanvasContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                tabs
                 pills
                 if tab == .lists { listsContent } else { titlesContent }
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            // The tabs share the navigation bar with the back button.
+            .toolbar { ToolbarItem(placement: .principal) { tabs } }
             .task(id: query) {
                 guard tab != .lists, sort != .recommended else { return }
                 do { try await Task.sleep(for: .milliseconds(150)); try Task.checkCancellation() } catch { return }
@@ -77,15 +78,15 @@ private struct CanvasContent: View {
     }
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
     private var tabs: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 18) {
             ForEach(CanvasTab.allCases, id: \.self) { item in
                 Button { tab = item; if item == .movies { network = nil } } label: {
-                    Text(item.label).font(.system(size: 32, weight: .bold)).tracking(-0.8)
+                    Text(item.label).font(.system(size: 24, weight: .bold)).tracking(-0.6)
                         .foregroundStyle(tab == item ? Color(webHex: "#f3f0f7") : .white.opacity(0.4))
                 }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
             Spacer(minLength: 0)
-        }.padding(.horizontal, 6).padding(.top, 4)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var pills: some View {
         ScrollView(.horizontal) {

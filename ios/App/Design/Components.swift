@@ -67,6 +67,61 @@ struct DiaryIcon: View {
     }
 }
 
+/// The app's small icon button: a faint 44 pt circle sized to its icon, never a padded glass bubble.
+struct RoundTool: View {
+    let icon: String
+    var tint = Color(webHex: "#c5c0cf")
+    var size: CGFloat = 44
+    var body: some View {
+        DiaryIcon(name: icon, size: size * 0.43).foregroundStyle(tint).frame(width: size, height: size)
+            .background(.white.opacity(0.08), in: Circle()).frame(width: max(44, size), height: max(44, size)).contentShape(Circle())
+    }
+}
+
+/// Compact 44 pt capsule buttons: the accent fill for the main action, an outline for the rest.
+struct DiaryCapsuleButtonStyle: ButtonStyle {
+    var prominent = true
+    func makeBody(configuration: Configuration) -> some View { Styled(configuration: configuration, prominent: prominent) }
+    private struct Styled: View {
+        let configuration: ButtonStyleConfiguration
+        let prominent: Bool
+        @AppStorage("theme") private var theme = DiaryTheme.twilight
+        @Environment(\.isEnabled) private var enabled
+        var body: some View {
+            let destructive = configuration.role == .destructive
+            configuration.label.font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .foregroundStyle(prominent ? theme.ink : destructive ? Color(webHex: "#ff8a80") : theme.accent)
+                .background(prominent ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
+                .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
+                .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.45).contentShape(Capsule())
+        }
+    }
+}
+extension ButtonStyle where Self == DiaryCapsuleButtonStyle {
+    static var diaryPrimary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: true) }
+    static var diarySecondary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: false) }
+}
+
+/// A filter as a pill that opens its menu, as on Canvas and Explore.
+struct FilterPill: View {
+    let label: String
+    var icon: String? = nil
+    var active = false
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    var body: some View {
+        HStack(spacing: 7) {
+            if let icon { DiaryIcon(name: icon, size: 16) }
+            Text(label).font(.system(size: 15, weight: .medium)).lineLimit(1)
+            DiaryIcon(name: "chevron-down", size: 13)
+        }.foregroundStyle(active ? theme.accent : Color(webHex: "#f3f0f7"))
+            .padding(.horizontal, 14).frame(height: 38)
+            .background(active ? theme.accent.opacity(0.12) : .white.opacity(0.08), in: Capsule())
+            .overlay(Capsule().strokeBorder(active ? theme.accent.opacity(0.5) : .white.opacity(0.14)))
+            .frame(minHeight: 44).contentShape(Capsule())
+    }
+}
+
 /// The official Trakt mark and TMDB logo, used wherever the app names those services.
 struct BrandLogo: View {
     enum Service { case trakt, tmdb }

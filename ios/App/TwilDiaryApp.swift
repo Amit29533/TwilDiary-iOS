@@ -146,7 +146,7 @@ struct RootView: View {
                     // keyboard region let the keyboard cover the tab bar.
                     .ignoresSafeArea(.container, edges: .top)
                     .background(.black)
-                    .overlay(alignment: .top) { RootNoticeBanner() }
+                    .overlay(alignment: .bottom) { RootNoticeBanner() }
             }
         }.accessibilityHidden(router.randomPick != nil).allowsHitTesting(router.randomPick == nil)
             .overlay {
@@ -211,15 +211,16 @@ private struct RootNoticeBanner: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
         if let notice = store.mutationRefreshNotice {
-            HStack(alignment: .top, spacing: 12) {
-                Text(notice).font(.caption).accessibilityIdentifier("confirmed-write-notice")
-                Spacer(minLength: 0)
-                Button("Refresh") { Task { await store.refresh() } }
+            // A small pill above the tab bar, not a banner over the page header.
+            HStack(spacing: 10) {
+                Text("Saved · refresh failed").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    .accessibilityLabel(notice).accessibilityIdentifier("confirmed-write-notice")
+                Button("Refresh") { Task { await store.refresh() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
                     .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
-            }.padding(12).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14)).padding()
+            }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).fixedSize().padding(.bottom, 140)
         } else if let error = store.error {
-            HStack { Text(error).font(.caption); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly) }
-                .padding(12).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14)).padding()
+            HStack(spacing: 8) { Text(error).font(.system(size: 12)).lineLimit(2); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly).frame(minWidth: 36, minHeight: 40) }
+                .padding(.leading, 14).padding(.trailing, 4).glassEffect(.regular, in: Capsule()).padding(.horizontal, 24).padding(.bottom, 140)
         }
     }
 }

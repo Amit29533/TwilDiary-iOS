@@ -53,7 +53,7 @@ struct TitleDetailView: View {
                 GeometryReader { geometry in
                     ScrollViewReader { proxy in
                         detailPresentations(title: title, content: ScrollView {
-                            VStack(alignment: .leading, spacing: 28) {
+                            VStack(alignment: .leading, spacing: 20) {
                                 header(title)
                                 progressPanel(title).padding(.top, -8)
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -168,7 +168,8 @@ struct TitleDetailView: View {
                             .disabled(store.writesBlocked || !notesField.isDirty || notesField.submission == nil || count > 20_000)
                     }
                 }
-        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
+        // A short sheet: the note field and its count, not half the screen.
+        }.presentationDetents([.height(320)]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
     }
     private func locationsSheet(_ title: MediaTitle) -> some View {
         NavigationStack {
@@ -270,9 +271,8 @@ struct TitleDetailView: View {
                     await loadCard(title)
                 } } label: {
                     Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Log a rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
-                        .font(.system(size: 15.2, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 52)
-
-                }.buttonStyle(.glassProminent).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).accessibilityIdentifier("mark-title-watch")
+                        .frame(maxWidth: .infinity)
+                }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).accessibilityIdentifier("mark-title-watch")
                 HStack(spacing: 8) {
                     Button { showDate.toggle() } label: {
                         HStack(spacing: 7) { DiaryIcon(name: "calendar-days", size: 16).foregroundStyle(theme.accent); Text(DiaryDate.day(watchDate) == DiaryDate.day(store.now) ? "Watched today" : DiaryDate.day(watchDate)) }.frame(maxWidth: .infinity, minHeight: 44)
@@ -647,7 +647,7 @@ private struct NotesEditor: View {
     var body: some View {
         let count = text.utf16.count
         VStack(alignment: .leading, spacing: 12) {
-            TextEditor(text: $text).scrollContentBackground(.hidden).padding(10)
+            TextEditor(text: $text).scrollContentBackground(.hidden).padding(10).frame(height: 150)
                 .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty { Text("Add your personal note…").foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 18).allowsHitTesting(false) }
