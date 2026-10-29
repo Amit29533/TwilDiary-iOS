@@ -97,8 +97,7 @@ struct LibraryView: View {
                     Text("Highest " + ratingSource.label + " rating").tag(LibraryQuery.Sort.score)
                 }
             } label: {
-                HStack(spacing: 6) { Text(sortLabel).lineLimit(1); DiaryIcon(name: "chevron-down", size: 13) }
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Color(webHex: "#c5c0cf")).frame(minHeight: 44).contentShape(Rectangle())
+                FilterPill(label: sortLabel, icon: "arrow-down-up")
             }.accessibilityLabel("Sort").accessibilityValue(sortLabel).accessibilityIdentifier("library-order")
             Spacer(minLength: 0)
             Button { showFilters = true } label: {

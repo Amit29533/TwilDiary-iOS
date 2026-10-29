@@ -442,9 +442,7 @@ struct SortMenuRow<Option: Hashable & Identifiable, Trailing: View>: View {
             Menu {
                 Picker("Sort", selection: $selection) { ForEach(options) { Text(label($0)).tag($0) } }
             } label: {
-                HStack(spacing: 6) { Text(label(selection)); DiaryIcon(name: "chevron-down", size: 14) }
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Color(webHex: "#c5c0cf"))
-                    .frame(minHeight: 44).contentShape(Rectangle())
+                FilterPill(label: label(selection), icon: "arrow-down-up")
             }.accessibilityIdentifier(identifier).accessibilityLabel("Sort").accessibilityValue(label(selection))
             Spacer(minLength: 0)
             trailing

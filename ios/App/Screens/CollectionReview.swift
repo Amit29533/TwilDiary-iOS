@@ -52,10 +52,13 @@ struct CollectionSelectionPanel: View {
                 HStack { Button("Restore") { onReview(.restore) }; Button("Delete", role: .destructive) { onReview(.purge) } }.buttonStyle(.glass).disabled(selected.isEmpty)
             } else {
                 HStack {
-                    Picker("Selection action", selection: $action) {
-                        Text("Queue").tag("queue"); Text("Remove from Queue").tag("unqueue")
-                        ForEach(["planned", "watching", "completed", "dropped"], id: \.self) { Text($0.capitalized).tag($0) }
-                    }.pickerStyle(.menu).accessibilityIdentifier("collection-action")
+                    Menu {
+                        Picker("Selection action", selection: $action) {
+                            Text("Queue").tag("queue"); Text("Remove from Queue").tag("unqueue")
+                            ForEach(["planned", "watching", "completed", "dropped"], id: \.self) { Text($0.capitalized).tag($0) }
+                        }
+                    } label: { FilterPill(label: action == "queue" ? "Queue" : action == "unqueue" ? "Remove from Queue" : action.capitalized) }
+                        .accessibilityLabel("Selection action").accessibilityIdentifier("collection-action")
                     Button("Apply", systemImage: "checkmark") { onReview(action == "queue" || action == "unqueue" ? .queue(action == "queue") : .status(action)) }.labelStyle(.iconOnly).accessibilityLabel("Apply selection action").disabled(selected.isEmpty)
                     Spacer(minLength: 0)
                 }

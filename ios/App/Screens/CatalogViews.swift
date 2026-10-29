@@ -266,9 +266,12 @@ private struct CatalogSeasonPreview: View {
                         Text("\(controller.items.count) episodes").font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    Picker("Season", selection: $selected) {
-                        ForEach(details.seasons ?? [], id: \.number) { season in Text(season.number == 0 ? "Specials" : "Season \(season.number)").tag(season.number) }
-                    }.pickerStyle(.menu).accessibilityIdentifier("catalog-season")
+                    Menu {
+                        Picker("Season", selection: $selected) {
+                            ForEach(details.seasons ?? [], id: \.number) { season in Text(season.number == 0 ? "Specials" : "Season \(season.number)").tag(season.number) }
+                        }
+                    } label: { FilterPill(label: selected == 0 ? "Specials" : "Season \(selected)") }
+                        .disabled((details.seasons ?? []).count < 2).accessibilityLabel("Season").accessibilityValue(selected == 0 ? "Specials" : "Season \(selected)").accessibilityIdentifier("catalog-season")
                     CollectionLayoutToggle(grid: $episodesGrid, collection: "catalog-episodes")
                 }
                 if controller.loading && controller.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
@@ -295,19 +298,19 @@ private struct CatalogSeasonPreview: View {
                     Group {
                         if hidden { DiaryIcon(name: "eye-off", size: 23).frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(.secondary).background(Color(webHex: "#242030")) }
                         else { Artwork(path: CatalogTools.image(episode.stillPath) ?? CatalogTools.image(details.backdropPath), title: details.name) }
-                    }.frame(width: episodesGrid ? nil : 96, height: episodesGrid ? 96 : 54).frame(maxWidth: episodesGrid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 10))
+                    }.frame(width: episodesGrid ? nil : 132, height: episodesGrid ? 96 : 74).frame(maxWidth: episodesGrid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(episode.number) · " + (hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name)).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                        Text("\(episode.number) · " + (hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name)).font(.system(size: 16, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 5) {
                             Text(episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true ? "Not watched" : "Not aired yet").foregroundStyle(.secondary)
                             if let score = episode.communityScore, score > 0 { Text("★ " + score.formatted(.number.precision(.fractionLength(1))) + " TMDb").foregroundStyle(.yellow) }
-                        }.font(.system(size: 11))
+                        }.font(.system(size: 13))
                     }
                     if !episodesGrid { Spacer(minLength: 0) }
                 }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).foregroundStyle(.primary)
             }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details").accessibilityValue(expanded.contains(episode.number) ? "Expanded" : "Collapsed").accessibilityIdentifier("catalog-episode-\(episode.number)")
             if expanded.contains(episode.number) { Text(controller.loading ? "Loading episode…" : episode.overview.isEmpty ? "No synopsis available yet." : episode.overview).font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(4) }
-        }.padding(.vertical, 10).frame(minHeight: 78)
+        }.padding(.vertical, 10).frame(minHeight: 94)
     }
 }
 

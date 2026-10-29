@@ -395,10 +395,13 @@ struct TitleDetailView: View {
                 ForEach(seasonNumbers, id: \.self) { number in Text(number == 0 ? "Specials" : "Season \(number)").tag(number) }
             }
         } label: {
+            // A pill like the filters; the chevron only shows when there is another season to pick.
             HStack(spacing: 8) {
-                Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 20, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
-                if seasonNumbers.count > 1 { DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(theme.accent) }
-            }.frame(minHeight: 44).contentShape(Rectangle())
+                Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                if seasonNumbers.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(theme.accent) }
+            }.padding(.horizontal, 16).frame(height: 40)
+                .background(.white.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.14)))
+                .frame(minHeight: 44).contentShape(Capsule())
         }.disabled(seasonNumbers.count < 2).accessibilityLabel("Season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)").accessibilityIdentifier("title-season")
     }
     private func episodeFilter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
@@ -427,7 +430,7 @@ struct TitleDetailView: View {
                 HStack(spacing: 12) {
                     Button { toggleEpisode(title, episode: episode) } label: {
                         HStack(spacing: 12) {
-                            episodeArtwork(episode).frame(width: 96, height: 54).clipShape(RoundedRectangle(cornerRadius: 10))
+                            episodeArtwork(episode).frame(width: 132, height: 74).clipShape(RoundedRectangle(cornerRadius: 12))
                             episodeCaption(episode, watched: isWatched, next: next)
                             Spacer(minLength: 0)
                         }
@@ -437,13 +440,14 @@ struct TitleDetailView: View {
                 }
             }
 
-        }.padding(.vertical, episodesGrid ? 0 : 8).frame(minHeight: 72).background(next && !episodesGrid ? theme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 18))
+        }.padding(.vertical, episodesGrid ? 0 : 10).padding(.horizontal, episodesGrid ? 0 : 4).frame(minHeight: 92).background(next && !episodesGrid ? theme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 18))
     }
     private func episodeCaption(_ episode: Episode, watched: Bool, next: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            // One fixed line: revealing a spoiler-hidden name never changes the row height.
-            Text(captionName(episode)).font(.system(size: 16, weight: .semibold))
-                .lineLimit(1).foregroundStyle(.white).multilineTextAlignment(.leading)
+            // Two lines beside the list thumbnail (one in the grid); the thumbnail sets the row height,
+            // so revealing a spoiler-hidden name never moves the rows.
+            Text(captionName(episode)).font(.system(size: 17, weight: .semibold))
+                .lineLimit(episodesGrid ? 1 : 2).foregroundStyle(.white).multilineTextAlignment(.leading)
                 .accessibilityIdentifier("episode-caption-\(episode.number)")
             HStack(spacing: 6) {
                 Text(watched ? "Watched" : next ? "Up next" : hasAired(episode) ? "Not watched" : "Not aired yet")
@@ -453,7 +457,7 @@ struct TitleDetailView: View {
                     HStack(spacing: 4) { Image(systemName: "star.fill").foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                         .accessibilityElement(children: .ignore).accessibilityLabel("TMDb " + score.formatted(.number.precision(.fractionLength(1))))
                 }
-            }.font(.system(size: 13)).lineLimit(1)
+            }.font(.system(size: 14)).lineLimit(1)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     /// "Episode 4" when that's all the name says, otherwise "4. The Ghost Bride".
@@ -506,9 +510,9 @@ struct TitleDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    episodeArtwork(episode).frame(height: 190).clipShape(RoundedRectangle(cornerRadius: 18))
-                    Text(episodeName(episode)).font(.title2.bold())
-                    Text(episodeSummary(episode)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    episodeArtwork(episode).frame(height: 200).clipShape(RoundedRectangle(cornerRadius: 18))
+                    Text(episodeName(episode)).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    Text(episodeSummary(episode)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(webHex: "#c5c0cf")).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("episode-summary-\(episode.number)")
                     if watched.contains(episode.id) {
                         Button {
@@ -521,14 +525,17 @@ struct TitleDetailView: View {
                                 await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: instant)
                                 await loadCard(title)
                             }
-                        } label: { Label("Log rewatch", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 44) }
-                            .buttonStyle(.glassProminent).disabled(store.writesBlocked || !hasAired(episode))
+                        } label: { Label("Log rewatch", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity) }
+                            .buttonStyle(.diaryPrimary).disabled(store.writesBlocked || !hasAired(episode))
                             .accessibilityIdentifier("episode-rewatch-\(episode.number)")
                     }
                 }.padding(20)
-            }.navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
+            }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
+                .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
-        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        // One tall glass size, like the community sheet: the whole synopsis fits, and it never
+        // switches to the opaque full-screen sheet, so the text colours never jump.
+        }.presentationDetents([.fraction(0.86)]).presentationDragIndicator(.visible)
     }
     private func prepareSeason(_ title: MediaTitle, force: Bool = false) async {
         if store.isPreview && !store.canMutate { return }
