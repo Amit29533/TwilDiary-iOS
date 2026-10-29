@@ -1023,8 +1023,15 @@ import UIKit
     private func tapStatusChip(_ app: XCUIApplication, _ key: String) {
         let chip = app.buttons["library-status-" + key]
         XCTAssertTrue(chip.waitForExistence(timeout: 5))
-        for _ in 0..<3 where !chip.isHittable { app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "library-status-")).allElementsBoundByIndex.first(where: { $0.isHittable })?.swipeLeft() }
-        XCTAssertTrue(chip.isHittable); chip.tap()
+        // Off-screen chips can't even report hittability; compare frames instead and
+        // drag the row from a point that is always on screen.
+        let row = app.buttons["library-status-all"]
+        for _ in 0..<3 where chip.frame.maxX > app.frame.width - 8 {
+            let y = row.frame.midY
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * 0.8, dy: y))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width * 0.2, dy: y)))
+        }
+        XCTAssertLessThanOrEqual(chip.frame.maxX, app.frame.width); chip.tap()
     }
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
