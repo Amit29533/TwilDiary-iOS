@@ -98,8 +98,7 @@ struct HomeView: View {
         return VStack(alignment: .leading, spacing: 0) {
             header(overArtwork: true)
             Spacer(minLength: 72)
-            Text("CONTINUE WATCHING").font(.system(size: 12, weight: .semibold)).tracking(1.6).foregroundStyle(.white.opacity(0.88))
-                .padding(.horizontal, 20).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
+            // "CONTINUE WATCHING" sits inside each page, right above its title.
             ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !showSearch && !scrolling).padding(.horizontal, 8)
         }.background(alignment: .top) {
             Artwork(path: current.backdrop ?? current.poster, title: current.name)

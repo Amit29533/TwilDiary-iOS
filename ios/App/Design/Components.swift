@@ -500,6 +500,8 @@ struct ProgressCard: View {
     private var compactContent: some View {
         VStack(alignment: .leading, spacing: 6) {
             Spacer(minLength: 0)
+            Text("CONTINUE WATCHING").font(.system(size: 13, weight: .medium)).tracking(1.2).foregroundStyle(.white.opacity(0.78))
+                .shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
             Button { openTitle() } label: {
                 Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.6).foregroundStyle(.white)
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
@@ -530,17 +532,21 @@ struct ProgressCard: View {
     /// Poster on the left; title, progress and the − / + controls stacked beside it.
     @ViewBuilder private var glanceContent: some View {
         if grid { gridContent } else {
+            // The text column sets the card's height and the poster fills it, top to bottom: no strip under it.
             HStack(alignment: .top, spacing: 14) {
-                Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 80, height: 108).clipShape(RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
+                Color.clear.frame(width: 86)
                 VStack(alignment: .leading, spacing: 4) {
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
                     subtitleLine.font(.system(size: 13)).lineLimit(2)
-                    Spacer(minLength: 6)
-                    progressBlock
+                    progressBlock.padding(.top, 8)
                     HStack { Spacer(minLength: 0); controls }.padding(.top, 2)
                 }.frame(maxWidth: .infinity, alignment: .topLeading)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
+            }.background(alignment: .leading) {
+                Button { openTitle() } label: {
+                    Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 86).frame(maxHeight: .infinity).clipShape(RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.plain)
             }.padding(12)
         }
     }

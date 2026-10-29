@@ -66,21 +66,23 @@ struct StatsView: View {
     private func journey(_ value: StatsOverview.Coverage, highlights: StatsHighlights) -> some View {
         let art = highlights.topTitleIDs.lazy.compactMap { store.title($0) }.first { $0.backdrop != nil }
         return VStack(alignment: .leading, spacing: 6) {
-            Text("YOUR JOURNEY").font(.system(size: 12, weight: .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.8))
-            Text("\(value.dated.formatted()) of \(value.total.formatted())").font(.system(size: 30, weight: .bold)).tracking(-0.8).monospacedDigit()
-            HStack(alignment: .firstTextBaseline) {
-                Text("watches have dates").font(.system(size: 20, weight: .semibold)).foregroundStyle(theme.accent)
+            Text("YOUR JOURNEY").font(.system(size: 12, weight: .semibold)).tracking(1.4).foregroundStyle(theme.accent.opacity(0.85))
+            Text("\(value.dated.formatted()) of \(value.total.formatted())").font(.system(size: 34, weight: .bold)).tracking(-0.9).monospacedDigit()
+            HStack(alignment: .center) {
+                Text("watches have dates").font(.system(size: 21, weight: .semibold)).foregroundStyle(theme.accent)
                 Spacer(minLength: 8)
-                Text("\(value.percent)%").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
+                Text("\(value.percent)%").font(.system(size: 14, weight: .semibold)).monospacedDigit().foregroundStyle(theme.accent)
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(theme.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
             }
-            Capsule().fill(.white.opacity(0.18)).frame(height: 8)
-                .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(value.percent) / 100) } }
+            // A glowing bar, so the share reads at a glance over the artwork.
+            Capsule().fill(.white.opacity(0.12)).frame(height: 8)
+                .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(value.percent) / 100).shadow(color: theme.accent.opacity(0.75), radius: 6) } }
                 .padding(.vertical, 6).accessibilityLabel("Watches with dates").accessibilityValue("\(value.percent)%")
-            Text(coverageCopy(value)).font(.system(size: 13)).foregroundStyle(.white.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
+            Text(coverageCopy(value)).font(.system(size: 14)).foregroundStyle(.white.opacity(0.82)).fixedSize(horizontal: false, vertical: true)
             if value.unknown > 0 {
                 NavigationLink(value: HistoryRoute(unknown: true)) {
                     HStack(spacing: 6) { Text("Review dates"); Image(systemName: "arrow.right") }.font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 16).frame(height: 40).background(.black.opacity(0.35), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.2)))
+                        .padding(.horizontal, 16).frame(height: 40).background(.black.opacity(0.3), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.3)))
                 }.buttonStyle(.plain).accessibilityLabel("Review dates").padding(.top, 8)
             }
         }.foregroundStyle(.white).padding(20).frame(maxWidth: .infinity, minHeight: 230, alignment: .bottomLeading)
@@ -88,17 +90,22 @@ struct StatsView: View {
                 ZStack {
                     LinearGradient(colors: [theme.accent.opacity(0.45), Color(webHex: "#16141f")], startPoint: .topTrailing, endPoint: .bottomLeading)
                     if let art { Artwork(path: art.backdrop, title: art.name) }
-                    LinearGradient(stops: [.init(color: .black.opacity(0.88), location: 0), .init(color: .black.opacity(0.55), location: 0.55), .init(color: .black.opacity(0.1), location: 1)], startPoint: .leading, endPoint: .trailing)
+                    // Dim the artwork evenly so every line stays readable; the left side a touch darker.
+                    Color.black.opacity(0.62)
+                    LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .leading, endPoint: .trailing)
                 }.allowsHitTesting(false).accessibilityHidden(true)
             }
             .clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12)))
             .accessibilityElement(children: .contain).accessibilityIdentifier("stats-journey")
     }
     private func coverageCopy(_ value: StatsOverview.Coverage) -> String {
-        var text = value.unknown > 0 ? "\(value.unknown) undated watches are left out of periods and trends." : value.total == 0 ? "Log a movie or episode to start your stats." : "All your watches have dates."
-        if value.missingRuntime > 0 { text += " \(value.missingRuntime) dated watches have no runtime and are left out of watch time." }
-        if value.future > 0 { text += " \(value.future) future-dated watches are left out until their watch day." }
-        return text
+        if value.total == 0 { return "Log a movie or episode to start your stats." }
+        // One plain sentence per fact, singular or plural as it should read; a lone sentence needs no full stop.
+        func count(_ n: Int, _ one: String, _ many: String) -> String { "\(n.formatted()) " + (n == 1 ? one : many) }
+        var sentences = [value.unknown > 0 ? count(value.unknown, "undated watch is", "undated watches are") + " left out of periods and trends" : "All your watches have dates"]
+        if value.missingRuntime > 0 { sentences.append(count(value.missingRuntime, "dated watch has no runtime and is", "dated watches have no runtime and are") + " left out of watch time") }
+        if value.future > 0 { sentences.append(count(value.future, "future-dated watch waits", "future-dated watches wait") + " for their watch day") }
+        return sentences.count == 1 ? sentences[0] : sentences.joined(separator: ". ") + "."
     }
 
     // MARK: Watch time
