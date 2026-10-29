@@ -223,7 +223,7 @@ struct LibraryView: View {
             Button { if on { selected.remove(title.id) } else if selected.count < CollectionRequest.limit { selected.insert(title.id) } } label: {
                 Group {
                     if row { LibraryListRow(title: title, selected: on) }
-                    else { LibraryPosterCard(title: title).overlay(alignment: .topTrailing) { checkCircle(on).padding(6) } }
+                    else { LibraryPosterCard(title: title, selecting: true).overlay(alignment: .topTrailing) { checkCircle(on).padding(6) } }
                 }
             }.buttonStyle(.plain).disabled(store.busy || (!on && selected.count >= CollectionRequest.limit))
                 .accessibilityIdentifier("select-title-" + title.id).accessibilityAddTraits(on ? .isSelected : [])
@@ -391,6 +391,8 @@ struct LibraryView: View {
 /// completed, queued), a thin progress bar for shows being watched, then name and "2024 · Movie".
 struct LibraryPosterCard: View {
     let title: MediaTitle
+    /// Select mode puts its check circle where the state icon sits.
+    var selecting = false
     @Environment(DiaryStore.self) private var store
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -402,7 +404,7 @@ struct LibraryPosterCard: View {
                         .padding(.horizontal, 5).padding(.vertical, 2).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 6)).padding(6) }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if let icon = stateIcon { DiaryIcon(name: icon, size: 14).foregroundStyle(.white).frame(width: 24, height: 24).background(.black.opacity(0.6), in: Circle()).padding(6) }
+                    if !selecting, let icon = stateIcon { DiaryIcon(name: icon, size: 14).foregroundStyle(.white).frame(width: 24, height: 24).background(.black.opacity(0.6), in: Circle()).padding(6) }
                 }
                 .overlay(alignment: .bottom) {
                     if title.isSeries && title.status == "watching" && progress > 0 {
