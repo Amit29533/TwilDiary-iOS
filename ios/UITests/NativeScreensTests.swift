@@ -99,7 +99,7 @@ import UIKit
         app.tabBars.buttons["Stats"].tap()
         XCTAssertTrue(app.staticTexts["Watch time"].waitForExistence(timeout: 5)); capture("Stats")
         app.tabBars.buttons["More"].tap()
-        XCTAssertTrue(app.staticTexts["Appearance & region"].waitForExistence(timeout: 5)); capture("More")
+        XCTAssertTrue(app.staticTexts["Appearance"].waitForExistence(timeout: 5)); capture("More")
     }
     func testRootContentSwipesVisitEveryTabWithoutWrappingAndKeepCardGestures() {
         let app = launch(mutations: true)
@@ -839,7 +839,7 @@ import UIKit
         XCTAssertTrue(path.exists); capture("Confirmed scanned location")
         let filesDone = app.navigationBars.buttons.element(boundBy: 0)
         XCTAssertTrue(filesDone.isHittable); filesDone.tap()
-        XCTAssertTrue(app.staticTexts["Appearance & region"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Appearance"].waitForExistence(timeout: 5))
     }
     func testStatsMoreAndFilesOfferInlineSearchWithoutChangingTheActiveTab() {
         let app = launch()
@@ -857,7 +857,7 @@ import UIKit
         XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText("Frieren\n")
         XCTAssertTrue(app.buttons["search-library-frieren"].waitForExistence(timeout: 5)); capture("Inline search Files")
         app.buttons["Close search"].tap(); app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.staticTexts["Appearance & region"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Appearance"].waitForExistence(timeout: 5))
     }
     func testGlanceSwipeLogsExactlyOneWatchAndUndoPreservesTheCardPosition() {
         let app = launch(mutations: true)
@@ -1396,7 +1396,7 @@ import UIKit
         let library = app.tabBars.buttons["Library"], more = app.tabBars.buttons["More"]
         XCTAssertTrue(library.waitForExistence(timeout: 5))
         library.press(forDuration: 0.3, thenDragTo: more)
-        XCTAssertTrue(more.isSelected); XCTAssertTrue(app.staticTexts["Appearance & region"].exists)
+        XCTAssertTrue(more.isSelected); XCTAssertTrue(app.staticTexts["Appearance"].exists)
         capture("Glass navigation scrub More")
         more.press(forDuration: 0.3, thenDragTo: app.tabBars.buttons["Home"])
         XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
