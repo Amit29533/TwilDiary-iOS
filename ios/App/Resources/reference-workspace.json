@@ -23,6 +23,7 @@
         "Comfort watches"
       ],
       "deletedAt": null,
+      "createdAt": "2026-09-02T18:00:00.000Z",
       "version": 1,
       "seasons": [],
       "tmdbId": null
@@ -48,6 +49,7 @@
       "notes": "",
       "tags": [],
       "deletedAt": null,
+      "createdAt": "2026-10-19T18:00:00.000Z",
       "version": 1,
       "seasons": [
         {
@@ -83,6 +85,7 @@
       "notes": "",
       "tags": [],
       "deletedAt": null,
+      "createdAt": "2026-10-05T18:00:00.000Z",
       "version": 1,
       "seasons": [
         {
@@ -118,6 +121,7 @@
       "notes": "",
       "tags": [],
       "deletedAt": null,
+      "createdAt": "2026-10-12T18:00:00.000Z",
       "version": 1,
       "seasons": [
         {
@@ -155,6 +159,7 @@
         "Weekend"
       ],
       "deletedAt": null,
+      "createdAt": "2026-10-24T18:00:00.000Z",
       "version": 1,
       "seasons": [],
       "tmdbId": null
@@ -180,6 +185,7 @@
       "notes": "",
       "tags": [],
       "deletedAt": null,
+      "createdAt": "2026-08-16T18:00:00.000Z",
       "version": 1,
       "seasons": [
         {

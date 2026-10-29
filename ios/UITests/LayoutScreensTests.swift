@@ -21,13 +21,16 @@ import XCTest
         XCTAssertEqual(titles[0].frame.width, (app.frame.width - 48) / 3, accuracy: 1)
         XCTAssertEqual(titles[1].frame.minX - titles[0].frame.maxX, 10, accuracy: 1)
         XCTAssertEqual(titles[2].frame.minX - titles[1].frame.maxX, 10, accuracy: 1)
-        let order = app.buttons["library-order"], layout = app.buttons["library-layout"], genres = app.buttons["library-genres"]
-        XCTAssertEqual(order.frame.width, app.frame.width < 359 ? 150 : 185, accuracy: 1)
-        XCTAssertEqual(order.frame.height, 46, accuracy: 1)
-        XCTAssertEqual(layout.frame.width, 42, accuracy: 1); XCTAssertEqual(layout.frame.height, 44, accuracy: 1)
-        XCTAssertEqual(genres.frame.width, 36, accuracy: 1); XCTAssertEqual(genres.frame.height, 44, accuracy: 1)
+        // Sort on the left, then the filter and layout buttons as 44 pt circles inside the margins.
+        let order = app.buttons["library-order"], filters = app.buttons["library-filters"], layout = app.buttons["library-layout"]
+        XCTAssertGreaterThanOrEqual(order.frame.height, 44)
+        XCTAssertEqual(filters.frame.width, 44, accuracy: 1); XCTAssertEqual(filters.frame.height, 44, accuracy: 1)
+        XCTAssertEqual(layout.frame.width, 44, accuracy: 1); XCTAssertLessThanOrEqual(layout.frame.maxX, app.frame.width - 10)
+        XCTAssertLessThan(order.frame.maxX, filters.frame.minX); XCTAssertLessThan(filters.frame.maxX, layout.frame.minX)
         XCTAssertEqual(app.buttons["category-all"].frame.minX, 14, accuracy: 1)
-        XCTAssertEqual(titles[0].frame.minY - app.buttons["random-pick-logo"].frame.minY, 211, accuracy: 2)
+        let chip = app.buttons["library-status-all"]
+        XCTAssertGreaterThanOrEqual(chip.frame.minX, 10); XCTAssertLessThan(chip.frame.maxY, order.frame.minY + 1)
+        XCTAssertLessThan(order.frame.maxY, titles[0].frame.minY)
         capture("Library", app: app)
         titles[1].tap()
         let track = app.sliders["episode-progress"]

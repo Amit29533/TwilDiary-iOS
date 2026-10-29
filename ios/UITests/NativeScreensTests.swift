@@ -435,28 +435,37 @@ import UIKit
         app.buttons["Close search"].tap(); app.buttons["List layout"].tap(); capture("Library list")
         app.buttons["Genre sections"].tap(); capture("Library genres")
     }
-    func testLibraryStatusGenreAndDriveComposeThenClearTogether() {
+    func testLibraryStatusChipsAndFilterSheetComposeThenClearTogether() {
         let app = launch(); app.tabBars.buttons["Library"].tap()
-        app.buttons["library-status"].tap(); app.buttons["Watching"].tap()
-        app.buttons["library-genre"].tap(); app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Romance ('")).firstMatch.tap()
-        app.buttons["library-disk"].tap(); app.buttons["E: Toshiba (4TB)"].tap()
+        let watching = app.buttons["library-status-watching"]
+        XCTAssertTrue(watching.waitForExistence(timeout: 5)); XCTAssertEqual(watching.value as? String, "4 titles"); watching.tap()
+        app.buttons["library-filters"].tap()
+        let romance = app.buttons["filter-genre-Romance"]
+        XCTAssertTrue(romance.waitForExistence(timeout: 5)); romance.tap()
+        app.buttons["E: Toshiba (4TB)"].tap()
+        XCTAssertTrue(app.buttons["filter-show"].label.hasPrefix("Show 1 title")); capture("Library filter sheet")
+        app.buttons["filter-show"].tap()
         XCTAssertTrue(app.buttons["title-night"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["title-again"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
-        XCTAssertTrue(app.staticTexts["1 title"].exists); capture("Library composed filters")
+        XCTAssertEqual(app.buttons["library-filters"].value as? String, "2 active"); capture("Library composed filters")
+        app.buttons["library-status-dropped"].tap()
+        XCTAssertTrue(app.staticTexts["No titles match"].waitForExistence(timeout: 5)); capture("Library filters match nothing")
         app.buttons["Clear filters"].tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["title-frieren"].exists)
-        XCTAssertTrue(app.buttons["List layout"].exists); XCTAssertFalse(app.buttons["Grid layout"].exists)
+        XCTAssertEqual(app.buttons["library-filters"].value as? String, "None")
+        XCTAssertEqual(app.buttons["library-layout"].value as? String, "Grid"); XCTAssertTrue(app.buttons["List layout"].exists)
         capture("Library filters cleared")
     }
     func testT31LibraryLayoutAndSortSurviveAProcessRelaunch() {
         let app = launch(); app.tabBars.buttons["Library"].tap()
         app.buttons["List layout"].tap()
         app.buttons["library-order"].tap(); app.buttons["Highest TMDB rating"].tap()
-        XCTAssertTrue(app.buttons["Grid layout"].exists)
+        XCTAssertEqual(app.buttons["library-layout"].value as? String, "List")
         app.launchArguments.append("--ui-keep-library-preferences")
         app.terminate(); app.launch()
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 15)); app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.buttons["Grid layout"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["library-order"].label.contains("Highest TMDB rating"))
+        XCTAssertTrue(app.buttons["library-layout"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["library-layout"].value as? String, "List")
+        XCTAssertEqual(app.buttons["library-order"].value as? String, "Highest TMDB rating")
         capture("Library persisted list layout and typed rating order after relaunch")
     }
     func testT35WatchedEpisodeOffersRewatchAndUndoKeepsItsOriginalWatch() {
@@ -757,28 +766,27 @@ import UIKit
         app.buttons["Select"].tap()
         let other = app.buttons["select-title-after-rain"]
         XCTAssertTrue(other.waitForExistence(timeout: 5)); other.tap()
-        XCTAssertTrue(app.staticTexts["2 selected"].exists)
-        app.buttons["collection-action"].tap(); app.buttons["Queue"].tap()
-        app.buttons["Apply selection action"].tap()
+        XCTAssertTrue(app.staticTexts["2 selected"].exists); capture("Library select mode")
+        app.buttons["selection-queue"].tap()
         let confirm = app.buttons["confirm-collection"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); capture("Bulk Queue review"); confirm.tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
         // Home no longer has a Queue shortcut (owner's design); Library's status filter is the way in.
-        app.buttons["library-status"].tap(); app.buttons["Queue"].tap()
+        app.buttons["library-status-queue"].tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["title-after-rain"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
         app.buttons["title-again"].press(forDuration: 1); app.buttons["Move to Trash"].tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
+        // Trash is reached from the bottom of the filter sheet.
         let trash = app.buttons["Open Trash"]
-        if !trash.isHittable { app.scrollViews.element(boundBy: 0).swipeLeft() }
-        trash.tap()
+        app.buttons["library-filters"].tap(); XCTAssertTrue(trash.waitForExistence(timeout: 5)); trash.tap()
         XCTAssertTrue(app.staticTexts["In Trash"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["Trash"].exists)
         let trashLayout = app.buttons["trash-layout"]
         XCTAssertTrue(trashLayout.exists); trashLayout.tap()
         XCTAssertEqual(trashLayout.value as? String, "List"); capture("Dedicated Trash list")
         trashLayout.tap(); XCTAssertEqual(trashLayout.value as? String, "Grid")
-        XCTAssertFalse(app.buttons["library-status"].exists, "Trash is an independent recovery page, not an archived Library filter")
+        XCTAssertFalse(app.buttons["library-status-all"].exists, "Trash is an independent recovery page, not an archived Library filter")
         app.buttons["empty-trash"].tap(); XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5)); app.buttons["Cancel"].tap()
         capture("Trash populated")
         let restore = app.buttons["trash-restore-again"]
@@ -791,7 +799,7 @@ import UIKit
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
         app.buttons["title-again"].press(forDuration: 1); app.buttons["Move to Trash"].tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
-        if !trash.isHittable { app.scrollViews.element(boundBy: 0).swipeLeft() }
+        app.buttons["library-filters"].tap(); XCTAssertTrue(trash.waitForExistence(timeout: 5))
         trash.tap(); app.buttons["Delete permanently"].tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(app.staticTexts["Trash is clear"].waitForExistence(timeout: 5)); capture("Trash after permanent delete")

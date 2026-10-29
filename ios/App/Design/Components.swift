@@ -89,6 +89,8 @@ struct PageHeader: View {
     var circledSearch = false
     /// Home draws the header over the Continue watching backdrop.
     var overArtwork = false
+    /// Library's Select button, beside search.
+    var onSelect: (() -> Void)? = nil
     var height: CGFloat = 56
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -115,6 +117,10 @@ struct PageHeader: View {
             } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
             if let count { Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1) }
             Spacer(minLength: 0)
+            if let onSelect {
+                Button(action: onSelect) { DiaryIcon(name: "circle-check", size: 21).frame(width: 44, height: 44).background(.white.opacity(0.08), in: Circle()) }
+                    .buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Select titles").accessibilityIdentifier("library-select")
+            }
             if let onSearch { Button(action: onSearch) { DiaryIcon(name: "search", size: 22).frame(width: 44, height: 44).background(overArtwork ? Color.black.opacity(0.45) : .white.opacity(circledSearch ? 0.08 : 0), in: Circle()) }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel(name == "Library" ? "Search library" : "Search").accessibilityIdentifier("search-" + name.lowercased()) }
         }.frame(height: height).padding(.horizontal, 14).background {
             if theme == .glass || overArtwork { Color.clear }

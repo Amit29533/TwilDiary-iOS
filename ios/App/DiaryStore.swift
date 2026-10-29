@@ -38,7 +38,8 @@ import TwilDiaryCore
     @ObservationIgnored private var titleScopes: [String: Workspace] = [:]
     @ObservationIgnored private var cachedHistory: (query: HistoryQuery, zone: String, value: [HistoryEntry])?
     @ObservationIgnored private var cachedActiveEventCount: Int?
-    @ObservationIgnored private var cachedLibrary: (query: LibraryQuery, source: PublicRatingSource, value: [MediaTitle])?
+    /// Library asks for its list, its status counts and its genre counts on every update; keep a few.
+    @ObservationIgnored private var cachedLibrary: [(query: LibraryQuery, source: PublicRatingSource, value: [MediaTitle])] = []
     @ObservationIgnored private var catalogLookup: (active: [String: Int], tmdb: [String: Int])?
     @ObservationIgnored private var cachedPersonSections: (person: Int, credits: Int, value: PersonSections)?
     private var titleIndex: [String: MediaTitle] = [:]
@@ -377,7 +378,7 @@ import TwilDiaryCore
         apply(built.index, changed: built.changed)
     }
     private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
-        cachedHome = nil; cachedStats = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = nil; catalogLookup = nil; cachedPersonSections = nil
+        cachedHome = nil; cachedStats = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; catalogLookup = nil; cachedPersonSections = nil
         titleIndex = index.titles
         progressIndex = index.progress
         seasonProgressIndex = index.seasonProgress
@@ -425,9 +426,9 @@ import TwilDiaryCore
     func libraryTitles(_ query: LibraryQuery, source: PublicRatingSource) -> [MediaTitle] {
         let snapshot = workspace
         let cacheable = query.sort != .score || source == .tmdb
-        if cacheable, let saved = cachedLibrary, saved.query == query, saved.source == source { return saved.value }
+        if cacheable, let saved = cachedLibrary.first(where: { $0.query == query && $0.source == source }) { return saved.value }
         let value = query.titles(in: snapshot) { self.publicScore($0, source: source) }
-        if cacheable { cachedLibrary = (query, source, value) }
+        if cacheable { cachedLibrary = [(query, source, value)] + cachedLibrary.prefix(3) }
         return value
     }
     /// Same answer as `CatalogTools.libraryIdentity` (the first active title, in snapshot

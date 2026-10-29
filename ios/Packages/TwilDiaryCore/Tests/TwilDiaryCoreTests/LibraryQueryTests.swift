@@ -32,3 +32,34 @@ import TwilDiaryTestSupport
     value.archived = true
     #expect(value.titles(in: workspace).isEmpty)
 }
+
+private func adding(_ dates: [String: String], to workspace: Workspace) throws -> Workspace {
+    var value = try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+    value["titles"] = (value["titles"] as! [[String: Any]]).map { title in
+        var copy = title; if let date = dates[title["id"] as! String] { copy["createdAt"] = date }; return copy
+    }
+    return try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: value))
+}
+
+@Test func recentlyAddedPutsTheNewestTitlesFirstAndUndatedOnesLastByName() throws {
+    let sample = SampleWorkspace.make()
+    let ids = sample.activeTitles.map(\.id)
+    #expect(ids.count >= 3)
+    let workspace = try adding([ids[0]: "2026-10-01T10:00:00.000Z", ids[1]: "2026-10-20T10:00:00.000Z"], to: sample)
+    var value = LibraryQuery(); value.sort = .added
+    let sorted = value.titles(in: workspace).map(\.id)
+    #expect(Array(sorted.prefix(2)) == [ids[1], ids[0]])
+    let undated = workspace.activeTitles.filter { $0.createdAt == nil }.sorted { LibraryQuery.nameBefore($0.name, $1.name) }.map(\.id)
+    #expect(Array(sorted.dropFirst(2)) == undated)
+}
+
+@Test func severalGenresMatchTitlesInAnyOfThem() throws {
+    let workspace = SampleWorkspace.make()
+    let genres = Array(Set(workspace.activeTitles.flatMap(\.genres))).sorted().prefix(2)
+    try #require(genres.count == 2)
+    var value = LibraryQuery(); value.genres = Set(genres)
+    let expected = workspace.activeTitles.filter { $0.genres.contains(genres[genres.startIndex]) || $0.genres.contains(genres[genres.startIndex + 1]) }.map(\.id)
+    #expect(Set(value.titles(in: workspace).map(\.id)) == Set(expected))
+    value.genres = []
+    #expect(value.titles(in: workspace).count == workspace.activeTitles.count)
+}

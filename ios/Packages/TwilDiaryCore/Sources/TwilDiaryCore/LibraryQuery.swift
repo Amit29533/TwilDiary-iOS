@@ -1,9 +1,11 @@
 import Foundation
 
 public struct LibraryQuery: Equatable, Sendable {
-    public enum Sort: String, CaseIterable, Sendable { case library, title, year, score }
+    public enum Sort: String, CaseIterable, Sendable { case added, library, title, year, score }
     public var query = "", category = "all", status = "all", disk = "all", availability = "all", genre = "", tag = ""
     public var queued = false, favorites = false, archived = false
+    /// Titles in any of these genres (the filter sheet's chips), on top of `genre`.
+    public var genres: Set<String> = []
     public var sort = Sort.library
     public init() { }
     public func titles(in workspace: Workspace, ratingFor: (MediaTitle) -> Double? = { $0.communityScore }) -> [MediaTitle] {
@@ -24,11 +26,14 @@ public struct LibraryQuery: Equatable, Sendable {
             return (title.deletedAt != nil) == archived && (needle.isEmpty || title.name.precomposedStringWithCompatibilityMapping.lowercased().contains(needle))
                 && categoryMatches && (status == "all" || title.status == status) && (!queued || title.queued == true)
                 && (!favorites || title.favorite) && (genre.isEmpty || title.genres.contains(genre))
+                && (genres.isEmpty || title.genres.contains { genres.contains($0) })
                 && (tag.isEmpty || title.tags?.contains(tag) == true) && diskMatches
                 && (availability == "all" || confirmed == (availability == "present"))
         }
         guard sort != .library else { return selected }
         return selected.sorted { left, right in
+            // Newest first; titles without a date (older snapshots) go last, by name.
+            if sort == .added, (left.createdAt ?? "") != (right.createdAt ?? "") { return (left.createdAt ?? "") > (right.createdAt ?? "") }
             if sort == .year, (left.year ?? 0) != (right.year ?? 0) { return (left.year ?? 0) > (right.year ?? 0) }
             if sort == .score {
                 let a = ratingFor(left) ?? -1, b = ratingFor(right) ?? -1
