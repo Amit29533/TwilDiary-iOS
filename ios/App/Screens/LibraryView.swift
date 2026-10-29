@@ -39,14 +39,13 @@ struct LibraryView: View {
     var body: some View {
         VStack(spacing: 0) {
             if selecting { selectionHeader }
-            else { PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSearch: { showSearch.toggle() }, onSelect: { selecting = true; selected = [] }, height: 54) }
             if showSearch && !selecting {
-                ScrollView { CatalogSearchView(onClose: { showSearch = false }).padding(.top, 2) }
+                ScrollView { libraryHeader(.title); CatalogSearchView(onClose: { showSearch = false }).padding(.top, 2) }
             } else {
-                CategoryPicker(selection: Binding(get: { category }, set: { category = $0 }))
                 collectionContent
             }
-        }.background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
+        }.overlay(alignment: .top) { if !selecting { libraryHeader(.buttons) } }
+        .background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
             .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }
@@ -131,9 +130,15 @@ struct LibraryView: View {
 
     // MARK: Content
 
+    /// The title row scrolls with the collection; its Select and Search stay pinned above it.
+    private func libraryHeader(_ part: PageHeader.Part) -> some View {
+        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSearch: { showSearch.toggle() }, onSelect: { selecting = true; selected = [] }, height: 54, part: part)
+    }
     private var collectionContent: some View {
         ScrollView {
             VStack(spacing: 0) {
+                if !selecting { libraryHeader(.title) }
+                CategoryPicker(selection: Binding(get: { category }, set: { category = $0 }))
                 statusChips
                 sortRow
                 if ratingSource == .trakt {
@@ -477,14 +482,17 @@ struct GlanceView: View {
         let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
         let titles = watching.filter { category.includes($0) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
         let ordered = order(titles)
-        VStack(spacing: 0) {
-            PageHeader(name: "Glance", count: "\(watching.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } }, circledSearch: true)
-            if showSearch { SearchField(placeholder: "Find a current watch…", text: $search, label: "Find a current watch", autoFocus: true).padding(.horizontal, 14).padding(.bottom, 10) }
-            CategoryPicker(selection: $category)
-            SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
-                CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
-            }
-            ScrollView {
+        // The title row, search and filters scroll with the cards; the logo and search stay pinned.
+        let header = { (part: PageHeader.Part) in PageHeader(name: "Glance", count: "\(watching.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } }, part: part) }
+        ScrollView {
+                VStack(spacing: 0) {
+                    header(.title)
+                    if showSearch { SearchField(placeholder: "Find a current watch…", text: $search, label: "Find a current watch", autoFocus: true).padding(.horizontal, 14).padding(.bottom, 10) }
+                    CategoryPicker(selection: $category)
+                    SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
+                        CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
+                    }
+                }
                 VStack(spacing: 8) {
                     // The title you logged last (or first in the chosen order) gets the large card.
                     if let first = ordered.first { ProgressCard(title: first, hero: true) }
@@ -492,7 +500,7 @@ struct GlanceView: View {
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category or clear your search.").padding(.horizontal, 14).padding(.top, 20) }
             }.accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
-        }
+            .overlay(alignment: .top) { header(.buttons) }
     }
     private var sort: Binding<GlanceSort> {
         Binding(get: { GlanceSort(rawValue: sortRaw) ?? .recentlyUpdated }, set: { sortRaw = $0.rawValue })

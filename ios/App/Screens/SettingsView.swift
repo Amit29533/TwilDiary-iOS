@@ -16,9 +16,9 @@ struct SettingsView: View {
     @State private var exportDocument = DiaryJSONDocument(data: Data())
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(name: "Settings", onSearch: { showSearch.toggle() })
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
+                    PageHeader(name: "Settings", onSearch: { showSearch.toggle() }, part: .title).padding(.horizontal, -14).padding(.bottom, -14)
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
                     diaryCard
                     if let warning = store.cacheWarning {
@@ -87,7 +87,8 @@ struct SettingsView: View {
                     }.frame(maxWidth: .infinity)
                 }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
-        }.confirmationDialog("Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
+        }.overlay(alignment: .top) { PageHeader(name: "Settings", onSearch: { showSearch.toggle() }, part: .buttons) }
+        .confirmationDialog("Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
             .task(id: store.sessionRevision) { summary = TraktController(service: makeTraktService(store: store)); await summary?.refresh() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }

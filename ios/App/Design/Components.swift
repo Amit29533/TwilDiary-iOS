@@ -152,51 +152,72 @@ struct BrandMark: Shape {
     }
 }
 
+/// A tab page's header. Tab pages split it: `.buttons` stays pinned over the page as frosted
+/// glass, and `.title` is the scroll's first row, sliding up beneath them. `.full` draws both.
 struct PageHeader: View {
+    enum Part { case full, title, buttons }
     let name: String
     var count: String? = nil
     var onSearch: (() -> Void)? = nil
-    /// The owner's designs put the search icon in a dark circle.
+    /// Kept for callers; every search button is now a glass circle.
     var circledSearch = false
     /// Home draws the header over the Continue watching backdrop.
     var overArtwork = false
     /// Library's Select button, beside search.
     var onSelect: (() -> Void)? = nil
     var height: CGFloat = 56
+    var part: Part = .full
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var taps: [Double] = []
     @State private var angle = 0.0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        HStack(spacing: 9) {
-            Button {
-                let gesture = RandomPick.tap(previous: taps, now: ProcessInfo.processInfo.systemUptime)
-                taps = gesture.taps
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
-                if gesture.triggered { router.presentRandomPick() }
-            } label: {
-                BrandMark().fill(theme.accent).frame(width: 24, height: 24).rotationEffect(.degrees(angle))
-                    .frame(width: 44, height: 44).background(theme.accent.opacity(0.07), in: Circle())
-                    .overlay(Circle().strokeBorder(theme.accent.opacity(0.3)))
-            }.buttonStyle(.plain).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
-            if name == "TwilDiary" {
-                HStack(spacing: 0) {
-                    Text("Twil").foregroundStyle(Color(webHex: "#f3f0f7"))
-                    Text("Diary").foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
-                }.font(.system(size: 26, weight: .bold)).tracking(-1.25)
-            } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
-            if let count { Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1) }
+        HStack(spacing: 10) {
+            if part == .title { Color.clear.frame(width: 44, height: 44) } else { logo }
+            if part != .buttons { title }
             Spacer(minLength: 0)
-            if let onSelect {
-                Button(action: onSelect) { DiaryIcon(name: "circle-check", size: 21).frame(width: 44, height: 44).background(.white.opacity(0.08), in: Circle()) }
-                    .buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Select titles").accessibilityIdentifier("library-select")
+            if part == .title {
+                // Keeps the title clear of the pinned buttons above it.
+                Color.clear.frame(width: CGFloat((onSelect == nil ? 0 : 1) + (onSearch == nil ? 0 : 1)) * 54, height: 1)
+            } else {
+                if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
+                if let onSearch { glassButton("search", label: name == "Library" ? "Search library" : "Search", id: "search-" + name.lowercased(), action: onSearch) }
             }
-            if let onSearch { Button(action: onSearch) { DiaryIcon(name: "search", size: 22).frame(width: 44, height: 44).background(overArtwork ? Color.black.opacity(0.45) : .white.opacity(circledSearch ? 0.08 : 0), in: Circle()) }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel(name == "Library" ? "Search library" : "Search").accessibilityIdentifier("search-" + name.lowercased()) }
-        }.frame(height: height).padding(.horizontal, 14).background {
-            if theme == .glass || overArtwork { Color.clear }
-            else { Color(webHex: ["Library", "Trash"].contains(name) ? "#0e0d13" : "#050507") }
-        }
+        }.frame(height: height).padding(.horizontal, 14)
+            .background { if part == .full && theme != .glass && !overArtwork { Color(webHex: ["Library", "Trash"].contains(name) ? "#0e0d13" : "#050507") } }
+            .background(alignment: .top) { if part == .buttons { statusScrim } }
+    }
+    private var logo: some View {
+        Button {
+            let gesture = RandomPick.tap(previous: taps, now: ProcessInfo.processInfo.systemUptime)
+            taps = gesture.taps
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
+            if gesture.triggered { router.presentRandomPick() }
+        } label: {
+            BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
+                .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
+        }.buttonStyle(.plain).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
+    }
+    @ViewBuilder private var title: some View {
+        if name == "TwilDiary" {
+            HStack(spacing: 0) {
+                Text("Twil").foregroundStyle(Color(webHex: "#f3f0f7"))
+                Text("Diary").foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
+            }.font(.system(size: 26, weight: .bold)).tracking(-1.25)
+        } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
+        if let count { Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1) }
+    }
+    private func glassButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            DiaryIcon(name: icon, size: 20).foregroundStyle(Color(webHex: "#e6e2ec")).frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: Circle())
+        }.buttonStyle(.plain).accessibilityLabel(label).accessibilityIdentifier(id)
+    }
+    /// Under the status bar, so rows scrolling up behind the pinned buttons never clash with it.
+    private var statusScrim: some View {
+        LinearGradient(colors: [.black.opacity(0.7), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+            .frame(height: 74).offset(y: -54).ignoresSafeArea(edges: .top).allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 

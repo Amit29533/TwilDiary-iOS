@@ -73,7 +73,8 @@ struct HomeView: View {
                     } }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)
             }
-        }.onScrollPhaseChange { _, phase in
+        }.overlay(alignment: .top) { PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() }, overArtwork: true, part: .buttons) }
+        .onScrollPhaseChange { _, phase in
             // The automatic carousel step must not animate mid-fling under the finger.
             let active = phase != .idle
             if scrolling != active { scrolling = active }
@@ -88,7 +89,8 @@ struct HomeView: View {
             }
         }
     }
-    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() }, circledSearch: true, overArtwork: overArtwork) }
+    /// The scrolling title row; the logo and search stay pinned above it (see body).
+    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() }, overArtwork: overArtwork, part: .title) }
     /// The selected title's backdrop fills the top of the page, under the status bar and header,
     /// and fades into the page so the text below it stays readable.
     private func continueSection(_ titles: [MediaTitle]) -> some View {

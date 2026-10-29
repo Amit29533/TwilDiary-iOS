@@ -21,9 +21,9 @@ struct StatsView: View {
         let data = store.statsProjection(period: period, year: year, at: clock)
         let highlights = StatsHighlights(workspace: store.workspace, trend: data.trend, timeZone: DiaryDate.calendar().timeZone)
         VStack(spacing: 0) {
-            PageHeader(name: "Stats", onSearch: { showSearch.toggle() })
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    PageHeader(name: "Stats", onSearch: { showSearch.toggle() }, part: .title).padding(.horizontal, -16).padding(.bottom, -6)
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
                     journey(data.coverage, highlights: highlights)
                     trend(data, highlights: highlights)
@@ -41,7 +41,8 @@ struct StatsView: View {
                     }.buttonStyle(.plain).accessibilityIdentifier("stats-history")
                 }.padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); clock = store.now }
-        }.onChange(of: router.statsRevision) { _, _ in applyShortcut() }
+        }.overlay(alignment: .top) { PageHeader(name: "Stats", onSearch: { showSearch.toggle() }, part: .buttons) }
+        .onChange(of: router.statsRevision) { _, _ in applyShortcut() }
             .onAppear { clock = store.now; applyShortcut() }
             .onChange(of: period) { _, _ in selectedBucket = nil }
             .onChange(of: year) { _, _ in selectedBucket = nil }
