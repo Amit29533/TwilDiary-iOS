@@ -43,7 +43,7 @@ import XCTest
         XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText("Frieren\n")
         XCTAssertTrue(app.buttons["search-library-frieren"].exists); XCTAssertFalse(app.buttons["search-library-again"].exists)
         capture("Search", app: app)
-        app.tabBars.buttons["Stats"].tap(); XCTAssertTrue(app.buttons["stats-calendar"].waitForExistence(timeout: 5)); capture("Stats", app: app)
+        app.tabBars.buttons["Stats"].tap(); XCTAssertTrue(app.buttons["30D"].waitForExistence(timeout: 5)); capture("Stats", app: app)
         for tab in ["home", "library", "glance", "stats", "more"] {
             let button = app.tabBars.buttons[tab.capitalized]
             XCTAssertTrue(button.isHittable); XCTAssertGreaterThanOrEqual(button.frame.minX, 0); XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.width)

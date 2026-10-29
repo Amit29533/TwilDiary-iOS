@@ -271,7 +271,7 @@ import UIKit
         XCTAssertTrue(app.staticTexts["Nothing here just yet"].waitForExistence(timeout: 5)); capture("Empty Library")
         app.tabBars.buttons["Stats"].tap()
         XCTAssertTrue(app.staticTexts["Log a movie or episode to start your stats."].waitForExistence(timeout: 5)); capture("Empty Stats")
-        XCTAssertTrue(app.buttons["stats-calendar"].isHittable)
+        XCTAssertTrue(app.buttons["7D"].isHittable)
     }
 
     func testUpcomingEpisodeOpensItsLinkedSeasonAndEpisodesWithoutChangingOrdinaryTitleNavigation() {
@@ -766,7 +766,7 @@ import UIKit
     }
     func testStatsCalendarRangesEmptyBucketsAndUndatedHistory() {
         let app = launch(); app.tabBars.buttons["Stats"].tap()
-        XCTAssertTrue(app.buttons["stats-calendar"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["30D"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["30D"].isSelected, "Fresh Stats starts with Today, as on the web")
         app.buttons["30D"].tap(); XCTAssertTrue(app.buttons["30D"].isSelected)
         let firstDay = app.buttons["stats-bucket-0"]
@@ -776,9 +776,8 @@ import UIKit
         XCTAssertTrue(app.staticTexts["No watches logged in this period."].exists)
         capture("Stats empty day")
         app.buttons["Close"].tap(); app.swipeDown()
-        app.buttons["stats-calendar"].tap()
-        let week = app.buttons["This Week"]
-        XCTAssertTrue(week.waitForExistence(timeout: 5)); week.tap()
+        // One range control now: Today · 7D · 30D · 90D · 1Y · All.
+        app.buttons["7D"].tap()
         XCTAssertTrue(app.buttons["7D"].isSelected)
         XCTAssertFalse(app.buttons["30D"].isSelected)
         capture("Stats week")
