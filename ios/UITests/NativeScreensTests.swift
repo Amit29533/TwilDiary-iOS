@@ -447,7 +447,7 @@ import UIKit
         app.buttons["filter-show"].tap()
         XCTAssertTrue(app.buttons["title-night"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["title-again"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
         XCTAssertEqual(app.buttons["library-filters"].value as? String, "2 active"); capture("Library composed filters")
-        app.buttons["library-status-dropped"].tap()
+        tapStatusChip(app, "dropped")
         XCTAssertTrue(app.staticTexts["No titles match"].waitForExistence(timeout: 5)); capture("Library filters match nothing")
         app.buttons["Clear filters"].tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["title-frieren"].exists)
@@ -772,7 +772,7 @@ import UIKit
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); capture("Bulk Queue review"); confirm.tap()
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
         // Home no longer has a Queue shortcut (owner's design); Library's status filter is the way in.
-        app.buttons["library-status-queue"].tap()
+        tapStatusChip(app, "queue")
         XCTAssertTrue(app.buttons["title-again"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["title-after-rain"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
         app.buttons["title-again"].press(forDuration: 1); app.buttons["Move to Trash"].tap()
@@ -1018,6 +1018,13 @@ import UIKit
         XCTAssertTrue((editor.value as? String)?.contains("Native draft survives cast navigation") == true)
         app.buttons["Save notes"].tap()
         wait(for: [expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: app.buttons["Save notes"])], timeout: 10)
+    }
+    /// Status chips scroll sideways; later ones start past the right edge.
+    private func tapStatusChip(_ app: XCUIApplication, _ key: String) {
+        let chip = app.buttons["library-status-" + key]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        for _ in 0..<3 where !chip.isHittable { app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "library-status-")).allElementsBoundByIndex.first(where: { $0.isHittable })?.swipeLeft() }
+        XCTAssertTrue(chip.isHittable); chip.tap()
     }
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
