@@ -86,17 +86,20 @@ struct RoundTool: View {
 /// Compact 44 pt capsule buttons: the accent fill for the main action, an outline for the rest.
 struct DiaryCapsuleButtonStyle: ButtonStyle {
     var prominent = true
-    func makeBody(configuration: Configuration) -> some View { Styled(configuration: configuration, prominent: prominent) }
+    /// A smaller capsule for actions inside list rows.
+    var compact = false
+    func makeBody(configuration: Configuration) -> some View { Styled(configuration: configuration, prominent: prominent, compact: compact) }
     private struct Styled: View {
         let configuration: ButtonStyleConfiguration
         let prominent: Bool
+        let compact: Bool
         @AppStorage("theme") private var theme = DiaryTheme.twilight
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         var body: some View {
             let destructive = configuration.role == .destructive
-            configuration.label.font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                .padding(.horizontal, 16).frame(minHeight: 44)
+            configuration.label.font(.system(size: compact ? 13 : 15, weight: .semibold)).lineLimit(1)
+                .padding(.horizontal, compact ? 12 : 16).frame(minHeight: compact ? 36 : 44)
                 .foregroundStyle(prominent ? theme.ink : destructive ? Color(webHex: "#ff8a80") : theme.accent)
                 .background(prominent ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
                 .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
@@ -109,6 +112,8 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == DiaryCapsuleButtonStyle {
     static var diaryPrimary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: true) }
     static var diarySecondary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: false) }
+    static var diaryRowPrimary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: true, compact: true) }
+    static var diaryRowSecondary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: false, compact: true) }
 }
 
 /// A filter as a pill that opens its menu, as on Canvas and Explore.

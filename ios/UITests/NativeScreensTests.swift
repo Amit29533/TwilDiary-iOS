@@ -734,12 +734,13 @@ import UIKit
         openTrakt(app)
         XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
         capture("Trakt review")
-        let filter = app.segmentedControls["trakt-kind"]
-        if !filter.isHittable { app.swipeUp() }
-        filter.buttons["Ratings"].tap()
+        // Kind filters are chips now (All · History · Ratings · Watchlist).
+        let ratings = app.buttons["trakt-kind-rating"]
+        for _ in 0..<4 { if ratings.isHittable { break }; app.swipeUp() }
+        ratings.tap()
         XCTAssertTrue(app.staticTexts["Showing 3 of 3 loaded changes"].waitForExistence(timeout: 5))
         capture("Trakt ratings")
-        filter.buttons["All"].tap()
+        app.buttons["trakt-kind-all"].tap()
         let ready = app.buttons["trakt-apply-ready"]
         for _ in 0..<12 {
             if ready.isHittable && ready.frame.maxY < app.tabBars.buttons["More"].frame.minY { break }

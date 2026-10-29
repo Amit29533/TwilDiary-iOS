@@ -6,12 +6,13 @@ import TwilDiaryCore
     @State private var controller: TraktController
     @State private var incoming: IncomingTraktController
     @State private var showSignIn = false
+    /// The side the conflict switch turns back on with: the last one chosen.
+    @AppStorage("traktConflictPrefer") private var preferredSide = TraktConflictDefault.local.rawValue
     @State private var clock = Date.now
     @State private var groupAction: GroupAction?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage("traktGrid") private var grid = false
     @State private var scanPace = ProgressPace()
     @State private var applyPace = ProgressPace()
     init(store: DiaryStore) {
@@ -103,12 +104,7 @@ import TwilDiaryCore
                     Spacer(minLength: 8)
                     if let left { Text(left).foregroundStyle(theme.accent) }
                 }.font(.system(size: 13)).monospacedDigit()
-                InlineFlowLayout(spacing: 6, rowSpacing: 6) {
-                    statPill("\(progress.applied.formatted()) saved", tint: .mint)
-                    statPill("\(progress.skipped.formatted()) skipped", tint: Color(webHex: "#c5c0cf"))
-                    if progress.failed > 0 { statPill("\(progress.failed.formatted()) need you", tint: .orange) }
-                }
-                // The plain sentence stays for VoiceOver and for checks on what was saved.
+                if progress.failed > 0 { statPill(progress.failed.counted("item needs you", "items need you"), tint: .orange) }
                 Text("\(progress.applied.formatted()) saved · \(progress.skipped.formatted()) skipped · \(progress.remaining.formatted()) remaining")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("trakt-apply-counts")
@@ -243,14 +239,31 @@ import TwilDiaryCore
                 }
                 Text("For the next scan; decimals stay in TwilDiary").font(.caption).foregroundStyle(.secondary)
                 Divider()
-                HStack {
-                    Text("Conflicts").font(.subheadline)
-                    Spacer(minLength: 8)
-                    Menu { Picker("Conflicts", selection: $controller.conflictDefault) { ForEach(TraktConflictDefault.allCases) { Text($0.label).tag($0) } } }
-                        label: { FilterPill(label: controller.conflictDefault.label, active: controller.conflictDefault != .ask) }.accessibilityIdentifier("trakt-conflict-default")
+                // A switch for "settle conflicts myself or automatically", then which side wins.
+                Toggle(isOn: Binding(get: { controller.conflictDefault != .ask },
+                                     set: { controller.conflictDefault = $0 ? (TraktConflictDefault(rawValue: preferredSide) ?? .local) : .ask })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Settle conflicts automatically").font(.subheadline)
+                        Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans apply on their own; removals still wait for you")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }.tint(theme.accent).accessibilityIdentifier("trakt-conflict-default")
+                if controller.conflictDefault != .ask {
+                    HStack(spacing: 8) {
+                        Text("Prefer").font(.subheadline).foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        ForEach([TraktConflictDefault.local, .trakt]) { side in
+                            let on = controller.conflictDefault == side
+                            Button { controller.conflictDefault = side; preferredSide = side.rawValue } label: {
+                                Text(side == .local ? "TwilDiary" : "Trakt").font(.system(size: 14, weight: .medium)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
+                                    .padding(.horizontal, 14).frame(height: 34)
+                                    .background(on ? theme.accent.opacity(0.12) : .clear, in: Capsule())
+                                    .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.7) : .white.opacity(0.14)))
+                                    .frame(minHeight: 44).contentShape(Capsule())
+                            }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("trakt-prefer-" + side.rawValue)
+                        }
+                    }.transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans apply on their own, conflicts included")
-                    .font(.caption).foregroundStyle(.secondary)
                 Divider(); Text("Included in each scan").font(.caption).foregroundStyle(.secondary)
                 Text("Watch history · Ratings · Watchlist").font(.subheadline)
             }.diaryPanel()
@@ -361,86 +374,148 @@ import TwilDiaryCore
     }
     private func review(_ sync: TraktSync) -> some View {
         @Bindable var controller = controller
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(sync.run?.state == "building" ? "Preparing review" : "Review changes").font(.title2.bold())
-                Spacer()
-                if sync.run?.state != "building" { CollectionLayoutToggle(grid: $grid, collection: "trakt-review") }
-                Text(sync.run?.state == "building" ? "\(sync.discoveredChanges.formatted()) found so far" : "\(sync.pendingChanges) remaining").font(.caption).foregroundStyle(.secondary)
+        let conflicts = sync.counts["review:conflict"] ?? 0, removals = (sync.counts["review:pull"] ?? 0) + (sync.counts["review:push"] ?? 0)
+        // With a conflict default, automation applies everything it may; only removals are left for a person.
+        let automationDone = sync.reviewing && controller.conflictDefault != .ask && !controller.applyingAll
+            && (sync.counts["safe"] ?? 0) == 0 && conflicts == 0 && removals > 0
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(sync.run?.state == "building" ? "Preparing review" : "Review changes").font(.system(size: 24, weight: .bold))
+                Spacer(minLength: 8)
+                Text(sync.run?.state == "building" ? "\(sync.discoveredChanges.formatted()) found so far" : "\(sync.pendingChanges) remaining")
+                    .font(.system(size: 13)).foregroundStyle(.secondary).monospacedDigit()
             }
-            Text("\(sync.run?.progress ?? 0) Trakt items scanned · nothing saved yet").font(.subheadline).foregroundStyle(.secondary)
+            Text("\(sync.run?.progress ?? 0) Trakt items scanned · nothing saved yet").font(.system(size: 13)).foregroundStyle(.secondary)
             if let error = sync.run?.error { Text(error).font(.caption).foregroundStyle(.secondary) }
             if sync.run?.state == "building" {
                 Text("Choices unlock when the comparison finishes.")
                     .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("trakt-review-preparing")
             }
-            else if sync.run?.state == "complete" { Label((sync.counts["skipped"] ?? 0) > 0 ? "Finished with skipped items" : "You’re up to date", systemImage: "checkmark.circle").diaryPanel() }
-            else if sync.run?.state == "cancelled" { Text("Scan stopped. Scan again when you’re ready to continue.").font(.subheadline).diaryPanel() }
+            else if sync.run?.state == "complete" { reviewStatus("You’re up to date", detail: (sync.counts["skipped"] ?? 0) > 0 ? "Finished with skipped items" : nil, tint: .mint) }
+            else if sync.run?.state == "cancelled" { reviewStatus("Scan stopped. Scan again when you’re ready to continue.", detail: nil, tint: Color(webHex: "#c5c0cf")) }
             else {
-                SearchField(placeholder: "Find a title in this review…", text: $controller.query, label: "Search Trakt changes")
-                Picker("Filter Trakt changes", selection: $controller.kind) { ForEach(TraktKind.allCases) { Text($0.label).tag($0) } }.pickerStyle(.segmented).accessibilityIdentifier("trakt-kind")
-                groupPanel(sync)
-                CollectionLayout(grid: grid, spacing: 10) { ForEach(Array(controller.visibleItems.prefix(controller.limit))) { change in reviewItem(change, sync: sync) } }
-                if controller.visibleItems.isEmpty { Text("No matching changes in this review.").font(.subheadline).foregroundStyle(.secondary) }
-                HStack { Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.caption).foregroundStyle(.secondary); Spacer(); if controller.limit < controller.visibleItems.count || sync.next != nil { Button("Load more") { Task { await controller.loadMore() } }.font(.subheadline).disabled(controller.busy) } }
-                let conflicts = sync.counts["review:conflict"] ?? 0, removals = (sync.counts["review:pull"] ?? 0) + (sync.counts["review:push"] ?? 0)
-                if sync.reviewing && ((sync.counts["safe"] ?? 0) > 0 || (controller.conflictDefault != .ask && conflicts > 0)) { applyPanel(sync).padding(.top, 10) }
-                // Automatic apply settles conflicts, but never deletes: removals always wait for a person.
-                if sync.reviewing && controller.conflictDefault != .ask && (sync.counts["safe"] ?? 0) == 0 && conflicts == 0 && removals > 0 {
-                    Label(removals.counted("removal needs", "removals need") + " your choice. Automatic apply never deletes.", systemImage: "hand.raised")
-                        .font(.system(size: 13)).foregroundStyle(Color(webHex: "#fac775")).accessibilityIdentifier("trakt-removals-waiting")
+                if automationDone {
+                    reviewStatus("Sync complete", detail: removals.counted("removal is", "removals are") + " left for you to review below. Automatic apply never deletes.", tint: .mint)
+                        .accessibilityIdentifier("trakt-removals-waiting")
                 }
-                if sync.reviewing || sync.run?.state == "building" { Button("Stop this scan") { Task { await controller.cancel() } }.font(.subheadline).disabled(controller.busy) }
+                SearchField(placeholder: "Find a title in this review…", text: $controller.query, label: "Search Trakt changes")
+                kindChips
+                groupPanel(sync)
+                LazyVStack(spacing: 8) { ForEach(Array(controller.visibleItems.prefix(controller.limit))) { change in reviewItem(change, sync: sync) } }
+                if controller.visibleItems.isEmpty { Text("No matching changes in this review.").font(.subheadline).foregroundStyle(.secondary) }
+                HStack {
+                    Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    if controller.limit < controller.visibleItems.count || sync.next != nil {
+                        Button("Load more") { Task { await controller.loadMore() } }.buttonStyle(.diaryRowSecondary).disabled(controller.busy)
+                    }
+                }
+                if sync.reviewing && ((sync.counts["safe"] ?? 0) > 0 || (controller.conflictDefault != .ask && conflicts > 0)) { applyPanel(sync).padding(.top, 6) }
+                if sync.reviewing || sync.run?.state == "building" {
+                    Button("Stop this scan", role: .destructive) { Task { await controller.cancel() } }
+                        .buttonStyle(.diarySecondary).frame(maxWidth: .infinity).disabled(controller.busy)
+                }
             }
         }
     }
+    /// A one-line status card: what happened, and anything left to do.
+    private func reviewStatus(_ title: String, detail: String?, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 15, weight: .semibold))
+                if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            }
+            Spacer(minLength: 0)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(tint.opacity(0.25)))
+            .accessibilityElement(children: .combine)
+    }
+    /// All · History · Ratings · Watchlist as chips, like Library's status chips.
+    private var kindChips: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(TraktKind.allCases) { kind in
+                    let on = controller.kind == kind
+                    Button { controller.kind = kind } label: {
+                        Text(kind.label).font(.system(size: 14, weight: .medium)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
+                            .padding(.horizontal, 14).frame(height: 34)
+                            .background(on ? theme.accent.opacity(0.12) : .clear, in: Capsule())
+                            .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.7) : .white.opacity(0.14)))
+                            .frame(minHeight: 44).contentShape(Capsule())
+                    }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("trakt-kind-" + kind.rawValue)
+                }
+            }
+        }.scrollIndicators(.hidden)
+    }
     private func applyPanel(_ sync: TraktSync) -> some View {
-        VStack(spacing: 9) {
+        VStack(spacing: 8) {
             Button { controller.startApprovedApply() } label: {
                 Text(controller.conflictDefault != .ask ? "Apply all " + sync.unresolved.counted("change", "changes") : sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
-                    .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 44)
-                    .foregroundStyle(theme.ink).background(theme.accent, in: Capsule())
-            }.buttonStyle(.plain).disabled(controller.busy || coolingDown).accessibilityIdentifier("trakt-apply-ready")
+                    .frame(maxWidth: .infinity)
+            }.buttonStyle(.diaryPrimary).disabled(controller.busy || coolingDown).accessibilityIdentifier("trakt-apply-ready")
             Text(controller.conflictDefault == .ask ? "Conflicts still need your choice above." : "Conflicts: \(controller.conflictDefault.label)").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
     }
+    /// One change as a compact row: a kind tile, the title, one line of detail, then its actions.
     private func reviewItem(_ change: TraktChange, sync: TraktSync) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(change.kindLabel).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.accent)
-                .padding(.horizontal, 8).padding(.vertical, 4).background(theme.accent.opacity(0.1), in: Capsule())
-            Text(change.name).font(.subheadline.bold()).fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(change.error ?? change.detail).font(.caption).foregroundStyle(.secondary)
-            if let context = change.context {
-                if let season = context.season, let episode = context.episode, change.kind == "history" { Text("S\(season) · E\(episode)").font(.caption).foregroundStyle(.secondary) }
-                if change.review { Text("TwilDiary: \(reviewValue(change.kind, context.local)) · Trakt: \(reviewValue(change.kind, context.remote))").font(.caption).foregroundStyle(.secondary) }
-                else if change.kind == "history" { Text(reviewValue(change.kind, change.direction == "push" ? context.local : context.remote)).font(.caption).foregroundStyle(.secondary) }
+        let done = ["applied", "skipped"].contains(change.state)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                kindTile(change.kind)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(change.name).font(.system(size: 15, weight: .semibold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text(detailLine(change)).font(.system(size: 13)).foregroundStyle(change.error == nil ? Color.secondary : Color.orange).lineLimit(2)
+                    if change.review, let context = change.context {
+                        Text("TwilDiary: \(reviewValue(change.kind, context.local)) · Trakt: \(reviewValue(change.kind, context.remote))").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if done {
+                    Text(change.state.capitalized).font(.system(size: 12, weight: .semibold)).foregroundStyle(change.state == "applied" ? Color.mint : Color.secondary)
+                        .padding(.horizontal, 10).frame(height: 24).background((change.state == "applied" ? Color.mint : Color.white).opacity(0.12), in: Capsule())
+                }
             }
-            if ["applied", "skipped"].contains(change.state) { Text(change.state.capitalized).font(.caption).foregroundStyle(.secondary) }
-            else {
+            if !done {
                 // A single subtree keeps each review action unique in accessibility.
-                // ViewThatFits retained two sets of buttons, including hidden candidates.
-                let layout = grid || dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                    : AnyLayout(HStackLayout(spacing: 8))
-                layout { changeActions(change) }.disabled(controller.busy || !sync.reviewing)
+                let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                layout { changeActions(change) }.padding(.leading, 46).disabled(controller.busy || !sync.reviewing)
             }
-        }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-change-" + change.id)
+        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .accessibilityElement(children: .contain).accessibilityIdentifier("trakt-change-" + change.id)
+    }
+    /// "Import from Trakt · S1 · E3", "Removed on Trakt", or the error when something failed.
+    private func detailLine(_ change: TraktChange) -> String {
+        if let error = change.error { return error }
+        var parts = [change.detail]
+        if let context = change.context, change.kind == "history" {
+            if let season = context.season, let episode = context.episode { parts.append("S\(season) · E\(episode)") }
+            if !change.review { parts.append(reviewValue(change.kind, change.direction == "push" ? context.local : context.remote)) }
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+    private func kindTile(_ kind: String) -> some View {
+        let (symbol, color): (String, Color) = switch kind {
+        case "history": ("clock.arrow.circlepath", Color(webHex: "#0A84FF"))
+        case "rating": ("star.fill", Color(webHex: "#F2B705"))
+        default: ("bookmark.fill", Color(webHex: "#8E5CF0"))
+        }
+        return Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+            .frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
     }
     @ViewBuilder private func changeActions(_ change: TraktChange) -> some View {
-        if change.state == "uncertain" { action("Check Trakt", change: change, choice: .local) }
-        else if change.review && !change.blocked { action("Keep TwilDiary", change: change, choice: .local); action("Use Trakt", change: change, choice: .trakt) }
-        else if !change.blocked { action("Apply", change: change, choice: .apply) }
+        if change.state == "uncertain" { action("Check Trakt", change: change, choice: .local, primary: true) }
+        else if change.review && !change.blocked { action("Keep TwilDiary", change: change, choice: .local, primary: false); action("Use Trakt", change: change, choice: .trakt, primary: false) }
+        else if !change.blocked { action("Apply", change: change, choice: .apply, primary: true) }
         // Skipping never changes the diary, so it no longer re-downloads it.
-        // Review rows can number in the thousands: per-row actions use bordered
-        // capsules (no live glass blur in every row); screen-level actions stay glass.
-        Button("Skip") { Task { await controller.apply(change: change, choice: .skip) } }.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
-            .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).accessibilityIdentifier("trakt-skip-" + change.id)
+        Button("Skip") { Task { await controller.apply(change: change, choice: .skip) } }.buttonStyle(.diaryRowSecondary)
+            .accessibilityIdentifier("trakt-skip-" + change.id)
     }
-    private func action(_ label: String, change: TraktChange, choice: TraktChoice) -> some View {
-        Button(label) { Task { await controller.apply(change: change, choice: choice); await store.refresh() } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
-            .frame(minHeight: 44).frame(maxWidth: grid ? .infinity : nil).disabled(coolingDown).accessibilityIdentifier("trakt-" + choice.rawValue + "-" + change.id)
+    private func action(_ label: String, change: TraktChange, choice: TraktChoice, primary: Bool) -> some View {
+        Button(label) { Task { await controller.apply(change: change, choice: choice); await store.refresh() } }
+            .buttonStyle(DiaryCapsuleButtonStyle(prominent: primary, compact: true)).disabled(coolingDown)
+            .accessibilityIdentifier("trakt-" + choice.rawValue + "-" + change.id)
     }
     /// One choice for a whole review group, confirmed first because it can change many items.
     struct GroupAction: Identifiable, Sendable {
@@ -475,7 +550,7 @@ import TwilDiaryCore
                     }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-group-" + direction)
                 }
             }
-            .diaryPanel()
+            .frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
             .confirmationDialog(groupAction.map { groupTitle($0) } ?? "", isPresented: Binding(get: { groupAction != nil }, set: { if !$0 { groupAction = nil } }),
                                 titleVisibility: .visible, presenting: groupAction) { action in
                 Button(groupTitle(action), role: groupRemoves(action) ? .destructive : nil) {
@@ -487,8 +562,7 @@ import TwilDiaryCore
     }
     private func groupButton(_ label: String, direction: String, choice: TraktChoice, count: Int) -> some View {
         Button(label) { groupAction = GroupAction(direction: direction, choice: choice, count: count) }
-            .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular).font(.caption)
-            .frame(minHeight: 44).disabled(controller.busy || (choice != .skip && coolingDown))
+            .buttonStyle(DiaryCapsuleButtonStyle(prominent: false, compact: true)).disabled(controller.busy || (choice != .skip && coolingDown))
             .accessibilityIdentifier("trakt-group-" + direction + "-" + choice.rawValue)
     }
     private func groupTitle(_ action: GroupAction) -> String {
