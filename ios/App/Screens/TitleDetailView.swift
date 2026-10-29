@@ -208,7 +208,7 @@ struct TitleDetailView: View {
             }
             Text(location.path).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
-                Text("\(location.fileCount) files · \(location.deviceName)").font(.system(size: 12.8)).foregroundStyle(.secondary)
+                Text(location.fileCount.counted("file", "files") + " · \(location.deviceName)").font(.system(size: 12.8)).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Button { UIPasteboard.general.string = location.path; copiedLocation = location.id } label: { DiaryIcon(name: copiedLocation == location.id ? "check" : "copy", size: 16).frame(width: 44, height: 44) }
                     .buttonStyle(.plain).accessibilityLabel("Copy path for " + title.name).accessibilityValue(copiedLocation == location.id ? "Copied" : "Copy")
@@ -303,7 +303,7 @@ struct TitleDetailView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if title.isSeries {
                         let progress = store.seasonProgress(title, season: season)
-                        Text("\(progress.watched) of \(progress.total) episodes watched").font(.headline)
+                        Text("\(progress.watched) of " + progress.total.counted("episode", "episodes") + " watched").font(.headline)
                         EpisodeProgressTrack(segments: EpisodeSegment.make(episodes: episodes, total: progress.total, watched: watched, nextID: nil), season: season).frame(height: 44)
                     }
                     RetryNotice(message: cardError) { Task { await loadCard(title) } }

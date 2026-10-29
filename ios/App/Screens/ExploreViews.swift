@@ -238,7 +238,7 @@ private struct DiscoveryBrowser: View {
         else if promptForGenre && filters.genre.isEmpty { Text("Choose a genre to explore shows and movies.").font(.system(size: 13)).foregroundStyle(.secondary) }
         else {
             if !displayed.isEmpty {
-                Text("\(section.source == "tmdb" ? displayed.count : local.count) titles").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text((section.source == "tmdb" ? displayed.count : local.count).counted("title", "titles")).font(.system(size: 12)).foregroundStyle(.secondary)
                 CatalogGrid(items: displayed, showsLayoutToggle: false)
             }
             if busy && displayed.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading titles") }

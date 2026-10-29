@@ -39,7 +39,7 @@ struct ScannerReviewView: View {
             DiaryIcon(name: "folder-search", size: 24).foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 7) {
                 Text(scan.name).font(.system(size: 15, weight: .semibold))
-                Text("\(scan.deviceName) · \(scan.driveLetter) · \(scan.fileCount) files" + (scan.seasonNumber.map { " · Season \($0)" } ?? "")).font(.caption).foregroundStyle(.secondary)
+                Text("\(scan.deviceName) · \(scan.driveLetter) · " + scan.fileCount.counted("file", "files") + (scan.seasonNumber.map { " · Season \($0)" } ?? "")).font(.caption).foregroundStyle(.secondary)
                 Text(scan.root + "\\" + scan.relativePath).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                 Text("No confident TMDb / IMDb match").font(.caption).foregroundStyle(.secondary)
                 Button("Match") { selected = scan }.buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(store.busy).accessibilityIdentifier("match-scan-" + scan.id)

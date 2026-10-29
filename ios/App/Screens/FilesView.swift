@@ -38,7 +38,7 @@ struct FilesView: View {
                 DiaryIcon(name: "hard-drive", size: 23).foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(disk.letters.joined(separator: " / ") + " · " + disk.deviceName).font(.system(size: 14, weight: .semibold))
-                    Text("\(disk.folders) mapped folders · \(disk.titleCount) titles").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(disk.folders.counted("mapped folder", "mapped folders") + " · " + disk.titleCount.counted("title", "titles")).font(.system(size: 12)).foregroundStyle(.secondary)
                     HStack(spacing: 5) { Circle().fill(disk.present > 0 ? Color.mint : .secondary).frame(width: 5, height: 5); Text(disk.evidence).font(.system(size: 12)).foregroundStyle(disk.present > 0 ? Color.mint : .secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.padding(20).diarySectionBackground(radius: 16, fill: selected == disk.key ? theme.accent.opacity(0.12) : Color(webHex: "#111115"), stroke: selected == disk.key ? theme.accent.opacity(0.6) : .white.opacity(0.13), emphasized: selected == disk.key)
@@ -50,7 +50,7 @@ struct FilesView: View {
             DiaryIcon(name: "folder", size: 20).foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 7) {
                 NavigationLink(value: location.titleId) { HStack(spacing: 5) { Text(store.title(location.titleId)?.name ?? "Unmatched title").font(.system(size: 14, weight: .semibold)); DiaryIcon(name: "chevron-right", size: 14) } }.buttonStyle(.plain)
-                Text("\(location.season.map { "Season \($0)" } ?? "Title folder") · \(location.fileCount) files · \(location.sizeBytes.map { String(format: "%.1f GB", Double($0) / 1e9) } ?? "Size unknown")").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("\(location.season.map { "Season \($0)" } ?? "Title folder") · \(location.fileCount.counted("file", "files")) · \(location.sizeBytes.map { String(format: "%.1f GB", Double($0) / 1e9) } ?? "Size unknown")").font(.system(size: 11)).foregroundStyle(.secondary)
                 Text(location.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 Text(evidence(location.evidence)).font(.system(size: 11)).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)

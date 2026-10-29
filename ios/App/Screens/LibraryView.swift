@@ -297,6 +297,8 @@ struct LibraryView: View {
             .safeAreaInset(edge: .bottom) {
                 Button { showFilters = false } label: { Text("Show \(filtered.count) \(filtered.count == 1 ? "title" : "titles")").frame(maxWidth: .infinity) }
                     .buttonStyle(.diaryPrimary).padding(.horizontal, 20).padding(.vertical, 8).accessibilityIdentifier("filter-show")
+                    // A soft fade behind it, so chips scrolling underneath never clutter the button.
+                    .background(alignment: .bottom) { LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom).padding(.top, -24).allowsHitTesting(false) }
             }
             .containerBackground(Color.clear, for: .navigation)
             .navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)

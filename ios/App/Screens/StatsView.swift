@@ -157,11 +157,20 @@ struct StatsView: View {
                     Text(value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                 }.padding(.top, 4)
             }
-            caption("\(value.watches.formatted()) watches · \(value.titles.formatted()) movies & shows", size: 12).padding(.top, 2)
+            caption(value.watches.counted("watch", "watches") + " · " + value.titles.counted("title", "movies & shows"), size: 12).padding(.top, 2)
         }
     }
+    /// "0", "45m", "2h", "1h 30m".
+    private func axisLabel(_ minutes: Int) -> String {
+        if minutes == 0 { return "0" }
+        if minutes < 60 { return "\(minutes)m" }
+        return minutes.isMultiple(of: 60) ? "\(minutes / 60)h" : "\(minutes / 60)h \(minutes % 60)m"
+    }
     private func chart(_ buckets: [StatsOverview.Bucket]) -> some View {
-        let peak = max(1, buckets.map(\.minutes).max() ?? 1)
+        // The axis tops out at a tidy step above the busiest bar (15 min under an hour, then 30), so its
+        // labels read exactly ("1h 30m") instead of rounding a 1h 14m peak down to "1h".
+        let busiest = max(1, buckets.map(\.minutes).max() ?? 1), step = busiest <= 60 ? 15 : 30
+        let peak = Int((Double(busiest) / Double(step)).rounded(.up)) * step
         let shown = buckets.count <= 12 ? buckets.map(\.key) : stride(from: 0, to: buckets.count, by: max(1, buckets.count / 6)).map { $0 }
         return VStack(spacing: 6) {
             GeometryReader { geometry in
@@ -171,7 +180,7 @@ struct StatsView: View {
                 }.chartXAxis(.hidden).chartYAxis {
                     AxisMarks(position: .trailing, values: [0, Double(peak) / 2, Double(peak)]) { mark in
                         AxisGridLine().foregroundStyle(.white.opacity(0.08))
-                        AxisValueLabel { if let minutes = mark.as(Double.self) { Text(minutes == 0 ? "0h" : minutes < 60 ? "\(Int(minutes.rounded()))m" : "\(Int((minutes / 60).rounded()))h").font(.system(size: 10)).foregroundStyle(.secondary) } }
+                        AxisValueLabel { if let minutes = mark.as(Double.self) { Text(axisLabel(Int(minutes.rounded()))).font(.system(size: 10)).foregroundStyle(.secondary) } }
                     }
                 }.chartXScale(domain: -0.5...(Double(max(1, buckets.count)) - 0.5), range: .plotDimension(padding: 0)).chartYScale(domain: 0...Double(peak)).accessibilityHidden(true)
                     .chartOverlay { _ in
@@ -256,7 +265,7 @@ struct StatsView: View {
         if let night = value.nightOwl { facts.append(("moon.stars", "\(night)% after 10 pm", night >= 40 ? "Certified night owl" : "Late-night watches")) }
         if let day = value.weekday { facts.append(("calendar.badge.clock", day.name, "Your favourite day · \(day.share)% of watches")) }
         facts.append(("arrow.counterclockwise", "\(value.rewatches) \(value.rewatches == 1 ? "rewatch" : "rewatches")", "Things you went back to"))
-        facts.append(("sparkles", "\(value.newStarts) new \(value.newStarts == 1 ? "start" : "starts")", "Titles you began · \(value.episodes) episodes · \(value.movies) \(value.movies == 1 ? "movie" : "movies")"))
+        facts.append(("sparkles", "\(value.newStarts) new \(value.newStarts == 1 ? "start" : "starts")", "Titles you began · \(value.episodes.counted("episode", "episodes")) · \(value.movies) \(value.movies == 1 ? "movie" : "movies")"))
         return VStack(alignment: .leading, spacing: 14) {
             heading("Fun facts")
             if value.episodes + value.movies == 0 { caption("Watch something in this period to unlock its fun facts.") }
@@ -301,7 +310,7 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     caption("Planned runtime", size: 12)
                     Text(DiaryDate.duration(value.plannedMinutes)).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-                    if value.unknownPlanned > 0 { caption("\(value.unknownPlanned) titles lack runtime or complete episode data", size: 11) }
+                    if value.unknownPlanned > 0 { caption(value.unknownPlanned.counted("title lacks", "titles lack") + " runtime or complete episode data", size: 11) }
                 }
                 Spacer(minLength: 4)
                 Button { router.library("planned") } label: {

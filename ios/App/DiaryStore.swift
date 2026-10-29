@@ -756,12 +756,16 @@ import TwilDiaryCore
     struct Celebration: Identifiable, Equatable { let id = UUID(); let milestone: Milestone }
     /// A milestone worth the starfall: a season or show finished, or a round number of watches.
     private(set) var celebration: Celebration?
+    /// Round counts already celebrated this session: undo and mark again never repeats "100 watches".
+    @ObservationIgnored private var celebratedCounts = Set<Int>()
     func dismissCelebration(_ id: UUID) { if celebration?.id == id { celebration = nil } }
     /// After a confirmed new watch. The refresh may not have brought the event back yet, so it is added here.
     func celebrate(_ event: WatchEvent, title: MediaTitle) {
         var snapshot = workspace
         if !snapshot.events.contains(where: { $0.id == event.id }) { snapshot.events.append(event) }
-        if let milestone = Milestone.after(event, title: title, workspace: snapshot) { celebration = Celebration(milestone: milestone) }
+        guard let milestone = Milestone.after(event, title: title, workspace: snapshot) else { return }
+        if case .watchCount(let count) = milestone { guard celebratedCounts.insert(count).inserted else { return } }
+        celebration = Celebration(milestone: milestone)
     }
     func undo() async {
         celebration = nil

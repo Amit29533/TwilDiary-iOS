@@ -263,7 +263,7 @@ private struct CatalogSeasonPreview: View {
                 HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Episodes").font(.system(size: 22, weight: .bold))
-                        Text("\(controller.items.count) episodes").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Text(controller.items.count.counted("episode", "episodes")).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     Menu {

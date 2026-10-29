@@ -67,6 +67,11 @@ struct DiaryIcon: View {
     }
 }
 
+extension Int {
+    /// "1 watch", "3 watches": a count with the word that fits it.
+    func counted(_ one: String, _ many: String) -> String { formatted() + " " + (self == 1 ? one : many) }
+}
+
 /// The app's small icon button: a faint 44 pt circle sized to its icon, never a padded glass bubble.
 struct RoundTool: View {
     let icon: String

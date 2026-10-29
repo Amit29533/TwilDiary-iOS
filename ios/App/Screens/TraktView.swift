@@ -392,7 +392,7 @@ import TwilDiaryCore
     private func applyPanel(_ sync: TraktSync) -> some View {
         VStack(spacing: 9) {
             Button { controller.startApprovedApply() } label: {
-                Text(controller.conflictDefault != .ask ? "Apply all \(sync.unresolved) changes" : sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
+                Text(controller.conflictDefault != .ask ? "Apply all " + sync.unresolved.counted("change", "changes") : sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
                     .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 44)
                     .foregroundStyle(theme.ink).background(theme.accent, in: Capsule())
             }.buttonStyle(.plain).disabled(controller.busy || coolingDown).accessibilityIdentifier("trakt-apply-ready")

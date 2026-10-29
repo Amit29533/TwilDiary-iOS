@@ -13,24 +13,34 @@ enum Motion {
 enum ZoomID {
     static func title(_ id: String) -> String { "title:" + id }
     static func catalog(_ route: CatalogRoute) -> String { "catalog:\(route.kind.rawValue):\(route.id)" }
+    static func scoped(_ scope: String, _ id: String) -> String { scope + "/" + id }
 }
 
 private struct ZoomNamespaceKey: EnvironmentKey {
     static var defaultValue: Namespace.ID? { nil }
 }
+private struct ZoomScopeKey: EnvironmentKey {
+    static var defaultValue: String { "" }
+}
 extension EnvironmentValues {
-    /// The tab's navigation namespace; posters zoom into the pages they open.
+    /// The app's navigation namespace; posters zoom into the pages they open.
     var zoomNamespace: Namespace.ID? {
         get { self[ZoomNamespaceKey.self] }
         set { self[ZoomNamespaceKey.self] = newValue }
+    }
+    /// The tab a source belongs to, so the same title in two tabs never zooms from the wrong one.
+    var zoomScope: String {
+        get { self[ZoomScopeKey.self] }
+        set { self[ZoomScopeKey.self] = newValue }
     }
 }
 
 private struct ZoomSource: ViewModifier {
     let id: String
     @Environment(\.zoomNamespace) private var namespace
+    @Environment(\.zoomScope) private var scope
     @ViewBuilder func body(content: Content) -> some View {
-        if let namespace { content.matchedTransitionSource(id: id, in: namespace) } else { content }
+        if let namespace { content.matchedTransitionSource(id: ZoomID.scoped(scope, id), in: namespace) } else { content }
     }
 }
 
