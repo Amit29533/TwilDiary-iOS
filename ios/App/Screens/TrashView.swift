@@ -94,7 +94,7 @@ struct TrashView: View {
                 }.buttonStyle(.plain).disabled(store.writesBlocked || (!selected.contains(title.id) && selected.count >= CollectionRequest.limit))
                     .accessibilityIdentifier("trash-title-" + title.id).accessibilityAddTraits(selected.contains(title.id) ? .isSelected : [])
             } else {
-                card(title).contextMenu { Button("Select") { selecting = true; selected = [title.id] } }
+                card(title).contextMenu { Button("Select", systemImage: "checkmark.circle") { selecting = true; selected = [title.id] } }
             }
             if !selecting {
                 HStack {

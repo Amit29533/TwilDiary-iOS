@@ -231,10 +231,10 @@ struct LibraryView: View {
             NavigationLink(value: title.id) { if row { LibraryListRow(title: title) } else { LibraryPosterCard(title: title) } }
                 .buttonStyle(.plain).contentShape(Rectangle()).accessibilityIdentifier("title-" + title.id)
                 .contextMenu {
-                    Button("Select") { selecting = true; selected = [title.id] }
-                    Button(title.favorite ? "Remove favorite" : "Favorite") { review = CollectionReview(titles: [title], change: .favorite(!title.favorite)) }
-                    Button(title.queued == true ? "Remove from Queue" : "Add to Queue") { review = CollectionReview(titles: [title], change: .queue(title.queued != true)) }
-                    Button("Move to Trash", role: .destructive) { review = CollectionReview(titles: [title], change: .trash) }
+                    Button("Select", systemImage: "checkmark.circle") { selecting = true; selected = [title.id] }
+                    Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { review = CollectionReview(titles: [title], change: .favorite(!title.favorite)) }
+                    Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { review = CollectionReview(titles: [title], change: .queue(title.queued != true)) }
+                    Button("Move to Trash", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .trash) }
                 }
         }
     }
