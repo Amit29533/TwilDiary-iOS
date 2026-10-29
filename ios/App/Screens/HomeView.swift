@@ -25,7 +25,8 @@ struct HomeView: View {
         let recent = projection.recent
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }
+                // While searching, the plain header keeps the field and its results at the top.
+                if watching.isEmpty || showSearch { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: 28) {
                     if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
                     // Explore is systematic discovery; Canvas is for browsing artwork at random.
