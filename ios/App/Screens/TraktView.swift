@@ -422,7 +422,7 @@ import TwilDiaryCore
     /// A one-line status card: what happened, and anything left to do.
     private func reviewStatus(_ title: String, detail: String?, tint: Color) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(tint)
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(tint).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.system(size: 15, weight: .semibold))
                 if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
@@ -430,7 +430,7 @@ import TwilDiaryCore
             Spacer(minLength: 0)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(tint.opacity(0.25)))
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
     }
     /// All · History · Ratings · Watchlist as chips, like Library's status chips.
     private var kindChips: some View {
