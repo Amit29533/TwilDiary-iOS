@@ -667,6 +667,9 @@ import UIKit
         XCTAssertTrue(app.navigationBars["Cloudflare"].waitForExistence(timeout: 10))
         for key in ["requests", "reads", "writes", "storage"] { XCTAssertTrue(app.descendants(matching: .any)["cloudflare-today-\(key)"].waitForExistence(timeout: 5), key) }
         XCTAssertTrue(app.descendants(matching: .any)["cloudflare-reset"].exists)
+        // Bars and labels use the UTC day, so the 7-day chart ends on today's UTC date.
+        let lastDay = Date.now.formatted(Date.FormatStyle(timeZone: TimeZone(identifier: "UTC")!).month(.abbreviated).day())
+        XCTAssertTrue(app.staticTexts[lastDay].exists, "The 7-day chart should end on \(lastDay)")
         capture("Cloudflare usage today")
         let range = app.segmentedControls["cloudflare-range"]
         for _ in 0..<4 { if range.isHittable { break }; app.swipeUp() }

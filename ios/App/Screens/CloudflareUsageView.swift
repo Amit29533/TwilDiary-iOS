@@ -9,6 +9,8 @@ struct CloudflareUsageView: View {
     @State private var loader: CloudflareUsageLoader?
     @State private var range = 7
     private static let utc = TimeZone(identifier: "UTC")!
+    /// Bars group by UTC day, like the free-plan allowances; the chart's calendar decides that, not its time zone.
+    private static let utcCalendar: Calendar = { var calendar = Calendar(identifier: .gregorian); calendar.timeZone = utc; return calendar }()
     private struct Point: Identifiable { let date: Date; let value: Double; var id: Date { date } }
 
     var body: some View {
@@ -132,7 +134,7 @@ struct CloudflareUsageView: View {
                         AxisValueLabel(format: Date.FormatStyle(timeZone: Self.utc).day().month(.abbreviated), centered: true).font(.system(size: 10))
                     }
                 }
-                .environment(\.timeZone, Self.utc)
+                .environment(\.calendar, Self.utcCalendar).environment(\.timeZone, Self.utc)
                 .frame(height: 150).accessibilityHidden(true)
             }
         }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
