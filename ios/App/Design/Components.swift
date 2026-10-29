@@ -470,16 +470,16 @@ struct ProgressCard: View {
     // Before the card loads, say so instead of showing a made-up zero.
     private var progressText: some View { Text(card == nil ? "Checking progress…" : cardText?.progressLabel ?? "").fixedSize() }
     @ViewBuilder private var timeLeftText: some View { if let left = cardText?.timeLeft { Text(left).monospacedDigit().fixedSize() } }
-    /// − last watched episode + for shows; one Log watch button for movies. Glass adds its
-    /// own padding, so the 22 pt labels draw as ~36 pt circles, as in the owner's design.
+    /// − last watched episode + for shows; one Log watch button for movies. The circles are
+    /// 36 pt, as in the owner's design, inside 44 pt tap targets.
     private var controls: some View {
                 // One container lets the card's glass controls render and morph together.
                 GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
-                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 22, height: 22).contentShape(Circle()) }.buttonStyle(.glass).buttonBorderShape(.circle).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 15, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 22, height: 22).contentShape(Circle()) }.buttonStyle(.glassProminent).buttonBorderShape(.circle).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).glassEffect(.regular.tint(theme.accent).interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
@@ -487,7 +487,7 @@ struct ProgressCard: View {
                             .foregroundStyle(theme.ink)
                     }.buttonStyle(.glassProminent).disabled(!canMark).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
-                } }.frame(height: 36)
+                } }.frame(height: 44)
     }
     private var cardMenu: some View {
         Menu {
