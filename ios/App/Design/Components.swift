@@ -67,6 +67,22 @@ struct DiaryIcon: View {
     }
 }
 
+/// The official Trakt mark and TMDB logo, used wherever the app names those services.
+struct BrandLogo: View {
+    enum Service { case trakt, tmdb }
+    let service: Service
+    var size: CGFloat = 34
+    var body: some View {
+        Group {
+            switch service {
+            case .trakt: Image("trakt-mark").resizable().scaledToFit()
+            case .tmdb: Image("tmdb-logo").resizable().scaledToFit().padding(size * 0.16)
+                .background(Color(webHex: "#0d253f"), in: RoundedRectangle(cornerRadius: size * 0.225))
+            }
+        }.frame(width: size, height: size).accessibilityHidden(true)
+    }
+}
+
 struct BrandMark: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()

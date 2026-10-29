@@ -116,9 +116,9 @@ import TwilDiaryCore
             else if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             if controller.applyingAll {
                 Button { controller.pauseApplying() } label: {
-                    Label(controller.paused ? "Pausing after this request…" : "Pause", systemImage: "pause.fill").frame(maxWidth: .infinity, minHeight: 50)
+                    Label(controller.paused ? "Pausing…" : "Pause", systemImage: "pause.fill").frame(maxWidth: .infinity, minHeight: 50)
                 }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.paused).accessibilityIdentifier("trakt-pause-import")
-                Text("You can use the other tabs while this continues. Keep the app open.").font(.caption).foregroundStyle(.secondary)
+                Text("Keep the app open; other tabs still work.").font(.caption).foregroundStyle(.secondary)
             } else if controller.paused && sync.reviewing && (sync.counts["safe"] ?? 0) > 0 {
                 Button { controller.startApprovedApply() } label: {
                     Label("Resume import", systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 50)
@@ -137,7 +137,7 @@ import TwilDiaryCore
                     Circle().trim(from: 0, to: left / total).stroke(Color.orange, style: StrokeStyle(lineWidth: 4, lineCap: .round)).rotationEffect(.degrees(-90))
                     Text("\(Int(ceil(left)))s").font(.system(size: 12, weight: .semibold)).monospacedDigit()
                 }.frame(width: 40, height: 40)
-                Text("Trakt asked us to slow down. Continuing in \(Int(ceil(left))) seconds; nothing is lost.")
+                Text("Trakt asked for a pause. Nothing is lost.")
                     .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
             }.foregroundStyle(Color(webHex: "#fac775")).padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(webHex: "#2b2516"), in: RoundedRectangle(cornerRadius: 16))
@@ -153,7 +153,7 @@ import TwilDiaryCore
             Text("Automatic").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
-                    tile("activity", background: Color(webHex: "#3C3489"), foreground: Color(webHex: "#CECBF6"))
+                    tile("arrow.down.circle.fill", color: Color(webHex: "#5E5CE6"))
                     Toggle(isOn: Binding(get: { incoming.status?.enabled ?? false }, set: { enabled in
                         Task { await incoming.configure(enabled: enabled) }
                     })) {
@@ -163,7 +163,7 @@ import TwilDiaryCore
                         }
                     }.tint(theme.accent).disabled(incoming.busy || incoming.status == nil || controller.status?.needsReconnect == true).accessibilityIdentifier("trakt-incoming-toggle")
                 }
-                Text("Completed plays from Trakt arrive on their own. Ratings, watchlist changes and deletions still use review.")
+                Text("New plays arrive on their own; the rest waits for review.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if incoming.status?.enabled == true, let explanation = incoming.pauseExplanation {
                     Text(explanation).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -173,8 +173,8 @@ import TwilDiaryCore
                 }
                 if let health = incoming.health { Text(health).font(.caption).foregroundStyle(.secondary) }
                 if let error = incoming.error { Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-incoming-error") }
-                Button("Refresh status", systemImage: "arrow.clockwise") { Task { await incoming.refresh() } }
-                    .font(.subheadline).buttonStyle(.glass).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
+                Button { Task { await incoming.refresh() } } label: { Label("Refresh status", systemImage: "arrow.clockwise").frame(maxWidth: .infinity, minHeight: 44) }
+                    .font(.subheadline).buttonStyle(.glass).buttonBorderShape(.capsule).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
             }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
         }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
@@ -185,13 +185,13 @@ import TwilDiaryCore
         if let date = DiaryDate.parse(incoming.status?.checkedAt) { return "Last checked " + date.formatted(date: .abbreviated, time: .shortened) }
         return "Waiting for the first scheduled check"
     }
-    private func tile(_ icon: String, background: Color, foreground: Color) -> some View {
-        DiaryIcon(name: icon, size: 17).foregroundStyle(foreground).frame(width: 34, height: 34).background(background, in: RoundedRectangle(cornerRadius: 10))
+    private func tile(_ symbol: String, color: Color) -> some View {
+        Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
     }
     private var connection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                tile("link-2", background: Color(webHex: "#3C3489"), foreground: Color(webHex: "#CECBF6"))
+                BrandLogo(service: .trakt, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(controller.status?.needsReconnect == true ? "Reconnect Trakt" : controller.status?.connected == true ? "Trakt" : controller.loading ? "Checking connection…" : "Connect to Trakt").font(.system(size: 20, weight: .bold))
                     if let date = DiaryDate.parse(controller.status?.lastSyncAt) { Text("Last synced \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
@@ -207,18 +207,18 @@ import TwilDiaryCore
             if controller.status?.connected == true {
                 HStack(spacing: 10) {
                     Button { Task { await controller.scan(start: true) } } label: {
-                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").frame(maxWidth: .infinity, minHeight: 48)
+                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48)
                     }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(coolingDown)
-                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").frame(minHeight: 48).padding(.horizontal, 6) }
+                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity, minHeight: 48) }
                         .buttonStyle(.glass).buttonBorderShape(.capsule)
                 }.disabled(controller.busy)
             } else if controller.status?.configured == true {
                 Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity, minHeight: 48) }.buttonStyle(.glassProminent).buttonBorderShape(.capsule).disabled(controller.busy)
                 Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
-            } else if controller.status != nil { Text("Configure the Trakt Client ID on your server using the PC app. Sign-in uses PKCE; no client secret is needed.").font(.subheadline).foregroundStyle(.secondary) }
+            } else if controller.status != nil { Text("Add a Trakt Client ID on your server first.").font(.subheadline).foregroundStyle(.secondary) }
             if coolingDown && controller.sync?.reviewing != true {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text("Waiting \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(context.date))))) seconds before the next request.")
+                    Text("Next request in \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(context.date)))))s")
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
                 }
             }
@@ -287,7 +287,7 @@ import TwilDiaryCore
                         .buttonStyle(.glass).buttonBorderShape(.capsule).accessibilityLabel("Stop without applying").accessibilityIdentifier("trakt-stop-manual-scan")
                 }
             }
-            Text("Nothing is applied until you review. Stopping keeps your diary unchanged. You can use other tabs meanwhile.")
+            Text("Nothing changes until you review.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -349,10 +349,10 @@ import TwilDiaryCore
                 if sync.run?.state != "building" { CollectionLayoutToggle(grid: $grid, collection: "trakt-review") }
                 Text(sync.run?.state == "building" ? "\(sync.discoveredChanges.formatted()) found so far" : "\(sync.pendingChanges) remaining").font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(sync.run?.progress ?? 0) Trakt items scanned. Nothing is saved until you apply it.").font(.subheadline).foregroundStyle(.secondary)
+            Text("\(sync.run?.progress ?? 0) Trakt items scanned · nothing saved yet").font(.subheadline).foregroundStyle(.secondary)
             if let error = sync.run?.error { Text(error).font(.caption).foregroundStyle(.secondary) }
             if sync.run?.state == "building" {
-                Text("Apply, Skip and conflict choices become available after the comparison finishes. Pause and stop above if you only want automatic incoming watches.")
+                Text("Choices unlock when the comparison finishes.")
                     .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("trakt-review-preparing")
             }
@@ -372,11 +372,11 @@ import TwilDiaryCore
     private func applyPanel(_ sync: TraktSync) -> some View {
         VStack(spacing: 9) {
             Button { controller.startApprovedApply() } label: {
-                Text(sync.readyChanges > 0 ? "Apply all ready changes (\(sync.readyChanges))" : "Link existing items (\(sync.counts["links"] ?? 0))")
+                Text(sync.readyChanges > 0 ? "Apply \(sync.readyChanges) ready changes" : "Link existing items (\(sync.counts["links"] ?? 0))")
                     .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 50)
                     .foregroundStyle(theme.ink).background(theme.accent, in: Capsule())
             }.buttonStyle(.plain).disabled(controller.busy || coolingDown).accessibilityIdentifier("trakt-apply-ready")
-            Text("Conflicts need your choice above. Filters only change what’s shown.").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text("Conflicts still need your choice above.").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
     }
     private func reviewItem(_ change: TraktChange, sync: TraktSync) -> some View {

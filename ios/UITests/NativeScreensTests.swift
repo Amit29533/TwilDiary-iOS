@@ -152,7 +152,7 @@ import UIKit
     }
     func testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause() {
         let app = launch(traktScenario: "large-import")
-        app.tabBars.buttons["More"].tap(); app.buttons["settings-trakt-summary"].tap()
+        app.tabBars.buttons["More"].tap(); openTrakt(app)
         let apply = app.buttons["trakt-apply-ready"]
         for _ in 0..<16 { if apply.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(apply.isHittable); apply.tap()
@@ -177,7 +177,7 @@ import UIKit
     }
     func testColdQuotaImportRestoresAcrossTabsAfterResetWithoutManualRetry() {
         let app = launch(traktScenario: "cold-quota")
-        app.tabBars.buttons["More"].tap(); app.buttons["settings-trakt-summary"].tap()
+        app.tabBars.buttons["More"].tap(); openTrakt(app)
         XCTAssertTrue(app.staticTexts["Restoring approved import"].waitForExistence(timeout: 8))
         let restorationPause = app.buttons["trakt-pause-restoration"]
         guard restorationPause.waitForExistence(timeout: 8) else {
@@ -202,7 +202,7 @@ import UIKit
     }
     func testTraktComparisonShowsFiniteRecordsAndStopsWithoutPartialApplyActions() {
         let app = launch(traktScenario: "comparing")
-        app.tabBars.buttons["More"].tap(); app.buttons["settings-trakt-summary"].tap()
+        app.tabBars.buttons["More"].tap(); openTrakt(app)
         let progress = app.staticTexts["trakt-scan-progress-detail"]
         for _ in 0..<6 { if progress.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(progress.exists); XCTAssertEqual(progress.label, "480 of 2,185 records compared")
@@ -409,19 +409,16 @@ import UIKit
     }
 
     func testMoreTraktSummaryUsesConnectionAndScanStateInsteadOfStaleCounts() {
-        for (scenario, expected, action) in [
-            ("disconnected", "Bring your watch history together", "Set up Trakt"),
-            ("reconnect", "Reconnect to Trakt", "Open Trakt sync"),
-            ("scanning", "Your scan is in progress", "Continue scan"),
-            ("unavailable", "Check your connection", "Set up Trakt")
-        ] {
+        for (scenario, badge) in [("disconnected", "Not connected"), ("reconnect", "Reconnect"), ("scanning", "Connected"), ("unavailable", "Unavailable")] {
             let app = launch(traktScenario: scenario); app.tabBars.buttons["More"].tap()
-            XCTAssertTrue(app.staticTexts[expected].waitForExistence(timeout: 5))
-            XCTAssertEqual(app.buttons["settings-trakt-summary"].label, action)
+            let row = app.buttons["settings-trakt"]
+            XCTAssertTrue(row.waitForExistence(timeout: 5))
+            wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", badge), evaluatedWith: row)], timeout: 5)
             XCTAssertFalse(app.staticTexts["8 changes to review"].exists)
             capture("More Trakt " + scenario); app.terminate()
         }
     }
+
 
     func testLibrarySearchAndSelectionPersistAcrossTabs() {
         let app = launch()
@@ -661,7 +658,7 @@ import UIKit
     }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()
-        app.buttons["settings-trakt-summary"].tap()
+        openTrakt(app)
         let toggle = app.switches["trakt-incoming-toggle"]
         XCTAssertTrue(app.navigationBars["Trakt"].waitForExistence(timeout: 10))
         for _ in 0..<5 { if toggle.exists && toggle.isHittable { break }; app.swipeUp() }
@@ -696,8 +693,8 @@ import UIKit
     }
     func testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice() {
         let app = launch(); app.tabBars.buttons["More"].tap()
-        XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))
-        app.buttons["settings-trakt-summary"].tap()
+        XCTAssertTrue(app.buttons["settings-trakt"].waitForExistence(timeout: 5))
+        openTrakt(app)
         XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
         capture("Trakt review")
         let filter = app.segmentedControls["trakt-kind"]
@@ -1034,6 +1031,13 @@ import UIKit
         }
         XCTAssertLessThanOrEqual(chip.frame.maxX, app.frame.width); chip.tap()
     }
+    /// Settings keeps Trakt as a row under Connections; scroll to it and open the Trakt page.
+    private func openTrakt(_ app: XCUIApplication) {
+        let row = app.buttons["settings-trakt"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
+        row.tap()
+    }
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
@@ -1281,14 +1285,14 @@ import UIKit
             XCTAssertTrue(entry.isHittable, entryID); entry.tap()
             let done = app.navigationBars[title].buttons.element(boundBy: 0)
             XCTAssertTrue(done.waitForExistence(timeout: 10), title); done.tap()
-            XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["settings-refresh-diary"].waitForExistence(timeout: 5))
             wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: done)], timeout: 5)
             XCTAssertTrue(entry.exists, "Back must return to the same settings stack")
             XCTAssertTrue(entry.isHittable); entry.tap()
             let content = app.scrollViews.staticTexts.element(boundBy: 0)
             // Preserve the long baseline settings content stroke.
             completeContentBack(app, beside: content, from: 0.12, velocity: .slow)
-            XCTAssertTrue(app.buttons["settings-trakt-summary"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["settings-refresh-diary"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.navigationBars[title].exists)
         }
         capture("All settings native Back and content swipe destinations return")
