@@ -45,11 +45,9 @@ struct SettingsView: View {
                         }.padding(.horizontal, 14).frame(minHeight: 60)
                         divider
                         NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
-                        divider
-                        settingsRow("calendar", .orange, "Week starts on", value: "Monday")
-                        divider
-                        settingsRow("star.leadinghalf.filled", .yellow, "Rating scale", value: "10 · decimals")
                     }
+                    Text("Weeks start on Monday. Ratings are out of 10, with decimals.").font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 4).padding(.top, -14)
                     settingsSection("Appearance") {
                         NavigationLink(value: AppDestination.appearance) {
                             VStack(alignment: .leading, spacing: 8) {

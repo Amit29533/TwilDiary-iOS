@@ -617,7 +617,6 @@ import UIKit
         if !more.isHittable { app.swipeUp() }
         XCTAssertTrue(more.isHittable); more.tap()
         XCTAssertTrue(app.staticTexts["Highest rated shows"].waitForExistence(timeout: 5)); capture("Explore rated shows")
-        app.buttons["explore-filters"].tap()
         let minimum = app.buttons["explore-minimum"]
         XCTAssertTrue(minimum.waitForExistence(timeout: 5)); minimum.tap(); app.buttons["9+"].tap()
         XCTAssertTrue(app.staticTexts["No titles in this mix"].waitForExistence(timeout: 5)); capture("Explore filtered empty")

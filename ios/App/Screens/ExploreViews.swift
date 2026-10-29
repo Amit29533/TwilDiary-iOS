@@ -162,7 +162,6 @@ private struct DiscoveryBrowser: View {
     let store: DiaryStore
     var promptForGenre: Bool
     @State private var filters: DiscoveryFilters
-    @State private var openFilters = false
     @State private var localLimit = 40
     @State private var results: DiscoveryResults
     @State private var recommendations: DiscoveryRecommendations
@@ -184,10 +183,10 @@ private struct DiscoveryBrowser: View {
                 Text(section.label).font(.system(size: promptForGenre ? 20 : 26, weight: .semibold)).tracking(-0.5)
                 Spacer(minLength: 0)
                 if promptForGenre { NavigationLink(value: ExploreSectionRoute(section: section, filters: filters)) { Text("View more").font(.system(size: 13)) }.accessibilityIdentifier("explore-more-genres") }
-                Button { openFilters.toggle() } label: { DiaryIcon(name: "sliders-horizontal", size: 18).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("More discovery filters").accessibilityValue(openFilters ? "Expanded" : "Collapsed").accessibilityIdentifier("explore-filters")
             }
             if promptForGenre { genreToolbar }
-            if openFilters { filterForm }
+            // Always visible, as on Canvas: the filters are a row of pills, not a hidden panel.
+            if !promptForGenre { filterForm }
             content
         }.task(id: filters) {
             localLimit = 40

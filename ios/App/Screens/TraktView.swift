@@ -384,7 +384,13 @@ import TwilDiaryCore
                 CollectionLayout(grid: grid, spacing: 10) { ForEach(Array(controller.visibleItems.prefix(controller.limit))) { change in reviewItem(change, sync: sync) } }
                 if controller.visibleItems.isEmpty { Text("No matching changes in this review.").font(.subheadline).foregroundStyle(.secondary) }
                 HStack { Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.caption).foregroundStyle(.secondary); Spacer(); if controller.limit < controller.visibleItems.count || sync.next != nil { Button("Load more") { Task { await controller.loadMore() } }.font(.subheadline).disabled(controller.busy) } }
-                if sync.reviewing && ((sync.counts["safe"] ?? 0) > 0 || controller.conflictDefault != .ask) { applyPanel(sync).padding(.top, 10) }
+                let conflicts = sync.counts["review:conflict"] ?? 0, removals = (sync.counts["review:pull"] ?? 0) + (sync.counts["review:push"] ?? 0)
+                if sync.reviewing && ((sync.counts["safe"] ?? 0) > 0 || (controller.conflictDefault != .ask && conflicts > 0)) { applyPanel(sync).padding(.top, 10) }
+                // Automatic apply settles conflicts, but never deletes: removals always wait for a person.
+                if sync.reviewing && controller.conflictDefault != .ask && (sync.counts["safe"] ?? 0) == 0 && conflicts == 0 && removals > 0 {
+                    Label(removals.counted("removal needs", "removals need") + " your choice. Automatic apply never deletes.", systemImage: "hand.raised")
+                        .font(.system(size: 13)).foregroundStyle(Color(webHex: "#fac775")).accessibilityIdentifier("trakt-removals-waiting")
+                }
                 if sync.reviewing || sync.run?.state == "building" { Button("Stop this scan") { Task { await controller.cancel() } }.font(.subheadline).disabled(controller.busy) }
             }
         }

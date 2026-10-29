@@ -331,10 +331,9 @@ struct Artwork: View {
     @ViewBuilder private func placeholder(size: CGSize) -> some View {
         if initialsOnly { initials }
         else {
-            VStack(spacing: 16) {
-                DiaryIcon(name: "clapperboard", size: 28)
-                Text(title).font(.system(size: 12.8, weight: .semibold)).lineSpacing(3).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            }.foregroundStyle(Color(webHex: "#d2c4e4")).padding(.horizontal, size.width * 0.14).padding(.vertical, size.height * 0.14)
+            // Just the clapperboard: every card already shows the title beside or below its artwork.
+            DiaryIcon(name: "clapperboard", size: min(34, max(16, min(size.width, size.height) * 0.3)))
+                .foregroundStyle(Color(webHex: "#d2c4e4"))
         }
     }
     private var initials: some View { Text(title.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()).font(.system(size: 24, weight: .bold)).foregroundStyle(Color(webHex: "#eee6fb99")) }
