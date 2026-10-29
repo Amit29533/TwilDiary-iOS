@@ -36,7 +36,16 @@ import TwilDiaryCore
                         review(sync)
                     }
                 }
-                if let error = controller.error { VStack(alignment: .leading, spacing: 8) { Text(error).font(.subheadline).foregroundStyle(.secondary); Button("Retry") { Task { await controller.refresh() } }.disabled(controller.busy) }.diaryPanel().accessibilityIdentifier("trakt-error") }
+                if let error = controller.error {
+                    // "Start a fresh preview": Trakt changed after this preview, so retrying can't succeed.
+                    let stale = error.contains("Start a fresh")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(stale ? "Trakt changed after this preview, probably a watch from another app such as Jellyfin. Everything applied so far is saved. A fresh scan plans the remaining changes against Trakt as it is now." : error)
+                            .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button(stale ? "Start a fresh scan" : "Retry") { Task { if stale { await controller.rescan() } else { await controller.refresh() } } }
+                            .buttonStyle(.diaryRowPrimary).disabled(controller.busy).accessibilityIdentifier(stale ? "trakt-fresh-scan" : "trakt-retry")
+                    }.diaryPanel().accessibilityIdentifier("trakt-error")
+                }
             }.padding(16).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("Trakt").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task(id: controller.kind.rawValue + "\n" + controller.query) {

@@ -417,6 +417,48 @@ test('remote history removals revoke the local play after review without deletin
   assert.ok(rows[0]!.revokedAt);
   assert.equal(fake.state.posts.length, 0);
 });
+test('new Trakt activity after the preview never stops imports, but still stops sends to Trakt', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f);
+  const fake = fakeTrakt();
+  fake.state.history.push({
+    id: 11,
+    type: 'movie',
+    watched_at: '2024-01-01T20:00:00.000Z',
+    movie: fake.media(100)
+  });
+  const pulled = await preview(f, fake);
+  // Something else watched on Trakt (a Jellyfin scrobble) after the preview was made.
+  fake.state.version++;
+  await safe(f, fake, pulled.id);
+  assert.equal(
+    (await f.db.select().from(watchEvents)).length,
+    1,
+    'the Trakt play is imported anyway'
+  );
+  assert.equal(fake.state.posts.length, 0);
+
+  const g = d1Fixture();
+  t.after(g.close);
+  await connectFixture(g);
+  await localMovie(g);
+  const other = fakeTrakt();
+  await logWatch(g.db, 'film', {
+    operationId: 'watch',
+    episodeId: null,
+    watchedAt: '2024-01-01T20:00:00.000Z'
+  });
+  const sending = await preview(g, other);
+  other.state.version++;
+  await assert.rejects(
+    () =>
+      applySyncChange(g.db, traktEnv, sending.id, undefined, 'apply', fakeTmdb, other.transport),
+    (error: unknown) => (error as { code?: string }).code === 'trakt_changed'
+  );
+  assert.equal(other.state.posts.length, 0, 'nothing is sent against a stale preview');
+});
 test('decimal ratings remain local, and simultaneous rating changes require a choice', async (t) => {
   const f = d1Fixture();
   t.after(f.close);

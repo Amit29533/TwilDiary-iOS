@@ -461,6 +461,13 @@ extension TraktServicing {
         do { try await service.cancel(id: id); deferredRefresh = true; deferredStatus = true } catch { self.error = error.localizedDescription }
         await finishChangingReview()
     }
+    /// Trakt changed after the preview (a play scrobbled elsewhere) while changes still had to be sent
+    /// to it: what's applied is kept; a fresh scan plans the rest against Trakt as it is now.
+    func rescan() async {
+        await cancel()
+        error = nil
+        await scan(start: true)
+    }
     func disconnect() async {
         checkpoint.runID = nil
         guard !busy else { return }

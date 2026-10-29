@@ -858,12 +858,21 @@ async function baselineSql(
     ON CONFLICT(account_id,kind,local_key) DO UPDATE SET remote_key=excluded.remote_key,
       local_value=excluded.local_value,remote_value=excluded.remote_value,updated_at=excluded.updated_at`;
 }
-async function assertSnapshot(db: Db, run: Run, trakt: Trakt) {
+/**
+ * The review was planned against this snapshot of Trakt's activity. Sending to Trakt needs it
+ * unchanged: a play scrobbled meanwhile could be sent again as a duplicate. Changes taken *from*
+ * Trakt (`fromTrakt`) stay correct when Trakt has since gained activity — a play, rating or
+ * watchlist entry still is what the preview read — so they continue, and the next scan picks up
+ * what's new. Without this, any watch elsewhere (a Jellyfin scrobble) stopped a 90-minute import.
+ * The saved snapshot is left as it was, so a later send still compares against the preview.
+ */
+async function assertSnapshot(db: Db, run: Run, trakt: Trakt, fromTrakt = false) {
   const saved = await db
     .select()
     .from(remote)
     .where(and(eq(remote.runId, run.id), eq(remote.kind, 'activities')))
     .get();
+  if (saved && fromTrakt) return;
   if (!saved || saved.payload.hash !== (await activity(trakt)).hash)
     throw new ApiError(
       409,
@@ -2707,7 +2716,11 @@ export async function applySyncChange(
       chosen?.state === 'uncertain' ||
       chosen?.payload.sentUnconfirmed === true ||
       chosen?.payload.reconcileOnly === true;
-    if (!uncertain && choice !== 'skip') await assertSnapshot(db, run, trakt);
+    // Only these steps write to Trakt: a push applied as planned, or a conflict kept as TwilDiary's.
+    const sends = picked.some(
+      (change) => choice === 'local' || (choice === 'apply' && change.direction === 'push')
+    );
+    if (!uncertain && choice !== 'skip') await assertSnapshot(db, run, trakt, !sends);
     if (!chosen) {
       const remaining = await db
         .select({ count: sql<number>`coalesce(sum(${changeCounts.amount}),0)` })
@@ -2940,8 +2953,8 @@ export async function resolveReviewGroup(
         progress: run.progress + Number(skipped.meta.changes ?? 0)
       });
     }
-    await assertSnapshot(db, run, trakt);
     const send = choice === 'local';
+    await assertSnapshot(db, run, trakt, !send);
     const batch = await db
       .select()
       .from(changes)
