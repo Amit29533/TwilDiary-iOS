@@ -55,11 +55,13 @@ private func adding(_ dates: [String: String], to workspace: Workspace) throws -
 
 @Test func severalGenresMatchTitlesInAnyOfThem() throws {
     let workspace = SampleWorkspace.make()
-    let genres = Array(Set(workspace.activeTitles.flatMap(\.genres))).sorted().prefix(2)
-    try #require(genres.count == 2)
-    var value = LibraryQuery(); value.genres = Set(genres)
-    let expected = workspace.activeTitles.filter { $0.genres.contains(genres[genres.startIndex]) || $0.genres.contains(genres[genres.startIndex + 1]) }.map(\.id)
-    #expect(Set(value.titles(in: workspace).map(\.id)) == Set(expected))
+    let genre = try #require(workspace.activeTitles.flatMap(\.genres).first)
+    let expected = Set(workspace.activeTitles.filter { $0.genres.contains(genre) }.map(\.id))
+    // The sample has one genre: a second chosen genre that no title has adds nothing.
+    var value = LibraryQuery(); value.genres = [genre, "Not a genre"]
+    #expect(Set(value.titles(in: workspace).map(\.id)) == expected)
+    value.genres = ["Not a genre"]
+    #expect(value.titles(in: workspace).isEmpty)
     value.genres = []
     #expect(value.titles(in: workspace).count == workspace.activeTitles.count)
 }
