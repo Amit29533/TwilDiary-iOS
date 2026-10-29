@@ -18,6 +18,8 @@ struct LibraryView: View {
     @SceneStorage("library.favorites") private var favoritesOnly = false
     @State private var showSearch = false
     @State private var showFilters = false
+    /// The status chips scroll sideways, so a drag that starts on them never changes the category.
+    @State private var chipRow = CGRect.null
     @AppStorage("library.list") private var list = false
     @AppStorage("library.genreRows") private var genreRows = false
     @AppStorage("library.sort") private var sort = LibraryQuery.Sort.added
@@ -87,6 +89,7 @@ struct LibraryView: View {
                 }
             }.padding(.horizontal, 14)
         }.scrollIndicators(.hidden).padding(.vertical, 6)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Motion.swipeSpace)) } action: { chipRow = $0 }
     }
     private var sortRow: some View {
         HStack(spacing: 10) {
@@ -181,9 +184,11 @@ struct LibraryView: View {
                     }
                 }
             }.padding(.bottom, selecting ? 90 : 24)
-                // Genre shelves scroll sideways themselves, so they keep the swipe.
-                .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting)
-        }.refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
+        }
+        // On the scroll view, so a short category's empty space still takes the swipe.
+        // Genre shelves scroll sideways themselves, so they keep the swipe.
+        .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting, ignoring: chipRow)
+        .refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
     }
     private func ratingStatus(_ message: String) -> some View {
         Text(message).font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 10)

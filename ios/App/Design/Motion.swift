@@ -7,6 +7,8 @@ enum Motion {
     static var press: Animation { .spring(duration: 0.28, bounce: 0.45) }
     /// `nil` under Reduce Motion, so changes simply appear.
     static func spring(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : spring }
+    /// The coordinate space a category swipe measures in; rows that scroll sideways report their frame in it.
+    static let swipeSpace = "category-swipe"
 }
 
 /// Source IDs for the zoom from a poster into its title page.
@@ -48,8 +50,9 @@ extension View {
     /// Marks the artwork a title page zooms out of, and back into on return.
     func zoomSource(_ id: String) -> some View { modifier(ZoomSource(id: id)) }
     /// A sideways swipe moves between All, Movies, Shows and Anime; it never changes app tabs.
-    func categorySwipe(_ selection: Binding<LibraryCategory>, enabled: Bool = true) -> some View {
-        modifier(CategorySwipe(selection: selection, enabled: enabled))
+    /// `ignoring` is a sideways-scrolling row (in `Motion.swipeSpace`): drags that start there scroll it instead.
+    func categorySwipe(_ selection: Binding<LibraryCategory>, enabled: Bool = true, ignoring exempt: CGRect = .null) -> some View {
+        modifier(CategorySwipe(selection: selection, enabled: enabled, exempt: exempt))
     }
 }
 
@@ -73,25 +76,27 @@ extension ButtonStyle where Self == SpringPressStyle {
 private struct CategorySwipe: ViewModifier {
     @Binding var selection: LibraryCategory
     let enabled: Bool
+    let exempt: CGRect
     /// Springs back (the bounce) when the finger lifts; follows the finger exactly while dragging.
     @GestureState(resetTransaction: Transaction(animation: Motion.spring)) private var pull: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
-        content.offset(x: reduceMotion ? 0 : pull)
+        // The whole area takes the swipe, including the gaps around a short category's cards.
+        content.contentShape(Rectangle()).coordinateSpace(.named(Motion.swipeSpace)).offset(x: reduceMotion ? 0 : pull)
             .simultaneousGesture(swipe, including: enabled ? .all : .subviews)
     }
     private var swipe: some Gesture {
-        DragGesture(minimumDistance: 24)
+        DragGesture(minimumDistance: 24, coordinateSpace: .named(Motion.swipeSpace))
             .updating($pull) { value, state, _ in
                 let dx = value.translation.width, dy = value.translation.height
-                guard abs(dx) > abs(dy) * 1.6 else { return }
+                guard abs(dx) > abs(dy) * 1.6, !exempt.contains(value.startLocation) else { return }
                 // Resistance: the page moves a fraction of the finger, more so at the ends.
                 let atEnd = neighbour(dx < 0 ? 1 : -1) == nil
                 state = dx * (atEnd ? 0.12 : 0.28)
             }
             .onEnded { value in
                 let dx = value.translation.width, dy = value.translation.height
-                guard abs(dx) > 64, abs(dx) > abs(dy) * 1.6, let next = neighbour(dx < 0 ? 1 : -1) else { return }
+                guard abs(dx) > 64, abs(dx) > abs(dy) * 1.6, !exempt.contains(value.startLocation), let next = neighbour(dx < 0 ? 1 : -1) else { return }
                 withAnimation(Motion.spring(reduceMotion)) { selection = next }
             }
     }

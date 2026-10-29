@@ -11,7 +11,8 @@ private struct DiaryPageChrome: ViewModifier {
         content.overlay(alignment: .bottom) {
             if let label = store.undoLabel {
                 UndoToast(label: label).padding(.horizontal, 24).padding(.bottom, 10)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.9, anchor: .bottom)))
+                    // Pops in place (no slide), so Undo is where it looks from the first frame.
+                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)))
             }
         }.animation(Motion.spring(reduceMotion), value: store.undoLabel)
     }
