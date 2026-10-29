@@ -63,7 +63,10 @@ private struct LibraryCoverArtwork: View {
         GeometryReader { geometry in
             // Same shared, downsampled cache as Artwork: no AsyncImage re-download
             // or full-size main-thread decode when a row scrolls back into view.
-            let request = PublicArtworkRequest(path: path, pixels: Double(max(geometry.size.width, geometry.size.height) * displayScale))
+            // The poster's own 512 px bitmap, shared with the thumbnail beside it. Sized to the row, this
+            // asked TMDb for a 1280 px poster and decoded ~14 MB per row for a backdrop that sits dimmed
+            // under a gradient; the cache held only a few, so scrolling decoded them again and again.
+            let request = PublicArtworkRequest(path: path, pixels: 512)
             Group {
                 if path.hasPrefix("/demo/"), let image = DemoArtwork.image("asset:" + URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) {
                     crop(Image(uiImage: image), size: geometry.size)

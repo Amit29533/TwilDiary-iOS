@@ -19,7 +19,14 @@ struct DiaryPanelModifier: ViewModifier {
                 }
             }
             .overlay(RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).strokeBorder(theme == .glass ? .white.opacity(28.0 / 255) : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
-            .shadow(color: .black.opacity(theme == .glass ? 0.3 : 0), radius: theme == .glass ? 16 : 0, y: theme == .glass ? 12 : 0)
+            // Glass panels float; the others are flat, with no (invisible, still rendered) shadow at all.
+            .modifier(PanelShadow(on: theme == .glass))
+    }
+}
+private struct PanelShadow: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.shadow(color: .black.opacity(0.3), radius: 16, y: 12) } else { content }
     }
 }
 /// Flat section and card backgrounds (Settings groups, Explore filters, Files

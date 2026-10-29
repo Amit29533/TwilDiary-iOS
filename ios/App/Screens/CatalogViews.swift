@@ -245,6 +245,7 @@ private struct CatalogSeasonPreview: View {
     /// The episode whose details sheet is open (the same sheet as a saved title's episodes).
     @State private var selectedEpisode: Int?
     @State private var sheetHeight: CGFloat = 360
+    @State private var sheetEpisode: Int?
     init(route: CatalogRoute, details: CatalogDetails, store: DiaryStore) {
         self.route = route; self.details = details
         _selected = State(initialValue: details.seasons?.first(where: { $0.number > 0 })?.number ?? details.seasons?.first?.number ?? 1)
@@ -287,8 +288,10 @@ private struct CatalogSeasonPreview: View {
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
             .onChange(of: selected) { _, _ in showAll = false; revealed = []; selectedEpisode = nil }
             .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
-                if let number = selectedEpisode, let episode = controller.items.first(where: { $0.number == number }) { episodeSheet(episode) }
+                // The last episode stays while the sheet slides away, instead of an empty sheet.
+                if let number = selectedEpisode ?? sheetEpisode, let episode = controller.items.first(where: { $0.number == number }) { episodeSheet(episode) }
             }
+            .onChange(of: selectedEpisode) { _, number in if let number { sheetEpisode = number } }
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await controller.load(selected, reveal: true) } } }
     }
     /// The same tiles as a saved title's episodes: a 16:10 thumbnail with a one-line caption in the

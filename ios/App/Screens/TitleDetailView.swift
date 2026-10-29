@@ -46,6 +46,7 @@ struct TitleDetailView: View {
     @State private var sliderDraft: Double?
     @State private var selectedEpisode: Episode?
     @State private var episodeSheetHeight: CGFloat = 420
+    @State private var sheetEpisode: Episode?
     /// Which way the last swipe in the episode sheet went, so the next episode slides in from that side.
     @State private var episodeForward = true
     @State private var episodeLimit = 40
@@ -131,8 +132,10 @@ struct TitleDetailView: View {
         content
             // Presented while an episode is chosen; swiping inside changes the episode, not the sheet.
             .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
-                if let episode = selectedEpisode { episodeInformation(title, episode: episode) }
+                // The last episode stays while the sheet slides away, instead of an empty sheet.
+                if let episode = selectedEpisode ?? sheetEpisode { episodeInformation(title, episode: episode) }
             }
+            .onChange(of: selectedEpisode) { _, episode in if let episode { sheetEpisode = episode } }
             .sheet(isPresented: $choosingWatchDate) {
                 NavigationStack {
                     ScrollView { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }

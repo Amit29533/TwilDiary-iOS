@@ -9,7 +9,8 @@ struct CollectionLayoutToggle: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Button {
-            withAnimation(Motion.spring(reduceMotion)) { grid.toggle() }
+            // A quick settle without bounce: the whole collection re-lays out, so a spring made it wobble.
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) { grid.toggle() }
         } label: {
             RoundTool(icon: grid ? "list" : "layout-grid", size: small ? 36 : 44)
         }.buttonStyle(.springPress)

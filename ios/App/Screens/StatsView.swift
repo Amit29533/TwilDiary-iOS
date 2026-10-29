@@ -19,7 +19,7 @@ struct StatsView: View {
     @State private var clock = Date.now
     var body: some View {
         let data = store.statsProjection(period: period, year: year, at: clock)
-        let highlights = StatsHighlights(workspace: store.workspace, trend: data.trend, timeZone: DiaryDate.calendar().timeZone)
+        let highlights = store.statsHighlights(data, period: period, year: year, at: clock)
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {

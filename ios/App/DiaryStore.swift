@@ -378,7 +378,7 @@ import TwilDiaryCore
         apply(built.index, changed: built.changed)
     }
     private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
-        cachedHome = nil; cachedStats = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; catalogLookup = nil; cachedPersonSections = nil
+        cachedHome = nil; cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; catalogLookup = nil; cachedPersonSections = nil
         titleIndex = index.titles
         progressIndex = index.progress
         seasonProgressIndex = index.seasonProgress
@@ -486,6 +486,16 @@ import TwilDiaryCore
         let value = StatsOverview(workspace: snapshot, period: period, year: year, now: date, timeZone: timeZone)
         cachedStats = (day, timeZone.identifier, period, year, value); return value
     }
+    @ObservationIgnored private var cachedHighlights: (key: String, value: StatsHighlights)?
+    /// Busiest day, top titles and averages for a Stats period. They sort every watch, so they're kept
+    /// with the period's overview instead of being rebuilt on every Stats redraw (a chart tap included).
+    func statsHighlights(_ overview: StatsOverview, period: Period, year: Int?, at date: Date) -> StatsHighlights {
+        let zone = DiaryDate.calendar().timeZone
+        let key = "\(DiaryDate.day(date, timeZone: zone))|\(zone.identifier)|\(period)|\(year ?? 0)"
+        if let saved = cachedHighlights, saved.key == key { return saved.value }
+        let value = StatsHighlights(workspace: workspace, trend: overview.trend, timeZone: zone)
+        cachedHighlights = (key, value); return value
+    }
     func seasonProgress(_ title: MediaTitle, season: Int) -> SeasonProgress {
         seasonProgressIndex[title.id]?[season] ?? SeasonProgress.calculate(title: title, workspace: workspace, season: season)
     }
@@ -574,7 +584,9 @@ import TwilDiaryCore
     func card(_ title: MediaTitle, season: Int? = nil, fresh: Bool = false) async throws -> WatchCard {
         guard !needsSignIn, !Task.isCancelled else { throw CancellationError() }
         let key = CardKey(titleID: title.id, revision: cardRevisions[title.id] ?? snapshotGeneration, session: sessionGeneration, season: season, day: DiaryDate.day(now))
-        if !fresh, let cached = cachedCards[key], Date.now.timeIntervalSince(cached.at) < 120 { return cached.value }
+        // The key changes with the title's episodes and watches (revision) and with the day, so a card stays
+        // right for longer than the old 2 minutes; returning to Glance no longer refetches every card.
+        if !fresh, let cached = cachedCards[key], Date.now.timeIntervalSince(cached.at) < 900 { return cached.value }
         let flight: (id: UUID, task: Task<WatchCard, Error>)
         if !fresh, let existing = cardReads[key] { flight = existing }
         else {

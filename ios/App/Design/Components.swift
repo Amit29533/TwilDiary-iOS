@@ -453,6 +453,30 @@ struct CategoryPicker: View {
     }
 }
 
+/// The − / + circles. Live Liquid Glass samples and blurs what's behind it every frame; on the large
+/// cards (Glance's top card, Home) that's worth it, but dozens of list and grid cards each carrying two
+/// made Glance stutter while scrolling. Those get the same look as plain fills.
+/// A legibility shadow only where text sits on artwork; an invisible one still renders offscreen.
+struct TextShadow: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.shadow(color: .black.opacity(0.6), radius: 4, y: 1) } else { content }
+    }
+}
+
+private struct CardCircle: ViewModifier {
+    let glass: Bool
+    let tint: Color?
+    func body(content: Content) -> some View {
+        if glass {
+            content.glassEffect(tint.map { Glass.regular.tint($0).interactive() } ?? .regular.interactive(), in: Circle())
+        } else {
+            content.background(Circle().fill(tint ?? Color.white.opacity(0.14)))
+                .overlay(Circle().strokeBorder(.white.opacity(tint == nil ? 0.18 : 0.25), lineWidth: 0.75))
+        }
+    }
+}
+
 private extension VerticalAlignment {
     /// The centre line of Home's progress bar, so the − / + controls sit on it.
     enum ProgressBarCenter: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] } }
@@ -641,10 +665,10 @@ struct ProgressCard: View {
                 // One container lets the card's glass controls render and morph together.
                 GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
-                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: nil)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 15, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).glassEffect(.regular.tint(theme.accent).interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: theme.accent)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
@@ -672,7 +696,7 @@ struct ProgressCard: View {
     /// "S1 · Watched 5 of 8 · Next E6" (see GlanceCardText).
     private var subtitleLine: some View {
         Text(cardText?.subtitle ?? (title.isSeries ? title.categoryName : "Movie"))
-            .foregroundStyle(Color(webHex: "#c5c0cf")).shadow(color: .black.opacity(hero ? 0.6 : 0), radius: 4, y: 1)
+            .foregroundStyle(Color(webHex: "#c5c0cf")).modifier(TextShadow(on: hero))
     }
     private var cardText: GlanceCardText? {
         guard let card else { return nil }
