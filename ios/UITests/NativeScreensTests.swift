@@ -717,7 +717,10 @@ import UIKit
         capture("Anime character page")
         heart.tap()
         XCTAssertEqual(heart.label, "Remove from favourites")
-        app.tabBars.buttons["Home"].tap()
+        // Detail pages hide the tab bar: back to the Library list first.
+        let library = app.tabBars.buttons["Home"]
+        for _ in 0..<3 where !library.exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
+        XCTAssertTrue(library.waitForExistence(timeout: 5)); library.tap()
         let all = app.buttons["home-favourites"]
         for _ in 0..<12 { if all.exists && all.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(all.isHittable, "Home shows recent favourites"); capture("Home favourites")

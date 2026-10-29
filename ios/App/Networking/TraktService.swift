@@ -87,6 +87,8 @@ extension TraktServicing {
     @ObservationIgnored private let defaults: UserDefaults
     static let conflictDefaultKey = "traktConflictDefault"
     var error: String?
+    /// Why a tapped item couldn't be applied, shown on that item rather than at the top of the page.
+    var itemErrors: [String: String] = [:]
     var paused = false
     private var refreshID = UUID()
     private var receivedMode = false
@@ -296,6 +298,7 @@ extension TraktServicing {
         if change == nil && choice == .apply { await applyAllReady(); return }
         guard !busy, let current = sync, current.reviewing, let id = current.run?.id, choice == .skip || cooldownUntil <= .now else { return }
         refreshID = UUID(); loading = false; busy = true; changingReview = true; paused = false; error = nil
+        if let change { itemErrors[change.id] = nil }
         do {
             var steps = 0
             repeat {
@@ -311,8 +314,17 @@ extension TraktServicing {
             }
             deferredRefresh = true; deferredStatus = true
         } catch is CancellationError { paused = true }
-        catch { self.error = error.localizedDescription }
+        catch {
+            if let change { itemErrors[change.id] = error.localizedDescription } else { self.error = error.localizedDescription }
+        }
         await finishChangingReview()
+    }
+    /// A refusal about one item (blocked, already gone, review rules), as opposed to a dropped
+    /// connection, a busy server or the database allowance, which the whole apply waits out.
+    private static func settlesOnlyItem(_ error: any Error) -> Bool {
+        if error is CancellationError || error is DecodingError { return false }
+        if case APIError.databaseLimit(_) = error { return false }
+        return (error as? TraktTransferFailure)?.retryable != true
     }
     private func applyAllReady() async {
         guard !busy, let current = sync, current.reviewing, let id = current.run?.id else { return }
@@ -322,6 +334,8 @@ extension TraktServicing {
         paused = false; applyingAll = true; checkpoint.runID = id
         error = nil; retryAttempt = 0; retryMessage = nil
         var reconcile = false, stagnant = 0
+        // Groups that stopped shrinking (what's left needs one-by-one handling) and items already tried.
+        var settledGroups = Set<String>(), attempted = Set<String>()
         do {
             while !paused {
                 try Task.checkCancellation()
@@ -340,14 +354,45 @@ extension TraktServicing {
                     }
                     guard let before = sync, before.run?.id == id, before.reviewing else { break }
                     if (before.counts["safe"] ?? 0) == 0 && before.unresolved > 0 {
-                        // Ready changes are done; the server settles conflicts with the chosen side, a batch per request.
-                        guard let choice = conflictDefault.choice, (before.counts["review:conflict"] ?? 0) > 0 else { break }
-                        let result = try await service.resolve(id: id, direction: "conflict", choice: choice)
-                        guard operationID == ticket else { throw CancellationError() }
-                        guard result.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
-                        accept(result); retryAttempt = 0; retryMessage = nil; error = nil
-                        // Unchanged counts: what is left (Trash, unconfirmed sends) needs an individual choice.
-                        if !result.reviewing || result.counts == before.counts { break }
+                        // The owner's default decides everything, as they asked: conflicts, then both kinds of
+                        // removals (Trakt's side hides a removed play in TwilDiary, revoked and recoverable;
+                        // TwilDiary's sends it back), a batch per request.
+                        guard let choice = conflictDefault.choice else { break }
+                        if let direction = ["conflict", "pull", "push"].first(where: { (before.counts["review:" + $0] ?? 0) > 0 && !settledGroups.contains($0) }) {
+                            let result = try await service.resolve(id: id, direction: direction, choice: choice)
+                            guard operationID == ticket else { throw CancellationError() }
+                            guard result.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
+                            accept(result); retryAttempt = 0; retryMessage = nil; error = nil
+                            if !result.reviewing { break }
+                            if (result.counts["review:" + direction] ?? 0) == (before.counts["review:" + direction] ?? 0) { settledGroups.insert(direction) }
+                            try await sleep(Self.stepPacing); continue
+                        }
+                        // Then whatever a group couldn't take, one item at a time with the same choice: unconfirmed
+                        // sends (checked against Trakt first), failed or blocked reviewed items.
+                        var found: TraktChange?, after: String?, listed: TraktSync?
+                        for _ in 0..<50 {
+                            let page = try await service.review(kind: .all, query: "", after: after)
+                            guard operationID == ticket else { throw CancellationError() }
+                            guard page.run?.id == id else { throw APIError.message("The review changed. Refresh before continuing.") }
+                            listed = listed?.appending(page) ?? page
+                            found = page.items.first { ["pending", "failed", "uncertain"].contains($0.state) && !attempted.contains($0.id) }
+                            after = page.next
+                            if found != nil || after == nil { break }
+                        }
+                        if let listed { accept(listed) }
+                        guard let item = found else { break }
+                        attempted.insert(item.id)
+                        do {
+                            // A reviewed or unconfirmed item takes the default; any other failed item is simply retried.
+                            let pick = item.review || item.state == "uncertain" ? choice : .apply
+                            let result = try await service.apply(id: id, change: item.id, choice: pick)
+                            guard operationID == ticket else { throw CancellationError() }
+                            accept(result); retryAttempt = 0; retryMessage = nil; error = nil
+                            if !result.reviewing { break }
+                        } catch where Self.settlesOnlyItem(error) {
+                            // This one item can't be settled (its reason stays on the item); the sync carries on.
+                            itemErrors[item.id] = error.localizedDescription
+                        }
                         try await sleep(Self.stepPacing); continue
                     }
                     let result = try await service.apply(id: id, change: nil, choice: .apply)

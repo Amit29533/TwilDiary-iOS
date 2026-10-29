@@ -44,8 +44,24 @@ test('a failed bump never fails the write it follows', async () => {
       throw new Error('D1 unavailable');
     }
   } as unknown as D1Database;
-  await bumpWorkspaceRevision(broken);
+  await bumpWorkspaceRevision(broken, async () => {});
   await bumpWorkspaceRevision(undefined);
+});
+
+test('a bump that fails once is retried, so other devices still see the change', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const first = (await readWorkspaceRevision(f.db)).revision;
+  let calls = 0;
+  const flaky = {
+    prepare(sql: string) {
+      if (++calls === 1) throw new Error('D1 hiccup');
+      return f.binding.prepare(sql);
+    }
+  } as unknown as D1Database;
+  await bumpWorkspaceRevision(flaky, async () => {});
+  assert.equal(calls, 2);
+  assert.notEqual((await readWorkspaceRevision(f.db)).revision, first);
 });
 
 test('a missing or malformed revision is reported, not treated as unchanged', async (t) => {

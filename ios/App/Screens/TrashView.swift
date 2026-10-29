@@ -67,7 +67,7 @@ struct TrashView: View {
                 }
             }
             .refreshable { await store.refresh(); await store.loadPublicRatings(archived, source: ratingSource) }
-            .task(id: archived.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue) { await store.loadPublicRatings(archived, source: ratingSource) }
+            .task(id: archived.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(archived, source: ratingSource) }
             .onChange(of: category) { _, _ in selected = []; selecting = false }
             .onChange(of: archived.map(\.id)) { _, ids in selected.formIntersection(ids); if ids.isEmpty { selecting = false } }
             .sheet(item: $review) { value in CollectionReviewView(review: value) { selected = []; selecting = false } }

@@ -7,7 +7,8 @@ import {
   buildSyncStep,
   syncStatus,
   applySyncChange,
-  cancelSync
+  cancelSync,
+  traktPacing
 } from '../../src/lib/server/trakt-sync.ts';
 import {
   addManualTitle,
@@ -300,7 +301,41 @@ test('a lost history response is reconciled without resending or duplicating the
   await applySyncChange(f.db, traktEnv, id, item.id, 'local', fakeTmdb, fake.transport);
   assert.equal(fake.state.history.length, 1);
   assert.equal(fake.state.posts.filter((p) => p.path === '/sync/history').length, 1);
-  assert.equal((await syncStatus(f.db, id)).run?.state, 'cancelled');
+  // Checking it settles this item; the review itself carries on.
+  assert.notEqual((await syncStatus(f.db, id)).run?.state, 'cancelled');
+});
+
+test('skipping one unconfirmed send keeps the rest of the review', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f);
+  const fake = fakeTrakt();
+  fake.state.history.push({
+    id: 11,
+    type: 'movie',
+    watched_at: '2023-05-01T20:00:00.000Z',
+    movie: fake.media(100)
+  });
+  await logWatch(f.db, 'film', {
+    operationId: 'watch',
+    episodeId: null,
+    watchedAt: '2024-01-01T20:00:00.000Z'
+  });
+  const { id } = await preview(f, fake);
+  f.sqlite.exec(
+    `UPDATE trakt_sync_changes SET state='uncertain', payload=json_set(payload,'$.sentUnconfirmed',json('true')) WHERE run_id='${id}' AND direction='push'`
+  );
+  const before = await syncStatus(f.db, id);
+  const unconfirmed = before.items.find((item) => item.state === 'uncertain')!;
+  assert.ok(unconfirmed);
+  await applySyncChange(f.db, traktEnv, id, unconfirmed.id, 'skip', fakeTmdb, fake.transport);
+  const after = await syncStatus(f.db, id);
+  assert.notEqual(after.run?.state, 'cancelled', 'one skip never ends the review');
+  assert.ok(
+    after.items.some((item) => item.state === 'pending' && item.id !== unconfirmed.id),
+    'the other changes are still waiting'
+  );
 });
 
 test('Trakt minute precision links existing watches without replacing exact local timestamps', async (t) => {
@@ -459,6 +494,73 @@ test('new Trakt activity after the preview never stops imports, but still stops 
   );
   assert.equal(other.state.posts.length, 0, 'nothing is sent against a stale preview');
 });
+test('"Use Trakt" on an unconfirmed play keeps it in the diary, sends nothing and keeps the review', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f);
+  const fake = fakeTrakt();
+  await logWatch(f.db, 'film', {
+    operationId: 'watch',
+    episodeId: null,
+    watchedAt: '2024-01-01T20:00:00.000Z'
+  });
+  const { id } = await preview(f, fake);
+  f.sqlite.exec(
+    `UPDATE trakt_sync_changes SET state='uncertain', payload=json_set(payload,'$.sentUnconfirmed',json('true')) WHERE run_id='${id}' AND direction='push'`
+  );
+  const item = (await syncStatus(f.db, id)).items.find((row) => row.state === 'uncertain')!;
+  await applySyncChange(f.db, traktEnv, id, item.id, 'trakt', fakeTmdb, fake.transport);
+  const after = await syncStatus(f.db, id);
+  assert.equal(
+    (await f.db.select().from(traktSyncChanges).where(eq(traktSyncChanges.id, item.id)).get())
+      ?.state,
+    'skipped'
+  );
+  assert.notEqual(after.run?.state, 'cancelled');
+  assert.equal(fake.state.posts.length, 0, 'nothing was sent');
+  assert.equal(
+    (await f.db.select().from(watchEvents)).filter((row) => !row.revokedAt).length,
+    1,
+    'the play stays in the diary'
+  );
+});
+
+test('writes to Trakt are spaced apart, across requests too', async (t) => {
+  const f = d1Fixture();
+  t.after(() => {
+    traktPacing.writeSpacingMs = 0;
+    f.close();
+  });
+  traktPacing.writeSpacingMs = 250;
+  await connectFixture(f);
+  await localMovie(f);
+  const fake = fakeTrakt();
+  const sentAt: number[] = [];
+  const transport: typeof fetch = async (input, init) => {
+    if (init?.method === 'POST') sentAt.push(Date.now());
+    return fake.transport(input, init);
+  };
+  for (const [index, day] of ['2024-01-01', '2024-02-01'].entries())
+    await logWatch(f.db, 'film', {
+      operationId: 'watch-' + index,
+      episodeId: null,
+      watchedAt: day + 'T20:00:00.000Z',
+      rewatch: true
+    });
+  const { id } = await preview(f, { ...fake, transport });
+  for (let i = 0; i < 6; i++)
+    await applySyncChange(f.db, traktEnv, id, undefined, 'apply', fakeTmdb, transport).catch(
+      () => undefined
+    );
+  assert.ok(sentAt.length >= 2, 'both plays were sent');
+  for (let i = 1; i < sentAt.length; i++)
+    assert.ok(
+      sentAt[i]! - sentAt[i - 1]! >= 240,
+      `writes ${i - 1} and ${i} were ${sentAt[i]! - sentAt[i - 1]!} ms apart`
+    );
+});
+
 test('decimal ratings remain local, and simultaneous rating changes require a choice', async (t) => {
   const f = d1Fixture();
   t.after(f.close);
@@ -625,7 +727,7 @@ test('many unknown-date rewatches match distinct local plays without a ten-event
   assert.equal(fake.state.posts.length, 0);
 });
 
-test('skipping an unconfirmed send keeps its durable guard across a new preview', async (t) => {
+test('an unconfirmed send skipped once is checked against Trakt next time and sent only if missing', async (t) => {
   const f = d1Fixture();
   t.after(f.close);
   await connectFixture(f);
@@ -637,17 +739,22 @@ test('skipping an unconfirmed send keeps its durable guard across a new preview'
   await assert.rejects(() => safe(f, fake, p.id));
   const uncertain = (await syncStatus(f.db, p.id)).items.find((row) => row.state === 'uncertain')!;
   await applySyncChange(f.db, traktEnv, p.id, uncertain.id, 'skip', fakeTmdb, fake.transport);
+  // The review stays open after one item; with nothing left, the next step completes it.
+  await applySyncChange(f.db, traktEnv, p.id, undefined, 'apply', fakeTmdb, fake.transport);
+  assert.equal((await syncStatus(f.db, p.id)).run?.state, 'complete');
   // Simulate an unconfirmed play that still is not visible on the provider.
   fake.state.history = [];
   fake.state.version++;
   p = await preview(f, fake);
   const check = p.status.items.find((row) => row.kind === 'history')!;
   assert.equal(check.state, 'uncertain');
-  await assert.rejects(
-    () => applySyncChange(f.db, traktEnv, p.id, check.id, 'local', fakeTmdb, fake.transport),
-    { code: 'sync_uncertain' }
+  // Checking searches Trakt's history first; the play isn't there, so it is sent once (never twice).
+  await applySyncChange(f.db, traktEnv, p.id, check.id, 'local', fakeTmdb, fake.transport);
+  assert.equal(fake.state.history.length, 1, 'now on Trakt exactly once');
+  await applySyncChange(f.db, traktEnv, p.id, check.id, 'local', fakeTmdb, fake.transport).catch(
+    () => undefined
   );
-  assert.equal(fake.state.posts.filter((row) => row.path === '/sync/history').length, 1);
+  assert.equal(fake.state.history.length, 1, 'a second check finds it instead of sending again');
 });
 
 test('an edit made after preview is preserved and stale ratings cannot overwrite it', async (t) => {

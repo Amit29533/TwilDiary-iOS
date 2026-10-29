@@ -1,6 +1,9 @@
 import { sealTrakt } from '../../src/lib/server/trakt-auth.ts';
 import { traktConnections } from '../../src/lib/server/db/schema.ts';
 import type { d1Fixture } from './d1.ts';
+import { traktPacing } from '../../src/lib/server/trakt-sync.ts';
+// Real Trakt needs writes a second apart; fixtures answer instantly.
+traktPacing.writeSpacingMs = 0;
 export const traktEnv = {
   TRAKT_CLIENT_ID: 'fixture-client-id-123456789',
   TRAKT_TOKEN_KEY: Buffer.alloc(32, 7).toString('base64url'),

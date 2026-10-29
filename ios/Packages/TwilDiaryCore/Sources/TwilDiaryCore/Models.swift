@@ -77,12 +77,14 @@ public struct FileLocation: Codable, Identifiable, Hashable, Sendable {
     public let evidence: String
     public let sizeBytes: Int64?
     public let checkedAt: String?
+    /// Windows drives use backslashes; a POSIX root (a Jellyfin server's "/mnt/media") keeps slashes.
     public var path: String {
-        var base = root.replacingOccurrences(of: "/", with: "\\")
-        var relative = relativePath.replacingOccurrences(of: "/", with: "\\")
-        while base.hasSuffix("\\") { base.removeLast() }
-        while relative.hasPrefix("\\") { relative.removeFirst() }
-        return base + "\\" + relative
+        let separator = root.hasPrefix("/") ? "/" : "\\", other = separator == "/" ? "\\" : "/"
+        var base = root.replacingOccurrences(of: other, with: separator)
+        var relative = relativePath.replacingOccurrences(of: other, with: separator)
+        while base.hasSuffix(separator) { base.removeLast() }
+        while relative.hasPrefix(separator) { relative.removeFirst() }
+        return base + separator + relative
     }
 }
 

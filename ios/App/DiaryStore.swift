@@ -108,7 +108,11 @@ import TwilDiaryCore
     /// The server's diary revision read just before the last complete foreground download.
     @ObservationIgnored private var knownWorkspaceRevision: (token: String, at: Date)?
     @ObservationIgnored private var completeReads = 0
-    private var pendingWatches: [String: [String: Any]] = [:]
+    /// Unconfirmed watch requests and their operation IDs. Saved on the phone (the app's own store
+    /// only), so retrying after a restart reuses the ID and the server can't log the watch twice.
+    private var pendingWatches: [String: [String: Any]] = [:] { didSet { savePendingWatches() } }
+    @ObservationIgnored private var persistsPendingWatches = false
+    private static let pendingWatchesKey = "pendingWatches.v1"
     private var pendingProgress: [String: [String: Any]] = [:]
     private var pendingRemovals: [String: WatchCard.Previous] = [:]
     var pendingSeasonAdjustments: [String: SeasonEditTransaction] = [:]
@@ -153,8 +157,26 @@ import TwilDiaryCore
         if !isPreview {
             needsSignIn = self.api.credential == nil
             restoreCachedWorkspace()
+            if api == nil { persistsPendingWatches = true; restorePendingWatches() }
         }
         indexWorkspace()
+    }
+    private func savePendingWatches() {
+        guard persistsPendingWatches else { return }
+        guard let scope = api.credential?.cacheScope, !pendingWatches.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: ["scope": scope, "items": pendingWatches] as [String: Any]) else {
+            UserDefaults.standard.removeObject(forKey: Self.pendingWatchesKey); return
+        }
+        UserDefaults.standard.set(data, forKey: Self.pendingWatchesKey)
+    }
+    /// Only the signed-in diary's own requests, and none older than a week.
+    private func restorePendingWatches() {
+        guard let data = UserDefaults.standard.data(forKey: Self.pendingWatchesKey),
+              let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              saved["scope"] as? String == api.credential?.cacheScope,
+              let items = saved["items"] as? [String: [String: Any]] else { pendingWatches = [:]; return }
+        let cutoff = now.addingTimeInterval(-7 * 86_400)
+        pendingWatches = items.filter { (DiaryDate.parse($0.value["watchedAt"] as? String) ?? .distantPast) > cutoff }
     }
     func connect(_ credential: AccessCredential) async {
         cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
@@ -782,7 +804,12 @@ import TwilDiaryCore
     func undo() async {
         celebration = nil
         guard let action = undoAction else { return }
-        await perform(refreshing: undoTitles) { try await action(); self.undoAction = nil; self.undoLabel = nil }
+        let titles = undoTitles
+        await perform(refreshing: titles) {
+            try await action(); self.undoAction = nil; self.undoLabel = nil
+            // An undone season edit is over: its unfinished rest must not be offered as a retry.
+            self.pendingSeasonAdjustments = self.pendingSeasonAdjustments.filter { entry in !titles.contains { entry.key.hasPrefix($0 + ":") } }
+        }
     }
     func dismissUndo() { undoLabel = nil; undoAction = nil }
     func installUndo(_ actions: [(event: WatchEvent, action: String)], label: String) {

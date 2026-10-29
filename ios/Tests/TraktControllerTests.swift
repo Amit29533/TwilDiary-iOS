@@ -79,6 +79,18 @@ import TwilDiaryCore
             XCTAssertNil(controller.error, choice)
         }
     }
+    func testConflictDefaultAlsoSettlesRemovalsAndFinishesTheScan() async throws {
+        for side in [TraktConflictDefault.local, .trakt] {
+            let service = CountingResolveService()
+            let controller = TraktController(service: service, defaults: try XCTUnwrap(UserDefaults(suiteName: "trakt-\(UUID())")))
+            controller.conflictDefault = side
+            await controller.refresh(); await controller.apply()
+            XCTAssertEqual(controller.sync?.run?.state, "complete", side.rawValue)
+            XCTAssertEqual(controller.sync?.items.filter { $0.state == "pending" }.count, 0, side.rawValue)
+            XCTAssertGreaterThan(service.resolves, 0, side.rawValue)
+            XCTAssertNil(controller.error, side.rawValue)
+        }
+    }
     func testConflictDefaultIsRememberedAndAsksByDefault() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "trakt-\(UUID())"))
         XCTAssertEqual(TraktController(service: FixtureTraktService(), defaults: defaults).conflictDefault, .ask)

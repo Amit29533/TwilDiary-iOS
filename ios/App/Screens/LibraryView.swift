@@ -51,7 +51,7 @@ struct LibraryView: View {
         }.overlay(alignment: .top) { if !selecting { libraryHeader(.buttons) } }
         .background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
-            .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue) { await store.loadPublicRatings(collection, source: ratingSource) }
+            .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }
             .onAppear { initializeStorage(); applyShortcut() }
             .onChange(of: filterScope) { _, _ in selected.formIntersection(filtered.map(\.id)); visibleLimit = 48 }

@@ -41,13 +41,22 @@ export function changesDiary(method: string, path: string) {
  * reads again: a missed change is late by at most one resume, never lost. Never throws; a
  * failed bump must not turn a saved change into an error.
  */
-export async function bumpWorkspaceRevision(binding: D1Database | undefined) {
+export async function bumpWorkspaceRevision(
+  binding: D1Database | undefined,
+  pause = (ms: number) => new Promise((done) => setTimeout(done, ms))
+) {
   if (!binding) return;
-  try {
-    await binding
-      .prepare('UPDATE workspace_revision SET token=lower(hex(randomblob(16))) WHERE id=1')
-      .run();
-  } catch {
-    console.warn('workspace_revision_unchanged');
+  // A brief D1 hiccup must not leave other devices trusting an old diary for hours: retry twice.
+  for (const wait of [0, 100, 400]) {
+    if (wait) await pause(wait);
+    try {
+      await binding
+        .prepare('UPDATE workspace_revision SET token=lower(hex(randomblob(16))) WHERE id=1')
+        .run();
+      return;
+    } catch {
+      // Tried again below; reported once all attempts fail.
+    }
   }
+  console.error('workspace_revision_unchanged');
 }

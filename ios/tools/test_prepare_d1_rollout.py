@@ -142,12 +142,13 @@ class RolloutTests(unittest.TestCase):
                     rollout.rehearse(dump(db), MIGRATIONS)
 
     def test_pending_migrations_keep_every_existing_row(self):
-        # Hosted D1 already has 0014-0019. 0020 adds four empty tables, nullable run columns
-        # and journal triggers. Every original column of every row is byte-identical after.
+        # From a ledger at 0019: 0020 adds four empty tables, nullable run columns and journal
+        # triggers; 0021 and 0022 add the empty api_keys and favourites tables. Every original
+        # column of every row is byte-identical after.
         with fixture(20) as db:
             result = rollout.rehearse(dump(db), MIGRATIONS)
-        self.assertEqual(result["rehearsed_migrations"], ["0020_trakt_incremental.sql"])
-        added = {"trakt_snapshot", "trakt_sync_checkpoint", "trakt_sync_journal", "trakt_sync_work"}
+        self.assertEqual(result["rehearsed_migrations"], ["0020_trakt_incremental.sql", "0021_api_keys.sql", "0022_favourites.sql"])
+        added = {"trakt_snapshot", "trakt_sync_checkpoint", "trakt_sync_journal", "trakt_sync_work", "api_keys", "favourites"}
         self.assertEqual(set(result["after"]) - set(result["before"]), added)
         for table in added:
             self.assertEqual(result["after"][table]["rows"], 0)
@@ -156,7 +157,7 @@ class RolloutTests(unittest.TestCase):
         # From an older ledger the whole remaining sequence rehearses too.
         with fixture(17) as db:
             older = rollout.rehearse(dump(db), MIGRATIONS)
-        self.assertEqual(older["rehearsed_migrations"][-1], "0020_trakt_incremental.sql")
+        self.assertEqual(older["rehearsed_migrations"][-1], "0022_favourites.sql")
         self.assertEqual(older["after"]["workspace_revision"]["rows"], 1)
 
     def test_migration_cannot_mutate_original_rows_unnoticed(self):

@@ -11,7 +11,8 @@ struct TraktTransferFailure: LocalizedError {
     var errorDescription: String? { message }
     var retryable: Bool {
         if ["trakt_reconnect_required", "trakt_access_limited", "setup_required", "sync_snapshot_changed", "sync_review_required"].contains(code) { return false }
-        return [0, 408, 425, 429, 500, 502, 503, 504].contains(status) || code == "sync_busy"
+        // trakt_refresh_pending: another request is refreshing the Trakt sign-in; it clears in seconds.
+        return [0, 408, 425, 429, 500, 502, 503, 504].contains(status) || code == "sync_busy" || code == "trakt_refresh_pending"
     }
     static func retryDate(_ header: String?, now: Date) -> Date? {
         guard let header else { return nil }

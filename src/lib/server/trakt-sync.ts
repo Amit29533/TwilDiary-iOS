@@ -794,11 +794,20 @@ async function lockedRun(db: Db, id: string, trakt: Trakt) {
  * runs when the lease is older than 15 s, and always before a POST, so a cancelled run never
  * receives a new provider write while reads within one short request skip extra round trips.
  */
+/** Trakt allows about one authenticated write per second; writes are spaced at least this far
+ * apart (a group send made up to three back to back and drew 429 cooldowns). Tests set 0. */
+export const traktPacing = { writeSpacingMs: 1000 };
+let lastWriteAt = 0;
 function leasedTrakt(db: Db, run: Run, trakt: Trakt): Trakt {
   let renewedAt = Date.now();
   return {
     ...trakt,
     request: async (path, options = {}) => {
+      const write = options.method !== undefined && options.method !== 'GET';
+      if (write) {
+        const wait = lastWriteAt + traktPacing.writeSpacingMs - Date.now();
+        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      }
       if (options.method === 'POST' || Date.now() - renewedAt > 15000) {
         const lease = await db
           .update(runs)
@@ -812,7 +821,11 @@ function leasedTrakt(db: Db, run: Run, trakt: Trakt): Trakt {
           throw new ApiError(409, 'sync_cancelled', 'This sync stopped. Refresh its status.');
         renewedAt = Date.now();
       }
-      return trakt.request(path, options);
+      try {
+        return await trakt.request(path, options);
+      } finally {
+        if (write) lastWriteAt = Date.now();
+      }
     }
   };
 }
@@ -2172,18 +2185,10 @@ async function applyOne(
       throw new ApiError(409, 'sync_local_changed', 'This viewing was removed after the preview.');
     let remoteId = await reconcileHistory(db, title.id, item, payload.localValue, trakt, event.id);
     if (!remoteId) {
-      const previousUncertain = await db
-        .select({ id: changes.id })
-        .from(changes)
-        .where(unconfirmedFor(event.id))
-        .limit(1)
-        .get();
-      if (change.state === 'uncertain' || payload.reconcileOnly || previousUncertain)
-        throw new ApiError(
-          409,
-          'sync_uncertain',
-          'A previous send was not confirmed. Check Trakt history before sending it again.'
-        );
+      // An earlier send of this play was never confirmed, and Trakt's own history for the title
+      // (just searched, by exact watch time) doesn't have it: that send didn't land, so this one
+      // is sent once, under the same durable intent mark below. It used to refuse forever, which
+      // left the item stuck: Check Trakt did nothing and the only way out was Skip.
       const watched_at = payload.localValue === 'unknown' ? 'unknown' : payload.localValue;
       const body =
         item.type === 'movie'
@@ -2384,9 +2389,12 @@ interface ResolvedPull {
 }
 type PullItem = { change: Change; payload: Payload; item: RemoteTraktItem; index: number };
 /** Resolve every item's local title, season and episode in one read (one bound JSON list). */
+/** Rows carry each item's own `index` (not its position in `keyed`): after items drop out of a
+ * batch the list is shorter, and matching by position gave an item its neighbour's title. */
 function resolvePulls(db: Db, keyed: PullItem[]) {
   const lookup = JSON.stringify(
-    keyed.map(({ payload, item }) => ({
+    keyed.map(({ payload, item, index }) => ({
+      i: index,
       t: payload.localTitleId,
       k: item.type === 'movie' ? 'movie' : 'series',
       x: String(item.tmdbId),
@@ -2395,7 +2403,7 @@ function resolvePulls(db: Db, keyed: PullItem[]) {
     }))
   );
   return db.all<ResolvedPull>(sql`
-    SELECT CAST(j.key AS INTEGER) AS "index", t.id AS "titleId", t.version AS "version",
+    SELECT CAST(json_extract(j.value,'$.i') AS INTEGER) AS "index", t.id AS "titleId", t.version AS "version",
       t.status AS "status", t.deleted_at AS "deletedAt",
       (SELECT s.id FROM seasons s WHERE s.title_id=t.id AND s.number=json_extract(j.value,'$.s')) AS "seasonId",
       (SELECT e.id FROM seasons s CROSS JOIN episodes e ON e.season_id=s.id
@@ -2818,14 +2826,11 @@ export async function applySyncChange(
         marks
       );
     }
-    if (uncertain && choice !== 'apply' && choice !== 'local' && choice !== 'skip')
-      throw new ApiError(
-        409,
-        'sync_uncertain',
-        'An unconfirmed send can only be checked or skipped.'
-      );
+    // "Use Trakt" on an unconfirmed item never sends anything: a conflict takes Trakt's version;
+    // one of the diary's own plays is kept in the diary and simply not sent again (this scan).
+    const keepWithoutSending = uncertain && choice === 'trakt' && chosen.direction !== 'conflict';
     const extra: BatchItem<'sqlite'>[] = [];
-    if (choice === 'skip')
+    if (choice === 'skip' || keepWithoutSending)
       extra.push(
         db.update(changes).set({ state: 'skipped', error: null }).where(eq(changes.id, chosen.id))
       );
@@ -2888,17 +2893,9 @@ export async function applySyncChange(
         throw error;
       }
     }
-    return await finishRun(
-      db,
-      run,
-      {
-        state: uncertain ? 'cancelled' : 'applying',
-        stage: uncertain ? 'reconciled' : run.stage,
-        progress: run.progress + 1
-      },
-      0,
-      extra
-    );
+    // Checking or skipping one unconfirmed send settles that item only. It used to end the whole
+    // review ("reconciled"), so skipping one item threw away every other pending change.
+    return await finishRun(db, run, { state: 'applying', progress: run.progress + 1 }, 0, extra);
   } catch (error) {
     await failRun(
       db,

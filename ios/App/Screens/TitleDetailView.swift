@@ -413,7 +413,7 @@ struct TitleDetailView: View {
             if let seasonLoadError { RetryNotice(message: seasonLoadError) { Task { await prepareSeason(title, force: true) } } }
             if let episodeError = episodeDetails.error(for: season) { Text(episodeError).font(.caption).foregroundStyle(.secondary); Button("Retry episode details") { Task { await revealSeason(title) } } }
             CollectionLayout(grid: episodesGrid, spacing: 12) {
-                let shown = unwatchedOnly ? visibleEpisodes.filter { !watched.contains($0.id) } : visibleEpisodes
+                let shown = visibleEpisodes
                 ForEach(shown) { episode in
                     // The lazy grid creates the last row only as it nears the screen.
                     episodeRow(title, episode: episode).onAppear {
@@ -691,8 +691,11 @@ struct TitleDetailView: View {
         CardRevision(season: season, events: scope.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
     }
     private var episodes: [Episode] { store.episodesForSeason(id, season: season) }
+    /// Unwatched filters before the 40-row page, so a long season never shows an empty first page.
     private var visibleEpisodes: [Episode] {
-        Array(EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id ?? episodes.first(where: { !watched.contains($0.id) && hasAired($0) })?.id).prefix(episodeLimit))
+        let window = EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id ?? episodes.first(where: { !watched.contains($0.id) && hasAired($0) })?.id)
+        let seen = self.watched
+        return Array((unwatchedOnly ? window.filter { !seen.contains($0.id) } : window).prefix(episodeLimit))
     }
     private var watched: Set<String> { store.watchedEpisodeIDs(id) }
     private var locations: [FileLocation] { scope.locations.filter { $0.titleId == id } }

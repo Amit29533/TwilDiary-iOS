@@ -141,6 +141,34 @@ test('a later sync updates folders in place and marks the ones it no longer sees
   );
 });
 
+test('a page of an older sync arriving late never makes a folder look unchecked', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await seed(f);
+  const movie = {
+    kind: 'movie',
+    ids: { imdb: 'tt2543164' },
+    folder: 'E:\Movies\Arrival (2016)',
+    fileCount: 1
+  };
+  const later = new Date(NOW.getTime() + 3_600_000);
+  const page = (startedAt: Date, done: boolean) =>
+    parseBatch({ startedAt: startedAt.toISOString(), done, items: [movie] }, later);
+  await importJellyfin(f.binding, page(later, false), later);
+  // A retried page of the earlier sync lands after the newer one saw the folder.
+  await importJellyfin(f.binding, page(NOW, false), later);
+  assert.equal(
+    f.sqlite.prepare('SELECT checked_at AS at FROM file_locations').get()!.at,
+    later.toISOString()
+  );
+  await importJellyfin(
+    f.binding,
+    parseBatch({ startedAt: later.toISOString(), done: true, items: [] }, later),
+    later
+  );
+  assert.equal(f.sqlite.prepare('SELECT evidence FROM file_locations').get()!.evidence, 'present');
+});
+
 test('seasons kept together in one folder become one location instead of overwriting each other', async (t) => {
   const f = d1Fixture();
   t.after(f.close);

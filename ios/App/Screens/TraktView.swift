@@ -253,7 +253,7 @@ import TwilDiaryCore
                                      set: { controller.conflictDefault = $0 ? (TraktConflictDefault(rawValue: preferredSide) ?? .local) : .ask })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Settle conflicts automatically").font(.subheadline)
-                        Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans apply on their own; removals still wait for you")
+                        Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans finish on their own; your choice settles conflicts and removals")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }.tint(theme.accent).accessibilityIdentifier("trakt-conflict-default")
@@ -384,9 +384,9 @@ import TwilDiaryCore
     private func review(_ sync: TraktSync) -> some View {
         @Bindable var controller = controller
         let conflicts = sync.counts["review:conflict"] ?? 0, removals = (sync.counts["review:pull"] ?? 0) + (sync.counts["review:push"] ?? 0)
-        // With a conflict default, automation applies everything it may; only removals are left for a person.
-        let automationDone = sync.reviewing && controller.conflictDefault != .ask && !controller.applyingAll
-            && (sync.counts["safe"] ?? 0) == 0 && conflicts == 0 && removals > 0
+        // With a default, automation settles everything; anything listed afterwards couldn't be applied.
+        let automationDone = sync.reviewing && controller.conflictDefault != .ask && !controller.applyingAll && !controller.busy
+            && (sync.counts["safe"] ?? 0) == 0 && conflicts == 0 && removals == 0 && sync.pendingChanges > 0
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text(sync.run?.state == "building" ? "Preparing review" : "Review changes").font(.system(size: 24, weight: .bold))
@@ -405,8 +405,8 @@ import TwilDiaryCore
             else if sync.run?.state == "cancelled" { reviewStatus("Scan stopped. Scan again when you’re ready to continue.", detail: nil, tint: Color(webHex: "#c5c0cf")) }
             else {
                 if automationDone {
-                    reviewStatus("Sync complete", detail: removals.counted("removal is", "removals are") + " left for you to review below. Automatic apply never deletes.", tint: .mint)
-                        .accessibilityIdentifier("trakt-removals-waiting")
+                    reviewStatus("Sync finished", detail: sync.pendingChanges.counted("item", "items") + " couldn’t be applied automatically; each shows why below.", tint: .mint)
+                        .accessibilityIdentifier("trakt-sync-leftovers")
                 }
                 SearchField(placeholder: "Find a title in this review…", text: $controller.query, label: "Search Trakt changes")
                 kindChips
@@ -476,6 +476,10 @@ import TwilDiaryCore
                 VStack(alignment: .leading, spacing: 3) {
                     Text(change.name).font(.system(size: 15, weight: .semibold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     Text(detailLine(change)).font(.system(size: 13)).foregroundStyle(change.error == nil ? Color.secondary : Color.orange).lineLimit(2)
+                    if let message = controller.itemErrors[change.id] {
+                        Label(message, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12, weight: .medium)).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-item-error-" + change.id)
+                    }
                     if change.review, let context = change.context {
                         Text("TwilDiary: \(reviewValue(change.kind, context.local)) · Trakt: \(reviewValue(change.kind, context.remote))").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                     }
@@ -514,7 +518,11 @@ import TwilDiaryCore
             .frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
     }
     @ViewBuilder private func changeActions(_ change: TraktChange) -> some View {
-        if change.state == "uncertain" { action("Check Trakt", change: change, choice: .local, primary: true) }
+        if change.state == "uncertain" {
+            // Check Trakt sends the play only if Trakt doesn't have it; Use Trakt (a conflict) takes Trakt's version.
+            action("Check Trakt", change: change, choice: .local, primary: true)
+            if change.direction == "conflict" { action("Use Trakt", change: change, choice: .trakt, primary: false) }
+        }
         else if change.review && !change.blocked { action("Keep TwilDiary", change: change, choice: .local, primary: false); action("Use Trakt", change: change, choice: .trakt, primary: false) }
         else if !change.blocked { action("Apply", change: change, choice: .apply, primary: true) }
         // Skipping never changes the diary, so it no longer re-downloads it.

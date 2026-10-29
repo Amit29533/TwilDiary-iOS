@@ -160,7 +160,7 @@ export async function importJellyfin(db: D1Database, batch: JellyfinBatch, now =
         `INSERT INTO file_locations(id,title_id,device_id,volume_id,drive_letter,root,relative_path,season_id,file_count,size_bytes,evidence,checked_at)
          VALUES (?,?,?,?,?,?,?,(SELECT id FROM seasons WHERE title_id=? AND number=?),?,?,'present',?)
          ON CONFLICT(device_id,volume_id,root,relative_path) DO UPDATE SET title_id=excluded.title_id,season_id=excluded.season_id,
-           file_count=excluded.file_count,size_bytes=excluded.size_bytes,evidence='present',checked_at=excluded.checked_at`
+           file_count=excluded.file_count,size_bytes=excluded.size_bytes,evidence='present',checked_at=max(coalesce(checked_at,''),excluded.checked_at)`
       )
       .bind(
         crypto.randomUUID(),

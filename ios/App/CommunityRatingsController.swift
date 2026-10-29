@@ -16,6 +16,9 @@ import TwilDiaryCore
     var loading: Bool { pending > 0 }
     /// Stored, so the Library body no longer scans every entry on each read.
     private(set) var unavailable = false
+    /// Bumped when scores that timed out may be tried again; screens include it in their load task's id.
+    private(set) var retryRound = 0
+    @ObservationIgnored private var retryScheduled = false
     @ObservationIgnored private var expires: [String: Date] = [:]
     @ObservationIgnored private var inflight = Set<String>()
     @ObservationIgnored private var generation = UUID()
@@ -23,7 +26,7 @@ import TwilDiaryCore
     init(clock: @escaping () -> Date = { Date() }) { self.clock = clock }
 
     func reset() {
-        generation = UUID(); entries = [:]; expires = [:]; inflight = []; pending = 0
+        generation = UUID(); entries = [:]; expires = [:]; inflight = []; pending = 0; retryRound = 0; retryScheduled = false
     }
     func retryUnavailable() {
         for (id, entry) in entries where entry.state == "unavailable" { expires.removeValue(forKey: id) }
@@ -37,6 +40,15 @@ import TwilDiaryCore
             expires[id] = retry
         }
         entries = next
+        // A few automatic retries a session once the wait is over; after that, the Retry button.
+        guard !retryScheduled, retryRound < 5 else { return }
+        retryScheduled = true
+        let session = generation
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(61))
+            guard let self, session == self.generation else { return }
+            self.retryScheduled = false; self.retryRound += 1
+        }
     }
     func prepare(_ titleIDs: [String], fetch: ([String]) async throws -> [String: PublicRating]) async {
         var seen = Set<String>()
