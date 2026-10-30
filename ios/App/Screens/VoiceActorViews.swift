@@ -1,10 +1,13 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Opens a voice actor's page (AniList staff).
+/// Opens a voice actor's page (AniList staff): by AniList id, or by name when the voice actor
+/// comes from the diary's TMDB cast (their TMDB page is the fallback when AniList has no match).
 struct VoiceActorRoute: Hashable {
-    let id: Int
-    /// From your AniList stats: how many of your anime they voice in.
+    var id: Int?
+    var name: String? = nil
+    var tmdbID: Int? = nil
+    /// How many of your anime they voice in.
     var watchedCount: Int? = nil
 }
 
@@ -17,6 +20,7 @@ struct VoiceActorView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var actor: AniVoiceActorDetail?
     @State private var failure: String?
+    @State private var missing = false
     @State private var expanded = false
     @State private var hearts = 0
     private var favourites: FavouritesStore { .shared }
@@ -49,10 +53,19 @@ struct VoiceActorView: View {
                                 .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.2), location: 0), .init(color: .black.opacity(0.55), location: 0.55), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
                                 .offset(y: -geometry.safeAreaInsets.top).allowsHitTesting(false).accessibilityHidden(true)
                         }
+                } else if missing {
+                    // AniList has no page for this name: their TMDB cast page has the rest.
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("AniList has no page for \(route.name ?? "this voice actor").").font(.system(size: 15)).foregroundStyle(.secondary)
+                        if let tmdb = route.tmdbID {
+                            NavigationLink(value: PersonRoute(id: tmdb)) { Text("Open their cast page").font(.system(size: 15, weight: .semibold)) }
+                                .accessibilityIdentifier("voice-actor-cast-page")
+                        }
+                    }.padding(14).padding(.top, 60)
                 } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
                 else { DiaryLoadingPlaceholder(height: 310, label: "Loading voice actor").padding(14) }
             }.scrollClipDisabled().diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-                .task(id: route.id) { if actor == nil { await load() } }
+                .task(id: route) { if actor == nil { await load() } }
         }
     }
     private func header(_ actor: AniVoiceActorDetail) -> some View {
@@ -116,9 +129,14 @@ struct VoiceActorView: View {
     private func load() async {
         failure = nil
         #if DEBUG
-        if store.isPreview { actor = AniListPreview.voiceActor(route.id); return }
+        if store.isPreview { actor = AniListPreview.voiceActor(route.id ?? 11); return }
         #endif
-        do { actor = try await AniListClient.shared.voiceActor(route.id) }
+        do {
+            var found = route.id
+            if found == nil, let name = route.name { found = await AniListClient.shared.staff(named: [name])[name]?.id }
+            guard let id = found else { missing = true; return }
+            actor = try await AniListClient.shared.voiceActor(id)
+        }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
@@ -305,33 +323,51 @@ struct AniListSettingsView: View {
     }
 }
 
-/// Cast ranked from your diary: the people in the most titles you've watched or are watching
-/// (top-billed TMDB cast). The first count fills in as the server loads casts it hasn't seen.
+/// Cast or voice actors ranked from your diary: the people in the most titles you've watched or
+/// are watching (top-billed TMDB cast). Cast counts live action; voice actors count anime,
+/// anime films and Animation, with AniList's photo and page for each when AniList has them.
+/// The first count fills in as the server loads casts it hasn't seen.
 struct MostWatchedCast: View {
+    enum Kind: Hashable { case cast, voice }
+    let kind: Kind
     @Environment(DiaryStore.self) private var store
     @State private var rows: [RankedRow] = []
+    @State private var aniList: [Int: AniPerson] = [:]
     @State private var progress: (counted: Int, total: Int)?
     @State private var failure: String?
     @State private var loading = false
     var body: some View {
-        MostWatchedSection(note: "From your diary: the people in the most titles you’ve watched or are watching.") { ranking }
+        MostWatchedSection(note: kind == .voice
+                           ? "From your diary: the voice actors in the most anime you’ve watched or are watching."
+                           : "From your diary: the people in the most live-action titles you’ve watched or are watching.") { ranking }
             .task { await load() }
     }
     @ViewBuilder private var ranking: some View {
         if let failure, rows.isEmpty { RetryNotice(message: failure) { Task { await load() } } }
-        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Counting your cast") }
-        else if rows.isEmpty { Text("Watch a few titles and the cast you see most shows up here.").font(.system(size: 13)).foregroundStyle(.secondary) }
-        else {
+        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: kind == .voice ? "Counting your voice actors" : "Counting your cast") }
+        else if rows.isEmpty {
+            Text(kind == .voice ? "Watch some anime and the voice actors you hear most show up here." : "Watch a few live-action titles and the cast you see most shows up here.")
+                .font(.system(size: 13)).foregroundStyle(.secondary)
+        } else {
             if let progress, progress.counted < progress.total {
                 // While counting it fills in; if TMDB couldn't give a few casts, it says so plainly.
                 Text(loading ? "Counting… \(progress.counted) of \(progress.total) titles" : "\(progress.counted) of \(progress.total) titles counted")
                     .font(.system(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("cast-counting")
             }
-            MostWatchedList(rows: rows, identifier: "top-cast") { PersonRoute(id: $0.id) }
+            if kind == .voice {
+                MostWatchedList(rows: rows, identifier: "top-voice-actor") { row in
+                    VoiceActorRoute(id: aniList[row.id]?.id, name: row.name, tmdbID: row.id, watchedCount: row.number)
+                }
+            } else {
+                MostWatchedList(rows: rows, identifier: "top-cast") { PersonRoute(id: $0.id) }
+            }
         }
     }
     private struct Page: Decodable {
-        struct Item: Decodable { let id: Int; let name: String; let image: String?; let titles: Int; let plays: Int }
+        struct Item: Decodable {
+            let id: Int; let name: String; let image: String?; let character: String?; let title: String?
+            let titles: Int; let plays: Int
+        }
         let items: [Item]
         let counted: Int
         let total: Int
@@ -339,17 +375,27 @@ struct MostWatchedCast: View {
     }
     /// A finished count is kept for an hour, so switching tabs doesn't make the server count again
     /// (each ranking reads several thousand D1 rows on the free plan).
-    @MainActor private static var saved: (rows: [RankedRow], counted: Int, total: Int, at: Date)?
+    @MainActor private static var saved: [Kind: (rows: [RankedRow], aniList: [Int: AniPerson], counted: Int, total: Int, at: Date)] = [:]
+    private func row(_ item: Page.Item) -> RankedRow {
+        let role = [item.character, item.title].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return RankedRow(id: item.id, name: item.name, detail: role.isEmpty ? nil : role,
+                         image: aniList[item.id]?.image ?? CatalogTools.image(item.image, size: "w185"), number: item.titles,
+                         count: item.titles.counted(kind == .voice ? "anime" : "title", kind == .voice ? "anime" : "titles"),
+                         extra: item.plays.counted("play", "plays"))
+    }
     private func load() async {
         #if DEBUG
         if store.isPreview {
-            rows = [RankedRow(id: 525, name: "Kana Hanazawa", detail: nil, image: nil, number: 9, count: "9 titles", extra: "112 plays"),
-                    RankedRow(id: 77, name: "Yuki Kaji", detail: nil, image: nil, number: 7, count: "7 titles", extra: "88 plays")]
+            rows = kind == .voice
+                ? [RankedRow(id: 1001, name: "Atsumi Tanezaki", detail: "Frieren · Frieren", image: nil, number: 14, count: "14 anime", extra: "210 plays"),
+                   RankedRow(id: 1002, name: "Kana Ichinose", detail: "Fern · Frieren", image: nil, number: 11, count: "11 anime", extra: "160 plays")]
+                : [RankedRow(id: 525, name: "Kim Yeong-ok", detail: "Kim Gam-ri · Hometown Cha-Cha-Cha", image: nil, number: 5, count: "5 titles", extra: "74 plays"),
+                   RankedRow(id: 77, name: "Jeon Bae-soo", detail: "Woo Gwang-woo · Extraordinary Attorney Woo", image: nil, number: 5, count: "5 titles", extra: "72 plays")]
             return
         }
         #endif
-        if let saved = Self.saved, Date().timeIntervalSince(saved.at) < 3600 {
-            rows = saved.rows; progress = (saved.counted, saved.total); return
+        if let saved = Self.saved[kind], Date().timeIntervalSince(saved.at) < 3600 {
+            rows = saved.rows; aniList = saved.aniList; progress = (saved.counted, saved.total); return
         }
         loading = true; failure = nil
         defer { loading = false }
@@ -357,14 +403,18 @@ struct MostWatchedCast: View {
         do {
             // A round loads a few missing casts; stop when done or when a round adds nothing.
             for _ in 0..<40 {
-                let page: Page = try await store.read("/api/stats/cast")
-                rows = page.items.map { item in
-                    RankedRow(id: item.id, name: item.name, detail: nil, image: CatalogTools.image(item.image, size: "w185"), number: item.titles,
-                              count: item.titles.counted("title", "titles"), extra: item.plays.counted("play", "plays"))
-                }
+                let page: Page = try await store.read(CatalogTools.apiPath("/api/stats/cast", query: kind == .voice ? ["kind": "voice"] : [:]))
+                rows = page.items.map(row)
                 progress = (page.counted, page.total)
-                if page.pending == 0 || page.counted == last || Task.isCancelled {
-                    if !Task.isCancelled { Self.saved = (rows, page.counted, page.total, Date()) }
+                let finished = page.pending == 0 || page.counted == last || Task.isCancelled
+                if finished {
+                    // Voice actors: AniList's photos and pages, found by name (best effort).
+                    if kind == .voice, !Task.isCancelled {
+                        let found = await AniListClient.shared.staff(named: page.items.map(\.name))
+                        aniList = Dictionary(page.items.compactMap { item in found[item.name].map { (item.id, $0) } }, uniquingKeysWith: { first, _ in first })
+                        rows = page.items.map(row)
+                    }
+                    if !Task.isCancelled { Self.saved[kind] = (rows: rows, aniList: aniList, counted: page.counted, total: page.total, at: Date()) }
                     break
                 }
                 last = page.counted

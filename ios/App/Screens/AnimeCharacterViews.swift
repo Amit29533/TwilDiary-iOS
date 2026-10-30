@@ -205,9 +205,9 @@ struct FavouritesView: View {
             tabs.padding(.top, 4)
             Group {
                 switch tab {
-                case .cast: MostWatchedCast()
+                case .cast: MostWatchedCast(kind: .cast)
                 case .character: AniListMostWatched(kind: .characters)
-                case .voice: AniListMostWatched(kind: .voiceActors)
+                case .voice: MostWatchedCast(kind: .voice)
                 }
             }.id(tab).padding(.horizontal, 14).padding(.top, 8)
             if !items.isEmpty {

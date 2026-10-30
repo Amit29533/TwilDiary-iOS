@@ -132,6 +132,8 @@ actor AniListClient {
     private var voiceActors: [Int: AniVoiceActorDetail] = [:]
     private var userStats: [String: [AniVoiceActorStat]] = [:]
     private var userCharacters: [String: [AniCharacterStat]] = [:]
+    /// Name lookups, misses included (nil), so a voice actor AniList lacks isn't asked again.
+    private var staffByName: [String: AniPerson?] = [:]
 
     /// The anime's characters, main roles first, each with their Japanese voice actor. Empty when
     /// AniList has no anime of that name released within a year of `year` (better none than wrong).
@@ -239,7 +241,7 @@ actor AniListClient {
         struct Anime: Decodable { let voiceActors: [Row] }
         struct Row: Decodable { let count: Int; let minutesWatched: Int; let voiceActor: Staff? }
         let result: Result = try await query("""
-            query($name: String) { User(name: $name) { statistics { anime { voiceActors(limit: 30, sort: [COUNT_DESC]) { count minutesWatched voiceActor { id name { full native } image { large } } } } } } }
+            query($name: String) { User(name: $name) { statistics { anime { voiceActors(limit: 10, sort: [COUNT_DESC]) { count minutesWatched voiceActor { id name { full native } image { large } } } } } } }
             """, ["name": user])
         guard let found = result.User else { throw AniListError.notFound }
         let rows = found.statistics.anime.voiceActors.compactMap { row in
@@ -288,9 +290,56 @@ actor AniListClient {
             .map { AniCharacterStat(person: AniPerson(id: $0.character.id, name: $0.character.name.full ?? "Unknown", image: $0.character.image?.large),
                                     native: $0.character.name.native, count: $0.anime.count) }
             .sorted { $0.count != $1.count ? $0.count > $1.count : $0.person.name < $1.person.name }
-        let top = Array(rows.prefix(30))
+        let top = Array(rows.prefix(10))
         userCharacters[key] = top
         return top
+    }
+    /// AniList staff (photo and page) for TMDB voice actor names: one request for all of them; when
+    /// AniList lacks one name it fails the whole request (404 with every result empty, seen live),
+    /// so then each name is asked on its own. Best effort: a name without a match is simply absent.
+    func staff(named names: [String]) async -> [String: AniPerson] {
+        let wanted = Array(Set(names.filter { !staffByName.keys.contains($0) }))
+        if !wanted.isEmpty {
+            do {
+                let found = try await searchStaff(wanted)
+                for name in wanted { staffByName[name] = found[name] }
+            } catch AniListError.notFound {
+                for name in wanted {
+                    do { staffByName[name] = try await searchStaff([name])[name] }
+                    catch AniListError.notFound { staffByName[name] = .some(nil) }
+                    catch { break }
+                }
+            } catch {
+                // AniList unreachable: nothing is remembered, so the next look tries again.
+            }
+        }
+        var result: [String: AniPerson] = [:]
+        for name in names { if let person = staffByName[name] ?? nil { result[name] = person } }
+        return result
+    }
+    private func searchStaff(_ names: [String]) async throws -> [String: AniPerson] {
+        struct Hit: Decodable { let id: Int; let name: Name; let image: Image? }
+        let arguments = names.indices.map { "$n\($0): String" }.joined(separator: ", ")
+        let fields = names.indices.map { "s\($0): Staff(search: $n\($0)) { id name { full native } image { large } }" }.joined(separator: " ")
+        var variables: [String: any Sendable] = [:]
+        for (index, name) in names.enumerated() { variables["n\(index)"] = name }
+        let found: [String: Hit?] = try await query("query(\(arguments)) { \(fields) }", variables)
+        var result: [String: AniPerson] = [:]
+        for (index, name) in names.enumerated() {
+            // Search returns the closest staff entry; only the same person (spelling aside) counts.
+            if let hit = found["s\(index)"] ?? nil, Self.sameName(hit.name.full ?? "", name) {
+                result[name] = AniPerson(id: hit.id, name: hit.name.full ?? name, image: hit.image?.large)
+            }
+        }
+        return result
+    }
+    /// "Yoko Hikasa" (TMDB) and "Youko Hikasa" (AniList) are one person: case, accents and long
+    /// vowels (ou, oo, uu) are ignored.
+    static func sameName(_ a: String, _ b: String) -> Bool { spelling(a) == spelling(b) }
+    private static func spelling(_ value: String) -> String {
+        var text = String(value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased().filter(\.isLetter))
+        for (long, short) in [("ou", "o"), ("oo", "o"), ("uu", "u")] { text = text.replacingOccurrences(of: long, with: short) }
+        return text
     }
     /// Throws `notFound` when AniList has no such user (its answer to this is a 404).
     private func requireUser(_ user: String) async throws {

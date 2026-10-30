@@ -761,11 +761,7 @@ import UIKit
         XCTAssertTrue(app.navigationBars["Favourites"].exists)
         XCTAssertGreaterThan(app.buttons["favourites-tab-cast"].frame.minY, app.navigationBars["Favourites"].frame.minY)
         XCTAssertTrue(app.buttons["favourite-character:2"].exists)
-        app.buttons["favourites-tab-cast"].tap()
-        XCTAssertFalse(app.buttons["favourite-character:2"].exists)
-        XCTAssertTrue(app.buttons["top-cast-525"].waitForExistence(timeout: 5), "Cast has its Most watched ranking"); capture("Favourites cast tab")
-        // Voice actors: the AniList profile lives in Settings → Connections; the tab links there.
-        app.buttons["favourites-tab-voice"].tap()
+        // Characters rank from AniList: the profile lives in Settings → Connections; the tab links there.
         let connect = app.buttons["anilist-connect"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5)); XCTAssertFalse(app.textFields["anilist-user-field"].exists, "No input box on the tab")
         connect.tap()
@@ -774,8 +770,15 @@ import UIKit
         app.buttons["anilist-user-save"].tap()
         XCTAssertTrue(app.buttons["anilist-user-remove"].waitForExistence(timeout: 5)); capture("Settings AniList connected")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let top = app.buttons["top-voice-actor-11"]
-        XCTAssertTrue(top.waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["anilist-user"].exists)
+        XCTAssertTrue(app.buttons["top-character-1"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["anilist-user"].exists)
+        capture("Favourites most watched characters")
+        // Cast and voice actors rank from the diary.
+        app.buttons["favourites-tab-cast"].tap()
+        XCTAssertFalse(app.buttons["favourite-character:2"].exists)
+        XCTAssertTrue(app.buttons["top-cast-525"].waitForExistence(timeout: 5), "Cast has its Most watched ranking"); capture("Favourites cast tab")
+        app.buttons["favourites-tab-voice"].tap()
+        let top = app.buttons["top-voice-actor-1001"]
+        XCTAssertTrue(top.waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["anilist-connect"].exists, "Voice actors need no AniList profile")
         capture("Favourites most watched voice actors")
         top.tap()
         let voiceHeart = app.buttons["voice-actor-favourite"]
