@@ -879,14 +879,45 @@ async function baselineSql(
  * what's new. Without this, any watch elsewhere (a Jellyfin scrobble) stopped a 90-minute import.
  * The saved snapshot is left as it was, so a later send still compares against the preview.
  */
-async function assertSnapshot(db: Db, run: Run, trakt: Trakt, fromTrakt = false) {
+/**
+ * The Trakt activity a send overwrites: a rating or a watchlist entry of one type. History sends
+ * name none, because they can't clobber anything new on Trakt: an added play is first looked up
+ * in Trakt's live history by exact watch time (reconcileHistory), and a removal names one play.
+ */
+function sentActivity(sending: Change[]) {
+  return sending.flatMap((change) => {
+    const type = record(change.payload.item).type === 'movie' ? 'movies' : 'shows';
+    if (change.kind === 'rating') return [type + '.rated_at'];
+    if (change.kind === 'watchlist') return [type + '.watchlisted_at'];
+    return [];
+  });
+}
+/**
+ * Building a preview needs Trakt unchanged throughout: a page shifting mid-download could look
+ * like a removal. Applying is narrower. Pulls use the preview's own data (fromTrakt). Sends stop
+ * only if Trakt changed what they would overwrite (`sending`, from sentActivity); a play logged
+ * on Trakt meanwhile, by another app or a media server, no longer stops every send.
+ */
+async function assertSnapshot(
+  db: Db,
+  run: Run,
+  trakt: Trakt,
+  fromTrakt = false,
+  sending?: string[]
+) {
   const saved = await db
     .select()
     .from(remote)
     .where(and(eq(remote.runId, run.id), eq(remote.kind, 'activities')))
     .get();
   if (saved && fromTrakt) return;
-  if (!saved || saved.payload.hash !== (await activity(trakt)).hash)
+  const now = saved ? await activity(trakt) : null;
+  const before = record(saved?.payload.lists);
+  const untouched =
+    !!now &&
+    (saved!.payload.hash === now.hash ||
+      (!!sending && sending.every((key) => before[key] === now.lists[key])));
+  if (!untouched)
     throw new ApiError(
       409,
       'trakt_changed',
@@ -1054,11 +1085,35 @@ async function journalSend(db: Db, change: Change) {
     await db.run(sql`REPLACE INTO trakt_sync_journal(kind,local_key)
       VALUES(${change.kind === 'history' ? 'history' : 'title'},${key})`);
 }
-async function updateSnapshot(db: Db, run: Run, trakt: Trakt) {
+/**
+ * After a send, the preview takes Trakt's new times only for the lists that send wrote. Taking
+ * them all would absorb a rating or watchlist change made on Trakt meanwhile, and a later send
+ * would then overwrite it unnoticed.
+ */
+async function updateSnapshot(db: Db, run: Run, trakt: Trakt, wrote: Change[]) {
+  const saved = await db
+    .select()
+    .from(remote)
+    .where(and(eq(remote.runId, run.id), eq(remote.kind, 'activities')))
+    .get();
+  if (!saved) return;
+  const now = await activity(trakt);
+  const lists = { ...(record(saved.payload.lists) as Record<string, string>) };
+  for (const change of wrote) {
+    const keys =
+      change.kind === 'history'
+        ? [
+            record(change.payload.item).type === 'movie'
+              ? 'movies.watched_at'
+              : 'episodes.watched_at'
+          ]
+        : sentActivity([change]);
+    for (const key of keys) lists[key] = now.lists[key]!;
+  }
   await db
     .update(remote)
-    .set({ payload: await activity(trakt) })
-    .where(and(eq(remote.runId, run.id), eq(remote.kind, 'activities')));
+    .set({ payload: { hash: await hash(JSON.stringify(lists)), lists } })
+    .where(eq(remote.id, saved.id));
 }
 /**
  * Store one Trakt page as differences from the snapshot: only new or changed records get a
@@ -2725,10 +2780,12 @@ export async function applySyncChange(
       chosen?.payload.sentUnconfirmed === true ||
       chosen?.payload.reconcileOnly === true;
     // Only these steps write to Trakt: a push applied as planned, or a conflict kept as TwilDiary's.
-    const sends = picked.some(
+    const sending = picked.filter(
       (change) => choice === 'local' || (choice === 'apply' && change.direction === 'push')
     );
-    if (!uncertain && choice !== 'skip') await assertSnapshot(db, run, trakt, !sends);
+    const sends = sending.length > 0;
+    if (!uncertain && choice !== 'skip')
+      await assertSnapshot(db, run, trakt, !sends, sentActivity(sending));
     if (!chosen) {
       const remaining = await db
         .select({ count: sql<number>`coalesce(sum(${changeCounts.amount}),0)` })
@@ -2859,7 +2916,7 @@ export async function applySyncChange(
         );
         if (direction === 'push') {
           if (!marked) await markApplied(chosen.id);
-          await updateSnapshot(db, run, trakt);
+          await updateSnapshot(db, run, trakt, [chosen]);
           await journalSend(db, chosen);
         } else if (!marked) extra.push(markApplied(chosen.id));
       } catch (error) {
@@ -2951,7 +3008,6 @@ export async function resolveReviewGroup(
       });
     }
     const send = choice === 'local';
-    await assertSnapshot(db, run, trakt, !send);
     const batch = await db
       .select()
       .from(changes)
@@ -2959,8 +3015,10 @@ export async function resolveReviewGroup(
       .orderBy(asc(changes.id))
       .limit(send ? RESOLVE_SENDS : RESOLVE_BATCH)
       .all();
+    await assertSnapshot(db, run, trakt, !send, send ? sentActivity(batch) : undefined);
     const tmdb = createTmdb(env.TMDB_ACCESS_TOKEN, tmdbTransport);
     const marks: BatchItem<'sqlite'>[] = [];
+    const wrote: Change[] = [];
     let settled = 0,
       sent = false,
       cooldown = 0;
@@ -2985,6 +3043,7 @@ export async function resolveReviewGroup(
           );
         if (send) {
           sent = true;
+          wrote.push(change);
           await journalSend(db, change);
         }
         settled++;
@@ -3017,7 +3076,7 @@ export async function resolveReviewGroup(
         if (!(error instanceof ApiError)) break;
       }
     }
-    if (sent) await updateSnapshot(db, run, trakt);
+    if (sent) await updateSnapshot(db, run, trakt, wrote);
     return await finishRun(
       db,
       run,

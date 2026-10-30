@@ -452,7 +452,7 @@ test('remote history removals revoke the local play after review without deletin
   assert.ok(rows[0]!.revokedAt);
   assert.equal(fake.state.posts.length, 0);
 });
-test('new Trakt activity after the preview never stops imports, but still stops sends to Trakt', async (t) => {
+test('new Trakt activity after the preview never stops imports', async (t) => {
   const f = d1Fixture();
   t.after(f.close);
   await connectFixture(f);
@@ -474,25 +474,55 @@ test('new Trakt activity after the preview never stops imports, but still stops 
     'the Trakt play is imported anyway'
   );
   assert.equal(fake.state.posts.length, 0);
-
-  const g = d1Fixture();
-  t.after(g.close);
-  await connectFixture(g);
-  await localMovie(g);
-  const other = fakeTrakt();
-  await logWatch(g.db, 'film', {
+});
+test('a play logged on Trakt during the review no longer stops sending the diary’s plays', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f);
+  const fake = fakeTrakt();
+  await logWatch(f.db, 'film', {
     operationId: 'watch',
     episodeId: null,
     watchedAt: '2024-01-01T20:00:00.000Z'
   });
-  const sending = await preview(g, other);
-  other.state.version++;
+  const { id } = await preview(f, fake);
+  // A media server scrobbles another movie to Trakt while the review is open.
+  fake.state.history.push({
+    id: 77,
+    type: 'movie',
+    watched_at: '2024-02-01T20:00:00.000Z',
+    movie: fake.media(200)
+  });
+  await safe(f, fake, id);
+  const sent = fake.state.history.filter((play) => play.movie?.ids.tmdb === 100);
+  assert.equal(sent.length, 1, 'the diary’s play reaches Trakt exactly once');
+});
+test('a rating changed on Trakt during the review still stops rating sends, even after a history send', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f, 8);
+  const fake = fakeTrakt();
+  await logWatch(f.db, 'film', {
+    operationId: 'watch',
+    episodeId: null,
+    watchedAt: '2024-01-01T20:00:00.000Z'
+  });
+  const { id, status } = await preview(f, fake);
+  const play = status.items.find((row) => row.kind === 'history' && row.direction === 'push')!;
+  const rating = status.items.find((row) => row.kind === 'rating' && row.direction === 'push')!;
+  assert.ok(play && rating);
+  // The owner rates another movie on Trakt while the review is open.
+  fake.state.movieRatings.set(300, 7);
+  await applySyncChange(f.db, traktEnv, id, play.id, 'apply', fakeTmdb, fake.transport);
+  assert.equal(fake.state.history.length, 1, 'the play is sent');
+  // That send must not have adopted Trakt's newer rating time as reviewed.
   await assert.rejects(
-    () =>
-      applySyncChange(g.db, traktEnv, sending.id, undefined, 'apply', fakeTmdb, other.transport),
+    () => applySyncChange(f.db, traktEnv, id, rating.id, 'apply', fakeTmdb, fake.transport),
     (error: unknown) => (error as { code?: string }).code === 'trakt_changed'
   );
-  assert.equal(other.state.posts.length, 0, 'nothing is sent against a stale preview');
+  assert.equal(fake.state.movieRatings.get(100), undefined, 'the rating is not sent');
 });
 test('"Use Trakt" on an unconfirmed play keeps it in the diary, sends nothing and keeps the review', async (t) => {
   const f = d1Fixture();
