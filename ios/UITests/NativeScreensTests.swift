@@ -749,7 +749,8 @@ import UIKit
         XCTAssertGreaterThan(app.buttons["favourites-tab-cast"].frame.minY, app.navigationBars["Favourites"].frame.minY)
         XCTAssertTrue(app.buttons["favourite-character:2"].exists)
         app.buttons["favourites-tab-cast"].tap()
-        XCTAssertFalse(app.buttons["favourite-character:2"].exists); capture("Favourites cast tab")
+        XCTAssertFalse(app.buttons["favourite-character:2"].exists)
+        XCTAssertTrue(app.buttons["top-cast-525"].waitForExistence(timeout: 5), "Cast has its Most watched ranking"); capture("Favourites cast tab")
         // Voice actors: the AniList stats ranking from a pasted profile link, then a heart.
         app.buttons["favourites-tab-voice"].tap()
         let profile = app.textFields["anilist-user-field"]

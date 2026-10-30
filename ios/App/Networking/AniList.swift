@@ -78,6 +78,14 @@ struct AniVoiceActorStat: Hashable, Sendable, Identifiable {
     let minutesWatched: Int
     var id: Int { person.id }
 }
+/// Characters ranked from your AniList anime list: main characters by how many of your anime
+/// (seasons and films count separately) they're in.
+struct AniCharacterStat: Hashable, Sendable, Identifiable {
+    let person: AniPerson
+    let native: String?
+    let count: Int
+    var id: Int { person.id }
+}
 enum AniListText {
     /// AniList's markup made readable: spoilers (~! … !~) are left out while spoilers are hidden.
     static func readable(_ description: String, hideSpoilers: Bool) -> String {
@@ -112,6 +120,7 @@ actor AniListClient {
     private var details: [Int: AniCharacterDetail] = [:]
     private var voiceActors: [Int: AniVoiceActorDetail] = [:]
     private var userStats: [String: [AniVoiceActorStat]] = [:]
+    private var userCharacters: [String: [AniCharacterStat]] = [:]
 
     /// The anime's characters, main roles first, each with their Japanese voice actor. Empty when
     /// AniList has no anime of that name released within a year of `year` (better none than wrong).
@@ -228,8 +237,42 @@ actor AniListClient {
         userStats[key] = rows
         return rows
     }
+    /// Main characters in the most anime on a public AniList list (watched, watching or rewatching).
+    func topCharacters(user: String) async throws -> [AniCharacterStat] {
+        let key = user.lowercased()
+        if let saved = userCharacters[key] { return saved }
+        struct Result: Decodable { let Page: PageNode }
+        struct PageNode: Decodable { let pageInfo: PageInfo; let mediaList: [Entry] }
+        struct PageInfo: Decodable { let hasNextPage: Bool? }
+        struct Entry: Decodable { let media: Media? }
+        struct Media: Decodable { let id: Int; let characters: Characters? }
+        struct Characters: Decodable { let nodes: [Node] }
+        var tally: [Int: (character: Node, anime: Set<Int>)] = [:]
+        // At most 10 pages of 50 entries: 500 anime, a handful of requests.
+        for page in 1...10 {
+            let result: Result = try await query("""
+                query($name: String, $page: Int) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } mediaList(userName: $name, type: ANIME, status_in: [COMPLETED, CURRENT, REPEATING]) { media { id characters(role: MAIN, perPage: 6, sort: [ROLE, RELEVANCE, ID]) { nodes { id name { full native } image { large } } } } } } }
+                """, ["name": user, "page": page])
+            for entry in result.Page.mediaList {
+                guard let media = entry.media else { continue }
+                for character in media.characters?.nodes ?? [] {
+                    var row = tally[character.id] ?? (character, [])
+                    row.anime.insert(media.id)
+                    tally[character.id] = row
+                }
+            }
+            if result.Page.pageInfo.hasNextPage != true { break }
+        }
+        let rows = tally.values
+            .map { AniCharacterStat(person: AniPerson(id: $0.character.id, name: $0.character.name.full ?? "Unknown", image: $0.character.image?.large),
+                                    native: $0.character.name.native, count: $0.anime.count) }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.person.name < $1.person.name }
+        let top = Array(rows.prefix(30))
+        userCharacters[key] = top
+        return top
+    }
     /// Pull to refresh asks AniList again.
-    func forgetStats() { userStats = [:] }
+    func forgetStats() { userStats = [:]; userCharacters = [:] }
 
     // MARK: Shared shapes and the request
 
@@ -275,6 +318,10 @@ enum AniListPreview {
         AniVoiceActorStat(person: AniPerson(id: 11, name: "Atsumi Tanezaki", image: nil), native: "種﨑敦美", count: 14, minutesWatched: 4210),
         AniVoiceActorStat(person: AniPerson(id: 12, name: "Kana Ichinose", image: nil), native: "市ノ瀬加那", count: 11, minutesWatched: 3020),
         AniVoiceActorStat(person: AniPerson(id: 13, name: "Chiaki Kobayashi", image: nil), native: "小林千晃", count: 9, minutesWatched: 2480)
+    ]
+    static let topCharacters = [
+        AniCharacterStat(person: AniPerson(id: 1, name: "Frieren", image: nil), native: "フリーレン", count: 3),
+        AniCharacterStat(person: AniPerson(id: 2, name: "Fern", image: nil), native: "フェルン", count: 2)
     ]
     static func voiceActor(_ id: Int) -> AniVoiceActorDetail {
         let stat = topVoiceActors.first { $0.id == id } ?? topVoiceActors[0]

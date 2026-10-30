@@ -17,7 +17,7 @@ import TwilDiaryCore
             UserDefaults.standard.set(true, forKey: "trashGrid")
             FavouritesStore.shared.reset()
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-launch-tab") { UserDefaults.standard.removeObject(forKey: AppTab.launchKey) }
-            for key in ["favouritesTab", MostWatchedVoiceActors.userKey, "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
+            for key in ["favouritesTab", AniListMostWatched.userKey, "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")

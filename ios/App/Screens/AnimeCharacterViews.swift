@@ -191,9 +191,9 @@ struct CharacterView: View {
     }
 }
 
-/// Favourites: the cast, characters and voice actors you've hearted, as posters. "Favourites"
-/// titles the page; the tabs sit under it as the first row. Voice actors also show the most
-/// watched ones from your AniList stats.
+/// Favourites: cast, characters and voice actors, each tab laid out the same way: "Most watched"
+/// (cast from your diary; characters and voice actors from your AniList profile) above the ones
+/// you've hearted, as posters. "Favourites" titles the page; the tabs are its first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
@@ -202,11 +202,15 @@ struct FavouritesView: View {
         let items = favourites.items(tab)
         ScrollView {
             tabs.padding(.top, 4)
-            if tab == .voice {
-                MostWatchedVoiceActors().padding(.horizontal, 14).padding(.top, 8)
-                if !items.isEmpty {
-                    Text("Hearted").font(.system(size: 20, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.top, 20)
+            Group {
+                switch tab {
+                case .cast: MostWatchedCast()
+                case .character: AniListMostWatched(kind: .characters)
+                case .voice: AniListMostWatched(kind: .voiceActors)
                 }
+            }.id(tab).padding(.horizontal, 14).padding(.top, 8)
+            if !items.isEmpty {
+                Text("Hearted").font(.system(size: 20, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.top, 20)
             }
             if items.isEmpty {
                 DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)

@@ -122,39 +122,100 @@ struct VoiceActorView: View {
     }
 }
 
-/// The AniList stats page "Voice actors" for your public profile: the voice actors in the most
-/// anime you've watched. Asks for the AniList username (or profile link) once.
-struct MostWatchedVoiceActors: View {
-    @Environment(DiaryStore.self) private var store
-    @AppStorage(MostWatchedVoiceActors.userKey) private var user = ""
-    static let userKey = "anilistUser"
-    @State private var rows: [AniVoiceActorStat] = []
-    @State private var failure: String?
-    @State private var loading = false
-    @State private var draft = ""
-    @State private var editing = false
+/// One row of a "Most watched" ranking.
+struct RankedRow: Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let detail: String?
+    let image: String?
+    /// The number ranked on (anime or titles); `count` is how it reads.
+    let number: Int
+    let count: String
+    let extra: String?
+}
+
+/// "Most watched" exactly as all three Favourites tabs show it: a header (with the AniList
+/// profile when the ranking comes from there), the ranking, and where it comes from.
+struct MostWatchedSection<Content: View>: View {
+    let note: String
+    var user: String? = nil
+    var onEditUser: () -> Void = {}
+    @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Most watched").font(.system(size: 20, weight: .semibold))
                 Spacer(minLength: 8)
-                if !user.isEmpty && !editing {
-                    Button("@" + user) { draft = user; editing = true }.font(.system(size: 13)).foregroundStyle(.secondary)
+                if let user {
+                    Button("@" + user, action: onEditUser).font(.system(size: 13)).foregroundStyle(.secondary)
                         .accessibilityLabel("AniList profile " + user + ", change").accessibilityIdentifier("anilist-user")
                 }
             }
-            if user.isEmpty || editing { connect }
+            content
+            Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// The ranking rows: rank, round photo, name, count, opening their page.
+struct MostWatchedList<Route: Hashable>: View {
+    let rows: [RankedRow]
+    let identifier: String
+    let route: (RankedRow) -> Route
+    var body: some View {
+        VStack(spacing: 4) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                NavigationLink(value: route(row)) {
+                    HStack(spacing: 12) {
+                        Text(String(index + 1)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 24)
+                        Artwork(path: row.image, title: row.name).frame(width: 48, height: 48).clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                            if let detail = row.detail { Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(row.count).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
+                            if let extra = row.extra { Text(extra).font(.system(size: 12)).foregroundStyle(.secondary) }
+                        }
+                        DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
+                    }.padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("\(identifier)-\(row.id)")
+            }
+        }.diaryPanel(padding: 4, radius: 16)
+    }
+}
+
+/// Voice actors and characters ranked from your public AniList profile, asked for once by
+/// username or pasted profile link (shared by both tabs).
+struct AniListMostWatched: View {
+    enum Kind { case voiceActors, characters }
+    let kind: Kind
+    static let userKey = "anilistUser"
+    @Environment(DiaryStore.self) private var store
+    @AppStorage(AniListMostWatched.userKey) private var user = ""
+    @State private var rows: [RankedRow] = []
+    @State private var failure: String?
+    @State private var loading = false
+    @State private var draft = ""
+    @State private var editing = false
+    var body: some View {
+        MostWatchedSection(note: kind == .voiceActors
+                           ? "From your AniList stats: the voice actors in the most anime you’ve watched there."
+                           : "From your AniList list: main characters in the most anime you’ve watched there.",
+                           user: user.isEmpty || editing ? nil : user, onEditUser: { draft = user; editing = true }) {
+            if user.isEmpty || editing { profileCard }
             else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
-            else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Loading your AniList stats") }
-            else if rows.isEmpty { Text("No voice actors in your AniList stats yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
-            else { list }
-            Text("From your AniList stats: the voice actors in the most anime you’ve watched there.").font(.caption).foregroundStyle(.secondary)
+            else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Loading your AniList " + (kind == .voiceActors ? "stats" : "list")) }
+            else if rows.isEmpty { Text("Nothing to rank on AniList yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
+            else if kind == .voiceActors { MostWatchedList(rows: rows, identifier: "top-voice-actor") { VoiceActorRoute(id: $0.id, watchedCount: $0.number) } }
+            else { MostWatchedList(rows: rows, identifier: "top-character") { CharacterRoute(id: $0.id) } }
         }.task(id: user) { await load(force: false) }
     }
-    private var connect: some View {
+    private var profileCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Your AniList profile").font(.system(size: 15, weight: .semibold))
-            Text("Enter your AniList username or paste your profile link. The ranking comes from your public AniList stats.")
+            Text("Enter your AniList username or paste your profile link. The ranking comes from your public AniList profile.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
                 TextField("Username or profile link", text: $draft).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -169,38 +230,82 @@ struct MostWatchedVoiceActors: View {
         guard let name = AniListError.username(draft) else { return }
         editing = false; user = name
     }
-    private var list: some View {
-        VStack(spacing: 4) {
-            ForEach(Array(rows.prefix(30).enumerated()), id: \.element.id) { index, row in
-                NavigationLink(value: VoiceActorRoute(id: row.id, watchedCount: row.count)) {
-                    HStack(spacing: 12) {
-                        Text(String(index + 1)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 24)
-                        Artwork(path: row.person.image, title: row.person.name).frame(width: 48, height: 48).clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.person.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
-                            if let native = row.native { Text(native).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
-                        }
-                        Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(row.count.counted("anime", "anime")).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
-                            Text(Self.duration(row.minutesWatched)).font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                        DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
-                    }.padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("top-voice-actor-\(row.id)")
-            }
-        }.diaryPanel(padding: 4, radius: 16)
-    }
-    static func duration(_ minutes: Int) -> String { minutes >= 60 ? "\(minutes / 60) h" : "\(minutes) min" }
     private func load(force: Bool) async {
         guard !user.isEmpty else { rows = []; return }
         #if DEBUG
-        if store.isPreview { rows = AniListPreview.topVoiceActors; return }
+        if store.isPreview { rows = kind == .voiceActors ? AniListPreview.topVoiceActors.map(Self.voiceRow) : AniListPreview.topCharacters.map(Self.characterRow); return }
         #endif
         if force { await AniListClient.shared.forgetStats() }
         loading = true; failure = nil
         defer { loading = false }
-        do { rows = try await AniListClient.shared.topVoiceActors(user: user) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do {
+            rows = kind == .voiceActors
+                ? try await AniListClient.shared.topVoiceActors(user: user).map(Self.voiceRow)
+                : try await AniListClient.shared.topCharacters(user: user).map(Self.characterRow)
+        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+    private static func voiceRow(_ stat: AniVoiceActorStat) -> RankedRow {
+        RankedRow(id: stat.id, name: stat.person.name, detail: stat.native, image: stat.person.image, number: stat.count,
+                  count: stat.count.counted("anime", "anime"), extra: stat.minutesWatched >= 60 ? "\(stat.minutesWatched / 60) h" : "\(stat.minutesWatched) min")
+    }
+    private static func characterRow(_ stat: AniCharacterStat) -> RankedRow {
+        RankedRow(id: stat.id, name: stat.person.name, detail: stat.native, image: stat.person.image, number: stat.count,
+                  count: stat.count.counted("anime", "anime"), extra: nil)
+    }
+}
+
+/// Cast ranked from your diary: the people in the most titles you've watched or are watching
+/// (top-billed TMDB cast). The first count fills in as the server loads casts it hasn't seen.
+struct MostWatchedCast: View {
+    @Environment(DiaryStore.self) private var store
+    @State private var rows: [RankedRow] = []
+    @State private var progress: (counted: Int, total: Int)?
+    @State private var failure: String?
+    @State private var loading = false
+    var body: some View {
+        MostWatchedSection(note: "From your diary: the people in the most titles you’ve watched or are watching.") {
+            if let failure, rows.isEmpty { RetryNotice(message: failure) { Task { await load() } } }
+            else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Counting your cast") }
+            else if rows.isEmpty { Text("Watch a few titles and the cast you see most shows up here.").font(.system(size: 13)).foregroundStyle(.secondary) }
+            else {
+                if let progress, progress.counted < progress.total {
+                    Text("Counting… \(progress.counted) of \(progress.total) titles").font(.system(size: 13)).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("cast-counting")
+                }
+                MostWatchedList(rows: rows, identifier: "top-cast") { PersonRoute(id: $0.id) }
+            }
+        }.task { await load() }
+    }
+    private struct Page: Decodable {
+        struct Item: Decodable { let id: Int; let name: String; let image: String?; let titles: Int; let plays: Int }
+        let items: [Item]
+        let counted: Int
+        let total: Int
+        let pending: Int
+    }
+    private func load() async {
+        #if DEBUG
+        if store.isPreview {
+            rows = [RankedRow(id: 525, name: "Kana Hanazawa", detail: nil, image: nil, number: 9, count: "9 titles", extra: "112 plays"),
+                    RankedRow(id: 77, name: "Yuki Kaji", detail: nil, image: nil, number: 7, count: "7 titles", extra: "88 plays")]
+            return
+        }
+        #endif
+        loading = true; failure = nil
+        defer { loading = false }
+        var last = -1
+        do {
+            // A round loads a few missing casts; stop when done or when a round adds nothing.
+            for _ in 0..<40 {
+                let page: Page = try await store.read("/api/stats/cast")
+                rows = page.items.map { item in
+                    RankedRow(id: item.id, name: item.name, detail: nil, image: item.image, number: item.titles,
+                              count: item.titles.counted("title", "titles"), extra: item.plays.counted("play", "plays"))
+                }
+                progress = (page.counted, page.total)
+                if page.pending == 0 || page.counted == last || Task.isCancelled { break }
+                last = page.counted
+            }
+        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
