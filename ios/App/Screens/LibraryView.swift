@@ -59,7 +59,7 @@ struct LibraryView: View {
             .task { await jellyfin.refreshQuietly(store: store) }
             .onChange(of: filterScope) { _, _ in selected.formIntersection(filtered.map(\.id)); visibleLimit = 48 }
             .onChange(of: filtered.map(\.id)) { _, ids in selected.formIntersection(ids) }
-            // Opens at half height; pulling up (or scrolling from the top) brings the whole board.
+            // Opens at half height; pulling it up by its top brings the whole board.
             .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.medium, .large]).presentationContentInteraction(.resizes).presentationDragIndicator(.visible) }
             .sheet(item: $review) { value in CollectionReviewView(review: value) { selecting = false; selected = [] } }
     }
