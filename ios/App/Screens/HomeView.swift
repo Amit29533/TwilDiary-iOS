@@ -48,6 +48,17 @@ struct HomeView: View {
                             }
                         }.scrollIndicators(.hidden).scrollClipDisabled()
                     } }
+                    // Recently hearted cast and characters together, right under Up next; › opens them by kind.
+                    let favourites = FavouritesStore.shared.items
+                    if !favourites.isEmpty { VStack(spacing: 12) {
+                        heading("Favourites") {
+                            NavigationLink(value: AppDestination.favourites) { RoundTool(icon: "chevron-right", size: 36) }
+                                .buttonStyle(.springPress).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
+                        }
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 14) { ForEach(favourites.prefix(12)) { FavouriteLink(item: $0) } }
+                        }.scrollIndicators(.hidden).scrollClipDisabled()
+                    } }
                     VStack(spacing: 12) {
                         heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming"); Button("Glance →") { router.selectedTab = .glance } }
                         CollectionLayout(grid: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
@@ -70,17 +81,6 @@ struct HomeView: View {
                                 Group { if historyGrid { HistoryRow(entry: entry, grid: true) } else { recentRow(entry) } }.zoomSource(ZoomID.title(entry.title.id))
                             }.buttonStyle(.springPress)
                         } }
-                    } }
-                    // Recently hearted cast and characters together; › opens them by kind.
-                    let favourites = FavouritesStore.shared.items
-                    if !favourites.isEmpty { VStack(spacing: 12) {
-                        heading("Favourites") {
-                            NavigationLink(value: AppDestination.favourites) { RoundTool(icon: "chevron-right", size: 36) }
-                                .buttonStyle(.springPress).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
-                        }
-                        ScrollView(.horizontal) {
-                            LazyHStack(alignment: .top, spacing: 14) { ForEach(favourites.prefix(12)) { FavouriteLink(item: $0) } }
-                        }.scrollIndicators(.hidden).scrollClipDisabled()
                     } }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)
             }

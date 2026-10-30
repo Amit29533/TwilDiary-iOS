@@ -724,6 +724,9 @@ import UIKit
         let all = app.buttons["home-favourites"]
         for _ in 0..<12 { if all.exists && all.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(all.isHittable, "Home shows recent favourites"); capture("Home favourites")
+        // Favourites sit right under Up next, above New episodes.
+        let episodes = app.staticTexts["New episodes"]
+        if episodes.exists { XCTAssertLessThan(all.frame.minY, episodes.frame.minY, "Favourites come before New episodes") }
         all.tap()
         XCTAssertTrue(app.buttons["favourites-tab-character"].waitForExistence(timeout: 5))
         // "Favourites" titles the page, with the Cast and Characters tabs below it.
