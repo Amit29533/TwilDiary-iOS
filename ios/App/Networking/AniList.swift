@@ -192,16 +192,19 @@ actor AniListClient {
             let dateOfBirth: DateParts?; let homeTown: String?; let yearsActive: [Int]?; let favourites: Int?; let characterMedia: Connection
         }
         struct Connection: Decodable { let edges: [Edge] }
-        struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let characters: [Node] }
-        struct MediaNode: Decodable { let id: Int; let title: Title; let coverImage: Image?; let startDate: DateParts? }
+        // AniList can leave an empty (null) slot in these lists; one must not sink the whole page.
+        struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let characters: [Node?] }
+        struct MediaNode: Decodable { let id: Int; let type: String?; let title: Title; let coverImage: Image?; let startDate: DateParts? }
         struct Title: Decodable { let romaji: String?; let english: String? }
+        // characterMedia takes no `type` filter (AniList rejects the whole query), so each role
+        // says its media type and only anime are kept.
         let result: Result = try await query("""
-            query($id: Int) { Staff(id: $id) { id name { full native } image { large } description(asHtml: false) age dateOfBirth { year month day } homeTown yearsActive favourites characterMedia(sort: [POPULARITY_DESC], type: ANIME, perPage: 40) { edges { characterRole node { id title { romaji english } coverImage { large } startDate { year } } characters { id name { full } image { large } } } } } }
+            query($id: Int) { Staff(id: $id) { id name { full native } image { large } description(asHtml: false) age dateOfBirth { year month day } homeTown yearsActive favourites characterMedia(sort: [POPULARITY_DESC], perPage: 25) { edges { characterRole node { id type title { romaji english } coverImage { large } startDate { year } } characters { id name { full } image { large } } } } } }
             """, ["id": id])
         let node = result.Staff
         var seen = Set<String>()
-        let roles = node.characterMedia.edges.flatMap { edge in
-            edge.characters.map { character in
+        let roles = node.characterMedia.edges.filter { $0.node.type == nil || $0.node.type == "ANIME" }.flatMap { edge in
+            edge.characters.compactMap { $0 }.map { character in
                 AniRole(character: AniPerson(id: character.id, name: character.name.full ?? "Unknown", image: character.image?.large),
                         animeID: edge.node.id, anime: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled",
                         cover: edge.node.coverImage?.large, year: edge.node.startDate?.year, role: edge.characterRole)
@@ -242,21 +245,28 @@ actor AniListClient {
         let key = user.lowercased()
         if let saved = userCharacters[key] { return saved }
         struct Result: Decodable { let Page: PageNode }
-        struct PageNode: Decodable { let pageInfo: PageInfo; let mediaList: [Entry] }
+        struct PageNode: Decodable { let pageInfo: PageInfo; let mediaList: [Entry?] }
         struct PageInfo: Decodable { let hasNextPage: Bool? }
         struct Entry: Decodable { let media: Media? }
         struct Media: Decodable { let id: Int; let characters: Characters? }
-        struct Characters: Decodable { let nodes: [Node] }
+        struct Characters: Decodable { let nodes: [Node?] }
         var tally: [Int: (character: Node, anime: Set<Int>)] = [:]
         // At most 10 pages of 50 entries: 500 anime, a handful of requests.
         for page in 1...10 {
-            let result: Result = try await query("""
+            let result: Result
+            do { result = try await query("""
                 query($name: String, $page: Int) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } mediaList(userName: $name, type: ANIME, status_in: [COMPLETED, CURRENT, REPEATING]) { media { id characters(role: MAIN, perPage: 6, sort: [ROLE, RELEVANCE, ID]) { nodes { id name { full native } image { large } } } } } } }
-                """, ["name": user, "page": page])
+                """, ["name": user, "page": page]) }
+            catch AniListError.unavailable where page == 1 {
+                // AniList answers an unknown user here with a 500, not a 404: ask about the user
+                // so the message says so instead of "try again".
+                try await requireUser(user)
+                throw AniListError.unavailable
+            }
             for entry in result.Page.mediaList {
-                guard let media = entry.media else { continue }
-                for character in media.characters?.nodes ?? [] {
-                    var row = tally[character.id] ?? (character, [])
+                guard let media = entry?.media else { continue }
+                for character in (media.characters?.nodes ?? []).compactMap({ $0 }) {
+                    var row = tally[character.id] ?? (character: character, anime: Set<Int>())
                     row.anime.insert(media.id)
                     tally[character.id] = row
                 }
@@ -270,6 +280,13 @@ actor AniListClient {
         let top = Array(rows.prefix(30))
         userCharacters[key] = top
         return top
+    }
+    /// Throws `notFound` when AniList has no such user (its answer to this is a 404).
+    private func requireUser(_ user: String) async throws {
+        struct Result: Decodable { let User: Found? }
+        struct Found: Decodable { let id: Int }
+        let result: Result = try await query("query($name: String) { User(name: $name) { id } }", ["name": user])
+        if result.User == nil { throw AniListError.notFound }
     }
     /// Pull to refresh asks AniList again.
     func forgetStats() { userStats = [:]; userCharacters = [:] }

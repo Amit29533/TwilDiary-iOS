@@ -890,6 +890,26 @@ test('starting a Planned show takes it off the Trakt watchlist without asking an
   assert.equal(fake.state.movieWatchlist.has(100), false);
   assert.equal((await getTitle(f.db, 'film')).status, 'watching');
 });
+test('dropping a Planned show takes it off the Trakt watchlist and it stays Dropped', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f, null, 'planned');
+  const fake = fakeTrakt();
+  fake.state.movieWatchlist.add(100);
+  let p = await preview(f, fake);
+  await safe(f, fake, p.id);
+  await applySyncChange(f.db, traktEnv, p.id, undefined, 'apply', fakeTmdb, fake.transport);
+  const planned = await getTitle(f.db, 'film');
+  await patchTitle(f.db, 'film', { expectedVersion: planned.version, status: 'dropped' });
+  p = await preview(f, fake);
+  const change = p.status.items.find((row) => row.kind === 'watchlist')!;
+  assert.equal(change.review, false, 'a decision made here, not a removal to review');
+  assert.match(change.detail, /dropped here/);
+  await safe(f, fake, p.id);
+  assert.equal(fake.state.movieWatchlist.has(100), false);
+  assert.equal((await getTitle(f.db, 'film')).status, 'dropped');
+});
 test('a finished title still on the Trakt watchlist is taken off it on the first sync', async (t) => {
   const f = d1Fixture();
   t.after(f.close);

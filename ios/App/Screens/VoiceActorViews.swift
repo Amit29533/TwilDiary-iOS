@@ -200,17 +200,23 @@ struct AniListMostWatched: View {
     @State private var draft = ""
     @State private var editing = false
     var body: some View {
-        MostWatchedSection(note: kind == .voiceActors
-                           ? "From your AniList stats: the voice actors in the most anime you’ve watched there."
-                           : "From your AniList list: main characters in the most anime you’ve watched there.",
-                           user: user.isEmpty || editing ? nil : user, onEditUser: { draft = user; editing = true }) {
-            if user.isEmpty || editing { profileCard }
-            else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
-            else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Loading your AniList " + (kind == .voiceActors ? "stats" : "list")) }
-            else if rows.isEmpty { Text("Nothing to rank on AniList yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
-            else if kind == .voiceActors { MostWatchedList(rows: rows, identifier: "top-voice-actor") { VoiceActorRoute(id: $0.id, watchedCount: $0.number) } }
-            else { MostWatchedList(rows: rows, identifier: "top-character") { CharacterRoute(id: $0.id) } }
-        }.task(id: user) { await load(force: false) }
+        MostWatchedSection(note: note, user: shownUser, onEditUser: { draft = user; editing = true }) { ranking }
+            .task(id: user) { await load(force: false) }
+    }
+    private var note: String {
+        kind == .voiceActors
+            ? "From your AniList stats: the voice actors in the most anime you’ve watched there."
+            : "From your AniList list: main characters in the most anime you’ve watched there."
+    }
+    /// The profile shows in the header once set, except while it's being changed.
+    private var shownUser: String? { user.isEmpty || editing ? nil : user }
+    @ViewBuilder private var ranking: some View {
+        if user.isEmpty || editing { profileCard }
+        else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
+        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
+        else if rows.isEmpty { Text("Nothing to rank on AniList yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
+        else if kind == .voiceActors { MostWatchedList(rows: rows, identifier: "top-voice-actor") { VoiceActorRoute(id: $0.id, watchedCount: $0.number) } }
+        else { MostWatchedList(rows: rows, identifier: "top-character") { CharacterRoute(id: $0.id) } }
     }
     private var profileCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -228,6 +234,8 @@ struct AniListMostWatched: View {
     }
     private func save() {
         guard let name = AniListError.username(draft) else { return }
+        // Another profile: the old ranking must not show while the new one loads.
+        if name != user { rows = []; failure = nil }
         editing = false; user = name
     }
     private func load(force: Bool) async {
@@ -239,9 +247,9 @@ struct AniListMostWatched: View {
         loading = true; failure = nil
         defer { loading = false }
         do {
-            rows = kind == .voiceActors
-                ? try await AniListClient.shared.topVoiceActors(user: user).map(Self.voiceRow)
-                : try await AniListClient.shared.topCharacters(user: user).map(Self.characterRow)
+            // `try` can't sit inside a ?: in Swift, so the two sources are a plain if/else.
+            if kind == .voiceActors { rows = try await AniListClient.shared.topVoiceActors(user: user).map(Self.voiceRow) }
+            else { rows = try await AniListClient.shared.topCharacters(user: user).map(Self.characterRow) }
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     private static func voiceRow(_ stat: AniVoiceActorStat) -> RankedRow {
@@ -263,18 +271,21 @@ struct MostWatchedCast: View {
     @State private var failure: String?
     @State private var loading = false
     var body: some View {
-        MostWatchedSection(note: "From your diary: the people in the most titles you’ve watched or are watching.") {
-            if let failure, rows.isEmpty { RetryNotice(message: failure) { Task { await load() } } }
-            else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Counting your cast") }
-            else if rows.isEmpty { Text("Watch a few titles and the cast you see most shows up here.").font(.system(size: 13)).foregroundStyle(.secondary) }
-            else {
-                if let progress, progress.counted < progress.total {
-                    Text("Counting… \(progress.counted) of \(progress.total) titles").font(.system(size: 13)).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("cast-counting")
-                }
-                MostWatchedList(rows: rows, identifier: "top-cast") { PersonRoute(id: $0.id) }
+        MostWatchedSection(note: "From your diary: the people in the most titles you’ve watched or are watching.") { ranking }
+            .task { await load() }
+    }
+    @ViewBuilder private var ranking: some View {
+        if let failure, rows.isEmpty { RetryNotice(message: failure) { Task { await load() } } }
+        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: "Counting your cast") }
+        else if rows.isEmpty { Text("Watch a few titles and the cast you see most shows up here.").font(.system(size: 13)).foregroundStyle(.secondary) }
+        else {
+            if let progress, progress.counted < progress.total {
+                // While counting it fills in; if TMDB couldn't give a few casts, it says so plainly.
+                Text(loading ? "Counting… \(progress.counted) of \(progress.total) titles" : "\(progress.counted) of \(progress.total) titles counted")
+                    .font(.system(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("cast-counting")
             }
-        }.task { await load() }
+            MostWatchedList(rows: rows, identifier: "top-cast") { PersonRoute(id: $0.id) }
+        }
     }
     private struct Page: Decodable {
         struct Item: Decodable { let id: Int; let name: String; let image: String?; let titles: Int; let plays: Int }
@@ -283,6 +294,9 @@ struct MostWatchedCast: View {
         let total: Int
         let pending: Int
     }
+    /// A finished count is kept for an hour, so switching tabs doesn't make the server count again
+    /// (each ranking reads several thousand D1 rows on the free plan).
+    @MainActor private static var saved: (rows: [RankedRow], counted: Int, total: Int, at: Date)?
     private func load() async {
         #if DEBUG
         if store.isPreview {
@@ -291,6 +305,9 @@ struct MostWatchedCast: View {
             return
         }
         #endif
+        if let saved = Self.saved, Date().timeIntervalSince(saved.at) < 3600 {
+            rows = saved.rows; progress = (saved.counted, saved.total); return
+        }
         loading = true; failure = nil
         defer { loading = false }
         var last = -1
@@ -303,7 +320,10 @@ struct MostWatchedCast: View {
                               count: item.titles.counted("title", "titles"), extra: item.plays.counted("play", "plays"))
                 }
                 progress = (page.counted, page.total)
-                if page.pending == 0 || page.counted == last || Task.isCancelled { break }
+                if page.pending == 0 || page.counted == last || Task.isCancelled {
+                    if !Task.isCancelled { Self.saved = (rows, page.counted, page.total, Date()) }
+                    break
+                }
                 last = page.counted
             }
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }

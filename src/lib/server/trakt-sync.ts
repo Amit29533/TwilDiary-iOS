@@ -520,11 +520,12 @@ function decide(
     decision = { direction: 'conflict', review: true };
   if (item.kind === 'watchlist' && remoteValue && !title && facts.watched)
     decision = { direction: 'conflict', review: true };
-  // Started or finished in the diary: off the Trakt watchlist, as Trakt itself does when you
-  // watch something. Leaving Planned this way is progress, not a removal to review (Use Trakt
-  // used to put it back and switch the show to Planned). A watchlist entry Trakt added after the
-  // last sync still asks (the baseline then records it as not planned here).
-  const started = title?.status === 'watching' || title?.status === 'completed';
+  // Started, finished or dropped in the diary: off the Trakt watchlist, as Trakt itself does when
+  // you watch something. Leaving Planned this way is a decision made here, not a removal to
+  // review (Use Trakt used to put it back and switch the show to Planned). A watchlist entry
+  // Trakt added after the last sync still asks (the baseline then records it as not planned here).
+  const started =
+    title?.status === 'watching' || title?.status === 'completed' || title?.status === 'dropped';
   const progressed =
     item.kind === 'watchlist' &&
     started &&
@@ -538,7 +539,7 @@ function decide(
     review: decision.review,
     payload,
     detail: progressed
-      ? `Off your Trakt watchlist · ${title!.status === 'completed' ? 'finished' : 'watching'} here`
+      ? `Off your Trakt watchlist · ${title!.status === 'completed' ? 'finished' : title!.status} here`
       : decision.direction === 'link'
         ? 'Already matched · keep both sides linked'
         : decision.direction === 'conflict'
