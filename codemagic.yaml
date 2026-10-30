@@ -73,6 +73,8 @@ workflows:
           mkdir -p ios/.artifacts/logs
           { sw_vers; xcodebuild -version; } | tee ios/.artifacts/toolchain.txt
           bash ios/scripts/xcodegen.sh
+          # Owner-requested quick fix: only the drive-filter regression, without simulator/UI suites.
+          swift test --package-path ios/Packages/TwilDiaryCore --filter jellyfinDiskFilterMatchesLibraryShortcutKeys 2>&1 | tee ios/.artifacts/logs/jellyfin-disk-tests.log
           bash ios/scripts/ci.sh build-device
           bash ios/scripts/ci.sh package
           python3 - <<'PY'
@@ -81,13 +83,16 @@ workflows:
           log = (root / 'logs/device-build.log').read_text(errors='replace')
           if '** BUILD SUCCEEDED **' not in log or re.search(r'\bwarning:', log, re.I):
               raise SystemExit('Diagnostic device compilation requires success and zero warnings.')
+          focused = (root / 'logs/jellyfin-disk-tests.log').read_text(errors='replace')
+          if 'jellyfinDiskFilterMatchesLibraryShortcutKeys() passed' not in focused:
+              raise SystemExit('The focused Jellyfin drive regression did not pass; refusing to package the diagnostic.')
           ipa = root / 'TwilDiary-device-diagnostic.ipa'
           shutil.copyfile(root / 'TwilDiary-unsigned.ipa', ipa)
           digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
           (root / (ipa.name + '.sha256')).write_text(digest + '  ' + ipa.name + '\n')
           info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app/Info.plist').read_bytes())
           value = {'kind': 'device-diagnostic', 'regressionAcceptance': False,
-                   'note': 'Compilation and resource checks only; complete simulator regression is a separate workflow.',
+                   'note': 'Focused Jellyfin drive regression, compilation and resource checks; complete simulator regression is a separate workflow.',
                    'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'buildNumber': info['CFBundleVersion'],
                    'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest}
           (root / 'device-diagnostic-provenance.json').write_text(json.dumps(value, indent=2) + '\n')

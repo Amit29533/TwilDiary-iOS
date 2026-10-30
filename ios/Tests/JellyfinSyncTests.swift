@@ -77,6 +77,8 @@ import TwilDiaryCore
         XCTAssertEqual(names(category: "show"), [], "Animation counts as Anime, not Shows")
         XCTAssertEqual(names(genres: ["Drama", "Comedy"]), ["arrival", "bocchi"])
         XCTAssertEqual(names(disk: "drive:E"), ["arrival", "bocchi"])
+        XCTAssertEqual(names(disk: HomeDiskShortcut.all[0].key), ["arrival", "bocchi"], "The actual E: Library button keeps Jellyfin-only movies and shows")
+        XCTAssertEqual(names(disk: HomeDiskShortcut.all[2].key), ["dune"], "The actual G: button excludes titles on other drives")
         XCTAssertEqual(names(disk: "[\"jellyfin\",\"jellyfin:G:\"]"), ["dune"])
         XCTAssertEqual(names(disk: "unmapped"), [], "Everything on Jellyfin is on a disk")
         XCTAssertEqual(names(favorites: true), [], "Only diary titles can be favourites")

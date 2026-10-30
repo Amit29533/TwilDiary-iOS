@@ -12,6 +12,20 @@ public struct LibraryQuery: Equatable, Sendable {
     public var jellyfinTitles: Set<String> = []
     public var sort = Sort.library
     public init() { }
+    /// Library shortcuts already include the drive's colon (for example `drive:E:`).
+    /// Accept older colon-less keys too, without ever comparing a drive against `E::`.
+    public static func jellyfinDriveMatches(_ drive: String, disk: String) -> Bool {
+        switch disk {
+        case "all", "mapped": return true
+        case "unmapped": return false
+        default:
+            if disk.hasPrefix("drive:") {
+                let selected = String(disk.dropFirst(6)).uppercased()
+                return drive.uppercased() == (selected.hasSuffix(":") ? selected : selected + ":")
+            }
+            return disk.contains("\"jellyfin:" + drive + "\"")
+        }
+    }
     public func titles(in workspace: Workspace, ratingFor: (MediaTitle) -> Double? = { $0.communityScore }) -> [MediaTitle] {
         let needle = query.precomposedStringWithCompatibilityMapping.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let locations = Dictionary(grouping: workspace.locations, by: \.titleId)

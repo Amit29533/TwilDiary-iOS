@@ -1,5 +1,20 @@
 # Native TwilDiary progress
 
+## 30 October 2026 — focused Jellyfin + Disk fix
+
+Owner requested the fix, focused verification, commit and a quick unsigned IPA;
+do not repeat the full regression suite for this diagnostic. Based on the current
+`feat/ui-motion` head `a0e3a6d`, isolated from the older dirty local checkout.
+Library passes keys such as `drive:E:`; the Jellyfin-only matcher appended a
+second colon and hid movies/shows outside the diary. Shared core matching now
+accepts canonical and legacy keys, with regression cases using the actual E/F/G
+button definitions, wrong-drive exclusions and existing availability/volume keys.
+The app uses that exact tested helper. Native integration assertions also use
+actual shortcut keys. The existing Codemagic device diagnostic runs only the
+focused core case before Release device compilation/resource checks/IPA packaging.
+macOS execution and IPA verification are pending; no full-regression/stable
+acceptance, hosted data change, backend deployment or migration is claimed.
+
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.

@@ -236,12 +236,7 @@ struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
             case "anime": entry.anime
             default: true
             }
-            let diskMatches = switch disk {
-            case "all", "mapped": true
-            case "unmapped": false
-            default: disk.hasPrefix("drive:") ? entry.drive.uppercased() == String(disk.dropFirst(6)) + ":"
-                : disk.contains("\"jellyfin:" + entry.drive + "\"")
-            }
+            let diskMatches = LibraryQuery.jellyfinDriveMatches(entry.drive, disk: disk)
             return categoryMatches && diskMatches && (genres.isEmpty || entry.genres?.contains { genres.contains($0) } == true)
         }
         // No date added or rating outside the diary: newest year when asked, otherwise by name.

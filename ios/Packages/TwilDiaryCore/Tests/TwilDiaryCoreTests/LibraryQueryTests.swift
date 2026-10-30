@@ -89,3 +89,21 @@ private func adding(_ dates: [String: String], to workspace: Workspace) throws -
     value.genres = []
     #expect(value.titles(in: workspace).count == workspace.activeTitles.count)
 }
+
+@Test func jellyfinDiskFilterMatchesLibraryShortcutKeys() {
+    // Use the same keys as the actual Library buttons, not hand-written `drive:E` fixtures.
+    for shortcut in HomeDiskShortcut.all {
+        let drive = String(shortcut.key.dropFirst(6))
+        #expect(LibraryQuery.jellyfinDriveMatches(drive, disk: shortcut.key))
+        #expect(LibraryQuery.jellyfinDriveMatches(drive.lowercased(), disk: shortcut.key))
+        #expect(LibraryQuery.jellyfinDriveMatches(drive, disk: String(shortcut.key.dropLast())))
+        for other in HomeDiskShortcut.all where other.key != shortcut.key {
+            #expect(!LibraryQuery.jellyfinDriveMatches(drive, disk: other.key))
+        }
+    }
+    #expect(LibraryQuery.jellyfinDriveMatches("E:", disk: "all"))
+    #expect(LibraryQuery.jellyfinDriveMatches("E:", disk: "mapped"))
+    #expect(!LibraryQuery.jellyfinDriveMatches("E:", disk: "unmapped"))
+    #expect(LibraryQuery.jellyfinDriveMatches("G:", disk: "[\"jellyfin\",\"jellyfin:G:\"]"))
+    #expect(!LibraryQuery.jellyfinDriveMatches("E:", disk: "[\"jellyfin\",\"jellyfin:G:\"]"))
+}
