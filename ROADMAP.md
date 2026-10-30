@@ -86,6 +86,7 @@ Goal: reproduce movie/show/anime details and watch transactions.
 - [ ] Status/history parity: Completed fills valid missing watches; Planned revokes all progress with Undo; preserve dates/rewatches appropriately.
 - [ ] Individual watches, dates/rewatches, notes collapsed, server locations collapsed, cast and recommendations ordering.
 - [ ] Person/cast pages and filmography destinations; stale writes, uncertain receipts, Undo and catalog-boundary tests.
+  - 31 October owner-directed shared profile redesign supersedes the old facts-table appearance: Home-sized hero, pinned favourite, name-only accent and website icons. Source 54d4ea1 passed 23 focused checks and zero-warning simulator/device builds; screenshots/receipt committed. Physical-device and broader layout acceptance remain pending.
   - Build 17 pending: full Person facts/server/known-for/media shelves and filtered filmography, source-role return and bounded metadata cache; 40 web golden cases and native navigation/filter regression.
 
 Screens/files: `ios/Features/Title`, `ios/Features/People`, progress/history transactions.

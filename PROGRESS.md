@@ -19,8 +19,17 @@ since PersonRoute itself already is the native TMDB profile.
 Focused verification: 3 existing core regressions, 10 lookup units, 6 new biography/
 website/date units, and 4 UI journeys covering all profile types, fixed favourites,
 native TMDB, separate anime/character links, filmography and saved favourites.
-Candidate build not started yet. Next: commit, push development branch and run
-Codemagic native-ios-navigation-check, inspect simulator artifacts before delivery.
+Completed on source 54d4ea1: Codemagic 6ae51094efa74786046f4638 passed in
+9m30s. All 3 core + 10 lookup + 6 profile units + 4 UI flows passed; simulator and
+Release iPhone builds each have zero warnings. Downloaded IPA CRC, arm64/iPhoneOS,
+privacy resource, fixture exclusion, SHA256 and exact source/run provenance checked.
+Saved D:/Downloads/TwilDiary-profiles-54d4ea1.ipa (8,206,731 bytes).
+Visually inspected initial Cast / Character / Voice Actor, compact toolbar, icons
+and list mode; immutable fixture screenshots in ios/docs/screenshots/person-redesign-54d4ea1.
+Receipt ios/docs/releases/profile-redesign-54d4ea1.json. This is focused diagnostic
+acceptance; no full regression, other device-size or physical-phone claim.
+Next: owner device walkthrough of live photo crops, long biographies, voice actor
+social icons and scroll/Back feel. Development only; no main merge or new PR.
 
 Reconciled previous notes: source 6dd745f passed Codemagic 6ae503e4efa74786046f4274,
 3 core + 10 lookup + 2 UI checks, zero build warnings. Verified downloaded IPA
