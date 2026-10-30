@@ -1483,6 +1483,9 @@ import UIKit
             }
             XCTAssertTrue(entry.isHittable, entryID); entry.tap()
             let done = app.navigationBars[title].buttons.element(boundBy: 0)
+            // Build #31: the first tap right after switching to More was lost (nothing opened). Tap
+            // again only if the row is still there to tap, so a page that did open is never doubled.
+            if !done.waitForExistence(timeout: 5), entry.isHittable { entry.tap() }
             XCTAssertTrue(done.waitForExistence(timeout: 10), title); done.tap()
             XCTAssertTrue(app.buttons["settings-refresh-diary"].waitForExistence(timeout: 5))
             wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: done)], timeout: 5)
