@@ -151,11 +151,14 @@ struct CharacterView: View {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 18) {
                     ForEach(actors, id: \.id) { actor in
-                        VStack(spacing: 8) {
-                            Artwork(path: actor.image, title: actor.name).frame(width: 82, height: 82).clipShape(Circle())
-                            Text(actor.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                            Text("Japanese").font(.caption).foregroundStyle(.secondary)
-                        }.frame(width: 100).multilineTextAlignment(.center)
+                        // Opens the voice actor's page: their other characters and a heart.
+                        NavigationLink(value: VoiceActorRoute(id: actor.id)) {
+                            VStack(spacing: 8) {
+                                Artwork(path: actor.image, title: actor.name).frame(width: 82, height: 82).clipShape(Circle())
+                                Text(actor.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                                Text("Japanese").font(.caption).foregroundStyle(.secondary)
+                            }.frame(width: 100).multilineTextAlignment(.center).accessibilityElement(children: .combine)
+                        }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-\(actor.id)")
                     }
                 }
             }.scrollIndicators(.hidden)
@@ -188,8 +191,9 @@ struct CharacterView: View {
     }
 }
 
-/// Favourites: the cast and characters you've hearted. "Favourites" titles the page; the Cast and
-/// Characters tabs sit under it as the first row.
+/// Favourites: the cast, characters and voice actors you've hearted, as posters. "Favourites"
+/// titles the page; the tabs sit under it as the first row. Voice actors also show the most
+/// watched ones from your AniList stats.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
@@ -197,49 +201,77 @@ struct FavouritesView: View {
     var body: some View {
         let items = favourites.items(tab)
         ScrollView {
-            tabs.padding(.horizontal, 14).padding(.top, 4)
+            tabs.padding(.top, 4)
+            if tab == .voice {
+                MostWatchedVoiceActors().padding(.horizontal, 14).padding(.top, 8)
+                if !items.isEmpty {
+                    Text("Hearted").font(.system(size: 20, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.top, 20)
+                }
+            }
             if items.isEmpty {
-                DiaryEmptyState(title: tab == .cast ? "No favourite cast yet" : "No favourite characters yet",
-                                description: tab == .cast ? "Tap the heart on someone’s cast page to keep them here." : "Tap the heart on an anime character’s page to keep them here.")
+                DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)
                     .padding(.horizontal, 14).padding(.top, 24)
             } else {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 18) {
-                    ForEach(items) { item in FavouriteLink(item: item, size: 96) }
+                    ForEach(items) { item in FavouriteLink(item: item, poster: true) }
                 }.padding(.horizontal, 14).padding(.top, 8)
             }
         }.padding(.bottom, 100).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task { await favourites.sync(store: store) }
             .refreshable { await favourites.sync(store: store) }
     }
+    private var emptyHint: String {
+        switch tab {
+        case .cast: "Tap the heart on someone’s cast page to keep them here."
+        case .character: "Tap the heart on an anime character’s page to keep them here."
+        case .voice: "Tap the heart on a voice actor’s page to keep them here."
+        }
+    }
+    /// Three tabs scroll sideways on narrow phones rather than squeezing.
     private var tabs: some View {
-        HStack(spacing: 18) {
-            ForEach([Favourite.Kind.cast, .character], id: \.self) { kind in
-                Button { tab = kind } label: {
-                    Text(kind == .cast ? "Cast" : "Characters").font(.system(size: 24, weight: .bold)).tracking(-0.6)
-                        .foregroundStyle(tab == kind ? Color(webHex: "#f3f0f7") : .white.opacity(0.4))
-                }.buttonStyle(.plain).accessibilityAddTraits(tab == kind ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
-            }
-            Spacer(minLength: 0)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        ScrollView(.horizontal) {
+            HStack(spacing: 18) {
+                ForEach(Favourite.Kind.allCases, id: \.self) { kind in
+                    Button { tab = kind } label: {
+                        Text(kind.label).font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                            .foregroundStyle(tab == kind ? Color(webHex: "#f3f0f7") : .white.opacity(0.4))
+                    }.buttonStyle(.plain).accessibilityAddTraits(tab == kind ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
+                }
+            }.padding(.horizontal, 14)
+        }.scrollIndicators(.hidden)
     }
 }
 
-/// One favourite: round portrait and name, opening their cast or character page.
+/// One favourite, opening their cast, character or voice actor page: a poster on the Favourites
+/// page, a round portrait in Home's compact row.
 struct FavouriteLink: View {
     let item: Favourite
     var size: CGFloat = 82
+    var poster = false
     var body: some View {
         Group {
-            if item.kind == .cast { NavigationLink(value: PersonRoute(id: item.ref)) { label } }
-            else { NavigationLink(value: CharacterRoute(id: item.ref)) { label } }
+            switch item.kind {
+            case .cast: NavigationLink(value: PersonRoute(id: item.ref)) { label }
+            case .character: NavigationLink(value: CharacterRoute(id: item.ref)) { label }
+            case .voice: NavigationLink(value: VoiceActorRoute(id: item.ref)) { label }
+            }
         }.buttonStyle(.springPress).accessibilityIdentifier("favourite-" + item.id)
     }
-    private var label: some View {
-        VStack(spacing: 8) {
-            Artwork(path: item.image, title: item.name).frame(width: size, height: size).clipShape(Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.12)))
-            Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
-            Text(item.kind == .cast ? "Cast" : "Character").font(.caption).foregroundStyle(.secondary)
-        }.frame(width: size + 18).multilineTextAlignment(.center).accessibilityElement(children: .combine)
+    @ViewBuilder private var label: some View {
+        if poster {
+            VStack(alignment: .leading, spacing: 6) {
+                Artwork(path: item.image, title: item.name).aspectRatio(2.0 / 3.0, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
+                Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                Text(item.subtitle ?? item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
+        } else {
+            VStack(spacing: 8) {
+                Artwork(path: item.image, title: item.name).frame(width: size, height: size).clipShape(Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(0.12)))
+                Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                Text(item.kind.singular).font(.caption).foregroundStyle(.secondary)
+            }.frame(width: size + 18).multilineTextAlignment(.center).accessibilityElement(children: .combine)
+        }
     }
 }

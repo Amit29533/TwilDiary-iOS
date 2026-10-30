@@ -750,6 +750,22 @@ import UIKit
         XCTAssertTrue(app.buttons["favourite-character:2"].exists)
         app.buttons["favourites-tab-cast"].tap()
         XCTAssertFalse(app.buttons["favourite-character:2"].exists); capture("Favourites cast tab")
+        // Voice actors: the AniList stats ranking from a pasted profile link, then a heart.
+        app.buttons["favourites-tab-voice"].tap()
+        let profile = app.textFields["anilist-user-field"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 5)); profile.tap(); profile.typeText("https://anilist.co/user/twilight29533/stats/anime/voiceActors")
+        app.buttons["anilist-user-save"].tap()
+        let top = app.buttons["top-voice-actor-11"]
+        XCTAssertTrue(top.waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["anilist-user"].exists)
+        capture("Favourites most watched voice actors")
+        top.tap()
+        let voiceHeart = app.buttons["voice-actor-favourite"]
+        XCTAssertTrue(voiceHeart.waitForExistence(timeout: 5)); XCTAssertTrue(app.staticTexts["voice-actor-watched"].exists)
+        voiceHeart.tap(); XCTAssertEqual(voiceHeart.label, "Remove from favourites"); capture("Voice actor page")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let hearted = app.buttons["favourite-voice:11"]
+        for _ in 0..<6 { if hearted.exists && hearted.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(hearted.exists, "The hearted voice actor shows as a poster")
     }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()

@@ -2,9 +2,13 @@ import Foundation
 import Observation
 import TwilDiaryCore
 
-/// A hearted cast member (TMDB person) or anime character (AniList).
+/// A hearted cast member (TMDB person), anime character or voice actor (AniList).
 struct Favourite: Codable, Hashable, Sendable, Identifiable {
-    enum Kind: String, Codable, Sendable, CaseIterable { case cast, character }
+    enum Kind: String, Codable, Sendable, CaseIterable {
+        case cast, character, voice
+        var label: String { switch self { case .cast: "Cast"; case .character: "Characters"; case .voice: "Voice actors" } }
+        var singular: String { switch self { case .cast: "Cast"; case .character: "Character"; case .voice: "Voice actor" } }
+    }
     let kind: Kind
     let ref: Int
     let name: String

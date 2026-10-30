@@ -1,9 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { ApiError } from './api.ts';
 
-/** Hearted cast (TMDB person IDs) and anime characters (AniList IDs). The phone keeps a copy
- * for instant display; this table is the one that survives a reinstall or a new phone. */
-export type FavouriteKind = 'cast' | 'character';
+/** Hearted cast (TMDB person IDs), anime characters and voice actors (AniList IDs). The phone
+ * keeps a copy for instant display; this table is the one that survives a reinstall or a new phone. */
+export type FavouriteKind = 'cast' | 'character' | 'voice';
 export interface Favourite {
   kind: FavouriteKind;
   ref: number;
@@ -14,9 +14,9 @@ export interface Favourite {
 }
 const MAX = 2000;
 
-/** "cast:525" or "character:40882". */
+/** "cast:525", "character:40882" or "voice:95185". */
 export function favouriteKey(value: string | undefined) {
-  const match = /^(cast|character):(\d{1,10})$/.exec(value ?? '');
+  const match = /^(cast|character|voice):(\d{1,10})$/.exec(value ?? '');
   if (!match) throw new ApiError(404, 'not_found', 'Unknown favourite');
   return { kind: match[1] as FavouriteKind, ref: Number(match[2]) };
 }

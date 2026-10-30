@@ -46,6 +46,18 @@ test('favourites accept only known kinds, sane names and TMDB or AniList artwork
   t.after(f.close);
   const status = (code: number) => (e: unknown) => e instanceof ApiError && e.status === code;
   await assert.rejects(() => saveFavourite(f.binding, 'person:1', { name: 'X' }, now), status(404));
+  // Voice actors are AniList staff, with AniList artwork.
+  const { favourite: voice } = await saveFavourite(
+    f.binding,
+    'voice:95185',
+    {
+      name: 'Atsumi Tanezaki',
+      image: 'https://s4.anilist.co/file/anilistcdn/staff/large/n95185.png',
+      subtitle: 'Voice of Frieren'
+    },
+    now
+  );
+  assert.equal(voice.kind, 'voice');
   await assert.rejects(() => saveFavourite(f.binding, 'cast:abc', { name: 'X' }, now), status(404));
   await assert.rejects(() => saveFavourite(f.binding, 'cast:1', { name: '' }, now), status(400));
   await assert.rejects(

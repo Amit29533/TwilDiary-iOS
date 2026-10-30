@@ -17,7 +17,7 @@ import TwilDiaryCore
             UserDefaults.standard.set(true, forKey: "trashGrid")
             FavouritesStore.shared.reset()
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-launch-tab") { UserDefaults.standard.removeObject(forKey: AppTab.launchKey) }
-            for key in ["favouritesTab", "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
+            for key in ["favouritesTab", MostWatchedVoiceActors.userKey, "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")
@@ -201,6 +201,7 @@ struct RootView: View {
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: CharacterRoute.self) { CharacterView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: VoiceActorRoute.self) { VoiceActorView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: HistoryRoute.self) { route in
                     HistoryView(initialDay: route.day, initialUnknown: route.unknown).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
