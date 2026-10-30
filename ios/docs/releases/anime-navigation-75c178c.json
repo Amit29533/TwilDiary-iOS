@@ -1,0 +1,17 @@
+{
+  "sourceSHA": "75c178c8da9a295ea2534b3e8dd62ae063a83455",
+  "buildURL": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/build/6ae4e406efa74786046f3833",
+  "sha256": "d98a7ceb2f604d73e9357d4e59ec4b1cb662af14ac5bd9735923c191e8b9ec32",
+  "bytes": 8168107,
+  "version": "2.0.0",
+  "build": "65",
+  "platform": "arm64 iPhoneOS",
+  "focusedRegressionPassed": true,
+  "focusedTestCount": 2,
+  "buildWarnings": 0,
+  "fullRegressionRerun": false,
+  "uiRegressionRun": false,
+  "kind": "device-diagnostic",
+  "regressionAcceptance": false,
+  "note": "Two focused Swift regressions, Release iPhone compilation and resource verification. New character/voice actor UI regression is added but not executed by this quick workflow."
+}

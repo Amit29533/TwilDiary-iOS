@@ -25,9 +25,17 @@ local matches remain selectable offline. Retry generations fence stale loading
 and result updates. The first ca9b30a phone job predates this review correction;
 only the following same-source diagnostic may be delivered for this change.
 Added focused matching regressions and a fixture-backed UI navigation regression.
-Next: commit/push and run the quick Codemagic phone diagnostic (two focused core
-cases plus Release device compilation), not the full regression suite. UI test
-is added for future simulator regression; do not claim it ran in the device job.
+Completed 31 October: final source `75c178c8da9a295ea2534b3e8dd62ae063a83455`
+passed Codemagic `6ae4e406efa74786046f3833`. Both focused core tests passed,
+Release iPhoneOS build has zero warnings. Downloaded IPA CRC, arm64 platform,
+privacy resource, excluded test fixtures, source provenance and SHA256 verified.
+Saved `D:/Downloads/TwilDiary-anime-links-TMDB-75c178c.ipa` (8,168,107 bytes).
+Receipt: `ios/docs/releases/anime-navigation-75c178c.json`. No full suite rerun;
+new UI test is present for future simulator regression, not run by this quick
+device job. No native runtime screenshot is claimed: placement drawings are
+labelled previews. Earlier 4e148ff/476bff3 jobs were canceled; only this final
+source is the delivered diagnostic. Next phone check: character Appears in,
+voice actor anime link versus character portrait, and the TMDB-logo button.
 
 ## 30 October 2026 — focused Jellyfin + Disk fix
 
