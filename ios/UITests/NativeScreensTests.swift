@@ -738,15 +738,30 @@ import UIKit
         XCTAssertTrue(app.buttons["jellyfin-item-j-severance"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["jellyfin-item-j-arrival"].exists, "A drive filter keeps only that drive")
         capture("Jellyfin page drive filter")
-        // Library's Jellyfin chip (before Queue): the diary titles on Jellyfin, from the saved list.
+        // Library's Jellyfin chip (before Queue): everything on Jellyfin, from the saved list: the
+        // diary titles, then the ones not in the diary.
         let library = app.tabBars.buttons["Library"]
         for _ in 0..<3 where !library.exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
         XCTAssertTrue(library.waitForExistence(timeout: 5)); library.tap()
         tapStatusChip(app, "jellyfin")
         XCTAssertTrue(app.buttons["title-frieren"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["title-severance"].exists)
         XCTAssertFalse(app.buttons["title-quiet-orbit"].exists, "Titles not on Jellyfin leave the Jellyfin chip")
-        XCTAssertEqual(app.buttons["library-status-jellyfin"].value as? String, "2 titles"); capture("Library Jellyfin chip")
+        XCTAssertEqual(app.buttons["library-status-jellyfin"].value as? String, "5 titles", "2 in the diary and 3 only on Jellyfin")
         XCTAssertLessThan(app.buttons["library-status-jellyfin"].frame.maxX, app.buttons["library-status-queue"].frame.minX, "Jellyfin sits before Queue")
+        let extras = app.descendants(matching: .any)["library-jellyfin-extras"]
+        for _ in 0..<4 { if extras.exists && extras.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(extras.exists, "Jellyfin titles not in the diary get their own section")
+        XCTAssertTrue(app.buttons["jellyfin-item-j-arrival"].exists); XCTAssertTrue(app.buttons["jellyfin-item-j-bocchi"].exists)
+        capture("Library Jellyfin chip with titles not in the diary")
+        // Library's filters apply to them too: Movies keeps Arrival and Dune, not the anime show.
+        for _ in 0..<4 where !app.buttons["category-movies"].isHittable { app.swipeDown() }
+        app.buttons["category-movies"].tap()
+        XCTAssertTrue(app.buttons["jellyfin-item-j-arrival"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["jellyfin-item-j-bocchi"].exists, "Movies leaves out Jellyfin's shows")
+        app.buttons["category-anime"].tap()
+        XCTAssertTrue(app.buttons["jellyfin-item-j-bocchi"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["jellyfin-item-j-arrival"].exists, "Anime keeps only Jellyfin's animation")
+        capture("Library Jellyfin chip anime")
     }
     func testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites() {
         let app = launch(); app.tabBars.buttons["Library"].tap()

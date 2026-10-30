@@ -161,8 +161,40 @@ struct LibraryView: View {
                 }
                 if !store.hasLoadedWorkspace && collection.isEmpty { skeleton }
                 else if collection.isEmpty { DiaryEmptyState(title: "Nothing here just yet", description: "Add a movie or show to start your library.").padding(.horizontal, 14).padding(.top, 20) }
-                else if filtered.isEmpty { noMatches }
+                else if filtered.isEmpty && jellyfinExtras.isEmpty { noMatches }
                 else {
+                    if !filtered.isEmpty { diaryTitles }
+                    jellyfinSection
+                }
+            }.padding(.bottom, selecting ? 90 : 24)
+                // On the content, whose coordinates don't move while scrolling (so the chip row's frame
+                // only changes with layout, not every scroll frame), at least as tall as the visible area
+                // so a short category's empty space still takes the swipe.
+                // Genre shelves scroll sideways themselves, so they keep the swipe.
+                .frame(minHeight: viewport, alignment: .top)
+                .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting, ignoring: chipRow)
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height - $0.contentInsets.top - $0.contentInsets.bottom } action: { _, height in viewport = max(0, height) }
+        .refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
+    }
+    /// Jellyfin chip: what's on Jellyfin but not in the diary, under the diary titles, through the
+    /// filters that apply (category, genre, drive). Each opens its TMDB page, where it can be added.
+    @ViewBuilder private var jellyfinSection: some View {
+        let extras = jellyfinExtras
+        if !extras.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("Not in your diary").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    Text("\(extras.count)").font(.system(size: 14)).foregroundStyle(.secondary)
+                }.accessibilityElement(children: .combine).accessibilityIdentifier("library-jellyfin-extras")
+                Text("On your Jellyfin. Open one to add it.").font(.system(size: 13)).foregroundStyle(.secondary)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
+                    ForEach(extras) { JellyfinEntryCard(entry: $0) }
+                }
+            }.padding(.horizontal, 14).padding(.top, filtered.isEmpty ? 4 : 26)
+        }
+    }
+    @ViewBuilder private var diaryTitles: some View {
                     switch selecting ? (layout == .shelves ? .grid : layout) : layout {
                     case .shelves:
                         LazyVStack(alignment: .leading, spacing: 22) {
@@ -189,17 +221,6 @@ struct LibraryView: View {
                             ForEach(shown) { title in poster(title).onAppear { revealMore(after: title) } }
                         }.padding(.horizontal, 14)
                     }
-                }
-            }.padding(.bottom, selecting ? 90 : 24)
-                // On the content, whose coordinates don't move while scrolling (so the chip row's frame
-                // only changes with layout, not every scroll frame), at least as tall as the visible area
-                // so a short category's empty space still takes the swipe.
-                // Genre shelves scroll sideways themselves, so they keep the swipe.
-                .frame(minHeight: viewport, alignment: .top)
-                .categorySwipe(Binding(get: { category }, set: { category = $0 }), enabled: layout != .shelves && !selecting, ignoring: chipRow)
-        }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height - $0.contentInsets.top - $0.contentInsets.bottom } action: { _, height in viewport = max(0, height) }
-        .refreshable { await store.refresh(); await store.loadPublicRatings(collection, source: ratingSource) }
     }
     private func ratingStatus(_ message: String) -> some View {
         Text(message).font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 10)
@@ -359,7 +380,24 @@ struct LibraryView: View {
     private func clearFilters() { category = .all; status = "all"; genres = []; drive = ""; favoritesOnly = false }
     /// Genres in the current category and status, most common first.
     private var genreCounts: [(String, Int)] {
-        LibraryShelf.make(query(status: status, genres: [], drive: "", favorites: false)).filter { $0.genre != "Without a genre" }.map { ($0.genre, $0.titles.count) }
+        let diary = LibraryShelf.make(query(status: status, genres: [], drive: "", favorites: false)).filter { $0.genre != "Without a genre" }.map { ($0.genre, $0.titles.count) }
+        guard status == "jellyfin" else { return diary }
+        // The Jellyfin chip also counts the Jellyfin titles not in the diary.
+        var counts = Dictionary(diary, uniquingKeysWith: +)
+        for entry in extras(genres: [], drive: "", favorites: false) { for genre in Set(entry.genres ?? []) { counts[genre, default: 0] += 1 } }
+        return counts.sorted { $0.value == $1.value ? $0.key.localizedStandardCompare($1.key) == .orderedAscending : $0.value > $1.value }.map { ($0.key, $0.value) }
+    }
+    /// Jellyfin titles not in the diary, shown under the Jellyfin chip (not while selecting:
+    /// only diary titles can be changed together).
+    private var jellyfinExtras: [JellyfinEntry] {
+        status == "jellyfin" && !selecting ? extras(genres: genres, drive: drive, favorites: favoritesOnly) : []
+    }
+    private func extras(genres: Set<String>, drive: String, favorites: Bool) -> [JellyfinEntry] {
+        jellyfin.extras(diary: collection, category: categoryKey, genres: genres, disk: diskKey(drive), favorites: favorites, sort: sort)
+    }
+    private var categoryKey: String { category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all" }
+    private func diskKey(_ drive: String) -> String {
+        drive.isEmpty ? "all" : ["mapped", "unmapped"].contains(drive) || drive.hasPrefix("[") || drive.hasPrefix("drive:") ? drive : "drive:" + drive.uppercased()
     }
     /// Each status chip counts the titles every other filter leaves.
     private var statusCounts: [String: Int] {
@@ -367,6 +405,7 @@ struct LibraryView: View {
         var counts = Dictionary(grouping: base, by: \.status).mapValues(\.count)
         counts["all"] = base.count; counts["queue"] = base.count { $0.queued == true }
         counts["jellyfin"] = query(status: "jellyfin", genres: genres, drive: drive, favorites: favoritesOnly).count
+            + extras(genres: genres, drive: drive, favorites: favoritesOnly).count
         return counts
     }
     private var disks: [DiskSummary] { let ids = Set(collection.map(\.id)); return DiskSummary.make(store.workspace.locations.filter { ids.contains($0.titleId) }) }
@@ -382,11 +421,11 @@ struct LibraryView: View {
     private var filtered: [MediaTitle] { query(status: status, genres: genres, drive: drive, favorites: favoritesOnly) }
     private func query(status: String, genres: Set<String>, drive: String, favorites: Bool) -> [MediaTitle] {
         var query = LibraryQuery()
-        query.category = category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all"
+        query.category = categoryKey
         query.status = ["queue", "jellyfin"].contains(status) ? "all" : status; query.queued = status == "queue"; query.genres = genres; query.favorites = favorites
         // The saved Jellyfin list (JellyfinShelf) works away from home and after sign-out.
         query.jellyfin = status == "jellyfin"; query.jellyfinTitles = status == "jellyfin" ? jellyfin.titleIDs(diary: collection) : []
-        query.disk = drive.isEmpty ? "all" : ["mapped", "unmapped"].contains(drive) || drive.hasPrefix("[") || drive.hasPrefix("drive:") ? drive : "drive:" + drive.uppercased()
+        query.disk = diskKey(drive)
         query.sort = sort
         return store.libraryTitles(query, source: ratingSource)
     }

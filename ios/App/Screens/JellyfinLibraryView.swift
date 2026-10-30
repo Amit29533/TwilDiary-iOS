@@ -56,7 +56,7 @@ struct JellyfinLibraryView: View {
         let items = shown
         if items.isEmpty { Text("Nothing here with these filters.").font(.system(size: 13)).foregroundStyle(.secondary).padding(.top, 8) }
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 18) {
-            ForEach(items) { entry in card(entry) }
+            ForEach(items) { entry in JellyfinEntryCard(entry: entry) }
         }
     }
     /// "312 movies and shows · 46 in your diary · 3 personal items left out".
@@ -86,7 +86,36 @@ struct JellyfinLibraryView: View {
         let text = query.trimmingCharacters(in: .whitespaces)
         return entries.filter { matches($0, show: show, drive: drive) && (text.isEmpty || $0.name.localizedCaseInsensitiveContains(text)) }
     }
-    @ViewBuilder private func card(_ entry: JellyfinEntry) -> some View {
+    private func chipRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView(.horizontal) { HStack(spacing: 8) { content() } }.scrollIndicators(.hidden)
+    }
+    private func chip(_ text: String, on: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
+                .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : .white.opacity(0.06), in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : .white.opacity(0.12)))
+        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(id)
+    }
+    private func load() async {
+        if sync == nil { sync = JellyfinSync(store: store) }
+        guard let sync else { return }
+        loading = true; failure = nil
+        defer { loading = false }
+        do {
+            let found = try await sync.browse()
+            shelf.replace(found.entries, personal: found.personal, save: !store.isPreview)
+            if let drive, !shelf.entries.contains(where: { $0.drive == drive }) { self.drive = nil }
+        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+}
+
+/// A Jellyfin title as a poster card (the Jellyfin page, and Library's Jellyfin chip): a title in
+/// the diary opens its page, one that isn't opens its TMDB page, where it can be added.
+struct JellyfinEntryCard: View {
+    let entry: JellyfinEntry
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    var body: some View {
         let label = VStack(alignment: .leading, spacing: 6) {
             Color.clear.aspectRatio(2.0 / 3.0, contentMode: .fit)
                 .overlay { poster(entry) }
@@ -113,27 +142,6 @@ struct JellyfinLibraryView: View {
     @ViewBuilder private func poster(_ entry: JellyfinEntry) -> some View {
         let fallback = Artwork(path: entry.diaryID.flatMap { store.title($0)?.poster }, title: entry.name)
         if let url = entry.poster { JellyfinPoster(url: url) { fallback } } else { fallback }
-    }
-    private func chipRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        ScrollView(.horizontal) { HStack(spacing: 8) { content() } }.scrollIndicators(.hidden)
-    }
-    private func chip(_ text: String, on: Bool, id: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
-                .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : .white.opacity(0.06), in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : .white.opacity(0.12)))
-        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(id)
-    }
-    private func load() async {
-        if sync == nil { sync = JellyfinSync(store: store) }
-        guard let sync else { return }
-        loading = true; failure = nil
-        defer { loading = false }
-        do {
-            let found = try await sync.browse()
-            shelf.replace(found.entries, personal: found.personal, save: !store.isPreview)
-            if let drive, !shelf.entries.contains(where: { $0.drive == drive }) { self.drive = nil }
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
 

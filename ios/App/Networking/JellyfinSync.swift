@@ -75,6 +75,11 @@ struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
     let drive: String
     let poster: URL?
     var diaryID: String?
+    /// Jellyfin's genres (from TMDB), for Library's category and genre filters; absent in lists
+    /// saved before they were read.
+    var genres: [String]? = nil
+    /// Anime by Jellyfin's genres, as Library's Anime category counts it.
+    var anime: Bool { genres?.contains { ["anime", "animation"].contains($0.lowercased()) } == true }
 }
 
 /// The Jellyfin list last read at home, kept on this iPhone so the Jellyfin page and Library's
@@ -144,6 +149,33 @@ struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
     func titleIDs(diary titles: [MediaTitle]) -> Set<String> {
         Set(Self.matched(entries, diary: titles).compactMap(\.diaryID))
     }
+    /// Jellyfin titles not in the diary, for Library's Jellyfin chip, through the filters that
+    /// apply to them: category ("movie", "show", "anime" by Jellyfin's genres), genres, and disk
+    /// (LibraryQuery's form). Favourites only leaves none: only diary titles can be favourites.
+    func extras(diary titles: [MediaTitle], category: String, genres: Set<String>, disk: String, favorites: Bool, sort: LibraryQuery.Sort) -> [JellyfinEntry] {
+        guard !favorites else { return [] }
+        let found = Self.matched(entries, diary: titles).filter { entry in
+            guard entry.diaryID == nil else { return false }
+            let categoryMatches = switch category {
+            case "movie": entry.movie
+            case "show": !entry.movie && !entry.anime
+            case "anime": entry.anime
+            default: true
+            }
+            let diskMatches = switch disk {
+            case "all", "mapped": true
+            case "unmapped": false
+            default: disk.hasPrefix("drive:") ? entry.drive.uppercased() == String(disk.dropFirst(6)) + ":"
+                : disk.contains("\"jellyfin:" + entry.drive + "\"")
+            }
+            return categoryMatches && diskMatches && (genres.isEmpty || entry.genres?.contains { genres.contains($0) } == true)
+        }
+        // No date added or rating outside the diary: newest year when asked, otherwise by name.
+        return found.sorted { left, right in
+            if sort == .year, (left.year ?? 0) != (right.year ?? 0) { return (left.year ?? 0) > (right.year ?? 0) }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
+    }
 }
 
 /// Jellyfin's posters, kept on disk (outside the diary, so sign-out leaves them) and served from
@@ -206,7 +238,8 @@ struct JellyfinClient: Sendable {
         let Name: String?
         let ProductionYear: Int?
         let ImageTags: [String: String]?
-        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags }
+        let Genres: [String]?
+        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
     struct Server: Decodable { let ServerName: String?; let Version: String? }
@@ -244,7 +277,7 @@ struct JellyfinClient: Sendable {
         while true {
             let page: Page = try await get("Items", [
                 URLQueryItem(name: "ParentId", value: library), URLQueryItem(name: "Recursive", value: "true"),
-                URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "Path,ProviderIds"),
+                URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "Path,ProviderIds,Genres"),
                 URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: "500")
             ])
             all += page.Items; start += page.Items.count
@@ -373,7 +406,7 @@ struct JellyfinClient: Sendable {
                 let movie = item.kind == "Movie", tmdb = ids["tmdb"].flatMap { Int($0) }
                 entries.append(JellyfinEntry(id: item.Id, name: item.Name ?? "Untitled", year: item.ProductionYear, movie: movie, tmdb: tmdb,
                                              path: path, drive: Self.drive(path), poster: client.poster(item),
-                                             diaryID: tmdb.flatMap { diary[(movie ? "movie:" : "tv:") + String($0)] }))
+                                             diaryID: tmdb.flatMap { diary[(movie ? "movie:" : "tv:") + String($0)] }, genres: item.Genres))
             }
         }
         entries.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -410,8 +443,9 @@ struct JellyfinClient: Sendable {
     }
     #if DEBUG
     static let previewEntries = [
-        JellyfinEntry(id: "j-arrival", name: "Arrival", year: 2016, movie: true, tmdb: 329865, path: "E:\\Movies\\Arrival (2016)", drive: "E:", poster: nil, diaryID: nil),
-        JellyfinEntry(id: "j-dune", name: "Dune", year: 2021, movie: true, tmdb: 438631, path: "E:\\Movies\\Dune (2021)", drive: "E:", poster: nil, diaryID: nil),
+        JellyfinEntry(id: "j-arrival", name: "Arrival", year: 2016, movie: true, tmdb: 329865, path: "E:\\Movies\\Arrival (2016)", drive: "E:", poster: nil, diaryID: nil, genres: ["Science Fiction", "Drama"]),
+        JellyfinEntry(id: "j-dune", name: "Dune", year: 2021, movie: true, tmdb: 438631, path: "E:\\Movies\\Dune (2021)", drive: "E:", poster: nil, diaryID: nil, genres: ["Science Fiction", "Adventure"]),
+        JellyfinEntry(id: "j-bocchi", name: "Bocchi the Rock!", year: 2022, movie: false, tmdb: 119100, path: "E:\\Anime\\Bocchi the Rock!", drive: "E:", poster: nil, diaryID: nil, genres: ["Animation", "Comedy"]),
         JellyfinEntry(id: "j-frieren", name: "Frieren: Beyond Journey’s End", year: 2023, movie: false, tmdb: 209867, path: "/mnt/media/Anime/Frieren", drive: "/mnt/media", poster: nil, diaryID: "frieren"),
         JellyfinEntry(id: "j-severance", name: "Severance", year: 2022, movie: false, tmdb: 95396, path: "D:\\TV\\Severance", drive: "D:", poster: nil, diaryID: "severance")
     ]

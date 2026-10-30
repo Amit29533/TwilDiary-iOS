@@ -56,6 +56,32 @@ import TwilDiaryCore
         reopened.forget()
         XCTAssertTrue(JellyfinShelf(file: file).entries.isEmpty)
     }
+    func testTitlesNotInTheDiaryFollowLibrarysCategoryGenreAndDriveFilters() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + "/library.json")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let shelf = JellyfinShelf(file: file)
+        func listed(_ id: String, movie: Bool, tmdb: Int, drive: String, year: Int, genres: [String]) -> JellyfinEntry {
+            JellyfinEntry(id: id, name: id, year: year, movie: movie, tmdb: tmdb, path: drive + "\\" + id, drive: drive, poster: nil, diaryID: nil, genres: genres)
+        }
+        shelf.replace([listed("arrival", movie: true, tmdb: 1, drive: "E:", year: 2016, genres: ["Science Fiction", "Drama"]),
+                       listed("dune", movie: true, tmdb: 2, drive: "G:", year: 2021, genres: ["Science Fiction"]),
+                       listed("bocchi", movie: false, tmdb: 3, drive: "E:", year: 2022, genres: ["Animation", "Comedy"]),
+                       listed("severance", movie: false, tmdb: 4, drive: "D:", year: 2022, genres: ["Drama"])], personal: 0, save: false)
+        let diary = try [title("in-diary", "show", tmdb: 4)]
+        func names(category: String = "all", genres: Set<String> = [], disk: String = "all", favorites: Bool = false, sort: LibraryQuery.Sort = .title) -> [String] {
+            shelf.extras(diary: diary, category: category, genres: genres, disk: disk, favorites: favorites, sort: sort).map(\.id)
+        }
+        XCTAssertEqual(names(), ["arrival", "bocchi", "dune"], "Severance is in the diary, so it isn't an extra")
+        XCTAssertEqual(names(category: "movie"), ["arrival", "dune"])
+        XCTAssertEqual(names(category: "anime"), ["bocchi"])
+        XCTAssertEqual(names(category: "show"), [], "Animation counts as Anime, not Shows")
+        XCTAssertEqual(names(genres: ["Drama", "Comedy"]), ["arrival", "bocchi"])
+        XCTAssertEqual(names(disk: "drive:E"), ["arrival", "bocchi"])
+        XCTAssertEqual(names(disk: "[\"jellyfin\",\"jellyfin:G:\"]"), ["dune"])
+        XCTAssertEqual(names(disk: "unmapped"), [], "Everything on Jellyfin is on a disk")
+        XCTAssertEqual(names(favorites: true), [], "Only diary titles can be favourites")
+        XCTAssertEqual(names(sort: .year), ["bocchi", "dune", "arrival"])
+    }
     func testOnlyMoviesAndShowsAreOnByDefaultAndPersonalLibrariesAreNeverRead() {
         let types: [String?] = ["movies", "tvshows", "mixed", nil, "photos", "homevideos", "music"]
         let libraries = types.enumerated().map { JellyfinLibrary(id: "\($0.offset)", name: "L", type: $0.element) }
