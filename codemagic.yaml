@@ -2,7 +2,7 @@
 # No automatic triggers, signing, deployment, credentials or hosted-data writes.
 workflows:
   native-ios-navigation-check:
-    name: TwilDiary targeted anime navigation — iPhone and simulator
+    name: TwilDiary focused profiles and navigation — iPhone and simulator
     instance_type: mac_mini_m2
     max_build_duration: 35
     environment:
@@ -10,7 +10,7 @@ workflows:
       vars:
         TZ: Asia/Kolkata
     scripts:
-      - name: Verify native anime navigation and profile button
+      - name: Verify shared profiles, icons and native navigation
         script: bash ios/scripts/navigation-check.sh
     artifacts:
       - ios/.artifacts/TwilDiary-native-navigation.ipa

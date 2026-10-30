@@ -11,108 +11,96 @@ struct VoiceActorRoute: Hashable {
     var watchedCount: Int? = nil
 }
 
-/// A voice actor, laid out like a character's page: large art, names, a heart, the bio (spoilers
-/// left out while Hide spoilers is on), facts and the characters they voice, each opening its page.
+/// Voice actors share the profile shell; identity resolution and all role routes stay native.
 struct VoiceActorView: View {
     let route: VoiceActorRoute
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("hideSpoilers") private var hideSpoilers = true
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage("voiceActorRolesGrid") private var grid = true
     @State private var actor: AniVoiceActorDetail?
     @State private var failure: String?
     @State private var missing = false
     @State private var expanded = false
-    @State private var hearts = 0
     @State private var openingPerson = false
     @State private var personFailure: String?
     @State private var personLookup: Task<Void, Never>?
-    private var favourites: FavouritesStore { .shared }
+    @State private var shown = 30
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                if let actor {
-                    VStack(alignment: .leading, spacing: 28) {
-                        header(actor)
-                        VStack(alignment: .leading, spacing: 28) {
-                            if let count = route.watchedCount {
-                                Text("In " + count.counted("anime", "anime") + " you’ve watched").font(.system(size: 15)).foregroundStyle(.secondary)
-                                    .accessibilityIdentifier("voice-actor-watched")
-                            }
-                            biography(actor)
-                            facts(actor)
-                            if !actor.roles.isEmpty { roles(actor.roles) }
-                            Link("Voice actor details: AniList", destination: URL(string: "https://anilist.co/staff/\(actor.id)")!).font(.system(size: 13)).foregroundStyle(.secondary)
-                        }.padding(.horizontal, 14)
-                    }.padding(.bottom, 28)
-                        .background(alignment: .top) {
-                            Artwork(path: actor.image, title: actor.name).frame(height: 310 + geometry.safeAreaInsets.top)
-                                .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.2), location: 0), .init(color: .black.opacity(0.55), location: 0.55), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
-                                .offset(y: -geometry.safeAreaInsets.top).allowsHitTesting(false).accessibilityHidden(true)
+        Group {
+            if let actor {
+                PersonProfilePage(name: actor.name, nativeName: actor.native, role: "Voice actor", image: actor.image,
+                                  kind: .voice, ref: actor.id, favouriteSubtitle: actor.roles.first.map { "Voice of " + $0.character.name },
+                                  identifier: "voice-actor") {
+                    VStack(alignment: .leading, spacing: 20) {
+                        details(actor)
+                        if let count = route.watchedCount {
+                            Text("In " + count.counted("anime", "anime") + " you’ve watched").font(.subheadline).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("voice-actor-watched")
                         }
-                } else if missing {
-                    // AniList has no page for this name: their TMDB cast page has the rest.
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("AniList has no page for \(route.name ?? "this voice actor").").font(.system(size: 15)).foregroundStyle(.secondary)
-                        if let tmdb = route.tmdbID {
-                            NavigationLink(value: PersonRoute(id: tmdb)) { Text("Open their cast page").font(.system(size: 15, weight: .semibold)) }
-                                .accessibilityIdentifier("voice-actor-cast-page")
-                        }
-                    }.padding(14).padding(.top, 60)
-                } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
-                else { DiaryLoadingPlaceholder(height: 310, label: "Loading voice actor").padding(14) }
-            }.scrollClipDisabled().diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-                .task(id: route) {
-                    if actor == nil { await load() }
-                    if let actor {
-                        store.animeNavigation.rememberPerson(actor.id, tmdbID: route.tmdbID, scope: store.sessionRevision)
-                        if let id = route.tmdbID { await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id) }
+                        biography(actor)
+                        if !actor.roles.isEmpty { roles(actor.roles) }
                     }
                 }
-                .onDisappear { personLookup?.cancel() }
-                .alert("Unable to open TMDB profile", isPresented: Binding(get: { personFailure != nil }, set: { if !$0 { personFailure = nil } })) {
-                    Button("Retry") { if let actor { openPerson(actor) } }
-                    Button("Cancel", role: .cancel) {}
-                } message: { Text(personFailure ?? "") }
+            } else {
+                ScrollView {
+                    if missing {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("AniList has no page for \(route.name ?? "this voice actor").").font(.subheadline).foregroundStyle(.secondary)
+                            if let tmdb = route.tmdbID {
+                                NavigationLink(value: PersonRoute(id: tmdb)) { Text("Open their cast page").font(.subheadline.weight(.semibold)) }
+                                    .accessibilityIdentifier("voice-actor-cast-page")
+                            }
+                        }.padding(14)
+                    } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
+                    else { DiaryLoadingPlaceholder(height: 310, label: "Loading voice actor").padding(14) }
+                }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar).tint(.white)
+            }
+        }.task(id: route) {
+            if actor == nil { await load() }
+            if let actor {
+                store.animeNavigation.rememberPerson(actor.id, tmdbID: route.tmdbID, scope: store.sessionRevision)
+                if let id = route.tmdbID { await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id) }
+            }
+        }
+        .onDisappear { personLookup?.cancel() }
+        .alert("Unable to open TMDB profile", isPresented: Binding(get: { personFailure != nil }, set: { if !$0 { personFailure = nil } })) {
+            Button("Retry") { if let actor { openPerson(actor) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text(personFailure ?? "") }
+    }
+    private func details(_ actor: AniVoiceActorDetail) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                if let birthday = actor.birthday { ProfileDetailChip(icon: "calendar", label: "Born", value: ProfileDate.short(birthday), identifier: "voice-actor-birthday") }
+                if let home = actor.homeTown, !home.isEmpty {
+                    ProfileDetailChip(icon: "mappin.and.ellipse", label: "Hometown", value: home, identifier: "voice-actor-hometown").frame(idealWidth: 140, maxWidth: 160)
+                }
+                Button { openPerson(actor) } label: { ProfileSourceLogo(loading: openingPerson) }
+                    .buttonStyle(.plain).fixedSize().disabled(openingPerson)
+                    .accessibilityIdentifier("voice-actor-tmdb").accessibilityLabel("Open \(actor.name)’s TMDB profile")
+            }
         }
     }
     private func biography(_ actor: AniVoiceActorDetail) -> some View {
-        // Keep the logo beside the introduction (usually Agency), while links and
-        // the remaining biography retain the full screen width underneath it.
-        let text = AniListText.markdown(actor.description, hideSpoilers: hideSpoilers)
-        let lines = text.components(separatedBy: "\n")
-        let introduction = lines.first ?? ""
-        let remaining = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = ProfileBiographyContent(description: actor.description, hideSpoilers: hideSpoilers)
+        let lines = content.markdown.components(separatedBy: "\n")
+        let first = lines.first ?? ""
+        let hasAgency = AniListText.readable(first, hideSpoilers: hideSpoilers).lowercased().hasPrefix("agency:")
+        let body = hasAgency ? lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) : content.markdown
+        let source = ProfileWebsiteLink(url: URL(string: "https://anilist.co/staff/\(actor.id)")!, title: "AniList")!
+        let sites = content.links.contains(where: { $0.id == source.id }) ? content.links : content.links + [source]
+        let career = [actor.age.map { "Age \($0)" }, actor.yearsActive.first.map { "Active since \($0)" }].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 12) {
-                if !AniListText.readable(introduction, hideSpoilers: hideSpoilers).isEmpty {
-                    Text(AniListText.formatted(introduction, hideSpoilers: hideSpoilers))
-                        .font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary)
-                        .lineLimit(expanded ? nil : 4).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .accessibilityIdentifier("voice-actor-intro")
-                } else { Spacer(minLength: 0) }
-                tmdbButton(actor)
+            if hasAgency {
+                Text(AniListText.formatted(first, hideSpoilers: hideSpoilers)).font(.subheadline).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voice-actor-intro")
             }
-            if !AniListText.readable(remaining, hideSpoilers: hideSpoilers).isEmpty {
-                Text(AniListText.formatted(remaining, hideSpoilers: hideSpoilers))
-                    .font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary).lineLimit(expanded ? nil : 3)
-            }
-            if !actor.readableDescription(hideSpoilers: hideSpoilers).isEmpty {
-                Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
-            }
+            if !career.isEmpty { Text(career.joined(separator: " · ")).font(.subheadline).foregroundStyle(.secondary) }
+            if let count = actor.favourites { Text(count.formatted() + " favourites on AniList").font(.subheadline).foregroundStyle(.secondary) }
+            ProfileWebsiteButtons(links: sites)
+            ProfileBiography(text: AniListText.formatted(body, hideSpoilers: hideSpoilers), expanded: $expanded, identifier: "voice-actor-biography")
         }
-    }
-    private func tmdbButton(_ actor: AniVoiceActorDetail) -> some View {
-        Button { openPerson(actor) } label: {
-            Image("tmdb-logo").renderingMode(.original).resizable().scaledToFit()
-                .frame(width: 40, height: 18).opacity(openingPerson ? 0.35 : 1)
-                .frame(width: 64, height: 44)
-                .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14)))
-                .overlay { if openingPerson { ProgressView().controlSize(.small) } }
-        }.buttonStyle(.plain).fixedSize().disabled(openingPerson)
-            .accessibilityIdentifier("voice-actor-tmdb")
-            .accessibilityLabel("Open \(actor.name)’s TMDB profile")
     }
     private func openPerson(_ actor: AniVoiceActorDetail) {
         let tab = router.selectedTab, depth = router.paths[router.selectedTab]?.count ?? 0
@@ -128,73 +116,51 @@ struct VoiceActorView: View {
             catch { if !Task.isCancelled { personFailure = error.localizedDescription } }
         }
     }
-    private func header(_ actor: AniVoiceActorDetail) -> some View {
-        let saved = favourites.contains(.voice, actor.id)
-        return HStack(spacing: 14) {
-            Artwork(path: actor.image, title: actor.name).frame(width: 80, height: 80).clipShape(Circle()).overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 2))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(actor.name).font(.system(size: 26.4, weight: .semibold)).tracking(-1.1).lineLimit(2).minimumScaleFactor(0.8)
-                if let native = actor.native { Text(native).font(.system(size: 14)).foregroundStyle(.secondary) }
-            }
-            Spacer(minLength: 0)
-            Button {
-                favourites.toggle(.voice, ref: actor.id, name: actor.name, image: actor.image,
-                                  subtitle: actor.roles.first.map { "Voice of " + $0.character.name }, store: store)
-                if !saved { hearts += 1 }
-            } label: { RoundTool(icon: "heart", tint: saved ? theme.accent : Color(webHex: "#c5c0cf")) }
-                .buttonStyle(.springPress).starBurst(trigger: hearts).sensoryFeedback(.impact(weight: .light), trigger: saved)
-                .accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites").accessibilityIdentifier("voice-actor-favourite")
-        }.padding(.horizontal, 14).padding(.top, 145).padding(.bottom, 10)
-    }
-    private func facts(_ actor: AniVoiceActorDetail) -> some View {
-        var rows: [(label: String, value: String)] = []
-        if let age = actor.age { rows.append(("Age", String(age))) }
-        if let birthday = actor.birthday { rows.append(("Birthday", birthday)) }
-        if let home = actor.homeTown, !home.isEmpty { rows.append(("Hometown", home)) }
-        if let since = actor.yearsActive.first { rows.append(("Active since", String(since))) }
-        if let count = actor.favourites { rows.append(("Favourited by", count.formatted() + " on AniList")) }
-        return VStack(alignment: .leading, spacing: 14) {
-            if !rows.isEmpty {
-                Text("Facts").font(.system(size: 20, weight: .semibold))
-                VStack(spacing: 0) {
-                    ForEach(rows.indices, id: \.self) { index in
-                        let row = rows[index]
-                        HStack(alignment: .top, spacing: 16) {
-                            Text(row.label).foregroundStyle(.secondary).frame(width: 104, alignment: .leading)
-                            Text(row.value).frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
-                        }.font(.system(size: 13)).padding(.vertical, 12)
-                        Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
-                    }
-                }.padding(.horizontal, 16).padding(.vertical, 4).background(.white.opacity(0.016), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
-            }
-        }
-    }
     private func roles(_ items: [AniRole]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Characters").font(.system(size: 20, weight: .semibold))
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 16) {
-                ForEach(items.prefix(30)) { role in
-                    VStack(alignment: .leading, spacing: 6) {
-                        NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Artwork(path: role.character.image, title: role.character.name).aspectRatio(96.0 / 136.0, contentMode: .fit)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                Text(role.character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
-                            }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
-                        }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
-                        AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
-                                                           year: role.year, role: role.role, voiceActor: nil,
-                                                           format: role.format, alternateTitles: role.alternateTitles)) {
-                            Text(role.anime).font(.caption).foregroundStyle(.tint).lineLimit(2)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
-                    }
-                }
+            HStack {
+                Text("Characters").font(.system(size: 20, weight: .semibold))
+                Spacer(minLength: 4)
+                CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters")
+            }
+            LazyVGrid(columns: grid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], alignment: .leading, spacing: 16) {
+                ForEach(items.prefix(shown)) { role in roleCard(role) }
+            }
+            if items.count > shown {
+                Button("Show more characters") { shown += 30 }.font(.subheadline).frame(minHeight: 44)
             }
         }
     }
+    private func roleCard(_ role: AniRole) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
+                if grid {
+                    VStack(alignment: .leading, spacing: 6) {
+                        roleArtwork(role).aspectRatio(2.0 / 3.0, contentMode: .fit)
+                        Text(role.character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        roleArtwork(role).frame(width: 64, height: 96)
+                        Text(role.character.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    }
+                }
+            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
+            AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
+                                               year: role.year, role: role.role, voiceActor: nil,
+                                               format: role.format, alternateTitles: role.alternateTitles)) {
+                Text(role.anime).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
+        }.multilineTextAlignment(.leading)
+    }
+    private func roleArtwork(_ role: AniRole) -> some View {
+        Artwork(path: role.character.image, title: role.character.name).clipShape(RoundedRectangle(cornerRadius: 12))
+    }
     private func load() async {
-        failure = nil
+        failure = nil; missing = false
         #if DEBUG
         if store.isPreview { actor = AniListPreview.voiceActor(route.id ?? 11); return }
         #endif
@@ -202,7 +168,9 @@ struct VoiceActorView: View {
             var found = route.id
             if found == nil, let name = route.name { found = await AniListClient.shared.staff(named: [name])[name]?.id }
             guard let id = found else { missing = true; return }
-            actor = try await AniListClient.shared.voiceActor(id)
+            let result = try await AniListClient.shared.voiceActor(id)
+            try Task.checkCancellation()
+            actor = result
         }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }

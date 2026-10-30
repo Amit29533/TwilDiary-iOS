@@ -567,7 +567,7 @@ import UIKit
         let actor = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Reference Actor 1'")).firstMatch
         if !actor.isHittable { app.swipeUp() }
         XCTAssertTrue(actor.waitForExistence(timeout: 5)); actor.tap()
-        XCTAssertTrue(app.staticTexts["Facts & trivia"].waitForExistence(timeout: 10)); capture("Cast profile")
+        XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10)); capture("Cast profile")
     }
     func testSavedEpisodeRevealPersistsAfterCollapseWithoutRevealingOtherRows() {
         let app = launch(); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].tap()
@@ -842,14 +842,25 @@ import UIKit
         let voice = app.buttons["voice-actor-12"]
         for _ in 0..<10 { if voice.exists && voice.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(voice.isHittable); voice.tap()
+        XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
+        capture("Voice actor shared hero before scrolling")
         let tmdb = app.buttons["voice-actor-tmdb"]
         for _ in 0..<8 { if tmdb.exists && tmdb.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(tmdb.isHittable)
-        let intro = app.staticTexts["voice-actor-intro"]
-        XCTAssertTrue(intro.exists)
-        XCTAssertLessThan(abs(tmdb.frame.midY - intro.frame.midY), 4, "Normal logo button is vertically centered with Agency")
-        XCTAssertLessThanOrEqual(intro.frame.maxX, tmdb.frame.minX, "Biography and logo cannot overlap")
-        capture("Normal TMDB logo button aligned with Agency")
+        let birthday = app.descendants(matching: .any)["voice-actor-birthday"]
+        XCTAssertTrue(birthday.exists)
+        XCTAssertLessThan(abs(tmdb.frame.midY - birthday.frame.midY), 4, "Logo and compact birthday chip share a row")
+        XCTAssertLessThanOrEqual(birthday.frame.maxX, tmdb.frame.minX, "Birthday and native TMDB button cannot overlap")
+        XCTAssertTrue(app.buttons["profile-site-https://x.com/reference"].exists, "Website lists become labelled icon buttons")
+        XCTAssertFalse(app.staticTexts["Facts"].exists)
+        let voiceHeart = app.buttons["voice-actor-favourite"]
+        let heartY = voiceHeart.frame.midY
+        capture("Voice actor compact metadata and website icons")
+        app.swipeUp()
+        XCTAssertTrue(voiceHeart.isHittable)
+        XCTAssertEqual(voiceHeart.frame.midY, heartY, accuracy: 2, "Favourite stays in the native toolbar while scrolling")
+        capture("Voice actor pinned favourite after scrolling")
+        for _ in 0..<8 { if tmdb.isHittable { break }; app.swipeDown() }
         tmdb.tap()
         XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10), "TMDB opens the app's native person page")
         XCTAssertEqual(app.state, .runningForeground)
@@ -858,7 +869,12 @@ import UIKit
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         let anime = app.buttons["voice-actor-anime-154587-2"]
         for _ in 0..<10 { if anime.exists && anime.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(anime.isHittable); capture("Voice actor has a separate anime link")
+        XCTAssertTrue(anime.isHittable)
+        let layout = app.buttons["voice-actor-characters-layout"]
+        XCTAssertTrue(layout.isHittable); layout.tap(); XCTAssertEqual(layout.value as? String, "List")
+        capture("Voice actor characters list retains separate anime navigation")
+        layout.tap(); XCTAssertEqual(layout.value as? String, "Grid")
+        capture("Voice actor has a separate anime link")
         anime.tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -1188,18 +1204,17 @@ import UIKit
         let actor = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Reference Actor 1'")).firstMatch
         for _ in 0..<5 { if actor.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(actor.isHittable); actor.tap()
-        XCTAssertTrue(app.staticTexts["Facts & trivia"].waitForExistence(timeout: 10))
-        let factLabel = app.staticTexts["person-fact-known-for-label"], factValue = app.staticTexts["person-fact-known-for-value"]
-        XCTAssertTrue(factLabel.waitForExistence(timeout: 5)); XCTAssertTrue(factValue.exists)
-        XCTAssertGreaterThan(factLabel.frame.width, 0); XCTAssertLessThan(factLabel.frame.height, 60)
-        // Text accessibility frames describe glyph ink, not its 104pt layout column.
-        XCTAssertEqual(factValue.frame.minX - factLabel.frame.minX, 120, accuracy: 2)
-        XCTAssertLessThan(abs(factValue.frame.minY - factLabel.frame.minY), 8)
-        XCTAssertLessThan(app.staticTexts["person-fact-birthplace-label"].frame.minY - factLabel.frame.minY, 75)
-        capture("Person facts")
+        let heart = app.buttons["person-favourite"]
+        XCTAssertTrue(heart.waitForExistence(timeout: 10))
+        let topY = heart.frame.midY
+        XCTAssertTrue(app.staticTexts["person-name"].exists)
+        XCTAssertFalse(app.staticTexts["Facts & trivia"].exists, "Profile facts use compact details rather than a table")
+        capture("Person shared hero and compact details")
         let more = app.buttons["person-more-shows"]
         for _ in 0..<12 { if more.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(more.isHittable); capture("Person credit shelves"); more.tap()
+        XCTAssertTrue(more.isHittable)
+        XCTAssertTrue(heart.isHittable); XCTAssertEqual(heart.frame.midY, topY, accuracy: 2)
+        capture("Person credit shelves and pinned favourite"); more.tap()
         let count = app.staticTexts["person-result-count"]
         XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "16 titles"); capture("Person show filmography")
         let layout = app.buttons["catalog-layout"]

@@ -8,85 +8,50 @@ struct PersonView: View {
     @State private var person: PersonDetails?
     @State private var failure: String?
     @State private var expanded = false
-    @State private var hearts = 0
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                if let person {
-                    VStack(alignment: .leading, spacing: 28) {
-                        header(person)
-                        VStack(alignment: .leading, spacing: 28) {
-                            if let role = route.sourceRole, let title = route.sourceTitle, !role.isEmpty, !title.isEmpty {
-                                Button(role + " in " + title) { dismiss() }.font(.system(size: 15)).buttonStyle(.plain)
-                            }
-                            if !person.biography.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(person.biography).font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary).lineLimit(expanded ? nil : 4)
-                                    Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36).accessibilityLabel(expanded ? "Collapse biography" : "Expand biography")
-                                }
-                            }
-                            facts(person)
-                            server(person)
-                            let sections = store.personSections(person)
-                            shelf("Known for", person: person, kind: .knownFor, items: sections.knownFor)
-                            shelf("Shows", person: person, kind: .shows, items: sections.shows)
-                            shelf("Movies", person: person, kind: .movies, items: sections.movies)
-                            Link("Biography, credits and artwork: TMDB", destination: URL(string: "https://www.themoviedb.org/person/\(person.id)")!).font(.system(size: 13)).foregroundStyle(.secondary)
-                        }.padding(.horizontal, 14)
-                    }.padding(.bottom, 28)
-                        .background(alignment: .top) {
-                            Artwork(path: CatalogTools.image(person.profilePath, size: "w780"), title: person.name).frame(height: 310 + geometry.safeAreaInsets.top)
-                                .overlay(LinearGradient(stops: [.init(color: .black.opacity(2.0 / 15), location: 0), .init(color: .black.opacity(7.0 / 15), location: 0.55), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)).offset(y: -geometry.safeAreaInsets.top).allowsHitTesting(false).accessibilityHidden(true)
+        Group {
+            if let person {
+                PersonProfilePage(name: person.name, nativeName: person.aliases?.first, role: person.department,
+                                  image: CatalogTools.image(person.profilePath, size: "w780"), kind: .cast, ref: person.id,
+                                  favouriteSubtitle: person.department, identifier: "person") {
+                    VStack(alignment: .leading, spacing: 22) {
+                        details(person)
+                        if let role = route.sourceRole, let title = route.sourceTitle, !role.isEmpty, !title.isEmpty {
+                            Button(role + " in " + title) { dismiss() }.font(.system(size: 15)).buttonStyle(.plain)
+                                .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
                         }
-                } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
-                else { DiaryLoadingPlaceholder(height: 310, label: "Loading person").padding(14) }
-            }.scrollClipDisabled().diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-                .task(id: route.id) { if person == nil { await load() } }
-        }
-    }
-    private func header(_ person: PersonDetails) -> some View {
-        HStack(spacing: 14) {
-            Artwork(path: CatalogTools.image(person.profilePath), title: person.name).frame(width: 80, height: 80).clipShape(Circle()).overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 2))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(person.name).font(.system(size: 26.4, weight: .semibold)).tracking(-1.1).padding(.bottom, 4)
-                if let birthday = person.birthday { Text("Born " + personDate(birthday)).font(.system(size: 13)).foregroundStyle(.secondary) }
-                if !person.birthplace.isEmpty { Text(person.birthplace).font(.system(size: 13)).foregroundStyle(.secondary) }
+                        ProfileBiography(text: AttributedString(person.biography), expanded: $expanded)
+                        server(person)
+                        let sections = store.personSections(person)
+                        shelf("Known for", person: person, kind: .knownFor, items: sections.knownFor)
+                        shelf("Shows", person: person, kind: .shows, items: sections.shows)
+                        shelf("Movies", person: person, kind: .movies, items: sections.movies)
+                    }
+                }
+            } else {
+                ScrollView {
+                    if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
+                    else { DiaryLoadingPlaceholder(height: 310, label: "Loading person").padding(14) }
+                }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
             }
-            Spacer(minLength: 0)
-            let saved = FavouritesStore.shared.contains(.cast, person.id)
-            Button {
-                FavouritesStore.shared.toggle(.cast, ref: person.id, name: person.name, image: CatalogTools.image(person.profilePath, size: "w185"),
-                                              subtitle: person.department.isEmpty ? nil : person.department, store: store)
-                if !saved { hearts += 1 }
-            } label: { RoundTool(icon: "heart", tint: saved ? theme.accent : Color(webHex: "#c5c0cf")) }
-                .buttonStyle(.springPress).starBurst(trigger: hearts).sensoryFeedback(.impact(weight: .light), trigger: saved)
-                .accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites").accessibilityIdentifier("person-favourite")
-        }.padding(.horizontal, 14).padding(.top, 145).padding(.bottom, 10)
+        }.task(id: route.id) { if person == nil { await load() } }
     }
-    private func facts(_ person: PersonDetails) -> some View {
-        let sections = store.personSections(person)
-        let earliest = person.credits.filter { $0.mediaType == .movie && ($0.year ?? -1) >= (Int(person.birthday?.prefix(4) ?? "0") ?? 0) && ($0.year ?? Int.max) <= DiaryDate.calendar().component(.year, from: store.now) }.min { ($0.year ?? 0) < ($1.year ?? 0) }
-        return VStack(alignment: .leading, spacing: 14) {
-            Text("Facts & trivia").font(.system(size: 20, weight: .semibold))
-            VStack(spacing: 0) {
-                if !person.department.isEmpty { fact("Known for", person.department) }
-                if !person.birthplace.isEmpty { fact("Birthplace", person.birthplace) }
-                if let death = person.deathday { fact("Died", personDate(death)) }
-                if let aliases = person.aliases, !aliases.isEmpty { fact("Also known as", aliases.joined(separator: " · ")) }
-                if let earliest { fact("Earliest listed movie", earliest.name + " · " + String(earliest.year ?? 0)) }
-                fact("Listed credits", "\(sections.movies.count) movies · \(sections.shows.count) shows")
-            }.padding(.horizontal, 16).padding(.vertical, 4).background(.white.opacity(0.016), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
-        }
-    }
-    private func fact(_ label: String, _ value: String) -> some View {
-        let key = label.lowercased().replacingOccurrences(of: " ", with: "-")
-        return VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 16) {
-                Text(label).foregroundStyle(.secondary).frame(width: 104, alignment: .leading).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("person-fact-" + key + "-label")
-                Text(value).frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("person-fact-" + key + "-value")
-            }.font(.system(size: 13)).padding(.vertical, 12)
-            Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
+    private func details(_ person: PersonDetails) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                if let birthday = person.birthday {
+                    ProfileDetailChip(icon: "calendar", label: "Born", value: personDate(birthday), identifier: "person-birthday")
+                }
+                if !person.birthplace.isEmpty {
+                    ProfileDetailChip(icon: "mappin.and.ellipse", label: "Birthplace", value: person.birthplace, identifier: "person-birthplace")
+                        .frame(idealWidth: 140, maxWidth: 180)
+                }
+                // This page already is the native TMDB profile; its logo is source attribution.
+                Link(destination: URL(string: "https://www.themoviedb.org/person/\(person.id)")!) { ProfileSourceLogo() }
+                    .buttonStyle(.plain).accessibilityLabel("View source on TMDB website")
+            }
+            if let death = person.deathday { ProfileDetailLine(label: "Died", value: personDate(death)) }
+            if let aliases = person.aliases, !aliases.isEmpty { ProfileDetailLine(label: "Also known as", value: aliases.joined(separator: " · ")) }
         }
     }
     private func server(_ person: PersonDetails) -> some View {
@@ -185,6 +150,6 @@ struct PersonFilmographyView: View {
 
 private func personDate(_ value: String) -> String {
     guard let date = DiaryDate.parse(value + "T00:00:00Z") else { return value }
-    let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_GB"); formatter.timeZone = TimeZone(secondsFromGMT: 0); formatter.dateFormat = "d MMMM yyyy"
+    let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_GB"); formatter.timeZone = TimeZone(secondsFromGMT: 0); formatter.dateFormat = "d MMM yyyy"
     return formatter.string(from: date)
 }

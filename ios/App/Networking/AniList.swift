@@ -393,7 +393,9 @@ actor AniListClient {
         let year: Int?; let month: Int?; let day: Int?
         var text: String? {
             guard let month, let day, (1...12).contains(month) else { return nil }
-            let name = Calendar(identifier: .gregorian).monthSymbols[month - 1]
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.locale = Locale(identifier: "en_GB")
+            let name = calendar.monthSymbols[month - 1]
             return year.map { "\(day) \(name) \($0)" } ?? "\(day) \(name)"
         }
     }
@@ -436,7 +438,7 @@ enum AniListPreview {
         let stat = topVoiceActors.first { $0.id == id } ?? topVoiceActors[0]
         let character = characters.first { $0.voiceActor?.id == stat.id } ?? characters[0]
         return AniVoiceActorDetail(id: stat.id, name: stat.person.name, native: stat.native, image: nil,
-                                   description: ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") ? "**Agency:** Reference Studio\n\nA voice actor from Japan. ~!A spoiler\n\nthat stays hidden.!~" : "A voice actor from Japan. ~!A spoiler that stays hidden.!~", age: 33, birthday: "27 September",
+                                   description: ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") ? "**Agency:** Reference Studio\n\n[Profile](https://example.com/profile) | [Website](https://example.org) | [Twitter](https://x.com/reference) | [YouTube](https://youtube.com/@reference) | [Instagram](https://instagram.com/reference)\n\nA voice actor from Japan. ~!A spoiler\n\nthat stays hidden.!~" : "A voice actor from Japan. ~!A spoiler that stays hidden.!~", age: 33, birthday: "27 September",
                                    homeTown: "Tokyo", yearsActive: [2006], favourites: 9000,
                                    roles: [AniRole(character: AniPerson(id: character.id, name: character.name, image: nil), animeID: 154587,
                                                    anime: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role)])

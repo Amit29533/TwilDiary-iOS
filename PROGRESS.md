@@ -1,5 +1,32 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — approved shared Person profile redesign
+
+Current work: implement the owner's approved Cast / Character / Voice Actor
+previews. Home-sized nearly square hero, name-only theme accent, pinned native
+favourite, neutral body/actions, normal TMDB button, website icon buttons rather
+than colored text, compact facts without a table. Keep existing source-role line,
+biography/spoiler handling and all credit/character/anime navigation. Retain cast
+server / Known for / Shows / Movies shelves; character Voiced by / Appears in;
+voice actor character grid/list and separate anime-caption destination.
+Reuses FavouritesStore, cached Artwork, CompactHeaderState/transition/backdrop,
+InlineFlowLayout, existing native routes, lookup coordinator and metadata APIs.
+Scroll progress is observed only by toolbar leaves. No backend changes, new
+endpoints, hosted-data writes, main push or PR. Source attribution remains an
+explicit website icon; voice actor TMDB continues resolving to native PersonRoute.
+The normal attribution button on PersonRoute opens the source TMDB website,
+since PersonRoute itself already is the native TMDB profile.
+Focused verification: 3 existing core regressions, 10 lookup units, 6 new biography/
+website/date units, and 4 UI journeys covering all profile types, fixed favourites,
+native TMDB, separate anime/character links, filmography and saved favourites.
+Candidate build not started yet. Next: commit, push development branch and run
+Codemagic native-ios-navigation-check, inspect simulator artifacts before delivery.
+
+Reconciled previous notes: source 6dd745f passed Codemagic 6ae503e4efa74786046f4274,
+3 core + 10 lookup + 2 UI checks, zero build warnings. Verified downloaded IPA
+D:/Downloads/TwilDiary-native-fixes-6dd745f.ipa and same-SHA provenance. This is
+focused diagnostic evidence, not full regression acceptance.
+
 ## 31 October 2026 — correct native navigation and remove transitional lookup pages
 
 Owner rejected the browser TMDB action and misaligned glass button, then reported

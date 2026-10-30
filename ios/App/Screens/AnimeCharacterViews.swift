@@ -59,92 +59,52 @@ struct AnimeCharactersRow: View {
     }
 }
 
-/// An anime character, laid out like a cast member's page: large art, names, a heart, the
-/// description (spoilers left out while Hide spoilers is on), facts, voice actor and other anime.
+/// The same profile shell as cast and voice actors, retaining character-only facts and routes.
 struct CharacterView: View {
     let route: CharacterRoute
     @Environment(DiaryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hideSpoilers") private var hideSpoilers = true
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var character: AniCharacterDetail?
     @State private var failure: String?
     @State private var expanded = false
-    @State private var hearts = 0
-    private var favourites: FavouritesStore { .shared }
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                if let character {
-                    VStack(alignment: .leading, spacing: 28) {
-                        header(character)
-                        VStack(alignment: .leading, spacing: 28) {
-                            if let source = route.sourceTitle { Button("In " + source) { dismiss() }.font(.system(size: 15)).buttonStyle(.plain) }
-                            let text = character.readableDescription(hideSpoilers: hideSpoilers)
-                            if !text.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(AniListText.formatted(character.description, hideSpoilers: hideSpoilers)).font(.system(size: 16)).lineSpacing(6)
-                                        .foregroundStyle(.secondary).lineLimit(expanded ? nil : 4)
-                                    Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
-                                }
-                            }
-                            facts(character)
-                            if !character.voiceActors.isEmpty { voicedBy(character.voiceActors) }
-                            if !character.appearances.isEmpty { appearsIn(character.appearances) }
-                            Link("Character details: AniList", destination: URL(string: "https://anilist.co/character/\(character.id)")!).font(.system(size: 13)).foregroundStyle(.secondary)
-                        }.padding(.horizontal, 14)
-                    }.padding(.bottom, 28)
-                        .background(alignment: .top) {
-                            Artwork(path: character.image, title: character.name).frame(height: 310 + geometry.safeAreaInsets.top)
-                                .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.2), location: 0), .init(color: .black.opacity(0.55), location: 0.55), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
-                                .offset(y: -geometry.safeAreaInsets.top).allowsHitTesting(false).accessibilityHidden(true)
+        Group {
+            if let character {
+                PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
+                                  kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
+                                  identifier: "character") {
+                    VStack(alignment: .leading, spacing: 22) {
+                        details(character)
+                        if let source = route.sourceTitle {
+                            Button("In " + source) { dismiss() }.font(.system(size: 15)).buttonStyle(.plain).foregroundStyle(.primary)
                         }
-                } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
-                else { DiaryLoadingPlaceholder(height: 310, label: "Loading character").padding(14) }
-            }.scrollClipDisabled().diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-                .task(id: route.id) { if character == nil { await load() } }
-        }
-    }
-    private func header(_ character: AniCharacterDetail) -> some View {
-        let saved = favourites.contains(.character, character.id)
-        return HStack(spacing: 14) {
-            Artwork(path: character.image, title: character.name).frame(width: 80, height: 80).clipShape(Circle()).overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 2))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(character.name).font(.system(size: 26.4, weight: .semibold)).tracking(-1.1).lineLimit(2).minimumScaleFactor(0.8)
-                if let native = character.native { Text(native).font(.system(size: 14)).foregroundStyle(.secondary) }
-            }
-            Spacer(minLength: 0)
-            Button {
-                favourites.toggle(.character, ref: character.id, name: character.name, image: character.image,
-                                  subtitle: character.appearances.first.map { "In " + $0.title }, store: store)
-                if !saved { hearts += 1 }
-            } label: { RoundTool(icon: "heart", tint: saved ? theme.accent : Color(webHex: "#c5c0cf")) }
-                .buttonStyle(.springPress).starBurst(trigger: hearts).sensoryFeedback(.impact(weight: .light), trigger: saved)
-                .accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites").accessibilityIdentifier("character-favourite")
-        }.padding(.horizontal, 14).padding(.top, 145).padding(.bottom, 10)
-    }
-    private func facts(_ character: AniCharacterDetail) -> some View {
-        var rows: [(label: String, value: String)] = []
-        if let gender = character.gender { rows.append(("Gender", gender)) }
-        if let age = character.age { rows.append(("Age", age)) }
-        if let birthday = character.birthday { rows.append(("Birthday", birthday)) }
-        if let blood = character.bloodType { rows.append(("Blood type", blood)) }
-        if !character.alternative.isEmpty { rows.append(("Also known as", character.alternative.joined(separator: " · "))) }
-        if let count = character.favourites { rows.append(("Favourited by", count.formatted() + " on AniList")) }
-        return VStack(alignment: .leading, spacing: 14) {
-            if !rows.isEmpty {
-                Text("Facts").font(.system(size: 20, weight: .semibold))
-                VStack(spacing: 0) {
-                    ForEach(rows.indices, id: \.self) { index in
-                        let row = rows[index]
-                        HStack(alignment: .top, spacing: 16) {
-                            Text(row.label).foregroundStyle(.secondary).frame(width: 104, alignment: .leading)
-                            Text(row.value).frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
-                        }.font(.system(size: 13)).padding(.vertical, 12)
-                        Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
+                        let biography = ProfileBiographyContent(description: character.description, hideSpoilers: hideSpoilers)
+                        let source = ProfileWebsiteLink(url: URL(string: "https://anilist.co/character/\(character.id)")!, title: "AniList")!
+                        ProfileWebsiteButtons(links: biography.links.contains(where: { $0.id == source.id }) ? biography.links : biography.links + [source])
+                        ProfileBiography(text: AniListText.formatted(biography.markdown, hideSpoilers: hideSpoilers), expanded: $expanded)
+                        if !character.voiceActors.isEmpty { voicedBy(character.voiceActors) }
+                        if !character.appearances.isEmpty { appearsIn(character.appearances) }
                     }
-                }.padding(.horizontal, 16).padding(.vertical, 4).background(.white.opacity(0.016), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
+                }
+            } else {
+                ScrollView {
+                    if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
+                    else { DiaryLoadingPlaceholder(height: 310, label: "Loading character").padding(14) }
+                }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
             }
+        }.task(id: route.id) { if character == nil { await load() } }
+    }
+    private func details(_ character: AniCharacterDetail) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                if let birthday = character.birthday { ProfileDetailChip(icon: "calendar", label: "Birthday", value: ProfileDate.short(birthday)) }
+                if let age = character.age { ProfileDetailChip(icon: "person", label: "Age", value: age) }
+                if let gender = character.gender { ProfileDetailChip(icon: "person.text.rectangle", label: "Gender", value: gender) }
+            }
+            if let blood = character.bloodType { ProfileDetailLine(label: "Blood type", value: blood) }
+            if !character.alternative.isEmpty { ProfileDetailLine(label: "Also known as", value: character.alternative.joined(separator: " · ")) }
+            if let count = character.favourites { Text(count.formatted() + " favourites on AniList").font(.subheadline).foregroundStyle(.secondary) }
         }
     }
     private func voicedBy(_ actors: [AniPerson]) -> some View {
@@ -190,7 +150,11 @@ struct CharacterView: View {
         #if DEBUG
         if store.isPreview { character = AniListPreview.detail(route.id); return }
         #endif
-        do { character = try await AniListClient.shared.character(route.id) }
+        do {
+            let result = try await AniListClient.shared.character(route.id)
+            try Task.checkCancellation()
+            character = result
+        }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
