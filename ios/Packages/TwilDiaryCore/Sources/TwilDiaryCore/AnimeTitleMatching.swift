@@ -20,6 +20,14 @@ public enum AnimeTitleMatching {
         return matches.count == 1 ? matches[0] : nil
     }
 
+    /// The search API moves known TMDB identities into `library`, even in online scope.
+    /// Keep those results as explicit choices: their saved names/years may have been edited.
+    public static func libraryChoices(_ existing: [SearchLibraryTitle], page: DiarySearchPage, kind: MediaKind?) -> [SearchLibraryTitle] {
+        DiarySearchTools.merging(existing, page.library).filter {
+            kind == nil || ["show", "anime"].contains($0.category) == (kind == .tv)
+        }
+    }
+
     private static func key(_ text: String) -> String {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map { String($0) }.joined()

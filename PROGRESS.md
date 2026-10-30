@@ -12,6 +12,12 @@ Retry. Viewing never imports a title. No backend or hosted data changes.
 Owner also requested a TMDB profile link on voice actor pages: show View on TMDB
 with a known TMDB person ID; otherwise Find on TMDB performs a safely encoded
 person-name search (never guesses an ID from AniList). Link sits above Facts.
+Code review against the real search handler found that known TMDB identities
+are returned in `library`, not `online`. Preserve those results as explicit
+choices even when renamed, with focused contract regression coverage. Ambiguous
+local matches remain selectable offline. Retry generations fence stale loading
+and result updates. The first ca9b30a phone job predates this review correction;
+only the following same-source diagnostic may be delivered for this change.
 Added focused matching regressions and a fixture-backed UI navigation regression.
 Next: commit/push and run the quick Codemagic phone diagnostic (two focused core
 cases plus Release device compilation), not the full regression suite. UI test

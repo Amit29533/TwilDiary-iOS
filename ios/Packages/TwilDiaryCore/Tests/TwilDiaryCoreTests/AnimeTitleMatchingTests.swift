@@ -34,4 +34,13 @@ import Testing
     #expect(AnimeTitleMatching.saved([active], names: names, year: 2020, kind: .tv).isEmpty)
     let duplicate = try saved("another-copy")
     #expect(AnimeTitleMatching.saved([active, duplicate], names: names, year: 2019, kind: .tv).count == 2)
+    // The server removes known identities from `online`; preserve their diary links
+    // independently of the exact-name matcher (including a user's renamed title).
+    var renamedObject: [String: Any] = ["id": "renamed", "name": "My custom anime name", "category": "anime",
+                                        "overview": "", "genres": [], "status": "watching", "favorite": false, "notes": ""]
+    renamedObject["year"] = 2019
+    let renamed = try JSONDecoder().decode(MediaTitle.self, from: JSONSerialization.data(withJSONObject: renamedObject))
+    let page = DiarySearchPage(library: [SearchLibraryTitle(renamed), SearchLibraryTitle(film)], online: [], page: 1, totalPages: 1)
+    #expect(AnimeTitleMatching.libraryChoices([], page: page, kind: .tv).map(\.id) == [renamed.id])
+    #expect(AnimeTitleMatching.libraryChoices([SearchLibraryTitle(renamed)], page: page, kind: nil).map(\.id) == [renamed.id, film.id])
 }
