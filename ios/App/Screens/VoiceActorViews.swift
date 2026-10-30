@@ -77,8 +77,9 @@ struct VoiceActorView: View {
         if id == nil { destination.queryItems = [URLQueryItem(name: "query", value: name)] }
         return Link(destination: destination.url!) {
             Label(id == nil ? "Find on TMDB" : "View on TMDB", systemImage: "arrow.up.right.square")
-                .font(.system(size: 14, weight: .medium)).frame(minHeight: 44)
-        }.accessibilityIdentifier("voice-actor-tmdb")
+                .font(.system(size: 14, weight: .semibold)).padding(.horizontal, 8).frame(minHeight: 44)
+        }.buttonStyle(.glass).buttonBorderShape(.capsule).tint(theme.accent)
+            .accessibilityIdentifier("voice-actor-tmdb")
     }
     private func header(_ actor: AniVoiceActorDetail) -> some View {
         let saved = favourites.contains(.voice, actor.id)
