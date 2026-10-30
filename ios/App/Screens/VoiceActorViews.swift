@@ -35,15 +35,7 @@ struct VoiceActorView: View {
                                 Text("In " + count.counted("anime", "anime") + " you’ve watched").font(.system(size: 15)).foregroundStyle(.secondary)
                                     .accessibilityIdentifier("voice-actor-watched")
                             }
-                            let text = actor.readableDescription(hideSpoilers: hideSpoilers)
-                            if !text.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(AniListText.formatted(actor.description, hideSpoilers: hideSpoilers)).font(.system(size: 16)).lineSpacing(6)
-                                        .foregroundStyle(.secondary).lineLimit(expanded ? nil : 4)
-                                    Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
-                                }
-                            }
-                            tmdbLink(actor.name)
+                            biography(actor)
                             facts(actor)
                             if !actor.roles.isEmpty { roles(actor.roles) }
                             Link("Voice actor details: AniList", destination: URL(string: "https://anilist.co/staff/\(actor.id)")!).font(.system(size: 13)).foregroundStyle(.secondary)
@@ -70,16 +62,43 @@ struct VoiceActorView: View {
                 .task(id: route) { if actor == nil { await load() } }
         }
     }
+    private func biography(_ actor: AniVoiceActorDetail) -> some View {
+        // Keep the logo beside the introduction (usually Agency), while links and
+        // the remaining biography retain the full screen width underneath it.
+        let text = actor.description.replacingOccurrences(of: "<br>", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let paragraphs = text.components(separatedBy: "\n\n")
+        let introduction = paragraphs.first ?? ""
+        let remaining = paragraphs.dropFirst().joined(separator: "\n\n")
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                if !AniListText.readable(introduction, hideSpoilers: hideSpoilers).isEmpty {
+                    Text(AniListText.formatted(introduction, hideSpoilers: hideSpoilers))
+                        .font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary)
+                        .lineLimit(expanded ? nil : 4).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 9)
+                } else { Spacer(minLength: 0) }
+                tmdbLink(actor.name)
+            }
+            if !AniListText.readable(remaining, hideSpoilers: hideSpoilers).isEmpty {
+                Text(AniListText.formatted(remaining, hideSpoilers: hideSpoilers))
+                    .font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary).lineLimit(expanded ? nil : 3)
+            }
+            if !actor.readableDescription(hideSpoilers: hideSpoilers).isEmpty {
+                Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
+            }
+        }
+    }
     private func tmdbLink(_ name: String) -> some View {
         let id = route.tmdbID.flatMap { $0 > 0 ? $0 : nil }
         var destination = URLComponents(string: "https://www.themoviedb.org")!
         destination.path = id.map { "/person/\($0)" } ?? "/search/person"
         if id == nil { destination.queryItems = [URLQueryItem(name: "query", value: name)] }
         return Link(destination: destination.url!) {
-            Label(id == nil ? "Find on TMDB" : "View on TMDB", systemImage: "arrow.up.right.square")
-                .font(.system(size: 14, weight: .semibold)).padding(.horizontal, 8).frame(minHeight: 44)
+            Image("tmdb-logo").renderingMode(.original).resizable().scaledToFit()
+                .frame(width: 40, height: 18).padding(.horizontal, 8).frame(minHeight: 44)
         }.buttonStyle(.glass).buttonBorderShape(.capsule).tint(theme.accent)
             .accessibilityIdentifier("voice-actor-tmdb")
+            .accessibilityLabel(id == nil ? "Find \(name) on TMDB" : "View \(name) on TMDB")
     }
     private func header(_ actor: AniVoiceActorDetail) -> some View {
         let saved = favourites.contains(.voice, actor.id)

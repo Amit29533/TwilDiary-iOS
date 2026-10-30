@@ -11,9 +11,11 @@ Unique matches open directly; ambiguous results offer choices, failures offer
 Retry. Viewing never imports a title. No backend or hosted data changes.
 Owner also requested a TMDB profile link on voice actor pages: show View on TMDB
 with a known TMDB person ID; otherwise Find on TMDB performs a safely encoded
-person-name search (never guesses an ID from AniList). After seeing the placement
-preview the owner requested a button: native glass capsule, purple theme accent,
-external-link icon, above Facts. The destination remains a standard SwiftUI Link.
+person-name search (never guesses an ID from AniList). Final owner placement is
+a compact native glass TMDB-logo button to the right of the biography intro
+(Agency in their screenshot), not above Facts. Reuses the bundled original-color
+vector logo. Remaining biography paragraphs keep full width. VoiceOver names the
+actor and distinguishes profile versus search; destination is a SwiftUI Link.
 Code review against the real search handler found that known TMDB identities
 are returned in `library`, not `online`. Preserve those results as explicit
 choices even when renamed, with focused contract regression coverage. Ambiguous
