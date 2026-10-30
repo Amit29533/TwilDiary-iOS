@@ -39,6 +39,8 @@ export function fakeTrakt() {
     version: 0,
     posts: [] as { path: string; body: any }[],
     lostHistoryResponse: false,
+    /** Trakt answers a history add as accepted but the plays never appear (seen live, Oct 2026). */
+    ignoreHistoryAdds: false,
     missingPagination: false
   };
   const media = (id: number) => ({
@@ -74,7 +76,9 @@ export function fakeTrakt() {
     if (init?.method === 'POST') {
       const body = JSON.parse(String(init.body));
       state.posts.push({ path, body });
-      if (path === '/sync/history') {
+      if (path === '/sync/history' && state.ignoreHistoryAdds) {
+        // Accepted, nothing recorded.
+      } else if (path === '/sync/history') {
         for (const movie of body.movies ?? [])
           state.history.push({
             id: freshId(),

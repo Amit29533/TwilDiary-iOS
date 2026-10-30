@@ -524,6 +524,32 @@ test('a rating changed on Trakt during the review still stops rating sends, even
   );
   assert.equal(fake.state.movieRatings.get(100), undefined, 'the rating is not sent');
 });
+test('the approved apply never stops on a send Trakt accepts but never shows; it waits for review at the end', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f);
+  const fake = fakeTrakt();
+  // One play to import from Trakt, one diary play to send.
+  fake.state.history.push({
+    id: 11,
+    type: 'movie',
+    watched_at: '2024-01-01T20:00:00.000Z',
+    movie: fake.media(100)
+  });
+  await logWatch(f.db, 'film', {
+    operationId: 'watch',
+    episodeId: null,
+    watchedAt: '2024-03-01T20:00:00.000Z'
+  });
+  const { id } = await preview(f, fake);
+  fake.state.ignoreHistoryAdds = true;
+  const status = await safe(f, fake, id);
+  const states = (await f.db.select().from(traktSyncChanges)).map((row) => row.state).sort();
+  assert.deepEqual(states, ['applied', 'uncertain'], 'the import is done; the send waits');
+  assert.equal(status.run?.error ?? null, null, 'no run-wide error');
+  assert.ok(['review', 'applying'].includes(status.run!.state), status.run?.state);
+});
 test('"Use Trakt" on an unconfirmed play keeps it in the diary, sends nothing and keeps the review', async (t) => {
   const f = d1Fixture();
   t.after(f.close);

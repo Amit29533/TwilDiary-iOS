@@ -2780,12 +2780,23 @@ export async function applySyncChange(
       chosen?.payload.sentUnconfirmed === true ||
       chosen?.payload.reconcileOnly === true;
     // Only these steps write to Trakt: a push applied as planned, or a conflict kept as TwilDiary's.
-    const sending = picked.filter(
+    // A bulk request acts on its pull batch or on its first item alone, never on the rest of
+    // `picked`, so a send further down the list mustn't hold imports to the stricter check.
+    const acting = bulk && chosen && batchablePull(chosen) ? [] : picked.slice(0, 1);
+    const sending = acting.filter(
       (change) => choice === 'local' || (choice === 'apply' && change.direction === 'push')
     );
     const sends = sending.length > 0;
-    if (!uncertain && choice !== 'skip')
-      await assertSnapshot(db, run, trakt, !sends, sentActivity(sending));
+    if (!uncertain && choice !== 'skip') {
+      try {
+        await assertSnapshot(db, run, trakt, !sends, sentActivity(sending));
+      } catch (error) {
+        // The approved apply sets this one send aside for review and carries on.
+        if (!(bulk && chosen && itemProblem(error))) throw error;
+        await markFailed(chosen.id, (error as ApiError).message);
+        return await finishRun(db, run, { state: 'applying', progress: run.progress + 1 });
+      }
+    }
     if (!chosen) {
       const remaining = await db
         .select({ count: sql<number>`coalesce(sum(${changeCounts.amount}),0)` })
@@ -2947,7 +2958,9 @@ export async function applySyncChange(
                 : 'This change was not confirmed. Refresh the preview before retrying.'
           })
           .where(eq(changes.id, chosen.id));
-        throw error;
+        // The approved apply never stops on one item: its reason is saved on it, and it waits
+        // in the review for a choice after everything else is done.
+        if (!(bulk && itemProblem(error))) throw error;
       }
     }
     // Checking or skipping one unconfirmed send settles that item only. It used to end the whole
@@ -2962,6 +2975,28 @@ export async function applySyncChange(
     );
     throw error;
   }
+}
+/**
+ * Refusals about one change (Trakt can't identify it, a send isn't confirmed yet, it's blocked
+ * or Trakt changed what it would overwrite), as opposed to the connection, rate limits or the
+ * run itself, which stop the apply.
+ */
+function itemProblem(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    [
+      'sync_uncertain',
+      'trakt_mapping_required',
+      'episode_mapping_required',
+      'history_review_required',
+      'sync_review_required',
+      'sync_local_changed',
+      'sync_identity_changed',
+      'metadata_required',
+      'title_in_trash',
+      'trakt_changed'
+    ].includes(error.code)
+  );
 }
 /** Review proposals resolved per bulk request: database-only choices, and sends to Trakt. */
 export const RESOLVE_BATCH = 10;
