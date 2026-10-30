@@ -34,7 +34,8 @@ struct VoiceActorView: View {
                             let text = actor.readableDescription(hideSpoilers: hideSpoilers)
                             if !text.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(text).font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary).lineLimit(expanded ? nil : 5)
+                                    Text(AniListText.formatted(actor.description, hideSpoilers: hideSpoilers)).font(.system(size: 16)).lineSpacing(6)
+                                        .foregroundStyle(.secondary).lineLimit(expanded ? nil : 4)
                                     Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
                                 }
                             }
@@ -157,14 +158,17 @@ struct MostWatchedSection<Content: View>: View {
     }
 }
 
-/// The ranking rows: rank, round photo, name, count, opening their page.
+/// The ranking rows: rank, round photo, name, count, opening their page. The top 5 show, with
+/// "Show all" for the rest, so the hearted posters stay right under the card.
 struct MostWatchedList<Route: Hashable>: View {
     let rows: [RankedRow]
     let identifier: String
     let route: (RankedRow) -> Route
+    @State private var expanded = false
+    private static var collapsed: Int { 5 }
     var body: some View {
         VStack(spacing: 4) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+            ForEach(Array(rows.prefix(expanded ? rows.count : Self.collapsed).enumerated()), id: \.element.id) { index, row in
                 NavigationLink(value: route(row)) {
                     HStack(spacing: 12) {
                         Text(String(index + 1)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 24)
@@ -181,6 +185,15 @@ struct MostWatchedList<Route: Hashable>: View {
                         DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
                     }.padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("\(identifier)-\(row.id)")
+            }
+            if rows.count > Self.collapsed {
+                Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+                    HStack {
+                        Text(expanded ? "Show top \(Self.collapsed)" : "Show all \(rows.count)").font(.system(size: 14, weight: .semibold))
+                        Spacer(minLength: 8)
+                        DiaryIcon(name: "chevron-down", size: 14).rotationEffect(.degrees(expanded ? 180 : 0))
+                    }.foregroundStyle(.secondary).padding(.horizontal, 12).frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("\(identifier)-more")
             }
         }.diaryPanel(padding: 4, radius: 16)
     }
@@ -316,7 +329,7 @@ struct MostWatchedCast: View {
             for _ in 0..<40 {
                 let page: Page = try await store.read("/api/stats/cast")
                 rows = page.items.map { item in
-                    RankedRow(id: item.id, name: item.name, detail: nil, image: item.image, number: item.titles,
+                    RankedRow(id: item.id, name: item.name, detail: nil, image: CatalogTools.image(item.image, size: "w185"), number: item.titles,
                               count: item.titles.counted("title", "titles"), extra: item.plays.counted("play", "plays"))
                 }
                 progress = (page.counted, page.total)

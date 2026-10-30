@@ -82,7 +82,8 @@ struct CharacterView: View {
                             let text = character.readableDescription(hideSpoilers: hideSpoilers)
                             if !text.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(text).font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary).lineLimit(expanded ? nil : 5)
+                                    Text(AniListText.formatted(character.description, hideSpoilers: hideSpoilers)).font(.system(size: 16)).lineSpacing(6)
+                                        .foregroundStyle(.secondary).lineLimit(expanded ? nil : 4)
                                     Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
                                 }
                             }
@@ -220,7 +221,7 @@ struct FavouritesView: View {
                     ForEach(items) { item in FavouriteLink(item: item, poster: true) }
                 }.padding(.horizontal, 14).padding(.top, 8)
             }
-        }.padding(.bottom, 100).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task { await favourites.sync(store: store) }
             .refreshable { await favourites.sync(store: store) }
     }
