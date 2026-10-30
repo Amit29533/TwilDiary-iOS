@@ -59,6 +59,20 @@ struct JellyfinLibrary: Identifiable, Sendable, Equatable {
     var label: String { switch type { case "movies": "Movies"; case "tvshows": "Shows"; case nil, "mixed"?: "Mixed"; default: type!.capitalized } }
 }
 
+/// One movie or show on Jellyfin, for the Jellyfin page: its drive (from its folder) and the
+/// diary title it is, when the diary has it (matched by TMDB id and type).
+struct JellyfinEntry: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let year: Int?
+    let movie: Bool
+    let tmdb: Int?
+    let path: String
+    let drive: String
+    let poster: URL?
+    var diaryID: String?
+}
+
 struct JellyfinSummary: Codable, Sendable, Equatable {
     let at: Date
     let mapped: Int
@@ -79,7 +93,10 @@ struct JellyfinClient: Sendable {
         let ProviderIds: [String: String]?
         let SeriesId: String?
         let ParentIndexNumber: Int?
-        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber }
+        let Name: String?
+        let ProductionYear: Int?
+        let ImageTags: [String: String]?
+        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
     struct Server: Decodable { let ServerName: String?; let Version: String? }
@@ -100,6 +117,13 @@ struct JellyfinClient: Sendable {
         catch { throw APIError.message("That address doesn’t look like a Jellyfin server.") }
     }
     func server() async throws -> Server { try await get("System/Info") }
+    /// The item's poster from Jellyfin itself (image requests need no key, so none is put in the URL).
+    func poster(_ item: Item) -> URL? {
+        guard let tag = item.ImageTags?["Primary"] else { return nil }
+        var components = URLComponents(url: base.appending(path: "Items/\(item.Id)/Images/Primary"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "fillHeight", value: "450"), URLQueryItem(name: "quality", value: "90"), URLQueryItem(name: "tag", value: tag)]
+        return components?.url
+    }
     func libraries() async throws -> [JellyfinLibrary] {
         let folders: [Folder] = try await get("Library/VirtualFolders")
         return folders.compactMap { folder in folder.ItemId.map { JellyfinLibrary(id: $0, name: folder.Name, type: folder.CollectionType?.lowercased()) } }
@@ -217,6 +241,46 @@ struct JellyfinClient: Sendable {
             await store.refresh()
         } catch is CancellationError { } catch { self.error = error.localizedDescription }
     }
+    /// Everything the chosen Movies and Shows libraries hold, as Sync now reads them, for the
+    /// Jellyfin page. Personal items (no TMDB, IMDb or TVDB id) stay out and are only counted.
+    func browse() async throws -> (entries: [JellyfinEntry], personal: Int) {
+        #if DEBUG
+        if store.isPreview { return (Self.previewEntries, 3) }
+        #endif
+        guard let client else { throw APIError.message("Add your Jellyfin address and API key first.") }
+        if libraries.isEmpty { libraries = try await client.libraries() }
+        let chosen = libraries.filter(isOn)
+        guard !chosen.isEmpty else { throw APIError.message("Turn on at least one Movies or Shows library.") }
+        var diary: [String: String] = [:]
+        for title in store.workspace.activeTitles {
+            if let tmdb = title.tmdbId { diary[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] = title.id }
+        }
+        var entries: [JellyfinEntry] = [], personal = 0, seen = Set<String>()
+        for library in chosen {
+            for item in try await client.items(in: library.id, types: "Movie,Series") where seen.insert(item.Id).inserted {
+                let ids = Self.ids(item.ProviderIds)
+                guard !ids.isEmpty, let path = item.Path else { personal += 1; continue }
+                let movie = item.kind == "Movie", tmdb = ids["tmdb"].flatMap { Int($0) }
+                entries.append(JellyfinEntry(id: item.Id, name: item.Name ?? "Untitled", year: item.ProductionYear, movie: movie, tmdb: tmdb,
+                                             path: path, drive: Self.drive(path), poster: client.poster(item),
+                                             diaryID: tmdb.flatMap { diary[(movie ? "movie:" : "tv:") + String($0)] }))
+            }
+        }
+        entries.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return (entries, personal)
+    }
+    /// The drive a path is on: "E:" for Windows, \\server\share for a network share, or the
+    /// first two folders of a POSIX path (/mnt/media), as the Files & drives page groups them.
+    static func drive(_ path: String) -> String {
+        let characters = Array(path)
+        if characters.count >= 2, characters[1] == ":", characters[0].isLetter { return String(characters[0]).uppercased() + ":" }
+        if path.hasPrefix("\\\\") {
+            let parts = path.split(separator: "\\").map(String.init)
+            return parts.count >= 2 ? "\\\\" + parts[0] + "\\" + parts[1] : path
+        }
+        let parts = path.split(separator: "/").map(String.init)
+        return parts.count >= 3 ? "/" + parts[0] + "/" + parts[1] : "/" + (parts.first ?? "")
+    }
     private func remember(_ value: JellyfinSummary) {
         summary = value
         UserDefaults.standard.set(try? JSONEncoder().encode(value), forKey: JellyfinSettings.summaryKey)
@@ -235,6 +299,12 @@ struct JellyfinClient: Sendable {
         return String(path[..<index])
     }
     #if DEBUG
+    static let previewEntries = [
+        JellyfinEntry(id: "j-arrival", name: "Arrival", year: 2016, movie: true, tmdb: 329865, path: "E:\\Movies\\Arrival (2016)", drive: "E:", poster: nil, diaryID: nil),
+        JellyfinEntry(id: "j-dune", name: "Dune", year: 2021, movie: true, tmdb: 438631, path: "E:\\Movies\\Dune (2021)", drive: "E:", poster: nil, diaryID: nil),
+        JellyfinEntry(id: "j-frieren", name: "Frieren: Beyond Journey’s End", year: 2023, movie: false, tmdb: 209867, path: "/mnt/media/Anime/Frieren", drive: "/mnt/media", poster: nil, diaryID: "frieren"),
+        JellyfinEntry(id: "j-severance", name: "Severance", year: 2022, movie: false, tmdb: 95396, path: "D:\\TV\\Severance", drive: "D:", poster: nil, diaryID: "severance")
+    ]
     static let previewLibraries = [
         JellyfinLibrary(id: "movies", name: "Movies", type: "movies"),
         JellyfinLibrary(id: "shows", name: "Shows", type: "tvshows"),

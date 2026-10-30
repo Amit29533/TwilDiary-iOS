@@ -717,6 +717,19 @@ import UIKit
         app.buttons["jellyfin-sync"].tap()
         XCTAssertTrue(app.staticTexts["jellyfin-summary"].waitForExistence(timeout: 5))
         capture("Files Jellyfin synced")
+        // The Jellyfin page: everything on Jellyfin, filtered by the diary and by drive.
+        app.buttons["jellyfin-browse"].tap()
+        XCTAssertTrue(app.staticTexts["jellyfin-library-summary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["jellyfin-item-j-arrival"].exists); XCTAssertTrue(app.buttons["jellyfin-item-j-frieren"].exists)
+        capture("Jellyfin page")
+        app.buttons["jellyfin-show-missing"].tap()
+        XCTAssertTrue(app.buttons["jellyfin-item-j-arrival"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["jellyfin-item-j-frieren"].exists, "In-diary titles leave Not in diary")
+        app.buttons["jellyfin-show-all"].tap()
+        app.buttons["jellyfin-drive-D:"].tap()
+        XCTAssertTrue(app.buttons["jellyfin-item-j-severance"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["jellyfin-item-j-arrival"].exists, "A drive filter keeps only that drive")
+        capture("Jellyfin page drive filter")
     }
     func testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites() {
         let app = launch(); app.tabBars.buttons["Library"].tap()

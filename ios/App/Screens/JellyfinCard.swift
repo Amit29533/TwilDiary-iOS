@@ -41,6 +41,9 @@ struct JellyfinCard: View {
                     }.scrollIndicators(.hidden)
                     if skipped > 0 { caption("\(skipped.counted("other library", "other libraries")) (photos, home videos, music) never read") }
                 }
+                // Everything on Jellyfin, not just what's mapped: filters for the diary and drives.
+                NavigationLink(value: AppDestination.jellyfin) { Text("Browse Jellyfin →").font(.system(size: 13, weight: .semibold)) }
+                    .accessibilityIdentifier("jellyfin-browse")
                 if let progress = sync?.progress { caption(progress) }
                 if let summary = sync?.summary, sync?.running != true {
                     caption("\(summary.mapped.counted("title", "titles")) mapped · \(summary.notInDiary.formatted()) not in your diary · \(summary.personal.counted("personal item", "personal items")) skipped")
