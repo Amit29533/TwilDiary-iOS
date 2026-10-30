@@ -65,8 +65,7 @@ struct VoiceActorView: View {
     private func biography(_ actor: AniVoiceActorDetail) -> some View {
         // Keep the logo beside the introduction (usually Agency), while links and
         // the remaining biography retain the full screen width underneath it.
-        let text = actor.description.replacingOccurrences(of: "<br>", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = AniListText.markdown(actor.description, hideSpoilers: hideSpoilers)
         let paragraphs = text.components(separatedBy: "\n\n")
         let introduction = paragraphs.first ?? ""
         let remaining = paragraphs.dropFirst().joined(separator: "\n\n")

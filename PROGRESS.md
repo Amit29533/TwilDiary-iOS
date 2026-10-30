@@ -16,6 +16,8 @@ a compact native glass TMDB-logo button to the right of the biography intro
 (Agency in their screenshot), not above Facts. Reuses the bundled original-color
 vector logo. Remaining biography paragraphs keep full width. VoiceOver names the
 actor and distinguishes profile versus search; destination is a SwiftUI Link.
+The complete biography is spoiler-sanitized before paragraph layout so a hidden
+spoiler spanning multiple paragraphs cannot leak through the new intro split.
 Code review against the real search handler found that known TMDB identities
 are returned in `library`, not `online`. Preserve those results as explicit
 choices even when renamed, with focused contract regression coverage. Ambiguous

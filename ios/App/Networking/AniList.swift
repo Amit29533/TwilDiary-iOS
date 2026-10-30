@@ -96,14 +96,19 @@ struct AniCharacterStat: Hashable, Sendable, Identifiable {
     var id: Int { person.id }
 }
 enum AniListText {
+    /// Sanitize the complete description before splitting it for layout; a spoiler
+    /// can span several paragraphs and must stay hidden as a single block.
+    static func markdown(_ description: String, hideSpoilers: Bool) -> String {
+        var text = description.replacingOccurrences(of: "<br>", with: "\n")
+        let spoiler = /~!(.|\n)*?!~/
+        text = hideSpoilers ? text.replacing(spoiler, with: "") : text.replacingOccurrences(of: "~!", with: "").replacingOccurrences(of: "!~", with: "")
+        return text.replacing(/<[^>]+>/, with: "").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     /// AniList's Markdown as styled text: [links](…) tappable, __bold__ bold, line breaks and "- "
     /// lists kept, HTML tags dropped and spoilers (~! … !~) left out while spoilers are hidden.
     /// Text that doesn't parse falls back to the plain readable version.
     static func formatted(_ description: String, hideSpoilers: Bool) -> AttributedString {
-        var text = description.replacingOccurrences(of: "<br>", with: "\n")
-        let spoiler = /~!(.|\n)*?!~/
-        text = hideSpoilers ? text.replacing(spoiler, with: "") : text.replacingOccurrences(of: "~!", with: "").replacingOccurrences(of: "!~", with: "")
-        text = text.replacing(/<[^>]+>/, with: "").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = markdown(description, hideSpoilers: hideSpoilers)
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(readable(description, hideSpoilers: hideSpoilers))
     }
