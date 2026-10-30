@@ -501,7 +501,10 @@ import UIKit
         tapVisibleUndo(app)
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["undo-action"])], timeout: 8)
         XCTAssertTrue(app.buttons["Mark episode 8 unwatched"].exists, "Undoing the rewatch must keep the original watch")
-        app.navigationBars.buttons.element(boundBy: 0).tap(); app.tabBars.buttons["More"].tap(); app.buttons["settings-history"].tap()
+        // Detail pages hide the tab bar: go back until it shows (one tap can land mid-animation).
+        let more = app.tabBars.buttons["More"]
+        for _ in 0..<3 where !more.exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
+        XCTAssertTrue(more.waitForExistence(timeout: 5)); more.tap(); app.buttons["settings-history"].tap()
         let filter = app.textFields["Filter watch history"]
         XCTAssertTrue(filter.waitForExistence(timeout: 5)); filter.tap(); filter.typeText("18 Again\n")
         XCTAssertEqual(app.staticTexts["history-count"].label, "8 watches", "Undo must remove the extra play, not merely keep the original episode checked")
