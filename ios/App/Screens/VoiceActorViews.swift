@@ -43,6 +43,7 @@ struct VoiceActorView: View {
                                     Button(expanded ? "Less" : "More") { expanded.toggle() }.font(.system(size: 14)).frame(minHeight: 36)
                                 }
                             }
+                            tmdbLink(actor.name)
                             facts(actor)
                             if !actor.roles.isEmpty { roles(actor.roles) }
                             Link("Voice actor details: AniList", destination: URL(string: "https://anilist.co/staff/\(actor.id)")!).font(.system(size: 13)).foregroundStyle(.secondary)
@@ -61,12 +62,23 @@ struct VoiceActorView: View {
                             NavigationLink(value: PersonRoute(id: tmdb)) { Text("Open their cast page").font(.system(size: 15, weight: .semibold)) }
                                 .accessibilityIdentifier("voice-actor-cast-page")
                         }
+                        if let name = route.name { tmdbLink(name) }
                     }.padding(14).padding(.top, 60)
                 } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
                 else { DiaryLoadingPlaceholder(height: 310, label: "Loading voice actor").padding(14) }
             }.scrollClipDisabled().diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
                 .task(id: route) { if actor == nil { await load() } }
         }
+    }
+    private func tmdbLink(_ name: String) -> some View {
+        let id = route.tmdbID.flatMap { $0 > 0 ? $0 : nil }
+        var destination = URLComponents(string: "https://www.themoviedb.org")!
+        destination.path = id.map { "/person/\($0)" } ?? "/search/person"
+        if id == nil { destination.queryItems = [URLQueryItem(name: "query", value: name)] }
+        return Link(destination: destination.url!) {
+            Label(id == nil ? "Find on TMDB" : "View on TMDB", systemImage: "arrow.up.right.square")
+                .font(.system(size: 14, weight: .medium)).frame(minHeight: 44)
+        }.accessibilityIdentifier("voice-actor-tmdb")
     }
     private func header(_ actor: AniVoiceActorDetail) -> some View {
         let saved = favourites.contains(.voice, actor.id)

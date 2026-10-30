@@ -841,6 +841,9 @@ import UIKit
         let voice = app.buttons["voice-actor-12"]
         for _ in 0..<10 { if voice.exists && voice.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(voice.isHittable); voice.tap()
+        let tmdb = app.links["voice-actor-tmdb"]
+        for _ in 0..<8 { if tmdb.exists && tmdb.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(tmdb.isHittable, "AniList-only voice actors offer a TMDB name search")
         let anime = app.buttons["voice-actor-anime-154587-2"]
         for _ in 0..<10 { if anime.exists && anime.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(anime.isHittable); capture("Voice actor has a separate anime link")

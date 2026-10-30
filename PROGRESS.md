@@ -9,6 +9,9 @@ not used as TMDB IDs: prefer a unique exact title/year/type match in the active
 diary, otherwise search existing TMDB API with up to two English/romaji names.
 Unique matches open directly; ambiguous results offer choices, failures offer
 Retry. Viewing never imports a title. No backend or hosted data changes.
+Owner also requested a TMDB profile link on voice actor pages: show View on TMDB
+with a known TMDB person ID; otherwise Find on TMDB performs a safely encoded
+person-name search (never guesses an ID from AniList). Link sits above Facts.
 Added focused matching regressions and a fixture-backed UI navigation regression.
 Next: commit/push and run the quick Codemagic phone diagnostic (two focused core
 cases plus Release device compilation), not the full regression suite. UI test
