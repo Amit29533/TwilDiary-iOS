@@ -16,6 +16,7 @@ import TwilDiaryCore
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
             FavouritesStore.shared.reset()
+            if !ProcessInfo.processInfo.arguments.contains("--ui-keep-launch-tab") { UserDefaults.standard.removeObject(forKey: AppTab.launchKey) }
             for key in ["favouritesTab", "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
@@ -36,6 +37,16 @@ import TwilDiaryCore
 enum AppTab: String, CaseIterable, Hashable {
     case home, library, glance, stats, more
     var label: String { rawValue.capitalized }
+    /// Settings → Appearance → Opens on: the tab a fresh launch starts on (Glance until chosen).
+    static let launchKey = "launchTab"
+    static var launch: AppTab {
+        #if DEBUG
+        // UI tests start on Glance unless a test is checking this setting across a relaunch.
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--ui-testing") && !arguments.contains("--ui-keep-launch-tab") { return .glance }
+        #endif
+        return UserDefaults.standard.string(forKey: launchKey).flatMap(AppTab.init(rawValue:)) ?? .glance
+    }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "eye"; case .stats: "chart.bar"; case .more: "ellipsis" } }
     var icon: String {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
@@ -54,7 +65,7 @@ struct SavedTitleRoute: Hashable {
 }
 
 @MainActor @Observable final class AppRouter {
-    var selectedTab = AppTab.glance
+    var selectedTab = AppTab.launch
     var randomPick: RandomPickScope?
     var paths: [AppTab: NavigationPath] = [:]
     var libraryShortcut: String?

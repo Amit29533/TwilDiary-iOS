@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSearch = false
@@ -61,6 +62,14 @@ struct SettingsView: View {
                                 }.padding(.leading, 46).padding(.bottom, 4).accessibilityHidden(true)
                             }.padding(.horizontal, 14).padding(.vertical, 10)
                         }.accessibilityIdentifier("settings-theme")
+                        divider
+                        HStack(spacing: 12) {
+                            tile("rectangle.portrait.and.arrow.forward", .orange)
+                            VStack(alignment: .leading, spacing: 2) { Text("Opens on").font(.system(size: 15, weight: .semibold)); Text("The screen TwilDiary starts on").font(.system(size: 12)).foregroundStyle(.secondary) }
+                            Spacer(minLength: 0)
+                            Menu { Picker("Opens on", selection: $launchTab) { ForEach(AppTab.allCases, id: \.self) { Text($0.label).tag($0) } } }
+                                label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
+                        }.padding(.horizontal, 14).frame(minHeight: 60)
                         divider
                         settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
                         divider

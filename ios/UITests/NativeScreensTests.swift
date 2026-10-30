@@ -447,6 +447,21 @@ import UIKit
         XCTAssertEqual(app.buttons["library-layout"].value as? String, "Grid"); XCTAssertTrue(app.buttons["List layout"].exists)
         capture("Library filters cleared")
     }
+    func testOpensOnSettingChoosesTheTabAFreshLaunchStartsOn() {
+        let app = launch(); app.tabBars.buttons["More"].tap()
+        let picker = app.buttons["settings-launch-tab"]
+        for _ in 0..<6 { if picker.exists && picker.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(picker.isHittable); XCTAssertEqual(picker.value as? String, "Glance")
+        picker.tap()
+        // The menu's Library, not the tab bar's.
+        let option = app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Library", "tab-library")).firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
+        XCTAssertEqual(picker.value as? String, "Library"); capture("Settings opens on Library")
+        app.launchArguments.append("--ui-keep-launch-tab")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["library-order"].waitForExistence(timeout: 15), "A fresh launch starts on Library")
+        XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
+    }
     func testT31LibraryLayoutAndSortSurviveAProcessRelaunch() {
         let app = launch(); app.tabBars.buttons["Library"].tap()
         app.buttons["List layout"].tap()
