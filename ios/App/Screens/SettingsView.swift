@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
+    @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSearch = false
@@ -79,6 +80,11 @@ struct SettingsView: View {
                         NavigationLink(value: AppDestination.trakt) { settingsRow(.trakt, "Trakt", subtitle: "History, ratings and watchlist", value: traktBadge, disclosure: true) }.accessibilityIdentifier("settings-trakt")
                         divider
                         NavigationLink(value: AppDestination.tmdb) { settingsRow(.tmdb, "TMDB", subtitle: "Posters, details, seasons and episodes", disclosure: true) }.accessibilityIdentifier("settings-tmdb")
+                        divider
+                        NavigationLink(value: AppDestination.anilist) {
+                            settingsRow("person.text.rectangle.fill", .blue, "AniList", subtitle: "Characters and voice actors in Favourites",
+                                        value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, disclosure: true)
+                        }.accessibilityIdentifier("settings-anilist")
                         divider
                         NavigationLink(value: AppDestination.cloudflare) { settingsRow("cloud.fill", .cloudflare, "Cloudflare", subtitle: "Usage against the free plan", disclosure: true) }.accessibilityIdentifier("settings-cloudflare")
                         divider

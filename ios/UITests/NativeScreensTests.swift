@@ -764,11 +764,16 @@ import UIKit
         app.buttons["favourites-tab-cast"].tap()
         XCTAssertFalse(app.buttons["favourite-character:2"].exists)
         XCTAssertTrue(app.buttons["top-cast-525"].waitForExistence(timeout: 5), "Cast has its Most watched ranking"); capture("Favourites cast tab")
-        // Voice actors: the AniList stats ranking from a pasted profile link, then a heart.
+        // Voice actors: the AniList profile lives in Settings → Connections; the tab links there.
         app.buttons["favourites-tab-voice"].tap()
+        let connect = app.buttons["anilist-connect"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 5)); XCTAssertFalse(app.textFields["anilist-user-field"].exists, "No input box on the tab")
+        connect.tap()
         let profile = app.textFields["anilist-user-field"]
         XCTAssertTrue(profile.waitForExistence(timeout: 5)); profile.tap(); profile.typeText("https://anilist.co/user/twilight29533/stats/anime/voiceActors")
         app.buttons["anilist-user-save"].tap()
+        XCTAssertTrue(app.buttons["anilist-user-remove"].waitForExistence(timeout: 5)); capture("Settings AniList connected")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         let top = app.buttons["top-voice-actor-11"]
         XCTAssertTrue(top.waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["anilist-user"].exists)
         capture("Favourites most watched voice actors")

@@ -52,7 +52,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
     }
 }
-enum AppDestination: Hashable { case explore, canvas, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, cloudflare, apis, favourites, about }
+enum AppDestination: Hashable { case explore, canvas, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, anilist, cloudflare, apis, favourites, about }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -218,6 +218,7 @@ struct RootView: View {
                     case .appearance: AppearanceView()
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()
+                    case .anilist: AniListSettingsView()
                     case .cloudflare: CloudflareUsageView()
                     case .apis: APIsView()
                     case .favourites: FavouritesView()

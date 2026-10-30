@@ -140,7 +140,6 @@ struct RankedRow: Identifiable, Hashable {
 struct MostWatchedSection<Content: View>: View {
     let note: String
     var user: String? = nil
-    var onEditUser: () -> Void = {}
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -148,8 +147,8 @@ struct MostWatchedSection<Content: View>: View {
                 Text("Most watched").font(.system(size: 20, weight: .semibold))
                 Spacer(minLength: 8)
                 if let user {
-                    Button("@" + user, action: onEditUser).font(.system(size: 13)).foregroundStyle(.secondary)
-                        .accessibilityLabel("AniList profile " + user + ", change").accessibilityIdentifier("anilist-user")
+                    NavigationLink(value: AppDestination.anilist) { Text("@" + user).font(.system(size: 13)).foregroundStyle(.secondary) }
+                        .accessibilityLabel("AniList profile " + user + ", change in Settings").accessibilityIdentifier("anilist-user")
                 }
             }
             content
@@ -199,8 +198,8 @@ struct MostWatchedList<Route: Hashable>: View {
     }
 }
 
-/// Voice actors and characters ranked from your public AniList profile, asked for once by
-/// username or pasted profile link (shared by both tabs).
+/// Voice actors and characters ranked from your public AniList profile, set in Settings →
+/// Connections and data → AniList (shared by both tabs).
 struct AniListMostWatched: View {
     enum Kind { case voiceActors, characters }
     let kind: Kind
@@ -210,46 +209,34 @@ struct AniListMostWatched: View {
     @State private var rows: [RankedRow] = []
     @State private var failure: String?
     @State private var loading = false
-    @State private var draft = ""
-    @State private var editing = false
     var body: some View {
-        MostWatchedSection(note: note, user: shownUser, onEditUser: { draft = user; editing = true }) { ranking }
-            .task(id: user) { await load(force: false) }
+        MostWatchedSection(note: note, user: user.isEmpty ? nil : user) { ranking }
+            .task(id: user) { rows = []; failure = nil; await load(force: false) }
     }
     private var note: String {
         kind == .voiceActors
             ? "From your AniList stats: the voice actors in the most anime you’ve watched there."
             : "From your AniList list: main characters in the most anime you’ve watched there."
     }
-    /// The profile shows in the header once set, except while it's being changed.
-    private var shownUser: String? { user.isEmpty || editing ? nil : user }
     @ViewBuilder private var ranking: some View {
-        if user.isEmpty || editing { profileCard }
+        if user.isEmpty { connectPrompt }
         else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
         else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 120, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
         else if rows.isEmpty { Text("Nothing to rank on AniList yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
         else if kind == .voiceActors { MostWatchedList(rows: rows, identifier: "top-voice-actor") { VoiceActorRoute(id: $0.id, watchedCount: $0.number) } }
         else { MostWatchedList(rows: rows, identifier: "top-character") { CharacterRoute(id: $0.id) } }
     }
-    private var profileCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Your AniList profile").font(.system(size: 15, weight: .semibold))
-            Text("Enter your AniList username or paste your profile link. The ranking comes from your public AniList profile.")
-                .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                TextField("Username or profile link", text: $draft).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .submitLabel(.done).onSubmit(save).padding(.horizontal, 12).frame(minHeight: 44)
-                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("anilist-user-field")
-                Button("Show", action: save).buttonStyle(.glassProminent).disabled(AniListError.username(draft) == nil).accessibilityIdentifier("anilist-user-save")
-            }
-            if editing && !user.isEmpty { Button("Cancel") { editing = false }.font(.system(size: 13)) }
-        }.diaryPanel(padding: 14, radius: 16)
-    }
-    private func save() {
-        guard let name = AniListError.username(draft) else { return }
-        // Another profile: the old ranking must not show while the new one loads.
-        if name != user { rows = []; failure = nil }
-        editing = false; user = name
+    private var connectPrompt: some View {
+        NavigationLink(value: AppDestination.anilist) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Add your AniList profile").font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
+                    Text("Settings → Connections and data → AniList").font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
+            }.diaryPanel(padding: 14, radius: 16).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier("anilist-connect")
     }
     private func load(force: Bool) async {
         guard !user.isEmpty else { rows = []; return }
@@ -272,6 +259,49 @@ struct AniListMostWatched: View {
     private static func characterRow(_ stat: AniCharacterStat) -> RankedRow {
         RankedRow(id: stat.id, name: stat.person.name, detail: stat.native, image: stat.person.image, number: stat.count,
                   count: stat.count.counted("anime", "anime"), extra: nil)
+    }
+}
+
+/// Settings → Connections and data → AniList: the public profile Favourites ranks characters and
+/// voice actors from. A username or a pasted profile link; nothing else is asked or stored.
+struct AniListSettingsView: View {
+    @AppStorage(AniListMostWatched.userKey) private var user = ""
+    @State private var draft = ""
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Favourites ranks your characters and voice actors from your public AniList profile. Only the username is used: no sign-in, no password.")
+                    .font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Username or profile link").font(.system(size: 15, weight: .semibold))
+                    TextField("twilight29533 or anilist.co/user/…", text: $draft).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .submitLabel(.done).onSubmit(save).padding(.horizontal, 12).frame(minHeight: 44)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("anilist-user-field")
+                    if !draft.isEmpty && AniListError.username(draft) == nil {
+                        Text("That doesn’t look like an AniList username or profile link.").font(.system(size: 12)).foregroundStyle(.orange)
+                    }
+                    Button("Save", action: save).buttonStyle(.glassProminent)
+                        .disabled(AniListError.username(draft) == nil || AniListError.username(draft) == user).accessibilityIdentifier("anilist-user-save")
+                }.diaryPanel(padding: 14, radius: 16)
+                if !user.isEmpty {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Connected").font(.system(size: 13)).foregroundStyle(.secondary)
+                            Text("@" + user).font(.system(size: 15, weight: .semibold))
+                        }
+                        Spacer(minLength: 8)
+                        Button("Remove", role: .destructive) { user = ""; draft = "" }.accessibilityIdentifier("anilist-user-remove")
+                    }.diaryPanel(padding: 14, radius: 16)
+                    Link("Open profile on AniList", destination: URL(string: "https://anilist.co/user/" + user)!).font(.system(size: 14))
+                }
+            }.padding(14).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationTitle("AniList").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .onAppear { draft = user }
+    }
+    private func save() {
+        guard let name = AniListError.username(draft) else { return }
+        user = name; draft = name
+        Task { await AniListClient.shared.forgetStats() }
     }
 }
 
