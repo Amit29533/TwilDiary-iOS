@@ -74,6 +74,26 @@ interface Payload extends Record<string, unknown> {
   remoteValue: string | null;
   expectedVersion?: number;
   blocked?: boolean;
+  /** The same viewing already recorded once (see Twin): settled as one choice, never re-sent. */
+  twin?: Twin;
+}
+/**
+ * Another record of the same episode or movie within TWIN_DAYS of a diary play that has only a
+ * date (logged for a chosen day, so noon: on a :00/:15/:30/:45 minute with no seconds):
+ * - diary: another play in the diary (synced to Trakt, or with an exact time);
+ * - moved: a synced play removed from the diary, so the date was changed;
+ * - trakt: a Trakt play this scan is importing.
+ * Sending the dated copy would log the viewing twice on Trakt (Trakt also quietly drops some
+ * of these, so they came back as unconfirmed sends every scan).
+ */
+type Twin = { at: string; kind: 'diary' | 'moved' | 'trakt' };
+const TWIN_DAYS = 7;
+const dateOnly = (value: string | null) => !!value && /T\d\d:(00|15|30|45):00\.000Z$/.test(value);
+function twinDetail(twin: Twin) {
+  const day = twin.at.slice(0, 10);
+  return twin.kind === 'moved'
+    ? `Date changed from ${day}. Keep TwilDiary moves it on Trakt; Use Trakt keeps the old date.`
+    : `Looks like a second copy of the ${day} viewing${twin.kind === 'trakt' ? ' on Trakt' : ''}. Use Trakt removes this copy; Keep TwilDiary keeps it here without sending it.`;
 }
 const now = () => new Date().toISOString();
 const stages = [
@@ -407,6 +427,8 @@ function decide(
     unconfirmed: boolean;
     /** The watchlist title was watched on Trakt (watchlist without a local title only). */
     watched: boolean;
+    /** Another record of this viewing (history plays with only a date; bulk planning only). */
+    twin?: Twin | null;
   }
 ): Decision | null {
   const { item, title, watch, baseline: existingBaseline, local, remoteValue } = facts;
@@ -419,6 +441,21 @@ function decide(
     remoteValue
   };
   if (local === null && remoteValue === null && !existingBaseline) return null;
+  // A second record of a viewing is one decision, ahead of any unconfirmed-send check: it is
+  // never sent (with a changed date, it replaces the old play on Trakt).
+  if (
+    item.kind === 'history' &&
+    facts.twin &&
+    watch &&
+    !watch.revokedAt &&
+    !watch.remoteHistoryId &&
+    local !== null &&
+    remoteValue === null &&
+    !existingBaseline
+  ) {
+    payload.twin = facts.twin;
+    return { direction: 'conflict', review: true, detail: twinDetail(facts.twin), payload };
+  }
   if (
     item.kind === 'history' &&
     watch &&
@@ -1582,7 +1619,30 @@ export async function buildSyncStep(
       // planItem's inputs for each local play, in one read: this run's Trakt value for the play,
       // the baseline it would use (by remote key, else by the play) and any unconfirmed send.
       const lookup = JSON.stringify(
-        rows.map((row) => ({ k: row.event.remoteHistoryId ?? '', e: row.event.id }))
+        rows.map((row) => {
+          const dated =
+            row.event.origin === 'manual' &&
+            !row.event.revokedAt &&
+            !row.event.remoteHistoryId &&
+            dateOnly(row.event.watchedAt);
+          return {
+            k: row.event.remoteHistoryId ?? '',
+            e: row.event.id,
+            // Dated plays also look for another record of the same viewing (Twin).
+            ...(dated
+              ? {
+                  q: 1,
+                  t: row.title.id,
+                  p: row.event.episodeId,
+                  w: row.event.watchedAt,
+                  m: row.tmdbId ? Number(row.tmdbId) : null,
+                  y: row.title.kind === 'movie' ? 'movie' : 'tv',
+                  s: row.season,
+                  n: row.episode
+                }
+              : {})
+          };
+        })
       );
       const found = rows.length
         ? await db.all<{
@@ -1595,6 +1655,8 @@ export async function buildSyncStep(
             localLocal: string | null;
             localRemote: string | null;
             unconfirmed: number;
+            twin: string | null;
+            traktTwin: string | null;
           }>(sql`
             SELECT CAST(j.key AS INTEGER) AS "index",
               ${remotePayload(run, sql`'history'`, sql`json_extract(j.value,'$.k')`)} AS "payload",
@@ -1604,7 +1666,31 @@ export async function buildSyncStep(
               l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote",
               EXISTS(SELECT 1 FROM trakt_sync_changes c WHERE c.kind='history'
                 AND json_extract(c.payload,'$.sentUnconfirmed')=1
-                AND json_extract(c.payload,'$.localEventId')=json_extract(j.value,'$.e')) AS "unconfirmed"
+                AND json_extract(c.payload,'$.localEventId')=json_extract(j.value,'$.e')) AS "unconfirmed",
+              CASE WHEN json_extract(j.value,'$.q')=1 THEN (
+                SELECT json_object('at',o.watched_at,'kind',CASE WHEN o.revoked_at IS NULL THEN 'diary' ELSE 'moved' END)
+                FROM watch_events o
+                WHERE o.title_id=json_extract(j.value,'$.t') AND o.episode_id IS json_extract(j.value,'$.p')
+                  AND o.id!=json_extract(j.value,'$.e') AND o.watched_at IS NOT NULL
+                  AND abs(julianday(o.watched_at)-julianday(json_extract(j.value,'$.w')))<=${TWIN_DAYS}
+                  AND CASE WHEN o.revoked_at IS NULL
+                    -- Another play with a real time, or one already on Trakt.
+                    THEN o.remote_history_id IS NOT NULL OR o.origin!='manual'
+                      OR NOT (substr(o.watched_at,18)='00.000Z' AND CAST(substr(o.watched_at,15,2) AS INTEGER)%15=0)
+                    -- A synced play removed from the diary that Trakt still has: a changed date.
+                    ELSE o.remote_history_id IS NOT NULL
+                      AND ${remotePayload(run, sql`'history'`, sql`o.remote_history_id`)} IS NOT NULL END
+                ORDER BY o.revoked_at IS NOT NULL, abs(julianday(o.watched_at)-julianday(json_extract(j.value,'$.w')))
+                LIMIT 1) END AS "twin",
+              CASE WHEN json_extract(j.value,'$.q')=1 THEN (
+                SELECT json_extract(c.payload,'$.remoteValue') FROM trakt_sync_changes c
+                WHERE c.run_id=${run.id} AND c.kind='history' AND c.direction='pull' AND c.review=0
+                  AND json_extract(c.payload,'$.item.tmdbId')=json_extract(j.value,'$.m')
+                  AND json_extract(c.payload,'$.item.type')=json_extract(j.value,'$.y')
+                  AND json_extract(c.payload,'$.item.season') IS json_extract(j.value,'$.s')
+                  AND json_extract(c.payload,'$.item.episode') IS json_extract(j.value,'$.n')
+                  AND abs(julianday(json_extract(c.payload,'$.remoteValue'))-julianday(json_extract(j.value,'$.w')))<=${TWIN_DAYS}
+                LIMIT 1) END AS "traktTwin"
             FROM json_each(${lookup}) j
             LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId} AND b.kind='history'
               AND b.remote_key=json_extract(j.value,'$.k')
@@ -1659,7 +1745,12 @@ export async function buildSyncStep(
               ? (JSON.parse(fact.payload) as RemoteTraktItem).value
               : null,
           unconfirmed: !!Number(fact.unconfirmed),
-          watched: false
+          watched: false,
+          twin: fact.twin
+            ? (JSON.parse(fact.twin) as Twin)
+            : fact.traktTwin
+              ? { at: fact.traktTwin, kind: 'trakt' }
+              : null
         });
         if (outcome) decided.push(outcome);
       }
@@ -2036,6 +2127,16 @@ async function resolveSend(db: Db, eventId: string) {
   await resolveSendQuery(db, eventId);
 }
 /**
+ * The diary keeps this play without sending it: a baseline records it as settled (diary value,
+ * nothing on Trakt), so later scans don't propose it again until it changes, and any
+ * unconfirmed-send marks for it are cleared.
+ */
+async function keepInDiary(db: Db, run: Run, change: Change) {
+  const payload = change.payload as Payload;
+  await saveBaseline(db, run, 'history', payload.localKey, null, payload.localValue, null);
+  if (payload.localEventId) await resolveSend(db, payload.localEventId);
+}
+/**
  * Apply one reviewed change. With `markApplied`, a new/updated imported play marks that
  * change applied inside its own write batch and returns true; otherwise the caller marks it.
  */
@@ -2238,6 +2339,11 @@ async function applyOne(
     }
     if (!event || !title)
       throw new ApiError(409, 'sync_local_changed', 'This viewing was removed after the preview.');
+    // Keep TwilDiary on a second record of a viewing keeps it here; it is never sent.
+    if (payload.twin && payload.twin.kind !== 'moved')
+      return void (await keepInDiary(db, run, change));
+    // Sent before without confirmation: this is the second attempt.
+    const retry = payload.sentUnconfirmed === true || payload.reconcileOnly === true;
     let remoteId = await reconcileHistory(db, title.id, item, payload.localValue, trakt, event.id);
     if (!remoteId) {
       // An earlier send of this play was never confirmed, and Trakt's own history for the title
@@ -2296,6 +2402,16 @@ async function applyOne(
         throw new ApiError(409, 'trakt_mapping_required', 'Trakt did not recognize this viewing.');
       }
       remoteId = await reconcileHistory(db, title.id, item, payload.localValue, trakt, event.id);
+      // Accepted twice and never in Trakt's history: Trakt doesn't keep this play. It stays in the
+      // diary only instead of coming back as an unconfirmed send every scan.
+      if (!remoteId && retry) {
+        await keepInDiary(db, run, change);
+        await db
+          .update(changes)
+          .set({ state: 'applied', detail: 'Trakt didn’t keep this play · kept in TwilDiary only' })
+          .where(eq(changes.id, change.id));
+        return true;
+      }
       if (!remoteId)
         throw new ApiError(
           409,
@@ -2898,7 +3014,16 @@ export async function applySyncChange(
     // one of the diary's own plays is kept in the diary and simply not sent again (this scan).
     const keepWithoutSending = uncertain && choice === 'trakt' && chosen.direction !== 'conflict';
     const extra: BatchItem<'sqlite'>[] = [];
-    if (choice === 'skip' || keepWithoutSending)
+    if (keepWithoutSending) {
+      // For good: later scans see it as settled instead of asking about it every time.
+      await keepInDiary(db, run, chosen);
+      extra.push(
+        db
+          .update(changes)
+          .set({ state: 'applied', error: null, detail: 'Kept in TwilDiary only' })
+          .where(eq(changes.id, chosen.id))
+      );
+    } else if (choice === 'skip')
       extra.push(
         db.update(changes).set({ state: 'skipped', error: null }).where(eq(changes.id, chosen.id))
       );

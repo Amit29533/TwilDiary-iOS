@@ -550,7 +550,7 @@ test('the approved apply never stops on a send Trakt accepts but never shows; it
   assert.equal(status.run?.error ?? null, null, 'no run-wide error');
   assert.ok(['review', 'applying'].includes(status.run!.state), status.run?.state);
 });
-test('"Use Trakt" on an unconfirmed play keeps it in the diary, sends nothing and keeps the review', async (t) => {
+test('"Use Trakt" on an unconfirmed play keeps it in the diary for good, sends nothing and keeps the review', async (t) => {
   const f = d1Fixture();
   t.after(f.close);
   await connectFixture(f);
@@ -571,7 +571,8 @@ test('"Use Trakt" on an unconfirmed play keeps it in the diary, sends nothing an
   assert.equal(
     (await f.db.select().from(traktSyncChanges).where(eq(traktSyncChanges.id, item.id)).get())
       ?.state,
-    'skipped'
+    'applied',
+    'settled as kept in TwilDiary only, not skipped (a skip came back every scan)'
   );
   assert.notEqual(after.run?.state, 'cancelled');
   assert.equal(fake.state.posts.length, 0, 'nothing was sent');
