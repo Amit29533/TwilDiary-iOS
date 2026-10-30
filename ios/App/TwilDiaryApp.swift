@@ -201,6 +201,7 @@ struct RootView: View {
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: CharacterRoute.self) { CharacterView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: AniAppearance.self) { AnimeAppearanceView(appearance: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: VoiceActorRoute.self) { VoiceActorView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: HistoryRoute.self) { route in
                     HistoryView(initialDay: route.day, initialUnknown: route.unknown).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)

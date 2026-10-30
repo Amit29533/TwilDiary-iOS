@@ -1,5 +1,19 @@
 # Native TwilDiary progress
 
+## 30 October 2026 — character and voice actor anime navigation
+
+Owner confirmed dead show links from Favourites character/voice actor pages and
+requested a fix. Character "Appears in" posters now navigate; voice actor cards
+retain their character links and provide a separate anime link. AniList IDs are
+not used as TMDB IDs: prefer a unique exact title/year/type match in the active
+diary, otherwise search existing TMDB API with up to two English/romaji names.
+Unique matches open directly; ambiguous results offer choices, failures offer
+Retry. Viewing never imports a title. No backend or hosted data changes.
+Added focused matching regressions and a fixture-backed UI navigation regression.
+Next: commit/push and run the quick Codemagic phone diagnostic (two focused core
+cases plus Release device compilation), not the full regression suite. UI test
+is added for future simulator regression; do not claim it ran in the device job.
+
 ## 30 October 2026 — focused Jellyfin + Disk fix
 
 Owner requested the fix, focused verification, commit and a quick unsigned IPA;

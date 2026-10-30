@@ -114,14 +114,21 @@ struct VoiceActorView: View {
             Text("Characters").font(.system(size: 20, weight: .semibold))
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 16) {
                 ForEach(items.prefix(30)) { role in
-                    NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Artwork(path: role.character.image, title: role.character.name).aspectRatio(96.0 / 136.0, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            Text(role.character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
-                            Text(role.anime).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
-                    }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
+                    VStack(alignment: .leading, spacing: 6) {
+                        NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Artwork(path: role.character.image, title: role.character.name).aspectRatio(96.0 / 136.0, contentMode: .fit)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                Text(role.character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                            }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
+                        }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
+                        NavigationLink(value: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
+                                                           year: role.year, role: role.role, voiceActor: nil,
+                                                           format: role.format, alternateTitles: role.alternateTitles)) {
+                            Text(role.anime).font(.caption).foregroundStyle(.tint).lineLimit(2)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                        }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
+                    }
                 }
             }
         }

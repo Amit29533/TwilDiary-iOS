@@ -824,6 +824,33 @@ import UIKit
         for _ in 0..<6 { if hearted.exists && hearted.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(hearted.exists, "The hearted voice actor shows as a poster")
     }
+    func testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks() {
+        let app = launch(); app.tabBars.buttons["Library"].tap()
+        let show = app.buttons["title-frieren"]
+        XCTAssertTrue(show.waitForExistence(timeout: 5)); show.tap()
+        let character = app.buttons["anime-character-2"]
+        for _ in 0..<10 { if character.exists && character.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(character.isHittable); character.tap()
+        let appearance = app.buttons["anime-appearance-154587"]
+        for _ in 0..<10 { if appearance.exists && appearance.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(appearance.isHittable); capture("Character appearance opens a diary title")
+        appearance.tap()
+        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5))
+        let voice = app.buttons["voice-actor-12"]
+        for _ in 0..<10 { if voice.exists && voice.isHittable { break }; app.swipeDown() }
+        XCTAssertTrue(voice.isHittable); voice.tap()
+        let anime = app.buttons["voice-actor-anime-154587-2"]
+        for _ in 0..<10 { if anime.exists && anime.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(anime.isHittable); capture("Voice actor has a separate anime link")
+        anime.tap()
+        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let role = app.buttons["voice-actor-role-2"]
+        XCTAssertTrue(role.waitForExistence(timeout: 5)); XCTAssertTrue(role.isHittable); role.tap()
+        XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5))
+    }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()
         openTrakt(app)

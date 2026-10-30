@@ -171,12 +171,14 @@ struct CharacterView: View {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(items) { item in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Artwork(path: item.cover, title: item.title).frame(width: 104, height: 152).clipShape(RoundedRectangle(cornerRadius: 12))
-                            Text(item.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                            Text([item.year.map(String.init), item.role == "MAIN" ? "Main" : item.role == "SUPPORTING" ? "Supporting" : nil].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }.frame(width: 104, alignment: .leading)
+                        NavigationLink(value: item) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Artwork(path: item.cover, title: item.title).frame(width: 104, height: 152).clipShape(RoundedRectangle(cornerRadius: 12))
+                                Text(item.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                                Text([item.year.map(String.init), item.role == "MAIN" ? "Main" : item.role == "SUPPORTING" ? "Supporting" : nil].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }.frame(width: 104, alignment: .leading).contentShape(Rectangle())
+                        }.buttonStyle(.springPress).accessibilityIdentifier("anime-appearance-\(item.id)")
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()

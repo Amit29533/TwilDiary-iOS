@@ -1,4 +1,5 @@
 import Foundation
+import TwilDiaryCore
 
 /// Anime characters come from AniList: TMDB lists only the cast (voice actors), not the
 /// characters themselves. AniList's public API needs no key; the phone asks it directly,
@@ -25,6 +26,12 @@ struct AniAppearance: Hashable, Sendable, Identifiable {
     let year: Int?
     let role: String?
     let voiceActor: AniPerson?
+    var format: String? = nil
+    var alternateTitles: [String] = []
+    var names: [String] { [title] + alternateTitles }
+    var kind: MediaKind? {
+        switch format { case "MOVIE": .movie; case "TV", "TV_SHORT": .tv; default: nil }
+    }
 }
 struct AniCharacterDetail: Sendable {
     let id: Int
@@ -53,6 +60,8 @@ struct AniRole: Hashable, Sendable, Identifiable {
     let cover: String?
     let year: Int?
     let role: String?
+    var format: String? = nil
+    var alternateTitles: [String] = []
     var id: String { "\(character.id)-\(animeID)" }
 }
 struct AniVoiceActorDetail: Sendable {
@@ -177,10 +186,10 @@ actor AniListClient {
         }
         struct Connection: Decodable { let edges: [Edge] }
         struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let voiceActors: [Staff] }
-        struct MediaNode: Decodable { let id: Int; let title: Title; let coverImage: Image?; let startDate: DateParts? }
+        struct MediaNode: Decodable { let id: Int; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts? }
         struct Title: Decodable { let romaji: String?; let english: String? }
         let result: Result = try await query("""
-            query($id: Int) { Character(id: $id) { id name { full native alternative } image { large } description(asHtml: false) gender age dateOfBirth { year month day } bloodType favourites media(sort: [POPULARITY_DESC], type: ANIME, perPage: 12) { edges { characterRole node { id title { romaji english } coverImage { large } startDate { year } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
+            query($id: Int) { Character(id: $id) { id name { full native alternative } image { large } description(asHtml: false) gender age dateOfBirth { year month day } bloodType favourites media(sort: [POPULARITY_DESC], type: ANIME, perPage: 12) { edges { characterRole node { id format title { romaji english } coverImage { large } startDate { year } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
             """, ["id": id])
         let node = result.Character
         let detail = AniCharacterDetail(
@@ -190,7 +199,8 @@ actor AniListClient {
             appearances: node.media.edges.map { edge in
                 AniAppearance(id: edge.node.id, title: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled", cover: edge.node.coverImage?.large,
                               year: edge.node.startDate?.year, role: edge.characterRole,
-                              voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) })
+                              voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) },
+                              format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 })
             })
         details[id] = detail
         return detail
@@ -207,12 +217,12 @@ actor AniListClient {
         struct Connection: Decodable { let edges: [Edge] }
         // AniList can leave an empty (null) slot in these lists; one must not sink the whole page.
         struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let characters: [Node?] }
-        struct MediaNode: Decodable { let id: Int; let type: String?; let title: Title; let coverImage: Image?; let startDate: DateParts? }
+        struct MediaNode: Decodable { let id: Int; let type: String?; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts? }
         struct Title: Decodable { let romaji: String?; let english: String? }
         // characterMedia takes no `type` filter (AniList rejects the whole query), so each role
         // says its media type and only anime are kept.
         let result: Result = try await query("""
-            query($id: Int) { Staff(id: $id) { id name { full native } image { large } description(asHtml: false) age dateOfBirth { year month day } homeTown yearsActive favourites characterMedia(sort: [POPULARITY_DESC], perPage: 25) { edges { characterRole node { id type title { romaji english } coverImage { large } startDate { year } } characters { id name { full } image { large } } } } } }
+            query($id: Int) { Staff(id: $id) { id name { full native } image { large } description(asHtml: false) age dateOfBirth { year month day } homeTown yearsActive favourites characterMedia(sort: [POPULARITY_DESC], perPage: 25) { edges { characterRole node { id type format title { romaji english } coverImage { large } startDate { year } } characters { id name { full } image { large } } } } } }
             """, ["id": id])
         let node = result.Staff
         var seen = Set<String>()
@@ -220,7 +230,8 @@ actor AniListClient {
             edge.characters.compactMap { $0 }.map { character in
                 AniRole(character: AniPerson(id: character.id, name: character.name.full ?? "Unknown", image: character.image?.large),
                         animeID: edge.node.id, anime: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled",
-                        cover: edge.node.coverImage?.large, year: edge.node.startDate?.year, role: edge.characterRole)
+                        cover: edge.node.coverImage?.large, year: edge.node.startDate?.year, role: edge.characterRole,
+                        format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 })
             }
         }.filter { seen.insert($0.id).inserted }
         let detail = AniVoiceActorDetail(

@@ -73,8 +73,8 @@ workflows:
           mkdir -p ios/.artifacts/logs
           { sw_vers; xcodebuild -version; } | tee ios/.artifacts/toolchain.txt
           bash ios/scripts/xcodegen.sh
-          # Owner-requested quick fix: only the drive-filter regression, without simulator/UI suites.
-          swift test --package-path ios/Packages/TwilDiaryCore --filter jellyfinDiskFilterMatchesLibraryShortcutKeys 2>&1 | tee ios/.artifacts/logs/jellyfin-disk-tests.log
+          # Owner-requested quick fixes: focused regressions, without simulator/UI suites.
+          swift test --package-path ios/Packages/TwilDiaryCore --filter 'jellyfinDiskFilterMatchesLibraryShortcutKeys|animeAppearanceNavigationRequiresAnUnambiguousTitleMatch' 2>&1 | tee ios/.artifacts/logs/focused-navigation-tests.log
           bash ios/scripts/ci.sh build-device
           bash ios/scripts/ci.sh package
           python3 - <<'PY'
@@ -83,16 +83,17 @@ workflows:
           log = (root / 'logs/device-build.log').read_text(errors='replace')
           if '** BUILD SUCCEEDED **' not in log or re.search(r'\bwarning:', log, re.I):
               raise SystemExit('Diagnostic device compilation requires success and zero warnings.')
-          focused = (root / 'logs/jellyfin-disk-tests.log').read_text(errors='replace')
-          if 'jellyfinDiskFilterMatchesLibraryShortcutKeys() passed' not in focused:
-              raise SystemExit('The focused Jellyfin drive regression did not pass; refusing to package the diagnostic.')
+          focused = (root / 'logs/focused-navigation-tests.log').read_text(errors='replace')
+          for name in ['jellyfinDiskFilterMatchesLibraryShortcutKeys', 'animeAppearanceNavigationRequiresAnUnambiguousTitleMatch']:
+              if name + '() passed' not in focused:
+                  raise SystemExit('A focused navigation regression did not pass; refusing to package the diagnostic: ' + name)
           ipa = root / 'TwilDiary-device-diagnostic.ipa'
           shutil.copyfile(root / 'TwilDiary-unsigned.ipa', ipa)
           digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
           (root / (ipa.name + '.sha256')).write_text(digest + '  ' + ipa.name + '\n')
           info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app/Info.plist').read_bytes())
           value = {'kind': 'device-diagnostic', 'regressionAcceptance': False,
-                   'note': 'Focused Jellyfin drive regression, compilation and resource checks; complete simulator regression is a separate workflow.',
+                   'note': 'Focused Jellyfin drive and anime navigation regressions, compilation and resource checks; complete simulator regression is a separate workflow.',
                    'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'buildNumber': info['CFBundleVersion'],
                    'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest}
           (root / 'device-diagnostic-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
