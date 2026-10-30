@@ -12,7 +12,13 @@ button definitions, wrong-drive exclusions and existing availability/volume keys
 The app uses that exact tested helper. Native integration assertions also use
 actual shortcut keys. The existing Codemagic device diagnostic runs only the
 focused core case before Release device compilation/resource checks/IPA packaging.
-macOS execution and IPA verification are pending; no full-regression/stable
+Completed: Codemagic phone diagnostic `6ae4cd03efa74786046f3049` passed in
+3m26s on exact source `db6689c51688678dc99747494ca3de95fe9a2d2d`. The single
+focused Swift regression passed; Release iPhoneOS compilation has zero warnings.
+Downloaded IPA build65 (8,090,135 bytes) matches provider SHA256/provenance; ZIP
+CRC, arm64 platform, privacy resource and fixture exclusion verified. Saved as
+`D:/Downloads/TwilDiary-Jellyfin-fix-db6689c.ipa`. Evidence:
+`ios/docs/releases/jellyfin-disk-fix-db6689c.json`. No full-regression/stable
 acceptance, hosted data change, backend deployment or migration is claimed.
 
 ## Resume first
