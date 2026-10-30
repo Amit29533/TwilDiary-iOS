@@ -23,8 +23,15 @@ this visual change is included without changing favourite data or actions.
 Verification pending: three focused core cases, native lookup unit class, two
 targeted XCUITests (native person/Back/alignment and both reported anime titles),
 simulator screenshots and zero-warning device compilation. Added dedicated
-Codemagic native-ios-navigation-check; no full suite rerun. Next: source review,
-commit/push this coherent batch, run that workflow and inspect all evidence.
+Codemagic native-ios-navigation-check; no full suite rerun. First focused run
+`6ae50130efa74786046f41b8` at `e059415`: core3 passed, simulator compiled without
+warnings, both reported anime titles passed direct-navigation UI checks. Native
+person lookup failed for a saved title with null tmdbId (also reproduced in its
+unit fixture), so no IPA was packaged. Added an exact public-metadata fallback
+for that legacy case using the existing search API, and separate tests covering
+saved titles with and without provider identities. No assertion was relaxed.
+Next: commit/push this correction, rerun the same focused workflow (10 lookup
+unit cases plus the same two UI flows), inspect actual screenshots and package.
 
 ## 30 October 2026 — character and voice actor anime navigation
 

@@ -6,6 +6,9 @@ extension DiaryStore {
         guard DiarySearchTools.ready(query), (1...500).contains(page) else { throw APIError.message("Enter a title or IMDb ID (2–200 characters)") }
         #if DEBUG
         if isPreview {
+            if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation"), query == "Frieren: Beyond Journey’s End" {
+                return DiarySearchPage(library: [], online: [CatalogItem(id: 209867, mediaType: .tv, name: query, year: 2023)], page: 1, totalPages: 1)
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation"), query.hasPrefix("Rascal Does Not Dream") {
                 let film = query.contains("Knapsack")
                 let item = CatalogItem(id: film ? 910001 : 910002, mediaType: film ? .movie : .tv, name: query, year: film ? 2023 : 2025)

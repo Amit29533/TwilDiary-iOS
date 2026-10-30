@@ -86,10 +86,20 @@ import TwilDiaryTestSupport
     func testVoiceActorUsesTmdbCreditsAndRemembersTheNativePersonIdentity() async throws {
         let service = AnimeNavigationFixture(), lookup = AnimeNavigationLookup()
         let actor = AniListPreview.voiceActor(12)
+        service.page = DiarySearchPage(library: [], online: [CatalogItem(id: 209867, mediaType: .tv, name: "Frieren: Beyond Journey’s End", year: 2023)], page: 1, totalPages: 1)
         let first = try await lookup.person(actor, knownID: nil, service: service)
         XCTAssertEqual(first, 700001); XCTAssertNotEqual(first, actor.id)
         let second = try await lookup.person(actor, knownID: nil, service: service)
-        XCTAssertEqual(second, first); XCTAssertEqual(service.casts, 1); XCTAssertEqual(service.searches, 0)
+        XCTAssertEqual(second, first); XCTAssertEqual(service.casts, 1); XCTAssertEqual(service.searches, 1)
+    }
+    func testSavedAnimeWithTmdbIdentityReadsCreditsWithoutSearching() async throws {
+        let service = AnimeNavigationFixture(), lookup = AnimeNavigationLookup()
+        let index = try XCTUnwrap(service.workspace.titles.firstIndex { $0.id == "frieren" })
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(service.workspace.titles[index])) as? [String: Any])
+        object["tmdbId"] = 209867
+        service.workspace.titles[index] = try JSONDecoder().decode(MediaTitle.self, from: JSONSerialization.data(withJSONObject: object))
+        let id = try await lookup.person(AniListPreview.voiceActor(12), knownID: nil, service: service)
+        XCTAssertEqual(id, 700001); XCTAssertEqual(service.casts, 1); XCTAssertEqual(service.searches, 0)
     }
     func testKnownTmdbIDDoesNotPerformANameSearchOrReadCredits() async throws {
         let service = AnimeNavigationFixture(), lookup = AnimeNavigationLookup()

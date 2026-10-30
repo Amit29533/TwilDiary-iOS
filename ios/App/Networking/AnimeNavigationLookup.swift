@@ -108,7 +108,7 @@ struct AnimeNavigationResult {
             let appearance = AniAppearance(id: role.animeID, title: role.anime, cover: role.cover, year: role.year,
                                            role: role.role, voiceActor: nil, format: role.format, alternateTitles: role.alternateTitles)
             let found = try await title(appearance, service: service)
-            let route: CatalogRoute?
+            var route: CatalogRoute?
             switch found.destination {
             case .catalog(let value)?: route = value
             case .saved(let id)?:
@@ -116,6 +116,20 @@ struct AnimeNavigationResult {
                     title.tmdbId.map { CatalogRoute(kind: title.isSeries ? .tv : .movie, id: $0) }
                 }
             case nil: route = nil
+            }
+            // Legacy/local anime can match by name without having a TMDB identity.
+            // Reuse a confirmed bridge or an exact catalog result to read credits.
+            if route == nil, case .saved(_)? = found.destination {
+                route = await service.knownAnimeRoute(role.animeID)
+                try Task.checkCancellation()
+                guard revision == service.sessionRevision else { throw CancellationError() }
+                if route == nil, DiarySearchTools.ready(role.anime) {
+                    let page = try await service.searchDiary(role.anime, page: 1)
+                    try Task.checkCancellation()
+                    guard revision == service.sessionRevision else { throw CancellationError() }
+                    if !page.onlineError.isEmpty { throw APIError.message(page.onlineError) }
+                    route = AnimeTitleMatching.catalog(page.online, names: appearance.names, year: role.year, kind: appearance.kind)?.route
+                }
             }
             guard let route else { continue }
             let credits = try await service.cast(route)
