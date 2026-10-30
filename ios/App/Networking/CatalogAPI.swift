@@ -6,6 +6,11 @@ extension DiaryStore {
         guard DiarySearchTools.ready(query), (1...500).contains(page) else { throw APIError.message("Enter a title or IMDb ID (2–200 characters)") }
         #if DEBUG
         if isPreview {
+            if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation"), query.hasPrefix("Rascal Does Not Dream") {
+                let film = query.contains("Knapsack")
+                let item = CatalogItem(id: film ? 910001 : 910002, mediaType: film ? .movie : .tv, name: query, year: film ? 2023 : 2025)
+                return DiarySearchPage(library: workspace.activeTitles.prefix(1).map(SearchLibraryTitle.init), online: [item], page: 1, totalPages: 1)
+            }
             let result = PreviewCatalog.page(query: query, page: page)
             return DiarySearchPage(library: [], online: result.items, page: result.page, totalPages: result.totalPages)
         }
@@ -26,6 +31,9 @@ extension DiaryStore {
         #if DEBUG
         if isPreview {
             if ProcessInfo.processInfo.arguments.contains("--ui-slow-metadata") { try await Task.sleep(for: .milliseconds(700)) }
+            if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") {
+                return try JSONDecoder().decode(CastResponse.self, from: Data(#"{"cast":[{"id":700001,"name":"Kana Ichinose","character":"Fern"}],"stale":false}"#.utf8))
+            }
             return PreviewCatalog.cast
         }
         #endif

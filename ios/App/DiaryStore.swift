@@ -69,6 +69,7 @@ import TwilDiaryCore
     }
     let discoveryCache = DiscoveryCache()
     let communityCache = CommunityInformationCache()
+    @ObservationIgnored let animeNavigation = AnimeNavigationLookup()
     private(set) var discoveryRevision = UUID()
     func invalidateDiscovery() { discoveryCache.reset(); discoveryRevision = UUID() }
     var cachedPeople: [Int: (at: Date, value: PersonResponse)] = [:]

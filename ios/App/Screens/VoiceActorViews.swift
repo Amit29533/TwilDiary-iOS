@@ -16,6 +16,7 @@ struct VoiceActorRoute: Hashable {
 struct VoiceActorView: View {
     let route: VoiceActorRoute
     @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var actor: AniVoiceActorDetail?
@@ -23,6 +24,9 @@ struct VoiceActorView: View {
     @State private var missing = false
     @State private var expanded = false
     @State private var hearts = 0
+    @State private var openingPerson = false
+    @State private var personFailure: String?
+    @State private var personLookup: Task<Void, Never>?
     private var favourites: FavouritesStore { .shared }
     var body: some View {
         GeometryReader { geometry in
@@ -54,29 +58,40 @@ struct VoiceActorView: View {
                             NavigationLink(value: PersonRoute(id: tmdb)) { Text("Open their cast page").font(.system(size: 15, weight: .semibold)) }
                                 .accessibilityIdentifier("voice-actor-cast-page")
                         }
-                        if let name = route.name { tmdbLink(name) }
                     }.padding(14).padding(.top, 60)
                 } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
                 else { DiaryLoadingPlaceholder(height: 310, label: "Loading voice actor").padding(14) }
             }.scrollClipDisabled().diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-                .task(id: route) { if actor == nil { await load() } }
+                .task(id: route) {
+                    if actor == nil { await load() }
+                    if let actor {
+                        store.animeNavigation.rememberPerson(actor.id, tmdbID: route.tmdbID, scope: store.sessionRevision)
+                        if let id = route.tmdbID { await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id) }
+                    }
+                }
+                .onDisappear { personLookup?.cancel() }
+                .alert("Unable to open TMDB profile", isPresented: Binding(get: { personFailure != nil }, set: { if !$0 { personFailure = nil } })) {
+                    Button("Retry") { if let actor { openPerson(actor) } }
+                    Button("Cancel", role: .cancel) {}
+                } message: { Text(personFailure ?? "") }
         }
     }
     private func biography(_ actor: AniVoiceActorDetail) -> some View {
         // Keep the logo beside the introduction (usually Agency), while links and
         // the remaining biography retain the full screen width underneath it.
         let text = AniListText.markdown(actor.description, hideSpoilers: hideSpoilers)
-        let paragraphs = text.components(separatedBy: "\n\n")
-        let introduction = paragraphs.first ?? ""
-        let remaining = paragraphs.dropFirst().joined(separator: "\n\n")
+        let lines = text.components(separatedBy: "\n")
+        let introduction = lines.first ?? ""
+        let remaining = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 if !AniListText.readable(introduction, hideSpoilers: hideSpoilers).isEmpty {
                     Text(AniListText.formatted(introduction, hideSpoilers: hideSpoilers))
                         .font(.system(size: 16)).lineSpacing(6).foregroundStyle(.secondary)
-                        .lineLimit(expanded ? nil : 4).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 9)
+                        .lineLimit(expanded ? nil : 4).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .accessibilityIdentifier("voice-actor-intro")
                 } else { Spacer(minLength: 0) }
-                tmdbLink(actor.name)
+                tmdbButton(actor)
             }
             if !AniListText.readable(remaining, hideSpoilers: hideSpoilers).isEmpty {
                 Text(AniListText.formatted(remaining, hideSpoilers: hideSpoilers))
@@ -87,17 +102,31 @@ struct VoiceActorView: View {
             }
         }
     }
-    private func tmdbLink(_ name: String) -> some View {
-        let id = route.tmdbID.flatMap { $0 > 0 ? $0 : nil }
-        var destination = URLComponents(string: "https://www.themoviedb.org")!
-        destination.path = id.map { "/person/\($0)" } ?? "/search/person"
-        if id == nil { destination.queryItems = [URLQueryItem(name: "query", value: name)] }
-        return Link(destination: destination.url!) {
+    private func tmdbButton(_ actor: AniVoiceActorDetail) -> some View {
+        Button { openPerson(actor) } label: {
             Image("tmdb-logo").renderingMode(.original).resizable().scaledToFit()
-                .frame(width: 40, height: 18).padding(.horizontal, 8).frame(minHeight: 44)
-        }.buttonStyle(.glass).buttonBorderShape(.capsule).tint(theme.accent)
+                .frame(width: 40, height: 18).opacity(openingPerson ? 0.35 : 1)
+                .frame(width: 64, height: 44)
+                .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14)))
+                .overlay { if openingPerson { ProgressView().controlSize(.small) } }
+        }.buttonStyle(.plain).fixedSize().disabled(openingPerson)
             .accessibilityIdentifier("voice-actor-tmdb")
-            .accessibilityLabel(id == nil ? "Find \(name) on TMDB" : "View \(name) on TMDB")
+            .accessibilityLabel("Open \(actor.name)’s TMDB profile")
+    }
+    private func openPerson(_ actor: AniVoiceActorDetail) {
+        let tab = router.selectedTab, depth = router.paths[router.selectedTab]?.count ?? 0
+        openingPerson = true; personFailure = nil; personLookup?.cancel()
+        personLookup = Task {
+            defer { openingPerson = false }
+            do {
+                let id = try await store.animeNavigation.person(actor, knownID: route.tmdbID, service: store)
+                try Task.checkCancellation()
+                guard router.selectedTab == tab, (router.paths[tab]?.count ?? 0) == depth else { return }
+                router.paths[tab, default: NavigationPath()].append(PersonRoute(id: id))
+            } catch is CancellationError { }
+            catch { if !Task.isCancelled { personFailure = error.localizedDescription } }
+        }
     }
     private func header(_ actor: AniVoiceActorDetail) -> some View {
         let saved = favourites.contains(.voice, actor.id)
@@ -153,7 +182,7 @@ struct VoiceActorView: View {
                                 Text(role.character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
                             }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
                         }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
-                        NavigationLink(value: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
+                        AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
                                                            year: role.year, role: role.role, voiceActor: nil,
                                                            format: role.format, alternateTitles: role.alternateTitles)) {
                             Text(role.anime).font(.caption).foregroundStyle(.tint).lineLimit(2)
@@ -433,7 +462,9 @@ struct MostWatchedCast: View {
         }
         #endif
         if let saved = Self.saved[kind], Date().timeIntervalSince(saved.at) < 3600 {
-            rows = saved.rows; aniList = saved.aniList; progress = (saved.counted, saved.total); return
+            rows = saved.rows; aniList = saved.aniList; progress = (saved.counted, saved.total)
+            for (id, actor) in saved.aniList { await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id) }
+            return
         }
         loading = true; failure = nil
         defer { loading = false }
@@ -450,6 +481,7 @@ struct MostWatchedCast: View {
                     if kind == .voice, !Task.isCancelled {
                         let found = await AniListClient.shared.staff(named: page.items.map(\.name))
                         aniList = Dictionary(page.items.compactMap { item in found[item.name].map { (item.id, $0) } }, uniquingKeysWith: { first, _ in first })
+                        for (id, actor) in aniList { await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id) }
                         rows = page.items.map(row)
                     }
                     if !Task.isCancelled { Self.saved[kind] = (rows: rows, aniList: aniList, counted: page.counted, total: page.total, at: Date()) }

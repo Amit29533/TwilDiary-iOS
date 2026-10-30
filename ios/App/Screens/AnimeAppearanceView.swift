@@ -50,10 +50,8 @@ struct AnimeAppearanceView: View {
                         } else if !loading && failure == nil {
                             Text("No matching title was found in TMDB.").foregroundStyle(.secondary)
                         }
-                        Link("View on AniList", destination: URL(string: "https://anilist.co/anime/\(appearance.id)")!)
-                            .font(.system(size: 14)).frame(minHeight: 44)
                     }.padding(14).padding(.bottom, 28)
-                }.diaryScreenBackground().navigationTitle("Find anime").navigationBarTitleDisplayMode(.inline)
+                }.diaryScreenBackground().navigationTitle("Choose title").navigationBarTitleDisplayMode(.inline)
                     .accessibilityIdentifier("anime-appearance-matches")
             }
         }.task(id: retry) { await resolve() }
@@ -63,33 +61,16 @@ struct AnimeAppearanceView: View {
         guard savedID == nil, catalog == nil else { return }
         let request = UUID(); generation = request
         failure = nil; choices = []
-        let local = AnimeTitleMatching.saved(store.workspace.activeTitles, names: appearance.names,
-                                            year: appearance.year, kind: appearance.kind)
-        if local.count == 1 { savedID = local[0].id; return }
-        identified = local.map(SearchLibraryTitle.init)
-        if local.count > 1 { loading = false; return }
         loading = true
         defer { if generation == request { loading = false } }
-        var searched = Set<String>()
         do {
-            for name in appearance.names {
-                let query = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
-                guard DiarySearchTools.ready(query), searched.insert(query.lowercased()).inserted else { continue }
-                let page = try await store.searchDiary(query)
-                guard !Task.isCancelled, generation == request else { return }
-                identified = AnimeTitleMatching.libraryChoices(identified, page: page, kind: appearance.kind)
-                if !page.onlineError.isEmpty { failure = page.onlineError; return }
-                choices = CatalogTools.merging(choices, page.online).filter {
-                    appearance.kind == nil || $0.mediaType == appearance.kind
-                }
-                if identified.isEmpty, let match = AnimeTitleMatching.catalog(choices, names: appearance.names,
-                                                         year: appearance.year, kind: appearance.kind) {
-                    if let id = store.libraryIdentity(match) { savedID = id }
-                    else { catalog = match.route }
-                    return
-                }
-                // At most two distinct names (English and romaji) per tap.
-                if searched.count >= 2 { break }
+            let found = try await store.animeNavigation.title(appearance, service: store)
+            guard !Task.isCancelled, generation == request else { return }
+            switch found.destination {
+            case .saved(let id)?: savedID = id
+            case .catalog(let route)?: catalog = route
+            case nil:
+                identified = found.page.library; choices = found.page.online
             }
         } catch {
             if !Task.isCancelled, generation == request { failure = error.localizedDescription }

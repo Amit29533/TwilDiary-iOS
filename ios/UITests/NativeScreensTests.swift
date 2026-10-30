@@ -3,7 +3,7 @@ import UIKit
 
 @MainActor final class NativeScreensTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
-    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false) -> XCUIApplication {
+    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]
         if mutations || scanner { app.launchArguments.append("--ui-mutations") }
         if scanner { app.launchArguments.append("--ui-scanner") }
@@ -18,6 +18,7 @@ import UIKit
         if cachedSnapshot { app.launchArguments.append("--ui-cached-snapshot") }
         if longEpisodes { app.launchArguments.append("--ui-long-episodes") }
         if automaticCarousel { app.launchArguments.append("--ui-automatic-carousel") }
+        if animeNavigation { app.launchArguments.append("--ui-anime-navigation") }
         if let traktScenario { app.launchArguments.append("--ui-trakt=" + traktScenario) }
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
@@ -825,7 +826,7 @@ import UIKit
         XCTAssertTrue(hearted.exists, "The hearted voice actor shows as a poster")
     }
     func testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks() {
-        let app = launch(); app.tabBars.buttons["Library"].tap()
+        let app = launch(animeNavigation: true); app.tabBars.buttons["Library"].tap()
         let show = app.buttons["title-frieren"]
         XCTAssertTrue(show.waitForExistence(timeout: 5)); show.tap()
         let character = app.buttons["anime-character-2"]
@@ -841,9 +842,20 @@ import UIKit
         let voice = app.buttons["voice-actor-12"]
         for _ in 0..<10 { if voice.exists && voice.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(voice.isHittable); voice.tap()
-        let tmdb = app.links["voice-actor-tmdb"]
+        let tmdb = app.buttons["voice-actor-tmdb"]
         for _ in 0..<8 { if tmdb.exists && tmdb.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(tmdb.isHittable, "AniList-only voice actors offer a TMDB name search")
+        XCTAssertTrue(tmdb.isHittable)
+        let intro = app.staticTexts["voice-actor-intro"]
+        XCTAssertTrue(intro.exists)
+        XCTAssertLessThan(abs(tmdb.frame.midY - intro.frame.midY), 4, "Normal logo button is vertically centered with Agency")
+        XCTAssertLessThanOrEqual(intro.frame.maxX, tmdb.frame.minX, "Biography and logo cannot overlap")
+        capture("Normal TMDB logo button aligned with Agency")
+        tmdb.tap()
+        XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10), "TMDB opens the app's native person page")
+        XCTAssertEqual(app.state, .runningForeground)
+        capture("Voice actor TMDB profile stays native")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         let anime = app.buttons["voice-actor-anime-154587-2"]
         for _ in 0..<10 { if anime.exists && anime.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(anime.isHittable); capture("Voice actor has a separate anime link")
@@ -853,6 +865,25 @@ import UIKit
         let role = app.buttons["voice-actor-role-2"]
         XCTAssertTrue(role.waitForExistence(timeout: 5)); XCTAssertTrue(role.isHittable); role.tap()
         XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5))
+    }
+    func testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults() {
+        let app = launch(animeNavigation: true); app.tabBars.buttons["Library"].tap()
+        let show = app.buttons["title-frieren"]
+        XCTAssertTrue(show.waitForExistence(timeout: 5)); show.tap()
+        let character = app.buttons["anime-character-2"]
+        for _ in 0..<10 { if character.exists && character.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(character.isHittable); character.tap()
+        for id in [900001, 900002] {
+            let appearance = app.buttons["anime-appearance-\(id)"]
+            for _ in 0..<10 { if appearance.exists && appearance.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(appearance.isHittable); appearance.tap()
+            XCTAssertTrue(app.buttons["catalog-add"].waitForExistence(timeout: 10), "An exact remote title opens directly")
+            XCTAssertFalse(app.navigationBars["Find anime"].exists)
+            XCTAssertFalse(app.navigationBars["Choose title"].exists)
+            capture(id == 900001 ? "Knapsack Kid opens directly" : "Santa Claus exact match ignores unrelated library hit")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5))
+        }
     }
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["More"].tap()

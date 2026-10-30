@@ -1,5 +1,31 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — correct native navigation and remove transitional lookup pages
+
+Owner rejected the browser TMDB action and misaligned glass button, then reported
+that every anime tap shows Find anime, including an exact Santa Claus match.
+Current authorized corrections: native PersonRoute; regular solid TMDB-logo
+button centered beside the first biography line (no glass); resolve at the tapped
+card before pushing, exact matches bypass chooser despite unrelated diary hits.
+Audit of ios/App traced PersonView, CastAndRelated, AnimeCharactersRow,
+MostWatchedCast's paired IDs, AniListClient's existing caches/spelling policy,
+Favourites and CatalogAPI. Retain confirmed forward TMDB/AniList mappings for
+reverse navigation; share the existing long-vowel name policy instead of replacing
+it. No new backend endpoint, deployment, credentials or hosted-data writes.
+Unmapped public identities use existing authenticated search/cast APIs, bounded
+to two names or two credits; no guessed cross-provider IDs or browser fallback.
+Lookup cache is session scoped, bounded and expires after five minutes; results
+reconcile current diary identities. Per-card loading stays on the source page;
+leaving the page cancels the task and navigation depth/session checks reject
+late results. Only real ambiguities retain a native Choose title screen.
+Owner also requested a theme-accent filled heart beside the Hearted heading;
+this visual change is included without changing favourite data or actions.
+Verification pending: three focused core cases, native lookup unit class, two
+targeted XCUITests (native person/Back/alignment and both reported anime titles),
+simulator screenshots and zero-warning device compilation. Added dedicated
+Codemagic native-ios-navigation-check; no full suite rerun. Next: source review,
+commit/push this coherent batch, run that workflow and inspect all evidence.
+
 ## 30 October 2026 — character and voice actor anime navigation
 
 Owner confirmed dead show links from Favourites character/voice actor pages and

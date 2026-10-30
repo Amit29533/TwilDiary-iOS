@@ -43,4 +43,19 @@ import Testing
     let page = DiarySearchPage(library: [SearchLibraryTitle(renamed), SearchLibraryTitle(film)], online: [], page: 1, totalPages: 1)
     #expect(AnimeTitleMatching.libraryChoices([], page: page, kind: .tv).map(\.id) == [renamed.id])
     #expect(AnimeTitleMatching.libraryChoices([SearchLibraryTitle(renamed)], page: page, kind: nil).map(\.id) == [renamed.id, film.id])
+    let exact = CatalogItem(id: 910002, mediaType: .tv, name: "Rascal Does Not Dream of Santa Claus", year: 2025)
+    let withNoise = DiarySearchPage(library: [SearchLibraryTitle(renamed)], online: [exact], page: 1, totalPages: 1)
+    #expect(AnimeTitleMatching.destination(page: withNoise, names: [exact.name], year: 2025, kind: .tv) == .catalog(exact.route))
+    #expect(AnimeTitleMatching.destination(page: page, names: [renamed.name], year: 2019, kind: .tv) == .saved(renamed.id))
+}
+
+@Test func voiceActorPersonMatchingUsesUniqueTmdbCastIdentity() throws {
+    let data = Data(#"[{"id":700001,"name":"Rie Takahashi","character":"Voice"},{"id":700001,"name":"Takahashi Rie","character":"Another voice"}]"#.utf8)
+    let cast = try JSONDecoder().decode([CastPerson].self, from: data)
+    #expect(PersonIdentityMatching.uniqueID(in: cast, names: ["RIE TAKAHASHI"]) == 700001)
+    #expect(PersonIdentityMatching.uniqueID(in: cast, names: ["Different Person"]) == nil)
+    let other = try JSONDecoder().decode([CastPerson].self, from: Data(#"[{"id":700002,"name":"Rie Takahashi","character":"Voice"}]"#.utf8))
+    #expect(PersonIdentityMatching.uniqueID(in: cast + other, names: ["Rie Takahashi"]) == nil)
+    #expect(PersonIdentityMatching.sameName("Yoko Hikasa", "Youko Hikasa"))
+    #expect(!PersonIdentityMatching.sameName("", ""))
 }

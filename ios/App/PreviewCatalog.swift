@@ -25,6 +25,10 @@ enum PreviewCatalog {
         var value = try! JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
         var details = value["details"] as! [String: Any]
         details["id"] = route.id; details["mediaType"] = route.kind.rawValue
+        if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation"), [910001, 910002].contains(route.id) {
+            details["name"] = route.id == 910001 ? "Rascal Does Not Dream of a Knapsack Kid" : "Rascal Does Not Dream of Santa Claus"
+            details["year"] = route.id == 910001 ? 2023 : 2025
+        }
         details["suggestedCategory"] = route.kind == .movie ? "movie" : "anime"
         details["runtimeMinutes"] = route.kind == .movie ? 112 : 24
         if route.kind == .movie { details["seasons"] = [] }

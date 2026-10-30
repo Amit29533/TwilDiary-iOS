@@ -13,6 +13,7 @@ struct AnimeCharactersRow: View {
     let title: String
     let year: Int?
     let movie: Bool
+    var tmdbID: Int? = nil
     @Environment(DiaryStore.self) private var store
     @State private var characters: [AniCharacter] = []
     @State private var failed = false
@@ -53,7 +54,7 @@ struct AnimeCharactersRow: View {
         #if DEBUG
         if store.isPreview { characters = AniListPreview.characters; return }
         #endif
-        do { characters = try await AniListClient.shared.characters(title: title, year: year, movie: movie) }
+        do { characters = try await AniListClient.shared.characters(title: title, year: year, movie: movie, tmdbID: tmdbID) }
         catch { if !Task.isCancelled { failed = true } }
     }
 }
@@ -153,7 +154,7 @@ struct CharacterView: View {
                 HStack(alignment: .top, spacing: 18) {
                     ForEach(actors, id: \.id) { actor in
                         // Opens the voice actor's page: their other characters and a heart.
-                        NavigationLink(value: VoiceActorRoute(id: actor.id)) {
+                        NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
                             VStack(spacing: 8) {
                                 Artwork(path: actor.image, title: actor.name).frame(width: 82, height: 82).clipShape(Circle())
                                 Text(actor.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
@@ -171,7 +172,7 @@ struct CharacterView: View {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(items) { item in
-                        NavigationLink(value: item) {
+                        AnimeAppearanceButton(appearance: item) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Artwork(path: item.cover, title: item.title).frame(width: 104, height: 152).clipShape(RoundedRectangle(cornerRadius: 12))
                                 Text(item.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
@@ -199,6 +200,7 @@ struct CharacterView: View {
 /// you've hearted, as posters. "Favourites" titles the page; the tabs are its first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
     private var favourites: FavouritesStore { .shared }
     var body: some View {
@@ -213,7 +215,12 @@ struct FavouritesView: View {
                 }
             }.id(tab).padding(.horizontal, 14).padding(.top, 8)
             if !items.isEmpty {
-                Text("Hearted").font(.system(size: 20, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.top, 20)
+                HStack(spacing: 9) {
+                    Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
+                    Text("Hearted")
+                }.font(.system(size: 20, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.top, 20)
+                    .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             }
             if items.isEmpty {
                 DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)
@@ -260,7 +267,7 @@ struct FavouriteLink: View {
             switch item.kind {
             case .cast: NavigationLink(value: PersonRoute(id: item.ref)) { label }
             case .character: NavigationLink(value: CharacterRoute(id: item.ref)) { label }
-            case .voice: NavigationLink(value: VoiceActorRoute(id: item.ref)) { label }
+            case .voice: NavigationLink(value: VoiceActorRoute(id: item.ref, name: item.name)) { label }
             }
         }.buttonStyle(.springPress).accessibilityIdentifier("favourite-" + item.id)
     }

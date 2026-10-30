@@ -365,7 +365,7 @@ struct CastAndRelated: View {
     @State private var failure: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie).padding(.bottom, 8) }
+            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id).padding(.bottom, 8) }
             if !cast.isEmpty {
                 Text("Cast").font(.system(size: 20, weight: .semibold))
                 ScrollView(.horizontal) {

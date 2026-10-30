@@ -148,12 +148,27 @@ actor AniListClient {
     private var userCharacters: [String: [AniCharacterStat]] = [:]
     /// Name lookups, misses included (nil), so a voice actor AniList lacks isn't asked again.
     private var staffByName: [String: AniPerson?] = [:]
+    private var mediaIDs: [String: Int] = [:]
+    private var mediaKinds: [String: MediaKind] = [:]
+    private var tmdbTitles: [Int: CatalogRoute] = [:]
+    private var tmdbPeople: [Int: Int] = [:]
+    func tmdbTitle(_ id: Int) -> CatalogRoute? { tmdbTitles[id] }
+    func tmdbPerson(_ id: Int) -> Int? { tmdbPeople[id] }
+    func rememberPerson(staffID: Int, tmdbID: Int) {
+        guard staffID > 0, tmdbID > 0 else { return }
+        tmdbPeople[staffID] = tmdbID
+    }
 
     /// The anime's characters, main roles first, each with their Japanese voice actor. Empty when
     /// AniList has no anime of that name released within a year of `year` (better none than wrong).
-    func characters(title: String, year: Int?, movie: Bool) async throws -> [AniCharacter] {
+    func characters(title: String, year: Int?, movie: Bool, tmdbID: Int? = nil) async throws -> [AniCharacter] {
         let key = "\(title.lowercased())|\(year ?? 0)|\(movie)"
-        if let saved = characterLists[key] { return saved }
+        if let saved = characterLists[key] {
+            if let id = mediaIDs[key], let tmdbID, tmdbID > 0, mediaKinds[key] == (movie ? .movie : .tv) {
+                tmdbTitles[id] = CatalogRoute(kind: movie ? .movie : .tv, id: tmdbID)
+            }
+            return saved
+        }
         struct Found: Decodable { let Page: PageResult; struct PageResult: Decodable { let media: [Media] } }
         struct Media: Decodable { let id: Int; let format: String?; let startDate: DateParts? }
         let found: Found = try await query("""
@@ -179,6 +194,12 @@ actor AniListClient {
                          role: edge.role, voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) })
         }
         characterLists[key] = list
+        mediaIDs[key] = match.id
+        if match.format == "MOVIE" { mediaKinds[key] = .movie }
+        else if ["TV", "TV_SHORT"].contains(match.format ?? "") { mediaKinds[key] = .tv }
+        if let tmdbID, tmdbID > 0, mediaKinds[key] == (movie ? .movie : .tv) {
+            tmdbTitles[match.id] = CatalogRoute(kind: movie ? .movie : .tv, id: tmdbID)
+        }
         return list
     }
 
@@ -351,12 +372,7 @@ actor AniListClient {
     }
     /// "Yoko Hikasa" (TMDB) and "Youko Hikasa" (AniList) are one person: case, accents and long
     /// vowels (ou, oo, uu) are ignored.
-    static func sameName(_ a: String, _ b: String) -> Bool { spelling(a) == spelling(b) }
-    private static func spelling(_ value: String) -> String {
-        var text = String(value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased().filter(\.isLetter))
-        for (long, short) in [("ou", "o"), ("oo", "o"), ("uu", "u")] { text = text.replacingOccurrences(of: long, with: short) }
-        return text
-    }
+    static func sameName(_ a: String, _ b: String) -> Bool { PersonIdentityMatching.sameName(a, b) }
     /// Throws `notFound` when AniList has no such user (its answer to this is a 404).
     private func requireUser(_ user: String) async throws {
         struct Result: Decodable { let User: Found? }
@@ -420,17 +436,22 @@ enum AniListPreview {
         let stat = topVoiceActors.first { $0.id == id } ?? topVoiceActors[0]
         let character = characters.first { $0.voiceActor?.id == stat.id } ?? characters[0]
         return AniVoiceActorDetail(id: stat.id, name: stat.person.name, native: stat.native, image: nil,
-                                   description: "A voice actor from Japan. ~!A spoiler that stays hidden.!~", age: 33, birthday: "27 September",
+                                   description: ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") ? "**Agency:** Reference Studio\n\nA voice actor from Japan. ~!A spoiler\n\nthat stays hidden.!~" : "A voice actor from Japan. ~!A spoiler that stays hidden.!~", age: 33, birthday: "27 September",
                                    homeTown: "Tokyo", yearsActive: [2006], favourites: 9000,
                                    roles: [AniRole(character: AniPerson(id: character.id, name: character.name, image: nil), animeID: 154587,
                                                    anime: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role)])
     }
     static func detail(_ id: Int) -> AniCharacterDetail {
         let character = characters.first { $0.id == id } ?? characters[0]
+        var appearances = [AniAppearance(id: 154587, title: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role, voiceActor: character.voiceActor)]
+        if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") {
+            appearances += [AniAppearance(id: 900001, title: "Rascal Does Not Dream of a Knapsack Kid", cover: nil, year: 2023, role: "MAIN", voiceActor: nil, format: "MOVIE"),
+                            AniAppearance(id: 900002, title: "Rascal Does Not Dream of Santa Claus", cover: nil, year: 2025, role: "MAIN", voiceActor: nil, format: "TV")]
+        }
         return AniCharacterDetail(id: character.id, name: character.name, native: character.native, alternative: ["The Slayer"], image: nil,
                                   description: "An elf mage who once helped defeat the Demon King. ~!A spoiler that stays hidden.!~",
                                   gender: "Female", age: "1000+", birthday: "1 January", bloodType: nil, favourites: 52000,
-                                  appearances: [AniAppearance(id: 154587, title: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role, voiceActor: character.voiceActor)])
+                                  appearances: appearances)
     }
 }
 #endif

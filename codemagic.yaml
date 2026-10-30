@@ -1,6 +1,25 @@
 # Candidate track. Only a complete pass permits same-SHA promotion to ios-native.
 # No automatic triggers, signing, deployment, credentials or hosted-data writes.
 workflows:
+  native-ios-navigation-check:
+    name: TwilDiary targeted anime navigation — iPhone and simulator
+    instance_type: mac_mini_m2
+    max_build_duration: 35
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify native anime navigation and profile button
+        script: bash ios/scripts/navigation-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-native-navigation.ipa
+      - ios/.artifacts/TwilDiary-native-navigation.ipa.sha256
+      - ios/.artifacts/native-navigation-provenance.json
+      - ios/.artifacts/Navigation.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
   native-ios-regression:
     name: TwilDiary native iOS — unsigned regression
     instance_type: mac_mini_m2
