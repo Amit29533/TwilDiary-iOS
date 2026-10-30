@@ -726,6 +726,9 @@ import UIKit
         XCTAssertTrue(all.isHittable, "Home shows recent favourites"); capture("Home favourites")
         all.tap()
         XCTAssertTrue(app.buttons["favourites-tab-character"].waitForExistence(timeout: 5))
+        // "Favourites" titles the page, with the Cast and Characters tabs below it.
+        XCTAssertTrue(app.navigationBars["Favourites"].exists)
+        XCTAssertGreaterThan(app.buttons["favourites-tab-cast"].frame.minY, app.navigationBars["Favourites"].frame.minY)
         XCTAssertTrue(app.buttons["favourite-character:2"].exists)
         app.buttons["favourites-tab-cast"].tap()
         XCTAssertFalse(app.buttons["favourite-character:2"].exists); capture("Favourites cast tab")

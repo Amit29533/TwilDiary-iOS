@@ -188,7 +188,8 @@ struct CharacterView: View {
     }
 }
 
-/// Favourites: the cast and characters you've hearted, as two large tabs like Explore and Canvas.
+/// Favourites: the cast and characters you've hearted. "Favourites" titles the page; the Cast and
+/// Characters tabs sit under it as the first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
@@ -196,6 +197,7 @@ struct FavouritesView: View {
     var body: some View {
         let items = favourites.items(tab)
         ScrollView {
+            tabs.padding(.horizontal, 14).padding(.top, 4)
             if items.isEmpty {
                 DiaryEmptyState(title: tab == .cast ? "No favourite cast yet" : "No favourite characters yet",
                                 description: tab == .cast ? "Tap the heart on someone’s cast page to keep them here." : "Tap the heart on an anime character’s page to keep them here.")
@@ -205,8 +207,7 @@ struct FavouritesView: View {
                     ForEach(items) { item in FavouriteLink(item: item, size: 96) }
                 }.padding(.horizontal, 14).padding(.top, 8)
             }
-        }.padding(.bottom, 100).diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .principal) { tabs } }
+        }.padding(.bottom, 100).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task { await favourites.sync(store: store) }
             .refreshable { await favourites.sync(store: store) }
     }
