@@ -4,12 +4,13 @@ import TwilDiaryCore
 /// "Jellyfin": every movie and show in the Jellyfin libraries Sync now reads, as posters, with
 /// filters for the diary (not in it, in it) and for drives, like Files & drives. A title in the
 /// diary opens its page; one that isn't opens its TMDB page, where it can be added.
+/// The list last read at home is saved (JellyfinShelf), so away from home the page still shows it.
 struct JellyfinLibraryView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var sync: JellyfinSync?
-    @State private var entries: [JellyfinEntry] = []
-    @State private var personal = 0
+    @State private var shelf = JellyfinShelf.shared
+    @State private var loaded = false
     @State private var loading = false
     @State private var failure: String?
     @State private var show = Show.all
@@ -24,12 +25,21 @@ struct JellyfinLibraryView: View {
                 else { content }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("Jellyfin").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .task { if entries.isEmpty { await load() } }
+            // Once per visit (coming back from a title page doesn't read Jellyfin again).
+            .task { if !loaded { loaded = true; await load() } }
             .refreshable { await load() }
     }
+    /// The saved list, matched against the diary as it is now.
+    private var entries: [JellyfinEntry] { JellyfinShelf.matched(shelf.entries, diary: store.workspace.activeTitles) }
     @ViewBuilder private var content: some View {
         Text(summary)
             .font(.system(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-summary")
+        if let failure, let at = shelf.savedAt {
+            // Away from home: the saved list stays, and says how old it is.
+            Text("Jellyfin can’t be reached, so this is the list from \(at.formatted(.relative(presentation: .named))). It updates when you’re home.")
+                .font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-saved")
+                .accessibilityHint(failure)
+        }
         chipRow {
             ForEach(Show.allCases, id: \.self) { option in
                 chip(option.rawValue + " " + count(option).formatted(), on: show == option, id: "jellyfin-show-" + String(describing: option)) { show = option }
@@ -51,8 +61,9 @@ struct JellyfinLibraryView: View {
     }
     /// "312 movies and shows · 46 in your diary · 3 personal items left out".
     private var summary: String {
-        var parts = [entries.count.counted("movie or show", "movies and shows"), entries.filter { $0.diaryID != nil }.count.formatted() + " in your diary"]
-        if personal > 0 { parts.append(personal.counted("personal item", "personal items") + " left out") }
+        let list = entries
+        var parts = [list.count.counted("movie or show", "movies and shows"), list.filter { $0.diaryID != nil }.count.formatted() + " in your diary"]
+        if shelf.personal > 0 { parts.append(shelf.personal.counted("personal item", "personal items") + " left out") }
         return parts.joined(separator: " · ")
     }
     struct DriveCount: Hashable { let name: String; let count: Int }
@@ -98,14 +109,10 @@ struct JellyfinLibraryView: View {
             label.accessibilityIdentifier("jellyfin-item-" + entry.id)
         }
     }
-    /// Jellyfin's own poster; the diary's while it loads or when Jellyfin has none.
+    /// Jellyfin's own poster (saved on this iPhone); the diary's while it loads or when there is none.
     @ViewBuilder private func poster(_ entry: JellyfinEntry) -> some View {
         let fallback = Artwork(path: entry.diaryID.flatMap { store.title($0)?.poster }, title: entry.name)
-        if let url = entry.poster {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image { image.resizable().scaledToFill() } else { fallback }
-            }
-        } else { fallback }
+        if let url = entry.poster { JellyfinPoster(url: url) { fallback } } else { fallback }
     }
     private func chipRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         ScrollView(.horizontal) { HStack(spacing: 8) { content() } }.scrollIndicators(.hidden)
@@ -124,8 +131,23 @@ struct JellyfinLibraryView: View {
         defer { loading = false }
         do {
             let found = try await sync.browse()
-            entries = found.entries; personal = found.personal
-            if let drive, !entries.contains(where: { $0.drive == drive }) { self.drive = nil }
+            shelf.replace(found.entries, personal: found.personal, save: !store.isPreview)
+            if let drive, !shelf.entries.contains(where: { $0.drive == drive }) { self.drive = nil }
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+}
+
+/// A Jellyfin poster from JellyfinPosterCache: shown at once when it's in memory, otherwise the
+/// fallback until the saved (or, at home, downloaded) copy arrives.
+struct JellyfinPoster<Fallback: View>: View {
+    let url: URL
+    @ViewBuilder let fallback: () -> Fallback
+    @State private var image: UIImage?
+    var body: some View {
+        if let image = image ?? JellyfinPosterCache.shared.resident(url) {
+            Image(uiImage: image).resizable().scaledToFill()
+        } else {
+            fallback().task(id: url) { image = await JellyfinPosterCache.shared.image(url) }
+        }
     }
 }

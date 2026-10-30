@@ -40,6 +40,7 @@ struct LibraryView: View {
     @State private var selecting = false
     @State private var selected = Set<String>()
     @State private var review: CollectionReview?
+    @State private var jellyfin = JellyfinShelf.shared
     var body: some View {
         VStack(spacing: 0) {
             if selecting { selectionHeader }
@@ -54,9 +55,12 @@ struct LibraryView: View {
             .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }
             .onAppear { initializeStorage(); applyShortcut() }
+            // At home, the Jellyfin list is read again now and then; away, the saved one stays.
+            .task { await jellyfin.refreshQuietly(store: store) }
             .onChange(of: filterScope) { _, _ in selected.formIntersection(filtered.map(\.id)); visibleLimit = 48 }
             .onChange(of: filtered.map(\.id)) { _, ids in selected.formIntersection(ids) }
-            .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.medium]).presentationDragIndicator(.visible) }
+            // Opens at half height; pulling up (or scrolling from the top) brings the whole board.
+            .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.medium, .large]).presentationContentInteraction(.resizes).presentationDragIndicator(.visible) }
             .sheet(item: $review) { value in CollectionReviewView(review: value) { selecting = false; selected = [] } }
     }
 
@@ -71,7 +75,8 @@ struct LibraryView: View {
             Button("All") { selected = Set(filtered.prefix(CollectionRequest.limit).map(\.id)) }.accessibilityLabel("Select all shown").accessibilityIdentifier("selection-all")
         }.font(.system(size: 16, weight: .semibold)).tint(theme.accent).padding(.horizontal, 18).frame(height: 54)
     }
-    private static let statuses = [("all", "All"), ("watching", "Watching"), ("planned", "Planned"), ("completed", "Completed"), ("dropped", "Dropped"), ("queue", "Queue")]
+    /// Jellyfin keeps the titles on the owner's Jellyfin server; every other filter still applies.
+    private static let statuses = [("all", "All"), ("watching", "Watching"), ("planned", "Planned"), ("completed", "Completed"), ("dropped", "Dropped"), ("jellyfin", "Jellyfin"), ("queue", "Queue")]
     private var statusChips: some View {
         let counts = statusCounts
         return ScrollView(.horizontal) {
@@ -361,6 +366,7 @@ struct LibraryView: View {
         let base = query(status: "all", genres: genres, drive: drive, favorites: favoritesOnly)
         var counts = Dictionary(grouping: base, by: \.status).mapValues(\.count)
         counts["all"] = base.count; counts["queue"] = base.count { $0.queued == true }
+        counts["jellyfin"] = query(status: "jellyfin", genres: genres, drive: drive, favorites: favoritesOnly).count
         return counts
     }
     private var disks: [DiskSummary] { let ids = Set(collection.map(\.id)); return DiskSummary.make(store.workspace.locations.filter { ids.contains($0.titleId) }) }
@@ -377,7 +383,9 @@ struct LibraryView: View {
     private func query(status: String, genres: Set<String>, drive: String, favorites: Bool) -> [MediaTitle] {
         var query = LibraryQuery()
         query.category = category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all"
-        query.status = status == "queue" ? "all" : status; query.queued = status == "queue"; query.genres = genres; query.favorites = favorites
+        query.status = ["queue", "jellyfin"].contains(status) ? "all" : status; query.queued = status == "queue"; query.genres = genres; query.favorites = favorites
+        // The saved Jellyfin list (JellyfinShelf) works away from home and after sign-out.
+        query.jellyfin = status == "jellyfin"; query.jellyfinTitles = status == "jellyfin" ? jellyfin.titleIDs(diary: collection) : []
         query.disk = drive.isEmpty ? "all" : ["mapped", "unmapped"].contains(drive) || drive.hasPrefix("[") || drive.hasPrefix("drive:") ? drive : "drive:" + drive.uppercased()
         query.sort = sort
         return store.libraryTitles(query, source: ratingSource)

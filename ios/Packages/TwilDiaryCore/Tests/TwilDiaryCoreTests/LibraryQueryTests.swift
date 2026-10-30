@@ -53,6 +53,30 @@ private func adding(_ dates: [String: String], to workspace: Workspace) throws -
     #expect(Array(sorted.dropFirst(2)) == undated)
 }
 
+@Test func jellyfinKeepsTitlesWithAPresentJellyfinFolderOrAMatchInTheJellyfinList() throws {
+    let sample = SampleWorkspace.make()
+    let ids = sample.activeTitles.map(\.id)
+    #expect(ids.count >= 3)
+    var value = try JSONSerialization.jsonObject(with: JSONEncoder().encode(sample)) as! [String: Any]
+    // The first title has a Jellyfin folder; the second had one Jellyfin no longer sees.
+    func folder(_ id: String, _ title: String, _ evidence: String) -> [String: Any] {
+        ["id": id, "titleId": title, "deviceName": "Jellyfin", "deviceId": "jellyfin", "volumeId": "jellyfin:E:", "driveLetter": "E:",
+         "root": "E:\\", "relativePath": "Movies\\" + id, "fileCount": 1, "evidence": evidence]
+    }
+    value["locations"] = (value["locations"] as? [[String: Any]] ?? []) + [folder("j1", ids[0], "present"), folder("j2", ids[1], "missing")]
+    let workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: value))
+    var query = LibraryQuery(); query.jellyfin = true
+    #expect(query.titles(in: workspace).map(\.id) == [ids[0]])
+    // Titles matched in the saved Jellyfin list count too, folder or not.
+    query.jellyfinTitles = [ids[2], "no-longer-in-the-diary"]
+    #expect(Set(query.titles(in: workspace).map(\.id)) == [ids[0], ids[2]])
+    // Other filters still apply on top.
+    query.status = "no such status"
+    #expect(query.titles(in: workspace).isEmpty)
+    query = LibraryQuery()
+    #expect(query.titles(in: workspace).count == workspace.activeTitles.count)
+}
+
 @Test func severalGenresMatchTitlesInAnyOfThem() throws {
     let workspace = SampleWorkspace.make()
     let genre = try #require(workspace.activeTitles.flatMap(\.genres).first)

@@ -6,6 +6,10 @@ public struct LibraryQuery: Equatable, Sendable {
     public var queued = false, favorites = false, archived = false
     /// Titles in any of these genres (the filter sheet's chips), on top of `genre`.
     public var genres: Set<String> = []
+    /// Only titles on Jellyfin: a present Jellyfin folder (from Sync now), or one of the diary
+    /// titles the Jellyfin list the phone last read was matched to.
+    public var jellyfin = false
+    public var jellyfinTitles: Set<String> = []
     public var sort = Sort.library
     public init() { }
     public func titles(in workspace: Workspace, ratingFor: (MediaTitle) -> Double? = { $0.communityScore }) -> [MediaTitle] {
@@ -23,11 +27,13 @@ public struct LibraryQuery: Equatable, Sendable {
             case "mapped": diskMatches = !copies.isEmpty
             default: diskMatches = copies.contains { $0.diskKey == disk || (disk.hasPrefix("drive:") && $0.driveLetter.uppercased() == String(disk.dropFirst(6))) }
             }
+            let jellyfinMatches = !jellyfin || jellyfinTitles.contains(title.id)
+                || copies.contains { $0.deviceId == "jellyfin" && $0.evidence == "present" }
             return (title.deletedAt != nil) == archived && (needle.isEmpty || title.name.precomposedStringWithCompatibilityMapping.lowercased().contains(needle))
                 && categoryMatches && (status == "all" || title.status == status) && (!queued || title.queued == true)
                 && (!favorites || title.favorite) && (genre.isEmpty || title.genres.contains(genre))
                 && (genres.isEmpty || title.genres.contains { genres.contains($0) })
-                && (tag.isEmpty || title.tags?.contains(tag) == true) && diskMatches
+                && (tag.isEmpty || title.tags?.contains(tag) == true) && diskMatches && jellyfinMatches
                 && (availability == "all" || confirmed == (availability == "present"))
         }
         guard sort != .library else { return selected }

@@ -205,11 +205,11 @@ struct MostWatchedList<Route: Hashable>: View {
             }
             if rows.count > Self.collapsed {
                 Button { withAnimation(.snappy) { expanded.toggle() } } label: {
-                    HStack {
+                    // Centred under the rows, the chevron beside the words.
+                    HStack(spacing: 6) {
                         Text(expanded ? "Show top \(Self.collapsed)" : "Show all \(rows.count)").font(.system(size: 14, weight: .semibold))
-                        Spacer(minLength: 8)
                         DiaryIcon(name: "chevron-down", size: 14).rotationEffect(.degrees(expanded ? 180 : 0))
-                    }.foregroundStyle(.secondary).padding(.horizontal, 12).frame(minHeight: 44).contentShape(Rectangle())
+                    }.foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("\(identifier)-more")
             }
         }.diaryPanel(padding: 4, radius: 16)

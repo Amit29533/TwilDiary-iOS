@@ -1,6 +1,8 @@
 import Foundation
 import Observation
 import Security
+import UIKit
+import TwilDiaryCore
 
 /// The owner's Jellyfin server: its address (app settings) and API key (Keychain, this device only).
 /// The phone reads Jellyfin over the home network, so the key never goes to the TwilDiary server.
@@ -40,9 +42,11 @@ import Security
         var q = query; q[kSecValueData as String] = data; q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         guard SecItemAdd(q as CFDictionary, nil) == errSecSuccess else { throw APIError.message("Could not save the Jellyfin key securely.") }
     }
+    /// Forgetting the server also drops the Jellyfin list and posters saved on this iPhone.
     static func forget() {
         SecItemDelete(query as CFDictionary)
         for key in [addressKey, excludedKey, summaryKey] { UserDefaults.standard.removeObject(forKey: key) }
+        JellyfinShelf.shared.forget()
     }
     static var configured: Bool { address != nil && apiKey != nil }
     static var keyHint: String? { apiKey.map { String($0.suffix(4)) } }
@@ -61,7 +65,7 @@ struct JellyfinLibrary: Identifiable, Sendable, Equatable {
 
 /// One movie or show on Jellyfin, for the Jellyfin page: its drive (from its folder) and the
 /// diary title it is, when the diary has it (matched by TMDB id and type).
-struct JellyfinEntry: Identifiable, Hashable, Sendable {
+struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let name: String
     let year: Int?
@@ -71,6 +75,112 @@ struct JellyfinEntry: Identifiable, Hashable, Sendable {
     let drive: String
     let poster: URL?
     var diaryID: String?
+}
+
+/// The Jellyfin list last read at home, kept on this iPhone so the Jellyfin page and Library's
+/// Jellyfin chip work away from the home network; each read at home replaces it. It stays
+/// through sign-out (it is the owner's media server, not the diary) and goes with Forget Jellyfin.
+@MainActor @Observable final class JellyfinShelf {
+    static let shared = JellyfinShelf()
+    private struct Saved: Codable { let at: Date; let personal: Int; let entries: [JellyfinEntry] }
+    private(set) var entries: [JellyfinEntry] = []
+    private(set) var personal = 0
+    private(set) var savedAt: Date?
+    private var lastTry: Date?
+    private let file: URL
+    init(file: URL = URL.applicationSupportDirectory.appending(path: "Jellyfin/library.json")) {
+        self.file = file
+        if let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Saved.self, from: data) { apply(saved) }
+    }
+    private func apply(_ saved: Saved) {
+        entries = saved.entries; personal = saved.personal; savedAt = saved.at
+    }
+    /// Preview data (UI tests) is shown but never written over the owner's saved list.
+    func replace(_ entries: [JellyfinEntry], personal: Int, save: Bool = true) {
+        let saved = Saved(at: .now, personal: personal, entries: entries)
+        apply(saved)
+        guard save else { return }
+        do {
+            let folder = file.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try JSONEncoder().encode(saved).write(to: file, options: [.atomic, .completeFileProtection])
+            var values = URLResourceValues(); values.isExcludedFromBackup = true
+            var url = folder; try url.setResourceValues(values)
+        } catch {
+            // The list still shows until the app closes; the next read at home saves it again.
+        }
+    }
+    func forget() {
+        entries = []; personal = 0; savedAt = nil; lastTry = nil
+        try? FileManager.default.removeItem(at: file)
+        Task { await JellyfinPosterCache.shared.removeAll() }
+    }
+    /// Reads Jellyfin again when it can be reached (at home), at most every 10 minutes; quiet
+    /// when it can't, so the saved list simply stays.
+    func refreshQuietly(store: DiaryStore) async {
+        guard !store.isPreview, lastTry.map({ Date.now.timeIntervalSince($0) > 600 }) ?? true, JellyfinSettings.configured else { return }
+        lastTry = .now
+        if let found = try? await JellyfinSync(store: store).browse() { replace(found.entries, personal: found.personal) }
+    }
+    /// The diary title each entry is, matched again against the current diary (TMDB id and type),
+    /// so titles added since the list was read count; otherwise the saved match while that title
+    /// is still in the diary. Nothing points at a removed title or a signed-out diary.
+    static func matched(_ entries: [JellyfinEntry], diary titles: [MediaTitle]) -> [JellyfinEntry] {
+        var diary: [String: String] = [:], present = Set<String>()
+        for title in titles {
+            present.insert(title.id)
+            guard let tmdb = title.tmdbId else { continue }
+            let key = (title.isSeries ? "tv:" : "movie:") + String(tmdb)
+            if diary[key] == nil { diary[key] = title.id }
+        }
+        return entries.map { entry in
+            var copy = entry
+            copy.diaryID = entry.tmdb.flatMap { diary[(entry.movie ? "movie:" : "tv:") + String($0)] }
+                ?? entry.diaryID.flatMap { present.contains($0) ? $0 : nil }
+            return copy
+        }
+    }
+    /// The diary titles on Jellyfin, by the saved list (Library's Jellyfin chip).
+    func titleIDs(diary titles: [MediaTitle]) -> Set<String> {
+        Set(Self.matched(entries, diary: titles).compactMap(\.diaryID))
+    }
+}
+
+/// Jellyfin's posters, kept on disk (outside the diary, so sign-out leaves them) and served from
+/// there without asking Jellyfin again: a poster URL carries its image tag, so a changed poster is
+/// a new URL. Away from home the saved copies still show.
+private final class JellyfinPosterMemory: @unchecked Sendable {
+    // NSCache is safe to use from any thread.
+    let values = NSCache<NSURL, UIImage>()
+}
+
+actor JellyfinPosterCache {
+    static let shared = JellyfinPosterCache()
+    private let session: URLSession
+    private nonisolated let memory = JellyfinPosterMemory()
+    init() {
+        let config = URLSessionConfiguration.default
+        config.httpShouldSetCookies = false; config.httpCookieAcceptPolicy = .never
+        config.timeoutIntervalForRequest = 10; config.timeoutIntervalForResource = 20
+        config.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024,
+                                   directory: URL.applicationSupportDirectory.appending(path: "Jellyfin/Posters"))
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        session = URLSession(configuration: config)
+        memory.values.countLimit = 300
+    }
+    nonisolated func resident(_ url: URL) -> UIImage? { memory.values.object(forKey: url as NSURL) }
+    func image(_ url: URL) async -> UIImage? {
+        if let image = resident(url) { return image }
+        guard let loaded = try? await session.data(from: url),
+              (loaded.1 as? HTTPURLResponse)?.statusCode == 200, loaded.0.count <= 12 * 1024 * 1024,
+              let image = UIImage(data: loaded.0) else { return nil }
+        memory.values.setObject(image, forKey: url as NSURL)
+        return image
+    }
+    func removeAll() {
+        memory.values.removeAllObjects()
+        session.configuration.urlCache?.removeAllCachedResponses()
+    }
 }
 
 struct JellyfinSummary: Codable, Sendable, Equatable {

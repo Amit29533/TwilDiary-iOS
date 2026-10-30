@@ -436,6 +436,11 @@ import UIKit
         for _ in 0..<5 { if toshiba.isHittable { break }; scrollSheet(app) }
         toshiba.tap()
         XCTAssertTrue(app.buttons["filter-show"].label.hasPrefix("Show 1 title")); capture("Library filter sheet")
+        // Pulled up, the whole board shows (it used to stay at half height and only scroll).
+        scrollSheet(app)
+        let board = app.navigationBars["Filters"]
+        XCTAssertTrue(board.waitForExistence(timeout: 5))
+        XCTAssertLessThan(board.frame.minY, app.frame.height * 0.2, "The filter sheet pulls up to full height"); capture("Library filter sheet full height")
         app.buttons["filter-show"].tap()
         XCTAssertTrue(app.buttons["title-night"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["title-again"].exists); XCTAssertFalse(app.buttons["title-frieren"].exists)
         XCTAssertEqual(app.buttons["library-filters"].value as? String, "2 active"); capture("Library composed filters")
@@ -733,6 +738,15 @@ import UIKit
         XCTAssertTrue(app.buttons["jellyfin-item-j-severance"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["jellyfin-item-j-arrival"].exists, "A drive filter keeps only that drive")
         capture("Jellyfin page drive filter")
+        // Library's Jellyfin chip (before Queue): the diary titles on Jellyfin, from the saved list.
+        let library = app.tabBars.buttons["Library"]
+        for _ in 0..<3 where !library.exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
+        XCTAssertTrue(library.waitForExistence(timeout: 5)); library.tap()
+        tapStatusChip(app, "jellyfin")
+        XCTAssertTrue(app.buttons["title-frieren"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["title-severance"].exists)
+        XCTAssertFalse(app.buttons["title-quiet-orbit"].exists, "Titles not on Jellyfin leave the Jellyfin chip")
+        XCTAssertEqual(app.buttons["library-status-jellyfin"].value as? String, "2 titles"); capture("Library Jellyfin chip")
+        XCTAssertLessThan(app.buttons["library-status-jellyfin"].frame.maxX, app.buttons["library-status-queue"].frame.minX, "Jellyfin sits before Queue")
     }
     func testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites() {
         let app = launch(); app.tabBars.buttons["Library"].tap()
@@ -1195,7 +1209,8 @@ import UIKit
         }
         XCTAssertLessThanOrEqual(chip.frame.maxX, app.frame.width); chip.tap()
     }
-    /// Half-height sheets scroll inside their lower half; dragging there never moves the sheet itself.
+    /// Drags inside a sheet's lower half: a sheet that can grow (Library's filters) is pulled to full
+    /// height first, then the next drags scroll it.
     private func scrollSheet(_ app: XCUIApplication) {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66)))
