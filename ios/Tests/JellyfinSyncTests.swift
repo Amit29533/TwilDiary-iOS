@@ -82,6 +82,28 @@ import TwilDiaryCore
         XCTAssertEqual(names(favorites: true), [], "Only diary titles can be favourites")
         XCTAssertEqual(names(sort: .year), ["bocchi", "dune", "arrival"])
     }
+    func testTheServerGetsTheImageTagNotTheHomeAddressAndOnlyAChangedListIsSentAgain() throws {
+        let base = try XCTUnwrap(URL(string: "http://192.168.1.20:8096"))
+        let poster = JellyfinClient.posterURL(base: base, item: "abc", tag: "f00d")
+        XCTAssertEqual(poster?.absoluteString, "http://192.168.1.20:8096/Items/abc/Images/Primary?fillHeight=450&quality=90&tag=f00d")
+        XCTAssertNil(JellyfinClient.posterURL(base: base, item: "abc", tag: nil))
+        let arrival = JellyfinEntry(id: "abc", name: "Arrival", year: 2016, movie: true, tmdb: 329865, path: "E:\\Movies\\Arrival", drive: "E:",
+                                    poster: poster, diaryID: "film", genres: ["Drama"])
+        let sent = JellyfinShelf.uploadItem(arrival)
+        XCTAssertEqual(sent["imageTag"] as? String, "f00d")
+        XCTAssertEqual(sent["kind"] as? String, "movie")
+        XCTAssertFalse(sent.values.contains { "\($0)".contains("192.168") }, "No home network address leaves the phone")
+        XCTAssertNil(sent["diaryID"], "Diary matches are worked out on each device")
+        let other = entry("xyz", movie: false, tmdb: nil)
+        // Order and diary matches don't change what is sent; a renamed title or another personal count does.
+        XCTAssertEqual(JellyfinShelf.digest([arrival, other], personal: 1), JellyfinShelf.digest([other, arrival], personal: 1))
+        XCTAssertNotEqual(JellyfinShelf.digest([arrival, other], personal: 1), JellyfinShelf.digest([arrival, other], personal: 2))
+        let renamed = JellyfinEntry(id: "abc", name: "Arrival (2016)", year: 2016, movie: true, tmdb: 329865, path: arrival.path,
+                                    drive: "E:", poster: poster, diaryID: "film", genres: ["Drama"])
+        XCTAssertNotEqual(JellyfinShelf.digest([arrival], personal: 0), JellyfinShelf.digest([renamed], personal: 0))
+        var matched = arrival; matched.diaryID = nil
+        XCTAssertEqual(JellyfinShelf.digest([arrival], personal: 0), JellyfinShelf.digest([matched], personal: 0))
+    }
     func testOnlyMoviesAndShowsAreOnByDefaultAndPersonalLibrariesAreNeverRead() {
         let types: [String?] = ["movies", "tvshows", "mixed", nil, "photos", "homevideos", "music"]
         let libraries = types.enumerated().map { JellyfinLibrary(id: "\($0.offset)", name: "L", type: $0.element) }

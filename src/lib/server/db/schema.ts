@@ -658,3 +658,33 @@ export const favourites = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.kind, t.ref] }), index('favourites_saved').on(t.savedAt)]
 );
+
+/** The owner's Jellyfin Movies and Shows, as the phone last read them at home (diary or not),
+ * so every device has the list away from home. Personal media (no TMDB, IMDb or TVDB id) is
+ * never sent; only its count is kept. A full read replaces the list (rows it didn't see go). */
+export const jellyfinItems = sqliteTable(
+  'jellyfin_items',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    year: integer('year'),
+    kind: text('kind', { enum: ['movie', 'series'] }).notNull(),
+    tmdb: integer('tmdb'),
+    path: text('path').notNull(),
+    drive: text('drive').notNull(),
+    imageTag: text('image_tag'),
+    genres: text('genres', { mode: 'json' }).$type<string[]>().notNull(),
+    seenAt: text('seen_at').notNull()
+  },
+  (t) => [index('jellyfin_items_seen').on(t.seenAt)]
+);
+/** One row: when the list was last read in full, and how many personal items were left out. */
+export const jellyfinLibraryState = sqliteTable(
+  'jellyfin_library_state',
+  {
+    id: integer('id').primaryKey(),
+    personal: integer('personal').notNull(),
+    savedAt: text('saved_at').notNull()
+  },
+  (t) => [check('jellyfin_library_state_one', sql`${t.id} = 1`)]
+);

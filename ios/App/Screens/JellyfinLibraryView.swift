@@ -8,7 +8,6 @@ import TwilDiaryCore
 struct JellyfinLibraryView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @State private var sync: JellyfinSync?
     @State private var shelf = JellyfinShelf.shared
     @State private var loaded = false
     @State private var loading = false
@@ -96,16 +95,13 @@ struct JellyfinLibraryView: View {
                 .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : .white.opacity(0.12)))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(id)
     }
+    /// At home, Jellyfin itself (and the server gets the list if it changed); away, the server's
+    /// copy when another device read Jellyfin since, with a note that it's a saved list.
     private func load() async {
-        if sync == nil { sync = JellyfinSync(store: store) }
-        guard let sync else { return }
         loading = true; failure = nil
         defer { loading = false }
-        do {
-            let found = try await sync.browse()
-            shelf.replace(found.entries, personal: found.personal, save: !store.isPreview)
-            if let drive, !shelf.entries.contains(where: { $0.drive == drive }) { self.drive = nil }
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do { try await shelf.refresh(store: store) } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        if let drive, !shelf.entries.contains(where: { $0.drive == drive }) { self.drive = nil }
     }
 }
 

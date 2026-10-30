@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import Security
 import UIKit
+import CryptoKit
 import TwilDiaryCore
 
 /// The owner's Jellyfin server: its address (app settings) and API key (Keychain, this device only).
@@ -83,14 +84,20 @@ struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
 }
 
 /// The Jellyfin list last read at home, kept on this iPhone so the Jellyfin page and Library's
-/// Jellyfin chip work away from the home network; each read at home replaces it. It stays
-/// through sign-out (it is the owner's media server, not the diary) and goes with Forget Jellyfin.
+/// Jellyfin chip work away from the home network, and on the server so every device has it (a
+/// new phone, a reinstall). Reading Jellyfin at home replaces both; away, a newer server copy
+/// (another device read it since) replaces this one. It stays through sign-out (it is the owner's
+/// media server, not the diary); Forget Jellyfin drops only this iPhone's copy.
 @MainActor @Observable final class JellyfinShelf {
     static let shared = JellyfinShelf()
-    private struct Saved: Codable { let at: Date; let personal: Int; let entries: [JellyfinEntry] }
+    /// `server`: the server's time for this list (to ask "unchanged?"); `uploaded`: a digest of the
+    /// list last sent, so an unchanged list is never written to the server again.
+    private struct Saved: Codable { let at: Date; let personal: Int; let entries: [JellyfinEntry]; var server: String?; var uploaded: String? }
     private(set) var entries: [JellyfinEntry] = []
     private(set) var personal = 0
     private(set) var savedAt: Date?
+    private var server: String?
+    private var uploaded: String?
     private var lastTry: Date?
     private let file: URL
     init(file: URL = URL.applicationSupportDirectory.appending(path: "Jellyfin/library.json")) {
@@ -98,34 +105,101 @@ struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
         if let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Saved.self, from: data) { apply(saved) }
     }
     private func apply(_ saved: Saved) {
-        entries = saved.entries; personal = saved.personal; savedAt = saved.at
+        entries = saved.entries; personal = saved.personal; savedAt = saved.at; server = saved.server; uploaded = saved.uploaded
     }
     /// Preview data (UI tests) is shown but never written over the owner's saved list.
-    func replace(_ entries: [JellyfinEntry], personal: Int, save: Bool = true) {
-        let saved = Saved(at: .now, personal: personal, entries: entries)
-        apply(saved)
-        guard save else { return }
+    func replace(_ entries: [JellyfinEntry], personal: Int, save: Bool = true, at date: Date = .now) {
+        // What the server holds is unchanged by a new read until it is sent (and then only if it differs).
+        apply(Saved(at: date, personal: personal, entries: entries, server: server, uploaded: uploaded))
+        if save { write() }
+    }
+    private func write() {
+        guard let savedAt else { return }
         do {
             let folder = file.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let saved = Saved(at: savedAt, personal: personal, entries: entries, server: server, uploaded: uploaded)
             try JSONEncoder().encode(saved).write(to: file, options: [.atomic, .completeFileProtection])
             var values = URLResourceValues(); values.isExcludedFromBackup = true
             var url = folder; try url.setResourceValues(values)
         } catch {
-            // The list still shows until the app closes; the next read at home saves it again.
+            // The list still shows until the app closes; the next read saves it again.
         }
     }
     func forget() {
-        entries = []; personal = 0; savedAt = nil; lastTry = nil
+        entries = []; personal = 0; savedAt = nil; server = nil; uploaded = nil; lastTry = nil
         try? FileManager.default.removeItem(at: file)
         Task { await JellyfinPosterCache.shared.removeAll() }
     }
-    /// Reads Jellyfin again when it can be reached (at home), at most every 10 minutes; quiet
-    /// when it can't, so the saved list simply stays.
+    /// At home: reads Jellyfin, keeps the list here and sends it to the server when it changed.
+    /// Away (or Jellyfin not set up on this device): takes the server's copy when it is newer,
+    /// then still throws Jellyfin's error, so the page can say the list is a saved one.
+    func refresh(store: DiaryStore) async throws {
+        let startedAt = Date.now
+        do {
+            let found = try await JellyfinSync(store: store).browse()
+            replace(found.entries, personal: found.personal, save: !store.isPreview, at: startedAt)
+            if !store.isPreview { await upload(store: store, startedAt: startedAt) }
+        } catch {
+            if !store.isPreview && !(error is CancellationError) { await download(store: store) }
+            throw error
+        }
+    }
+    /// The same, quietly and at most every 10 minutes (Library): the saved list simply stays when
+    /// neither Jellyfin nor the server can be reached.
     func refreshQuietly(store: DiaryStore) async {
-        guard !store.isPreview, lastTry.map({ Date.now.timeIntervalSince($0) > 600 }) ?? true, JellyfinSettings.configured else { return }
+        guard !store.isPreview, lastTry.map({ Date.now.timeIntervalSince($0) > 600 }) ?? true else { return }
         lastTry = .now
-        if let found = try? await JellyfinSync(store: store).browse() { replace(found.entries, personal: found.personal) }
+        try? await refresh(store: store)
+    }
+    /// What the server keeps per title: no poster URL (it holds the home network address), only
+    /// Jellyfin's image tag, from which each device builds the URL with its own Jellyfin address.
+    static func uploadItem(_ entry: JellyfinEntry) -> [String: Any] {
+        let tag = entry.poster.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "tag" }?.value }
+        return ["id": entry.id, "name": entry.name, "year": entry.year as Any? ?? NSNull(), "kind": entry.movie ? "movie" : "series",
+                "tmdb": entry.tmdb as Any? ?? NSNull(), "path": entry.path, "drive": entry.drive, "imageTag": tag as Any? ?? NSNull(),
+                "genres": entry.genres ?? []]
+    }
+    /// A fingerprint of the list as sent: same list, same digest, no upload.
+    static func digest(_ entries: [JellyfinEntry], personal: Int) -> String {
+        let items = entries.sorted { $0.id < $1.id }.map(uploadItem)
+        let data = (try? JSONSerialization.data(withJSONObject: ["personal": personal, "items": items], options: [.sortedKeys])) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    private func upload(store: DiaryStore, startedAt: Date) async {
+        let digest = Self.digest(entries, personal: personal)
+        guard digest != uploaded else { return }
+        struct Receipt: Decodable { let savedAt: String?; let stale: Bool? }
+        let items = entries.map(Self.uploadItem)
+        let pages = stride(from: 0, to: max(items.count, 1), by: 100).map { Array(items[$0..<min($0 + 100, items.count)]) }
+        do {
+            for (index, page) in pages.enumerated() {
+                let last = index == pages.count - 1
+                let receipt: Receipt = try await store.read("/api/jellyfin/library", method: "POST",
+                    body: ["startedAt": startedAt.formatted(.iso8601), "done": last, "personal": personal, "items": page])
+                if last { server = receipt.savedAt }
+            }
+            uploaded = digest; write()
+        } catch {
+            // Offline or signed out: the next read at home sends it.
+        }
+    }
+    private func download(store: DiaryStore) async {
+        struct Item: Decodable { let id: String; let name: String; let year: Int?; let kind: String; let tmdb: Int?; let path: String; let drive: String; let imageTag: String?; let genres: [String] }
+        struct Library: Decodable { let savedAt: String?; let personal: Int?; let items: [Item]?; let unchanged: Bool? }
+        let path = CatalogTools.apiPath("/api/jellyfin/library", query: server.map { ["since": $0] } ?? [:])
+        guard let library: Library = try? await store.read(path), library.unchanged != true,
+              let at = library.savedAt, let items = library.items, at != server,
+              // Only a copy newer than this one: a list this iPhone read later and couldn't send yet stays.
+              let date = try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(at), date > (savedAt ?? .distantPast) else { return }
+        let base = JellyfinSettings.address
+        let list = items.map { item in
+            JellyfinEntry(id: item.id, name: item.name, year: item.year, movie: item.kind == "movie", tmdb: item.tmdb, path: item.path,
+                          drive: item.drive, poster: base.flatMap { JellyfinClient.posterURL(base: $0, item: item.id, tag: item.imageTag) },
+                          diaryID: nil, genres: item.genres)
+        }
+        apply(Saved(at: date, personal: library.personal ?? 0, entries: list, server: at, uploaded: Self.digest(list, personal: library.personal ?? 0)))
+        write()
     }
     /// The diary title each entry is, matched again against the current diary (TMDB id and type),
     /// so titles added since the list was read count; otherwise the saved match while that title
@@ -261,9 +335,10 @@ struct JellyfinClient: Sendable {
     }
     func server() async throws -> Server { try await get("System/Info") }
     /// The item's poster from Jellyfin itself (image requests need no key, so none is put in the URL).
-    func poster(_ item: Item) -> URL? {
-        guard let tag = item.ImageTags?["Primary"] else { return nil }
-        var components = URLComponents(url: base.appending(path: "Items/\(item.Id)/Images/Primary"), resolvingAgainstBaseURL: false)
+    func poster(_ item: Item) -> URL? { Self.posterURL(base: base, item: item.Id, tag: item.ImageTags?["Primary"]) }
+    static func posterURL(base: URL, item: String, tag: String?) -> URL? {
+        guard let tag else { return nil }
+        var components = URLComponents(url: base.appending(path: "Items/\(item)/Images/Primary"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "fillHeight", value: "450"), URLQueryItem(name: "quality", value: "90"), URLQueryItem(name: "tag", value: tag)]
         return components?.url
     }
