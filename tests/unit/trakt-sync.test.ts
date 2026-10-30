@@ -863,6 +863,47 @@ test('a returning remote watchlist item never silently downgrades an existing Wa
   assert.equal(change.direction, 'conflict');
   await safe(f, fake, id);
   assert.equal((await getTitle(f.db, 'film')).status, 'watching');
+  // Use Trakt keeps it on the watchlist without switching the show back to Planned.
+  await applySyncChange(f.db, traktEnv, id, change.id, 'trakt', fakeTmdb, fake.transport);
+  assert.equal((await getTitle(f.db, 'film')).status, 'watching');
+  assert.ok(fake.state.movieWatchlist.has(100));
+});
+test('starting a Planned show takes it off the Trakt watchlist without asking and keeps it Watching', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f, null, 'planned');
+  const fake = fakeTrakt();
+  fake.state.movieWatchlist.add(100);
+  let p = await preview(f, fake);
+  await safe(f, fake, p.id);
+  await applySyncChange(f.db, traktEnv, p.id, undefined, 'apply', fakeTmdb, fake.transport);
+  assert.equal((await syncStatus(f.db, p.id)).run?.state, 'complete');
+  const planned = await getTitle(f.db, 'film');
+  await patchTitle(f.db, 'film', { expectedVersion: planned.version, status: 'watching' });
+  p = await preview(f, fake);
+  const change = p.status.items.find((row) => row.kind === 'watchlist')!;
+  assert.equal(change.direction, 'push');
+  assert.equal(change.review, false, 'progress, not a removal to review');
+  assert.match(change.detail, /Off your Trakt watchlist · watching here/);
+  await safe(f, fake, p.id);
+  assert.equal(fake.state.movieWatchlist.has(100), false);
+  assert.equal((await getTitle(f.db, 'film')).status, 'watching');
+});
+test('a finished title still on the Trakt watchlist is taken off it on the first sync', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  await localMovie(f, null, 'completed');
+  const fake = fakeTrakt();
+  fake.state.movieWatchlist.add(100);
+  const p = await preview(f, fake);
+  const change = p.status.items.find((row) => row.kind === 'watchlist')!;
+  assert.equal(change.direction, 'push');
+  assert.equal(change.review, false);
+  await safe(f, fake, p.id);
+  assert.equal(fake.state.movieWatchlist.has(100), false);
+  assert.equal((await getTitle(f.db, 'film')).status, 'completed');
 });
 
 test('rate limits preserve the preview and enforce the provider cooldown without retrying', async (t) => {

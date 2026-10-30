@@ -520,13 +520,26 @@ function decide(
     decision = { direction: 'conflict', review: true };
   if (item.kind === 'watchlist' && remoteValue && !title && facts.watched)
     decision = { direction: 'conflict', review: true };
+  // Started or finished in the diary: off the Trakt watchlist, as Trakt itself does when you
+  // watch something. Leaving Planned this way is progress, not a removal to review (Use Trakt
+  // used to put it back and switch the show to Planned). A watchlist entry Trakt added after the
+  // last sync still asks (the baseline then records it as not planned here).
+  const started = title?.status === 'watching' || title?.status === 'completed';
+  const progressed =
+    item.kind === 'watchlist' &&
+    started &&
+    local === null &&
+    !!remoteValue &&
+    (!existingBaseline || existingBaseline.localValue === 'true');
+  if (progressed) decision = { direction: 'push', review: false };
   if (!decision) return null;
   return {
     direction: decision.direction,
     review: decision.review,
     payload,
-    detail:
-      decision.direction === 'link'
+    detail: progressed
+      ? `Off your Trakt watchlist · ${title!.status === 'completed' ? 'finished' : 'watching'} here`
+      : decision.direction === 'link'
         ? 'Already matched · keep both sides linked'
         : decision.direction === 'conflict'
           ? 'Both sides differ. Choose which version to keep.'
@@ -2477,7 +2490,9 @@ async function applyOne(
           expectedVersion: title.version,
           score: Number(payload.remoteValue)
         });
-      else if (title.status !== 'planned')
+      // Trakt's watchlist means "plan to watch": it can bring a dropped show back to Planned, but
+      // never downgrades one you're watching or have finished.
+      else if (title.status === 'dropped')
         await patchTitle(db, title.id, { expectedVersion: title.version, status: 'planned' });
     } else if (change.kind === 'rating' && title && title.score !== null)
       await patchTitle(db, title.id, { expectedVersion: title.version, score: null });
