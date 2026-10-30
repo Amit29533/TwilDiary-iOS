@@ -12,6 +12,10 @@ import XCTest
     func testPhoneChromeGridSearchAndEpisodeTrackStayInsideTheViewport() {
         let app = launch()
         app.tabBars.buttons["Home"].tap(); capture("Home", app: app)
+        // Pages scroll under the floating tab bar to the screen's edge, with no black home-indicator band.
+        let page = app.scrollViews.firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(page.frame.maxY, app.frame.maxY - 10, "Home ends at \(page.frame.maxY) of \(app.frame.maxY)")
         app.tabBars.buttons["Library"].tap()
         let titles = ["after-rain", "again", "frieren"].map { app.buttons["title-" + $0] }
         for title in titles { XCTAssertTrue(title.waitForExistence(timeout: 5)); XCTAssertGreaterThanOrEqual(title.frame.minX, 10); XCTAssertLessThanOrEqual(title.frame.maxX, app.frame.width - 10) }

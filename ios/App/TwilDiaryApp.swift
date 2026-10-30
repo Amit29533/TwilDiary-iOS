@@ -144,11 +144,11 @@ struct RootView: View {
                     AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
-                    // Title heroes and Glass backgrounds reach under the status bar. The bottom
-                    // stays inside the safe area: filling it too (6a2b723) made the title Undo
-                    // and Trakt Pause UI cases fail where they had passed, and ignoring the
-                    // keyboard region let the keyboard cover the tab bar.
-                    .ignoresSafeArea(.container, edges: .top)
+                    // The tab controller fills the screen and hands pages the real insets: heroes
+                    // reach under the status bar, and lists scroll under the floating tab bar to
+                    // the bottom edge instead of stopping at a black home-indicator band.
+                    // Container only: ignoring the keyboard region let the keyboard cover the tab bar.
+                    .ignoresSafeArea(.container)
                     .background(.black)
                     .overlay(alignment: .bottom) { RootNoticeBanner() }
                     // Milestones (a season or show finished, round watch counts) get a starfall over everything.
