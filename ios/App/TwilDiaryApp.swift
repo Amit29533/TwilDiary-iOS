@@ -83,6 +83,25 @@ struct SavedTitleRoute: Hashable {
     var libraryRevision = 0
     var statsRevision = 0
     var detailTabs = Set<AppTab>()
+    init() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--ui-testing"), let value = args.first(where: { $0.hasPrefix("--ui-profile-format=") }) {
+            let parts = value.dropFirst("--ui-profile-format=".count).split(separator: ":")
+            if parts.count == 2, let id = Int(parts[1]) {
+                selectedTab = .home
+                var path = NavigationPath()
+                switch parts[0] {
+                case "cast": path.append(PersonRoute(id: id, sourceTitle: id == 974169 ? "Wednesday" : nil, sourceRole: id == 974169 ? "Wednesday Addams" : nil))
+                case "character": path.append(CharacterRoute(id: id))
+                case "voice": path.append(VoiceActorRoute(id: id, watchedCount: 15))
+                default: break
+                }
+                paths[.home] = path
+            }
+        }
+        #endif
+    }
     func setDetailVisibility(_ visible: Bool, tab: AppTab) {
         guard detailTabs.contains(tab) != visible else { return }
         if visible { detailTabs.insert(tab) } else { detailTabs.remove(tab) }

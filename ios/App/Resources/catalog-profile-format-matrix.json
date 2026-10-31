@@ -1,0 +1,520 @@
+{
+  "note": "Public factual fields sampled 2026-10-31; biography narrative is synthetic, preserving observed markup/link/metadata patterns. DEBUG-only fixture; excluded from Release by catalog-*.json rule.",
+  "profiles": [
+    {
+      "id": 70069,
+      "kind": "character",
+      "name": "Kurumi Tokisaki",
+      "native": "時崎狂三",
+      "aliases": [
+        "Nightmare"
+      ],
+      "birthday": {
+        "year": null,
+        "month": 6,
+        "day": 10
+      },
+      "age": "17 (physically)",
+      "gender": "Female",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 7988,
+      "description": "__Height:__ 157 cm\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/70069"
+    },
+    {
+      "id": 136070,
+      "kind": "character",
+      "name": "Shinobu Kochou",
+      "native": "胡蝶しのぶ",
+      "aliases": [
+        "Insect Hashira",
+        "Insect Pillar"
+      ],
+      "birthday": {
+        "year": null,
+        "month": 2,
+        "day": 24
+      },
+      "age": "18",
+      "gender": "Female",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 9381,
+      "description": "__Height:__ 151 cm (4'11\")\n__Combat Style:__ Insect Breathing\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/136070"
+    },
+    {
+      "id": 176754,
+      "kind": "character",
+      "name": "Frieren",
+      "native": "フリーレン",
+      "aliases": [],
+      "birthday": {
+        "year": null,
+        "month": null,
+        "day": null
+      },
+      "age": "1000+",
+      "gender": "Female",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 22584,
+      "description": "\n\n\n\nShort profile.",
+      "source": "https://anilist.co/character/176754"
+    },
+    {
+      "id": 138100,
+      "kind": "character",
+      "name": "Anya Forger",
+      "native": "アーニャ・フォージャー",
+      "aliases": [
+        "Test Subject 007",
+        "Anya Williams",
+        "Anya Levski",
+        "Anya Roche",
+        "Anya Klein",
+        "K-212",
+        "Princess Anya",
+        "Chihuahua Girl"
+      ],
+      "birthday": {
+        "year": null,
+        "month": null,
+        "day": null
+      },
+      "age": "6 (self asserted)",
+      "gender": "Female",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 13166,
+      "description": "__Height:__ 99.5 cm (3'2\")\n__Occupation:__ First-Grade Student, Test Subject (Formerly)\n__Affiliation:__ Eden Academy, Unknown Organization (Formerly)\n__Relatives:__ <a href=\"https://anilist.co/character/138101/Loid-Forger\">Loid Forger</a> (Adoptive Father), <a href=\"https://anilist.co/character/138102/Yor-Forger\">Yor Forger</a> (Adoptive Mother)\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/138100"
+    },
+    {
+      "id": 90169,
+      "kind": "character",
+      "name": "Violet Evergarden",
+      "native": "ヴァイオレット・エヴァーガーデン",
+      "aliases": [
+        "Auto Memories Doll",
+        "Leidenschaftlich's Soldier Maiden",
+        "Vi"
+      ],
+      "birthday": {
+        "year": null,
+        "month": null,
+        "day": null
+      },
+      "age": "14-18",
+      "gender": "Female",
+      "bloodType": "A",
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 20367,
+      "description": "__Height:__ 161 cm\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/90169"
+    },
+    {
+      "id": 417,
+      "kind": "character",
+      "name": "Lelouch Lamperouge",
+      "native": "ルルーシュ・ランペルージ",
+      "aliases": [
+        "Lulu",
+        "Zero",
+        "King of Elevens",
+        "The Demon",
+        "Black King",
+        "Black Demon",
+        "Julius Kingsley"
+      ],
+      "birthday": {
+        "year": 2000,
+        "month": 12,
+        "day": 5
+      },
+      "age": "17-18",
+      "gender": "Male",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 28260,
+      "description": "__Nationality:__ Britannian\n__Height:__ 178 - 183 cm \n__Relatives:__ Nunnally Lamperouge\n__Allegiance:__ Order of the Black Knights\n__Position:__ Order of the Black Knights Leader\n__Knightmare Frame:__ Burai, Gawain, Shinkiro, Sutherland  <br>\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/417"
+    },
+    {
+      "id": 12,
+      "kind": "character",
+      "name": "Alphonse Elric",
+      "native": "アルフォンス・エルリック",
+      "aliases": [
+        "Al",
+        "Armored Alchemist"
+      ],
+      "birthday": {
+        "year": 1900,
+        "month": null,
+        "day": null
+      },
+      "age": "14-15",
+      "gender": "Male",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 7380,
+      "description": "__Birthplace:__ Resembool\n__Family:__ [Edward Elric](https://anilist.co/character/11) (brother), [Trisha Elric](https://anilist.co/character/10085) (mother, deceased)\n__Occupation:__ Alchemist\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/12"
+    },
+    {
+      "id": 7373,
+      "kind": "character",
+      "name": "Holo",
+      "native": "ホロ",
+      "aliases": [
+        "Wise Wolf of Yoitsu"
+      ],
+      "birthday": {
+        "year": null,
+        "month": null,
+        "day": null
+      },
+      "age": null,
+      "gender": "Female",
+      "bloodType": null,
+      "homeTown": null,
+      "yearsActive": [],
+      "favourites": 6999,
+      "description": "__Height:__ 160 cm (5'2)\n\n\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "source": "https://anilist.co/character/7373"
+    },
+    {
+      "id": 95869,
+      "kind": "voice",
+      "name": "Saori Hayami",
+      "native": "早見沙織",
+      "aliases": [],
+      "birthday": {
+        "year": 1991,
+        "month": 5,
+        "day": 29
+      },
+      "age": "35",
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Tokyo, Japan",
+      "yearsActive": [
+        2007
+      ],
+      "favourites": 18032,
+      "description": "__Agency:__ I'm Enterprise\n\n[Profile](https://www.imenterprise.jp/profile.php?id=74) | [Website](https://hayamisaoriofficial.com/) | [Twitter](https://twitter.com/hayami_official)  | [YouTube](https://www.youtube.com/channel/UCtUcK6HrhD024CkPDsURBwg) | [Instagram](https://www.instagram.com/hayamisaori_official/)\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.\n\n**Non-Anime Roles:**\n- Example game role\n- Example drama role\n\n~!Hidden spoiler detail.!~",
+      "source": "https://anilist.co/staff/95869"
+    },
+    {
+      "id": 100250,
+      "kind": "voice",
+      "name": "Rina Hidaka",
+      "native": "日高里菜",
+      "aliases": [],
+      "birthday": {
+        "year": 1994,
+        "month": 6,
+        "day": 15
+      },
+      "age": "32",
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Chiba Prefecture, Japan",
+      "yearsActive": [
+        2008
+      ],
+      "favourites": 1397,
+      "description": "__Height:__ 152 cm\n__Agency:__ StarCrew\n\n[Profile](https://www.starcrew.co.jp/talent/hidakarina/) | [Twitter](https://twitter.com/hidaka_rina0615) | [Instagram](https://www.instagram.com/rina_hidaka615)\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.\n\n**Non-Anime Roles:**\n- Example game role\n- Example drama role\n\n~!Hidden spoiler detail.!~",
+      "source": "https://anilist.co/staff/100250"
+    },
+    {
+      "id": 119331,
+      "kind": "voice",
+      "name": "Rie Takahashi",
+      "native": "高橋李依",
+      "aliases": [],
+      "birthday": {
+        "year": 1994,
+        "month": 2,
+        "day": 27
+      },
+      "age": "32",
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Koshigaya, Saitama Prefecture, Japan",
+      "yearsActive": [
+        2013
+      ],
+      "favourites": 16519,
+      "description": "__Agency:__ 81 Produce\n\n[Website](https://taka8rie.com/) | [Profile (81 Produce)](https://www.81produce.co.jp/actor_search/index.php/item?id=236) | [Blog](http://ameblo.jp/taka8rie/) | [Twitter](https://twitter.com/taka8rie) | [Instagram](https://www.instagram.com/riery_syame/) | [YouTube](https://m.youtube.com/channel/UC9xUIUtv3pyt_s_LtCLWP_Q) | [Wiki (en)](https://en.wikipedia.org/wiki/Rie_Takahashi) | [Wiki (jp)](https://ja.wikipedia.org/wiki/%E9%AB%98%E6%A9%8B%E6%9D%8E%E4%BE%9D)\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.\n\n**Non-Anime Roles:**\n- Example game role\n- Example drama role\n\n~!Hidden spoiler detail.!~",
+      "source": "https://anilist.co/staff/119331"
+    },
+    {
+      "id": 106787,
+      "kind": "voice",
+      "name": "Asami Seto",
+      "native": "瀬戸麻沙美",
+      "aliases": [],
+      "birthday": {
+        "year": 1993,
+        "month": 4,
+        "day": 2
+      },
+      "age": "33",
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Saitama, Japan",
+      "yearsActive": [
+        2010
+      ],
+      "favourites": 4177,
+      "description": "__Height:__ 167 cm\n\n[Profile (StarCrew)](https://www.starcrew.co.jp/talent/setoasami/) | [Twitter](https://twitter.com/SETO_A_OFFICIAL) | [Instagram](https://www.instagram.com/seto_asami) | [Blog](https://ameblo.jp/seto-asami) | [YouTube](https://youtube.com/@Seto-Asami)\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.\n\n**Non-Anime Roles:**\n- Example game role\n- Example drama role\n\n~!Hidden spoiler detail.!~",
+      "source": "https://anilist.co/staff/106787"
+    },
+    {
+      "id": 124390,
+      "kind": "voice",
+      "name": "Kana Ichinose",
+      "native": "市ノ瀬加那",
+      "aliases": [],
+      "birthday": {
+        "year": 1996,
+        "month": 12,
+        "day": 20
+      },
+      "age": "29",
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Obihiro, Hokkaido Prefecture, Japan",
+      "yearsActive": [
+        2016
+      ],
+      "favourites": 1498,
+      "description": "__Height:__ 148 cm\n__Hobbies:__ Traveling alone, sky watching, watching movies\n__Skills & Abilities:__ Basketball\n\n[Profile (Sigma 7)](https://sigma7.co.jp/actors/ichinose_kana) | [Twitter](https://twitter.com/ichinose_1220) | [Instagram](https://www.instagram.com/ichinose_kana1220/)\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.\n\n**Non-Anime Roles:**\n- Example game role\n- Example drama role\n\n~!Hidden spoiler detail.!~",
+      "source": "https://anilist.co/staff/124390"
+    },
+    {
+      "id": 95065,
+      "kind": "voice",
+      "name": "Mamoru Miyano",
+      "native": "宮野真守",
+      "aliases": [],
+      "birthday": {
+        "year": 1983,
+        "month": 6,
+        "day": 8
+      },
+      "age": "43",
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Omiya (Currently Saitama), Saitama Prefecture, Japan",
+      "yearsActive": [
+        2001
+      ],
+      "favourites": 16671,
+      "description": "__Height:__ 182 cm (6'0\")\n\n[Website](https://miyanomamoru.com/) | [Twitter](https://twitter.com/miyanomamoru_pr) | [YouTube](https://www.youtube.com/channel/UCHzevlEL9JfsBIm86uNCJqg)\n\nA deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.\n\n**Non-Anime Roles:**\n- Example game role\n- Example drama role\n\n~!Hidden spoiler detail.!~",
+      "source": "https://anilist.co/staff/95065"
+    },
+    {
+      "id": 221773,
+      "kind": "cast",
+      "name": "Saori Hayami",
+      "native": null,
+      "aliases": [
+        "Saori Hayami"
+      ],
+      "birthday": {
+        "year": 1991,
+        "month": 5,
+        "day": 29
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Tokyo, Japan",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/221773"
+    },
+    {
+      "id": 1116334,
+      "kind": "cast",
+      "name": "Rina Hidaka",
+      "native": null,
+      "aliases": [
+        "Rina Hidaka"
+      ],
+      "birthday": {
+        "year": 1994,
+        "month": 6,
+        "day": 15
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Chiba, Japan",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/1116334"
+    },
+    {
+      "id": 1492982,
+      "kind": "cast",
+      "name": "Rie Takahashi",
+      "native": null,
+      "aliases": [
+        "Rie Takahashi"
+      ],
+      "birthday": {
+        "year": 1994,
+        "month": 2,
+        "day": 27
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Saitama, Japan",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/1492982"
+    },
+    {
+      "id": 1254672,
+      "kind": "cast",
+      "name": "Asami Seto",
+      "native": null,
+      "aliases": [
+        "Сето, Асамі",
+        "瀬戸 麻沙美",
+        "せと あさみ",
+        "آسامی ستو",
+        "Asami Seto"
+      ],
+      "birthday": {
+        "year": 1993,
+        "month": 4,
+        "day": 2
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Saitama, Japan",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/1254672"
+    },
+    {
+      "id": 974169,
+      "kind": "cast",
+      "name": "Jenna Ortega",
+      "native": null,
+      "aliases": [
+        "Jenna Marie Ortega"
+      ],
+      "birthday": {
+        "year": 2002,
+        "month": 9,
+        "day": 27
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Rancho Mirage, California, USA",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/974169-jenna-ortega"
+    },
+    {
+      "id": 1134684,
+      "kind": "cast",
+      "name": "Park Eun-bin",
+      "native": null,
+      "aliases": [
+        "박은빈",
+        "朴恩斌",
+        "パク・ウンビン",
+        "پارک اون بین"
+      ],
+      "birthday": {
+        "year": 1992,
+        "month": 9,
+        "day": 4
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Songpa, Seoul, South Korea",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/1134684"
+    },
+    {
+      "id": 6384,
+      "kind": "cast",
+      "name": "Keanu Reeves",
+      "native": null,
+      "aliases": [
+        "Keanu Reeves"
+      ],
+      "birthday": {
+        "year": 1964,
+        "month": 9,
+        "day": 2
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Beirut, Lebanon",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": null,
+      "source": "https://www.themoviedb.org/person/6384-keanu-reeves"
+    },
+    {
+      "id": 172069,
+      "kind": "cast",
+      "name": "Chadwick Boseman",
+      "native": null,
+      "aliases": [
+        "Chadwick Aaron Boseman",
+        "Chad Boseman"
+      ],
+      "birthday": {
+        "year": 1976,
+        "month": 11,
+        "day": 29
+      },
+      "age": null,
+      "gender": null,
+      "bloodType": null,
+      "homeTown": "Anderson, South Carolina, USA",
+      "yearsActive": [],
+      "favourites": null,
+      "description": "A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information. A deliberately long profile paragraph checks that text remains readable, wraps within the page, and expands without changing the native navigation or hiding information.",
+      "deathday": "2020-08-28",
+      "source": "https://www.themoviedb.org/person/172069-chadwick-boseman"
+    }
+  ]
+}

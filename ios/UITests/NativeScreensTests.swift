@@ -1438,11 +1438,11 @@ import UIKit
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5)); assertDetailTabsHidden()
         capture("Voice actor initial transparent toolbar and accent heart")
         app.swipeUp(); app.swipeDown(); assertDetailTabsHidden()
-        let characterLink = app.buttons["profile-site-https://anilist.co/character/2"]
+        let characterLink = app.buttons["profile-reference-https://anilist.co/character/2"]
         reveal(characterLink); characterLink.tap()
         XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5)); assertDetailTabsHidden()
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let animeLink = app.buttons["profile-site-https://anilist.co/anime/154587"]
+        let animeLink = app.buttons["profile-reference-https://anilist.co/anime/154587"]
         reveal(animeLink, down: true); animeLink.tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 10)); assertDetailTabsHidden()
         XCTAssertFalse(app.navigationBars["Find anime"].exists)

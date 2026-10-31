@@ -101,7 +101,8 @@ enum AniListText {
     /// Sanitize the complete description before splitting it for layout; a spoiler
     /// can span several paragraphs and must stay hidden as a single block.
     static func markdown(_ description: String, hideSpoilers: Bool) -> String {
-        var text = description.replacingOccurrences(of: "<br>", with: "\n")
+        var text = description.replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)</p\s*>"#, with: "\n\n", options: .regularExpression)
         let spoiler = /~!(.|\n)*?!~/
         text = hideSpoilers ? text.replacing(spoiler, with: "") : text.replacingOccurrences(of: "~!", with: "").replacingOccurrences(of: "!~", with: "")
         return htmlLinks(text).replacing(/<[^>]+>/, with: "").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -130,7 +131,8 @@ enum AniListText {
     }
     /// AniList's markup made readable: spoilers (~! … !~) are left out while spoilers are hidden.
     static func readable(_ description: String, hideSpoilers: Bool) -> String {
-        var text = description.replacingOccurrences(of: "<br>", with: "\n")
+        var text = description.replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)</p\s*>"#, with: "\n\n", options: .regularExpression)
         let spoiler = /~!(.|\n)*?!~/
         text = hideSpoilers ? text.replacing(spoiler, with: "") : text.replacingOccurrences(of: "~!", with: "").replacingOccurrences(of: "!~", with: "")
         for mark in ["__", "**"] { text = text.replacingOccurrences(of: mark, with: "") }
@@ -423,13 +425,7 @@ actor AniListClient {
     fileprivate struct Staff: Decodable { let id: Int; let name: Name; let image: Image? }
     fileprivate struct DateParts: Decodable {
         let year: Int?; let month: Int?; let day: Int?
-        var text: String? {
-            guard let month, let day, (1...12).contains(month) else { return nil }
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.locale = Locale(identifier: "en_GB")
-            let name = calendar.monthSymbols[month - 1]
-            return year.map { "\(day) \(name) \($0)" } ?? "\(day) \(name)"
-        }
+        var text: String? { ProfileDate.partial(year: year, month: month, day: day) }
     }
     /// AniList's GraphQL reply: the answer under `data`.
     private struct Envelope<D: Decodable>: Decodable { let data: D? }

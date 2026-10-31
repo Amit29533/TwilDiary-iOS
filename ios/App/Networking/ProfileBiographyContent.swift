@@ -5,27 +5,38 @@ import Foundation
 struct ProfileBiographyContent {
     let markdown: String
     let links: [ProfileWebsiteLink]
+    let references: [ProfileReferenceLink]
     init(description: String, hideSpoilers: Bool) {
         let clean = AniListText.markdown(description, hideSpoilers: hideSpoilers)
-        var body: [String] = [], sites: [ProfileWebsiteLink] = []
+        var body: [String] = [], sites: [ProfileWebsiteLink] = [], native: [ProfileReferenceLink] = []
         var seen = Set<String>()
         for line in clean.components(separatedBy: "\n") {
             let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
             guard let attributed = try? AttributedString(markdown: line, options: options) else { body.append(line); continue }
-            var found: [ProfileWebsiteLink] = [], prose = ""
+            var found: [ProfileWebsiteLink] = [], references: [ProfileReferenceLink] = [], prose = ""
             for run in attributed.runs {
                 if let url = run.link, let link = ProfileWebsiteLink(url: url, title: String(attributed[run.range].characters)) {
-                    found.append(link)
+                    if ProfileDeepLink.parse(url) != nil {
+                        references.append(ProfileReferenceLink(title: String(attributed[run.range].characters), url: url))
+                    } else { found.append(link) }
                 } else { prose += String(attributed[run.range].characters) }
             }
             let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "|·•,;/–—-"))
-            if !found.isEmpty, prose.trimmingCharacters(in: separators).isEmpty {
+            if (!found.isEmpty || !references.isEmpty), prose.trimmingCharacters(in: separators).isEmpty {
                 for link in found where seen.insert(link.id).inserted { sites.append(link) }
+                for link in references where seen.insert(link.id).inserted { native.append(link) }
             } else { body.append(line) }
         }
         markdown = body.joined(separator: "\n").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
         links = sites
+        references = native
     }
+}
+
+struct ProfileReferenceLink: Identifiable {
+    let title: String
+    let url: URL
+    var id: String { url.absoluteString }
 }
 
 struct ProfileWebsiteLink: Identifiable, Hashable {
@@ -49,8 +60,22 @@ struct ProfileWebsiteLink: Identifiable, Hashable {
 }
 
 enum ProfileDate {
+    static func partial(year: Int?, month: Int?, day: Int?) -> String? {
+        let year = year.flatMap { (1...9999).contains($0) ? $0 : nil }
+        guard let month else { return year.map(String.init) }
+        guard (1...12).contains(month) else { return year.map(String.init) }
+        var calendar = Calendar(identifier: .gregorian); calendar.locale = Locale(identifier: "en_GB")
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let name = calendar.monthSymbols[month - 1]
+        guard let day else { return name + (year.map { " " + String($0) } ?? "") }
+        guard let date = calendar.date(from: DateComponents(year: year ?? 2000, month: month, day: 1)),
+              let days = calendar.range(of: .day, in: .month, for: date), days.contains(day) else { return nil }
+        return String(day) + " " + name + (year.map { " " + String($0) } ?? "")
+    }
+
     /// Preserve partial birthdays (and leap days); never invent a birth year.
     static func short(_ value: String) -> String {
+        if value.range(of: #"^\d{4}$"#, options: .regularExpression) != nil { return value }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB")
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -58,10 +83,10 @@ enum ProfileDate {
         formatter.isLenient = false
         formatter.defaultDate = Date(timeIntervalSince1970: 946684800) // leap year 2000
         let fullYear = value.range(of: #"\b\d{4}\b"#, options: .regularExpression) != nil
-        for input in fullYear ? ["d MMMM yyyy", "d MMM yyyy", "yyyy-MM-dd"] : ["d MMMM", "d MMM"] {
+        for input in fullYear ? ["d MMMM yyyy", "d MMM yyyy", "yyyy-MM-dd", "MMMM yyyy", "MMM yyyy"] : ["d MMMM", "d MMM", "MMMM", "MMM"] {
             formatter.dateFormat = input
             if let date = formatter.date(from: value) {
-                formatter.dateFormat = fullYear ? "d MMM yyyy" : "d MMM"
+                formatter.dateFormat = input == "MMMM yyyy" || input == "MMM yyyy" ? "MMM yyyy" : input == "MMMM" || input == "MMM" ? "MMM" : fullYear ? "d MMM yyyy" : "d MMM"
                 return formatter.string(from: date)
             }
         }

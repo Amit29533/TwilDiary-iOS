@@ -21,7 +21,6 @@ struct VoiceActorView: View {
     @State private var actor: AniVoiceActorDetail?
     @State private var failure: String?
     @State private var missing = false
-    @State private var expanded = false
     @State private var openingPerson = false
     @State private var personFailure: String?
     @State private var personLookup: Task<Void, Never>?
@@ -31,11 +30,10 @@ struct VoiceActorView: View {
             if let actor {
                 PersonProfilePage(name: actor.name, nativeName: actor.native, role: "Voice actor", image: actor.image,
                                   kind: .voice, ref: actor.id, favouriteSubtitle: actor.roles.first.map { "Voice of " + $0.character.name },
-                                  identifier: "voice-actor") {
-                    VStack(alignment: .leading, spacing: 20) {
-                        details(actor)
-                        if let count = route.watchedCount {
-                            Text("In " + count.counted("anime", "anime") + " you’ve watched").font(.subheadline).foregroundStyle(.secondary)
+                                  identifier: "voice-actor", source: .voice(action: { openPerson(actor) }, loading: openingPerson)) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if let count = route.watchedCount.flatMap({ ProfileText.watched($0, anime: true) }) {
+                            ProfileSecondaryText(text: count)
                                 .accessibilityIdentifier("voice-actor-watched")
                         }
                         biography(actor)
@@ -70,37 +68,21 @@ struct VoiceActorView: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text(personFailure ?? "") }
     }
-    private func details(_ actor: AniVoiceActorDetail) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                if let birthday = actor.birthday { ProfileDetailChip(icon: "calendar", label: "Born", value: ProfileDate.short(birthday), identifier: "voice-actor-birthday") }
-                if let home = actor.homeTown, !home.isEmpty {
-                    ProfileDetailChip(icon: "mappin.and.ellipse", label: "Hometown", value: home, identifier: "voice-actor-hometown").frame(idealWidth: 140, maxWidth: 160)
-                }
-                Button { openPerson(actor) } label: { ProfileSourceLogo(loading: openingPerson) }
-                    .buttonStyle(.plain).fixedSize().disabled(openingPerson)
-                    .accessibilityIdentifier("voice-actor-tmdb").accessibilityLabel("Open \(actor.name)’s TMDB profile")
-            }
-        }
-    }
     private func biography(_ actor: AniVoiceActorDetail) -> some View {
-        let content = ProfileBiographyContent(description: actor.description, hideSpoilers: hideSpoilers)
-        let lines = content.markdown.components(separatedBy: "\n")
-        let first = lines.first ?? ""
-        let hasAgency = AniListText.readable(first, hideSpoilers: hideSpoilers).lowercased().hasPrefix("agency:")
-        let body = hasAgency ? lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) : content.markdown
+        let content = ProfileFormattedBiography(description: actor.description, hideSpoilers: hideSpoilers)
+        let height = content.facts.first { $0.id == "height" }?.markdown
+        let facts = [
+            ProfileFact(id: "voice-actor-birthday", icon: "calendar", label: "Born", value: actor.birthday.map(ProfileDate.short)),
+            ProfileFact(id: "voice-actor-age", icon: "person", label: "Age", value: actor.age.flatMap { $0 >= 0 ? String($0) : nil }),
+            ProfileFact(id: "voice-actor-height", icon: "ruler", label: "Height", value: height),
+            ProfileFact(id: "voice-actor-hometown", icon: "mappin.and.ellipse", label: "Hometown", value: actor.homeTown, wide: true)
+        ].compactMap { $0 }
         let source = ProfileWebsiteLink(url: URL(string: "https://anilist.co/staff/\(actor.id)")!, title: "AniList")!
-        let sites = content.links.contains(where: { $0.id == source.id }) ? content.links : content.links + [source]
-        let career = [actor.age.map { "Age \($0)" }, actor.yearsActive.first.map { "Active since \($0)" }].compactMap { $0 }
-        return VStack(alignment: .leading, spacing: 10) {
-            if hasAgency {
-                Text(AniListText.formatted(first, hideSpoilers: hideSpoilers)).font(.subheadline).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("voice-actor-intro")
-            }
-            if !career.isEmpty { Text(career.joined(separator: " · ")).font(.subheadline).foregroundStyle(.secondary) }
-            if let count = actor.favourites { Text(count.formatted() + " favourites on AniList").font(.subheadline).foregroundStyle(.secondary) }
-            ProfileWebsiteButtons(links: sites)
-            ProfileBiography(text: AniListText.formatted(body, hideSpoilers: hideSpoilers), expanded: $expanded, identifier: "voice-actor-biography")
+        return VStack(alignment: .leading, spacing: 14) {
+            ProfileFacts(items: facts)
+            if let career = ProfileText.career(actor.yearsActive) { ProfileSecondaryText(text: career) }
+            if let count = ProfileText.favourites(actor.favourites) { ProfileSecondaryText(text: count) }
+            ProfileAbout(content: content, excludingFacts: ["height"], additionalLinks: [source], biographyID: "voice-actor-biography")
         }
     }
     private func openPerson(_ actor: AniVoiceActorDetail) {
@@ -138,7 +120,7 @@ struct VoiceActorView: View {
                 if grid {
                     VStack(alignment: .leading, spacing: 6) {
                         roleArtwork(role).aspectRatio(2.0 / 3.0, contentMode: .fit)
-                        Text(role.character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                        ProfileCardCaption(title: role.character.name)
                     }
                 } else {
                     HStack(spacing: 12) {
@@ -153,7 +135,7 @@ struct VoiceActorView: View {
                                                year: role.year, role: role.role, voiceActor: nil,
                                                format: role.format, alternateTitles: role.alternateTitles)) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(role.anime).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    ProfileCardCaption(title: role.anime, secondary: true)
                     if let score = role.rating, score > 0 {
                         HStack(spacing: 3) { RatingBadge(score: score); Text("AniList").font(.caption2).foregroundStyle(.secondary) }
                     }
@@ -167,7 +149,7 @@ struct VoiceActorView: View {
     private func load() async {
         failure = nil; missing = false
         #if DEBUG
-        if store.isPreview { actor = AniListPreview.voiceActor(route.id ?? 11); return }
+        if store.isPreview { actor = ProfileFormattingPreview.enabled ? (ProfileFormattingPreview.voice(route.id ?? 11) ?? AniListPreview.voiceActor(route.id ?? 11)) : AniListPreview.voiceActor(route.id ?? 11); return }
         #endif
         do {
             var found = route.id

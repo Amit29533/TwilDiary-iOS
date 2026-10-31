@@ -57,7 +57,10 @@ extension DiaryStore {
         let revision = sessionRevision
         let response: PersonResponse
         #if DEBUG
-        if isPreview { response = PreviewCatalog.person }
+        if isPreview {
+            if ProfileFormattingPreview.enabled { response = try ProfileFormattingPreview.person(id) ?? PreviewCatalog.person }
+            else { response = PreviewCatalog.person }
+        }
         else { response = try await read(CatalogTools.apiPath("/api/metadata/person", query: ["id": String(id)])) }
         #else
         response = try await read(CatalogTools.apiPath("/api/metadata/person", query: ["id": String(id)]))

@@ -38,6 +38,7 @@ struct CatalogGrid: View {
 
 struct CatalogPoster: View {
     let item: CatalogItem
+    var profileTypography = false
     @Environment(DiaryStore.self) private var store
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -51,8 +52,13 @@ struct CatalogPoster: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-            Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In your library")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
+            if profileTypography {
+                ProfileCardCaption(title: item.name).padding(.top, 8)
+                if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
+            } else {
+                Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+                Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In your library")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
+            }
         }.accessibilityElement(children: .combine)
     }
 }

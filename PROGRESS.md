@@ -1,5 +1,15 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — public-profile formatting matrix candidate
+
+Owner requested implementation and repeated checks after the 22-profile audit.
+Shared responsive facts, small role-row source actions, separate website icons and
+native text references, aliases, metadata, biographies, partial dates and captions
+are implemented. DEBUG factual/synthetic-prose matrix covers both providers.
+Focused native profile workflow now repeats its format journeys on three sizes
+and accessibility text; execution/visual review pending. See
+ios/docs/PROFILE-FORMATTING.md. Prior candidate 27f8cf5 build was owner-cancelled.
+
 ## 31 October 2026 — profile repairs and recent-date candidate
 
 Draft implements native Cast TMDB filmography, provider-link routing through the

@@ -17,6 +17,7 @@ workflows:
       - ios/.artifacts/TwilDiary-profile-repairs.ipa.sha256
       - ios/.artifacts/profile-repair-provenance.json
       - ios/.artifacts/ProfileRepairs.xcresult
+      - ios/.artifacts/ProfileLayout-*.xcresult
       - ios/.artifacts/logs/*.log
       - ios/.artifacts/screenshots/**
       - ios/.artifacts/toolchain.txt

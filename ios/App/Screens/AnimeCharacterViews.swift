@@ -67,22 +67,19 @@ struct CharacterView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @State private var character: AniCharacterDetail?
     @State private var failure: String?
-    @State private var expanded = false
     var body: some View {
         Group {
             if let character {
+                let biography = ProfileFormattedBiography(description: character.description, hideSpoilers: hideSpoilers)
                 PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
                                   kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
-                                  identifier: "character") {
-                    VStack(alignment: .leading, spacing: 22) {
-                        details(character)
+                                  identifier: "character", source: .aniList(URL(string: "https://anilist.co/character/\(character.id)")!)) {
+                    VStack(alignment: .leading, spacing: 18) {
                         if let source = route.sourceTitle {
-                            Button("In " + source) { dismiss() }.font(.system(size: 15)).buttonStyle(.plain).foregroundStyle(.primary)
+                            Button("In " + source) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain).foregroundStyle(.primary)
                         }
-                        let biography = ProfileBiographyContent(description: character.description, hideSpoilers: hideSpoilers)
-                        let source = ProfileWebsiteLink(url: URL(string: "https://anilist.co/character/\(character.id)")!, title: "AniList")!
-                        ProfileWebsiteButtons(links: biography.links.contains(where: { $0.id == source.id }) ? biography.links : biography.links + [source])
-                        ProfileBiography(text: AniListText.formatted(biography.markdown, hideSpoilers: hideSpoilers), expanded: $expanded)
+                        details(character, biography: biography)
+                        ProfileAbout(content: biography, excludingFacts: ["height", "blood-type"])
                         ProfileWatchedShelf(appearances: character.appearances)
                         if !character.voiceActors.isEmpty { voicedBy(character.voiceActors) }
                         if !character.appearances.isEmpty { appearsIn(character.appearances) }
@@ -96,16 +93,20 @@ struct CharacterView: View {
             }
         }.task(id: route.id) { if character == nil { await load() } }
     }
-    private func details(_ character: AniCharacterDetail) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                if let birthday = character.birthday { ProfileDetailChip(icon: "calendar", label: "Birthday", value: ProfileDate.short(birthday)) }
-                if let age = character.age { ProfileDetailChip(icon: "person", label: "Age", value: age) }
-                if let gender = character.gender { ProfileDetailChip(icon: "person.text.rectangle", label: "Gender", value: gender) }
-            }
-            if let blood = character.bloodType { ProfileDetailLine(label: "Blood type", value: blood) }
-            if !character.alternative.isEmpty { ProfileDetailLine(label: "Also known as", value: character.alternative.joined(separator: " · ")) }
-            if let count = character.favourites { Text(count.formatted() + " favourites on AniList").font(.subheadline).foregroundStyle(.secondary) }
+    private func details(_ character: AniCharacterDetail, biography: ProfileFormattedBiography) -> some View {
+        let height = biography.facts.first { $0.id == "height" }?.markdown
+        let blood = character.bloodType ?? biography.facts.first { $0.id == "blood-type" }?.markdown
+        let facts = [
+            ProfileFact(id: "character-birthday", icon: "calendar", label: "Birthday", value: character.birthday.map(ProfileDate.short)),
+            ProfileFact(id: "character-age", icon: "person", label: "Age", value: character.age),
+            ProfileFact(id: "character-gender", icon: "person.text.rectangle", label: "Gender", value: character.gender),
+            ProfileFact(id: "character-height", icon: "ruler", label: "Height", value: height),
+            ProfileFact(id: "character-blood-type", icon: "drop", label: "Blood type", value: blood)
+        ].compactMap { $0 }
+        return VStack(alignment: .leading, spacing: 12) {
+            ProfileFacts(items: facts)
+            ProfileAliases(values: character.alternative, excluding: [character.name] + [character.native].compactMap { $0 })
+            if let count = ProfileText.favourites(character.favourites) { ProfileSecondaryText(text: count) }
         }
     }
     private func voicedBy(_ actors: [AniPerson]) -> some View {
@@ -118,7 +119,7 @@ struct CharacterView: View {
                         NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
                             VStack(spacing: 8) {
                                 Artwork(path: actor.image, title: actor.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
-                                Text(actor.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                                ProfileCardCaption(title: actor.name)
                                 Text("Japanese").font(.caption).foregroundStyle(.secondary)
                             }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading).accessibilityElement(children: .combine)
                         }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-\(actor.id)")
@@ -142,7 +143,7 @@ struct CharacterView: View {
                                                 .padding(4).background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 6)).padding(4)
                                         }
                                     }
-                                Text(item.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+                                ProfileCardCaption(title: item.title)
                                 Text([item.year.map(String.init), item.role == "MAIN" ? "Main" : item.role == "SUPPORTING" ? "Supporting" : nil].compactMap { $0 }.joined(separator: " · "))
                                     .font(.caption).foregroundStyle(.secondary)
                             }.frame(width: 104, alignment: .leading).contentShape(Rectangle())
@@ -155,7 +156,7 @@ struct CharacterView: View {
     private func load() async {
         failure = nil
         #if DEBUG
-        if store.isPreview { character = AniListPreview.detail(route.id); return }
+        if store.isPreview { character = ProfileFormattingPreview.enabled ? (ProfileFormattingPreview.character(route.id) ?? AniListPreview.detail(route.id)) : AniListPreview.detail(route.id); return }
         #endif
         do {
             let result = try await AniListClient.shared.character(route.id)

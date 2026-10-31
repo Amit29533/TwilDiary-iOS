@@ -11,15 +11,15 @@ struct PersonView: View {
     var body: some View {
         Group {
             if let person {
-                PersonProfilePage(name: person.name, nativeName: person.aliases?.first, role: person.department,
+                PersonProfilePage(name: person.name, role: person.department == "Acting" ? "Actor" : person.department,
                                   image: CatalogTools.image(person.profilePath, size: "w780"), kind: .cast, ref: person.id,
-                                  favouriteSubtitle: person.department, identifier: "person") {
-                    VStack(alignment: .leading, spacing: 22) {
-                        details(person)
+                                  favouriteSubtitle: person.department, identifier: "person", source: .credits(PersonFilmographyRoute(person: person.id, section: .credits))) {
+                    VStack(alignment: .leading, spacing: 18) {
                         if let role = route.sourceRole, let title = route.sourceTitle, !role.isEmpty, !title.isEmpty {
-                            Button(role + " in " + title) { dismiss() }.font(.system(size: 15)).buttonStyle(.plain)
+                            Button(role + " in " + title) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain)
                                 .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
                         }
+                        details(person)
                         ProfileBiography(text: AttributedString(person.biography), expanded: $expanded)
                         watched(person)
                         let sections = store.personSections(person)
@@ -37,27 +37,24 @@ struct PersonView: View {
         }.task(id: route.id) { if person == nil { await load() } }
     }
     private func details(_ person: PersonDetails) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                if let birthday = person.birthday {
-                    ProfileDetailChip(icon: "calendar", label: "Born", value: personDate(birthday), identifier: "person-birthday")
-                }
-                if !person.birthplace.isEmpty {
-                    ProfileDetailChip(icon: "mappin.and.ellipse", label: "Birthplace", value: person.birthplace, identifier: "person-birthplace")
-                        .frame(idealWidth: 140, maxWidth: 180)
-                }
-                NavigationLink(value: PersonFilmographyRoute(person: person.id, section: .credits)) { ProfileSourceLogo() }
-                    .buttonStyle(.plain).accessibilityLabel("View TMDB credits").accessibilityIdentifier("person-tmdb")
-            }
-            if let death = person.deathday { ProfileDetailLine(label: "Died", value: personDate(death)) }
-            if let aliases = person.aliases, !aliases.isEmpty { ProfileDetailLine(label: "Also known as", value: aliases.joined(separator: " · ")) }
+        let ageAt = person.deathday.flatMap { DiaryDate.parse($0 + "T00:00:00Z") } ?? store.now
+        let age = ProfileDate.age(birthday: person.birthday, until: ageAt)
+        let facts = [
+            ProfileFact(id: "person-birthday", icon: "calendar", label: "Born", value: person.birthday.map(ProfileDate.short)),
+            ProfileFact(id: "person-age", icon: "person", label: person.deathday == nil ? "Age" : "Age at death", value: age.map(String.init)),
+            ProfileFact(id: "person-birthplace", icon: "mappin.and.ellipse", label: "Birthplace", value: person.birthplace, wide: true),
+            ProfileFact(id: "person-deathday", icon: "calendar", label: "Died", value: person.deathday.map(ProfileDate.short), wide: true)
+        ].compactMap { $0 }
+        return VStack(alignment: .leading, spacing: 12) {
+            ProfileFacts(items: facts)
+            ProfileAliases(values: person.aliases ?? [], excluding: [person.name])
         }
     }
     private func watched(_ person: PersonDetails) -> some View {
         let sections = store.personSections(person)
         return VStack(alignment: .leading, spacing: 14) {
             sectionHeading("Watched", route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
-            if sections.watched.isEmpty { Text("No watches from these credits yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
+            if sections.watched.isEmpty { Text("No watches from these credits yet.").font(.subheadline).foregroundStyle(.secondary) }
             else { PersonCreditShelf(items: Array(sections.watched.prefix(12))) }
         }
     }
@@ -70,7 +67,7 @@ struct PersonView: View {
         }
     }
     private func sectionHeading(_ label: String, route: PersonFilmographyRoute) -> some View {
-        HStack { Text(label).font(.system(size: 20, weight: .semibold)); Spacer(minLength: 4); NavigationLink(value: route) { Text("View more").font(.system(size: 13)) }.accessibilityIdentifier("person-more-" + route.section.rawValue + (route.onServer ? "-server" : "")) }
+        HStack { Text(label).font(.title3.weight(.semibold)); Spacer(minLength: 4); NavigationLink(value: route) { Text("View more").font(.system(size: 13)) }.accessibilityIdentifier("person-more-" + route.section.rawValue + (route.onServer ? "-server" : "")) }
     }
     private func load() async {
         failure = nil
@@ -89,10 +86,10 @@ struct PersonCreditShelf: View {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items, id: \.key) { item in
                     VStack(alignment: .leading, spacing: 4) {
-                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item).zoomSource(ZoomID.title(saved)) } }
-                        else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
+                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item, profileTypography: true).zoomSource(ZoomID.title(saved)) } }
+                        else { NavigationLink(value: item.route) { CatalogPoster(item: item, profileTypography: true).zoomSource(ZoomID.catalog(item.route)) } }
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
-                        if !role.isEmpty { Text(role).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
+                        if !role.isEmpty { ProfileCardCaption(title: role, secondary: true) }
                     }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress)
                 }
             }
@@ -145,10 +142,4 @@ struct PersonFilmographyView: View {
         catch is CancellationError { }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
-}
-
-private func personDate(_ value: String) -> String {
-    guard let date = DiaryDate.parse(value + "T00:00:00Z") else { return value }
-    let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_GB"); formatter.timeZone = TimeZone(secondsFromGMT: 0); formatter.dateFormat = "d MMM yyyy"
-    return formatter.string(from: date)
 }

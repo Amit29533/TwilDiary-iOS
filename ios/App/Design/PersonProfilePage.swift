@@ -12,6 +12,7 @@ struct PersonProfilePage<Content: View>: View {
     let ref: Int
     var favouriteSubtitle: String? = nil
     let identifier: String
+    var source: ProfileSourceAction? = nil
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -45,17 +46,23 @@ struct PersonProfilePage<Content: View>: View {
     private func hero(height: CGFloat, topInset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Spacer(minLength: 150)
-            Text(name).font(.system(size: 34, weight: .bold)).tracking(-0.9)
+            Text(name).font(.largeTitle.bold()).tracking(-0.9)
                 .foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(identifier + "-name")
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
                 } action: { header.update($0) }
-            if let nativeName, !nativeName.isEmpty, nativeName != name {
-                Text(nativeName).font(.subheadline).foregroundStyle(.white.opacity(0.8))
+            if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
+                Text(native).font(.subheadline).foregroundStyle(.white.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
             }
-            if let role, !role.isEmpty { Text(role).font(.subheadline).foregroundStyle(.white.opacity(0.7)) }
+            if ProfileText.line(role) != nil || source != nil {
+                HStack(alignment: .center, spacing: 12) {
+                    if let role = ProfileText.line(role) { Text(role).font(.subheadline).foregroundStyle(.white.opacity(0.7)).fixedSize(horizontal: false, vertical: true) }
+                    Spacer(minLength: 0)
+                    if let source { source }
+                }
+            }
         }.padding(.horizontal, 14).padding(.bottom, 16)
             .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
             .background {
@@ -114,54 +121,45 @@ private struct ProfileFavourite: View {
     }
 }
 
-/// Wrapping intrinsic chips rather than a table or fixed-width columns. Long
-/// places and accessibility text can wrap without colliding with the source button.
-struct ProfileDetailChip: View {
-    let icon: String
-    let label: String
-    let value: String
-    var identifier = ""
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 19)).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-                Text(label).font(.caption).foregroundStyle(.secondary)
-            }
-        }.foregroundStyle(Color(webHex: "#e6e2ec")).padding(10).frame(minHeight: 52)
-            .background(Color(webHex: "#17171c"), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
-            .accessibilityElement(children: .combine).accessibilityIdentifier(identifier)
-    }
-}
-
-struct ProfileDetailLine: View {
-    let label: String
-    let value: String
-    var body: some View {
-        Text(label + ": " + value).font(.subheadline).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
 struct ProfileBiography: View {
     let text: AttributedString
     @Binding var expanded: Bool
     var identifier = "profile-biography"
+    var collapsedLines = 4
+    var style: Font = .body
+    var moreLabel = "More"
+    var lessLabel = "Less"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var fullHeight: CGFloat = 0
+    @State private var previewHeight: CGFloat = 0
+    private var overflows: Bool { fullHeight > previewHeight + 1 }
     var body: some View {
         if !text.characters.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                Text(text).font(.system(size: 16)).lineSpacing(5).foregroundStyle(.secondary)
-                    .tint(Color(webHex: "#d1cdd8")).lineLimit(expanded ? nil : 4)
-                    .accessibilityIdentifier(identifier)
-                Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { expanded.toggle() } } label: {
-                    HStack(spacing: 5) { Text(expanded ? "Less" : "More"); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption) }
-                        .font(.subheadline).frame(minHeight: 44)
-                }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#e6e2ec"))
-                    .accessibilityLabel(expanded ? "Collapse biography" : "Expand biography")
-            }
+                prose.lineLimit(expanded ? nil : collapsedLines)
+                    .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(identifier)
+                    .background(alignment: .topLeading) {
+                        ZStack(alignment: .topLeading) {
+                            prose.lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                            prose.lineLimit(collapsedLines).fixedSize(horizontal: false, vertical: true)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewHeight = $0 }
+                        }.hidden().allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                if overflows {
+                    Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { expanded.toggle() } } label: {
+                        HStack(spacing: 5) { Text(expanded ? lessLabel : moreLabel); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption) }
+                            .font(.subheadline).frame(minHeight: 44)
+                    }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#e6e2ec"))
+                        .accessibilityLabel(expanded ? "Collapse " + (identifier == "profile-aliases" ? "names" : "biography") : "Expand " + (identifier == "profile-aliases" ? "names" : "biography"))
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+                .onChange(of: String(text.characters)) { _, _ in expanded = false }
         }
+    }
+    private var prose: some View {
+        Text(text).font(style).lineSpacing(5).foregroundStyle(.secondary)
+            .tint(Color(webHex: "#d1cdd8")).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -191,10 +189,10 @@ struct ProfileSourceLogo: View {
     var loading = false
     var body: some View {
         Image("tmdb-logo").renderingMode(.original).resizable().scaledToFit()
-            .frame(width: 40, height: 18).opacity(loading ? 0.3 : 1)
-            .frame(width: 64, height: 52)
-            .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
+            .frame(width: 30, height: 14).opacity(loading ? 0.3 : 1)
+            .frame(width: 44, height: 44)
+            .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
             .overlay { if loading { ProgressView().controlSize(.small).tint(.white) } }
     }
 }
