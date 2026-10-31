@@ -23,8 +23,14 @@ cases and 1 UI journey covering all categories, shelf scrolling, View all, typed
 profiles, per-category list preferences and original header. UI-only gallery
 fixtures are DEBUG + --ui-testing guarded, use local data, and never write hosted
 data. No backend or workflow authority changes, main push or new PR.
-Next: self-review, commit/push development branch, start focused Codemagic run,
-inspect actual screenshots and download/verify same-source phone IPA.
+First candidate dda72de / Codemagic 6ae56197efa74786046f5746 compiled and passed
+all 19 app unit cases, 3 core cases and four existing UI flows. New gallery UI
+stopped on the initial layout-button lookup: the actual retained hierarchy shows
+Show favourites as list, value Grid, but the heading container identifier replaced
+the nested favourites-layout ID. Moved the heading identifier onto its Text leaf,
+leaving the button and its test assertion unchanged. No IPA was packaged from
+that failed run. Next: rerun the same focused gate on the corrected source, then
+inspect all gallery screenshots and verify the same-source IPA.
 
 ## 31 October 2026 — approved shared Person profile redesign
 

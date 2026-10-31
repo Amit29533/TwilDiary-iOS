@@ -184,10 +184,10 @@ struct FavouritesView: View {
             HStack(spacing: 9) {
                 Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
                 Text("Hearted").font(.system(size: 20, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("favourites-hearted-heading")
                 Spacer(minLength: 4)
                 CollectionLayoutToggle(grid: grid, collection: "favourites")
             }.padding(.horizontal, 14).padding(.top, 20)
-                .accessibilityIdentifier("favourites-hearted-heading")
             if items.isEmpty {
                 DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)
                     .padding(.horizontal, 14).padding(.top, 12)
