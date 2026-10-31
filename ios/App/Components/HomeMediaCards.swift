@@ -59,11 +59,11 @@ struct HomeEpisodeCard: View {
                     artwork.aspectRatio(16.0 / 9.0, contentMode: .fit)
                         .overlay(alignment: model.isUpcoming ? .topLeading : .topTrailing) { badge.padding(8) }
                     VStack(alignment: .leading, spacing: 6) {
-                        title.lineLimit(2, reservesSpace: true)
+                        title.lineLimit(2)
                         episode
-                        Text(model.dateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
-                    }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                }.containerRelativeFrame(.horizontal) { width, _ in min(280, max(200, width * 0.64)) }
+                        Text(model.dateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }.padding(10).frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
+                }.containerRelativeFrame(.horizontal) { width, _ in min(240, max(184, width * 0.54)) }
             } else {
                 HStack(spacing: 12) {
                     artwork.aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -85,7 +85,7 @@ struct HomeEpisodeCard: View {
             .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
     }
     private var artwork: some View { Artwork(path: model.artwork, title: model.name, initialsOnly: false) }
-    private var title: some View { Text(model.name).font(.callout.weight(.semibold)) }
+    private var title: some View { Text(model.name).font(cards ? .subheadline.weight(.semibold) : .callout.weight(.semibold)) }
     private var episode: some View {
         HStack(spacing: 5) {
             Text(model.episode)

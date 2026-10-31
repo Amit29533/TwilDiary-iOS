@@ -68,6 +68,17 @@ UI assertions now measure actual row bounds/insets/equal heights, require cards
 to clear both headers, and verify the final row is above the native bottom bar.
 The mockup's outer hardware bezel is presentation, not an app border to draw.
 
+Grid follow-up: simulator screenshots exposed overly wide 64%-viewport cards
+and reserved blank title/date lines. Both activity sections now use the same
+54%-viewport card width (184–240 points), 16:9 artwork and 100-point minimum
+footer. Text is top aligned with no reserved blank lines; the footer keeps
+one/two-line names from changing the shelf height during horizontal scrolling.
+Card titles use 15-point Dynamic Type style, list titles 16-point. Native UI
+assertions measure equal activity-card bounds and the image/footer contract,
+swipe to the last distinct recent event and back, retain labels, then exercise
+navigation and process restoration. The longer single UI journey gets a
+180-second allowance; no assertions or pass gates were removed.
+
 ## Focused native gate
 
 Codemagic workflow native-ios-home-check runs the core Home golden case,

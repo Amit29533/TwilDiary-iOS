@@ -20,6 +20,10 @@ header, retaining the initial upper content; add bottom clearance and runtime
 geometry assertions. Geometry follow-up native execution pending; see
 ios/docs/HOME-MEDIA-REDESIGN.md. No full suite,
 backend/live-data changes, main merge or new PR.
+50ac449 has now passed the measured row inset/height/clearance journey. Owner
+also requested complete grid verification: tighter identical activity cards,
+unreserved footer lines, runtime card width/ratio/alignment checks and swiping
+to the last recent event and back are included in the next focused candidate.
 
 ## 31 October 2026 — approved Favourites gallery redesign
 

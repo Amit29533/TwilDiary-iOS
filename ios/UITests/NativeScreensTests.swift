@@ -268,6 +268,7 @@ import UIKit
     }
 
     func testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts() {
+        executionTimeAllowance = 180
         let app = launch(upcoming: true, favouritesGallery: true)
         app.tabBars.buttons["Home"].tap()
         capture("Home upper section retained before new media shelves")
@@ -295,6 +296,9 @@ import UIKit
         let favourite = app.buttons["favourite-cast:525"]
         reveal(favourite)
         XCTAssertGreaterThan(favourite.frame.height, favourite.frame.width * 1.5)
+        let nextFavourite = app.buttons["favourite-cast:77"]
+        XCTAssertEqual(nextFavourite.frame.width, favourite.frame.width, accuracy: 1)
+        XCTAssertEqual(nextFavourite.frame.minY, favourite.frame.minY, accuracy: 1)
         capture("Home favourite portraits preserve provider navigation")
         favourite.tap()
         XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 5))
@@ -317,6 +321,9 @@ import UIKit
         reveal(upcomingLayout, down: true); upcomingLayout.tap()
         XCTAssertEqual(upcomingLayout.value as? String, "Cards")
         XCTAssertLessThan(upcoming.frame.width, app.frame.width * 0.8)
+        XCTAssertEqual(upcoming.frame.width, (app.frame.width - 24) * 0.54, accuracy: 2, "Reference card shelf width")
+        let cardWidth = upcoming.frame.width, cardHeight = upcoming.frame.height
+        XCTAssertEqual(cardHeight, cardWidth * 9 / 16 + 100, accuracy: 3, "16:9 image and compact aligned footer")
         capture("Home upcoming horizontal artwork cards")
         upcoming.tap()
         let season = app.buttons["title-season"]
@@ -331,6 +338,9 @@ import UIKit
         let history = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-history-event-'")).firstMatch
         reveal(history)
         let firstID = history.identifier, firstLabel = history.label
+        let recentRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-history-event-'"))
+        let eventIDs = recentRows.allElementsBoundByIndex.map(\.identifier)
+        XCTAssertEqual(Set(eventIDs).count, 4)
         XCTAssertGreaterThan(history.frame.width, app.frame.width * 0.8)
         XCTAssertEqual(history.frame.minX, 12, accuracy: 1)
         XCTAssertEqual(history.frame.width, app.frame.width - 24, accuracy: 2)
@@ -342,7 +352,29 @@ import UIKit
         let retained = app.buttons[firstID]
         XCTAssertEqual(retained.label, firstLabel)
         XCTAssertLessThan(retained.frame.width, app.frame.width * 0.8)
+        XCTAssertEqual(retained.frame.width, cardWidth, accuracy: 1)
+        XCTAssertEqual(retained.frame.height, cardHeight, accuracy: 3, "Upcoming and watched cards share image/footer geometry")
+        reveal(retained)
         capture("Home recent horizontal cards keep individual watch events")
+        // Exercise the real horizontal scroller in both directions, keeping every event identity.
+        let laneY = retained.frame.midY
+        let left = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24, dy: laneY))
+        let right = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width - 24, dy: laneY))
+        let lastEvent = app.buttons[eventIDs.last!]
+        for _ in 0..<4 {
+            if lastEvent.exists && lastEvent.isHittable && lastEvent.frame.maxX <= app.frame.maxX - 10 { break }
+            right.press(forDuration: 0.03, thenDragTo: left)
+        }
+        XCTAssertTrue(lastEvent.isHittable)
+        XCTAssertLessThanOrEqual(lastEvent.frame.maxX, app.frame.maxX - 10)
+        XCTAssertEqual(lastEvent.frame.width, cardWidth, accuracy: 1)
+        capture("Home recent grid swipes to the last distinct watch event")
+        for _ in 0..<4 {
+            if retained.exists && retained.isHittable && retained.frame.minX >= 10 { break }
+            left.press(forDuration: 0.03, thenDragTo: right)
+        }
+        XCTAssertEqual(retained.label, firstLabel)
+        XCTAssertGreaterThanOrEqual(retained.frame.minX, 10)
         retained.tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
