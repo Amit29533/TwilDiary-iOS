@@ -60,8 +60,16 @@ struct HomeEpisodeCard: View {
                         .overlay(alignment: model.isUpcoming ? .topLeading : .topTrailing) { badge.padding(8) }
                     VStack(alignment: .leading, spacing: 6) {
                         title.lineLimit(2)
-                        episode
-                        Text(model.dateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        if model.isUpcoming && !typeSize.isAccessibilitySize {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                episode
+                                Spacer(minLength: 0)
+                                Text(model.dateLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        } else {
+                            episode
+                            Text(model.dateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        }
                     }.padding(10).frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
                 }.containerRelativeFrame(.horizontal) { width, _ in min(240, max(184, width * 0.54)) }
             } else {

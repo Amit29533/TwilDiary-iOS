@@ -339,14 +339,21 @@ import UIKit
         reveal(history)
         let firstID = history.identifier, firstLabel = history.label
         let recentRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-history-event-'"))
-        let eventIDs = recentRows.allElementsBoundByIndex.map(\.identifier)
-        XCTAssertEqual(Set(eventIDs).count, 4)
         XCTAssertGreaterThan(history.frame.width, app.frame.width * 0.8)
         XCTAssertEqual(history.frame.minX, 12, accuracy: 1)
         XCTAssertEqual(history.frame.width, app.frame.width - 24, accuracy: 2)
         XCTAssertEqual(history.frame.height, rowHeight, accuracy: 2, "Matching activity row geometry")
         XCTAssertFalse(history.label.contains("% complete"))
         capture("Home recently watched uses the same compact list component")
+        // Lazy stacks instantiate on demand: discover identities by scrolling, not by
+        // assuming all four off-screen rows already have accessibility snapshots.
+        var eventIDs = recentRows.allElementsBoundByIndex.map(\.identifier)
+        for _ in 0..<4 {
+            if Set(eventIDs).count == 4 { break }
+            app.swipeUp()
+            for id in recentRows.allElementsBoundByIndex.map(\.identifier) where !eventIDs.contains(id) { eventIDs.append(id) }
+        }
+        XCTAssertEqual(Set(eventIDs).count, 4)
         reveal(historyLayout, down: true); historyLayout.tap()
         XCTAssertEqual(historyLayout.value as? String, "Cards")
         let retained = app.buttons[firstID]

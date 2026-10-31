@@ -79,6 +79,14 @@ swipe to the last distinct recent event and back, retain labels, then exercise
 navigation and process restoration. The longer single UI journey gets a
 180-second allowance; no assertions or pass gates were removed.
 
+Date placement follow-up: the approved upcoming card keeps its relative-day
+badge over the image and its calendar date at the right of the episode line.
+History keeps the actual watch date on the line below the episode. Large
+accessibility text may stack upcoming metadata to preserve legibility. The
+grid test discovers all four lazy history identities by scrolling before
+checking the horizontal carousel; counting only mounted rows returned three
+in 1915aa4, so that candidate was not accepted or packaged.
+
 ## Focused native gate
 
 Codemagic workflow native-ios-home-check runs the core Home golden case,
