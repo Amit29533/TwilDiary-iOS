@@ -12,7 +12,10 @@ import TwilDiaryCore
             UserDefaults.standard.set(DiaryTheme.twilight.rawValue, forKey: "theme")
             UserDefaults.standard.set(PublicRatingSource.tmdb.rawValue, forKey: "publicRatingSource")
             UserDefaults.standard.set(true, forKey: "hideSpoilers")
-            for key in ["historyGrid", "homeHistoryGrid", "upcomingGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            for key in ["historyGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            if !ProcessInfo.processInfo.arguments.contains("--ui-keep-home-layouts") {
+                for key in ["homeHistoryGrid", "upcomingGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            }
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
             for key in ["favouritesCastGrid", "favouritesCharactersGrid", "favouritesVoiceGrid"] { UserDefaults.standard.set(true, forKey: key) }

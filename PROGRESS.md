@@ -1,5 +1,20 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — approved Home design below Up next
+
+Active work: implement the approved normal-size Up next posters, portrait Home
+favourites and shared landscape activity cards/compact list rows. Scope starts
+at Up next; exact source comparison confirms the upper Home, header/hero,
+continuation controls, Explore/Canvas, weekly summary and scroll/refresh helpers
+remain unchanged against 59b4649. Existing cached projection, Artwork cache,
+FavouriteLink provider routes, linked-season navigation and event identities
+are reused. Independent persisted Home layout keys remain. History removes
+repeated season bars without changing dates, order, rewatch state or full History.
+Focused gate: core Home golden, 8 model/projection units and 6 UI journeys,
+zero-warning simulator/device builds, retained screenshots and same-source IPA.
+Native execution pending; see ios/docs/HOME-MEDIA-REDESIGN.md. No full suite,
+backend/live-data changes, main merge or new PR.
+
 ## 31 October 2026 — approved Favourites gallery redesign
 
 Active owner request: implement the revised Cast / Characters / Voice actors

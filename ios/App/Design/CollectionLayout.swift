@@ -6,6 +6,8 @@ struct CollectionLayoutToggle: View {
     let collection: String
     /// A 36 pt circle for sort rows; the tap target stays 44 pt.
     var small = false
+    /// Home uses a horizontal card shelf; other collections keep their existing grid label.
+    var gridName = "grid"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Button {
@@ -14,8 +16,8 @@ struct CollectionLayoutToggle: View {
         } label: {
             RoundTool(icon: grid ? "list" : "layout-grid", size: small ? 36 : 44)
         }.buttonStyle(.springPress)
-            .accessibilityLabel("Show " + collection + (grid ? " as list" : " as grid"))
-            .accessibilityValue(grid ? "Grid" : "List").accessibilityIdentifier(collection + "-layout")
+            .accessibilityLabel("Show " + collection + (grid ? " as list" : " as " + gridName))
+            .accessibilityValue(grid ? gridName.capitalized : "List").accessibilityIdentifier(collection + "-layout")
             .sensoryFeedback(.selection, trigger: grid)
     }
 }

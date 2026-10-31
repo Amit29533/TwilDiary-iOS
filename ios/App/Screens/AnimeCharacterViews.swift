@@ -237,6 +237,8 @@ struct FavouriteLink: View {
     var size: CGFloat = 82
     var poster = false
     var row = false
+    /// Home uses portraits while retaining these same provider-specific navigation links.
+    var homeCard = false
     var body: some View {
         Group {
             switch item.kind {
@@ -247,7 +249,9 @@ struct FavouriteLink: View {
         }.buttonStyle(.springPress).accessibilityIdentifier("favourite-" + item.id)
     }
     @ViewBuilder private var label: some View {
-        if row {
+        if homeCard {
+            HomeFavouriteCard(item: item)
+        } else if row {
             HStack(spacing: 12) {
                 Artwork(path: item.image, title: item.name).frame(width: 56, height: 84).clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 5) {

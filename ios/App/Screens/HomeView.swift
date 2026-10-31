@@ -41,28 +41,40 @@ struct HomeView: View {
                     if !overview.planned.isEmpty { VStack(spacing: 12) {
                         heading("Up next") { Button("Planned →") { router.library("planned") } }
                         ScrollView(.horizontal) {
-                            HStack(alignment: .top, spacing: 12) {
+                            LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(overview.planned.prefix(12)) { title in
-                                    NavigationLink(value: title.id) { plannedTile(title).zoomSource(ZoomID.title(title.id)) }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id)
+                                    NavigationLink(value: title.id) { HomePlannedCard(title: title).zoomSource(ZoomID.title(title.id)) }
+                                        .buttonStyle(.plain).accessibilityIdentifier("home-planned-" + title.id)
+                                        .containerRelativeFrame(.horizontal) { width, _ in min(144, max(96, (width - 24) / 3.15)) }
                                 }
-                            }
-                        }.scrollIndicators(.hidden).scrollClipDisabled()
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     } }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                     let favourites = FavouritesStore.shared.items
                     if !favourites.isEmpty { VStack(spacing: 12) {
-                        heading("Favourites") {
+                        HStack(spacing: 8) {
+                            Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
+                            Text("Favourites").font(.system(size: 22, weight: .bold)).tracking(-0.6)
+                            Spacer(minLength: 4)
                             NavigationLink(value: AppDestination.favourites) { RoundTool(icon: "chevron-right", size: 36) }
                                 .buttonStyle(.springPress).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
                         }
                         ScrollView(.horizontal) {
-                            LazyHStack(alignment: .top, spacing: 14) { ForEach(favourites.prefix(12)) { FavouriteLink(item: $0) } }
-                        }.scrollIndicators(.hidden).scrollClipDisabled()
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(favourites.prefix(12)) { item in
+                                    FavouriteLink(item: item, homeCard: true)
+                                        .containerRelativeFrame(.horizontal) { width, _ in min(144, max(96, (width - 24) / 3.15)) }
+                                }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     } }
                     VStack(spacing: 12) {
-                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming"); Button("Glance →") { router.selectedTab = .glance } }
-                        CollectionLayout(grid: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
-                            NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) { upcomingRow(item) }.buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
+                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); Button("Glance →") { router.selectedTab = .glance } }
+                        HomeActivityLayout(cards: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
+                            NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
+                                HomeEpisodeCard(model: HomeEpisodeCardModel(upcoming: item), cards: upcomingGrid)
+                            }.buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
                         } }
                         if overview.upcoming.isEmpty {
                             HStack(spacing: 16) {
@@ -75,11 +87,11 @@ struct HomeView: View {
                         Text("Based on your saved episode dates. Air dates may change.").font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if !recent.isEmpty { VStack(spacing: 12) {
-                        heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history"); NavigationLink("All history →", value: AppDestination.history) }
-                        CollectionLayout(grid: historyGrid) { ForEach(recent) { entry in
+                        heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history", gridName: "cards"); NavigationLink("All history →", value: AppDestination.history) }
+                        HomeActivityLayout(cards: historyGrid) { ForEach(recent) { entry in
                             NavigationLink(value: entry.title.id) {
-                                Group { if historyGrid { HistoryRow(entry: entry, grid: true) } else { recentRow(entry) } }.zoomSource(ZoomID.title(entry.title.id))
-                            }.buttonStyle(.springPress)
+                                HomeEpisodeCard(model: HomeEpisodeCardModel(history: entry), cards: historyGrid)
+                            }.buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + entry.id)
                         } }
                     } }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)
@@ -148,53 +160,6 @@ struct HomeView: View {
             Spacer(minLength: 4)
             trailing().font(.system(size: 15, weight: .semibold)).tint(theme.accent)
         }.frame(minHeight: 32)
-    }
-    /// A planned title: poster with its status badge, name, and "Movie · 1h 54m" or "Show".
-    private func plannedTile(_ title: MediaTitle) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 88, height: 104).clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(alignment: .bottomTrailing) {
-                    DiaryIcon(name: title.statusIconName, size: 15).foregroundStyle(.white)
-                        .frame(width: 26, height: 26).background(.black.opacity(0.72), in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.35))).padding(5)
-                }
-            Text(title.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            Text(title.isSeries ? "Show" : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "))
-                .font(.system(size: 12)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
-        }.frame(width: 88, alignment: .leading).accessibilityElement(children: .combine)
-    }
-    /// Recently watched: artwork, title, "S1 E7" or "Movie", the season's progress and the date.
-    private func recentRow(_ entry: HistoryEntry) -> some View {
-        let progress = entry.episode.map { store.seasonProgress(entry.title, season: $0.season).fraction }
-        return HStack(spacing: 14) {
-            Artwork(path: entry.title.backdrop ?? entry.title.poster, title: entry.title.name, initialsOnly: false).frame(width: 84, height: 72).clipShape(RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 5) {
-                Text(entry.title.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(entry.episode.map { "S\($0.season) E\($0.number)" } ?? "Movie")
-                    if entry.rewatched { DiaryIcon(name: "rotate-ccw", size: 12).foregroundStyle(.tint).accessibilityLabel("Rewatched") }
-                }.font(.system(size: 14)).foregroundStyle(Color(webHex: "#a09aa9"))
-                if let progress {
-                    Capsule().fill(.white.opacity(0.14)).frame(width: 170, height: 5)
-                        .overlay(alignment: .leading) { Capsule().fill(theme.accent).frame(width: 170 * progress) }.padding(.vertical, 2)
-                }
-                if let date = DiaryDate.parse(entry.event.watchedAt) {
-                    Text(date.formatted(.dateTime.day().month(.abbreviated).year())).font(.system(size: 14)).foregroundStyle(Color(webHex: "#a09aa9"))
-                }
-            }
-            Spacer(minLength: 0)
-            DiaryIcon(name: "chevron-right", size: 17).foregroundStyle(Color(webHex: "#a09aa9"))
-        }.padding(10).background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
-    }
-    private func upcomingRow(_ item: HomeOverview.Upcoming) -> some View {
-        let layout = upcomingGrid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
-        return layout {
-            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: upcomingGrid ? nil : 42, height: upcomingGrid ? 150 : 62).frame(maxWidth: upcomingGrid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 5) { Text(item.title.name).font(.system(size: 14, weight: .semibold)).lineLimit(2); Text("S\(item.episode.season) E\(item.episode.number)").font(.system(size: 12)).foregroundStyle(.secondary) }
-            if !upcomingGrid { Spacer(minLength: 4) }
-            VStack(alignment: upcomingGrid ? .leading : .trailing, spacing: 5) { Text(item.daysAway == 0 ? "Today" : item.daysAway == 1 ? "Tomorrow" : "In \(item.daysAway) days").font(.system(size: 12, weight: .semibold)).foregroundStyle(.tint); Text(item.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated)).font(.system(size: 11)).foregroundStyle(.secondary) }
-        }.foregroundStyle(.primary).diaryPanel()
     }
     private func weekPanel(_ overview: HomeOverview, now: Date) -> some View {
         let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
