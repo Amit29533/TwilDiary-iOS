@@ -36,7 +36,7 @@ struct TitleHero<PersonalRating: View>: View {
                     InlineFlowLayout {
                         // No score, no gold dash: the community score only shows when TMDb has one.
                         if let score, score > 0 {
-                            HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 20)).foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(.yellow); Text("TMDb").font(.system(size: 14.4)).foregroundStyle(.secondary) }.frame(minHeight: 44)
+                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(.yellow); Text("TMDb").font(.system(size: 12)).foregroundStyle(.secondary) }.font(.system(size: 13)).frame(minHeight: 44)
                         }
                         personalRating
                     }.font(.system(size: 15.2)).padding(.top, 14)

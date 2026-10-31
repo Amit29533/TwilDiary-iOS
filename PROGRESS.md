@@ -1,5 +1,16 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — profile repairs and recent-date candidate
+
+Draft implements native Cast TMDB filmography, provider-link routing through the
+existing AnimeNavigationLookup, history-based Watched shelves, profile toolbar
+and native tab-bar ownership, theme hearts, AniList credit scores, horizontal
+recommendations and portrait cast, inline personal/community ratings, and right
+aligned recent watch dates beside episode labels. Existing upper Home untouched.
+Focused profile workflow selects five core cases, 29 app units and seven UI
+journeys. Candidate awaiting macOS compile, UI execution and visual inspection;
+no physical-device or full-regression acceptance claimed.
+
 ## 31 October 2026 — Home design verified; new profile repair batch active
 
 Home source 53a3f8d passed Codemagic 6ae5a823efa74786046f62fb: 1 core +

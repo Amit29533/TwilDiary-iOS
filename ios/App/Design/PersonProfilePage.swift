@@ -30,7 +30,7 @@ struct PersonProfilePage<Content: View>: View {
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .overlay(alignment: .top) { CompactHeaderBackdrop(state: header, topInset: geometry.safeAreaInsets.top) }
+                .overlay(alignment: .top) { ProfileHeaderBackdrop(state: header, topInset: geometry.safeAreaInsets.top) }
                 .toolbar {
                     ToolbarItem(placement: .principal) { ProfileCompactName(name: name, state: header) }
                     ToolbarItem(placement: .topBarTrailing) {
@@ -38,7 +38,8 @@ struct PersonProfilePage<Content: View>: View {
                                          subtitle: favouriteSubtitle, identifier: identifier + "-favourite")
                     }
                 }
-        }
+        }.toolbarBackground(.hidden, for: .navigationBar)
+            .modifier(ProfileNativeLinks(kind: kind, ref: ref))
     }
 
     private func hero(height: CGFloat, topInset: CGFloat) -> some View {
@@ -70,6 +71,16 @@ struct PersonProfilePage<Content: View>: View {
     }
 }
 
+private struct ProfileHeaderBackdrop: View {
+    let state: CompactHeaderState
+    let topInset: CGFloat
+    var body: some View {
+        Rectangle().fill(.ultraThinMaterial).overlay(.black.opacity(0.22))
+            .opacity(Double(state.progress)).frame(height: topInset + 56).offset(y: -topInset)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
 private struct ProfileCompactName: View {
     let name: String
     let state: CompactHeaderState
@@ -88,6 +99,7 @@ private struct ProfileFavourite: View {
     let subtitle: String?
     let identifier: String
     @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var feedback = 0
     private var saved: Bool { FavouritesStore.shared.contains(kind, ref) }
     var body: some View {
@@ -95,7 +107,7 @@ private struct ProfileFavourite: View {
             FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
             feedback += 1
         } label: {
-            Image(systemName: saved ? "heart.fill" : "heart").foregroundStyle(.white)
+            Image(systemName: saved ? "heart.fill" : "heart").foregroundStyle(theme.accent)
         }.accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
             .sensoryFeedback(.selection, trigger: feedback)
@@ -168,7 +180,7 @@ struct ProfileWebsiteButtons: View {
                             .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
                     }.buttonStyle(.plain).accessibilityLabel(link.label)
-                        .accessibilityHint("Opens website").accessibilityIdentifier("profile-site-" + link.id)
+                        .accessibilityHint(ProfileDeepLink.parse(link.url) == nil ? "Opens website" : "Opens inside TwilDiary").accessibilityIdentifier("profile-site-" + link.id)
                 }
             }
         }

@@ -42,6 +42,21 @@ enum PreviewData {
         object["titles"] = titles; object["episodes"] = episodes
         return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
+    /// Explicit identities/scores for profile repair UI checks; never loaded in Release.
+    static var profileRepairWorkspace: Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var titles = object["titles"] as! [[String: Any]]
+        for index in titles.indices {
+            switch titles[index]["id"] as? String {
+            case "frieren": titles[index]["tmdbId"] = 209867; titles[index]["communityScore"] = 8.6
+            case "again": titles[index]["tmdbId"] = 900002
+            case "quiet-orbit": titles[index]["tmdbId"] = 900001
+            default: break
+            }
+        }
+        object["titles"] = titles
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
     static var metadataWorkspace: Workspace {
         let value = workspace
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]

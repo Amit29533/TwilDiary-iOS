@@ -28,6 +28,7 @@ struct AniAppearance: Hashable, Sendable, Identifiable {
     let voiceActor: AniPerson?
     var format: String? = nil
     var alternateTitles: [String] = []
+    var rating: Double? = nil
     var names: [String] { [title] + alternateTitles }
     var kind: MediaKind? {
         switch format { case "MOVIE": .movie; case "TV", "TV_SHORT": .tv; default: nil }
@@ -62,6 +63,7 @@ struct AniRole: Hashable, Sendable, Identifiable {
     let role: String?
     var format: String? = nil
     var alternateTitles: [String] = []
+    var rating: Double? = nil
     var id: String { "\(character.id)-\(animeID)" }
 }
 struct AniVoiceActorDetail: Sendable {
@@ -102,7 +104,21 @@ enum AniListText {
         var text = description.replacingOccurrences(of: "<br>", with: "\n")
         let spoiler = /~!(.|\n)*?!~/
         text = hideSpoilers ? text.replacing(spoiler, with: "") : text.replacingOccurrences(of: "~!", with: "").replacingOccurrences(of: "!~", with: "")
-        return text.replacing(/<[^>]+>/, with: "").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return htmlLinks(text).replacing(/<[^>]+>/, with: "").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private static func htmlLinks(_ input: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>"#, options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return input }
+        let output = NSMutableString(string: input)
+        for match in regex.matches(in: input, range: NSRange(input.startIndex..., in: input)).reversed() {
+            guard let urlRange = Range(match.range(at: 1), in: input), let labelRange = Range(match.range(at: 2), in: input) else { continue }
+            let label = String(input[labelRange]).replacingOccurrences(of: "]", with: "\\]")
+            guard let url = URL(string: String(input[urlRange])), ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
+                output.replaceCharacters(in: match.range, with: label); continue
+            }
+            let address = url.absoluteString.replacingOccurrences(of: "(", with: "%28").replacingOccurrences(of: ")", with: "%29")
+            output.replaceCharacters(in: match.range, with: "[" + label + "](" + address + ")")
+        }
+        return output as String
     }
     /// AniList's Markdown as styled text: [links](…) tappable, __bold__ bold, line breaks and "- "
     /// lists kept, HTML tags dropped and spoilers (~! … !~) left out while spoilers are hidden.
@@ -203,6 +219,22 @@ actor AniListClient {
         return list
     }
 
+    private var mediaDetails: [Int: AniAppearance] = [:]
+    func media(_ id: Int) async throws -> AniAppearance {
+        if let saved = mediaDetails[id] { return saved }
+        struct Reply: Decodable { let Media: MediaNode }
+        struct MediaNode: Decodable {
+            struct Title: Decodable { let english: String?; let romaji: String? }
+            let id: Int; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts?; let averageScore: Int?
+        }
+        let reply: Reply = try await query("query($id: Int) { Media(id: $id, type: ANIME) { id format averageScore title { english romaji } coverImage { large } startDate { year } } }", ["id": id])
+        let m = reply.Media
+        let value = AniAppearance(id: m.id, title: m.title.english ?? m.title.romaji ?? "Untitled", cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+        if mediaDetails.count >= 100 { mediaDetails.removeAll() }
+        mediaDetails[id] = value
+        return value
+    }
+
     func character(_ id: Int) async throws -> AniCharacterDetail {
         if let saved = details[id] { return saved }
         struct Result: Decodable { let Character: CharacterNode }
@@ -212,10 +244,10 @@ actor AniListClient {
         }
         struct Connection: Decodable { let edges: [Edge] }
         struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let voiceActors: [Staff] }
-        struct MediaNode: Decodable { let id: Int; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts? }
+        struct MediaNode: Decodable { let id: Int; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts?; let averageScore: Int? }
         struct Title: Decodable { let romaji: String?; let english: String? }
         let result: Result = try await query("""
-            query($id: Int) { Character(id: $id) { id name { full native alternative } image { large } description(asHtml: false) gender age dateOfBirth { year month day } bloodType favourites media(sort: [POPULARITY_DESC], type: ANIME, perPage: 12) { edges { characterRole node { id format title { romaji english } coverImage { large } startDate { year } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
+            query($id: Int) { Character(id: $id) { id name { full native alternative } image { large } description(asHtml: false) gender age dateOfBirth { year month day } bloodType favourites media(sort: [POPULARITY_DESC], type: ANIME, perPage: 12) { edges { characterRole node { id format averageScore title { romaji english } coverImage { large } startDate { year } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
             """, ["id": id])
         let node = result.Character
         let detail = AniCharacterDetail(
@@ -226,7 +258,7 @@ actor AniListClient {
                 AniAppearance(id: edge.node.id, title: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled", cover: edge.node.coverImage?.large,
                               year: edge.node.startDate?.year, role: edge.characterRole,
                               voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) },
-                              format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 })
+                              format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 }, rating: edge.node.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
             })
         details[id] = detail
         return detail
@@ -243,12 +275,12 @@ actor AniListClient {
         struct Connection: Decodable { let edges: [Edge] }
         // AniList can leave an empty (null) slot in these lists; one must not sink the whole page.
         struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let characters: [Node?] }
-        struct MediaNode: Decodable { let id: Int; let type: String?; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts? }
+        struct MediaNode: Decodable { let id: Int; let type: String?; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts?; let averageScore: Int? }
         struct Title: Decodable { let romaji: String?; let english: String? }
         // characterMedia takes no `type` filter (AniList rejects the whole query), so each role
         // says its media type and only anime are kept.
         let result: Result = try await query("""
-            query($id: Int) { Staff(id: $id) { id name { full native } image { large } description(asHtml: false) age dateOfBirth { year month day } homeTown yearsActive favourites characterMedia(sort: [POPULARITY_DESC], perPage: 25) { edges { characterRole node { id type format title { romaji english } coverImage { large } startDate { year } } characters { id name { full } image { large } } } } } }
+            query($id: Int) { Staff(id: $id) { id name { full native } image { large } description(asHtml: false) age dateOfBirth { year month day } homeTown yearsActive favourites characterMedia(sort: [POPULARITY_DESC], perPage: 25) { edges { characterRole node { id type format averageScore title { romaji english } coverImage { large } startDate { year } } characters { id name { full } image { large } } } } } }
             """, ["id": id])
         let node = result.Staff
         var seen = Set<String>()
@@ -257,7 +289,7 @@ actor AniListClient {
                 AniRole(character: AniPerson(id: character.id, name: character.name.full ?? "Unknown", image: character.image?.large),
                         animeID: edge.node.id, anime: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled",
                         cover: edge.node.coverImage?.large, year: edge.node.startDate?.year, role: edge.characterRole,
-                        format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 })
+                        format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 }, rating: edge.node.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
             }
         }.filter { seen.insert($0.id).inserted }
         let detail = AniVoiceActorDetail(
@@ -438,14 +470,14 @@ enum AniListPreview {
         let stat = topVoiceActors.first { $0.id == id } ?? topVoiceActors[0]
         let character = characters.first { $0.voiceActor?.id == stat.id } ?? characters[0]
         return AniVoiceActorDetail(id: stat.id, name: stat.person.name, native: stat.native, image: nil,
-                                   description: ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") ? "**Agency:** Reference Studio\n\n[Profile](https://example.com/profile) | [Website](https://example.org) | [Twitter](https://x.com/reference) | [YouTube](https://youtube.com/@reference) | [Instagram](https://instagram.com/reference)\n\nA voice actor from Japan. ~!A spoiler\n\nthat stays hidden.!~" : "A voice actor from Japan. ~!A spoiler that stays hidden.!~", age: 33, birthday: "27 September",
+                                   description: ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") ? "**Agency:** Reference Studio\n\n[Profile](https://example.com/profile) | [Website](https://example.org) | [Twitter](https://x.com/reference) | [YouTube](https://youtube.com/@reference) | [Instagram](https://instagram.com/reference) | [Fern](https://anilist.co/character/2) | [Frieren](https://anilist.co/anime/154587)\n\nA voice actor from Japan. ~!A spoiler\n\nthat stays hidden.!~" : "A voice actor from Japan. ~!A spoiler that stays hidden.!~", age: 33, birthday: "27 September",
                                    homeTown: "Tokyo", yearsActive: [2006], favourites: 9000,
                                    roles: [AniRole(character: AniPerson(id: character.id, name: character.name, image: nil), animeID: 154587,
-                                                   anime: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role)])
+                                                   anime: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role, rating: 8.7)])
     }
     static func detail(_ id: Int) -> AniCharacterDetail {
         let character = characters.first { $0.id == id } ?? characters[0]
-        var appearances = [AniAppearance(id: 154587, title: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role, voiceActor: character.voiceActor)]
+        var appearances = [AniAppearance(id: 154587, title: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: character.role, voiceActor: character.voiceActor, rating: 8.6)]
         if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation") {
             appearances += [AniAppearance(id: 900001, title: "Rascal Does Not Dream of a Knapsack Kid", cover: nil, year: 2023, role: "MAIN", voiceActor: nil, format: "MOVIE"),
                             AniAppearance(id: 900002, title: "Rascal Does Not Dream of Santa Claus", cover: nil, year: 2025, role: "MAIN", voiceActor: nil, format: "TV")]

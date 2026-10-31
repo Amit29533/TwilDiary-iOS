@@ -38,12 +38,13 @@ struct CatalogGrid: View {
 
 struct CatalogPoster: View {
     let item: CatalogItem
+    @Environment(DiaryStore.self) private var store
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false)
                 .aspectRatio(2 / 3, contentMode: .fit)
                 .overlay(alignment: .bottomLeading) {
-                    if let score = item.rating, score > 0 {
+                    if let score = item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), score > 0 {
                         HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
                             .font(.system(size: 12)).foregroundStyle(Color(webHex: "#e7ca90"))
                             .padding(.horizontal, 5).padding(.vertical, 3).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6)).padding(6)
@@ -359,7 +360,6 @@ struct CastAndRelated: View {
     /// Anime show their characters (AniList) above the cast.
     var anime: (year: Int?, movie: Bool)? = nil
     @Environment(DiaryStore.self) private var store
-    @AppStorage("catalogGrid") private var grid = true
     @State private var cast: [CastPerson] = []
     @State private var related: [CatalogItem] = []
     @State private var failure: String?
@@ -373,11 +373,11 @@ struct CastAndRelated: View {
                         ForEach(cast) { person in
                             NavigationLink(value: PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character)) {
                                 VStack(spacing: 8) {
-                                    Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 82, height: 82).clipShape(Circle())
+                                    Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
                                     Text(person.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
                                     Text(person.character).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                                }.frame(width: 100).multilineTextAlignment(.center).foregroundStyle(.primary)
-                            }.buttonStyle(.plain)
+                                }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                            }.buttonStyle(.plain).accessibilityIdentifier("cast-person-" + String(person.id))
                         }
                     }
                 }.scrollIndicators(.hidden)
@@ -387,9 +387,8 @@ struct CastAndRelated: View {
                     HStack {
                         Text("You might like").font(.system(size: 20, weight: .semibold))
                         Spacer(minLength: 8)
-                        CollectionLayoutToggle(grid: $grid, collection: "catalog")
                     }
-                    CatalogGrid(items: Array(related.prefix(6)), showsLayoutToggle: false)
+                    PersonCreditShelf(items: Array(related.prefix(12)), identifier: "related-titles-shelf")
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }

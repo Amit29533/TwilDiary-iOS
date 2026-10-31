@@ -102,6 +102,10 @@ import OSLog
                 if registered { return }
                 transitionPending = false
             }
+            // Scrolling/toolbar updates can make UIKit reveal the tab bar again.
+            // Only the attached top destination may reassert its ownership.
+            top.hidesBottomBarWhenPushed = detail
+            applyTabBarVisibility(animated: false)
             onPresented?()
             #if DEBUG
             let gestures: [(UIGestureRecognizer?, String)] = [(navigation.interactivePopGestureRecognizer, "edge"), (navigation.interactiveContentPopGestureRecognizer, "content")]

@@ -83,6 +83,7 @@ struct CharacterView: View {
                         let source = ProfileWebsiteLink(url: URL(string: "https://anilist.co/character/\(character.id)")!, title: "AniList")!
                         ProfileWebsiteButtons(links: biography.links.contains(where: { $0.id == source.id }) ? biography.links : biography.links + [source])
                         ProfileBiography(text: AniListText.formatted(biography.markdown, hideSpoilers: hideSpoilers), expanded: $expanded)
+                        ProfileWatchedShelf(appearances: character.appearances)
                         if !character.voiceActors.isEmpty { voicedBy(character.voiceActors) }
                         if !character.appearances.isEmpty { appearsIn(character.appearances) }
                     }
@@ -116,10 +117,10 @@ struct CharacterView: View {
                         // Opens the voice actor's page: their other characters and a heart.
                         NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
                             VStack(spacing: 8) {
-                                Artwork(path: actor.image, title: actor.name).frame(width: 82, height: 82).clipShape(Circle())
+                                Artwork(path: actor.image, title: actor.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
                                 Text(actor.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
                                 Text("Japanese").font(.caption).foregroundStyle(.secondary)
-                            }.frame(width: 100).multilineTextAlignment(.center).accessibilityElement(children: .combine)
+                            }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading).accessibilityElement(children: .combine)
                         }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-\(actor.id)")
                     }
                 }
@@ -135,6 +136,12 @@ struct CharacterView: View {
                         AnimeAppearanceButton(appearance: item) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Artwork(path: item.cover, title: item.title).frame(width: 104, height: 152).clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(alignment: .bottomLeading) {
+                                        if let score = item.rating, score > 0 {
+                                            HStack(spacing: 3) { RatingBadge(score: score); Text("AniList").font(.system(size: 9)) }
+                                                .padding(4).background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 6)).padding(4)
+                                        }
+                                    }
                                 Text(item.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
                                 Text([item.year.map(String.init), item.role == "MAIN" ? "Main" : item.role == "SUPPORTING" ? "Supporting" : nil].compactMap { $0 }.joined(separator: " · "))
                                     .font(.caption).foregroundStyle(.secondary)
@@ -269,12 +276,7 @@ struct FavouriteLink: View {
                 Text(item.subtitle ?? item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
         } else {
-            VStack(spacing: 8) {
-                Artwork(path: item.image, title: item.name).frame(width: size, height: size).clipShape(Circle())
-                    .overlay(Circle().strokeBorder(.white.opacity(0.12)))
-                Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
-                Text(item.kind.singular).font(.caption).foregroundStyle(.secondary)
-            }.frame(width: size + 18).multilineTextAlignment(.center).accessibilityElement(children: .combine)
+            HomeFavouriteCard(item: item).frame(width: size + 18)
         }
     }
 }

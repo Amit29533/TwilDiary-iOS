@@ -39,6 +39,7 @@ struct VoiceActorView: View {
                                 .accessibilityIdentifier("voice-actor-watched")
                         }
                         biography(actor)
+                        ProfileWatchedShelf(appearances: actor.roles.map { AniAppearance(id: $0.animeID, title: $0.anime, cover: $0.cover, year: $0.year, role: $0.role, voiceActor: nil, format: $0.format, alternateTitles: $0.alternateTitles, rating: $0.rating) })
                         if !actor.roles.isEmpty { roles(actor.roles) }
                     }
                 }
@@ -151,8 +152,12 @@ struct VoiceActorView: View {
             AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
                                                year: role.year, role: role.role, voiceActor: nil,
                                                format: role.format, alternateTitles: role.alternateTitles)) {
-                Text(role.anime).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(role.anime).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    if let score = role.rating, score > 0 {
+                        HStack(spacing: 3) { RatingBadge(score: score); Text("AniList").font(.caption2).foregroundStyle(.secondary) }
+                    }
+                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
         }.multilineTextAlignment(.leading)
     }

@@ -3,7 +3,7 @@ import UIKit
 
 @MainActor final class NativeScreensTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
-    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false) -> XCUIApplication {
+    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]
         if mutations || scanner { app.launchArguments.append("--ui-mutations") }
         if scanner { app.launchArguments.append("--ui-scanner") }
@@ -19,6 +19,7 @@ import UIKit
         if longEpisodes { app.launchArguments.append("--ui-long-episodes") }
         if automaticCarousel { app.launchArguments.append("--ui-automatic-carousel") }
         if animeNavigation { app.launchArguments.append("--ui-anime-navigation") }
+        if profileRepairs { app.launchArguments.append("--ui-profile-repairs") }
         if favouritesGallery { app.launchArguments.append("--ui-favourites-gallery") }
         if let traktScenario { app.launchArguments.append("--ui-trakt=" + traktScenario) }
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
@@ -1399,6 +1400,62 @@ import UIKit
         tapVisibleUndo(app)
         XCTAssertTrue(app.buttons["Log a watch"].waitForExistence(timeout: 5)); capture("Movie watch undone")
         movieMark.tap(); XCTAssertTrue(app.buttons["Log a rewatch"].waitForExistence(timeout: 5))
+    }
+    func testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs() {
+        executionTimeAllowance = 240
+        let app = launch(animeNavigation: true, profileRepairs: true)
+        func reveal(_ element: XCUIElement, down: Bool = false) {
+            for _ in 0..<14 { if element.exists && element.isHittable { return }; if down { app.swipeDown() } else { app.swipeUp() } }
+            XCTAssertTrue(element.isHittable, element.identifier)
+        }
+        func assertDetailTabsHidden() { XCTAssertEqual(app.tabBars.count, 0, "A profile/detail must not reveal the root tab bar while scrolling") }
+        app.tabBars.buttons["Library"].tap(); app.buttons["title-frieren"].tap()
+        let rating = app.buttons["title-personal-rating"]
+        XCTAssertTrue(rating.waitForExistence(timeout: 5))
+        let community = app.staticTexts["TMDb"].firstMatch
+        XCTAssertTrue(community.exists)
+        XCTAssertLessThan(abs(rating.frame.midY - community.frame.midY), 10, "Your rating stays beside the community rating")
+        capture("Saved title community and personal ratings inline")
+        let cast = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'cast-person-'")).firstMatch
+        reveal(cast)
+        XCTAssertEqual(cast.frame.width, 96, accuracy: 2)
+        XCTAssertGreaterThan(cast.frame.height, 136)
+        let shelf = app.scrollViews["related-titles-shelf"]
+        reveal(shelf)
+        let posters = shelf.buttons.allElementsBoundByIndex.filter { $0.isHittable }
+        guard posters.count >= 2 else { XCTFail("Two horizontal recommendations should be visible"); return }
+        XCTAssertGreaterThan(posters[1].frame.minX, posters[0].frame.maxX)
+        XCTAssertEqual(posters[0].frame.minY, posters[1].frame.minY, accuracy: 2)
+        capture("Recommendations use one horizontal poster shelf")
+        let fern = app.buttons["anime-character-2"]; reveal(fern, down: true); fern.tap()
+        XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5)); assertDetailTabsHidden()
+        let watched = app.buttons["profile-watched-frieren"]; reveal(watched)
+        XCTAssertTrue(watched.label.contains("Frieren"))
+        app.swipeUp(); assertDetailTabsHidden()
+        capture("Character Watched titles and toolbar without root tabs")
+        let voice = app.buttons["voice-actor-12"]; reveal(voice, down: true)
+        XCTAssertEqual(voice.frame.width, 96, accuracy: 2); voice.tap()
+        XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5)); assertDetailTabsHidden()
+        capture("Voice actor initial transparent toolbar and accent heart")
+        app.swipeUp(); app.swipeDown(); assertDetailTabsHidden()
+        let characterLink = app.buttons["profile-site-https://anilist.co/character/2"]
+        reveal(characterLink); characterLink.tap()
+        XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5)); assertDetailTabsHidden()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let animeLink = app.buttons["profile-site-https://anilist.co/anime/154587"]
+        reveal(animeLink, down: true); animeLink.tap()
+        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 10)); assertDetailTabsHidden()
+        XCTAssertFalse(app.navigationBars["Find anime"].exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let tmdb = app.buttons["voice-actor-tmdb"]; reveal(tmdb, down: true); tmdb.tap()
+        XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10)); assertDetailTabsHidden()
+        app.swipeUp(); app.swipeDown(); assertDetailTabsHidden()
+        let castTMDB = app.buttons["person-tmdb"]; reveal(castTMDB, down: true); castTMDB.tap()
+        XCTAssertTrue(app.staticTexts["person-filmography-heading"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["person-filmography-heading"].label.contains("Credits"))
+        XCTAssertEqual(app.webViews.count, 0)
+        capture("Cast TMDB action stays inside native credits")
+        app.navigationBars.buttons.element(boundBy: 0).tap(); assertDetailTabsHidden()
     }
     func testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation() {
         let app = launch(); app.tabBars.buttons["Home"].tap(); app.buttons["search-twildiary"].tap()

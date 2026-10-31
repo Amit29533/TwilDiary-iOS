@@ -259,7 +259,7 @@ struct TitleDetailView: View {
     private func header(_ title: MediaTitle) -> some View {
         TitleHero(name: title.name, poster: title.poster, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: title.communityScore, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
     }
-    private func personalRating(_ title: MediaTitle) -> some View { Button { openRating(title) } label: { HStack(spacing: 7) { DiaryIcon(name: "star", size: 21); Text("Your rating").foregroundStyle(.secondary); Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—") } }.buttonStyle(.plain).accessibilityIdentifier("title-personal-rating").accessibilityLabel("Your rating").accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated") }
+    private func personalRating(_ title: MediaTitle) -> some View { Button { openRating(title) } label: { HStack(spacing: 4) { DiaryIcon(name: "star", size: 17); Text("Your rating").font(.system(size: 12)).foregroundStyle(.secondary); Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—") } }.font(.system(size: 13)).buttonStyle(.plain).accessibilityIdentifier("title-personal-rating").accessibilityLabel("Your rating").accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated") }
     private func progressPanel(_ title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {

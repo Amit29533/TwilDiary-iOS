@@ -21,7 +21,7 @@ struct PersonView: View {
                                 .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
                         }
                         ProfileBiography(text: AttributedString(person.biography), expanded: $expanded)
-                        server(person)
+                        watched(person)
                         let sections = store.personSections(person)
                         shelf("Known for", person: person, kind: .knownFor, items: sections.knownFor)
                         shelf("Shows", person: person, kind: .shows, items: sections.shows)
@@ -46,21 +46,19 @@ struct PersonView: View {
                     ProfileDetailChip(icon: "mappin.and.ellipse", label: "Birthplace", value: person.birthplace, identifier: "person-birthplace")
                         .frame(idealWidth: 140, maxWidth: 180)
                 }
-                // This page already is the native TMDB profile; its logo is source attribution.
-                Link(destination: URL(string: "https://www.themoviedb.org/person/\(person.id)")!) { ProfileSourceLogo() }
-                    .buttonStyle(.plain).accessibilityLabel("View source on TMDB website")
+                NavigationLink(value: PersonFilmographyRoute(person: person.id, section: .credits)) { ProfileSourceLogo() }
+                    .buttonStyle(.plain).accessibilityLabel("View TMDB credits").accessibilityIdentifier("person-tmdb")
             }
             if let death = person.deathday { ProfileDetailLine(label: "Died", value: personDate(death)) }
             if let aliases = person.aliases, !aliases.isEmpty { ProfileDetailLine(label: "Also known as", value: aliases.joined(separator: " · ")) }
         }
     }
-    private func server(_ person: PersonDetails) -> some View {
+    private func watched(_ person: PersonDetails) -> some View {
         let sections = store.personSections(person)
         return VStack(alignment: .leading, spacing: 14) {
-            sectionHeading("On your server", route: PersonFilmographyRoute(person: person.id, section: .credits, onServer: true))
-            if sections.localShows.isEmpty && sections.localMovies.isEmpty { Text("None of these titles are on your disks yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
-            shelf("Shows", person: person, kind: .shows, items: sections.localShows, onServer: true)
-            shelf("Movies", person: person, kind: .movies, items: sections.localMovies, onServer: true)
+            sectionHeading("Watched", route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
+            if sections.watched.isEmpty { Text("No watches from these credits yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
+            else { PersonCreditShelf(items: Array(sections.watched.prefix(12))) }
         }
     }
     @ViewBuilder private func shelf(_ label: String, person: PersonDetails, kind: PersonSection, items: [CatalogItem], onServer: Bool = false) -> some View {
@@ -82,8 +80,9 @@ struct PersonView: View {
     }
 }
 
-private struct PersonCreditShelf: View {
+struct PersonCreditShelf: View {
     let items: [CatalogItem]
+    var identifier = "person-credit-shelf"
     @Environment(DiaryStore.self) private var store
     var body: some View {
         ScrollView(.horizontal) {
@@ -97,7 +96,7 @@ private struct PersonCreditShelf: View {
                     }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress)
                 }
             }
-        }.scrollIndicators(.hidden)
+        }.scrollIndicators(.hidden).accessibilityIdentifier(identifier)
     }
 }
 
@@ -110,7 +109,7 @@ struct PersonFilmographyView: View {
     @State private var filters: PersonFilmographyFilters
     @State private var showSearch = false
     @State private var shown = 40
-    init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer)) }
+    init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -127,7 +126,7 @@ struct PersonFilmographyView: View {
                         if let error = filters.error { Text(error).font(.system(size: 13)).foregroundStyle(.secondary) }
                         else {
                             let items = filters.applying(person: person, workspace: store.workspace, section: route.section)
-                            Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
+                            Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
                             if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
                             else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
                             if shown < items.count { Button("Load more") { shown += 40 }.buttonStyle(.glass).frame(maxWidth: .infinity) }

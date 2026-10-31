@@ -60,7 +60,7 @@ struct HomeEpisodeCard: View {
                         .overlay(alignment: model.isUpcoming ? .topLeading : .topTrailing) { badge.padding(8) }
                     VStack(alignment: .leading, spacing: 6) {
                         title.lineLimit(2)
-                        if model.isUpcoming && !typeSize.isAccessibilitySize {
+                        if !typeSize.isAccessibilitySize {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 episode
                                 Spacer(minLength: 0)
