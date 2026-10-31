@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var upcomingLimit = 3
     /// Changes only when vertical scrolling starts or settles, never per frame.
     @State private var scrolling = false
+    @State private var mediaHeader = CompactHeaderState()
     @SceneStorage("home.continue.title") private var continueSelection = ""
     @AppStorage("homeHistoryGrid") private var historyGrid = false
     @AppStorage("upcomingGrid") private var upcomingGrid = false
@@ -49,7 +50,9 @@ struct HomeView: View {
                                 }
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
-                    } }
+                    }.padding(.horizontal, -4)
+                        .modifier(HomeMediaBoundary(state: mediaHeader, enabled: true))
+                    }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                     let favourites = FavouritesStore.shared.items
                     if !favourites.isEmpty { VStack(spacing: 12) {
@@ -68,7 +71,7 @@ struct HomeView: View {
                                 }
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
-                    } }
+                    }.padding(.horizontal, -4).modifier(HomeMediaBoundary(state: mediaHeader, enabled: overview.planned.isEmpty)) }
                     VStack(spacing: 12) {
                         heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); Button("Glance →") { router.selectedTab = .glance } }
                         HomeActivityLayout(cards: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
@@ -85,7 +88,7 @@ struct HomeView: View {
                         }
                         if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 } }
                         Text("Based on your saved episode dates. Air dates may change.").font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    }.padding(.horizontal, -4).modifier(HomeMediaBoundary(state: mediaHeader, enabled: overview.planned.isEmpty && favourites.isEmpty))
                     if !recent.isEmpty { VStack(spacing: 12) {
                         heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history", gridName: "cards"); NavigationLink("All history →", value: AppDestination.history) }
                         HomeActivityLayout(cards: historyGrid) { ForEach(recent) { entry in
@@ -93,10 +96,12 @@ struct HomeView: View {
                                 HomeEpisodeCard(model: HomeEpisodeCardModel(history: entry), cards: historyGrid)
                             }.buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + entry.id)
                         } }
-                    } }
+                    }.padding(.horizontal, -4) }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)
             }
-        }.overlay(alignment: .top) { PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() }, overArtwork: true, part: .buttons) }
+        }.coordinateSpace(name: "home-scroll")
+        .contentMargins(.bottom, 90, for: .scrollContent)
+        .overlay(alignment: .top) { HomeMediaHeader(state: mediaHeader, onSearch: { showSearch.toggle() }) }
         .onScrollPhaseChange { _, phase in
             // The automatic carousel step must not animate mid-fling under the finger.
             let active = phase != .idle

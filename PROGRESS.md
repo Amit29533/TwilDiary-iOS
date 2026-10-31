@@ -12,7 +12,13 @@ are reused. Independent persisted Home layout keys remain. History removes
 repeated season bars without changing dates, order, rewatch state or full History.
 Focused gate: core Home golden, 8 model/projection units and 6 UI journeys,
 zero-warning simulator/device builds, retained screenshots and same-source IPA.
-Native execution pending; see ios/docs/HOME-MEDIA-REDESIGN.md. No full suite,
+09bec03 passed the 8 native units and 6 UI flows. Owner then requested measured
+geometry correction against the mockup: enlarge 80x45 thumbnails toward 120x68,
+use ~78-point rows, 12-point lower margins/corners and remove blank caption lines.
+Fix the exposed lower-scroll status/header overlap through a Home-only compact
+header, retaining the initial upper content; add bottom clearance and runtime
+geometry assertions. Geometry follow-up native execution pending; see
+ios/docs/HOME-MEDIA-REDESIGN.md. No full suite,
 backend/live-data changes, main merge or new PR.
 
 ## 31 October 2026 — approved Favourites gallery redesign

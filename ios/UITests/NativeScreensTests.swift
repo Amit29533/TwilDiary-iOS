@@ -273,9 +273,12 @@ import UIKit
         capture("Home upper section retained before new media shelves")
         func reveal(_ element: XCUIElement, down: Bool = false) {
             for _ in 0..<18 {
-                if element.exists && element.isHittable && element.frame.maxY < app.tabBars.firstMatch.frame.minY { return }
-                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.32 : 0.76))
-                let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.76 : 0.32))
+                let headerBottom = app.buttons["search-twildiary"].frame.maxY + 6
+                let bottom = app.tabBars.firstMatch.frame.minY
+                if element.exists && element.isHittable && element.frame.minY >= headerBottom && element.frame.maxY < bottom { return }
+                let towardTop = element.exists ? element.frame.minY < headerBottom : down
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: towardTop ? 0.32 : 0.76))
+                let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: towardTop ? 0.76 : 0.32))
                 start.press(forDuration: 0.02, thenDragTo: end)
             }
             XCTAssertTrue(element.isHittable, element.identifier)
@@ -305,6 +308,11 @@ import UIKit
         XCTAssertTrue(upcoming.label.contains("S2 · E1"), upcoming.label)
         XCTAssertTrue(upcoming.label.contains("Tomorrow"))
         XCTAssertGreaterThan(upcoming.frame.width, app.frame.width * 0.8)
+        XCTAssertEqual(upcoming.frame.minX, 12, accuracy: 1, "Reference inset independent of decorative mockup bezel")
+        XCTAssertEqual(upcoming.frame.width, app.frame.width - 24, accuracy: 2)
+        XCTAssertGreaterThanOrEqual(upcoming.frame.height, 78)
+        XCTAssertLessThanOrEqual(upcoming.frame.height, 82)
+        let rowHeight = upcoming.frame.height
         capture("Home upcoming compact landscape list rows")
         reveal(upcomingLayout, down: true); upcomingLayout.tap()
         XCTAssertEqual(upcomingLayout.value as? String, "Cards")
@@ -324,6 +332,9 @@ import UIKit
         reveal(history)
         let firstID = history.identifier, firstLabel = history.label
         XCTAssertGreaterThan(history.frame.width, app.frame.width * 0.8)
+        XCTAssertEqual(history.frame.minX, 12, accuracy: 1)
+        XCTAssertEqual(history.frame.width, app.frame.width - 24, accuracy: 2)
+        XCTAssertEqual(history.frame.height, rowHeight, accuracy: 2, "Matching activity row geometry")
         XCTAssertFalse(history.label.contains("% complete"))
         capture("Home recently watched uses the same compact list component")
         reveal(historyLayout, down: true); historyLayout.tap()
@@ -349,6 +360,13 @@ import UIKit
         reveal(historyLayout)
         XCTAssertEqual(historyLayout.value as? String, "List", "Home sections retain independent saved layouts")
         capture("Home independent list and card choices restored after process relaunch")
+        app.swipeUp(); app.swipeUp()
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-history-event-'"))
+        XCTAssertEqual(rows.count, 4, "Separate recent events remain available at the bottom")
+        let last = rows.allElementsBoundByIndex.last!
+        XCTAssertTrue(last.isHittable)
+        XCTAssertLessThan(last.frame.maxY, app.tabBars.firstMatch.frame.minY - 8, "Last row clears the native tab bar")
+        capture("Home lower list geometry and final row clear of native bars")
     }
     func testUpcomingEpisodeOpensItsLinkedSeasonAndEpisodesWithoutChangingOrdinaryTitleNavigation() {
         let app = launch(upcoming: true); app.tabBars.buttons["Home"].tap()

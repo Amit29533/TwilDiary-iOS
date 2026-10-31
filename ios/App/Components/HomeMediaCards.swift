@@ -66,29 +66,31 @@ struct HomeEpisodeCard: View {
                 }.containerRelativeFrame(.horizontal) { width, _ in min(280, max(200, width * 0.64)) }
             } else {
                 HStack(spacing: 12) {
-                    artwork.frame(width: 80, height: 45).clipShape(RoundedRectangle(cornerRadius: 8))
+                    artwork.aspectRatio(16.0 / 9.0, contentMode: .fit)
+                        .containerRelativeFrame(.horizontal) { width, _ in min(120, width * 0.3) }
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 5) {
                         title.lineLimit(2)
                         episode
                         if typeSize.isAccessibilitySize { dateColumn }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if !typeSize.isAccessibilitySize { dateColumn }
-                }.padding(10).frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                }.padding(6).frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
             }
         }.foregroundStyle(Color(webHex: "#f3f0f7"))
-            .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 14))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
-            .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 14))
+            .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: cards ? 14 : 12))
+            .clipShape(RoundedRectangle(cornerRadius: cards ? 14 : 12))
+            .overlay(RoundedRectangle(cornerRadius: cards ? 14 : 12).strokeBorder(.white.opacity(0.12)))
+            .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: cards ? 14 : 12))
             .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
     }
     private var artwork: some View { Artwork(path: model.artwork, title: model.name, initialsOnly: false) }
-    private var title: some View { Text(model.name).font(.subheadline.weight(.semibold)) }
+    private var title: some View { Text(model.name).font(.callout.weight(.semibold)) }
     private var episode: some View {
         HStack(spacing: 5) {
             Text(model.episode)
             if model.isRewatch { Image(systemName: "arrow.counterclockwise").accessibilityLabel("Rewatched") }
-        }.font(.caption).foregroundStyle(.secondary)
+        }.font(.footnote).foregroundStyle(.secondary)
     }
     private var dateColumn: some View {
         VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 4) {
@@ -130,9 +132,9 @@ struct HomePlannedCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).aspectRatio(2.0 / 3.0, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-            Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2, reservesSpace: true)
+            Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
             Text(title.isSeries ? "Show" : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "))
-                .font(.caption).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
+                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
         }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
     }
 }
@@ -148,8 +150,40 @@ struct HomeFavouriteCard: View {
                     Image(systemName: "heart.fill").font(.system(size: 12)).foregroundStyle(theme.accent)
                         .frame(width: 24, height: 24).background(.black.opacity(0.78), in: Circle()).padding(6).accessibilityHidden(true)
                 }
-            Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2, reservesSpace: true)
+            Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
             Text(item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
+    }
+}
+
+/// Only this leaf observes the Up next threshold. The hero and media shelves do
+/// not re-diff on every scroll frame, and the original upper Home stays intact.
+struct HomeMediaHeader: View {
+    let state: CompactHeaderState
+    let onSearch: () -> Void
+    var body: some View {
+        let compact = state.progress > 0
+        PageHeader(name: "TwilDiary", onSearch: onSearch, overArtwork: !compact, part: compact ? .full : .buttons)
+            .background {
+                if compact {
+                    Color(webHex: "#050507").ignoresSafeArea(.container, edges: .top)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if compact { Color.white.opacity(0.08).frame(height: 0.5).allowsHitTesting(false).accessibilityHidden(true) }
+            }
+    }
+}
+
+struct HomeMediaBoundary: ViewModifier {
+    let state: CompactHeaderState
+    var enabled: Bool
+    func body(content: Content) -> some View {
+        content.onGeometryChange(for: Bool?.self) { proxy in
+            enabled ? proxy.frame(in: .named("home-scroll")).minY < 56 : nil
+        } action: { compact in
+            if let compact { state.update(compact ? 1 : 0) }
+        }
     }
 }
