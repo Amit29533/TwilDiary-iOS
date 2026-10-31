@@ -110,3 +110,5 @@ execution and visual evidence remain pending until its candidate run passes.
 Windows has no Xcode; source comparisons are not a substitute for that execution.
 No full-suite, alternate-phone-size or physical-device performance claim.
 No backend change, live data mutation, main merge, signing or new PR.
+
+Verified final source 53a3f8d: all 15 focused checks passed; both builds zero warnings. Runtime screenshots in screenshots/home-media-53a3f8d and release receipt in releases/home-media-53a3f8d.json. Upcoming date is visibly right of episode; history watch date below episode. Owner profile follow-ups are a separate active batch.

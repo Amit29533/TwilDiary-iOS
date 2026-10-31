@@ -1,5 +1,20 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — Home design verified; new profile repair batch active
+
+Home source 53a3f8d passed Codemagic 6ae5a823efa74786046f62fb: 1 core +
+8 model/projection units + 6 UI journeys, zero simulator/device warnings.
+Verified card/list dimensions, horizontal last-event/back scrolling, native
+routes, preference restoration, bottom clearance and date placement screenshots.
+IPA CRC/arm64/iPhoneOS/privacy/Release fixture exclusion/SHA256/provenance pass.
+D:/Downloads/TwilDiary-home-53a3f8d.ipa, 8,288,648 bytes. Receipt and immutable
+fixture screenshots committed. Focused acceptance, not full/device acceptance.
+Owner then added 9 profile/detail fixes: native TMDB, profile toolbar/tab bar,
+accent heart, credit ratings, Watched replacing server section, native AniList
+links/biography handling, horizontal recommendations and portrait cast throughout,
+and personal/community ratings inline. Video/source audit started; no claim of
+profile fixes or new profile build yet. Home upper content remains protected.
+
 ## 31 October 2026 — approved Home design below Up next
 
 Active work: implement the approved normal-size Up next posters, portrait Home
