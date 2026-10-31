@@ -160,12 +160,15 @@ struct CharacterView: View {
 }
 
 /// Favourites: cast, characters and voice actors, each tab laid out the same way: "Most watched"
-/// (cast from your diary; characters and voice actors from your AniList profile) above the ones
+/// (cast/voice actors from the diary; characters from AniList) above the ones
 /// you've hearted, as posters. "Favourites" titles the page; the tabs are its first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
+    @AppStorage("favouritesCastGrid") private var castGrid = true
+    @AppStorage("favouritesCharactersGrid") private var charactersGrid = true
+    @AppStorage("favouritesVoiceGrid") private var voiceGrid = true
     private var favourites: FavouritesStore { .shared }
     var body: some View {
         let items = favourites.items(tab)
@@ -178,25 +181,32 @@ struct FavouritesView: View {
                 case .voice: MostWatchedCast(kind: .voice)
                 }
             }.id(tab).padding(.horizontal, 14).padding(.top, 8)
-            if !items.isEmpty {
-                HStack(spacing: 9) {
-                    Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
-                    Text("Hearted")
-                }.font(.system(size: 20, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14).padding(.top, 20)
-                    .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
-            }
+            HStack(spacing: 9) {
+                Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
+                Text("Hearted").font(.system(size: 20, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
+                CollectionLayoutToggle(grid: grid, collection: "favourites")
+            }.padding(.horizontal, 14).padding(.top, 20)
+                .accessibilityIdentifier("favourites-hearted-heading")
             if items.isEmpty {
                 DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)
-                    .padding(.horizontal, 14).padding(.top, 24)
+                    .padding(.horizontal, 14).padding(.top, 12)
             } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 18) {
-                    ForEach(items) { item in FavouriteLink(item: item, poster: true) }
+                LazyVGrid(columns: grid.wrappedValue ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], spacing: 18) {
+                    ForEach(items) { item in FavouriteLink(item: item, poster: grid.wrappedValue, row: !grid.wrappedValue) }
                 }.padding(.horizontal, 14).padding(.top, 8)
             }
         }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .tint(Color(webHex: "#e6e2ec"))
             .task { await favourites.sync(store: store) }
             .refreshable { await favourites.sync(store: store) }
+    }
+    private var grid: Binding<Bool> {
+        switch tab {
+        case .cast: $castGrid
+        case .character: $charactersGrid
+        case .voice: $voiceGrid
+        }
     }
     private var emptyHint: String {
         switch tab {
@@ -226,6 +236,7 @@ struct FavouriteLink: View {
     let item: Favourite
     var size: CGFloat = 82
     var poster = false
+    var row = false
     var body: some View {
         Group {
             switch item.kind {
@@ -236,7 +247,17 @@ struct FavouriteLink: View {
         }.buttonStyle(.springPress).accessibilityIdentifier("favourite-" + item.id)
     }
     @ViewBuilder private var label: some View {
-        if poster {
+        if row {
+            HStack(spacing: 12) {
+                Artwork(path: item.image, title: item.name).frame(width: 56, height: 84).clipShape(RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
+                    Text(item.subtitle ?? item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+            }.padding(10).background(Color(webHex: "#121116"), in: RoundedRectangle(cornerRadius: 14))
+                .multilineTextAlignment(.leading).contentShape(Rectangle()).accessibilityElement(children: .combine)
+        } else if poster {
             VStack(alignment: .leading, spacing: 6) {
                 Artwork(path: item.image, title: item.name).aspectRatio(2.0 / 3.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))

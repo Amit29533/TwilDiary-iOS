@@ -15,6 +15,7 @@ import TwilDiaryCore
             for key in ["historyGrid", "homeHistoryGrid", "upcomingGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
+            for key in ["favouritesCastGrid", "favouritesCharactersGrid", "favouritesVoiceGrid"] { UserDefaults.standard.set(true, forKey: key) }
             FavouritesStore.shared.reset()
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-launch-tab") { UserDefaults.standard.removeObject(forKey: AppTab.launchKey) }
             for key in ["favouritesTab", AniListMostWatched.userKey, "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
@@ -22,6 +23,11 @@ import TwilDiaryCore
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")
                 UserDefaults.standard.set(LibraryQuery.Sort.library.rawValue, forKey: "library.sort")
+            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-favourites-gallery") {
+                FavouritesStore.shared.seedGallery()
+                UserDefaults.standard.set("gallery-reference", forKey: AniListMostWatched.userKey)
+                UserDefaults.standard.set(Favourite.Kind.cast.rawValue, forKey: "favouritesTab")
             }
         }
         #endif
@@ -198,6 +204,7 @@ struct RootView: View {
                 .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes, focusNotes: $0.focusNotes).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.title($0.id)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.catalog($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: CharacterRoute.self) { CharacterView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }

@@ -1,5 +1,31 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — approved Favourites gallery redesign
+
+Active owner request: implement the revised Cast / Characters / Voice actors
+Favourites collection preview, retaining the original Favourites title, native
+Back and large text tabs. No segmented control, new search action or source
+caption (including From your diary / From your AniList). Replace the tall
+ranking box with a horizontally scrolling ranked portrait shelf. Hearted stays
+below it with a theme heart, three-column portraits and independent persisted
+list/grid preferences per category. Home's compact favourites strip is unchanged.
+Reuse the existing ranking API, AniList cache/username setup, FavouritesStore,
+Artwork cache and typed native profile routes. View all receives an immutable
+loaded ranking snapshot including roles/counts/provider mappings; no extra
+ranking request or guessed AniList/TMDB identities. Incomplete counting status
+remains accessible and appears on the full ranking page, not in a shifting bar.
+New typed PeopleRankingRoute is registered with the same native chrome/Back/tab
+visibility ownership as other collection pages. The old source descriptions
+were removed. AniList Settings wording now accurately refers to characters;
+Cast/Voice actors continue using the existing diary ranking.
+Focused checks prepared: previous 23 cases plus 3 provider-route/snapshot unit
+cases and 1 UI journey covering all categories, shelf scrolling, View all, typed
+profiles, per-category list preferences and original header. UI-only gallery
+fixtures are DEBUG + --ui-testing guarded, use local data, and never write hosted
+data. No backend or workflow authority changes, main push or new PR.
+Next: self-review, commit/push development branch, start focused Codemagic run,
+inspect actual screenshots and download/verify same-source phone IPA.
+
 ## 31 October 2026 — approved shared Person profile redesign
 
 Current work: implement the owner's approved Cast / Character / Voice Actor

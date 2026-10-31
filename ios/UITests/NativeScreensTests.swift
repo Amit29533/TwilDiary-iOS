@@ -3,7 +3,7 @@ import UIKit
 
 @MainActor final class NativeScreensTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
-    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false) -> XCUIApplication {
+    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]
         if mutations || scanner { app.launchArguments.append("--ui-mutations") }
         if scanner { app.launchArguments.append("--ui-scanner") }
@@ -19,6 +19,7 @@ import UIKit
         if longEpisodes { app.launchArguments.append("--ui-long-episodes") }
         if automaticCarousel { app.launchArguments.append("--ui-automatic-carousel") }
         if animeNavigation { app.launchArguments.append("--ui-anime-navigation") }
+        if favouritesGallery { app.launchArguments.append("--ui-favourites-gallery") }
         if let traktScenario { app.launchArguments.append("--ui-trakt=" + traktScenario) }
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
@@ -824,6 +825,70 @@ import UIKit
         let hearted = app.buttons["favourite-voice:11"]
         for _ in 0..<6 { if hearted.exists && hearted.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(hearted.exists, "The hearted voice actor shows as a poster")
+    }
+    func testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation() {
+        let app = launch(favouritesGallery: true)
+        app.tabBars.buttons["Home"].tap()
+        let entry = app.buttons["home-favourites"]
+        for _ in 0..<10 { if entry.exists && entry.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(entry.isHittable); entry.tap()
+        XCTAssertTrue(app.navigationBars["Favourites"].waitForExistence(timeout: 5))
+        let castTab = app.buttons["favourites-tab-cast"]
+        XCTAssertTrue(castTab.isSelected)
+        XCTAssertGreaterThan(castTab.frame.minY, app.navigationBars["Favourites"].frame.minY)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH[cd] 'From your'")).firstMatch.exists)
+        let first = app.buttons["top-cast-525"], second = app.buttons["top-cast-77"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5)); XCTAssertTrue(second.isHittable)
+        XCTAssertLessThan(first.frame.width, app.frame.width * 0.4)
+        XCTAssertGreaterThan(second.frame.minX, first.frame.maxX)
+        XCTAssertEqual(first.frame.midY, second.frame.midY, accuracy: 2)
+        let layout = app.buttons["favourites-layout"]
+        let castFavourite = app.buttons["favourite-cast:525"]
+        XCTAssertTrue(castFavourite.isHittable, "Hearted portraits are visible above the bottom navigation")
+        XCTAssertEqual(layout.value as? String, "Grid"); capture("Favourites Cast keeps original header with horizontal ranks and Hearted grid")
+        layout.tap(); XCTAssertEqual(layout.value as? String, "List")
+        XCTAssertGreaterThan(castFavourite.frame.width, app.frame.width * 0.8)
+        castFavourite.tap(); XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(layout.value as? String, "List", "Returning from a profile preserves layout")
+        let shelf = app.scrollViews["top-cast-shelf"]
+        let last = app.buttons["top-cast-707"]
+        for _ in 0..<5 { if last.exists && last.isHittable { break }; shelf.swipeLeft() }
+        XCTAssertTrue(last.isHittable, "The ranking strip scrolls independently")
+        app.buttons["top-cast-more"].tap()
+        XCTAssertTrue(app.navigationBars["Most watched"].waitForExistence(timeout: 5))
+        let lastRow = app.buttons["ranking-top-cast-707"]
+        for _ in 0..<8 { if lastRow.exists && lastRow.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(lastRow.isHittable)
+        XCTAssertTrue(lastRow.label.contains("An intentionally long character role"))
+        capture("All Cast ranks retain roles and counts")
+        lastRow.tap(); XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["favourites-tab-character"].tap()
+        XCTAssertTrue(app.buttons["top-character-1"].waitForExistence(timeout: 5))
+        XCTAssertEqual(layout.value as? String, "Grid", "Characters keep an independent layout preference")
+        capture("Favourites Characters gallery without source caption")
+        app.buttons["top-character-more"].tap()
+        XCTAssertTrue(app.buttons["ranking-top-character-2"].waitForExistence(timeout: 5))
+        app.buttons["ranking-top-character-2"].tap()
+        XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["favourites-tab-voice"].tap()
+        XCTAssertTrue(app.buttons["top-voice-actor-1001"].waitForExistence(timeout: 5))
+        XCTAssertEqual(layout.value as? String, "Grid")
+        XCTAssertTrue(app.buttons["favourite-voice:11"].isHittable)
+        capture("Favourites Voice actors gallery without source caption")
+        app.buttons["top-voice-actor-more"].tap()
+        app.buttons["ranking-top-voice-actor-1001"].tap()
+        XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["voice-actor-watched"].label.contains("14 anime"))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["favourites-tab-cast"].tap()
+        XCTAssertEqual(layout.value as? String, "List")
+        capture("Favourites Cast list preference retained across categories")
     }
     func testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks() {
         let app = launch(animeNavigation: true); app.tabBars.buttons["Library"].tap()

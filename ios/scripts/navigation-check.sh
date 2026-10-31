@@ -26,10 +26,12 @@ xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDi
   -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 \
   -only-testing:TwilDiaryTests/AnimeNavigationLookupTests \
   -only-testing:TwilDiaryTests/ProfileBiographyContentTests \
+  -only-testing:TwilDiaryTests/RankedPeopleTests \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites \
+  -only-testing:TwilDiaryUITests/NativeScreensTests/testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation \
   -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/Navigation.xcresult" \
   2>&1 | tee "$ARTIFACTS/logs/navigation-tests.log"
 bash ios/scripts/ci.sh build-device
@@ -40,13 +42,16 @@ root = pathlib.Path('ios/.artifacts')
 tests = (root / 'logs/navigation-tests.log').read_text(errors='replace')
 for case in ['testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks', 'testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults',
              'testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation',
-             'testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites']:
+             'testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites',
+             'testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation']:
     if not re.search(r'Test Case .*' + re.escape(case) + r'.* passed', tests):
         raise SystemExit('Required native UI case did not pass: ' + case)
 if not re.search(r"Test Suite '[^']*AnimeNavigationLookupTests' passed", tests):
     raise SystemExit('Native lookup unit tests did not pass.')
 if not re.search(r"Test Suite '[^']*ProfileBiographyContentTests' passed", tests):
     raise SystemExit('Profile biography and date tests did not pass.')
+if not re.search(r"Test Suite '[^']*RankedPeopleTests' passed", tests):
+    raise SystemExit('Ranking identity and snapshot tests did not pass.')
 for name in ['simulator-build.log', 'device-build.log']:
     log = (root / 'logs' / name).read_text(errors='replace')
     if re.search(r'\bwarning:', log, re.I):
@@ -59,7 +64,7 @@ info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-i
 value = {'kind': 'device-diagnostic', 'regressionAcceptance': False, 'uiRegressionPassed': True,
          'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
          'buildNumber': info['CFBundleVersion'], 'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest,
-         'note': 'Three focused core cases, lookup and profile unit classes and four targeted XCUITests; no full regression rerun.'}
+         'note': 'Three focused core cases, lookup/profile/ranking unit classes and five targeted XCUITests; no full regression rerun.'}
 (root / 'native-navigation-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
 print('Native navigation checks passed; unsigned phone IPA packaged.')
 PY

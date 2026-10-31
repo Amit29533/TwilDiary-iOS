@@ -88,6 +88,20 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
         }
     }
     private func save() { defaults.set(try? JSONEncoder().encode(items), forKey: Self.storageKey) }
+    #if DEBUG
+    /// Fixture-only gallery coverage; no server writes or persistent favourites.
+    func seedGallery() {
+        let now = Date()
+        items = [
+            Favourite(kind: .cast, ref: 525, name: "Kim Yeong-ok", image: nil, subtitle: "Kim Gam-ri", savedAt: now),
+            Favourite(kind: .cast, ref: 77, name: "Jeon Bae-soo", image: nil, subtitle: "Woo Gwang-woo", savedAt: now),
+            Favourite(kind: .character, ref: 1, name: "Frieren", image: nil, subtitle: "Frieren", savedAt: now),
+            Favourite(kind: .character, ref: 2, name: "Fern", image: nil, subtitle: "Frieren", savedAt: now),
+            Favourite(kind: .voice, ref: 11, name: "Atsumi Tanezaki", image: nil, subtitle: "Voice of Frieren", savedAt: now),
+            Favourite(kind: .voice, ref: 12, name: "Kana Ichinose", image: nil, subtitle: "Voice of Fern", savedAt: now)
+        ]
+    }
+    #endif
     /// UI tests start empty.
     func reset() { items = []; defaults.removeObject(forKey: Self.storageKey); defaults.removeObject(forKey: Self.uploadedKey) }
 }
