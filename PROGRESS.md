@@ -29,8 +29,18 @@ stopped on the initial layout-button lookup: the actual retained hierarchy shows
 Show favourites as list, value Grid, but the heading container identifier replaced
 the nested favourites-layout ID. Moved the heading identifier onto its Text leaf,
 leaving the button and its test assertion unchanged. No IPA was packaged from
-that failed run. Next: rerun the same focused gate on the corrected source, then
-inspect all gallery screenshots and verify the same-source IPA.
+that failed run.
+Completed: corrected source c66c2de passed Codemagic 6ae56469efa74786046f57bb.
+All 3 core + 19 app unit + 5 UI cases pass (27 focused checks); simulator and
+Release device builds have zero warnings. Visually inspected all three galleries,
+complete ranking and persisted list state. IPA SHA256/source/run provenance,
+ZIP CRC, arm64 Mach-O, iPhoneOS platform, privacy resource and Release fixture
+exclusion verified. Saved D:/Downloads/TwilDiary-favourites-c66c2de.ipa,
+8,250,952 bytes. Receipt ios/docs/releases/favourites-gallery-c66c2de.json;
+unaltered screenshots ios/docs/screenshots/favourites-gallery-c66c2de.
+No full regression, other simulator sizes or device-feel claim. Next: owner
+phone walkthrough of live portraits, horizontal scrolling and grid/list choice.
+Development branch only; no main merge, new PR, backend change or deployment.
 
 ## 31 October 2026 — approved shared Person profile redesign
 

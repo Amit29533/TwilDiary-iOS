@@ -1,0 +1,19 @@
+{
+  "kind": "device-diagnostic",
+  "regressionAcceptance": false,
+  "uiRegressionPassed": true,
+  "sourceSHA": "c66c2de6981708671b9e3b3b552081c8dd749f0c",
+  "buildNumber": "65",
+  "codemagicBuild": "6ae56469efa74786046f57bb",
+  "sha256": "170b1eb587a819da00b72b22971c24d4ec07be94507ebfd5adf7b2d546901085",
+  "note": "Three focused core cases, lookup/profile/ranking unit classes and five targeted XCUITests; no full regression rerun.",
+  "bytes": 8250952,
+  "version": "2.0.0",
+  "platform": "arm64 iPhoneOS",
+  "focusedCoreTestsPassed": 3,
+  "nativeUnitTestsPassed": 19,
+  "nativeUIFlowsPassed": 5,
+  "buildWarnings": 0,
+  "fullRegressionRerun": false,
+  "buildURL": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/build/6ae56469efa74786046f57bb"
+}

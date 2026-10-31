@@ -28,3 +28,11 @@ Focused verification adds three identity/snapshot unit tests and a fixture-only
 UI journey for horizontal scrolling, all-ranks navigation, all profile types,
 category layout isolation, original header and absence of source captions.
 Candidate compilation/screenshots are required before runtime acceptance.
+
+Accepted focused evidence: source c66c2de, Codemagic 6ae56469efa74786046f57bb,
+3 core + 19 native unit + 5 UI cases, zero simulator/device warnings. See the
+release receipt and five unedited fixture screenshots. The first candidate's
+heading-container accessibility ID replaced the layout button ID on iOS; the
+identifier now belongs to the Text leaf. Do not put it back on the parent HStack.
+No test assertion was weakened. Physical-device feel and broader device-size
+regression remain separate checks; this was not a full-suite rerun.
