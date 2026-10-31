@@ -105,26 +105,29 @@ struct ProfileWatchedShelf: View {
     let appearances: [AniAppearance]
     @Environment(DiaryStore.self) private var store
     @State private var confirmed: [Int: CatalogRoute] = [:]
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         let titles = ProfileWatchMatching.titles(appearances, workspace: store.workspace, confirmed: confirmed)
         VStack(alignment: .leading, spacing: 12) {
             Text("Watched").font(.system(size: 20, weight: .semibold))
             if titles.isEmpty { Text("No watches from these matched titles yet.").font(.subheadline).foregroundStyle(.secondary) }
             else {
-                ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(titles) { title in
-                            NavigationLink(value: title.id) {
+                ProfileShelf {
+                    ForEach(titles) { title in
+                        NavigationLink(value: title.id) {
+                            if typeSize.isAccessibilitySize {
+                                ProfileMediaRow(image: title.poster, name: title.name, score: title.communityScore, provider: "TMDB")
+                            } else {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Artwork(path: title.poster, title: title.name).frame(width: 104, height: 156)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
                                         .overlay(alignment: .bottomLeading) { if let score = title.communityScore, score > 0 { RatingBadge(score: score).padding(5) } }
-                                    Text(title.name).font(.subheadline.weight(.semibold)).lineLimit(2)
+                                    ProfileCardCaption(title: title.name)
                                 }.frame(width: 104).foregroundStyle(.primary)
-                            }.buttonStyle(.plain).accessibilityIdentifier("profile-watched-" + title.id)
-                        }
+                            }
+                        }.buttonStyle(.plain).accessibilityIdentifier("profile-watched-" + title.id)
                     }
-                }.scrollIndicators(.hidden)
+                }
             }
         }.task(id: appearances.map { String($0.id) }.joined(separator: ",") + store.sessionRevision.uuidString) {
             var routes: [Int: CatalogRoute] = [:]

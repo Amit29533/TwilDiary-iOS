@@ -30,6 +30,7 @@ final class ProfileFormattingTests: XCTestCase {
     }
     func testPartialDatePrecisionAndLeapDaysArePreserved() {
         XCTAssertEqual(ProfileDate.partial(year: 1900, month: nil, day: nil), "1900")
+        XCTAssertEqual(ProfileDate.partial(year: nil, month: nil, day: 24), "Day 24 (month unknown)")
         XCTAssertEqual(ProfileDate.partial(year: nil, month: 2, day: 29), "29 February")
         XCTAssertEqual(ProfileDate.partial(year: 2000, month: 6, day: nil), "June 2000")
         XCTAssertEqual(ProfileDate.partial(year: nil, month: 6, day: nil), "June")
@@ -69,6 +70,14 @@ final class ProfileFormattingTests: XCTestCase {
         XCTAssertTrue(value.markdown.contains("- Game role\n- Drama role"))
         XCTAssertTrue(value.markdown.contains("Text.\nNext paragraph."))
         XCTAssertFalse(value.markdown.contains("Hidden"))
+    }
+    func testSpoilerOnlyRoleListsDoNotLeaveAnEmptyHeading() {
+        let value = ProfileFormattedBiography(description: "Public.\n\n**Non-Anime Roles:**\n~!- Hidden role.!~", hideSpoilers: true)
+        XCTAssertEqual(value.markdown, "Public.")
+        let visible = ProfileFormattedBiography(description: "Public.\n\n**Non-Anime Roles:**\n- Visible role.", hideSpoilers: true)
+        XCTAssertTrue(visible.markdown.contains("**Non-Anime Roles:**"))
+        let ending = ProfileFormattedBiography(description: "Public.\n\n**Important words**", hideSpoilers: true)
+        XCTAssertTrue(ending.markdown.contains("Important words"))
     }
     func testUnknownAndDuplicateFieldsArePreservedInProse() {
         let source = "__Height:__ 152 cm\n__Height:__ Conflicting supplied value\n__Unrecognised detail:__ Keep this.\nAgency appears in a sentence."

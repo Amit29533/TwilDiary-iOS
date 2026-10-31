@@ -62,7 +62,10 @@ struct ProfileWebsiteLink: Identifiable, Hashable {
 enum ProfileDate {
     static func partial(year: Int?, month: Int?, day: Int?) -> String? {
         let year = year.flatMap { (1...9999).contains($0) ? $0 : nil }
-        guard let month else { return year.map(String.init) }
+        guard let month else {
+            if let day, (1...31).contains(day) { return "Day " + String(day) + (year.map { ", " + String($0) } ?? "") + " (month unknown)" }
+            return year.map(String.init)
+        }
         guard (1...12).contains(month) else { return year.map(String.init) }
         var calendar = Calendar(identifier: .gregorian); calendar.locale = Locale(identifier: "en_GB")
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -82,12 +85,17 @@ enum ProfileDate {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.isLenient = false
         formatter.defaultDate = Date(timeIntervalSince1970: 946684800) // leap year 2000
-        let fullYear = value.range(of: #"\b\d{4}\b"#, options: .regularExpression) != nil
-        for input in fullYear ? ["d MMMM yyyy", "d MMM yyyy", "yyyy-MM-dd", "MMMM yyyy", "MMM yyyy"] : ["d MMMM", "d MMM", "MMMM", "MMM"] {
-            formatter.dateFormat = input
-            if let date = formatter.date(from: value) {
-                formatter.dateFormat = input == "MMMM yyyy" || input == "MMM yyyy" ? "MMM yyyy" : input == "MMMM" || input == "MMM" ? "MMM" : fullYear ? "d MMM yyyy" : "d MMM"
-                return formatter.string(from: date)
+        let formats: [(String, [String], String)] = [
+            (#"^\d{4}-\d{2}-\d{2}$"#, ["yyyy-MM-dd"], "d MMM yyyy"),
+            (#"^\d{1,2} [A-Za-z]+ \d{4}$"#, ["d MMMM yyyy", "d MMM yyyy"], "d MMM yyyy"),
+            (#"^\d{1,2} [A-Za-z]+$"#, ["d MMMM", "d MMM"], "d MMM"),
+            (#"^[A-Za-z]+ \d{4}$"#, ["MMMM yyyy", "MMM yyyy"], "MMM yyyy"),
+            (#"^[A-Za-z]+$"#, ["MMMM", "MMM"], "MMM")
+        ]
+        for (pattern, inputs, output) in formats where value.range(of: pattern, options: .regularExpression) != nil {
+            for input in inputs {
+                formatter.dateFormat = input
+                if let date = formatter.date(from: value) { formatter.dateFormat = output; return formatter.string(from: date) }
             }
         }
         return value

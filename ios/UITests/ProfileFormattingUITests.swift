@@ -18,9 +18,15 @@ import XCTest
         app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
     private func reveal(_ item: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<12 {
-            if item.exists && item.isHittable && item.frame.minY > app.navigationBars.firstMatch.frame.maxY && item.frame.maxY < app.frame.maxY - 15 { break }
-            app.swipeUp()
+        for _ in 0..<20 {
+            let header = app.navigationBars.firstMatch.frame.maxY + 8, bottom = app.frame.maxY - 20
+            if item.exists && item.isHittable && item.frame.minY >= header && (item.frame.maxY <= bottom || item.frame.height > bottom - header) { break }
+            let upward = !item.exists || item.frame.minY >= header
+            let distance: CGFloat
+            if !item.exists { distance = app.frame.height * 0.3 }
+            else { distance = min(app.frame.height * 0.4, max(45, upward ? item.frame.maxY - bottom + 12 : header - item.frame.minY + 12)) }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: upward ? 0.75 : 0.3))
+            start.press(forDuration: 0.03, thenDragTo: start.withOffset(CGVector(dx: 0, dy: upward ? -distance : distance)))
         }
         XCTAssertTrue(item.exists, item.identifier)
         XCTAssertTrue(item.isHittable, item.identifier)
@@ -49,7 +55,7 @@ import XCTest
     }
     func testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath() {
         executionTimeAllowance = 180
-        for id in [974169, 1134684, 172069] {
+        for id in [974169, 1134684, 172069, 1116334, 1254672] {
             let app = open("cast", id)
             source(app, "person-tmdb", role: "Actor")
             factPair(app, first: "person-birthday", second: "person-age")
@@ -78,14 +84,14 @@ import XCTest
             capture("Character \(id) freeform age and optional facts", app: app)
             let bio = element(app, "profile-biography"); reveal(bio, in: app)
             if id == 176754 { XCTAssertFalse(app.buttons["Expand biography"].exists, "Short biographies have no empty More control") }
-            if id == 138100 { XCTAssertTrue(element(app, "profile-detail-relatives").exists) }
+            if id == 138100 { XCTAssertTrue(app.staticTexts["Relatives"].exists) }
             XCTAssertEqual(app.tabBars.count, 0)
             app.terminate()
         }
     }
     func testVoiceProfilesSeparateLinksFactsCareerAndBiography() {
         executionTimeAllowance = 180
-        for id in [100250, 119331, 95065] {
+        for id in [100250, 119331, 95065, 106787] {
             let app = open("voice", id)
             source(app, "voice-actor-tmdb", role: "Voice actor")
             XCTAssertEqual(app.staticTexts["voice-actor-watched"].label, "15 anime watched")
@@ -116,6 +122,11 @@ import XCTest
             XCTAssertTrue(heart.isHittable)
             XCTAssertEqual(app.tabBars.count, 0)
             capture("Large text \(kind) full-width facts and pinned heart", app: app)
+            if kind != "cast" {
+                let watched = app.buttons["profile-watched-frieren"]; reveal(watched, in: app)
+                XCTAssertEqual(watched.frame.width, app.frame.width - 28, accuracy: 2, "Large-text credits use readable rows rather than narrow poster captions")
+                capture("Large text \(kind) readable watched credit row", app: app)
+            }
             app.terminate()
         }
     }

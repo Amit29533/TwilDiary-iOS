@@ -62,6 +62,7 @@ struct AnimeCharactersRow: View {
 /// The same profile shell as cast and voice actors, retaining character-only facts and routes.
 struct CharacterView: View {
     let route: CharacterRoute
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(DiaryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hideSpoilers") private var hideSpoilers = true
@@ -111,32 +112,36 @@ struct CharacterView: View {
     }
     private func voicedBy(_ actors: [AniPerson]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Voiced by").font(.system(size: 20, weight: .semibold))
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    ForEach(actors, id: \.id) { actor in
-                        // Opens the voice actor's page: their other characters and a heart.
-                        NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
-                            VStack(spacing: 8) {
+            Text("Voiced by").font(.title3.weight(.semibold))
+            ProfileShelf {
+                ForEach(actors, id: \.id) { actor in
+                    NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
+                        if typeSize.isAccessibilitySize {
+                            ProfileMediaRow(image: actor.image, name: actor.name, detail: "Japanese")
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
                                 Artwork(path: actor.image, title: actor.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
                                 ProfileCardCaption(title: actor.name)
                                 Text("Japanese").font(.caption).foregroundStyle(.secondary)
-                            }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading).accessibilityElement(children: .combine)
-                        }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-\(actor.id)")
-                    }
+                            }.frame(width: 96, alignment: .leading).accessibilityElement(children: .combine)
+                        }
+                    }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-\(actor.id)")
                 }
-            }.scrollIndicators(.hidden)
+            }
         }
     }
     private func appearsIn(_ items: [AniAppearance]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Appears in").font(.system(size: 20, weight: .semibold))
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(items) { item in
-                        AnimeAppearanceButton(appearance: item) {
+            Text("Appears in").font(.title3.weight(.semibold))
+            ProfileShelf {
+                ForEach(items) { item in
+                    AnimeAppearanceButton(appearance: item) {
+                        let detail = [item.year.map(String.init), item.role == "MAIN" ? "Main" : item.role == "SUPPORTING" ? "Supporting" : nil].compactMap { $0 }.joined(separator: " · ")
+                        if typeSize.isAccessibilitySize {
+                            ProfileMediaRow(image: item.cover, name: item.title, detail: detail, score: item.rating, provider: "AniList")
+                        } else {
                             VStack(alignment: .leading, spacing: 6) {
-                                Artwork(path: item.cover, title: item.title).frame(width: 104, height: 152).clipShape(RoundedRectangle(cornerRadius: 12))
+                                Artwork(path: item.cover, title: item.title).frame(width: 104, height: 156).clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(alignment: .bottomLeading) {
                                         if let score = item.rating, score > 0 {
                                             HStack(spacing: 3) { RatingBadge(score: score); Text("AniList").font(.system(size: 9)) }
@@ -144,13 +149,12 @@ struct CharacterView: View {
                                         }
                                     }
                                 ProfileCardCaption(title: item.title)
-                                Text([item.year.map(String.init), item.role == "MAIN" ? "Main" : item.role == "SUPPORTING" ? "Supporting" : nil].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(detail).font(.caption).foregroundStyle(.secondary)
                             }.frame(width: 104, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.springPress).accessibilityIdentifier("anime-appearance-\(item.id)")
-                    }
+                        }
+                    }.buttonStyle(.springPress).accessibilityIdentifier("anime-appearance-\(item.id)")
                 }
-            }.scrollIndicators(.hidden).scrollClipDisabled()
+            }
         }
     }
     private func load() async {

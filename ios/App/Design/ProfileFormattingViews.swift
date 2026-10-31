@@ -60,7 +60,11 @@ private struct ProfileFactsLayout: Layout {
         let column = max(0, (width - gap) / 2)
         for view in subviews {
             if singleColumn || width < 300 || view[ProfileFactWide.self] {
-                if let previous = pending { y = result[previous].maxY + gap; pending = nil }
+                if let previous = pending {
+                    let height = max(64, subviews[previous].sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+                    result[previous].size = CGSize(width: width, height: height)
+                    y = result[previous].maxY + gap; pending = nil
+                }
                 let height = max(64, view.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
                 result.append(CGRect(x: 0, y: y, width: width, height: height)); y += height + gap
             } else {
@@ -75,6 +79,10 @@ private struct ProfileFactsLayout: Layout {
                     result.append(CGRect(x: 0, y: y, width: column, height: height))
                 }
             }
+        }
+        if let previous = pending {
+            let height = max(64, subviews[previous].sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+            result[previous].size = CGSize(width: width, height: height)
         }
         return result
     }
@@ -137,6 +145,42 @@ struct ProfileCardCaption: View {
     }
 }
 
+struct ProfileShelf<Content: View>: View {
+    @ViewBuilder let content: Content
+    @Environment(\.dynamicTypeSize) private var typeSize
+    var body: some View {
+        if typeSize.isAccessibilitySize { LazyVStack(alignment: .leading, spacing: 16) { content } }
+        else {
+            ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 12) { content } }.scrollIndicators(.hidden)
+        }
+    }
+}
+
+struct ProfileMediaRow: View {
+    let image: String?
+    let name: String
+    var detail: String? = nil
+    var score: Double? = nil
+    var provider: String? = nil
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Artwork(path: image, title: name).frame(width: 64, height: 96).clipShape(RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 6) {
+                ProfileCardCaption(title: name)
+                if let detail = ProfileText.line(detail) { ProfileCardCaption(title: detail, secondary: true) }
+                if let score, score > 0 {
+                    HStack(spacing: 5) {
+                        Image(systemName: "star.fill").foregroundStyle(.yellow)
+                        Text(score, format: .number.precision(.fractionLength(1)))
+                        if let provider { Text(provider).foregroundStyle(.secondary) }
+                    }.font(.caption).foregroundStyle(.primary)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.primary)
+            .accessibilityElement(children: .combine)
+    }
+}
+
 /// Supplemental fields remain labelled text. External websites have a separate
 /// section; links to characters/staff/anime stay in prose and use native routing.
 struct ProfileAbout: View {
@@ -161,7 +205,7 @@ struct ProfileAbout: View {
                                 .foregroundStyle(Color(webHex: "#e6e2ec")).tint(Color(webHex: "#d1cdd8"))
                                 .fixedSize(horizontal: false, vertical: true)
                         }.frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityElement(children: .combine).accessibilityIdentifier("profile-detail-" + fact.id)
+                            .accessibilityElement(children: .contain).accessibilityIdentifier("profile-detail-" + fact.id)
                     }
                     if facts.count > 3 {
                         Button(detailsExpanded ? "Fewer details" : "More details") { detailsExpanded.toggle() }

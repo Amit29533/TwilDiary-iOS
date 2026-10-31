@@ -37,11 +37,12 @@ struct PersonView: View {
         }.task(id: route.id) { if person == nil { await load() } }
     }
     private func details(_ person: PersonDetails) -> some View {
-        let ageAt = person.deathday.flatMap { DiaryDate.parse($0 + "T00:00:00Z") } ?? store.now
-        let age = ProfileDate.age(birthday: person.birthday, until: ageAt)
+        let died = ProfileText.line(person.deathday)
+        let ageAt = died == nil ? store.now : died.flatMap { DiaryDate.parse($0 + "T00:00:00Z") }
+        let age = ageAt.flatMap { ProfileDate.age(birthday: person.birthday, until: $0) }
         let facts = [
             ProfileFact(id: "person-birthday", icon: "calendar", label: "Born", value: person.birthday.map(ProfileDate.short)),
-            ProfileFact(id: "person-age", icon: "person", label: person.deathday == nil ? "Age" : "Age at death", value: age.map(String.init)),
+            ProfileFact(id: "person-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age.map(String.init)),
             ProfileFact(id: "person-birthplace", icon: "mappin.and.ellipse", label: "Birthplace", value: person.birthplace, wide: true),
             ProfileFact(id: "person-deathday", icon: "calendar", label: "Died", value: person.deathday.map(ProfileDate.short), wide: true)
         ].compactMap { $0 }
@@ -80,11 +81,17 @@ struct PersonView: View {
 struct PersonCreditShelf: View {
     let items: [CatalogItem]
     var identifier = "person-credit-shelf"
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(DiaryStore.self) private var store
     var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items, id: \.key) { item in
+        ProfileShelf {
+            ForEach(items, id: \.key) { item in
+                if typeSize.isAccessibilitySize {
+                    let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
+                    let label = ProfileMediaRow(image: item.artwork, name: item.name, detail: [item.year.map(String.init), ProfileText.line(role)].compactMap { $0 }.joined(separator: " · "), score: item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), provider: "TMDB")
+                    if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { label } }
+                    else { NavigationLink(value: item.route) { label } }
+                } else {
                     VStack(alignment: .leading, spacing: 4) {
                         if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item, profileTypography: true).zoomSource(ZoomID.title(saved)) } }
                         else { NavigationLink(value: item.route) { CatalogPoster(item: item, profileTypography: true).zoomSource(ZoomID.catalog(item.route)) } }
@@ -93,7 +100,7 @@ struct PersonCreditShelf: View {
                     }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress)
                 }
             }
-        }.scrollIndicators(.hidden).accessibilityIdentifier(identifier)
+        }.accessibilityIdentifier(identifier)
     }
 }
 

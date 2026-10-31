@@ -63,6 +63,12 @@ struct ProfileFormattedBiography {
             fields.append(Fact(id: name.replacingOccurrences(of: " ", with: "-"), label: String(line[nameRange]).capitalized, icon: icon, markdown: value))
         }
         facts = fields
+        // A spoiler-only role list must not leave a dangling section heading.
+        while let last = body.last {
+            if last.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { body.removeLast(); continue }
+            if last.range(of: #"^\s*(?:#{1,6}\s+.+|(?:\*\*|__)[^\n]+:(?:\*\*|__)|(?:\*\*|__)[^\n]+(?:\*\*|__):)\s*$"#, options: .regularExpression) != nil { body.removeLast(); continue }
+            break
+        }
         markdown = body.joined(separator: "\n").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

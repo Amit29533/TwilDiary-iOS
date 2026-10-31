@@ -83,7 +83,7 @@ private struct ProfileHeaderBackdrop: View {
     let topInset: CGFloat
     var body: some View {
         Rectangle().fill(.ultraThinMaterial).overlay(.black.opacity(0.22))
-            .opacity(Double(state.progress)).frame(height: topInset + 56).offset(y: -topInset)
+            .opacity(Double(state.progress)).frame(height: topInset).offset(y: -topInset)
             .allowsHitTesting(false).accessibilityHidden(true)
     }
 }

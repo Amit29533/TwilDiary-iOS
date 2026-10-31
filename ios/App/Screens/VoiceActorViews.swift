@@ -14,6 +14,7 @@ struct VoiceActorRoute: Hashable {
 /// Voice actors share the profile shell; identity resolution and all role routes stay native.
 struct VoiceActorView: View {
     let route: VoiceActorRoute
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("hideSpoilers") private var hideSpoilers = true
@@ -99,14 +100,15 @@ struct VoiceActorView: View {
             catch { if !Task.isCancelled { personFailure = error.localizedDescription } }
         }
     }
+    private var usesGrid: Bool { grid && !typeSize.isAccessibilitySize }
     private func roles(_ items: [AniRole]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Characters").font(.system(size: 20, weight: .semibold))
                 Spacer(minLength: 4)
-                CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters")
+                if !typeSize.isAccessibilitySize { CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters") }
             }
-            LazyVGrid(columns: grid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], alignment: .leading, spacing: 16) {
                 ForEach(items.prefix(shown)) { role in roleCard(role) }
             }
             if items.count > shown {
@@ -117,7 +119,7 @@ struct VoiceActorView: View {
     private func roleCard(_ role: AniRole) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
-                if grid {
+                if usesGrid {
                     VStack(alignment: .leading, spacing: 6) {
                         roleArtwork(role).aspectRatio(2.0 / 3.0, contentMode: .fit)
                         ProfileCardCaption(title: role.character.name)

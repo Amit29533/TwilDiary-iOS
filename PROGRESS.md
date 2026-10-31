@@ -1,5 +1,18 @@
 # Native TwilDiary progress
 
+## 31 October 2026 — profile candidate follow-up from native evidence
+
+1270c91 compiled, passed five core cases and 38 native units; 8/11 native UI
+journeys passed. Three failures: obsolete birthday/source-row assertion, linked
+Relatives metadata accessibility lookup, and one-way large-text test overscroll.
+Runtime video also exposed genuinely unreadable narrow credit captions at XXXL.
+Follow-up adapts all profile shelves/voice-role grids to full-width accessible
+rows, uses a bidirectional reveal helper and direct metadata-label checks, fixes
+compact header height, fills unpaired fact rows, preserves strict date precision,
+handles absent/invalid death dates, removes orphan spoiler-only headings, and adds
+same-person TMDB/AniList voice samples. No final acceptance until new same-SHA
+focused three-size run and retained screenshot/IPA checks pass.
+
 ## 31 October 2026 — public-profile formatting matrix candidate
 
 Owner requested implementation and repeated checks after the 22-profile audit.

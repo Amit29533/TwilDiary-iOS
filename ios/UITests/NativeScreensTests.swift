@@ -1055,8 +1055,9 @@ import UIKit
         XCTAssertTrue(tmdb.isHittable)
         let birthday = app.descendants(matching: .any)["voice-actor-birthday"]
         XCTAssertTrue(birthday.exists)
-        XCTAssertLessThan(abs(tmdb.frame.midY - birthday.frame.midY), 4, "Logo and compact birthday chip share a row")
-        XCTAssertLessThanOrEqual(birthday.frame.maxX, tmdb.frame.minX, "Birthday and native TMDB button cannot overlap")
+        XCTAssertEqual(tmdb.frame.midY, app.staticTexts["Voice actor"].firstMatch.frame.midY, accuracy: 4, "Small source action shares the role row")
+        XCTAssertEqual(tmdb.frame.width, 44, accuracy: 2)
+        XCTAssertLessThan(tmdb.frame.maxY, birthday.frame.minY, "Facts sit below the role and source action")
         XCTAssertTrue(app.buttons["profile-site-https://x.com/reference"].exists, "Website lists become labelled icon buttons")
         XCTAssertFalse(app.staticTexts["Facts"].exists)
         let voiceHeart = app.buttons["voice-actor-favourite"]
