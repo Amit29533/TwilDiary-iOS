@@ -1065,27 +1065,48 @@ import UIKit
         XCTAssertEqual(layout.value as? String, "List")
         capture("Favourites Cast list preference retained across categories")
     }
+    private func revealProfileControl(_ item: XCUIElement, in app: XCUIApplication) {
+        // As in the profile-format matrix, correct both overshoot directions.
+        // One-way full-screen swipes can pass a short character shelf entirely.
+        for _ in 0..<30 {
+            let top = app.navigationBars.firstMatch.frame.maxY + 8
+            let bottom = app.tabBars.firstMatch.exists ? app.tabBars.firstMatch.frame.minY - 8 : app.frame.maxY - 20
+            let known = item.exists && item.frame.height > 0
+            if known && item.isHittable && item.frame.minY >= top && item.frame.maxY <= bottom { return }
+            let downward = known && item.frame.minY < top
+            let outside = known ? (downward ? top - item.frame.minY : item.frame.maxY - bottom) : 160
+            let distance = min(160, max(48, outside + 12))
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: downward ? 0.32 : 0.72))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: downward ? distance : -distance)),
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        capture("Profile control not revealed: " + item.identifier)
+        XCTAssertTrue(item.exists, item.identifier)
+        XCTAssertTrue(item.isHittable, item.identifier)
+    }
     func testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks() {
+        executionTimeAllowance = 240
         let app = launch(animeNavigation: true); app.tabBars.buttons["Library"].tap()
         let show = app.buttons["title-frieren"]
         XCTAssertTrue(show.waitForExistence(timeout: 5)); show.tap()
+        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 15))
         let character = app.buttons["anime-character-2"]
-        for _ in 0..<10 { if character.exists && character.isHittable { break }; app.swipeUp() }
+        revealProfileControl(character, in: app)
         XCTAssertTrue(character.isHittable); character.tap()
         let appearance = app.buttons["anime-appearance-154587"]
-        for _ in 0..<10 { if appearance.exists && appearance.isHittable { break }; app.swipeUp() }
+        revealProfileControl(appearance, in: app)
         XCTAssertTrue(appearance.isHittable); capture("Character appearance opens a diary title")
         appearance.tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["character-favourite"].waitForExistence(timeout: 5))
         let voice = app.buttons["voice-actor-12"]
-        for _ in 0..<10 { if voice.exists && voice.isHittable { break }; app.swipeDown() }
+        revealProfileControl(voice, in: app)
         XCTAssertTrue(voice.isHittable); voice.tap()
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         capture("Voice actor shared hero before scrolling")
         let tmdb = app.buttons["voice-actor-tmdb"]
-        for _ in 0..<8 { if tmdb.exists && tmdb.isHittable { break }; app.swipeUp() }
+        revealProfileControl(tmdb, in: app)
         XCTAssertTrue(tmdb.isHittable)
         let birthday = app.descendants(matching: .any)["voice-actor-birthday"]
         XCTAssertTrue(birthday.exists)
@@ -1101,7 +1122,7 @@ import UIKit
         XCTAssertTrue(voiceHeart.isHittable)
         XCTAssertEqual(voiceHeart.frame.midY, heartY, accuracy: 2, "Favourite stays in the native toolbar while scrolling")
         capture("Voice actor pinned favourite after scrolling")
-        for _ in 0..<8 { if tmdb.isHittable { break }; app.swipeDown() }
+        revealProfileControl(tmdb, in: app)
         tmdb.tap()
         XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10), "TMDB opens the app's native person page")
         XCTAssertEqual(app.state, .runningForeground)
@@ -1109,7 +1130,7 @@ import UIKit
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         let anime = app.buttons["voice-actor-anime-154587-2"]
-        for _ in 0..<10 { if anime.exists && anime.isHittable { break }; app.swipeUp() }
+        revealProfileControl(anime, in: app)
         XCTAssertTrue(anime.isHittable)
         let layout = app.buttons["voice-actor-characters-layout"]
         XCTAssertTrue(layout.isHittable); layout.tap(); XCTAssertEqual(layout.value as? String, "List")

@@ -820,3 +820,11 @@ No secrets/.dev.vars/SQLbackups/privatevideos/.localin commits/output. No mainpu
 force-push, unapprovedirreversibledatachange, signing/AppStore action. Update this
 file before meaningfulstep10commits. User requests autonomouswork; proceed with
 reversible authorized fixes and tests, report material results concisely.
+
+
+### 2026-11-02 — focused native run 10 and navigation driver correction
+
+- Codemagic `6ae857a5e83a9019991c38e8` at `7e5cb3e`: five focused core tests, 41 app units and 13/14 main UI cases passed. Early header smoke and all five main profile formatting cases passed. Home and History geometry/navigation passed again.
+- The old character → appearance → voice journey exceeded its 120-second allowance during slow simulator accessibility calls. Exported recording was a 60-byte XCTest pending-attachment error, not video; app stack was mostly idle and its last accessibility snapshot had no children. This evidence does not establish a shipping app deadlock or an overscroll defect.
+- Update that journey only: explicitly wait for title detail after opening it; use measured, bidirectional held drags instead of one-way full-screen flings; retain bounded attempts and existence/hittability assertions, with a failure screenshot. Allow 240 seconds for this multi-screen journey. No app source changes.
+- Full acceptance and device packaging remain pending. The failed run did not execute compact/large matrices or produce the diagnostic IPA.
