@@ -20,6 +20,14 @@ bash ios/scripts/xcodegen.sh
 swift test --package-path ios/Packages/TwilDiaryCore --filter 'profileMilestonesCountActualWatchesAndExcludeFutureRevokedAndPlannedTitles|profileMilestoneStreakUsesLocalHistoryAndCorrectionsUpdateProgress|statsAgreeWithUnchangedWebCalculationAcrossEveryPeriodAndEdgeCase' 2>&1 | tee "$ARTIFACTS/logs/personal-core-tests.log"
 bash ios/scripts/ci.sh build-simulator
 bash ios/scripts/ci.sh boot
+python3 ios/scripts/native-test-watchdog.py --label avatar-smoke --budget 360 -- xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+  -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
+  -parallel-testing-enabled NO -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 150 -maximum-test-execution-time-allowance 240 \
+  -only-testing:TwilDiaryUITests/PersonalSettingsUITests/testProfileMenuOrderPersonalPageAvatarAndMilestones \
+  -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/PersonalSettingsAvatarSmoke.xcresult" \
+  2>&1 | tee "$ARTIFACTS/logs/personal-avatar-smoke.log"
 python3 ios/scripts/native-test-watchdog.py --label "${slug:-main}" -- xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
   -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
@@ -68,7 +76,7 @@ bash ios/scripts/ci.sh package
 python3 - <<'PY'
 import hashlib, json, os, pathlib, re, shutil, subprocess
 root = pathlib.Path('ios/.artifacts')
-for name in ['personal-settings-tests.log', 'personal-home-history.log', 'personal-settings-iphone-17e.log', 'personal-settings-iphone-17-pro-max.log']:
+for name in ['personal-avatar-smoke.log', 'personal-settings-tests.log', 'personal-home-history.log', 'personal-settings-iphone-17e.log', 'personal-settings-iphone-17-pro-max.log']:
     log = (root / 'logs' / name).read_text(errors='replace')
     if '** TEST EXECUTE SUCCEEDED **' not in log or re.search(r'\berror:|Test Case .* failed', log):
         raise SystemExit('Native settings checks did not pass: ' + name)
@@ -82,7 +90,7 @@ digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
 value = {'kind': 'device-diagnostic', 'signed': False, 'regressionAcceptance': False, 'uiRegressionPassed': True,
          'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
          'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest,
-         'note': 'Profile and milestone units; seven settings UI journeys, three Home/History journeys, and four settings journeys repeated on compact and large phones. No full regression claim.'}
+         'note': 'Avatar smoke; Profile and milestone units; seven settings UI journeys, three Home/History journeys, and four settings journeys repeated on compact and large phones. No full regression claim.'}
 (root / 'personal-settings-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
 print('Personal settings checks passed; unsigned phone IPA packaged.')
 PY

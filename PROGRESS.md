@@ -870,3 +870,10 @@ reversible authorized fixes and tests, report material results concisely.
 
 - Owner's new screenshot shows blur confined to the status area. Compared with the retained native scroll capture, the initial shared blur extended through the header-button row. Remove added root control height and cap all shared backdrop heights to the active key window top safe-area inset, so pushed navigation-bar insets cannot enlarge the blur. Keep material/fade, scrolling and button placement intact.
 - Build `6ae8db2de83a9019991c6a28` at `285d4a4` is already testing the avatar accessibility correction and does not include this narrower revision. Capture its avatar result, then verify the final narrower source on the three-phone workflow.
+
+
+### 2026-11-03 — avoid a redundant nested avatar scroll container
+
+- Run `6ae8db2de83a9019991c6a28` at `285d4a4` again passed five settings journeys and failed only the two missing avatar controls. Its exported AX tree still exposes an empty horizontal ScrollView while recording shows the artwork. Eager controls/native accessibility representations alone did not resolve that container boundary.
+- Use the existing ViewThatFits pattern: a plain row if the returned choices fit, otherwise the horizontal scroller. Keep the individual controls, provider ranking, assertions and persistence unchanged. Add a settled pre-selection screenshot and run the avatar journey as an early smoke gate before the complete suite.
+- Queued narrower-blur build `6ae8dd77e83a9019991c6ad6` at `4751908` was cancelled before starting to avoid repeating the known avatar failure. The narrower status-area blur remains committed and will be included with this correction.

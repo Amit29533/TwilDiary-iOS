@@ -27,6 +27,7 @@ import XCTest
         let characters = app.staticTexts["Popular Characters"], milestones = app.staticTexts["Milestones"]
         XCTAssertTrue(characters.waitForExistence(timeout: 5)); XCTAssertLessThan(characters.frame.minY, milestones.frame.minY)
         XCTAssertFalse(app.buttons["profile-custom-photo"].exists, "Custom photo is reached by tapping the picture")
+        capture("Personal profile before avatar selection", app)
         let frieren = app.buttons["profile-character-176754"]
         XCTAssertTrue(frieren.waitForExistence(timeout: 5)); frieren.tap(); XCTAssertEqual(frieren.value as? String, "Selected")
         capture("Personal profile popular character avatars above minimal milestones", app)

@@ -42,11 +42,10 @@ struct PersonalProfileView: View {
                     Text("Popular Characters").font(.title3.bold())
                     if loading && characters.isEmpty { ProgressView("Loading characters") }
                     if let error { VStack(alignment: .leading) { Text(error).font(.footnote).foregroundStyle(.secondary); Button("Retry") { Task { await loadCharacters() } } } }
-                    ScrollView(.horizontal) {
-                        HStack(alignment: .top, spacing: 16) {
-                            ForEach(characters) { choice in ProfileCharacterAvatarButton(choice: choice, size: 76) { profile.select(choice) } }
-                        }.padding(.vertical, 3).accessibilityElement(children: .contain)
-                    }.scrollIndicators(.hidden).accessibilityIdentifier("profile-popular-characters")
+                    ViewThatFits(in: .horizontal) {
+                        characterChoices.fixedSize(horizontal: true, vertical: false)
+                        ScrollView(.horizontal) { characterChoices }.scrollIndicators(.hidden)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     HStack { Text("Milestones").font(.title3.bold()); Spacer(); Text("\(milestones.filter(\.earned).count) earned").font(.caption).foregroundStyle(.secondary) }
@@ -66,6 +65,13 @@ struct PersonalProfileView: View {
             } message: { Text("Your name and avatar are saved on this device.") }
             .sheet(isPresented: $showAvatarPicker) { NavigationStack { AvatarPickerView(characters: characters) }.presentationDragIndicator(.visible) }
             .task { await loadCharacters() }
+    }
+    private var characterChoices: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ForEach(characters) { choice in
+                ProfileCharacterAvatarButton(choice: choice, size: 76) { profile.select(choice) }
+            }
+        }.padding(.vertical, 3)
     }
     private func loadCharacters() async {
         guard !loading else { return }; loading = true; error = nil
