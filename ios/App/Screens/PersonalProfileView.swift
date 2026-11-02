@@ -43,9 +43,9 @@ struct PersonalProfileView: View {
                     if loading && characters.isEmpty { ProgressView("Loading characters") }
                     if let error { VStack(alignment: .leading) { Text(error).font(.footnote).foregroundStyle(.secondary); Button("Retry") { Task { await loadCharacters() } } } }
                     ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 16) {
+                        HStack(alignment: .top, spacing: 16) {
                             ForEach(characters) { choice in ProfileCharacterAvatarButton(choice: choice, size: 76) { profile.select(choice) } }
-                        }.padding(.vertical, 3)
+                        }.padding(.vertical, 3).accessibilityElement(children: .contain)
                     }.scrollIndicators(.hidden).accessibilityIdentifier("profile-popular-characters")
                 }
                 VStack(alignment: .leading, spacing: 14) {
@@ -148,9 +148,12 @@ private struct ProfileCharacterAvatarButton: View {
                     .overlay(Circle().strokeBorder(selected ? theme.accent : .clear, lineWidth: 3))
                 Text(choice.name).font(.caption).lineLimit(2).frame(width: size)
             }.foregroundStyle(.primary)
-        }.buttonStyle(.plain).accessibilityElement(children: .ignore).accessibilityHidden(false)
-            .accessibilityLabel("Use " + choice.name + " as avatar").accessibilityValue(selected ? "Selected" : "Not selected")
-            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityIdentifier("profile-character-\(choice.id)")
+        }.buttonStyle(.plain)
+            .accessibilityRepresentation {
+                Button("Use " + choice.name + " as avatar", action: choose)
+                    .accessibilityValue(selected ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("profile-character-\(choice.id)")
+            }
     }
 }

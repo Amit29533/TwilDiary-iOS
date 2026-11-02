@@ -858,3 +858,9 @@ reversible authorized fixes and tests, report material results concisely.
 
 - Run `6ae8c783e83a9019991c62fa` at `a949d03` passed native compilation, all three core cases and all 21 app units. It then stopped producing output during XCTest's second History-grid cell geometry query at 26 seconds; the Codemagic 50-minute timeout killed the runner before attachment export. No crash/assertion or actionable stack was retained, so an app deadlock is not established.
 - Add a bounded test-process watchdog that captures the app/runner process samples, simulator screenshot and recent app logs after 180 seconds without output before terminating the invocation. Keep assertions and gates intact. Run the seven new settings journeys before the separate three Home/History journeys so unrelated automation stalls cannot erase their evidence. No app source changes in this follow-up.
+
+
+### 2026-11-03 — avatar shelf accessibility representation
+
+- Bounded run `6ae8d80ee83a9019991c690c` at `6d2097f` passed three core cases, 21 app units and five of seven settings UI cases. All-root/nested Statistics viewport checks, large text, all three native people-search routes, Statistics and retained Search query passed. Only the two avatar-selection journeys failed at the missing avatar control. No automation stall recurred in this first phase; Home/History did not execute because the gate stopped on those failures.
+- Retained native screenshots and AX hierarchy confirm the horizontal avatar shelf still has no exposed children despite visible choices. Use an eager stack for the bounded 18-choice shelf and a native Button accessibility representation for each artwork control; keep the actual selection/persistence tests unchanged. Other page geometry is unchanged.
