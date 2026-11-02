@@ -3,7 +3,7 @@ import TwilDiaryCore
 
 struct UniversalSearchView: View {
     var body: some View {
-        EdgeToEdgeScroll(topChromeHeight: 56) {
+        EdgeToEdgeScroll {
             VStack(spacing: 12) {
                 PageHeader(name: "Search", part: .title)
                 CatalogSearchView(universal: true)

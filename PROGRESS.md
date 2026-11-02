@@ -864,3 +864,9 @@ reversible authorized fixes and tests, report material results concisely.
 
 - Bounded run `6ae8d80ee83a9019991c690c` at `6d2097f` passed three core cases, 21 app units and five of seven settings UI cases. All-root/nested Statistics viewport checks, large text, all three native people-search routes, Statistics and retained Search query passed. Only the two avatar-selection journeys failed at the missing avatar control. No automation stall recurred in this first phase; Home/History did not execute because the gate stopped on those failures.
 - Retained native screenshots and AX hierarchy confirm the horizontal avatar shelf still has no exposed children despite visible choices. Use an eager stack for the bounded 18-choice shelf and a native Button accessibility representation for each artwork control; keep the actual selection/persistence tests unchanged. Other page geometry is unchanged.
+
+
+### 2026-11-03 — match the narrower status-only blur reference
+
+- Owner's new screenshot shows blur confined to the status area. Compared with the retained native scroll capture, the initial shared blur extended through the header-button row. Remove added root control height and cap all shared backdrop heights to the active key window top safe-area inset, so pushed navigation-bar insets cannot enlarge the blur. Keep material/fade, scrolling and button placement intact.
+- Build `6ae8db2de83a9019991c6a28` at `285d4a4` is already testing the avatar accessibility correction and does not include this narrower revision. Capture its avatar result, then verify the final narrower source on the three-phone workflow.

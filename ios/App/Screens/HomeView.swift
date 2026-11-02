@@ -23,7 +23,7 @@ struct HomeView: View {
         let overview = projection.overview
         let watching = projection.watching
         let recent = projection.recent
-        EdgeToEdgeScroll(topChromeHeight: 56) {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 0) {
                 // While searching, the plain header keeps the field and its results at the top.
                 if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }

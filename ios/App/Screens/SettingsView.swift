@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var exportDocument = DiaryJSONDocument(data: Data())
     var body: some View {
         VStack(spacing: 0) {
-            EdgeToEdgeScroll(topChromeHeight: 56) {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 22) {
                     PageHeader(name: "Profile", part: .title).padding(.horizontal, -14).padding(.bottom, -14)
                     NavigationLink(value: AppDestination.profile) {

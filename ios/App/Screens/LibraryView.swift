@@ -139,7 +139,7 @@ struct LibraryView: View {
         PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSelect: { selecting = true; selected = [] }, height: 54, part: part)
     }
     private var collectionContent: some View {
-        EdgeToEdgeScroll(topChromeHeight: 54) {
+        EdgeToEdgeScroll {
             VStack(spacing: 0) {
                 if !selecting { libraryHeader(.title) }
                 CategoryPicker(selection: Binding(get: { category }, set: { category = $0 }))
@@ -539,7 +539,7 @@ struct GlanceView: View {
         let ordered = order(titles)
         // The title row, search and filters scroll with the cards; the logo and search stay pinned.
         let header = { (part: PageHeader.Part) in PageHeader(name: "Glance", count: "\(watching.count) watching", part: part) }
-        EdgeToEdgeScroll(topChromeHeight: 56) {
+        EdgeToEdgeScroll {
                 VStack(spacing: 0) {
                     header(.title)
 
