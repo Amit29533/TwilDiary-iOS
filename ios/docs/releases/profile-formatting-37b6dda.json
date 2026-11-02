@@ -1,0 +1,197 @@
+{
+  "kind": "device-diagnostic",
+  "regressionAcceptance": false,
+  "uiRegressionPassed": true,
+  "sourceSHA": "37b6dda1bfe690a1ba60a2975c0525175dabf86a",
+  "buildNumber": "65",
+  "codemagicBuild": "6ae829f22dd1b7e16dab9367",
+  "sha256": "8540aa9d0cf992db3992e57e63265a075a5277cd5bd1363fc7257efed2a1a6e9",
+  "note": "Five focused core cases; lookup, profile, formatting, ranking and Home model units; seven navigation/Home journeys and four profile matrix journeys on each of three phone sizes, including accessibility text. No full regression rerun.",
+  "bytes": 8439549,
+  "version": "2.0.0",
+  "platform": "arm64 iPhoneOS",
+  "crc": "pass",
+  "releaseResources": "pass",
+  "requiredPrivacyReasons": "pass",
+  "buildURL": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/build/6ae829f22dd1b7e16dab9367",
+  "focusedCoreTestsPassed": 5,
+  "nativeUnitTestsPassed": 39,
+  "nativeUIExecutionsPassed": 19,
+  "phoneSizes": [
+    "iPhone 17 Pro",
+    "iPhone 17e",
+    "iPhone 17 Pro Max"
+  ],
+  "buildWarnings": {
+    "simulator": 0,
+    "device": 0
+  },
+  "fullRegressionRerun": false,
+  "physicalDeviceVerified": false,
+  "durationSeconds": 1559,
+  "visualReview": "27 retained fixture screenshots: normal facts/biography/link sections and accessibility XXXL facts/Watched rows on each of three phone sizes.",
+  "reviewedScreenshots": [
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/cast-974169-balanced-facts-and-full-location.png",
+      "sha256": "4ff52430ffecc501b8125275f7cb582ca996072a7c5ad02bffde17f06909a5fe",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/character-138100-freeform-age-and-optional-facts.png",
+      "sha256": "c884cfe0d0869879d0da6adba5e15a51a931b0272b53afa1d6830481a27ba2e9",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testCharacterProfilesPreserveRangesYearOnlyDatesAndNativeRelationships()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/large-text-voice-readable-watched-credit-row.png",
+      "sha256": "736674acce488a56aed072edc2baf351ae54fba3a78190f0dfdffb6bed920c89",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/large-text-voice-full-width-facts-and-pinned-heart.png",
+      "sha256": "c9c53486b9a996152f484b544b9628801a394f020351e8bca02fe8b70d1ad296",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/large-text-character-readable-watched-credit-row.png",
+      "sha256": "e1f9e0292d0174e093bf42999b9d5ae6920cedf800f166e3c2e7b5f01d38b5fb",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/large-text-character-full-width-facts-and-pinned-heart.png",
+      "sha256": "dfc86e77c48b0a646addc2910780017f966f4903c717e839d65345c13d425f10",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/large-text-cast-full-width-facts-and-pinned-heart.png",
+      "sha256": "75c0bb4843fdb06aa414652ea979c61695283fb0ece671227e3b97a54e97aa76",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/voice-95065-links-separated-from-prose.png",
+      "sha256": "7372497fea09769eb30c766ef6e5a1dce275e078b8a559456df73d595e2d9408",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testVoiceProfilesSeparateLinksFactsCareerAndBiography()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro-max/voice-95065-complete-hometown-and-aligned-facts.png",
+      "sha256": "d4eaa1e1e1f70772590b504fe177b560d70ca0368d53bb256b8d512db48eac4c",
+      "device": "iPhone 17 Pro Max",
+      "test": "ProfileFormattingUITests/testVoiceProfilesSeparateLinksFactsCareerAndBiography()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/cast-974169-balanced-facts-and-full-location.png",
+      "sha256": "a41b668e35f7a69d6cfb54169d97d9425cba1116fbceaebd2d392d6e836bc5aa",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/character-138100-freeform-age-and-optional-facts.png",
+      "sha256": "45274e0d67573ec26c0e23dbc98eb968707447405282b79b1905b545381b896d",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testCharacterProfilesPreserveRangesYearOnlyDatesAndNativeRelationships()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/large-text-voice-readable-watched-credit-row.png",
+      "sha256": "3349305e91c4e96ceb1b9bf07452e45d5b701cd61d335f907363766091db4f4d",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/large-text-voice-full-width-facts-and-pinned-heart.png",
+      "sha256": "1fbfabebb295aa92f53109033f5bc0fff23d5ea359764e0bccca800aa97a5233",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/large-text-character-readable-watched-credit-row.png",
+      "sha256": "69ba2764b7811f7c27512c382049562290a336c0855ba2ca3457747b26150e7c",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/large-text-character-full-width-facts-and-pinned-heart.png",
+      "sha256": "9f65599470a97ac1310acf882ee5ec3f0cbb4b7c34338accde4777a6938f12aa",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/large-text-cast-full-width-facts-and-pinned-heart.png",
+      "sha256": "89d6e6feb31d9eb865d8039ab281d40e4ad88391d460ba28cc940947d1629892",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/voice-95065-links-separated-from-prose.png",
+      "sha256": "59862e0c5c2ad452ae8045c6bc9162d37402e32dd9a1db46275729b7fc3d6d4b",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testVoiceProfilesSeparateLinksFactsCareerAndBiography()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17e/voice-95065-complete-hometown-and-aligned-facts.png",
+      "sha256": "0d2213466f36f6e927e33b2350c581c05578bca3c491d3e42020658a42d2932f",
+      "device": "iPhone 17e",
+      "test": "ProfileFormattingUITests/testVoiceProfilesSeparateLinksFactsCareerAndBiography()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/cast-974169-balanced-facts-and-full-location.png",
+      "sha256": "666fe63b6b782d9d954279a15371eaadca1a0b1a0039804f5373500ee6bdbecb",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/character-138100-freeform-age-and-optional-facts.png",
+      "sha256": "96201a4dbe23068d7092f10657e31de4ffdbc4e201d58b58cceffc267004302a",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testCharacterProfilesPreserveRangesYearOnlyDatesAndNativeRelationships()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/large-text-voice-readable-watched-credit-row.png",
+      "sha256": "22fb109b10e53ce895bcece7c9f1f0d9863620c62b42313e402c0127704a1f43",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/large-text-voice-full-width-facts-and-pinned-heart.png",
+      "sha256": "f91a69fe0699b49ac9da2a1afab5058817ae0185b317ea9ea19369f3a4d8c51e",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/large-text-character-readable-watched-credit-row.png",
+      "sha256": "8529711602b591ce3a4e8e9a88d5edc94fa944982166e19e2fe0271bff34d096",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/large-text-character-full-width-facts-and-pinned-heart.png",
+      "sha256": "7c63cdc244967010e67f2758b641ee35fa2e3532fb2b237a67e1ea2ba6f9d30e",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/large-text-cast-full-width-facts-and-pinned-heart.png",
+      "sha256": "5fe3abe2c47fdb696947dc73ff604978cf550297ff5b0f83832f186b04ced051",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/voice-95065-links-separated-from-prose.png",
+      "sha256": "13f41e4820f1ee506f23d50e634e92786bc7261c39794632eb53e2c3deacbecc",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testVoiceProfilesSeparateLinksFactsCareerAndBiography()"
+    },
+    {
+      "path": "ios/docs/screenshots/profile-formatting-37b6dda/iphone-17-pro/voice-95065-complete-hometown-and-aligned-facts.png",
+      "sha256": "add46379d96a963f5b628d63dba38d624e29419a1ed5fc9c36a89f020f5f1d87",
+      "device": "iPhone 17 Pro",
+      "test": "ProfileFormattingUITests/testVoiceProfilesSeparateLinksFactsCareerAndBiography()"
+    }
+  ]
+}

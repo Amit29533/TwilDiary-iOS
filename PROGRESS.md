@@ -1,5 +1,24 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — focused profile build accepted with retained evidence
+
+Codemagic 6ae829f22dd1b7e16dab9367 completed successfully for exact source
+37b6dda1bfe690a1ba60a2975c0525175dabf86a in about 26 minutes. Five focused core
+cases, 39 native units and 19 UI executions passed: seven navigation/Home journeys
+plus four profile-format journeys on each of three phone sizes, including XXXL
+facts, full-width Watched rows and trailing-edge navigation. Simulator and arm64
+Release device builds both report zero warnings. Packaging/resource gates passed.
+
+Downloaded IPA: 8,439,549 bytes, version 2.0.0/build 65, arm64 iPhoneOS; ZIP CRC,
+required privacy reasons, Release fixture exclusion and SHA256/provenance match
+verified locally. SHA256 8540aa9d0cf992db3992e57e63265a075a5277cd5bd1363fc7257efed2a1a6e9.
+Reviewed 27 retained fixture screenshots across iPhone 17 Pro, 17e and 17 Pro Max:
+normal facts/biographies/links and accessibility facts/readable rows. No new layout
+defect found in these captures. Originals retained in
+ios/docs/screenshots/profile-formatting-37b6dda; receipt in
+ios/docs/releases/profile-formatting-37b6dda.json. This is focused acceptance;
+full regression and physical-phone acceptance remain unverified.
+
 ## 2 November 2026 — completed profile UI checks; workflow timeout correction
 
 Codemagic 6ae8072a verified source 548cbd4: five focused core cases, 39 native
