@@ -84,8 +84,12 @@ import UIKit
             assertPortraitIsSharpBehindToolbar(app)
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
             start.press(forDuration: 0.03, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)))
-            XCTAssertFalse(element(app, "profile-compact-name").exists)
             capture("Header pattern \(kind) partly scrolled portrait", app: app)
+            // UIKit can retain the hidden principal item's accessibility wrapper.
+            // Check the visible hero's position and actual pixels, not AX existence.
+            XCTAssertGreaterThan(app.staticTexts[prefix + "-name"].frame.minY,
+                                 app.navigationBars.firstMatch.frame.maxY + 48,
+                                 "This sharpness sample must still show the expanded hero below the toolbar")
             assertPortraitIsSharpBehindToolbar(app)
             XCTAssertEqual(heart.frame.midY, heartY, accuracy: 2)
             XCTAssertTrue(heart.isHittable)

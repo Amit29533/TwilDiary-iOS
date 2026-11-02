@@ -1,5 +1,26 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — a14bcb2 native results and header-test correction
+
+Owner launched focused build 6ae8430aefa7478604700529 for a14bcb2. Five core
+cases, all 41 native units and 13/14 native UI journeys passed on iPhone 17 Pro.
+The only failure was the new header test's assertion that the hidden compact
+title does not exist in accessibility. Retained video shows no compact title
+visually, with the hero still expanded and stripes sharp beneath the toolbar.
+Initial sharpness pixel assertion passed; the follow-up assertion stopped before
+its second sample. This is an incorrect AX-existence assumption, not evidence
+that the hard portrait strip returned.
+
+Replaced that assertion with visible hero bounds below the native toolbar and
+retained both screenshot pixel contrast checks, pinned heart and hidden-tab
+checks on all three profile kinds. No app behavior or failure gate removed.
+Reviewed actual Home/History captures: compact landscape cards, matching surfaces,
+two complete recent cards/next peek and dates beside episodes; both journeys and
+History date/search/paging tests passed. Rating sizing regression passed too.
+Original artifacts and screenshots retained outside repo in
+outputs/profile-format-a14bcb2. Compact/max matrix and device Release packaging
+did not execute after the failing main batch. New same-SHA rerun is required.
+
 ## 2 November 2026 — Home/History geometry and review of today's fixes
 
 Owner supplied a current phone capture and reference, then explicitly required
