@@ -418,10 +418,18 @@ actor AniListClient {
     func forgetStats() { userStats = [:]; userCharacters = [:] }
 
     func searchPeople(_ search: String) async throws -> [SearchPerson] {
-        struct Reply: Decodable { let Page: PageValue; struct PageValue: Decodable { let characters: [Node]; let staff: [Performer] }; struct Performer: Decodable { let id: Int; let name: Name; let image: Image?; let primaryOccupations: [String]? } }
-        let reply: Reply = try await query("query($search: String) { Page(perPage: 12) { characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } } staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations } } }", ["search": search])
-        return reply.Page.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
-            + reply.Page.staff.filter { $0.primaryOccupations?.contains(where: { $0.localizedCaseInsensitiveContains("voice") }) == true }.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "voice") } }
+        struct Reply: Decodable {
+            let characters: CharacterPage
+            let performers: PerformerPage
+            struct CharacterPage: Decodable { let characters: [Node] }
+            struct PerformerPage: Decodable { let staff: [Performer] }
+            struct Performer: Decodable { let id: Int; let name: Name; let image: Image?; let primaryOccupations: [String]? }
+        }
+        // AniList permits only one collection per Page, so each collection has
+        // its own aliased page within the same request.
+        let reply: Reply = try await query("query($search: String) { characters: Page(perPage: 12) { characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } } } performers: Page(perPage: 12) { staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations } } }", ["search": search])
+        return reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
+            + reply.performers.staff.filter { $0.primaryOccupations?.contains(where: { $0.localizedCaseInsensitiveContains("voice") }) == true }.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "voice") } }
     }
 
     private var avatarCache: (date: Date, values: [ProfileAvatarChoice])?

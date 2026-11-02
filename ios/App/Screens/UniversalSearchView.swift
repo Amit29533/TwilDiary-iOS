@@ -130,7 +130,7 @@ struct SearchPeopleView: View {
 struct SearchJellyfinView: View {
     let query: String
     @Environment(DiaryStore.self) private var store
-    private var shelf = JellyfinShelf.shared
+    private var shelf: JellyfinShelf { .shared }
     var body: some View {
         let items = JellyfinShelf.matched(shelf.entries, diary: store.workspace.activeTitles).filter { $0.name.localizedCaseInsensitiveContains(query) }
         VStack(alignment: .leading, spacing: 12) {

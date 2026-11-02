@@ -109,11 +109,12 @@ private struct AvatarPickerView: View {
     @State private var error: String?
     @State private var generation = UUID()
     var body: some View {
+        let fieldColour = theme.field
         ScrollView {
             VStack(spacing: 22) {
                 PersonalAvatar(size: 112)
                 PhotosPicker(selection: $selection, matching: .images) {
-                    Label("Choose custom photo", systemImage: "photo.badge.plus").frame(maxWidth: .infinity, minHeight: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+                    Label("Choose custom photo", systemImage: "photo.badge.plus").frame(maxWidth: .infinity, minHeight: 48).background(fieldColour, in: RoundedRectangle(cornerRadius: 12))
                 }.disabled(loading).accessibilityIdentifier("profile-custom-photo")
                 if loading { ProgressView("Preparing photo") }
                 if let error { Text(error).font(.footnote).foregroundStyle(.secondary) }

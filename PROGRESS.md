@@ -837,3 +837,10 @@ reversible authorized fixes and tests, report material results concisely.
 - Reuse existing diary search/discovery/artwork/history/Statistics code; add authenticated TMDB people read endpoint for native Cast results and AniList performer/character search. No hosted diary mutations or schema changes.
 - Local checks: 48 targeted provider/discovery/search tests pass (47 initial cases plus anonymous people-route denial); TypeScript/Svelte zero errors/warnings and production build pass. Swift grammar has no new errors versus baseline; YAML and shell/embedded Python validate.
 - Added PersonalProfile units, core milestone history edge cases, five settings UI journeys and dedicated three-phone Codemagic workflow. Native compilation/UI proof and device IPA remain pending. Version 2.0.0 (66). See ios/docs/PERSONAL-PROFILE-AND-SEARCH.md.
+
+
+### 2026-11-02 — first personal-settings native compile
+
+- Codemagic `6ae8bd99e83a9019991c5f68` at `9d89623` passed the three core cases, including both new milestone cases and the unchanged Statistics golden matrix. Compilation then exposed a private synthesized SearchJellyfinView initializer and a PhotosPicker sendable-label capture of main-actor theme storage. Use a computed shared shelf and a pre-read Color value respectively.
+- A public live AniList request confirmed community-ranked avatar IDs/artwork. Performer search initially revealed the provider's one-collection-per-Page constraint. The corrected query uses two aliased Page fields in one request and returned Saori Hayami with Voice Actor/Vocalist occupations. No live acceptance is inferred from test fixtures.
+- Server people-search publication is awaiting the owner's separate deployment decision; Codemagic still only builds native artifacts. No backend deployment performed.
