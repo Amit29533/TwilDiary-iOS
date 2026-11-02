@@ -1,5 +1,21 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — bound the portrait regression gesture
+
+Build 6ae84853 for 3c3ecce again compiled and passed 41 native units plus the
+nine navigation/Home/History journeys and other profile-format cases. Revised
+header test passed initial and partial Cast pixel checks and the Character
+initial check, then failed its phase guard: a short fast drag flung the Character
+hero to y=20.7, above the required expanded position. The sample was in the wrong
+scroll phase; do not waive its geometry or contrast requirements.
+
+Test now drags 24 points slowly and holds the finger stationary before release.
+It requires actual movement over 8 and under 48 points, hero below the toolbar,
+sharp pixels, pinned heart and no tabs. The workflow runs this visual regression
+first as a separate retained smoke result, then retains the entire original
+native batch and three-size matrix. Local grammar/workflow checks pass; native
+execution is pending. App behavior remains the same as a14bcb2.
+
 ## 2 November 2026 — a14bcb2 native results and header-test correction
 
 Owner launched focused build 6ae8430aefa7478604700529 for a14bcb2. Five core

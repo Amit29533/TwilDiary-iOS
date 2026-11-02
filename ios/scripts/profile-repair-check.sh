@@ -20,6 +20,16 @@ bash ios/scripts/xcodegen.sh
 swift test --package-path ios/Packages/TwilDiaryCore --filter 'personSectionsMatchWebRoleProminenceAndServerMediaIdentity|personFilmographyMatchesAllWebGoldenFiltersSortsAndErrors|animeAppearanceNavigationRequiresAnUnambiguousTitleMatch|voiceActorPersonMatchingUsesUniqueTmdbCastIdentity|homeAgreesWithWebWeekCoveragePlannedOrderAndUpcomingRules' 2>&1 | tee "$ARTIFACTS/logs/focused-profile-core-tests.log"
 bash ios/scripts/ci.sh build-simulator
 bash ios/scripts/ci.sh boot
+# Check the new visual regression before repeating navigation. The full profile
+# matrix below still includes this case on every phone size.
+xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+  -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
+  -parallel-testing-enabled NO -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 240 \
+  -only-testing:TwilDiaryUITests/ProfileFormattingUITests/testPortraitStaysClearBehindPinnedControlsBeforeTheNameCollapses \
+  -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/ProfileHeaderSmoke.xcresult" \
+  2>&1 | tee "$ARTIFACTS/logs/profile-header-smoke.log"
 xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
   -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
@@ -71,6 +81,9 @@ bash ios/scripts/ci.sh package
 python3 - <<'PY'
 import hashlib, json, os, pathlib, plistlib, re, shutil, subprocess
 root = pathlib.Path('ios/.artifacts')
+smoke = (root / 'logs/profile-header-smoke.log').read_text(errors='replace')
+if not re.search(r'Test Case .*testPortraitStaysClearBehindPinnedControlsBeforeTheNameCollapses.* passed', smoke):
+    raise SystemExit('Early portrait sharpness check did not pass.')
 tests = (root / 'logs/profile-repair-tests.log').read_text(errors='replace')
 for case in ['testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs', 'testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts', 'testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation', 'testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters', 'testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks', 'testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults',
              'testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation',
