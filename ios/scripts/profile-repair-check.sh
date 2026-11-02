@@ -41,6 +41,9 @@ xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDi
   -only-testing:TwilDiaryUITests/NativeScreensTests/testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation \
   -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/ProfileRepairs.xcresult" \
   2>&1 | tee "$ARTIFACTS/logs/profile-repair-tests.log"
+# Keep only the simulator currently under test running; leaving all three booted
+# competes with subsequent test runners and the optimized device build for RAM.
+xcrun simctl shutdown "$SIMULATOR_ID"
 # Repeat only the profile format matrix on compact and large phones, including
 # accessibility text. Existing navigation/Home journeys run once above.
 while read -r slug layout_id; do
@@ -54,6 +57,7 @@ while read -r slug layout_id; do
     -only-testing:TwilDiaryUITests/ProfileFormattingUITests \
     -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/ProfileLayout-$slug.xcresult" \
     2>&1 | tee "$ARTIFACTS/logs/profile-layout-$slug.log"
+  xcrun simctl shutdown "$SIMULATOR_ID"
 done < <(python3 - <<'LAYOUTS'
 import json
 for item in json.load(open('ios/.artifacts/layout-simulators.json')):

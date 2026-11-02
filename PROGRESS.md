@@ -1,5 +1,32 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — completed profile UI checks; workflow timeout correction
+
+Codemagic 6ae8072a verified source 548cbd4: five focused core cases, 39 native
+units, seven navigation/Home journeys, and all four profile-format journeys on
+each of iPhone 17 Pro, 17e and 17 Pro Max passed. This includes full-width row
+geometry and trailing-edge title navigation at accessibility XXXL on all three
+sizes. No compiler warnings or XCTest errors appear in the retained step log.
+The job reached its 40-minute limit during arm64 Release compilation; device build
+completion, package/resource checks, artifact export and visual review did not
+complete. No accepted IPA or complete workflow pass is claimed.
+
+Reviewed shared row actions, profile formatting/date handling and the focused
+workflow. No further app defect established by this review. The workflow left
+each finished simulator booted, increasing resource contention on the M2 runner;
+it now shuts down each selected simulator after its successful test batch. The
+focused workflow limit is 65 minutes to accommodate the observed 38-minute
+three-size path plus Release build, packaging and evidence export. Test selection,
+failure handling, zero-warning checks and release-resource gates are retained.
+The broader local release-tool tests exposed a stale fixture: it included newer
+0023 Jellyfin migration although the rollout tool approves only through 0022. The
+fixture now models that pinned release, with a new test requiring rejection of
+unreviewed pending migrations. The production migration allowlist is unchanged.
+All 29 local release-tool tests pass, along with Bash syntax, workflow YAML,
+embedded Python, reviewed Swift grammar, selected native test names and git diff
+checks. The new candidate still requires complete same-SHA native execution,
+device packaging and retained screenshot/IPA review.
+
 ## 2 November 2026 — full-width accessibility row actions
 
 Inspected retained logs and the large-text runtime recording from failed build

@@ -43,8 +43,12 @@ clearly labelled in the fixture, to test overflow without republishing biographi
 The fixture and loaders are DEBUG-only; catalog-*.json resources are excluded from
 Release. Native tests check four format journeys on iPhone 17 Pro, 17e and 17 Pro
 Max, including accessibility XXXL text. Lookup/navigation/Home tests are targeted,
-not a whole-suite regression. Compilation and native execution pending for this
-candidate; no claim of physical-device verification.
+not a whole-suite regression. Source 548cbd4 passed the simulator build, five core
+cases, 39 native units and all 19 UI executions across the three sizes in build
+6ae8072a. The 40-minute job limit interrupted the later device Release build;
+packaging and retained screenshot/IPA review remain incomplete. The next run has
+a 65-minute limit and shuts down finished simulators to free runner resources.
+No claim of full-workflow or physical-device verification.
 
 ## Sample sources
 

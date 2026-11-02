@@ -9,8 +9,11 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location("rollout", Path(__file__).with_name("prepare-d1-rollout.py"))
 rollout = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rollout)
+# Rehearse the explicitly reviewed release. Newer source migrations must remain
+# unapproved until the operator expands the production tool's release allowlist.
 MIGRATIONS = {path.name: path.read_text(encoding="utf-8")
-              for path in sorted((rollout.ROOT / "drizzle").glob("*.sql"))}
+              for path in sorted((rollout.ROOT / "drizzle").glob("*.sql"))
+              if path.name <= rollout.MIGRATIONS[-1]}
 
 
 def fixture(applied=14):
@@ -60,6 +63,13 @@ def run_operator_queries(db, name):
 
 
 class RolloutTests(unittest.TestCase):
+    def test_newer_pending_migrations_require_release_review(self):
+        self.assertEqual(list(MIGRATIONS)[14:], list(rollout.MIGRATIONS))
+        unreviewed = MIGRATIONS | {"0099_unreviewed.sql": "CREATE TABLE unreviewed(id TEXT);"}
+        with fixture() as db:
+            with self.assertRaisesRegex(ValueError, "Unexpected pending migration"):
+                rollout.rehearse(dump(db), unreviewed)
+
     def test_operator_sql_is_read_only_and_verifies_old_then_new_schema(self):
         with fixture() as db:
             db.execute("PRAGMA query_only=ON")

@@ -4,7 +4,9 @@ workflows:
   native-ios-profile-repair-check:
     name: TwilDiary focused profile repairs and Home dates
     instance_type: mac_mini_m2
-    max_build_duration: 40
+    # The three-size matrix alone took 38 minutes on the trial M2 runner.
+    # Retain time for the Release build, packaging and evidence export.
+    max_build_duration: 65
     environment:
       xcode: '26.6'
       vars:
