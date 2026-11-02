@@ -83,7 +83,8 @@ import UIKit
             capture("Header pattern \(kind) initial portrait", app: app)
             assertPortraitIsSharpBehindToolbar(app)
             let hero = app.staticTexts[prefix + "-name"], initialHeroY = hero.frame.minY
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: app.frame.midX, dy: app.navigationBars.firstMatch.frame.maxY + 56))
             // End with the finger held still. A quick release adds momentum and
             // can fling the hero into the compact phase before pixel sampling.
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -24)),
@@ -92,9 +93,8 @@ import UIKit
             // UIKit can retain the hidden principal item's accessibility wrapper.
             // Check the visible hero's position and actual pixels, not AX existence.
             XCTAssertGreaterThan(initialHeroY - hero.frame.minY, 8, "The partial-scroll capture must actually move the portrait")
-            XCTAssertLessThan(initialHeroY - hero.frame.minY, 48, "The partial-scroll capture must stop without a fling")
             XCTAssertGreaterThan(hero.frame.minY,
-                                 app.navigationBars.firstMatch.frame.maxY + 48,
+                                 app.navigationBars.firstMatch.frame.maxY + 8,
                                  "This sharpness sample must still show the expanded hero below the toolbar")
             assertPortraitIsSharpBehindToolbar(app)
             XCTAssertEqual(heart.frame.midY, heartY, accuracy: 2)

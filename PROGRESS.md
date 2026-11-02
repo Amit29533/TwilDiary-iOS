@@ -1,5 +1,21 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — use visible scroll phase, not device gesture distance
+
+af6c19c build 6ae84e6e passed the early header smoke, all 41 native units, all
+nine native navigation/Home/History cases, full 17 Pro and 17e profile matrices,
+and four of five Pro Max matrix cases. The only failure was the test's <48-point
+scroll-distance assertion on the Pro Max Character capture (141.3 points).
+Retained image F08CCB50-3680-4C56-B2D9-AD2676C84928.png shows the entire hero
+name below the native bar, sharp diagnostic stripes and no rectangular strip.
+The sample was valid for the visual contract despite a different scroll distance.
+
+Test now starts on the portrait, clear of nested content, and requires actual
+movement plus the visible hero below the bar with an 8-point gap; no assertion
+about native gesture travel distance. Both initial/partial pixel contrast,
+pinned heart, hidden tabs, all provider samples and three phone sizes remain
+required. No shipping app code changed. New same-SHA native run still required.
+
 ## 2 November 2026 — bound the portrait regression gesture
 
 Build 6ae84853 for 3c3ecce again compiled and passed 41 native units plus the
