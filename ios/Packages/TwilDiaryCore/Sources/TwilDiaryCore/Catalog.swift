@@ -127,9 +127,15 @@ public enum CatalogTools {
 }
 
 public enum PublicRatingSource: String, CaseIterable, Identifiable, Sendable {
-    case tmdb, trakt
+    case tmdb, trakt, mdblist
     public var id: Self { self }
-    public var label: String { self == .tmdb ? "TMDB" : "Trakt" }
+    public var label: String {
+        switch self {
+        case .tmdb: "TMDB"
+        case .trakt: "Trakt"
+        case .mdblist: "MDBList"
+        }
+    }
 }
 public struct PublicRating: Decodable, Sendable {
     public let score: Double?

@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { Component, Snippet } from 'svelte';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import type { ConnectionProviderId } from '#lib/client/provider-settings.ts';
+  import ProviderIcon from './ProviderIcon.svelte';
   let {
     icon: Icon,
+    providerIcon,
     title,
     subtitle = '',
     href,
@@ -14,7 +17,8 @@
     controlId,
     control
   }: {
-    icon: Component<{ size?: number; strokeWidth?: number }>;
+    icon?: Component<{ size?: number; strokeWidth?: number }>;
+    providerIcon?: ConnectionProviderId;
     title: string;
     subtitle?: string;
     href?: string;
@@ -29,7 +33,13 @@
 </script>
 
 {#snippet contents()}
-  <span class="setting-icon"><Icon size={18} strokeWidth={1.8} /></span>
+  <span class="setting-icon">
+    {#if providerIcon}
+      <ProviderIcon provider={providerIcon} size={18} strokeWidth={1.8} />
+    {:else if Icon}
+      <Icon size={18} strokeWidth={1.8} />
+    {/if}
+  </span>
   <span class="setting-copy"
     ><strong>{title}</strong>{#if subtitle}<small>{subtitle}</small>{/if}</span
   >

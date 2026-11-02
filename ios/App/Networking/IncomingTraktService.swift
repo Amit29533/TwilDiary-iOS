@@ -11,11 +11,17 @@ struct IncomingTraktStatus: Codable, Equatable, Sendable {
     var paused: Bool?
     var pausedBy: String?
     var overdue: Bool?
+    var tick: String?
 }
 
 @MainActor protocol IncomingTraktServicing {
     func status() async throws -> IncomingTraktStatus
     func configure(enabled: Bool) async throws -> IncomingTraktStatus
+    func catchUp() async throws -> IncomingTraktStatus
+}
+
+extension IncomingTraktServicing {
+    func catchUp() async throws -> IncomingTraktStatus { try await status() }
 }
 
 @MainActor struct LiveIncomingTraktService: IncomingTraktServicing {
@@ -23,6 +29,9 @@ struct IncomingTraktStatus: Codable, Equatable, Sendable {
     func status() async throws -> IncomingTraktStatus { try await store.read("/api/trakt/incoming") }
     func configure(enabled: Bool) async throws -> IncomingTraktStatus {
         try await store.read("/api/trakt/incoming", method: "PUT", body: ["enabled": enabled])
+    }
+    func catchUp() async throws -> IncomingTraktStatus {
+        try await store.read("/api/trakt/incoming", method: "POST", body: [:])
     }
 }
 
@@ -47,6 +56,13 @@ struct IncomingTraktStatus: Codable, Equatable, Sendable {
         do { status = try await service.configure(enabled: enabled); error = nil }
         catch is CancellationError { }
         catch { self.error = "The incoming sync setting couldn’t be confirmed. Refresh its status before retrying." }
+    }
+    func catchUp() async {
+        guard !busy, !Task.isCancelled else { return }
+        busy = true; defer { busy = false }
+        do { status = try await service.catchUp(); error = nil }
+        catch is CancellationError { }
+        catch { self.error = "Incoming sync couldn’t be checked. Retry when your diary backend is available." }
     }
     var health: String? {
         if status?.overdue == true {

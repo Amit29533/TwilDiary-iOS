@@ -15,3 +15,25 @@ import TwilDiaryTestSupport
     #expect(Set(json.keys) == ["schemaVersion", "titles", "episodes", "events", "locations", "skippedEpisodeIds"])
     #expect(!String(decoding: data, as: UTF8.self).contains("CF_Authorization"))
 }
+
+@Test func diaryExportMergesHigherVersionsTombstonesAndSkippedEpisodesDeterministically() throws {
+    let base = SampleWorkspace.make()
+    let modified = base.applying(.patchTitle(
+        titleId: "again",
+        expectedVersion: 1,
+        status: "watching",
+        score: 9.5,
+        clearScore: false,
+        favorite: true,
+        queued: nil,
+        notes: "Merged from second device"
+    ))
+    let exportedData = try DiaryExport(workspace: modified).encoded()
+    let decodedArchive = try DiaryExport.decoded(from: exportedData)
+    let merged = try decodedArchive.merged(into: base)
+    let mergedTitle = try #require(merged.titles.first { $0.id == "again" })
+    #expect(mergedTitle.score == 9.5)
+    #expect(mergedTitle.favorite == true)
+    #expect(mergedTitle.notes == "Merged from second device")
+}
+

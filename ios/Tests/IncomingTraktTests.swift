@@ -90,4 +90,11 @@ import XCTest
         XCTAssertTrue(current.health?.contains("midnight UTC") ?? false)
         service.value.error = nil; await current.refresh(); XCTAssertNil(current.health)
     }
+    func testCatchUpUpdatesStatusAndClearsPriorErrors() async {
+        let service = IncomingFixture(); service.value.enabled = true; service.value.tick = "imported"
+        let current = IncomingTraktController(service: service)
+        await current.catchUp()
+        XCTAssertEqual(current.status?.tick, "imported")
+        XCTAssertNil(current.error)
+    }
 }

@@ -83,6 +83,8 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
 
 @MainActor @Observable final class DiaryAPI {
     var credential: AccessCredential?
+    var customTmdbToken: String?
+    var customMdblistApiKey: String?
     private let session: URLSession
     private let boundedReadSession: URLSession
     private let storage: any SessionStoring
@@ -147,6 +149,12 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("CF_Authorization=\(credential.token)", forHTTPHeaderField: "Cookie")
+        if let tmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines), !tmdbToken.isEmpty {
+            request.setValue(tmdbToken, forHTTPHeaderField: "X-TMDB-Read-Token")
+        }
+        if let mdblistKey = customMdblistApiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !mdblistKey.isEmpty {
+            request.setValue(mdblistKey, forHTTPHeaderField: "X-MDBList-API-Key")
+        }
         if method != "GET" {
             request.setValue(AppConfiguration.backend.absoluteString, forHTTPHeaderField: "Origin")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

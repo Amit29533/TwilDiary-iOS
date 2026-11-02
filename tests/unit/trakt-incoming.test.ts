@@ -5,6 +5,7 @@ import { connectFixture, fakeTrakt, fakeTmdb, traktEnv } from '../helpers/trakt.
 import { createTmdb } from '../../src/lib/server/tmdb.ts';
 import { addManualTitle, logWatch } from '../../src/lib/server/library.ts';
 import {
+  catchUpIncoming,
   configureIncoming,
   incomingStatus,
   tickIncoming
@@ -998,4 +999,26 @@ test('a TMDb rate limit still backs off the whole scheduler by its Retry-After',
   assert.deepEqual(result, { state: 'deferred', code: 'metadata_rate_limited' });
   const row = f.sqlite.prepare('SELECT failures,next_at,lease FROM trakt_incoming').get()!;
   assert.deepEqual({ ...row }, { failures: 1, next_at: f.now() + 120_000, lease: null });
+});
+
+test('catchUpIncoming performs bounded foreground catch-up and coalesces with cooldowns and manual review', async (t) => {
+  const f = await fixture(t);
+  f.fake.state.history = [watch()];
+  await configureIncoming(f.db, traktEnv, true, f.now());
+  const first = await catchUpIncoming(f.db, traktEnv, {
+    transport: f.fake.transport,
+    tmdb: createTmdb('fixture', fakeTmdb),
+    now: f.now
+  });
+  assert.equal(first.tick, 'imported');
+  assert.equal(first.enabled, true);
+  assert.ok(first.importedAt);
+
+  // Immediate repeat before next_at is due returns tick: 'idle' without hitting Trakt again
+  const second = await catchUpIncoming(f.db, traktEnv, {
+    transport: f.fake.transport,
+    tmdb: createTmdb('fixture', fakeTmdb),
+    now: f.now
+  });
+  assert.equal(second.tick, 'idle');
 });
