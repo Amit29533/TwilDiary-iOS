@@ -27,6 +27,8 @@ xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDi
   -only-testing:TwilDiaryTests/HomeMediaCardsTests \
   -only-testing:TwilDiaryTests/DashboardProjectionTests \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts \
+  -only-testing:TwilDiaryUITests/NativeScreensTests/testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation \
+  -only-testing:TwilDiaryUITests/NativeScreensTests/testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testUpcomingEpisodeOpensItsLinkedSeasonAndEpisodesWithoutChangingOrdinaryTitleNavigation \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testHomeStatsUsesTodayAndKeepsTheOriginalRangeBar \
@@ -40,7 +42,7 @@ python3 - <<'PY'
 import hashlib, json, os, pathlib, plistlib, re, shutil, subprocess
 root = pathlib.Path('ios/.artifacts')
 tests = (root / 'logs/home-design-tests.log').read_text(errors='replace')
-for case in ['testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts', 'testUpcomingEpisodeOpensItsLinkedSeasonAndEpisodesWithoutChangingOrdinaryTitleNavigation', 'testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu', 'testHomeStatsUsesTodayAndKeepsTheOriginalRangeBar', 'testEmptyDiaryScreensRetainNavigationAndSourceEmptyStates', 'testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation']:
+for case in ['testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts', 'testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation', 'testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters', 'testUpcomingEpisodeOpensItsLinkedSeasonAndEpisodesWithoutChangingOrdinaryTitleNavigation', 'testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu', 'testHomeStatsUsesTodayAndKeepsTheOriginalRangeBar', 'testEmptyDiaryScreensRetainNavigationAndSourceEmptyStates', 'testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation']:
     if not re.search(r'Test Case .*' + re.escape(case) + r'.* passed', tests):
         raise SystemExit('Required Home UI case did not pass: ' + case)
 for suite in ['HomeMediaCardsTests', 'DashboardProjectionTests']:
@@ -58,7 +60,7 @@ info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-i
 value = {'kind': 'device-diagnostic', 'regressionAcceptance': False, 'uiRegressionPassed': True,
          'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
          'buildNumber': info['CFBundleVersion'], 'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest,
-         'note': 'One core Home golden case, eight Home model/projection units and six targeted XCUITests; no full regression rerun.'}
+         'note': 'One core Home golden case, Home model/projection/layout units and eight targeted Home/History XCUITests; no full regression rerun.'}
 (root / 'home-design-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
 print('Home design checks passed; unsigned phone IPA packaged.')
 PY

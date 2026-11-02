@@ -1,7 +1,7 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Home-only presentation. The overview and history projection still own order and identities.
+/// Shared activity presentation. The overview/history projections own order and identities.
 struct HomeEpisodeCardModel {
     enum Activity {
         case upcoming(date: Date, daysAway: Int)
@@ -44,6 +44,49 @@ struct HomeEpisodeCardModel {
     var accessibilityLabel: String { [name, episode, status, dateLabel].joined(separator: ", ") }
 }
 
+/// Width comes from the shelf or grid cell, never a second viewport-relative
+/// frame. Both watched surfaces use this same compact landscape composition.
+struct WatchActivityCard: View {
+    let model: HomeEpisodeCardModel
+    @Environment(\.dynamicTypeSize) private var typeSize
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: model.artwork, title: model.name, initialsOnly: false)
+                .frame(height: 120).clipped()
+                .overlay(alignment: model.isUpcoming ? .topLeading : .topTrailing) { ActivityStatusBadge(model: model).padding(8) }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(model.name).font(.subheadline.weight(.semibold)).lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    episode.lineLimit(1).fixedSize(horizontal: true, vertical: true)
+                    date.font(.caption2).lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                        .frame(maxWidth: .infinity, alignment: .trailing).multilineTextAlignment(.trailing)
+                }
+            }.padding(12).frame(maxWidth: .infinity, alignment: .topLeading)
+        }.foregroundStyle(Color(webHex: "#f3f0f7"))
+            .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
+            .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
+    }
+    private var episode: some View { Text(model.episode).font(.footnote).foregroundStyle(.secondary) }
+    private var date: some View { Text(model.dateLabel).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+}
+
+private struct ActivityStatusBadge: View {
+    let model: HomeEpisodeCardModel
+    var body: some View {
+        if model.isUpcoming {
+            Text(model.status).font(.caption2.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 4)
+                .background(.black.opacity(0.75), in: Capsule())
+        } else {
+            Image(systemName: model.isRewatch ? "arrow.counterclockwise" : "checkmark")
+                .font(.caption.weight(.semibold)).frame(width: 26, height: 26)
+                .background(.black.opacity(0.75), in: Circle()).overlay(Circle().strokeBorder(.white.opacity(0.65)))
+        }
+    }
+}
+
 /// Matching image, typography and date treatment for both Home activity sections.
 /// Artwork uses the existing memory/disk cache in either layout; no metadata requests here.
 struct HomeEpisodeCard: View {
@@ -55,23 +98,10 @@ struct HomeEpisodeCard: View {
     var body: some View {
         Group {
             if cards {
-                VStack(alignment: .leading, spacing: 0) {
-                    artwork.aspectRatio(16.0 / 9.0, contentMode: .fit)
-                        .overlay(alignment: model.isUpcoming ? .topLeading : .topTrailing) { badge.padding(8) }
-                    VStack(alignment: .leading, spacing: 6) {
-                        title.lineLimit(2)
-                        if !typeSize.isAccessibilitySize {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                episode
-                                Spacer(minLength: 0)
-                                Text(model.dateLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        } else {
-                            episode
-                            Text(model.dateLabel).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        }
-                    }.padding(10).frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
-                }.containerRelativeFrame(.horizontal) { width, _ in min(240, max(184, width * 0.54)) }
+                WatchActivityCard(model: model)
+                    .containerRelativeFrame(.horizontal) { width, _ in
+                        typeSize.isAccessibilitySize ? width : model.isUpcoming ? (width - 12) / 2 : min(220, width * 0.44)
+                    }
             } else {
                 HStack(spacing: 12) {
                     artwork.aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -84,13 +114,14 @@ struct HomeEpisodeCard: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if !typeSize.isAccessibilitySize { dateColumn }
                 }.padding(6).frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+                    .foregroundStyle(Color(webHex: "#f3f0f7"))
+                    .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                    .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 12))
+                    .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
             }
-        }.foregroundStyle(Color(webHex: "#f3f0f7"))
-            .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: cards ? 14 : 12))
-            .clipShape(RoundedRectangle(cornerRadius: cards ? 14 : 12))
-            .overlay(RoundedRectangle(cornerRadius: cards ? 14 : 12).strokeBorder(.white.opacity(0.12)))
-            .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: cards ? 14 : 12))
-            .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
+        }
     }
     private var artwork: some View { Artwork(path: model.artwork, title: model.name, initialsOnly: false) }
     private var title: some View { Text(model.name).font(cards ? .subheadline.weight(.semibold) : .callout.weight(.semibold)) }
@@ -108,16 +139,6 @@ struct HomeEpisodeCard: View {
                 if !model.isUpcoming { Text(date, format: .dateTime.year()).font(.caption2).foregroundStyle(.secondary) }
             } else { Text("Watch date\nunknown").font(.caption2).foregroundStyle(.secondary) }
         }.fixedSize(horizontal: true, vertical: false)
-    }
-    @ViewBuilder private var badge: some View {
-        if model.isUpcoming {
-            Text(model.status).font(.caption2.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 4)
-                .background(.black.opacity(0.75), in: Capsule())
-        } else {
-            Image(systemName: model.isRewatch ? "arrow.counterclockwise" : "checkmark")
-                .font(.caption.weight(.semibold)).frame(width: 26, height: 26)
-                .background(.black.opacity(0.75), in: Circle()).overlay(Circle().strokeBorder(.white.opacity(0.65)))
-        }
     }
 }
 

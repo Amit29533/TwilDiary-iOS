@@ -1,9 +1,30 @@
 import XCTest
+import SwiftUI
+import UIKit
 import TwilDiaryCore
 @testable import TwilDiary
 
 final class HomeMediaCardsTests: XCTestCase {
     private let now = DiaryDate.parse("2026-10-23T12:00:00Z")!
+
+    @MainActor func testWatchedCardFooterFitsGridCellsWithoutExtraEmptyHeight() throws {
+        for unknown in [false, true] {
+            let entry = try XCTUnwrap(HistoryQuery().entries(in: historyFixture(unknown: unknown)).first)
+            let model = HomeEpisodeCardModel(history: entry)
+            for width: CGFloat in [146, 164, 200] {
+                let home = UIHostingController(rootView: WatchActivityCard(model: model))
+                let history = UIHostingController(rootView: HistoryRow(entry: entry, grid: true))
+                let proposal = CGSize(width: width, height: 1000)
+                let homeSize = home.sizeThatFits(in: proposal)
+                let historySize = history.sizeThatFits(in: proposal)
+                XCTAssertEqual(homeSize.width, width, accuracy: 1)
+                XCTAssertGreaterThan(homeSize.height, 170)
+                XCTAssertLessThan(homeSize.height, 215, "No fixed 100-point footer or tall portrait in either watched grid")
+                XCTAssertEqual(historySize.width, homeSize.width, accuracy: 1)
+                XCTAssertEqual(historySize.height, homeSize.height, accuracy: 1)
+            }
+        }
+    }
 
     func testUpcomingKeepsTheLinkedEpisodeAndUsesTitleArtworkWithoutSpoilerStills() throws {
         let item = try XCTUnwrap(HomeOverview(workspace: PreviewData.upcomingWorkspace, now: now).upcoming.first { $0.title.id == "again" })

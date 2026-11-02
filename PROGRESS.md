@@ -1,5 +1,34 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — Home/History geometry and review of today's fixes
+
+Owner supplied a current phone capture and reference, then explicitly required
+dates to ALWAYS remain beside the episode. Shared WatchActivityCard now has
+120-point landscape artwork, content-sized footer, one-line normal-size title,
+and trailing date beside the episode. Home upcoming fits two complete cards;
+recent watches show two cards and a next-card peek. Full History grid now reuses
+the same card within its own cell, with 12-point grid gaps and one column at
+accessibility sizes. Existing history list spacing, filters, pagination, event
+identities, actual/unknown dates and native title routes are retained. Rewatch
+status stays on the image rather than repeating beside the episode.
+
+Reviewed the earlier 8aeefa6 portrait/rating changes: shared profile scroll edge
+is explicitly hidden; the compact backdrop is feathered; native pinned controls
+remain. All profile scores reuse RatingBadge with an unbroken star/decimal line;
+provider identity remains accessible without a visible AniList panel. No new
+network requests, mutations or provider conversions were introduced. Removed a
+duplicate card border while extracting the shared surface and kept History list
+spacing separate from grid spacing.
+
+Local Swift grammar (12 files), workflow YAML, Bash/embedded Python and git diff
+checks pass. All 29 local release-tool tests pass. Native card hosting tests,
+Home carousel geometry, History grid/navigation/filter checks, rating sizing and
+three-size profile sharpness checks are selected for the next focused workflow.
+They have NOT executed for this candidate. Chrome window capture timed out even
+after window recovery; no Codemagic build launched and no new IPA is claimed.
+No GitHub check run exists for the earlier pushed 8aeefa6 either. See
+ios/docs/UI-REVIEW-2026-11-02.md for scope and limits.
+
 ## 2 November 2026 — profile rating badge follow-up draft
 
 Owner screenshots show character Appears in scores wrapping digit-by-digit inside

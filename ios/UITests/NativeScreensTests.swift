@@ -322,9 +322,10 @@ import UIKit
         reveal(upcomingLayout, down: true); upcomingLayout.tap()
         XCTAssertEqual(upcomingLayout.value as? String, "Cards")
         XCTAssertLessThan(upcoming.frame.width, app.frame.width * 0.8)
-        XCTAssertEqual(upcoming.frame.width, (app.frame.width - 24) * 0.54, accuracy: 2, "Reference card shelf width")
-        let cardWidth = upcoming.frame.width, cardHeight = upcoming.frame.height
-        XCTAssertEqual(cardHeight, cardWidth * 9 / 16 + 100, accuracy: 3, "16:9 image and compact aligned footer")
+        XCTAssertEqual(upcoming.frame.width, (app.frame.width - 24 - 12) / 2, accuracy: 2, "Upcoming fits two complete cards")
+        let cardHeight = upcoming.frame.height
+        XCTAssertGreaterThan(cardHeight, 170)
+        XCTAssertLessThan(cardHeight, 205, "Landscape artwork and content-sized footer, without a forced empty panel")
         capture("Home upcoming horizontal artwork cards")
         upcoming.tap()
         let season = app.buttons["title-season"]
@@ -360,9 +361,13 @@ import UIKit
         let retained = app.buttons[firstID]
         XCTAssertEqual(retained.label, firstLabel)
         XCTAssertLessThan(retained.frame.width, app.frame.width * 0.8)
-        XCTAssertEqual(retained.frame.width, cardWidth, accuracy: 1)
+        XCTAssertEqual(retained.frame.width, (app.frame.width - 24) * 0.44, accuracy: 2, "Two watched cards and a next-card peek")
+        let watchedCardWidth = retained.frame.width
         XCTAssertEqual(retained.frame.height, cardHeight, accuracy: 3, "Upcoming and watched cards share image/footer geometry")
         reveal(retained)
+        let secondRecent = recentRows.element(boundBy: 1)
+        XCTAssertEqual(secondRecent.frame.minY, retained.frame.minY, accuracy: 1)
+        XCTAssertLessThanOrEqual(secondRecent.frame.maxX, app.frame.width - 12, "The second watched card fits without horizontal clipping")
         capture("Home recent horizontal cards keep individual watch events")
         // Exercise the real horizontal scroller in both directions, keeping every event identity.
         let laneY = retained.frame.midY
@@ -375,7 +380,7 @@ import UIKit
         }
         XCTAssertTrue(lastEvent.isHittable)
         XCTAssertLessThanOrEqual(lastEvent.frame.maxX, app.frame.maxX - 10)
-        XCTAssertEqual(lastEvent.frame.width, cardWidth, accuracy: 1)
+        XCTAssertEqual(lastEvent.frame.width, watchedCardWidth, accuracy: 1)
         capture("Home recent grid swipes to the last distinct watch event")
         for _ in 0..<4 {
             if retained.exists && retained.isHittable && retained.frame.minX >= 10 { break }
@@ -514,6 +519,35 @@ import UIKit
         XCTAssertTrue(app.staticTexts["Nothing here just yet"].waitForExistence(timeout: 5))
     }
 
+    func testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation() {
+        let app = launch()
+        app.tabBars.buttons["More"].tap()
+        let link = app.buttons["settings-history"]
+        for _ in 0..<6 { if link.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(link.isHittable); link.tap()
+        let layout = app.buttons["history-layout"]
+        XCTAssertTrue(layout.waitForExistence(timeout: 5)); layout.tap()
+        XCTAssertEqual(layout.value as? String, "Grid")
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'history-event-'"))
+        XCTAssertGreaterThanOrEqual(rows.count, 2)
+        let first = rows.element(boundBy: 0), second = rows.element(boundBy: 1)
+        let identity = first.identifier, label = first.label
+        XCTAssertEqual(first.frame.width, (app.frame.width - 28 - 12) / 2, accuracy: 2)
+        XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 1)
+        XCTAssertEqual(second.frame.minX - first.frame.maxX, 12, accuracy: 2)
+        XCTAssertLessThan(first.frame.height, 215, "History must use the landscape card without an empty footer")
+        XCTAssertTrue(first.isHittable)
+        capture("History compact landscape grid with inline episode and date")
+        first.tap()
+        XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(layout.value as? String, "Grid")
+        XCTAssertEqual(app.buttons[identity].label, label)
+        layout.tap()
+        XCTAssertEqual(layout.value as? String, "List")
+        XCTAssertGreaterThan(app.buttons[identity].frame.width, app.frame.width * 0.8)
+        capture("History grid to list preserves individual watch and return route")
+    }
     func testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters() {
         let app = launch(); app.tabBars.buttons["Home"].tap()
         let history = app.buttons["All history →"]

@@ -1,5 +1,23 @@
 # Home media shelves — 31 October 2026
 
+## 2 November follow-up — current contract
+
+The owner's latest instruction overrides the older date/geometry notes below:
+dates stay **beside the episode**, right aligned, in both watched grids. The new
+shared WatchActivityCard serves Home shelves and full History grid cells. It uses
+120-point landscape artwork and a content-sized footer, removing the forced
+100-point empty footer. Normal-size titles use one line and retain their complete
+accessible label. Metadata can wrap inside its right-hand column at large text
+sizes rather than moving the date below the episode. Rewatch status stays on art.
+Upcoming shelf fits two complete cards; recent shelf uses 44% of the content
+viewport for two complete cards plus a next-card peek. History uses its actual
+two-column cell width, 12-point gaps and a single column at accessibility sizes.
+Upper Home and the existing list presentation are preserved.
+
+The previous accepted captures are historical, not acceptance for this candidate.
+Native execution and screenshot review are pending. The current focused workflow
+also selects History grid/navigation and unknown-date/filter/pagination checks.
+
 Owner-approved scope starts at **Up next**. Keep the hero, header, continuation
 controls, Explore/Canvas, weekly panel and root navigation unchanged.
 

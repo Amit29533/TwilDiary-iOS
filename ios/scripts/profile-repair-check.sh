@@ -34,6 +34,8 @@ xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDi
   -only-testing:TwilDiaryTests/HomeMediaCardsTests \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts \
+  -only-testing:TwilDiaryUITests/NativeScreensTests/testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation \
+  -only-testing:TwilDiaryUITests/NativeScreensTests/testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation \
@@ -70,7 +72,7 @@ python3 - <<'PY'
 import hashlib, json, os, pathlib, plistlib, re, shutil, subprocess
 root = pathlib.Path('ios/.artifacts')
 tests = (root / 'logs/profile-repair-tests.log').read_text(errors='replace')
-for case in ['testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs', 'testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts', 'testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks', 'testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults',
+for case in ['testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs', 'testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts', 'testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation', 'testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters', 'testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks', 'testAnimeExactMatchesSkipTheSearchPageWithUnrelatedDiaryResults',
              'testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation',
              'testAnimeCharactersOpenTheirPageAndHeartsCollectInFavourites',
              'testFavouritesShelvesViewAllAndIndependentLayoutsKeepProfileNavigation']:
@@ -107,7 +109,7 @@ info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-i
 value = {'kind': 'device-diagnostic', 'regressionAcceptance': False, 'uiRegressionPassed': True,
          'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
          'buildNumber': info['CFBundleVersion'], 'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest,
-         'note': 'Five focused core cases; lookup, profile, formatting, ranking and Home model units; seven navigation/Home journeys and five profile matrix journeys on each of three phone sizes, including accessibility text and pixel checks for portrait blur. No full regression rerun.'}
+         'note': 'Five focused core cases; lookup, profile, formatting, ranking and Home model/layout units; nine navigation/Home/History journeys and five profile matrix journeys on each of three phone sizes, including accessibility text and pixel checks for portrait blur. No full regression rerun.'}
 (root / 'profile-repair-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
 print('Focused profile repair checks passed; unsigned phone IPA packaged.')
 PY
