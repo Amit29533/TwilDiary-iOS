@@ -1,5 +1,22 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — full-width accessibility row actions
+
+Inspected retained logs and the large-text runtime recording from failed build
+6ae5efb7 (source 5f319cd): five focused core cases, 39 native units and 10/11 UI
+journeys passed. The only failure was the character Watched button's accessibility
+frame (321 points rather than the 374-point content width). The recording shows
+the readable row already occupies the full layout width; its plain button omitted
+the empty trailing area from its action bounds. Shared ProfileMediaRow now gives
+its expanded frame a rectangular content shape, covering Watched and the other
+accessible profile shelves. The existing three-size large-text journey retains
+the exact width assertion and additionally taps the trailing whitespace to verify
+native title navigation for both character and voice profiles. Cancelled the
+unchanged 2 November rerun before replacing it. Changed Swift syntax, focused
+workflow/Bash syntax and git diff checks pass locally. Native compile, three-size
+UI execution and retained screenshot/IPA review still require the same-SHA run;
+no runtime acceptance claimed for this fix yet.
+
 ## 31 October 2026 — profile candidate follow-up from native evidence
 
 1270c91 compiled, passed five core cases and 38 native units; 8/11 native UI

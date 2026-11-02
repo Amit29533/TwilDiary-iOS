@@ -177,6 +177,9 @@ struct ProfileMediaRow: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.primary)
+            // Plain buttons otherwise expose only the union of the artwork/text
+            // bounds, leaving the trailing whitespace outside the row's action.
+            .contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
 }

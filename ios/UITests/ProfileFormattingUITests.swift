@@ -126,6 +126,15 @@ import XCTest
                 let watched = app.buttons["profile-watched-frieren"]; reveal(watched, in: app)
                 XCTAssertEqual(watched.frame.width, app.frame.width - 28, accuracy: 2, "Large-text credits use readable rows rather than narrow poster captions")
                 capture("Large text \(kind) readable watched credit row", app: app)
+                // Hit the empty trailing edge, beyond the artwork/text bounds
+                // that excluded 53 points of the row in the failed candidate.
+                let trailing = app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: app.frame.width - 18, dy: watched.frame.minY + 24))
+                trailing.tap()
+                let title = app.staticTexts["title-hero-name"]
+                XCTAssertTrue(title.waitForExistence(timeout: 5), "The whole watched row opens its title")
+                XCTAssertTrue(title.label.contains("Frieren"))
+                XCTAssertEqual(app.tabBars.count, 0)
             }
             app.terminate()
         }
