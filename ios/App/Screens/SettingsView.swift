@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var exportDocument = DiaryJSONDocument(data: Data())
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll(topChromeHeight: 56) {
                 VStack(alignment: .leading, spacing: 22) {
                     PageHeader(name: "Profile", part: .title).padding(.horizontal, -14).padding(.bottom, -14)
                     NavigationLink(value: AppDestination.profile) {
@@ -233,7 +233,7 @@ struct TMDBConnectionView: View {
     @State private var verified = false
     @State private var error: String?
     var body: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 18) {
+        EdgeToEdgeScroll { VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) { BrandLogo(service: .tmdb, size: 40); Text("TMDB").font(.title2.bold()); Spacer(); Text(verified ? "Connected" : checking ? "Checking…" : "Not connected").font(.caption).foregroundStyle(verified ? Color.green : Color.secondary) }
             Text("Posters, title details, seasons and episodes.").font(.subheadline).foregroundStyle(.secondary)
             Button(checking ? "Checking…" : "Check connection") { Task { await check() } }.buttonStyle(.glass).disabled(checking)
@@ -246,7 +246,7 @@ struct TMDBConnectionView: View {
 
 struct AboutView: View {
     var body: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 24) {
+        EdgeToEdgeScroll { VStack(alignment: .leading, spacing: 24) {
             VStack(spacing: 12) { BrandMark().fill(.tint).frame(width: 54, height: 54); Text("TwilDiary").font(.title.bold()); Text("Your stories, at your pace.").foregroundStyle(.secondary); Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · Build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")").font(.caption) }.frame(maxWidth: .infinity).diaryPanel()
             VStack(alignment: .leading, spacing: 16) { Text("Attribution & licenses").font(.title2.bold()); Text("Movie & television data").font(.headline); Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.subheadline).foregroundStyle(.secondary); Link("The Movie Database ↗", destination: URL(string: "https://www.themoviedb.org")!); Text("Trakt").font(.headline); Text("Trakt connects your watch history, ratings and watchlist when you authorize it. Scanning prepares a review before changes are applied.").font(.subheadline).foregroundStyle(.secondary); Link("Trakt ↗", destination: URL(string: "https://trakt.tv")!); Text("Icons").font(.headline); Text("Lucide icons are provided under the ISC license.").font(.subheadline).foregroundStyle(.secondary) }.diaryPanel()
             if let url = Bundle.main.url(forResource: "Lucide-LICENSE", withExtension: "txt"), let license = try? String(contentsOf: url, encoding: .utf8) { DisclosureGroup("Lucide ISC license") { Text(license).font(.caption).textSelection(.enabled).padding(.top, 12) }.diaryPanel() }

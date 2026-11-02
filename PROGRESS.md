@@ -844,3 +844,11 @@ reversible authorized fixes and tests, report material results concisely.
 - Codemagic `6ae8bd99e83a9019991c5f68` at `9d89623` passed the three core cases, including both new milestone cases and the unchanged Statistics golden matrix. Compilation then exposed a private synthesized SearchJellyfinView initializer and a PhotosPicker sendable-label capture of main-actor theme storage. Use a computed shared shelf and a pre-read Color value respectively.
 - A public live AniList request confirmed community-ranked avatar IDs/artwork. Performer search initially revealed the provider's one-collection-per-Page constraint. The corrected query uses two aliased Page fields in one request and returned Saori Hayami with Voice Actor/Vocalist occupations. No live acceptance is inferred from test fixtures.
 - Server people-search publication is awaiting the owner's separate deployment decision; Codemagic still only builds native artifacts. No backend deployment performed.
+
+
+### 2026-11-02 — shared Cast-style scrolling and native avatar accessibility
+
+- Native run `6ae8c02fe83a9019991c6062` at `54ec64c` compiled and passed three core cases, 21 app units and six of eight main UI cases. Two avatar journeys found visible choices absent from the accessibility tree. Explicit leaf button/selection semantics repair the controls without weakening tests. Retained recordings and accessibility trees establish the cause.
+- Add separate Cast, Characters and Voice actors search scopes with native routes and bounded All previews. Add a native journey that opens all three profile kinds and returns with its query.
+- Owner requested full-screen scrolling everywhere, using Person/Cast blur as reference. Extract that exact feathered material, reuse it in all page scrollers and title chrome, and remove opaque root header/status panels. Preserve initial safe-area margins, keyboard handling, horizontal shelves and existing buttons. Add all-root and nested Statistics viewport captures/assertions on main, compact and large phones.
+- Changed Swift grammar has no new parse errors versus HEAD; whitespace check passes. Native type-check, screen geometry and device packaging remain pending. No server deployment performed; people API publication decision remains pending.

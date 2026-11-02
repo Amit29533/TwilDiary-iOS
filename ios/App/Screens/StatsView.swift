@@ -20,7 +20,7 @@ struct StatsView: View {
         let data = store.statsProjection(period: period, year: year, at: clock)
         let highlights = store.statsHighlights(data, period: period, year: year, at: clock)
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 14) {
                     journey(data.coverage, highlights: highlights)
                     trend(data, highlights: highlights)

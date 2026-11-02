@@ -140,7 +140,7 @@ struct TitleDetailView: View {
             .onChange(of: selectedEpisode) { _, episode in if let episode { sheetEpisode = episode } }
             .sheet(isPresented: $choosingWatchDate) {
                 NavigationStack {
-                    ScrollView { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
+                    EdgeToEdgeScroll { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
                         .navigationTitle("Watch date").navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } }
                 }.presentationDetents([.medium, .large])
@@ -214,7 +214,7 @@ struct TitleDetailView: View {
     }
     private func locationsSheet(_ title: MediaTitle) -> some View {
         NavigationStack {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(serverLabel).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).accessibilityIdentifier("title-locations")
                     ForEach(locations) { location in locationRow(location, title: title) }
@@ -546,7 +546,7 @@ struct TitleDetailView: View {
     }
     private func episodeInformation(_ title: MediaTitle, episode: Episode) -> some View {
         NavigationStack {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
                     episodeArtwork(episode).frame(height: 200).clipShape(RoundedRectangle(cornerRadius: 18))
                     Text(episodeName(episode)).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))

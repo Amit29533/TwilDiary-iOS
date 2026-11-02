@@ -197,8 +197,6 @@ struct PageHeader: View {
                 if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
             }
         }.frame(height: height).padding(.horizontal, 14)
-            .background { if part == .full && theme != .glass && !overArtwork { Color(webHex: ["Library", "Trash"].contains(name) ? "#0e0d13" : "#050507") } }
-            .background(alignment: .top) { if part == .buttons { statusScrim } }
             .modifier(HoldOnPull(enabled: part == .title, restingY: $restingY))
     }
     private var logo: some View {
@@ -228,11 +226,6 @@ struct PageHeader: View {
             DiaryIcon(name: icon, size: 20).foregroundStyle(Color(webHex: "#e6e2ec")).frame(width: 44, height: 44)
                 .glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(label).accessibilityIdentifier(id)
-    }
-    /// Under the status bar, so rows scrolling up behind the pinned buttons never clash with it.
-    private var statusScrim: some View {
-        LinearGradient(colors: [.black.opacity(0.7), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-            .frame(height: 74).offset(y: -54).ignoresSafeArea(edges: .top).allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 

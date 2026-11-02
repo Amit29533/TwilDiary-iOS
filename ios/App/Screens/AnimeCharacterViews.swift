@@ -87,7 +87,7 @@ struct CharacterView: View {
                     }
                 }
             } else {
-                ScrollView {
+                EdgeToEdgeScroll {
                     if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
                     else { DiaryLoadingPlaceholder(height: 310, label: "Loading character").padding(14) }
                 }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
@@ -184,7 +184,7 @@ struct FavouritesView: View {
     private var favourites: FavouritesStore { .shared }
     var body: some View {
         let items = favourites.items(tab)
-        ScrollView {
+        EdgeToEdgeScroll {
             tabs.padding(.top, 4)
             Group {
                 switch tab {

@@ -34,7 +34,7 @@ struct PersonProfilePage<Content: View>: View {
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .overlay(alignment: .top) { ProfileHeaderBackdrop(state: header, topInset: geometry.safeAreaInsets.top) }
+                .overlay(alignment: .top) { FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top).offset(y: -geometry.safeAreaInsets.top) }
                 .toolbar {
                     ToolbarItem(placement: .principal) { ProfileCompactName(name: name, state: header) }
                     ToolbarItem(placement: .topBarTrailing) {
@@ -88,20 +88,6 @@ struct PersonProfilePage<Content: View>: View {
         #else
         Artwork(path: image, title: name)
         #endif
-    }
-}
-
-private struct ProfileHeaderBackdrop: View {
-    let state: CompactHeaderState
-    let topInset: CGFloat
-    var body: some View {
-        Rectangle().fill(.ultraThinMaterial).overlay(.black.opacity(0.22))
-            // Keep compact-title contrast without a rectangular lower edge.
-            .mask(LinearGradient(stops: [.init(color: .white, location: 0),
-                .init(color: .white, location: 0.55), .init(color: .clear, location: 1)],
-                startPoint: .top, endPoint: .bottom))
-            .opacity(Double(state.progress)).frame(height: topInset).offset(y: -topInset)
-            .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 

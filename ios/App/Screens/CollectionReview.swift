@@ -15,7 +15,7 @@ struct CollectionReviewView: View {
     @State private var failure: String?
     var body: some View {
         NavigationStack {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 20) {
                     Text(review.change.heading).font(.title2.bold())
                     Text(review.change.explanation).font(.subheadline).foregroundStyle(.secondary)

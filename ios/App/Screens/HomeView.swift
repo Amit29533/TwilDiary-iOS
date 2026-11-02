@@ -23,7 +23,7 @@ struct HomeView: View {
         let overview = projection.overview
         let watching = projection.watching
         let recent = projection.recent
-        ScrollView {
+        EdgeToEdgeScroll(topChromeHeight: 56) {
             VStack(alignment: .leading, spacing: 0) {
                 // While searching, the plain header keeps the field and its results at the top.
                 if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }
@@ -214,6 +214,6 @@ struct QueueView: View {
     @Environment(DiaryStore.self) private var store
     var planned = false
     var body: some View {
-        ScrollView { LazyVStack { ForEach(store.workspace.activeTitles.filter { planned ? $0.status == "planned" : $0.queued == true }) { title in NavigationLink(value: title.id) { titleRow(title) }.buttonStyle(.plain) } }.padding(14) }.navigationTitle(planned ? "Planned" : "Queue").toolbar(.visible, for: .navigationBar)
+        EdgeToEdgeScroll { LazyVStack { ForEach(store.workspace.activeTitles.filter { planned ? $0.status == "planned" : $0.queued == true }) { title in NavigationLink(value: title.id) { titleRow(title) }.buttonStyle(.plain) } }.padding(14) }.navigationTitle(planned ? "Planned" : "Queue").toolbar(.visible, for: .navigationBar)
     }
 }

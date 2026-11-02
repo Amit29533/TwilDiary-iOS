@@ -14,7 +14,7 @@ struct CommunityInformationSheet: View {
         VStack(spacing: 0) {
             Text("Information").font(.headline).frame(maxWidth: .infinity).padding(.top, 24).padding(.bottom, 16)
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("community-information-heading")
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 24) {
                     Text(name).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     // A cached page paints in the first frame; the sheet no longer shows a

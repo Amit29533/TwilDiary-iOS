@@ -14,7 +14,7 @@ struct APIsView: View {
     @State private var jellyfinRevision = 0
 
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -185,7 +185,7 @@ struct JellyfinSetupSheet: View {
     @State private var message: String?
     var body: some View {
         NavigationStack {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 10) { BrandLogo(service: .jellyfin, size: 30); Text("Connect Jellyfin").font(.system(size: 17, weight: .semibold)) }
                     Text("Use the address you open Jellyfin with at home, such as 192.168.1.20:8096. Create a key in Jellyfin under Dashboard → API Keys.")

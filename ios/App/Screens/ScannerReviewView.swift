@@ -13,7 +13,7 @@ struct ScannerReviewView: View {
     @State private var message: String?
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
 
                     HStack { Text("Unmatched scans").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "scans"); Button("Refresh unmatched scans", systemImage: "arrow.clockwise") { Task { await load() } }.labelStyle(.iconOnly).disabled(loading) }
@@ -69,7 +69,7 @@ private struct ScannerMatchView: View {
     @State private var path = NavigationPath()
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Match “\(scan.name)”").font(.title3.bold()).padding(.horizontal, 14)
                     if let failure { Text(failure).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 14) }

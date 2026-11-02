@@ -22,7 +22,7 @@ import TwilDiaryCore
     }
     var body: some View {
         @Bindable var controller = controller
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 24) {
                 connection
                 if controller.restoringApproval { restoringImport }

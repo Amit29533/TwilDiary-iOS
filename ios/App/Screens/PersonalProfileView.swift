@@ -28,7 +28,7 @@ struct PersonalProfileView: View {
     @State private var draftName = ""
     var body: some View {
         let milestones = ProfileMilestone.make(store.workspace, now: store.now)
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 26) {
                 VStack(spacing: 10) {
                     Button { showAvatarPicker = true } label: {
@@ -44,7 +44,7 @@ struct PersonalProfileView: View {
                     if let error { VStack(alignment: .leading) { Text(error).font(.footnote).foregroundStyle(.secondary); Button("Retry") { Task { await loadCharacters() } } } }
                     ScrollView(.horizontal) {
                         LazyHStack(alignment: .top, spacing: 16) {
-                            ForEach(characters) { choice in characterButton(choice, size: 76) }
+                            ForEach(characters) { choice in ProfileCharacterAvatarButton(choice: choice, size: 76) { profile.select(choice) } }
                         }.padding(.vertical, 3)
                     }.scrollIndicators(.hidden).accessibilityIdentifier("profile-popular-characters")
                 }
@@ -72,20 +72,11 @@ struct PersonalProfileView: View {
         defer { loading = false }
         do {
             #if DEBUG
-            if store.isPreview { characters = [ProfileAvatarChoice(id: 176754, name: "Frieren", image: nil), ProfileAvatarChoice(id: 138100, name: "Anya", image: nil)]; return }
+            if store.isPreview { characters = [ProfileAvatarChoice(id: 176754, name: "Frieren", image: "/demo/frieren.jpg"), ProfileAvatarChoice(id: 138100, name: "Anya", image: nil)]; return }
             #endif
             let values = try await AniListClient.shared.popularAvatars()
             guard !Task.isCancelled else { return }; characters = values
         } catch { if !Task.isCancelled { self.error = "Characters are unavailable. You can still choose a custom photo by tapping your avatar." } }
-    }
-    private func characterButton(_ choice: ProfileAvatarChoice, size: CGFloat) -> some View {
-        Button { profile.select(choice) } label: {
-            VStack(spacing: 6) {
-                Artwork(path: choice.image, title: choice.name).frame(width: size, height: size).clipShape(Circle())
-                    .overlay(Circle().strokeBorder(profile.character?.id == choice.id && !profile.usesPhoto ? theme.accent : .clear, lineWidth: 3))
-                Text(choice.name).font(.caption).lineLimit(2).frame(width: size)
-            }.foregroundStyle(.primary)
-        }.buttonStyle(.plain).accessibilityLabel("Use \(choice.name) as avatar").accessibilityIdentifier("profile-character-\(choice.id)").accessibilityAddTraits(profile.character?.id == choice.id && !profile.usesPhoto ? .isSelected : [])
     }
     private func badge(_ value: ProfileMilestone) -> some View {
         let colour = Color(webHex: value.colour)
@@ -110,7 +101,7 @@ private struct AvatarPickerView: View {
     @State private var generation = UUID()
     var body: some View {
         let fieldColour = theme.field
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(spacing: 22) {
                 PersonalAvatar(size: 112)
                 PhotosPicker(selection: $selection, matching: .images) {
@@ -121,9 +112,9 @@ private struct AvatarPickerView: View {
                 Button("Use initials") { generation = UUID(); PersonalProfile.shared.useInitials(); dismiss() }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 85))], spacing: 20) {
                     ForEach(characters) { choice in
-                        Button { generation = UUID(); PersonalProfile.shared.select(choice); dismiss() } label: {
-                            VStack { Artwork(path: choice.image, title: choice.name).frame(width: 72, height: 72).clipShape(Circle()); Text(choice.name).font(.caption).lineLimit(2) }
-                        }.buttonStyle(.plain).foregroundStyle(.primary)
+                        ProfileCharacterAvatarButton(choice: choice, size: 72) {
+                            generation = UUID(); PersonalProfile.shared.select(choice); dismiss()
+                        }
                     }
                 }
             }.padding(20)
@@ -138,5 +129,28 @@ private struct AvatarPickerView: View {
                 } catch { if !Task.isCancelled && generation == request { self.error = error.localizedDescription } }
             }
             .onDisappear { generation = UUID() }
+    }
+}
+
+/// Explicit accessibility on the control keeps decorative Artwork from hiding
+/// the avatar option, and observes selection in each small leaf's own body.
+private struct ProfileCharacterAvatarButton: View {
+    let choice: ProfileAvatarChoice
+    let size: CGFloat
+    let choose: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var profile: PersonalProfile { .shared }
+    var body: some View {
+        let selected = !profile.usesPhoto && profile.character?.id == choice.id
+        Button(action: choose) {
+            VStack(spacing: 6) {
+                Artwork(path: choice.image, title: choice.name).frame(width: size, height: size).clipShape(Circle())
+                    .overlay(Circle().strokeBorder(selected ? theme.accent : .clear, lineWidth: 3))
+                Text(choice.name).font(.caption).lineLimit(2).frame(width: size)
+            }.foregroundStyle(.primary)
+        }.buttonStyle(.plain).accessibilityElement(children: .ignore).accessibilityHidden(false)
+            .accessibilityLabel("Use " + choice.name + " as avatar").accessibilityValue(selected ? "Selected" : "Not selected")
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityIdentifier("profile-character-\(choice.id)")
     }
 }

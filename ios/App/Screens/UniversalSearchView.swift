@@ -3,7 +3,7 @@ import TwilDiaryCore
 
 struct UniversalSearchView: View {
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll(topChromeHeight: 56) {
             VStack(spacing: 12) {
                 PageHeader(name: "Search", part: .title)
                 CatalogSearchView(universal: true)
@@ -75,6 +75,8 @@ struct SearchPerson: Decodable, Identifiable, Sendable {
 
 struct SearchPeopleView: View {
     let query: String
+    var kind: String? = nil
+    var limit = 40
     let onChoose: () -> Void
     @Environment(DiaryStore.self) private var store
     @State private var results: [SearchPerson] = []
@@ -82,9 +84,9 @@ struct SearchPeopleView: View {
     @State private var failure: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("People & characters").font(.headline)
+            Text(kind == "cast" ? "Cast · TMDB" : kind == "character" ? "Characters · AniList" : kind == "voice" ? "Voice actors · AniList" : "People & characters").font(.headline)
             if loading && results.isEmpty { ProgressView("Finding people") }
-            ForEach(results, id: \.key) { person in
+            ForEach(Array(visible.prefix(limit)), id: \.key) { person in
                 Button { onChoose(); open(person) } label: {
                     HStack(spacing: 12) {
                         Artwork(path: person.image, title: person.name).frame(width: 52, height: 78).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -93,10 +95,12 @@ struct SearchPeopleView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityIdentifier("search-person-" + person.key)
             }
+            if visible.count > limit { Text("Choose Cast, Characters or Voice actors above for more results.").font(.caption).foregroundStyle(.secondary) }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
-            if !loading && results.isEmpty && failure == nil { Text("No people found").font(.footnote).foregroundStyle(.secondary) }
-        }.task(id: query + String(describing: store.sessionRevision)) { await load() }
+            if !loading && visible.isEmpty && failure == nil { Text("No people found").font(.footnote).foregroundStyle(.secondary) }
+        }.task(id: query + (kind ?? "all") + String(describing: store.sessionRevision)) { await load() }
     }
+    private var visible: [SearchPerson] { results.filter { kind == nil || $0.kind == kind } }
     @Environment(AppRouter.self) private var router
     private func open(_ person: SearchPerson) {
         switch person.kind {
@@ -111,17 +115,22 @@ struct SearchPeopleView: View {
         do {
             try await Task.sleep(for: .milliseconds(350))
             #if DEBUG
-            if store.isPreview { results = [SearchPerson(id: 525, name: "Reference actor", image: nil)]; loading = false; return }
+            if store.isPreview {
+                results = [SearchPerson(id: 525, name: "Reference Actor", image: nil), SearchPerson(id: 2, name: "Fern", image: nil, kind: "character"), SearchPerson(id: 12, name: "Kana Ichinose", image: nil, kind: "voice")].filter { $0.name.localizedCaseInsensitiveContains(requested) }
+                loading = false; return
+            }
             #endif
             struct Reply: Decodable { let items: [SearchPerson] }
-            do {
+            if kind == nil || kind == "cast" { do {
                 let page: Reply = try await store.read(CatalogTools.apiPath("/api/metadata/people", query: ["q": requested]))
                 guard !Task.isCancelled, requested == query, revision == store.sessionRevision else { return }
                 results = page.items
-            } catch { if !Task.isCancelled { failure = "TMDB people could not be loaded. Try again." } }
-            let anime = try await AniListClient.shared.searchPeople(requested)
-            guard !Task.isCancelled, requested == query, revision == store.sessionRevision else { return }
-            results += anime
+            } catch { if !Task.isCancelled { failure = "TMDB people could not be loaded. Try again." } } }
+            if kind != "cast" {
+                let anime = try await AniListClient.shared.searchPeople(requested)
+                guard !Task.isCancelled, requested == query, revision == store.sessionRevision else { return }
+                results += anime
+            }
         } catch { if !Task.isCancelled && requested == query && revision == store.sessionRevision { failure = "Some people could not be loaded. Try again." } }
         if !Task.isCancelled && requested == query && revision == store.sessionRevision { loading = false }
     }

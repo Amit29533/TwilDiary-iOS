@@ -5,7 +5,7 @@ struct ExploreView: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 22) {
 
                     ExploreContent(store: store)
@@ -146,7 +146,7 @@ struct ExploreSectionView: View {
     init(route: ExploreSectionRoute, store: DiaryStore) { self.route = route; self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
 
                     DiscoveryBrowser(section: route.section, service: service, store: store, initialFilters: route.filters)

@@ -29,7 +29,7 @@ struct PersonView: View {
                     }
                 }
             } else {
-                ScrollView {
+                EdgeToEdgeScroll {
                     if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
                     else { DiaryLoadingPlaceholder(height: 310, label: "Loading person").padding(14) }
                 }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
@@ -115,7 +115,7 @@ struct PersonFilmographyView: View {
     init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
 
                     HStack(alignment: .center, spacing: 8) {

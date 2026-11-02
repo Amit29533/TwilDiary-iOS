@@ -18,7 +18,7 @@ struct HistoryView: View {
     var body: some View {
         let entries = store.historyEntries(filters)
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
 
                     HStack(spacing: 10) {
@@ -105,7 +105,7 @@ private struct HistoryCalendarSheet: View {
     }
     var body: some View {
         NavigationStack {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(spacing: 20) {
                     DatePicker(selection.field.label, selection: $date, displayedComponents: .date).datePickerStyle(.graphical)
                     Button("Clear date") { onSet(""); dismiss() }.frame(minHeight: 44)

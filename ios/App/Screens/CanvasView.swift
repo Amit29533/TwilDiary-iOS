@@ -57,7 +57,7 @@ private struct CanvasContent: View {
         return filters.applying(recommendations.items)
     }
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 pills
                 if tab == .lists { listsContent } else { titlesContent }
@@ -244,7 +244,7 @@ struct CanvasListView: View {
     @Environment(DiaryStore.self) private var store
     @State private var loader: CanvasListItemsLoader?
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 Text("by " + route.user).font(.system(size: 14)).foregroundStyle(.secondary)
                 if let loader {

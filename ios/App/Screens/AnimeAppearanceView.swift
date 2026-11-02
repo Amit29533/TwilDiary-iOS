@@ -19,7 +19,7 @@ struct AnimeAppearanceView: View {
             if let savedID { TitleDetailView(id: savedID) }
             else if let catalog { CatalogDetailView(route: catalog) }
             else {
-                ScrollView {
+                EdgeToEdgeScroll {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack(alignment: .top, spacing: 14) {
                             Artwork(path: appearance.cover, title: appearance.title)

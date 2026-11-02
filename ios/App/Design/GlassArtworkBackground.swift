@@ -178,5 +178,5 @@ struct DiaryScreenBackground: View {
 }
 
 extension View {
-    func diaryScreenBackground(path: String? = nil, name: String = "") -> some View { background { DiaryScreenBackground(path: path, name: name) } }
+    func diaryScreenBackground(path: String? = nil, name: String = "") -> some View { background { DiaryScreenBackground(path: path, name: name) }.toolbarBackground(.hidden, for: .navigationBar).scrollEdgeEffectHidden(true, for: .top) }
 }

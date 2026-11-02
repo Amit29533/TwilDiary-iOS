@@ -46,6 +46,7 @@ while read -r slug layout_id; do
     -only-testing:TwilDiaryUITests/PersonalSettingsUITests/testProfileMenuOrderPersonalPageAvatarAndMilestones \
     -only-testing:TwilDiaryUITests/PersonalSettingsUITests/testLargeTextPersonalProfileKeepsAvatarAndSectionsReadable \
     -only-testing:TwilDiaryUITests/PersonalSettingsUITests/testUniversalSearchTrendingLocalMatchAndReturnToSearch \
+    -only-testing:TwilDiaryUITests/PersonalSettingsUITests/testEveryRootScrollsUnderTheTopAreaAndStatisticsUsesTheSameViewport \
     -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/PersonalSettings-$slug.xcresult" \
     2>&1 | tee "$ARTIFACTS/logs/personal-settings-$slug.log"
   xcrun simctl shutdown "$SIMULATOR_ID"
@@ -74,7 +75,7 @@ digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
 value = {'kind': 'device-diagnostic', 'signed': False, 'regressionAcceptance': False, 'uiRegressionPassed': True,
          'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
          'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest,
-         'note': 'Profile and milestone units; five settings UI journeys, three Home/History journeys, and three settings journeys repeated on compact and large phones. No full regression claim.'}
+         'note': 'Profile and milestone units; seven settings UI journeys, three Home/History journeys, and four settings journeys repeated on compact and large phones. No full regression claim.'}
 (root / 'personal-settings-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
 print('Personal settings checks passed; unsigned phone IPA packaged.')
 PY

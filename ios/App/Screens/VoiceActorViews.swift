@@ -43,7 +43,7 @@ struct VoiceActorView: View {
                     }
                 }
             } else {
-                ScrollView {
+                EdgeToEdgeScroll {
                     if missing {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("AniList has no page for \(route.name ?? "this voice actor").").font(.subheadline).foregroundStyle(.secondary)
@@ -242,7 +242,7 @@ struct AniListSettingsView: View {
     @AppStorage(AniListMostWatched.userKey) private var user = ""
     @State private var draft = ""
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Favourites ranks your characters from your public AniList profile. Only the username is used: no sign-in, no password.")
                     .font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

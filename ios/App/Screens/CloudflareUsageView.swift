@@ -14,7 +14,7 @@ struct CloudflareUsageView: View {
     private struct Point: Identifiable { let date: Date; let value: Double; var id: Date { date } }
 
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
                 if let usage = loader?.usage {
                     if let error = loader?.error { Text(error).font(.caption).foregroundStyle(.secondary) }

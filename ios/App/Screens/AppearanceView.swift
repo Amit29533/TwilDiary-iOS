@@ -7,7 +7,7 @@ struct AppearanceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 14) {
 
                     VStack(alignment: .leading, spacing: 0) {

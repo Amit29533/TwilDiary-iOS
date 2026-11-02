@@ -16,7 +16,7 @@ struct JellyfinLibraryView: View {
     @State private var drive: String?
     enum Show: String, CaseIterable { case all = "All", missing = "Not in diary", saved = "In diary" }
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if loading && entries.isEmpty { DiaryLoadingPlaceholder(height: 220, label: "Reading Jellyfin") }
                 else if let failure, entries.isEmpty { RetryNotice(message: failure) { Task { await load() } } }

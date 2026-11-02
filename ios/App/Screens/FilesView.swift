@@ -11,7 +11,7 @@ struct FilesView: View {
     @State private var copied = ""
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 18) {
 
                     JellyfinCard()

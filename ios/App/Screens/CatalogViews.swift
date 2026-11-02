@@ -65,7 +65,7 @@ struct CatalogPoster: View {
 
 struct CatalogSearchView: View {
     var universal = false
-    private enum Scope: String, CaseIterable { case all = "All", library = "Library", movies = "Movies", shows = "Shows", people = "People", history = "History", jellyfin = "Jellyfin" }
+    private enum Scope: String, CaseIterable { case all = "All", library = "Library", movies = "Movies", shows = "Shows", cast = "Cast", characters = "Characters", voice = "Voice actors", history = "History", jellyfin = "Jellyfin" }
     @State private var scope = Scope.all
     @AppStorage("recentSearches.v1") private var recentJSON = "[]"
     var onLibraryChoose: ((String) -> Void)? = nil
@@ -97,35 +97,40 @@ struct CatalogSearchView: View {
                     HStack(spacing: 8) { ForEach(Scope.allCases, id: \.self) { value in
                         Button { scope = value } label: { Text(value.rawValue).font(.subheadline).padding(.horizontal, 14).frame(minHeight: 38).background(scope == value ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.06), in: Capsule()) }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityAddTraits(scope == value ? .isSelected : [])
                     } }
-                }.scrollIndicators(.hidden)
+                }.scrollIndicators(.hidden).accessibilityIdentifier("search-scopes")
             }
             if !ready {
                 if universal { SearchLandingView(recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }) }
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
-            if ready && (!universal || ![.people, .history, .jellyfin].contains(scope)) {
+            if ready && (!universal || ![.cast, .characters, .voice, .history, .jellyfin].contains(scope)) {
                 HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
-                CollectionLayout(grid: grid) { ForEach(localMatches.prefix(libraryLimit)) { title in
+                CollectionLayout(grid: grid) { ForEach(localMatches.prefix(universal && scope == .all ? 4 : libraryLimit)) { title in
                     Button { chooseLibrary(title.id) } label: { searchRow(title) }.buttonStyle(.plain)
                         .accessibilityIdentifier((onLibraryChoose == nil ? "search-library-" : "match-title-") + title.id)
                 } }
-                if localMatches.count > libraryLimit { Button("More library matches") { libraryLimit += 20 }.font(.system(size: 13)).frame(minHeight: 44) }
+                if localMatches.count > (universal && scope == .all ? 4 : libraryLimit) { Button("More library matches") { if universal && scope == .all { scope = .library } else { libraryLimit += 20 } }.font(.system(size: 13)).frame(minHeight: 44) }
                 if localMatches.isEmpty { Text("No library matches").font(.system(size: 13)).foregroundStyle(.secondary) }
                 if !universal || scope != .library {
                 Text("Not In Library · TMDB").font(.system(size: 15, weight: .semibold))
                 if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
                 if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
-                CollectionLayout(grid: grid) { ForEach(visibleOnline, id: \.key) { item in
+                CollectionLayout(grid: grid) { ForEach(Array(visibleOnline.prefix(universal && scope == .all ? 4 : 100)), id: \.key) { item in
                     Button { chooseCatalog(item.route) } label: { onlineRow(item) }
                         .buttonStyle(.plain).accessibilityIdentifier("search-" + item.key)
                 } }
                 if !loading && results.isEmpty && failure == nil { Text("No online matches").font(.system(size: 13)).foregroundStyle(.secondary) }
-                if totalPages > 1 {
+                if universal && scope == .all && visibleOnline.count > 4 {
+                    Menu("More movies and shows") { Button("Movies") { scope = .movies }; Button("Shows") { scope = .shows } }.font(.footnote).foregroundStyle(.primary)
+                }
+                if totalPages > 1 && (!universal || scope != .all) {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
                 }
             }
-            if universal && ready && [.all, .people].contains(scope) { SearchPeopleView(query: normalized, onChoose: rememberQuery) }
+            if universal && ready && [.all, .cast, .characters, .voice].contains(scope) {
+                SearchPeopleView(query: normalized, kind: scope == .cast ? "cast" : scope == .characters ? "character" : scope == .voice ? "voice" : nil, limit: scope == .all ? 6 : 40, onChoose: rememberQuery)
+            }
             if universal && ready && [.all, .jellyfin].contains(scope) { SearchJellyfinView(query: normalized) }
             if universal && ready && [.all, .history].contains(scope) {
                 NavigationLink(value: HistoryRoute(query: normalized)) {
@@ -381,7 +386,7 @@ private struct CatalogSeasonPreview: View {
     }
     private func episodeSheet(_ episode: CatalogEpisode) -> some View {
         NavigationStack {
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 16) {
                     episodeArtwork(episode, hidden: false).frame(height: 200).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 18))
                     Text(episode.name.isEmpty ? "Episode \(episode.number)" : episode.name).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))

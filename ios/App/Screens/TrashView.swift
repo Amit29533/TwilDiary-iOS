@@ -18,7 +18,7 @@ struct TrashView: View {
         // Filter and sort once per render; every use below shares these.
         let archived = self.archived
         let shown = self.shown
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 16) {
 
                 HStack(spacing: 12) {

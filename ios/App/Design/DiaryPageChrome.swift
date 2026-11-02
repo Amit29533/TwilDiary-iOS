@@ -8,7 +8,7 @@ private struct DiaryPageChrome: ViewModifier {
     @Environment(DiaryStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
-        content.overlay(alignment: .bottom) {
+        content.scrollEdgeEffectHidden(true, for: .top).toolbarBackground(.hidden, for: .navigationBar).overlay(alignment: .bottom) {
             if let label = store.undoLabel {
                 UndoToast(label: label).padding(.horizontal, 24).padding(.bottom, 10)
                     // Pops in place (no slide), so Undo is where it looks from the first frame.

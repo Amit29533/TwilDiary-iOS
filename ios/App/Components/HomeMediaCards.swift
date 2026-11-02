@@ -192,15 +192,6 @@ struct HomeMediaHeader: View {
     var body: some View {
         let compact = state.progress > 0
         PageHeader(name: "TwilDiary", overArtwork: !compact, part: compact ? .full : .buttons)
-            .background {
-                if compact {
-                    Color(webHex: "#050507").ignoresSafeArea(.container, edges: .top)
-                        .allowsHitTesting(false).accessibilityHidden(true)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if compact { Color.white.opacity(0.08).frame(height: 0.5).allowsHitTesting(false).accessibilityHidden(true) }
-            }
     }
 }
 
