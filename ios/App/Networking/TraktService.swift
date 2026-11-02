@@ -107,8 +107,12 @@ extension TraktServicing {
     func pauseApplying() {
         paused = true; checkpoint.runID = nil
         if restoringApproval { runningTask?.cancel() }
+        BackgroundSyncCoordinator.shared.updateFromTrakt(sync, paused: true)
     }
-    func suspendForBackground() { paused = true; runningTask?.cancel() }
+    func suspendForBackground() {
+        paused = true; runningTask?.cancel()
+        BackgroundSyncCoordinator.shared.updateFromTrakt(sync, paused: true)
+    }
     func finishSuspendingTransfer() async {
         if let task = runningTask, task.isCancelled { await task.value }
     }
@@ -131,6 +135,7 @@ extension TraktServicing {
         operationID = UUID(); refreshID = UUID(); runningTaskID = UUID(); paused = true; checkpoint.runID = nil
         runningTask?.cancel(); runningTask = nil
         sync = nil; status = nil; error = nil; retryMessage = nil; refreshFailure = nil
+        BackgroundSyncCoordinator.shared.endLiveActivity()
     }
     func resumeApprovedApply() async {
         guard !busy, !loading, let id = checkpoint.runID else { return }
@@ -460,5 +465,9 @@ extension TraktServicing {
             if let retainedError { error = retainedError }
         }
     }
-    private func accept(_ value: TraktSync) { sync = value; cooldownUntil = clock().addingTimeInterval(Double(max(0, min(86_400, value.run?.retryAfter ?? 0)))) }
+    private func accept(_ value: TraktSync) {
+        sync = value
+        cooldownUntil = clock().addingTimeInterval(Double(max(0, min(86_400, value.run?.retryAfter ?? 0))))
+        BackgroundSyncCoordinator.shared.updateFromTrakt(value, paused: paused)
+    }
 }

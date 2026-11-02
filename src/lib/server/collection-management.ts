@@ -6,6 +6,14 @@ import { MAX_SELECTION, type CollectionAction } from '../domain/management.ts';
 import type { database } from './db/index.ts';
 export async function emptyTrash(db: ReturnType<typeof database>) {
   const result = await db.delete(titles).where(isNotNull(titles.deletedAt)).run();
+  if (result.meta.changes > 0) {
+    const now = new Date().toISOString();
+    await db.run(
+      sql`INSERT INTO trakt_sync_journal(seq,kind,local_key)
+        VALUES((SELECT seq FROM trakt_sync_journal WHERE kind='purge_at' LIMIT 1),'purge_at',${now})
+        ON CONFLICT(seq) DO UPDATE SET local_key=excluded.local_key`
+    );
+  }
   return { deleted: result.meta.changes };
 }
 
@@ -92,5 +100,12 @@ export async function manageTitles(db: ReturnType<typeof database>, value: unkno
       'collection_changed',
       'Your selection changed in another session. Refresh it before trying again.'
     );
+  if (change.action === 'purge') {
+    await db.run(
+      sql`INSERT INTO trakt_sync_journal(seq,kind,local_key)
+        VALUES((SELECT seq FROM trakt_sync_journal WHERE kind='purge_at' LIMIT 1),'purge_at',${now})
+        ON CONFLICT(seq) DO UPDATE SET local_key=excluded.local_key`
+    );
+  }
   return { ids: rows.map((row) => row.id), action: change.action, count: rows.length };
 }

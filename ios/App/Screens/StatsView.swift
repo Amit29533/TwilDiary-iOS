@@ -51,7 +51,16 @@ struct StatsView: View {
             HStack(alignment: .firstTextBaseline) { Text("\(value.dated) of \(value.total) watches have dates").font(.system(size: 15, weight: .bold)); Spacer(minLength: 4); Text("\(value.percent)%").font(.system(size: 14, weight: .bold)).foregroundStyle(.tint) }
             ProgressView(value: Double(value.percent), total: 100).accessibilityLabel("Watches with dates")
             caption(coverageCopy(value))
-            if value.unknown > 0 { NavigationLink(value: HistoryRoute(unknown: true)) { Text("Review dates").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 12).padding(.vertical, 9).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14))) }.buttonStyle(.plain) }
+            HStack(spacing: 8) {
+                if value.unknown > 0 {
+                    NavigationLink(value: HistoryRoute(unknown: true)) {
+                        Text("Review dates").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 12).padding(.vertical, 9).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14)))
+                    }.buttonStyle(.plain)
+                }
+                NavigationLink(value: AppDestination.calendar) {
+                    Text("Airing calendar →").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 12).padding(.vertical, 9).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14)))
+                }.buttonStyle(.plain)
+            }
         }.statsPanel()
     }
     private func coverageCopy(_ value: StatsOverview.Coverage) -> String {

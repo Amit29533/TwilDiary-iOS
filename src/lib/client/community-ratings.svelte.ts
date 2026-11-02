@@ -26,11 +26,14 @@ export function createCommunityRatings(
       return persisted;
     },
     get loading() {
-      return source === 'trakt' && pending > 0;
+      return (source === 'trakt' || source === 'mdblist') && pending > 0;
     },
     get unavailable() {
       return (
-        source === 'trakt' && [...entries.values()].some((entry) => entry.state === 'unavailable')
+        (source === 'trakt' || source === 'mdblist') &&
+        [...entries.entries()]
+          .filter(([k]) => k.startsWith(source + ':') || (source === 'trakt' && !k.includes(':')))
+          .some(([, entry]) => entry.state === 'unavailable')
       );
     },
     choose(value) {
@@ -43,14 +46,21 @@ export function createCommunityRatings(
       }
     },
     forTitle(title) {
-      return communityRating(title, source, entries.get(title.id));
+      const entry =
+        entries.get(`${source}:${title.id}`) ??
+        (source === 'trakt' ? entries.get(title.id) : undefined);
+      return communityRating(title, source, entry);
     },
     async prepare(titles) {
-      if (source !== 'trakt') return;
-      const ids = [...new Set(titles.map((title) => title.id))].filter(
-        (id) => !inflight.has(id) && (!entries.has(id) || entries.get(id)!.expires <= Date.now())
-      );
-      ids.forEach((id) => inflight.add(id));
+      if (source !== 'trakt' && source !== 'mdblist') return;
+      const activeSource = source;
+      const keyFor = (id: string) =>
+        activeSource === 'trakt' ? id : `${activeSource}:${id}`;
+      const ids = [...new Set(titles.map((title) => title.id))].filter((id) => {
+        const key = keyFor(id);
+        return !inflight.has(key) && (!entries.has(key) || entries.get(key)!.expires <= Date.now());
+      });
+      ids.forEach((id) => inflight.add(keyFor(id)));
       if (!ids.length) return;
       pending++;
       try {
@@ -58,8 +68,12 @@ export function createCommunityRatings(
           const batch = ids.slice(offset, offset + 24);
           let results: Record<string, TraktRating>;
           try {
+            const query =
+              activeSource === 'mdblist'
+                ? `/api/library/ratings?source=mdblist&ids=${encodeURIComponent(batch.join(','))}`
+                : `/api/library/ratings?ids=${encodeURIComponent(batch.join(','))}`;
             const response = await requestJson<{ ratings: Record<string, TraktRating> }>(
-              '/api/library/ratings?ids=' + encodeURIComponent(batch.join(',')),
+              query,
               {},
               transport
             );
@@ -73,14 +87,14 @@ export function createCommunityRatings(
               score: null,
               state: 'unavailable' as const
             };
-            entries.set(id, {
+            entries.set(keyFor(id), {
               ...rating,
               expires: expires + (rating.state === 'unavailable' ? 60_000 : 86_400_000)
             });
           }
         }
       } finally {
-        ids.forEach((id) => inflight.delete(id));
+        ids.forEach((id) => inflight.delete(keyFor(id)));
         pending--;
       }
     },

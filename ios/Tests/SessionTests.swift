@@ -1756,6 +1756,87 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertTrue(store.workspace.events.isEmpty)
         XCTAssertNil(cache.load(scope: credential.cacheScope))
     }
+    func testForegroundDeltaRefreshReloadsOnlyChangedTitlesAndOutboxProjectsImmediately() async throws {
+        let original = PreviewData.workspace
+        let pages = try workspacePages(original)
+        let revA = String(repeating: "a", count: 32)
+        let revB = String(repeating: "b", count: 32)
+        var modified = original
+        if let idx = modified.titles.firstIndex(where: { $0.id == "again" }) {
+            modified.titles[idx].score = 9.5
+            modified.titles[idx].version = (modified.titles[idx].version ?? 1) + 1
+        }
+        let targetedPayload = try JSONSerialization.data(withJSONObject: [
+            "ids": ["again"],
+            "titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.titles.filter { $0.id == "again" })),
+            "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.episodes.filter { $0.titleId == "again" })),
+            "events": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.events.filter { $0.titleId == "again" })),
+            "locations": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.locations.filter { $0.titleId == "again" }))
+        ])
+        let targetedReply = String(decoding: targetedPayload, as: UTF8.self)
+
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" {
+                return .init(#"{"revision":"\#(revA)"}"#)
+            }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let outboxStore = MemorySyncOutboxStore()
+        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: outboxStore)
+        let start = Date.now
+        await store.refreshOnForeground(at: start)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" {
+                return .init(#"{"revision":"\#(revB)","changedTitleIds":["again"]}"#)
+            }
+            if request.url?.path == "/api/workspace/titles" {
+                return .init(targetedReply)
+            }
+            return .init(500, #"{"error":"Unexpected full workspace download"}"#)
+        }
+        await store.refreshOnForeground(at: start.addingTimeInterval(20))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 2, "Delta foreground sync needs only revision + targeted titles read")
+        XCTAssertEqual(store.title("again")?.score, 9.5)
+
+        let entry = store.enqueueOptimistic(
+            .patchTitle(titleId: "again", expectedVersion: 2, status: nil, score: 10.0, clearScore: false, favorite: true, queued: nil, notes: "Instant local-first edit"),
+            providers: [.cloudflare, .trakt]
+        )
+        XCTAssertEqual(store.title("again")?.score, 10.0)
+        XCTAssertEqual(store.title("again")?.favorite, true)
+        XCTAssertEqual(outboxStore.load(scope: credential.cacheScope).count, 1)
+        store.acknowledgeOutbox(entry.id, provider: .cloudflare)
+        XCTAssertEqual(outboxStore.load(scope: credential.cacheScope).pending(for: .trakt).count, 1)
+        store.acknowledgeOutbox(entry.id, provider: .trakt)
+        XCTAssertTrue(outboxStore.load(scope: credential.cacheScope).isEmpty)
+
+        // Verify custom TMDB token & external provider config updates and watch-logging fan-out
+        store.updateCustomTmdbToken("  custom-tmdb-read-token  ")
+        XCTAssertEqual(store.providerSettings.customTmdbToken, "custom-tmdb-read-token")
+        store.updateProviderConfig(ExternalProviderConfig(
+            provider: .wetrakr,
+            enabled: true,
+            loggingMethod: .serverAndDirectAPI,
+            clientId: "wtk_test_cid",
+            accessToken: "wtk_test_token"
+        ))
+        XCTAssertEqual(store.providerSettings.activeDirectLoggingProviders, Set([.wetrakr]))
+        store.recordDirectProviderMutation(
+            .markWatch(
+                eventId: "ev-direct-1",
+                titleId: "again",
+                episodeId: nil,
+                watchedAt: "2026-10-23T12:00:00Z",
+                rewatch: false,
+                expectedTitleVersion: 2
+            ),
+            operationId: "op-direct-1"
+        )
+        XCTAssertEqual(store.outbox.pending(for: .wetrakr).count, 1)
+    }
     private func workspacePages(_ workspace: Workspace) throws -> [String: String] {
         let sections: [String: Any] = ["titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.titles)),
                                        "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.episodes)),

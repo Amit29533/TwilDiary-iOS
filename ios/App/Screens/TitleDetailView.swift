@@ -45,6 +45,8 @@ struct TitleDetailView: View {
     @State private var preparingSeason = false
     @State private var seasonRequest = UUID()
     @State private var seasonLoadError: String?
+    @State private var criticScores: [MDBListSyncEngine.SourceRating] = []
+    @State private var newTagText = ""
     var body: some View {
         Group {
             if let title = store.title(id) {
@@ -53,12 +55,66 @@ struct TitleDetailView: View {
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 28) {
                                 header(title)
+                                if !criticScores.isEmpty {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 6) {
+                                            ForEach(criticScores, id: \.source) { item in
+                                                HStack(spacing: 4) {
+                                                    Text(item.source.uppercased())
+                                                        .font(.system(size: 10.5, weight: .medium))
+                                                        .foregroundStyle(.secondary)
+                                                    Text(item.score.map { "\($0)%" } ?? (item.value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—"))
+                                                        .font(.system(size: 11.5, weight: .semibold))
+                                                }
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 5)
+                                                .background(.white.opacity(0.06), in: Capsule())
+                                                .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                                            }
+                                        }
+                                    }
+                                    .padding(.top, -18)
+                                    .accessibilityIdentifier("title-critic-breakdown")
+                                }
                                 progressPanel(title).padding(.top, -8)
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if let tmdbId = title.tmdbId { CastAndRelated(route: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId), sourceTitle: title.name) }
                                 VStack(spacing: 20) {
                                     DisclosureGroup("Notes", isExpanded: $showNotes) {
                                         VStack(alignment: .leading, spacing: 12) {
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack(spacing: 6) {
+                                                    ForEach(title.tags ?? [], id: \.self) { tag in
+                                                        HStack(spacing: 4) {
+                                                            Text(tag).font(.system(size: 12, weight: .semibold))
+                                                            Button {
+                                                                let next = (title.tags ?? []).filter { $0 != tag }
+                                                                Task { await store.patch(title, values: ["tags": next]) }
+                                                            } label: {
+                                                                Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary)
+                                                            }.buttonStyle(.plain).disabled(store.writesBlocked)
+                                                        }
+                                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                                        .background(theme.accent.opacity(0.18), in: Capsule())
+                                                    }
+                                                }
+                                            }
+                                            HStack(spacing: 8) {
+                                                TextField("Add collection tag…", text: $newTagText)
+                                                    .font(.system(size: 13))
+                                                    .padding(.horizontal, 10).frame(height: 34)
+                                                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+                                                Button("Add") {
+                                                    let trimmed = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                    guard !trimmed.isEmpty else { return }
+                                                    var next = title.tags ?? []
+                                                    if !next.contains(trimmed), next.count < 20 { next.append(trimmed) }
+                                                    newTagText = ""
+                                                    Task { await store.patch(title, values: ["tags": next]) }
+                                                }
+                                                .font(.system(size: 12.5, weight: .semibold))
+                                                .disabled(store.writesBlocked || newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                            }
                                             TextEditor(text: $notesField.draft).frame(minHeight: 110).scrollContentBackground(.hidden).focused($notesFocused).accessibilityIdentifier("title-notes").accessibilityLabel("Title notes").id("notes-editor")
                                             if notesField.draft.utf16.count > 20_000 { Text("Keep notes within 20,000 characters.").font(.caption).foregroundStyle(.orange) }
                                             if notesField.conflict != nil {
@@ -105,6 +161,9 @@ struct TitleDetailView: View {
                                     Button { Task { await store.patch(title, values: ["favorite": !title.favorite]) } } label: { Image(systemName: title.favorite ? "heart.fill" : "heart") }.accessibilityLabel("Favorite").disabled(store.writesBlocked)
                                     Menu {
                                             Button("Community information", systemImage: "info.circle") { showInformation = true }
+                                            if title.tmdbId != nil {
+                                                Button("Refresh metadata", systemImage: "arrow.clockwise") { Task { await store.refreshTitleMetadata(title) } }.disabled(store.writesBlocked)
+                                            }
                                             Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patch(title, values: ["favorite": !title.favorite]) } }.disabled(store.writesBlocked)
                                         Button(title.queued == true ? "Remove from Queue" : "Queue") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         Button("Notes") { showNotes = true; pendingScrollTarget = "notes-editor" }.accessibilityIdentifier("title-menu-notes")
@@ -155,6 +214,15 @@ struct TitleDetailView: View {
             }
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
             .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
+            .task(id: title.id) {
+                criticScores = []
+                guard let apiKey = store.providerSettings.mdblist.apiKey, !apiKey.isEmpty,
+                      let tmdbId = title.tmdbId else { return }
+                let client = DirectProviderClient()
+                if let summary = try? await client.fetchMDBListRatings(apiKey: apiKey, tmdbId: tmdbId, isSeries: title.isSeries) {
+                    criticScores = summary.ratings.filter { ($0.score ?? 0) > 0 || ($0.value ?? 0) > 0 }
+                }
+            }
             .onChange(of: title.version) { _, _ in
                 guard initializedEditor else { return }
                 notesField.observe(.init(value: title.notes, version: title.version))

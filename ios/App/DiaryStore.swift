@@ -18,12 +18,25 @@ import TwilDiaryCore
         return controller
     }
     func resumeTraktOnForeground() async {
+        BackgroundSyncCoordinator.shared.endBackgroundExecution()
+        BackgroundSyncCoordinator.shared.registerBackgroundTasksIfNeeded(store: self)
         guard retainedTraktController != nil || (!isPreview && PreferencesTraktApplyCheckpoint().runID != nil) else { return }
         let controller = traktController
         await controller.finishSuspendingTransfer()
         if !controller.busy { await controller.refresh(); await controller.resumeApprovedApply() }
     }
-    func suspendTraktForBackground() { retainedTraktController?.suspendForBackground() }
+    func suspendTraktForBackground() {
+        retainedTraktController?.suspendForBackground()
+        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: !outbox.isEmpty)
+    }
+    /// Requests a background execution window on iOS while updating the Dynamic Island Live Activity,
+    /// suspending cleanly when the OS background time expires.
+    func continueSyncInBackground() {
+        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: !outbox.isEmpty)
+        BackgroundSyncCoordinator.shared.beginBackgroundExecution { [weak self] in
+            self?.suspendTraktForBackground()
+        }
+    }
     struct HomeProjection {
         let overview: HomeOverview
         let watching: [MediaTitle]
@@ -98,6 +111,11 @@ import TwilDiaryCore
     private var undoTitles: Set<String>?
     private let api: DiaryAPI
     private let cache: any WorkspaceCaching
+    private let outboxStore: any SyncOutboxStoring
+    private let providerSettingsStore: any ProviderSettingsStoring
+    private(set) var outbox = SyncOutboxQueue()
+    var providerSettings = ProviderConnectionSettings()
+    @ObservationIgnored let directClient = DirectProviderClient()
     @ObservationIgnored private var cacheRestoration: Task<Void, Never>?
     private(set) var restoringCache = false
     private var sessionGeneration = UUID()
@@ -124,11 +142,23 @@ import TwilDiaryCore
         return !isPreview
     }
     var now: Date { isPreview ? DiaryDate.parse("2026-10-23T12:00:00Z")! : .now }
-    init(api: DiaryAPI? = nil, cache: (any WorkspaceCaching)? = nil) {
+    init(
+        api: DiaryAPI? = nil,
+        cache: (any WorkspaceCaching)? = nil,
+        outboxStore: (any SyncOutboxStoring)? = nil,
+        providerSettingsStore: (any ProviderSettingsStoring)? = nil
+    ) {
         self.api = api ?? DiaryAPI()
         if let cache { self.cache = cache }
         else if api == nil { self.cache = ProtectedWorkspaceCache() }
         else { self.cache = MemoryWorkspaceCache() }
+        if let outboxStore { self.outboxStore = outboxStore }
+        else if api == nil { self.outboxStore = FileSyncOutboxStore() }
+        else { self.outboxStore = MemorySyncOutboxStore() }
+        self.providerSettingsStore = providerSettingsStore ?? UserDefaultsProviderSettingsStore()
+        self.providerSettings = self.providerSettingsStore.load()
+        self.api.customTmdbToken = self.providerSettings.customTmdbToken
+        self.api.customMdblistApiKey = self.providerSettings.mdblist.apiKey
         #if DEBUG
         isPreview = ProcessInfo.processInfo.arguments.contains("--ui-testing")
         #else
@@ -151,6 +181,9 @@ import TwilDiaryCore
         #endif
         if !isPreview {
             needsSignIn = self.api.credential == nil
+            if let scope = self.api.credential?.cacheScope {
+                outbox = outboxStore.load(scope: scope)
+            }
             restoreCachedWorkspace()
         }
         indexWorkspace()
@@ -174,6 +207,7 @@ import TwilDiaryCore
             if previousScope != credential.cacheScope {
                 workspace = Workspace(); hasLoadedWorkspace = false; showingCachedSnapshot = false; lastRefreshedAt = nil; cacheWarning = nil
                 needsMutationRefresh = false
+                outbox = outboxStore.load(scope: credential.cacheScope)
                 pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); pendingSeasonAdjustments.removeAll()
                 undoLabel = nil; undoAction = nil
             }
@@ -199,6 +233,7 @@ import TwilDiaryCore
         showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
         do { try cache.removeAll(); cacheWarning = nil }
         catch { cacheWarning = "The saved diary could not be removed. It remains encrypted on this device." }
+        outbox = SyncOutboxQueue(); try? outboxStore.removeAll()
         pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); undoAction = nil; undoLabel = nil
         pendingSeasonAdjustments.removeAll()
         needsSignIn = true
@@ -232,31 +267,52 @@ import TwilDiaryCore
         lastForegroundRead = date
         defer { if Task.isCancelled, session == sessionGeneration, lastForegroundRead == date { lastForegroundRead = nil } }
         // One primary-key read decides whether the multi-page diary download is needed.
-        let revision = await readWorkspaceRevision()
+        let canUseDelta = hasLoadedWorkspace && !showingCachedSnapshot && !needsMutationRefresh
+        let freshKnown = canUseDelta ? knownWorkspaceRevision.flatMap({ date.timeIntervalSince($0.at) < Self.revisionTrust ? $0 : nil }) : nil
+        let revision = await readWorkspaceRevision(since: freshKnown?.at, known: freshKnown?.token)
         guard session == sessionGeneration, !Task.isCancelled else { return }
-        if let revision, let known = knownWorkspaceRevision, known.token == revision,
+        if let revision, let known = knownWorkspaceRevision, known.token == revision.revision,
            date.timeIntervalSince(known.at) < Self.revisionTrust,
-           hasLoadedWorkspace, !showingCachedSnapshot, !needsMutationRefresh { return }
+           canUseDelta { return }
+        if let revision, canUseDelta, freshKnown != nil,
+           let changedIds = revision.changedTitleIds, !changedIds.isEmpty, changedIds.count <= Self.targetedRefreshLimit {
+            if let _ = try? await reloadTitles(Set(changedIds)) {
+                guard session == sessionGeneration else { return }
+                knownWorkspaceRevision = (token: revision.revision, at: date)
+                error = nil
+                return
+            }
+        }
         let reads = completeReads
         await refresh()
         // Remember the revision read before this download. A write that landed during it
         // changes the server's token, so the next resume downloads again.
         guard session == sessionGeneration else { return }
-        knownWorkspaceRevision = completeReads != reads ? revision.map { (token: $0, at: date) } : nil
+        knownWorkspaceRevision = completeReads != reads ? revision.map { (token: $0.revision, at: date) } : nil
     }
     /// Trust a matching revision for at most this long; then download in full anyway.
     private static let revisionTrust: TimeInterval = 6 * 3600
-    private struct WorkspaceRevision: Decodable { let revision: String }
+    private struct WorkspaceRevision: Decodable {
+        let revision: String
+        let changedTitleIds: [String]?
+    }
     /// nil when the check is unavailable (an older backend, offline, an unexpected reply):
     /// the caller then makes the complete download it always made.
-    private func readWorkspaceRevision() async -> String? {
+    private func readWorkspaceRevision(since: Date? = nil, known: String? = nil) async -> WorkspaceRevision? {
         #if DEBUG
         if isPreview { return nil }
         #endif
-        guard let value: WorkspaceRevision = try? await read("/api/workspace/revision"),
+        var path = "/api/workspace/revision"
+        if let since {
+            let stamp = since.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+            var query: [String: String] = ["since": stamp]
+            if let known { query["known"] = known }
+            path = CatalogTools.apiPath(path, query: query)
+        }
+        guard let value: WorkspaceRevision = try? await read(path),
               value.revision.count == 32,
               value.revision.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
-        return value.revision
+        return value
     }
     func reload() async throws {
         #if DEBUG
@@ -493,6 +549,236 @@ import TwilDiaryCore
         let key = CardKey(titleID: title.id, revision: revision, session: sessionGeneration, season: season, day: DiaryDate.day(now))
         return cachedCards[key]?.value
     }
+    /// Returns a server-confirmed WatchCard if cached, or calculates it locally in < 0.1 ms from `workspace`.
+    func localCard(_ title: MediaTitle, season: Int? = nil) -> WatchCard {
+        cachedCard(title, season: season) ?? WatchCard.calculate(title: title, in: workspace, day: DiaryDate.day(now), season: season)
+    }
+    /// Enqueues a mutation into the local-first outbox and applies it optimistically in 0 ms to `workspace`.
+    @discardableResult
+    func enqueueOptimistic(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind> = [.cloudflare]) -> SyncOutboxEntry {
+        let entry = outbox.enqueue(SyncOutboxEntry(
+            operationId: operationId,
+            createdAt: now.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true)),
+            mutation: mutation,
+            pendingProviders: providers
+        ))
+        if let scope = api.credential?.cacheScope {
+            try? outboxStore.save(outbox, scope: scope)
+        }
+        workspace = workspace.applying(entry.mutation)
+        indexWorkspace()
+        return entry
+    }
+    /// Marks one provider as confirmed for an outbox entry and persists the updated queue.
+    func acknowledgeOutbox(_ entryID: String, provider: SyncProviderKind) {
+        outbox.acknowledge(entryID: entryID, provider: provider)
+        if let scope = api.credential?.cacheScope {
+            try? outboxStore.save(outbox, scope: scope)
+        }
+    }
+    /// Updates the custom TMDB API Read Access Token and persists provider connection settings.
+    func updateCustomTmdbToken(_ token: String?) {
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        providerSettings.customTmdbToken = (trimmed?.isEmpty == false) ? trimmed : nil
+        api.customTmdbToken = providerSettings.customTmdbToken
+        providerSettingsStore.save(providerSettings)
+        invalidateDiscovery()
+        if !isPreview { Task { await pushProviderVaultToServer() } }
+    }
+    /// Updates the configuration for an external provider (`trakt`, `wetrakr`, `simkl`, `mdblist`) and persists it.
+    func updateProviderConfig(_ config: ExternalProviderConfig, syncVault: Bool = true) {
+        providerSettings.setConfig(config)
+        api.customMdblistApiKey = providerSettings.mdblist.apiKey
+        providerSettingsStore.save(providerSettings)
+        if syncVault && !isPreview { Task { await pushProviderVaultToServer() } }
+    }
+    struct ProviderVaultResponse: Decodable {
+        struct Entry: Decodable {
+            let enabled: Bool?
+            let clientId: String?
+            let accessToken: String?
+            let apiKey: String?
+            let username: String?
+        }
+        struct Payload: Decodable {
+            let customTmdbToken: String?
+            let trakt: Entry?
+            let wetrakr: Entry?
+            let simkl: Entry?
+            let mdblist: Entry?
+        }
+        let synced: Bool
+        let settings: Payload?
+    }
+    func pushProviderVaultToServer() async {
+        guard !isPreview, !needsSignIn else { return }
+        func encodeEntry(_ cfg: ExternalProviderConfig) -> [String: Any] {
+            var dict: [String: Any] = ["enabled": cfg.enabled]
+            if let cid = cfg.clientId, !cid.isEmpty { dict["clientId"] = cid }
+            if let tok = cfg.accessToken, !tok.isEmpty { dict["accessToken"] = tok }
+            if let key = cfg.apiKey, !key.isEmpty { dict["apiKey"] = key }
+            if let usr = cfg.username, !usr.isEmpty { dict["username"] = usr }
+            return dict
+        }
+        var body: [String: Any] = [
+            "trakt": encodeEntry(providerSettings.trakt),
+            "wetrakr": encodeEntry(providerSettings.wetrakr),
+            "simkl": encodeEntry(providerSettings.simkl),
+            "mdblist": encodeEntry(providerSettings.mdblist)
+        ]
+        if let tmdb = providerSettings.customTmdbToken, !tmdb.isEmpty {
+            body["customTmdbToken"] = tmdb
+        }
+        let _: ProviderVaultResponse? = try? await read("/api/providers/vault", method: "PUT", body: body)
+    }
+    func pullProviderVaultFromServer() async {
+        guard !isPreview, !needsSignIn else { return }
+        guard let res: ProviderVaultResponse = try? await read("/api/providers/vault"),
+              res.synced, let remote = res.settings else { return }
+        var changed = false
+        if providerSettings.customTmdbToken == nil, let tmdb = remote.customTmdbToken, !tmdb.isEmpty {
+            providerSettings.customTmdbToken = tmdb
+            api.customTmdbToken = tmdb
+            changed = true
+        }
+        func mergeEntry(_ current: inout ExternalProviderConfig, _ incoming: ProviderVaultResponse.Entry?) {
+            guard !current.hasCredentials, let incoming else { return }
+            if let enabled = incoming.enabled { current.enabled = enabled }
+            if let cid = incoming.clientId { current.clientId = cid }
+            if let tok = incoming.accessToken { current.accessToken = tok }
+            if let key = incoming.apiKey { current.apiKey = key }
+            if let usr = incoming.username { current.username = usr }
+            changed = true
+        }
+        mergeEntry(&providerSettings.trakt, remote.trakt)
+        mergeEntry(&providerSettings.wetrakr, remote.wetrakr)
+        mergeEntry(&providerSettings.simkl, remote.simkl)
+        mergeEntry(&providerSettings.mdblist, remote.mdblist)
+        if changed {
+            api.customMdblistApiKey = providerSettings.mdblist.apiKey
+            providerSettingsStore.save(providerSettings)
+        }
+    }
+    /// Decodes a `DiaryExport` JSON archive or external CSV, merges it into the local workspace, and syncs it to the server when online.
+    @discardableResult
+    func importDiaryArchive(_ data: Data) async throws -> (titles: Int, events: Int) {
+        let base = workspace
+        let (archive, merged) = try await Task.detached(priority: .userInitiated) {
+            let decoded = try DiaryExport.decoded(from: data)
+            let mergedWorkspace = try decoded.merged(into: base)
+            return (decoded, mergedWorkspace)
+        }.value
+        workspace = merged
+        indexWorkspace()
+        let encodedArchive = (try? archive.encoded()) ?? data
+        if !isPreview, let jsonObj = try? JSONSerialization.jsonObject(with: encodedArchive) as? [String: Any] {
+            struct ImportReceipt: Decodable {
+                let importedTitles: Int
+                let importedEvents: Int
+            }
+            if let _: ImportReceipt = try? await read("/api/workspace/import", method: "POST", body: jsonObj) {
+                await refresh()
+            }
+        }
+        return (titles: archive.titles.count, events: archive.events.count)
+    }
+    /// Records a watch or title mutation for any enabled direct providers (`wetrakr`, `simkl`, `mdblist`, `trakt`)
+    /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
+    func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString) {
+        let activeProviders = providerSettings.activeDirectLoggingProviders
+        guard !activeProviders.isEmpty else { return }
+        _ = outbox.enqueue(SyncOutboxEntry(
+            operationId: operationId,
+            createdAt: now.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true)),
+            mutation: mutation,
+            pendingProviders: activeProviders
+        ))
+        if let scope = api.credential?.cacheScope {
+            try? outboxStore.save(outbox, scope: scope)
+        }
+        Task { await flushDirectProviders() }
+    }
+    /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `wetrakr`, `simkl`, `mdblist`).
+    func flushDirectProviders() async {
+        let activeProviders = providerSettings.activeDirectLoggingProviders
+        guard !activeProviders.isEmpty else { return }
+        for provider in activeProviders {
+            guard let batch = MultiProviderOutboxDispatcher.prepareBatch(for: provider, from: outbox, in: workspace) else {
+                continue
+            }
+            let config = providerSettings.config(for: provider)
+            let traktCreds: DirectTraktCredentials? = {
+                guard provider == .trakt,
+                      let clientId = config.clientId, !clientId.isEmpty,
+                      let token = config.accessToken, !token.isEmpty else { return nil }
+                return DirectTraktCredentials(clientId: clientId, accessToken: token)
+            }()
+            do {
+                try await directClient.flushProviderBatch(batch, config: config, traktCredentials: traktCreds)
+                for entryID in batch.entryIDs {
+                    acknowledgeOutbox(entryID, provider: provider)
+                }
+                var updated = config
+                updated.lastSyncedAt = now.ISO8601Format()
+                updateProviderConfig(updated, syncVault: false)
+            } catch {
+                for entryID in batch.entryIDs {
+                    outbox.recordFailure(entryID: entryID, error: error.localizedDescription)
+                }
+                if let scope = api.credential?.cacheScope {
+                    try? outboxStore.save(outbox, scope: scope)
+                }
+            }
+        }
+    }
+    /// Tests an external provider's API credentials directly from the device (or simulates verification in UI preview mode).
+    func testProviderConnection(_ config: ExternalProviderConfig) async throws {
+        guard config.hasCredentials else {
+            throw APIError.message("Enter the required API credentials before testing.")
+        }
+        #if DEBUG
+        if isPreview { return }
+        #endif
+        switch config.provider {
+        case .trakt:
+            guard let clientId = config.clientId, !clientId.isEmpty,
+                  let token = config.accessToken, !token.isEmpty else {
+                throw APIError.message("Enter both a Trakt Client ID and Access Token to test direct API access.")
+            }
+            _ = try await directClient.fetchTraktLastActivities(
+                credentials: DirectTraktCredentials(clientId: clientId, accessToken: token)
+            )
+        case .wetrakr:
+            guard config.isAuthenticated else {
+                throw APIError.message("Enter both a WeTrakr API Key and Access Token / PAT.")
+            }
+            _ = try await directClient.fetchWeTrakrActivities(config: config)
+        case .simkl:
+            guard config.isAuthenticated else {
+                throw APIError.message("Enter both a Simkl Client ID and Access Token.")
+            }
+            _ = try await directClient.fetchSimklActivities(config: config)
+        case .mdblist:
+            guard let apiKey = config.apiKey, !apiKey.isEmpty else {
+                throw APIError.message("Enter your MDBList API Key.")
+            }
+            _ = try await directClient.fetchMDBListRatings(apiKey: apiKey, tmdbId: 550, isSeries: false)
+        case .cloudflare:
+            break
+        }
+    }
+    /// Restores or deterministically merges a `DiaryExport` JSON archive on-device (for standalone
+    /// local mode, iCloud Drive backup sync, or cross-device recovery).
+    func importArchive(_ data: Data, merge: Bool = true) throws {
+        let archive = try DiaryExport.decoded(from: data)
+        let updated = try (merge ? archive.merged(into: workspace) : archive.toWorkspace())
+        workspace = outbox.project(onto: updated)
+        hasLoadedWorkspace = true
+        indexWorkspace()
+        if let scope = api.credential?.cacheScope {
+            try? cache.save(workspace, scope: scope, at: now)
+        }
+    }
     func libraryProgress(_ title: MediaTitle) -> Double { progressIndex[title.id] ?? 0 }
     func hasPresentLocation(_ titleID: String) -> Bool { presentTitleIDs.contains(titleID) }
     func browserCredential() -> AccessCredential? { api.credential }
@@ -540,13 +826,19 @@ import TwilDiaryCore
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
         }
     }
+    @discardableResult func refreshTitleMetadata(_ title: MediaTitle) async -> Bool {
+        guard title.tmdbId != nil else { return false }
+        return await perform(refreshing: [title.id]) {
+            let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/metadata", method: "POST")
+        }
+    }
     let communityRatings = CommunityRatingsController()
     func publicScore(_ title: MediaTitle, source: PublicRatingSource) -> Double? {
         CommunityScore.value(tmdb: title.communityScore, trakt: communityRatings.entries[title.id], source: source)
     }
     func loadPublicRatings(_ titles: [MediaTitle], source: PublicRatingSource, retry: Bool = false) async {
         if retry { communityRatings.retryUnavailable() }
-        guard source == .trakt, !needsSignIn else { return }
+        guard source == .trakt || source == .mdblist, !needsSignIn else { return }
         let generation = sessionGeneration
         await communityRatings.prepare(titles.map(\.id)) { ids in
             #if DEBUG
@@ -558,7 +850,9 @@ import TwilDiaryCore
             }
             #endif
             do {
-                let page: PublicRatingsPage = try await self.read(CatalogTools.apiPath("/api/library/ratings", query: ["ids": ids.joined(separator: ",")]), timeout: 8)
+                var query: [String: String] = ["ids": ids.joined(separator: ",")]
+                if source == .mdblist { query["source"] = "mdblist" }
+                let page: PublicRatingsPage = try await self.read(CatalogTools.apiPath("/api/library/ratings", query: query), timeout: 8)
                 guard generation == self.sessionGeneration else { throw CancellationError() }
                 return page.ratings
             } catch APIError.signIn {
@@ -620,6 +914,18 @@ import TwilDiaryCore
             do { result = try await self.read("/api/titles/\(title.id)/watches", method: "POST", body: operation) }
             catch { if Self.definitivelyRejected(error) { self.pendingWatches.removeValue(forKey: key) }; throw error }
             self.pendingWatches.removeValue(forKey: key)
+            let opID = (operation["operationId"] as? String) ?? result.event.id
+            self.recordDirectProviderMutation(
+                .markWatch(
+                    eventId: result.event.id,
+                    titleId: title.id,
+                    episodeId: result.event.episodeId,
+                    watchedAt: result.event.watchedAt,
+                    rewatch: false,
+                    expectedTitleVersion: title.version
+                ),
+                operationId: opID
+            )
             // Do not undo somebody else's pre-existing watch returned by an idempotent server response.
             if result.added || (result.event.operationId == operation["operationId"] as? String && result.event.version == 1 && result.event.revokedAt == nil) {
                 self.undoLabel = "Watch marked"
@@ -641,6 +947,14 @@ import TwilDiaryCore
             do { result = try await self.read("/api/watch-events/\(event.id)", method: "PATCH", body: ["action": "revoke", "expectedVersion": event.version]) }
             catch { if Self.definitivelyRejected(error) { self.pendingRemovals.removeValue(forKey: title.id) }; throw error }
             self.pendingRemovals.removeValue(forKey: title.id)
+            self.recordDirectProviderMutation(
+                .revokeWatch(
+                    eventId: result.event.id,
+                    titleId: title.id,
+                    revokedAt: result.event.revokedAt ?? self.now.ISO8601Format(),
+                    expectedVersion: event.version
+                )
+            )
             self.undoLabel = "Watch removed"
             self.undoAction = { try await self.changeEvent(result.event, action: "restore") }
             self.undoTitles = [title.id]
@@ -660,6 +974,18 @@ import TwilDiaryCore
         await perform(refreshing: [title.id]) {
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
+            self.recordDirectProviderMutation(
+                .patchTitle(
+                    titleId: title.id,
+                    expectedVersion: expectedVersion ?? title.version,
+                    status: values["status"] as? String,
+                    score: values["score"] as? Double,
+                    clearScore: values["score"] is NSNull,
+                    favorite: values["favorite"] as? Bool,
+                    queued: values["queued"] as? Bool,
+                    notes: values["notes"] as? String
+                )
+            )
         }
     }
     @discardableResult func patchCard(_ titleID: String, values: [String: Any]) async -> Bool {
@@ -667,6 +993,18 @@ import TwilDiaryCore
             guard let title = self.title(titleID), title.deletedAt == nil else { throw APIError.message("This title is no longer in your library.") }
             var body = values; body["expectedVersion"] = title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(titleID)", method: "PATCH", body: body)
+            self.recordDirectProviderMutation(
+                .patchTitle(
+                    titleId: titleID,
+                    expectedVersion: title.version,
+                    status: values["status"] as? String,
+                    score: values["score"] as? Double,
+                    clearScore: values["score"] is NSNull,
+                    favorite: values["favorite"] as? Bool,
+                    queued: values["queued"] as? Bool,
+                    notes: values["notes"] as? String
+                )
+            )
         }
     }
     @discardableResult func setStatus(_ title: MediaTitle, status: String, watchedAt: Date? = nil) async -> Bool {

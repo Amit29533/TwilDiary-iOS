@@ -11,16 +11,16 @@ public struct MediaTitle: Codable, Identifiable, Hashable, Sendable {
     public let communityScore: Double?
     public let tmdbId: Int?
     public let genres: [String]
-    public let tags: [String]?
+    public var tags: [String]?
     public let runtimeMinutes: Int?
     public var status: String
     public var favorite: Bool
-    public let queued: Bool?
+    public var queued: Bool?
     public var score: Double?
     public var notes: String
-    public let deletedAt: String?
-    public let version: Int?
-    public let seasons: [Season]?
+    public var deletedAt: String?
+    public var version: Int?
+    public var seasons: [Season]?
     public var isSeries: Bool { category == "show" || category == "anime" }
     public var categoryName: String {
         switch category { case "anime-movie": "Anime movie"; default: category.capitalized }
@@ -46,7 +46,7 @@ public struct Episode: Codable, Identifiable, Hashable, Sendable {
     public let still: String?
     public let hidden: Bool?
     public let communityScore: Double?
-    public let skipped: Bool?
+    public var skipped: Bool?
 }
 
 public struct WatchEvent: Codable, Identifiable, Hashable, Sendable {
@@ -54,11 +54,16 @@ public struct WatchEvent: Codable, Identifiable, Hashable, Sendable {
     public let operationId: String
     public let titleId: String
     public let episodeId: String?
-    public let watchedAt: String?
+    public var watchedAt: String?
     public let recordedAt: String
-    public let revokedAt: String?
+    public var revokedAt: String?
     public let origin: String
-    public let version: Int?
+    public var version: Int?
+    public init(id: String, operationId: String, titleId: String, episodeId: String?, watchedAt: String?, recordedAt: String, revokedAt: String? = nil, origin: String = "manual", version: Int? = 1) {
+        self.id = id; self.operationId = operationId; self.titleId = titleId; self.episodeId = episodeId
+        self.watchedAt = watchedAt; self.recordedAt = recordedAt; self.revokedAt = revokedAt
+        self.origin = origin; self.version = version
+    }
 }
 
 public struct FileLocation: Codable, Identifiable, Hashable, Sendable {
@@ -104,15 +109,30 @@ public struct Workspace: Codable, Sendable {
     }
 }
 
-public struct WatchCard: Decodable, Sendable {
-    public struct Progress: Decodable, Sendable { public let watched: Int; public let total: Int }
-    public struct Season: Decodable, Sendable { public let number: Int; public let name: String; public let metadataLoadedAt: String? }
-    public struct Next: Decodable, Sendable { public let id: String; public let number: Int }
-    public struct Previous: Decodable, Equatable, Sendable { public let id: String; public let version: Int; public let episodeId: String?; public let number: Int? }
+public struct WatchCard: Codable, Equatable, Sendable {
+    public struct Progress: Codable, Equatable, Sendable {
+        public let watched: Int; public let total: Int
+        public init(watched: Int, total: Int) { self.watched = watched; self.total = total }
+    }
+    public struct Season: Codable, Equatable, Sendable {
+        public let number: Int; public let name: String; public let metadataLoadedAt: String?
+        public init(number: Int, name: String, metadataLoadedAt: String?) { self.number = number; self.name = name; self.metadataLoadedAt = metadataLoadedAt }
+    }
+    public struct Next: Codable, Equatable, Sendable {
+        public let id: String; public let number: Int
+        public init(id: String, number: Int) { self.id = id; self.number = number }
+    }
+    public struct Previous: Codable, Equatable, Sendable {
+        public let id: String; public let version: Int; public let episodeId: String?; public let number: Int?
+        public init(id: String, version: Int, episodeId: String?, number: Int?) { self.id = id; self.version = version; self.episodeId = episodeId; self.number = number }
+    }
     public let progress: Progress
     public let season: Season?
     public let next: Next?
     public let previous: Previous?
+    public init(progress: Progress, season: Season?, next: Next?, previous: Previous?) {
+        self.progress = progress; self.season = season; self.next = next; self.previous = previous
+    }
 }
 
 public enum DiaryDate {

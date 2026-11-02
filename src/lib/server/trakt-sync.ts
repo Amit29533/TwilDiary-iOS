@@ -931,6 +931,9 @@ type RemoteState = {
   revokedAt: string | null;
   localValue: string | null;
   remoteValue: string | null;
+  localFound: number;
+  localLocal: string | null;
+  localRemote: string | null;
 };
 /**
  * One read for a window of Trakt rows: everything that decides a new incoming play without
@@ -978,14 +981,17 @@ async function remoteStates(db: Db, run: Run, items: (RemoteTraktItem | null)[])
             ELSE strftime('%Y-%m-%dT%H:%M',c.watched_at)=strftime('%Y-%m-%dT%H:%M',json_extract(j.value,'$.v')) END
       ) END AS "candidate",
       w.watched_at AS "watchedAt", w.revoked_at AS "revokedAt",
-      b.local_value AS "localValue", b.remote_value AS "remoteValue"
+      b.local_value AS "localValue", b.remote_value AS "remoteValue",
+      l.id IS NOT NULL AS "localFound", l.local_value AS "localLocal", l.remote_value AS "localRemote"
     FROM json_each(${JSON.stringify(present)}) j
     LEFT JOIN titles t ON t.id=(SELECT p.title_id FROM provider_identities p WHERE p.provider='tmdb'
       AND p.kind=json_extract(j.value,'$.p') AND p.external_id=json_extract(j.value,'$.x'))
     LEFT JOIN watch_events w ON json_extract(j.value,'$.h')=1
       AND w.id=(SELECT w2.id FROM watch_events w2 WHERE w2.remote_history_id=json_extract(j.value,'$.k') LIMIT 1)
     LEFT JOIN trakt_sync_baselines b ON b.account_id=${run.accountId}
-      AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')`);
+      AND b.kind=json_extract(j.value,'$.c') AND b.remote_key=json_extract(j.value,'$.k')
+    LEFT JOIN trakt_sync_baselines l ON json_extract(j.value,'$.h')=0
+      AND l.account_id=${run.accountId} AND l.kind=json_extract(j.value,'$.c') AND l.local_key=t.id`);
   const states = new Map<number, RemoteState>();
   for (const state of found) {
     const index = Number(state.index);
@@ -1007,6 +1013,20 @@ function importable(item: RemoteTraktItem | null, state: RemoteState | undefined
     !Number(state.byRemote) &&
     !Number(state.imported) &&
     !(Number(state.titleFound) && Number(state.candidate))
+  );
+}
+/**
+ * A remote rating or watchlist entry for an existing local title with at most one baseline
+ * for its remote key has every fact planItem reads already loaded in remoteStates.
+ */
+function decidableRemoteTitle(item: RemoteTraktItem | null, state: RemoteState | undefined) {
+  return (
+    !!item &&
+    item.kind !== 'history' &&
+    item.tmdbId !== null &&
+    !!state &&
+    Number(state.titleFound) === 1 &&
+    Number(state.byRemote) <= 1
   );
 }
 /** Mirrors planItem for a Trakt row: history by its play, ratings and watchlist by the title. */
@@ -1237,7 +1257,7 @@ function completion(db: Db, run: Run): BatchItem<'sqlite'>[] {
       sql`DELETE FROM trakt_snapshot WHERE account_id=${run.accountId} AND (kind,remote_key) IN
       (SELECT kind,remote_key FROM trakt_remote_items WHERE run_id=${run.id} AND payload='null')`
     ),
-    rawItem(db, sql`DELETE FROM trakt_sync_journal WHERE seq<=${upto}`),
+    rawItem(db, sql`DELETE FROM trakt_sync_journal WHERE seq<=${upto} AND kind!='purge_at'`),
     // Plays this run imported or linked journal their own write. One still exactly as applied
     // (its value and Trakt record match its baseline, title live) is in sync; a later edit
     // journals it again. Sends are journaled after the fact (the snapshot predates them).
@@ -1423,34 +1443,67 @@ export async function buildSyncStep(
       const slice = await remoteSlice(db, run);
       const items = slice.rows.map((row) => row.item);
       const states = await remoteStates(db, run, items);
-      // Settled rows need nothing; new incoming plays are decided here from the facts above.
+      // Settled rows need nothing; new incoming plays and unambiguous existing-title
+      // ratings/watchlists are decided here from the facts above.
       const settled = (index: number) =>
         !items[index] ||
         importable(items[index], states.get(index)) ||
+        decidableRemoteTitle(items[index], states.get(index)) ||
         remoteInSync(items[index]!, states.get(index));
       const window = planWindow(slice.rows, (row) => (settled(slice.rows.indexOf(row)) ? 0 : 1));
       const decided = window.flatMap((row, index) => {
         const item = items[index] ?? null,
           state = states.get(index);
-        if (!importable(item, state)) return [];
-        const outcome = decide(run, {
-          item: item!,
-          key: 'trakt-history-' + item!.remoteKey,
-          title: Number(state!.titleFound)
-            ? {
-                id: state!.titleId!,
-                status: state!.status as LocalTitle['status'],
-                deletedAt: state!.deletedAt
-              }
-            : null,
-          watch: null,
-          baseline: null,
-          local: null,
-          remoteValue: item!.value,
-          unconfirmed: false,
-          watched: false
-        });
-        return outcome ? [outcome] : [];
+        if (importable(item, state)) {
+          const outcome = decide(run, {
+            item: item!,
+            key: 'trakt-history-' + item!.remoteKey,
+            title: Number(state!.titleFound)
+              ? {
+                  id: state!.titleId!,
+                  status: state!.status as LocalTitle['status'],
+                  deletedAt: state!.deletedAt
+                }
+              : null,
+            watch: null,
+            baseline: null,
+            local: null,
+            remoteValue: item!.value,
+            unconfirmed: false,
+            watched: false
+          });
+          return outcome ? [outcome] : [];
+        }
+        if (decidableRemoteTitle(item, state)) {
+          const byRemote = Number(state!.byRemote);
+          const title = {
+            id: state!.titleId!,
+            status: state!.status as LocalTitle['status'],
+            deletedAt: state!.deletedAt,
+            score: state!.score
+          };
+          const outcome = decide(run, {
+            item: item!,
+            key: title.id,
+            title,
+            watch: null,
+            baseline: plannedBaseline(
+              byRemote,
+              byRemote === 1
+                ? { localValue: state!.localValue, remoteValue: state!.remoteValue }
+                : null,
+              Number(state!.localFound)
+                ? { localValue: state!.localLocal, remoteValue: state!.localRemote }
+                : null
+            ),
+            local: localValue(title as LocalTitle, item!.kind),
+            remoteValue: item!.value,
+            unconfirmed: false,
+            watched: false
+          });
+          return outcome ? [outcome] : [];
+        }
+        return [];
       });
       await addDecisions(db, run, decided);
       for (const index of window.keys())
@@ -1760,6 +1813,32 @@ export async function cancelSync(db: Db, id: string) {
   return { cancelled: true };
 }
 
+function memoizeTmdb(tmdb: TmdbClient): TmdbClient {
+  const detailsCache = new Map<string, ReturnType<TmdbClient['details']>>();
+  const seasonCache = new Map<string, ReturnType<TmdbClient['season']>>();
+  return {
+    ...tmdb,
+    details(type, id) {
+      const key = `${type}:${id}`;
+      let pending = detailsCache.get(key);
+      if (!pending) {
+        pending = tmdb.details(type, id);
+        detailsCache.set(key, pending);
+      }
+      return pending;
+    },
+    season(id, seasonNumber) {
+      const key = `${id}:${seasonNumber}`;
+      let pending = seasonCache.get(key);
+      if (!pending) {
+        pending = tmdb.season(id, seasonNumber);
+        seasonCache.set(key, pending);
+      }
+      return pending;
+    }
+  };
+}
+
 async function ensureTitle(db: Db, item: RemoteTraktItem, tmdb: TmdbClient, history = false) {
   if (!item.tmdbId) throw new ApiError(409, 'metadata_required', 'Match this title to TMDB first.');
   const existing = await localTitle(db, item);
@@ -1768,12 +1847,8 @@ async function ensureTitle(db: Db, item: RemoteTraktItem, tmdb: TmdbClient, hist
       throw new ApiError(409, 'title_in_trash', 'Restore this title before syncing it.');
     return existing;
   }
-  const metadata = await tmdb.details(item.type, item.tmdbId);
-  const memo: TmdbClient = {
-    ...tmdb,
-    details: (type, id) =>
-      type === item.type && id === item.tmdbId ? Promise.resolve(metadata) : tmdb.details(type, id)
-  };
+  const memo = memoizeTmdb(tmdb);
+  const metadata = await memo.details(item.type, item.tmdbId);
   const result = await importTmdb(db, memo, {
     mediaType: item.type,
     tmdbId: item.tmdbId,
@@ -2580,6 +2655,11 @@ async function applyPullBatch(db: Db, run: Run, batch: Change[], tmdb: TmdbClien
     titleState.set(titleId, { version: row!.version!, status: row!.status! });
     ready.push({ change, payload, item, titleId, episodeId });
   }
+  // Group plays by title and episode so B-tree inserts and per-title status checks stay local.
+  ready.sort(
+    (a, b) =>
+      a.titleId.localeCompare(b.titleId) || (a.episodeId ?? '').localeCompare(b.episodeId ?? '')
+  );
   let applied = new Set<string>();
   const titleIds = [...new Set(ready.map((row) => row.titleId))];
   if (ready.length) {
@@ -2656,6 +2736,514 @@ async function applyPullBatch(db: Db, run: Run, batch: Change[], tmdb: TmdbClien
   }
   return { applied: applied.size, fallback, failures, throttle };
 }
+function batchableTitlePull(change: Change) {
+  const payload = change.payload as Payload;
+  return (
+    (change.kind === 'rating' || change.kind === 'watchlist') &&
+    change.direction === 'pull' &&
+    change.state === 'pending' &&
+    !change.review &&
+    typeof payload.remoteValue === 'string' &&
+    !payload.blocked &&
+    !!payload.item?.tmdbId &&
+    payload.sentUnconfirmed !== true &&
+    payload.reconcileOnly !== true
+  );
+}
+function batchableTitlePush(change: Change) {
+  const payload = change.payload as Payload;
+  return (
+    (change.kind === 'rating' || change.kind === 'watchlist') &&
+    change.direction === 'push' &&
+    change.state === 'pending' &&
+    !change.review &&
+    typeof payload.localValue === 'string' &&
+    !payload.blocked &&
+    !!payload.item?.tmdbId &&
+    payload.sentUnconfirmed !== true &&
+    payload.reconcileOnly !== true
+  );
+}
+interface ResolvedTitleItem {
+  index: number;
+  titleId: string | null;
+  version: number | null;
+  status: string | null;
+  score: number | null;
+  deletedAt: string | null;
+}
+function resolveTitleItems(db: Db, keyed: PullItem[]) {
+  const lookup = JSON.stringify(
+    keyed.map(({ payload, item }) => ({
+      t: payload.localTitleId,
+      k: item.type === 'movie' ? 'movie' : 'series',
+      x: String(item.tmdbId)
+    }))
+  );
+  return db.all<ResolvedTitleItem>(sql`
+    SELECT CAST(j.key AS INTEGER) AS "index", t.id AS "titleId", t.version AS "version",
+      t.status AS "status", t.score AS "score", t.deleted_at AS "deletedAt"
+    FROM json_each(${lookup}) j
+    LEFT JOIN titles t ON t.id=coalesce(json_extract(j.value,'$.t'),
+      (SELECT p.title_id FROM provider_identities p WHERE p.provider='tmdb'
+        AND p.kind=json_extract(j.value,'$.k') AND p.external_id=json_extract(j.value,'$.x')))`);
+}
+async function loadTitlePullMetadata(
+  db: Db,
+  missing: { item: RemoteTraktItem }[],
+  tmdb: TmdbClient
+) {
+  const errors = new Map<string, unknown>();
+  const newTitles = new Map<string, RemoteTraktItem>();
+  for (const { item } of missing) newTitles.set(item.type + ':' + item.tmdbId, item);
+  const details = new Map(
+    await Promise.all(
+      [...newTitles].map(async ([key, item]) => {
+        try {
+          return [key, await tmdb.details(item.type, item.tmdbId!)] as const;
+        } catch (error) {
+          errors.set(key, error);
+          return [key, null] as const;
+        }
+      })
+    )
+  );
+  const imports = [...details].flatMap(([key, metadata]) => {
+    if (!metadata) return [];
+    const item = newTitles.get(key)!;
+    return [
+      {
+        mediaType: item.type,
+        id: item.tmdbId!,
+        details: metadata,
+        category: metadata.suggestedCategory,
+        status: 'planned' as const
+      }
+    ];
+  });
+  if (imports.length) await atomic(db, titleImportStatements(db, imports, now()));
+  return errors;
+}
+/**
+ * Bulk "Import from Trakt" for ready rating and watchlist pulls. Resolves existing titles in
+ * one read, imports any missing TMDb titles in parallel in one atomic batch, then applies
+ * every rating/watchlist update, baseline and applied mark in one guarded transaction.
+ */
+async function applyTitlePullBatch(db: Db, run: Run, batch: Change[], tmdb: TmdbClient) {
+  const keyed: PullItem[] = batch.map((change, index) => {
+    const payload = change.payload as Payload;
+    return { change, payload, item: payload.item, index };
+  });
+  let resolved = await resolveTitleItems(db, keyed);
+  const fallback: Change[] = [];
+  const failures: { change: Change; error: ApiError }[] = [];
+  let throttle: TmdbRateLimit | null = null;
+  const seenTargets = new Set<string>();
+  const eligible = keyed.filter(({ change, payload, item, index }) => {
+    const row = resolved.find((candidate) => Number(candidate.index) === index);
+    if (row?.deletedAt || (payload.localTitleId && !row?.titleId)) {
+      fallback.push(change);
+      return false;
+    }
+    if (
+      row?.titleId &&
+      localValue(
+        {
+          deletedAt: row.deletedAt,
+          score: row.score,
+          status: row.status as LocalTitle['status']
+        } as LocalTitle,
+        change.kind
+      ) !== payload.localValue
+    ) {
+      fallback.push(change);
+      return false;
+    }
+    const targetKey = row?.titleId ?? `${item.type}:${item.tmdbId}`;
+    if (seenTargets.has(targetKey)) return false;
+    seenTargets.add(targetKey);
+    return true;
+  });
+  const missing = eligible.filter(({ index }) => {
+    const row = resolved.find((candidate) => Number(candidate.index) === index);
+    return !row?.titleId;
+  });
+  if (missing.length) {
+    let errors: Map<string, unknown>;
+    try {
+      errors = await loadTitlePullMetadata(db, missing, tmdb);
+    } catch (error) {
+      if (databaseQuotaFailure(error)) throw error;
+      errors = new Map();
+    }
+    for (const error of errors.values()) if (error instanceof TmdbRateLimit) throttle = error;
+    resolved = await resolveTitleItems(db, eligible);
+    for (const { change, item } of missing) {
+      const error = errors.get(item.type + ':' + item.tmdbId);
+      if (error instanceof ApiError && !(error instanceof TmdbRateLimit))
+        failures.push({ change, error });
+    }
+  }
+  const failed = new Set(failures.map(({ change }) => change.id));
+  const ready: {
+    change: Change;
+    payload: Payload;
+    item: RemoteTraktItem;
+    titleId: string;
+    version: number;
+    status: string;
+  }[] = [];
+  for (const { change, payload, item, index } of eligible) {
+    if (failed.has(change.id)) continue;
+    const row = resolved.find((candidate) => Number(candidate.index) === index);
+    if (!row?.titleId || row.deletedAt) {
+      if (!throttle) fallback.push(change);
+      continue;
+    }
+    ready.push({
+      change,
+      payload,
+      item,
+      titleId: row.titleId,
+      version: row.version!,
+      status: row.status!
+    });
+  }
+  let applied = new Set<string>();
+  if (ready.length) {
+    const recordedAt = now();
+    const rows = JSON.stringify(
+      await Promise.all(
+        ready.map(async ({ change, payload, item, titleId, version, status }) => {
+          const mutates = change.kind === 'rating' || status !== 'planned';
+          return {
+            c: change.id,
+            m: change.kind,
+            t: titleId,
+            b: await traktBaselineId(run.accountId, change.kind, titleId),
+            r: item.remoteKey,
+            v: payload.remoteValue,
+            s: change.kind === 'rating' ? Number(payload.remoteValue) : null,
+            e: mutates ? version + 1 : version
+          };
+        })
+      )
+    );
+    const confirmed = sql`EXISTS(SELECT 1 FROM titles t WHERE t.id=json_extract(j.value,'$.t')
+      AND t.deleted_at IS NULL AND t.version=json_extract(j.value,'$.e')
+      AND CASE WHEN json_extract(j.value,'$.m')='rating' THEN t.score=json_extract(j.value,'$.s')
+        ELSE t.status='planned' END)`;
+    const statements: (SQL | { getSQL(): SQL })[] = [
+      ...ready.flatMap(({ change, payload, titleId, version, status }) => {
+        if (change.kind === 'rating')
+          return [
+            db
+              .update(titles)
+              .set({
+                score: Number(payload.remoteValue),
+                version: sql`${titles.version}+1`,
+                updatedAt: recordedAt
+              })
+              .where(
+                and(eq(titles.id, titleId), isNull(titles.deletedAt), eq(titles.version, version))
+              )
+          ];
+        if (status !== 'planned')
+          return [
+            db
+              .update(titles)
+              .set({
+                status: 'planned',
+                version: sql`${titles.version}+1`,
+                updatedAt: recordedAt
+              })
+              .where(
+                and(eq(titles.id, titleId), isNull(titles.deletedAt), eq(titles.version, version))
+              )
+          ];
+        return [];
+      }),
+      sql`INSERT INTO trakt_sync_baselines(id,account_id,kind,local_key,remote_key,local_value,remote_value,updated_at)
+        SELECT json_extract(j.value,'$.b'),${run.accountId},json_extract(j.value,'$.m'),json_extract(j.value,'$.t'),
+          json_extract(j.value,'$.r'),json_extract(j.value,'$.v'),json_extract(j.value,'$.v'),${recordedAt}
+        FROM json_each(${rows}) j WHERE ${confirmed}
+        ON CONFLICT(account_id,kind,local_key) DO UPDATE SET remote_key=excluded.remote_key,
+          local_value=excluded.local_value,remote_value=excluded.remote_value,updated_at=excluded.updated_at`,
+      sql`UPDATE trakt_sync_changes SET state='applied',error=NULL WHERE state='pending'
+        AND id IN (SELECT json_extract(j.value,'$.c') FROM json_each(${rows}) j WHERE ${confirmed})
+        RETURNING id`
+    ];
+    let results: Awaited<ReturnType<typeof atomic>> | null = null;
+    try {
+      results = await atomic(db, statements);
+    } catch (error) {
+      if (databaseQuotaFailure(error)) throw error;
+      fallback.unshift(...ready.map((row) => row.change));
+    }
+    if (results) {
+      applied = new Set(((results.at(-1)?.results ?? []) as { id: string }[]).map((row) => row.id));
+      for (const { change } of ready) if (!applied.has(change.id)) fallback.push(change);
+    }
+  }
+  return { applied: applied.size, fallback, failures, throttle };
+}
+/**
+ * Bulk "Send to Trakt" for ready rating or watchlist pushes of the same kind. Verifies local
+ * titles in one read, sends one batched POST to Trakt, refreshes the activity snapshot once,
+ * and commits baselines, journal entries and applied marks in one D1 batch.
+ */
+async function applyTitlePushBatch(db: Db, run: Run, batch: Change[], trakt: Trakt) {
+  const kind = batch[0]!.kind as 'rating' | 'watchlist';
+  const keyed: PullItem[] = batch.map((change, index) => {
+    const payload = change.payload as Payload;
+    return { change, payload, item: payload.item, index };
+  });
+  const resolved = await resolveTitleItems(db, keyed);
+  const fallback: Change[] = [];
+  const failures: { change: Change; error: ApiError }[] = [];
+  const ready: {
+    change: Change;
+    payload: Payload;
+    item: RemoteTraktItem;
+    titleId: string;
+    value: string;
+  }[] = [];
+  for (const { change, payload, item, index } of keyed) {
+    const row = resolved.find((candidate) => Number(candidate.index) === index);
+    if (
+      !row?.titleId ||
+      row.deletedAt ||
+      localValue(
+        {
+          deletedAt: row.deletedAt,
+          score: row.score,
+          status: row.status as LocalTitle['status']
+        } as LocalTitle,
+        kind
+      ) !== payload.localValue
+    ) {
+      fallback.push(change);
+      continue;
+    }
+    const value =
+      kind === 'rating' ? ratingForTrakt(payload.localValue, run.ratingMode) : payload.localValue;
+    if (value === null) {
+      fallback.push(change);
+      continue;
+    }
+    ready.push({ change, payload, item, titleId: row.titleId, value });
+  }
+  let applied = 0;
+  if (ready.length) {
+    const sentAt = now();
+    const movies: Record<string, unknown>[] = [];
+    const shows: Record<string, unknown>[] = [];
+    for (const { item, value } of ready) {
+      const entry = {
+        ids: { tmdb: item.tmdbId },
+        ...(kind === 'rating' ? { rating: Number(value), rated_at: sentAt } : {})
+      };
+      if (item.type === 'movie') movies.push(entry);
+      else shows.push(entry);
+    }
+    const body: Record<string, unknown> = {};
+    if (movies.length) body.movies = movies;
+    if (shows.length) body.shows = shows;
+    const path = kind === 'rating' ? '/sync/ratings' : '/sync/watchlist';
+    const response = record((await trakt.request(path, { method: 'POST', body })).data);
+    const notFound = record(response.not_found);
+    const missingIds = new Set<string>();
+    for (const [type, bucket] of [
+      ['movie', 'movies'],
+      ['tv', 'shows']
+    ] as const) {
+      const list = notFound[bucket];
+      if (Array.isArray(list))
+        for (const raw of list) {
+          const tmdbId = record(record(raw).ids).tmdb;
+          if (tmdbId !== undefined) missingIds.add(`${type}:${tmdbId}`);
+        }
+    }
+    const succeeded = ready.filter(({ item }) => !missingIds.has(`${item.type}:${item.tmdbId}`));
+    for (const { change, item } of ready) {
+      if (missingIds.has(`${item.type}:${item.tmdbId}`))
+        failures.push({
+          change,
+          error: new ApiError(409, 'trakt_mapping_required', 'Trakt did not recognize this title.')
+        });
+    }
+    if (succeeded.length) {
+      const rows = JSON.stringify(
+        await Promise.all(
+          succeeded.map(async ({ change, payload, item, titleId, value }) => ({
+            c: change.id,
+            t: titleId,
+            b: await traktBaselineId(run.accountId, kind, titleId),
+            r: item.remoteKey,
+            l: payload.localValue,
+            v: value
+          }))
+        )
+      );
+      await atomic(db, [
+        sql`INSERT INTO trakt_sync_baselines(id,account_id,kind,local_key,remote_key,local_value,remote_value,updated_at)
+          SELECT json_extract(j.value,'$.b'),${run.accountId},${kind},json_extract(j.value,'$.t'),
+            json_extract(j.value,'$.r'),json_extract(j.value,'$.l'),json_extract(j.value,'$.v'),${sentAt}
+          FROM json_each(${rows}) j WHERE true
+          ON CONFLICT(account_id,kind,local_key) DO UPDATE SET remote_key=excluded.remote_key,
+            local_value=excluded.local_value,remote_value=excluded.remote_value,updated_at=excluded.updated_at`,
+        sql`REPLACE INTO trakt_sync_journal(kind,local_key)
+          SELECT 'title',json_extract(j.value,'$.t') FROM json_each(${rows}) j`,
+        sql`UPDATE trakt_sync_changes SET state='applied',error=NULL WHERE state='pending'
+          AND id IN (SELECT json_extract(j.value,'$.c') FROM json_each(${rows}) j)`
+      ]);
+      await updateSnapshot(db, run, trakt);
+      applied = succeeded.length;
+    }
+  }
+  return { applied, fallback, failures };
+}
+interface ResolvedLink {
+  index: number;
+  titleId: string | null;
+  deletedAt: string | null;
+  score: number | null;
+  status: string | null;
+  eventId: string | null;
+  eventVersion: number | null;
+  watchedAt: string | null;
+  revokedAt: string | null;
+  remoteHistoryId: string | null;
+}
+/**
+ * Fast-path bulk link for LINK_BATCH items: resolves titles and watch events in one read and
+ * commits links, unconfirmed-send resolutions, baselines and applied marks in one D1 batch.
+ * Any item that changed locally or needs individual error reporting falls back to applyOne.
+ */
+async function applyLinkBatch(db: Db, run: Run, batch: Change[]): Promise<boolean> {
+  const seenEvents = new Set<string>();
+  const seenRemote = new Set<string>();
+  for (const change of batch) {
+    const payload = change.payload as Payload;
+    if (payload.blocked) return false;
+    if (payload.localEventId) {
+      if (seenEvents.has(payload.localEventId)) return false;
+      seenEvents.add(payload.localEventId);
+    }
+    if (change.kind === 'history' && payload.item.remoteKey) {
+      if (seenRemote.has(payload.item.remoteKey)) return false;
+      seenRemote.add(payload.item.remoteKey);
+    }
+  }
+  const lookup = JSON.stringify(
+    batch.map((change) => {
+      const payload = change.payload as Payload;
+      return { t: payload.localTitleId, e: payload.localEventId ?? null };
+    })
+  );
+  const resolved = await db.all<ResolvedLink>(sql`
+    SELECT CAST(j.key AS INTEGER) AS "index",
+      t.id AS "titleId", t.deleted_at AS "deletedAt", t.score AS "score", t.status AS "status",
+      w.id AS "eventId", w.version AS "eventVersion", w.watched_at AS "watchedAt",
+      w.revoked_at AS "revokedAt", w.remote_history_id AS "remoteHistoryId"
+    FROM json_each(${lookup}) j
+    LEFT JOIN titles t ON t.id=json_extract(j.value,'$.t')
+    LEFT JOIN watch_events w ON w.id=json_extract(j.value,'$.e')`);
+  const rowsByIndex = new Map(resolved.map((row) => [Number(row.index), row]));
+  const linkStatements: (SQL | { getSQL(): SQL })[] = [];
+  const baselineEntries: {
+    c: string;
+    m: string;
+    k: string;
+    b: string;
+    r: string | null;
+    l: string | null;
+    v: string | null;
+  }[] = [];
+  for (const [index, change] of batch.entries()) {
+    const payload = change.payload as Payload,
+      item = payload.item;
+    const row = rowsByIndex.get(index);
+    if (payload.localTitleId && (!row?.titleId || row.deletedAt)) return false;
+    if (change.kind === 'history') {
+      if (payload.localEventId && !row?.eventId) return false;
+      const current = row?.eventId && !row.revokedAt ? (row.watchedAt ?? 'unknown') : null;
+      if (row?.eventId && current !== payload.localValue) return false;
+      if (row?.eventId && !row.remoteHistoryId) {
+        linkStatements.push(
+          db
+            .update(watchEvents)
+            .set({ remoteHistoryId: item.remoteKey })
+            .where(
+              and(
+                eq(watchEvents.id, row.eventId),
+                eq(watchEvents.version, row.eventVersion!),
+                isNull(watchEvents.remoteHistoryId)
+              )
+            )
+        );
+      }
+      if (row?.eventId) linkStatements.push(resolveSendQuery(db, row.eventId));
+      baselineEntries.push({
+        c: change.id,
+        m: 'history',
+        k: payload.localKey,
+        b: await traktBaselineId(run.accountId, 'history', payload.localKey),
+        r: item.remoteKey || row?.remoteHistoryId || null,
+        l: current,
+        v: payload.remoteValue
+      });
+    } else {
+      if (
+        row?.titleId &&
+        localValue(
+          {
+            deletedAt: row.deletedAt,
+            score: row.score,
+            status: row.status as LocalTitle['status']
+          } as LocalTitle,
+          change.kind
+        ) !== payload.localValue
+      )
+        return false;
+      baselineEntries.push({
+        c: change.id,
+        m: change.kind,
+        k: payload.localKey,
+        b: await traktBaselineId(run.accountId, change.kind, payload.localKey),
+        r: item.remoteKey,
+        l: payload.localValue,
+        v: payload.remoteValue
+      });
+    }
+  }
+  const updatedAt = now();
+  const rowsJson = JSON.stringify(baselineEntries);
+  const guard = sql`CASE WHEN json_extract(j.value,'$.m')='history'
+    AND EXISTS(SELECT 1 FROM watch_events w WHERE w.id=json_extract(j.value,'$.k'))
+    THEN EXISTS(SELECT 1 FROM watch_events w WHERE w.id=json_extract(j.value,'$.k')
+      AND coalesce(w.remote_history_id,'')=coalesce(json_extract(j.value,'$.r'),''))
+    ELSE 1 END`;
+  try {
+    const results = await atomic(db, [
+      ...linkStatements,
+      sql`INSERT INTO trakt_sync_baselines(id,account_id,kind,local_key,remote_key,local_value,remote_value,updated_at)
+        SELECT json_extract(j.value,'$.b'),${run.accountId},json_extract(j.value,'$.m'),json_extract(j.value,'$.k'),
+          json_extract(j.value,'$.r'),json_extract(j.value,'$.l'),json_extract(j.value,'$.v'),${updatedAt}
+        FROM json_each(${rowsJson}) j WHERE ${guard}
+        ON CONFLICT(account_id,kind,local_key) DO UPDATE SET remote_key=excluded.remote_key,
+          local_value=excluded.local_value,remote_value=excluded.remote_value,updated_at=excluded.updated_at`,
+      sql`UPDATE trakt_sync_changes SET state='applied',error=NULL WHERE state='pending'
+        AND id IN (SELECT json_extract(j.value,'$.c') FROM json_each(${rowsJson}) j WHERE ${guard})
+        RETURNING id`
+    ]);
+    const applied = ((results.at(-1)?.results ?? []) as { id: string }[]).length;
+    return applied === batch.length;
+  } catch (error) {
+    if (databaseQuotaFailure(error)) throw error;
+    return false;
+  }
+}
 const throttled = (error: unknown) =>
   error instanceof TmdbRateLimit ||
   (error instanceof TraktError && error.code === 'trakt_rate_limited');
@@ -2723,9 +3311,39 @@ export async function applySyncChange(
       return await finishRun(db, run, completed, 0, completion(db, run));
     }
     if (['applied', 'skipped'].includes(chosen.state)) return await finishRun(db, run, null);
-    if (bulk && batchablePull(chosen)) {
+    if (bulk && (batchablePull(chosen) || batchableTitlePull(chosen))) {
       const tmdb = createTmdb(env.TMDB_ACCESS_TOKEN, tmdbTransport);
-      const outcome = await applyPullBatch(db, run, picked.filter(batchablePull), tmdb);
+      let pullCandidates = picked.filter(
+        batchablePull(chosen) ? batchablePull : batchableTitlePull
+      );
+      if (
+        !batchablePull(chosen) &&
+        picked.length === PULL_BATCH &&
+        pullCandidates.length < PULL_BATCH
+      ) {
+        const refilled = await db
+          .select()
+          .from(changes)
+          .where(
+            and(
+              eq(changes.runId, id),
+              sql`${changes.state}='pending'`,
+              sql`${changes.review}=0`,
+              eq(changes.direction, 'pull'),
+              inArray(changes.kind, ['rating', 'watchlist'])
+            )
+          )
+          .orderBy(
+            sql`CASE WHEN ${changes.kind}='history' AND ${changes.direction}='pull' THEN 0 WHEN ${changes.direction}='link' THEN 1 WHEN ${changes.kind}='rating' THEN 2 ELSE 3 END`,
+            asc(changes.id)
+          )
+          .limit(PULL_BATCH)
+          .all();
+        pullCandidates = refilled.filter(batchableTitlePull);
+      }
+      const outcome = batchablePull(chosen)
+        ? await applyPullBatch(db, run, pullCandidates, tmdb)
+        : await applyTitlePullBatch(db, run, pullCandidates, tmdb);
       const extra: BatchItem<'sqlite'>[] = outcome.failures.map(({ change, error }) =>
         markFailed(change.id, error.message)
       );
@@ -2764,6 +3382,48 @@ export async function applySyncChange(
         extra
       );
     }
+    if (bulk && batchableTitlePush(chosen)) {
+      let batch = picked.filter((item) => batchableTitlePush(item) && item.kind === chosen.kind);
+      if (picked.length === PULL_BATCH && batch.length < PULL_BATCH) {
+        const refilled = await db
+          .select()
+          .from(changes)
+          .where(
+            and(
+              eq(changes.runId, id),
+              sql`${changes.state}='pending'`,
+              sql`${changes.review}=0`,
+              eq(changes.kind, chosen.kind),
+              eq(changes.direction, 'push')
+            )
+          )
+          .orderBy(
+            sql`CASE WHEN ${changes.kind}='history' AND ${changes.direction}='pull' THEN 0 WHEN ${changes.direction}='link' THEN 1 WHEN ${changes.kind}='rating' THEN 2 ELSE 3 END`,
+            asc(changes.id)
+          )
+          .limit(PULL_BATCH)
+          .all();
+        batch = refilled.filter((item) => batchableTitlePush(item) && item.kind === chosen.kind);
+      }
+      const outcome = await applyTitlePushBatch(db, run, batch, trakt);
+      if (outcome.applied === 0 && outcome.failures.length === 1 && !outcome.fallback.length) {
+        const failed = outcome.failures[0]!;
+        await markFailed(failed.change.id, failed.error.message);
+        throw failed.error;
+      }
+      if (outcome.applied + outcome.failures.length > 0) {
+        const extra: BatchItem<'sqlite'>[] = outcome.failures.map(({ change, error }) =>
+          markFailed(change.id, error.message)
+        );
+        return await finishRun(
+          db,
+          run,
+          { state: 'applying', progress: run.progress + outcome.applied + outcome.failures.length },
+          0,
+          extra
+        );
+      }
+    }
     if (bulk && chosen.direction === 'link') {
       const batch = await db
         .select()
@@ -2779,9 +3439,30 @@ export async function applySyncChange(
         .orderBy(asc(changes.id))
         .limit(LINK_BATCH)
         .all();
+      if (await applyLinkBatch(db, run, batch)) {
+        return await finishRun(db, run, {
+          state: 'applying',
+          progress: run.progress + batch.length
+        });
+      }
+      const remaining = await db
+        .select()
+        .from(changes)
+        .where(
+          and(
+            eq(changes.runId, id),
+            eq(changes.state, 'pending'),
+            inArray(
+              changes.id,
+              batch.map((item) => item.id)
+            )
+          )
+        )
+        .orderBy(asc(changes.id))
+        .all();
       const tmdb = createTmdb(env.TMDB_ACCESS_TOKEN, tmdbTransport);
       const marks: BatchItem<'sqlite'>[] = [];
-      for (const item of batch) {
+      for (const item of remaining) {
         try {
           await applyOne(db, run, item, 'link', trakt, tmdb);
           marks.push(markApplied(item.id));

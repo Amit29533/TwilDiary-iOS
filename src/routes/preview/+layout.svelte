@@ -107,7 +107,8 @@
   const settingsScreen = $derived(
     page.url.pathname.startsWith('/preview/more/') ||
       page.url.pathname === '/preview/files' ||
-      page.url.pathname === '/preview/review'
+      page.url.pathname === '/preview/review' ||
+      page.url.pathname === '/preview/calendar'
   );
   const showNavigation = $derived(atRoot || settingsScreen);
   const exploring = $derived(
@@ -173,11 +174,19 @@
             ? 'Stats'
             : page.url.pathname === '/preview/recently-watched'
               ? 'Recently watched'
-              : page.url.pathname.startsWith('/preview/more/')
-                ? ({ appearance: 'Appearance', trakt: 'Trakt', tmdb: 'TMDB', about: 'About' }[
-                    page.url.pathname.split('/')[3] ?? ''
-                  ] ?? 'Settings')
-                : page.url.pathname === '/preview/more'
+              : page.url.pathname === '/preview/calendar'
+                ? 'Airing Calendar'
+                : page.url.pathname.startsWith('/preview/more/')
+                  ? ({
+                      appearance: 'Appearance',
+                      trakt: 'Trakt',
+                      tmdb: 'TMDB',
+                      wetrakr: 'WeTrakr',
+                      simkl: 'Simkl',
+                      mdblist: 'MDBList',
+                      about: 'About'
+                    }[page.url.pathname.split('/')[3] ?? ''] ?? 'Settings')
+                  : page.url.pathname === '/preview/more'
                   ? 'More'
                   : page.url.pathname === '/preview/review'
                     ? 'Fix mismatches'

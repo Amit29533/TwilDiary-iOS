@@ -1248,7 +1248,7 @@ import UIKit
     }
     func testNativeBackReturnsFromEverySettingsDestination() {
         let app = launch(); app.tabBars.buttons["More"].tap()
-        for (entryID, title) in [("settings-history", "Recently watched"), ("settings-files", "Files & drives"), ("settings-theme", "Appearance"), ("settings-tmdb", "TMDB"), ("settings-trakt", "Trakt"), ("settings-about", "About")] {
+        for (entryID, title) in [("settings-history", "Recently watched"), ("settings-files", "Files & drives"), ("settings-theme", "Appearance"), ("settings-tmdb", "TMDB"), ("settings-trakt", "Trakt"), ("settings-wetrakr", "WeTrakr"), ("settings-simkl", "Simkl"), ("settings-mdblist", "MDBList"), ("settings-about", "About")] {
             let entry = app.buttons[entryID]
             for _ in 0..<12 {
                 if entry.isHittable { break }

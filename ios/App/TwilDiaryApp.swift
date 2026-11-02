@@ -39,7 +39,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
     }
 }
-enum AppDestination: Hashable { case explore, history, files, trash, scanner, appearance, trakt, tmdb, about }
+enum AppDestination: Hashable { case explore, calendar, history, files, trash, scanner, appearance, trakt, tmdb, wetrakr, simkl, mdblist, about }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -187,6 +187,7 @@ struct RootView: View {
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {
                     case .explore: ExploreView()
+                    case .calendar: AiringCalendarView()
                     case .history: HistoryView()
                     case .files: FilesView()
                     case .trash: TrashView()
@@ -194,6 +195,9 @@ struct RootView: View {
                     case .appearance: AppearanceView()
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()
+                    case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)
+                    case .simkl: ExternalProviderConnectionView(provider: .simkl)
+                    case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
                     case .about: AboutView()
                     } }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }

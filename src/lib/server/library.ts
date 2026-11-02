@@ -8,7 +8,8 @@ import {
   providerIdentities,
   watchEvents,
   watchOperations,
-  fileLocations
+  fileLocations,
+  workspaceUi
 } from './db/schema.ts';
 import { ApiError } from './api.ts';
 import { downloadFilter } from './disks.ts';
@@ -201,7 +202,7 @@ export async function addManualTitle(db: Db, value: unknown) {
 }
 export async function patchTitle(db: Db, id: string, value: unknown) {
   identity(id);
-  const { expectedVersion, patch } = patchInput(value);
+  const { expectedVersion, patch, tags } = patchInput(value);
   const changes = {
     ...patch,
     ...(patch.name ? { sortName: sortName(patch.name) } : {}),
@@ -218,7 +219,17 @@ export async function patchTitle(db: Db, id: string, value: unknown) {
     await getTitle(db, id);
     throw conflict();
   }
-  return { title: changed };
+  if (tags !== undefined) {
+    await db
+      .insert(workspaceUi)
+      .values({ titleId: id, tags, demo: false })
+      .onConflictDoUpdate({
+        target: workspaceUi.titleId,
+        set: { tags }
+      })
+      .run();
+  }
+  return { title: tags !== undefined ? { ...changed, tags } : changed };
 }
 export async function trashTitle(db: Db, id: string, expectedVersion: number) {
   const existing = await getTitle(db, id, true);

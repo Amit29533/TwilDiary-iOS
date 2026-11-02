@@ -14,6 +14,7 @@ export class ApiError extends Error {
 export interface ApiContext {
   locals: { owner?: { subject: string; email: string }; bindings?: ServerBindings };
   platform?: { env: ServerBindings } | undefined;
+  request?: Request;
 }
 export interface ServerBindings {
   DB?: D1Database;
@@ -24,16 +25,37 @@ export interface ServerBindings {
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUDIENCE?: string;
   ACCESS_OWNER_EMAIL?: string;
+  DIARY_ACCESS_TOKEN?: string;
+  DIARY_OWNER_EMAIL?: string;
+  DIARY_OWNER_PASSCODE?: string;
+  DIARY_AUTH_SECRET?: string;
   TRAKT_CLIENT_ID?: string;
   TRAKT_TOKEN_KEY?: string;
   TRAKT_REDIRECT_URI?: string;
   TRAKT_PERSONAL_ACCESS_TOKEN?: string;
+  MDBLIST_API_KEY?: string;
   /** Account Analytics: Read. Settings → Cloudflare shows nothing without it. */
   CF_ANALYTICS_TOKEN?: string;
   CF_ACCOUNT_ID?: string;
 }
-export const bindings = (context: ApiContext): ServerBindings =>
-  context.locals.bindings ?? context.platform?.env ?? {};
+function validHeaderToken(raw: string | null | undefined, max = 2048): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > max) return undefined;
+  return /^[A-Za-z0-9._~+/=-]{4,2048}$/.test(trimmed) ? trimmed : undefined;
+}
+export const bindings = (context: ApiContext): ServerBindings => {
+  const base = context.locals.bindings ?? context.platform?.env ?? {};
+  if (!context.locals.owner || !context.request) return base;
+  const customTmdb = validHeaderToken(context.request.headers.get('X-TMDB-Read-Token'), 2048);
+  const customMdblist = validHeaderToken(context.request.headers.get('X-MDBList-API-Key'), 256);
+  if (!customTmdb && !customMdblist) return base;
+  return {
+    ...base,
+    ...(customTmdb ? { TMDB_ACCESS_TOKEN: customTmdb } : {}),
+    ...(customMdblist ? { MDBLIST_API_KEY: customMdblist } : {})
+  };
+};
 export function privateJson(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,

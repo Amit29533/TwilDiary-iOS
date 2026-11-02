@@ -241,3 +241,167 @@ test('Episode controls exclude unknown, invalid and future air dates, while reta
     /Title not found/
   );
 });
+
+test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring across all new & updated screens', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { compile } = await import('svelte/compiler');
+
+  // 1. Compile all new & modified Svelte components with svelte/compiler and verify 0 warnings
+  const svelteComponents = [
+    'src/lib/components/AiringCalendar.svelte',
+    'src/lib/components/AccountAuthModal.svelte',
+    'src/lib/components/ProviderConnection.svelte',
+    'src/lib/components/ProviderIcon.svelte',
+    'src/lib/components/HomeSections.svelte',
+    'src/lib/components/LibraryControls.svelte',
+    'src/lib/components/StatsDashboard.svelte',
+    'src/lib/components/TitleMenu.svelte',
+    'src/lib/components/TmdbConnection.svelte',
+    'src/lib/components/TraktConnection.svelte',
+    'src/lib/screens/TitleScreen.svelte',
+    'src/routes/preview/+layout.svelte',
+    'src/routes/preview/more/+page.svelte',
+    'src/routes/preview/library/+page.svelte',
+    'src/routes/preview/calendar/+page.svelte',
+    'src/routes/preview/more/wetrakr/+page.svelte',
+    'src/routes/preview/more/simkl/+page.svelte',
+    'src/routes/preview/more/mdblist/+page.svelte'
+  ];
+
+  for (const relPath of svelteComponents) {
+    const src = await readFile(new URL(`../../${relPath}`, import.meta.url), 'utf8');
+    const compiled = compile(src, { filename: relPath, generate: 'client' });
+    assert.equal(
+      compiled.warnings.length,
+      0,
+      `${relPath} emitted Svelte compiler warnings: ${JSON.stringify(compiled.warnings)}`
+    );
+  }
+
+  // 2. Non-Overlapping & Responsive Box-Sizing Invariants against global src/app.css rules
+  const providerConn = await readFile(
+    new URL('../../src/lib/components/ProviderConnection.svelte', import.meta.url),
+    'utf8'
+  );
+  // Global app.css sets `input, select { width: 100%; min-height: 48px; }`.
+  // Verify flex rows in ProviderConnection explicitly constrain checkbox and select widths so they never overlap or squash labels:
+  assert.match(providerConn, /\.toggle-row input\[type='checkbox'\]\s*\{[\s\S]*?width:\s*20px/);
+  assert.match(providerConn, /\.method-row select\s*\{[\s\S]*?width:\s*44%/);
+  assert.match(providerConn, /\.toggle-row span,\s*\.method-row span\s*\{[\s\S]*?min-width:\s*0/);
+
+  const titleScreen = await readFile(
+    new URL('../../src/lib/screens/TitleScreen.svelte', import.meta.url),
+    'utf8'
+  );
+  // Verify inline tag input inside .tag-add-row sets width: auto and min-width: 0, and .tag-add-btn sets flex-shrink: 0
+  assert.match(titleScreen, /\.tag-add-row input\s*\{[\s\S]*?width:\s*auto;[\s\S]*?min-width:\s*0/);
+  assert.match(titleScreen, /\.tag-add-btn\s*\{[\s\S]*?flex-shrink:\s*0/);
+  assert.match(titleScreen, /class="critic-breakdown"/);
+
+  const airingCalendar = await readFile(
+    new URL('../../src/lib/components/AiringCalendar.svelte', import.meta.url),
+    'utf8'
+  );
+  // Verify 4-column summary-metrics and 7-column airing-strip use minmax(0, 1fr) and min-width: 0 to prevent 320px overflow
+  assert.match(airingCalendar, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(airingCalendar, /grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(airingCalendar, /grid-template-columns:\s*42px\s+minmax\(0,\s*1fr\)\s+auto/);
+  assert.match(airingCalendar, /@media\s*\(max-width:\s*380px\)/);
+  // Verify Upcoming vs Catch-up mode label parity
+  assert.match(airingCalendar, /mode === 'catchup' \? 'Catch-up' : 'Upcoming'/);
+  assert.match(airingCalendar, /mode === 'catchup' \? 'Past 7 days' : 'Next 7 days'/);
+  assert.match(airingCalendar, /mode === 'catchup' \? 'Past 14 days' : 'Next 14 days'/);
+
+  const authModal = await readFile(
+    new URL('../../src/lib/components/AccountAuthModal.svelte', import.meta.url),
+    'utf8'
+  );
+  assert.match(authModal, /width:\s*min\(100%,\s*480px\)/);
+  assert.match(authModal, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+
+  // 3. Shell Header & Navigation Wiring across Home, Stats, More, and Library
+  const previewLayout = await readFile(
+    new URL('../../src/routes/preview/+layout.svelte', import.meta.url),
+    'utf8'
+  );
+  assert.equal(previewLayout.includes("page.url.pathname === '/preview/calendar'"), true);
+  assert.equal(previewLayout.includes("'Airing Calendar'"), true);
+  for (const [slug, title] of [
+    ['wetrakr', 'WeTrakr'],
+    ['simkl', 'Simkl'],
+    ['mdblist', 'MDBList']
+  ]) {
+    assert.equal(
+      previewLayout.includes(`${slug}: '${title}'`),
+      true,
+      `Preview shell layout must map /preview/more/${slug} to ${title}`
+    );
+  }
+
+  const homeSections = await readFile(
+    new URL('../../src/lib/components/HomeSections.svelte', import.meta.url),
+    'utf8'
+  );
+  const statsDashboard = await readFile(
+    new URL('../../src/lib/components/StatsDashboard.svelte', import.meta.url),
+    'utf8'
+  );
+  const morePage = await readFile(
+    new URL('../../src/routes/preview/more/+page.svelte', import.meta.url),
+    'utf8'
+  );
+  assert.equal(homeSections.includes('href="/preview/calendar"'), true);
+  assert.equal(statsDashboard.includes('href="/preview/calendar"'), true);
+  assert.equal(morePage.includes('href="/preview/calendar"'), true);
+
+  // 4. Library Collection Tag Filter Wiring & Non-Duplicate Chip Summary
+  const libControls = await readFile(
+    new URL('../../src/lib/components/LibraryControls.svelte', import.meta.url),
+    'utf8'
+  );
+  assert.equal(libControls.includes('aria-label="Collection filter"'), true);
+  assert.equal(
+    libControls.includes('{#if values.tag}<span class="extra-filter">'),
+    false,
+    'Active Collection native-chip must not be duplicated in .filter-summary'
+  );
+
+  // 5. iOS SwiftUI Parity & Wiring Verification
+  const iosApp = await readFile(
+    new URL('../../ios/App/TwilDiaryApp.swift', import.meta.url),
+    'utf8'
+  );
+  const iosHome = await readFile(
+    new URL('../../ios/App/Screens/HomeView.swift', import.meta.url),
+    'utf8'
+  );
+  const iosStats = await readFile(
+    new URL('../../ios/App/Screens/StatsView.swift', import.meta.url),
+    'utf8'
+  );
+  const iosSettings = await readFile(
+    new URL('../../ios/App/Screens/SettingsView.swift', import.meta.url),
+    'utf8'
+  );
+  const iosLibrary = await readFile(
+    new URL('../../ios/App/Screens/LibraryView.swift', import.meta.url),
+    'utf8'
+  );
+  const iosTitleDetail = await readFile(
+    new URL('../../ios/App/Screens/TitleDetailView.swift', import.meta.url),
+    'utf8'
+  );
+
+  assert.equal(iosApp.includes('case .calendar: AiringCalendarView()'), true);
+  assert.equal(iosApp.includes('case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)'), true);
+  assert.equal(iosApp.includes('case .simkl: ExternalProviderConnectionView(provider: .simkl)'), true);
+  assert.equal(iosApp.includes('case .mdblist: ExternalProviderConnectionView(provider: .mdblist)'), true);
+  assert.equal(iosHome.includes('NavigationLink("Calendar →", value: AppDestination.calendar)'), true);
+  assert.equal(iosHome.includes('store.recordViewing(item.title, episode: item.episode, watchedAt: store.now)'), true);
+  assert.equal(iosStats.includes('NavigationLink(value: AppDestination.calendar)'), true);
+  assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.calendar)'), true);
+  assert.equal(iosSettings.includes('showSignInMethods = true'), true);
+  assert.equal(iosLibrary.includes('accessibilityIdentifier("library-collection")'), true);
+  assert.equal(iosTitleDetail.includes('accessibilityIdentifier("title-critic-breakdown")'), true);
+});
+
