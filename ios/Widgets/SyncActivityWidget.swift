@@ -61,4 +61,3 @@ struct SyncLiveActivityWidget: Widget {
     }
 }
 #endif
-

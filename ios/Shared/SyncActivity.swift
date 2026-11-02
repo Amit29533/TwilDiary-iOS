@@ -66,4 +66,3 @@ public struct SyncLiveActivityAttributes: ActivityAttributes, Sendable {
         }
     }
 }
-

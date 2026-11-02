@@ -36,4 +36,3 @@ import TwilDiaryTestSupport
     #expect(mergedTitle.favorite == true)
     #expect(mergedTitle.notes == "Merged from second device")
 }
-

@@ -288,4 +288,3 @@ test('readWorkspaceRevision with ?since= returns changedTitleIds for delta sync 
   } as never);
   assert.equal(unauthReply.status, 401);
 });
-
