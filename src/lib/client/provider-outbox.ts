@@ -46,9 +46,8 @@ export function readWebProviderOutbox(
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is WebOutboxEntry =>
-        Boolean(item && typeof item.id === 'string' && Array.isArray(item.pendingProviders))
+    return parsed.filter((item): item is WebOutboxEntry =>
+      Boolean(item && typeof item.id === 'string' && Array.isArray(item.pendingProviders))
     );
   } catch {
     return [];
@@ -105,7 +104,10 @@ export function recordWebProviderMutation(
   return entry;
 }
 
-function providerHeaders(config: ExternalProviderConfig, idempotencyKey?: string): Record<string, string> {
+function providerHeaders(
+  config: ExternalProviderConfig,
+  idempotencyKey?: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json'
@@ -405,7 +407,8 @@ export async function pollProviderDeviceToken(
       })
     });
     if (res.status === 400) return { status: 'pending' };
-    if (res.status === 404 || res.status === 410 || res.status === 418) return { status: 'expired' };
+    if (res.status === 404 || res.status === 410 || res.status === 418)
+      return { status: 'expired' };
     if (!res.ok) return { status: 'pending' };
     const data = (await res.json()) as { access_token?: string };
     if (data.access_token) return { status: 'authorized', accessToken: data.access_token };
@@ -445,9 +448,8 @@ export function readOfflineDiaryQueue(
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is OfflineDiaryMutation =>
-        Boolean(item && typeof item.operationId === 'string' && typeof item.path === 'string')
+    return parsed.filter((item): item is OfflineDiaryMutation =>
+      Boolean(item && typeof item.operationId === 'string' && typeof item.path === 'string')
     );
   } catch {
     return [];
@@ -468,52 +470,75 @@ export function enqueueOfflineDiaryMutation(
     id: mutation.operationId,
     createdAt: new Date().toISOString()
   };
-  try {
-    storage?.setItem(OFFLINE_DIARY_QUEUE_KEY, JSON.stringify([...queue, entry]));
-  } catch {
-    /* Ignore storage quota errors */
-  }
+  if (!storage) throw new Error('Offline storage is unavailable; the change was not saved.');
+  storage.setItem(OFFLINE_DIARY_QUEUE_KEY, JSON.stringify([...queue, entry]));
   return entry;
 }
 
+type OfflineQueueStorage = Pick<Storage, 'getItem' | 'setItem'>;
+const offlineFlights = new WeakMap<object, Promise<{ replayed: number; remaining: number }>>();
+
 export async function flushOfflineDiaryMutations(
-  options: {
-    storage?: Pick<Storage, 'getItem' | 'setItem'>;
-    transport?: typeof fetch;
-  } = {}
+  options: { storage?: OfflineQueueStorage; transport?: typeof fetch } = {}
 ): Promise<{ replayed: number; remaining: number }> {
+  const storage =
+    options.storage ?? (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  if (!storage) return { replayed: 0, remaining: readOfflineDiaryQueue().length };
+  const existing = offlineFlights.get(storage);
+  if (existing) return existing;
   const transport = options.transport ?? fetch;
-  const queue = readOfflineDiaryQueue(options.storage);
-  if (queue.length === 0) return { replayed: 0, remaining: 0 };
-
-  const remaining: OfflineDiaryMutation[] = [];
-  let replayed = 0;
-
-  for (const item of queue) {
-    try {
-      const res = await transport(item.path, {
-        method: item.method,
-        credentials: 'same-origin',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(item.body)
-      });
-      if (res.ok || (res.status >= 400 && res.status < 500 && ![408, 425, 429].includes(res.status))) {
+  const work = (async () => {
+    const initial = readOfflineDiaryQueue(storage);
+    let replayed = 0;
+    for (const item of initial) {
+      // A corrupt entry cannot redirect the private diary request to another host.
+      if (
+        !/^\/api\/(?:titles\/[^/?#]+(?:\/watches)?|watch-events\/[^/?#]+)$/.test(item.path) ||
+        !['POST', 'PATCH'].includes(item.method)
+      )
+        break;
+      try {
+        const res = await transport(item.path, {
+          method: item.method,
+          credentials: 'same-origin',
+          redirect: 'error',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.body)
+        });
+        // Auth, version, validation and quota failures remain pending. Never skip their dependents.
+        if (
+          !res.ok ||
+          res.redirected ||
+          !res.headers.get('content-type')?.includes('application/json')
+        )
+          break;
+        const receipt = (await res.json()) as {
+          event?: { id?: unknown; titleId?: unknown };
+          title?: { id?: unknown };
+        };
+        const titleId = receipt.event?.titleId ?? receipt.title?.id;
+        if (typeof titleId !== 'string') break;
+        const target = decodeURIComponent(item.path.split('/')[3] ?? '');
+        if (
+          item.path.startsWith('/api/titles/') ? titleId !== target : receipt.event?.id !== target
+        )
+          break;
+        const current = readOfflineDiaryQueue(storage);
+        storage.setItem(
+          OFFLINE_DIARY_QUEUE_KEY,
+          JSON.stringify(current.filter((entry) => entry.id !== item.id))
+        );
         replayed++;
-      } else {
-        remaining.push(item);
+      } catch {
+        break;
       }
-    } catch {
-      remaining.push(item);
     }
-  }
-
+    return { replayed, remaining: readOfflineDiaryQueue(storage).length };
+  })();
+  offlineFlights.set(storage, work);
   try {
-    options.storage?.setItem(OFFLINE_DIARY_QUEUE_KEY, JSON.stringify(remaining));
-  } catch {
-    /* Ignore storage quota errors */
+    return await work;
+  } finally {
+    if (offlineFlights.get(storage) === work) offlineFlights.delete(storage);
   }
-  return { replayed, remaining: remaining.length };
 }

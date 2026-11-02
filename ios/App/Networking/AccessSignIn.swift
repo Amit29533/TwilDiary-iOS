@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import TwilDiaryCore
 
 enum SignInNavigationPolicy {
     static func allows(_ url: URL?) -> Bool {
@@ -57,7 +58,7 @@ enum SignInNavigationPolicy {
                         if mode == .token {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Personal Access Token").font(.headline)
-                                Text("Sign in directly using your server’s DIARY_ACCESS_TOKEN or a signed session token without Cloudflare Access.")
+                                Text("Use the private access token provided for your diary.")
                                     .font(.caption).foregroundStyle(.secondary)
                                 SecureField("Paste access token", text: $personalToken)
                                     .textInputAutocapitalization(.never)
@@ -69,7 +70,7 @@ enum SignInNavigationPolicy {
                         } else if mode == .passcode {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Owner Email & Passcode").font(.headline)
-                                Text("Authenticate with your configured DIARY_OWNER_EMAIL and DIARY_OWNER_PASSCODE.")
+                                Text("Use the email and passcode set for this diary.")
                                     .font(.caption).foregroundStyle(.secondary)
                                 TextField("Owner email", text: $ownerEmail)
                                     .textInputAutocapitalization(.never)
@@ -190,7 +191,7 @@ enum SignInNavigationPolicy {
                AccessCookiePolicy.validToken(issuedToken) {
                 var expiry: Date?
                 if let expStr = json?["expiresAt"] as? String {
-                    expiry = ISO8601DateFormatter().date(from: expStr)
+                    expiry = DiaryDate.parse(expStr)
                 }
                 completion(AccessCredential(token: issuedToken, expires: expiry))
             } else if mode == .token, let rawToken = payload["token"], AccessCookiePolicy.validToken(rawToken) {

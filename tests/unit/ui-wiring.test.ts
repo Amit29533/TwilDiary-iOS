@@ -396,7 +396,7 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
   assert.equal(iosApp.includes('case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)'), true);
   assert.equal(iosApp.includes('case .simkl: ExternalProviderConnectionView(provider: .simkl)'), true);
   assert.equal(iosApp.includes('case .mdblist: ExternalProviderConnectionView(provider: .mdblist)'), true);
-  assert.equal(iosHome.includes('accessibilityIdentifier("home-calendar")'), true);
+  assert.equal(iosSettings.includes('accessibilityIdentifier("settings-calendar")'), true);
   assert.equal(iosHome.includes('store.recordViewing(item.title, episode: item.episode, watchedAt: store.now)'), true);
   assert.equal(iosStats.includes('Fun facts'), false);
   assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.calendar)'), true);

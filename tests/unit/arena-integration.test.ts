@@ -4,6 +4,78 @@ import { availableAuthMethods, signDiarySessionToken } from '../../src/lib/serve
 import { consumeSignInAttempt } from '../../src/lib/server/auth-throttle.ts';
 import { encryptVaultPayload, decryptVaultPayload } from '../../src/lib/server/provider-vault.ts';
 import { d1Fixture } from '../helpers/d1.ts';
+import {
+  enqueueOfflineDiaryMutation,
+  flushOfflineDiaryMutations,
+  readOfflineDiaryQueue
+} from '../../src/lib/client/provider-outbox.ts';
+
+test('offline replay keeps rejected edits and later dependent edits', async () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => values.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      values.set(k, v);
+    }
+  };
+  const item = {
+    operationId: 'first',
+    path: '/api/titles/synthetic/watches',
+    method: 'POST' as const,
+    body: { operationId: 'first' }
+  };
+  enqueueOfflineDiaryMutation(item, storage);
+  enqueueOfflineDiaryMutation({ ...item, operationId: 'second' }, storage);
+  let requests = 0;
+  const result = await flushOfflineDiaryMutations({
+    storage,
+    transport: async () => {
+      requests++;
+      return new Response('{}', { status: 401 });
+    }
+  });
+  assert.deepEqual(result, { replayed: 0, remaining: 2 });
+  assert.equal(requests, 1);
+  assert.equal(readOfflineDiaryQueue(storage).length, 2);
+});
+
+test('default browser storage persists replay acknowledgements and concurrent flushes share work', async () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => values.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      values.set(k, v);
+    }
+  };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
+  try {
+    enqueueOfflineDiaryMutation({
+      operationId: 'one',
+      path: '/api/titles/synthetic/watches',
+      method: 'POST',
+      body: { operationId: 'one' }
+    });
+    let requests = 0;
+    const transport: typeof fetch = async () => {
+      requests++;
+      await new Promise((done) => setTimeout(done, 5));
+      return new Response('{"event":{"titleId":"synthetic"}}', {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    };
+    await Promise.all([
+      flushOfflineDiaryMutations({ transport }),
+      flushOfflineDiaryMutations({ transport })
+    ]);
+    await flushOfflineDiaryMutations({ transport });
+    assert.equal(requests, 1);
+    assert.equal(readOfflineDiaryQueue().length, 0);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
+});
 
 test('six-digit passcodes require an independent signing key, owner email and persisted limiter', async () => {
   const weak = { DIARY_OWNER_PASSCODE: '123456', DIARY_OWNER_EMAIL: 'owner@example.test' };

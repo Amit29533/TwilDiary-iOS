@@ -3,6 +3,22 @@ import TwilDiaryCore
 @testable import TwilDiary
 
 @MainActor final class CommunityRatingsTests: XCTestCase {
+    func testSwitchingProviderCannotReuseOrPublishAnotherProvidersScores() async {
+        let ratings = CommunityRatingsController()
+        await ratings.prepare(["title"]) { _ in ["title": PublicRating(score: 8.7, state: "rated")] }
+        XCTAssertEqual(ratings.entries["title"]?.score, 8.7)
+        ratings.selectSource(.mdblist)
+        XCTAssertNil(ratings.entries["title"])
+        await ratings.prepare(["title"]) { _ in ["title": PublicRating(score: 6.4, state: "rated")] }
+        XCTAssertEqual(ratings.entries["title"]?.score, 6.4)
+        ratings.selectSource(.trakt)
+        XCTAssertNil(ratings.entries["title"])
+        await ratings.prepare(["late"]) { _ in
+            ratings.selectSource(.mdblist)
+            return ["late": PublicRating(score: 9.9, state: "rated")]
+        }
+        XCTAssertNil(ratings.entries["late"], "A response from the previous source cannot overwrite the new source")
+    }
     func testBatchesUniqueIDsAndMarksMissingScoresUnavailable() async {
         let ratings = CommunityRatingsController()
         var batches: [[String]] = []

@@ -12,6 +12,7 @@ import TwilDiaryCore
             if unavailable != missing { unavailable = missing }
         }
     }
+    private(set) var source = PublicRatingSource.trakt
     private(set) var pending = 0
     var loading: Bool { pending > 0 }
     /// Stored, so the Library body no longer scans every entry on each read.
@@ -25,6 +26,11 @@ import TwilDiaryCore
     private let clock: () -> Date
     init(clock: @escaping () -> Date = { Date() }) { self.clock = clock }
 
+    func selectSource(_ value: PublicRatingSource) {
+        guard source != value else { return }
+        reset()
+        source = value
+    }
     func reset() {
         generation = UUID(); entries = [:]; expires = [:]; inflight = []; pending = 0; retryRound = 0; retryScheduled = false
     }

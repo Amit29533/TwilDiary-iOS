@@ -765,14 +765,8 @@ import TwilDiaryCore
                 continue
             }
             let config = providerSettings.config(for: provider)
-            let traktCreds: DirectTraktCredentials? = {
-                guard provider == .trakt,
-                      let clientId = config.clientId, !clientId.isEmpty,
-                      let token = config.accessToken, !token.isEmpty else { return nil }
-                return DirectTraktCredentials(clientId: clientId, accessToken: token)
-            }()
             do {
-                try await directClient.flushProviderBatch(batch, config: config, traktCredentials: traktCreds)
+                try await directClient.flushProviderBatch(batch, config: config)
                 guard session == sessionGeneration, !Task.isCancelled else { return }
                 for entryID in batch.entryIDs {
                     try acknowledgeOutbox(entryID, provider: provider)
@@ -905,11 +899,12 @@ import TwilDiaryCore
     }
     let communityRatings = CommunityRatingsController()
     func publicScore(_ title: MediaTitle, source: PublicRatingSource) -> Double? {
-        CommunityScore.value(tmdb: title.communityScore, trakt: communityRatings.entries[title.id], source: source)
+        CommunityScore.value(tmdb: title.communityScore, trakt: communityRatings.source == source ? communityRatings.entries[title.id] : nil, source: source)
     }
     func loadPublicRatings(_ titles: [MediaTitle], source: PublicRatingSource, retry: Bool = false) async {
+        guard source == .trakt || source == .mdblist, !needsSignIn, !Task.isCancelled else { return }
+        communityRatings.selectSource(source)
         if retry { communityRatings.retryUnavailable() }
-        guard source == .trakt || source == .mdblist, !needsSignIn else { return }
         let generation = sessionGeneration
         await communityRatings.prepare(titles.map(\.id)) { ids in
             #if DEBUG

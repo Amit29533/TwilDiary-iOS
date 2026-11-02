@@ -11,7 +11,6 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var clock = Date.now
     @State private var upcomingLimit = 3
-    @State private var upcomingCategory: UpcomingSchedule.CategoryFilter = .all
     /// Changes only when vertical scrolling starts or settles, never per frame.
     @State private var scrolling = false
     @State private var mediaHeader = CompactHeaderState()
@@ -72,7 +71,7 @@ struct HomeView: View {
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     }.padding(.horizontal, -4).modifier(HomeMediaBoundary(state: mediaHeader, enabled: overview.planned.isEmpty)) }
                     VStack(spacing: 12) {
-                        heading("New episodes") { NavigationLink(value: AppDestination.calendar) { RoundTool(icon: "calendar-days", size: 36) }.accessibilityLabel("Airing calendar").accessibilityIdentifier("home-calendar"); CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); Button("Glance →") { router.selectedTab = .glance } }
+                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); Button("Glance →") { router.selectedTab = .glance } }
                         HomeActivityLayout(cards: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
                             NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
                                 HomeEpisodeCard(model: HomeEpisodeCardModel(upcoming: item), cards: upcomingGrid)
@@ -279,7 +278,7 @@ struct AiringCalendarView: View {
                         }
                     }.diaryPanel()
 
-                    HStack(spacing: 8) {
+                    InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                         ForEach(UpcomingSchedule.Mode.allCases) { item in
                             Button { mode = item; selectedDate = nil } label: {
                                 Text(item.rawValue)
@@ -289,7 +288,6 @@ struct AiringCalendarView: View {
                                     .background(mode == item ? theme.accent.opacity(0.22) : .white.opacity(0.04), in: Capsule())
                             }.buttonStyle(.plain)
                         }
-                        Spacer(minLength: 0)
                         ForEach(UpcomingSchedule.CategoryFilter.allCases) { item in
                             Button { category = item } label: {
                                 Text(item.rawValue)

@@ -709,7 +709,7 @@ test('Stage 4: MDBList community ratings, series metadata refresh, and offline d
     storage,
     transport: async () => {
       if (!online) throw new TypeError('Failed to fetch');
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      return new Response(JSON.stringify({ event: { titleId: 'series-frieren' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   });
   assert.deepEqual(offlineRes, { replayed: 0, remaining: 1 });
@@ -717,7 +717,7 @@ test('Stage 4: MDBList community ratings, series metadata refresh, and offline d
   online = true;
   const onlineRes = await flushOfflineDiaryMutations({
     storage,
-    transport: async () => new Response(JSON.stringify({ ok: true }), { status: 200 })
+    transport: async () => new Response(JSON.stringify({ event: { titleId: 'series-frieren' } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   });
   assert.deepEqual(onlineRes, { replayed: 1, remaining: 0 });
   assert.equal(readOfflineDiaryQueue(storage).length, 0);

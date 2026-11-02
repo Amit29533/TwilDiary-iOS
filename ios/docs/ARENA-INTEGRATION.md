@@ -1,5 +1,7 @@
 # Arena integration into the current UI
 
+**Build/merge gate: HOLD. See [the pre-build review](ARENA-PREBUILD-REVIEW.md) for unresolved blockers.**
+
 Integration branch: `codex/arena-ui-integration`.
 Parents: current UI `b52f3e0` and Arena PR #12 `53daceb`.
 
@@ -11,7 +13,7 @@ Person/Cast/Character/Voice Actor native routes and compact ratings, and status-
 
 ## Integrated capabilities and repairs
 
-- Calendar through Home New episodes and Profile Tracking; collection tags through the
+- Calendar through Profile Tracking; collection tags through the
   existing Library filter sheet and title Notes sheet. The notes sheet can expand.
 - Provider connection screens, custom API settings, diary import, critic ratings and metadata refresh.
 - Corrected native watch mutation argument shapes and Trakt bulk snapshot bookkeeping.

@@ -215,7 +215,7 @@ struct TitleDetailView: View {
                         TextField("Add collection tag", text: $newTagText).accessibilityIdentifier("title-new-tag")
                         Button("Add") {
                             let value = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !value.isEmpty, value.count <= 64, !(title.tags ?? []).contains(value), (title.tags ?? []).count < 20 else { return }
+                            guard !value.isEmpty, value.utf16.count <= 60, !(title.tags ?? []).contains(value), (title.tags ?? []).count < 20 else { return }
                             Task { if await store.patch(title, values: ["tags": (title.tags ?? []) + [value]]) { newTagText = "" } }
                         }.disabled(store.writesBlocked || newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }

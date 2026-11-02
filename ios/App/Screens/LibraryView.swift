@@ -400,7 +400,8 @@ struct LibraryView: View {
         status == "jellyfin" && !selecting ? extras(genres: genres, drive: drive, favorites: favoritesOnly) : []
     }
     private func extras(genres: Set<String>, drive: String, favorites: Bool) -> [JellyfinEntry] {
-        jellyfin.extras(diary: collection, category: categoryKey, genres: genres, disk: diskKey(drive), favorites: favorites, sort: sort)
+        guard tag.isEmpty else { return [] }
+        return jellyfin.extras(diary: collection, category: categoryKey, genres: genres, disk: diskKey(drive), favorites: favorites, sort: sort)
     }
     private var categoryKey: String { category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all" }
     private func diskKey(_ drive: String) -> String {

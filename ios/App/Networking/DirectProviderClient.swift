@@ -157,16 +157,11 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return (activities, snapshot)
     }
 
-    /// Flushes pending outbox mutations for an external provider directly from the device
-    /// and acknowledges confirmed entries on `store`.
-    func flushOutbox(for config: ExternalProviderConfig, in store: DiaryStore) async throws {
-        guard config.enabled,
-              let batch = MultiProviderOutboxDispatcher.prepareBatch(
-                  for: config.provider,
-                  from: store.outbox,
-                  in: store.workspace
-              ) else { return }
-
+    /// Transport only. DiaryStore owns durable acknowledgement and session checks.
+    func flushProviderBatch(_ batch: MultiProviderOutboxDispatcher.ProviderBatch, config: ExternalProviderConfig) async throws {
+        guard config.enabled, config.isAuthenticated, batch.provider == config.provider else {
+            throw APIError.message("Reconnect this provider before syncing pending edits.")
+        }
         let totalEntries = batch.entryIDs.count
         BackgroundSyncCoordinator.shared.updateForProviderBatch(
             provider: config.provider,
@@ -243,9 +238,6 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             break
         }
 
-        for entryID in batch.entryIDs {
-            store.acknowledgeOutbox(entryID, provider: config.provider)
-        }
         BackgroundSyncCoordinator.shared.updateForProviderBatch(
             provider: config.provider,
             completed: totalEntries,
