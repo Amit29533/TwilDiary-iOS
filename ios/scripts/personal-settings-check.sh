@@ -20,7 +20,7 @@ bash ios/scripts/xcodegen.sh
 swift test --package-path ios/Packages/TwilDiaryCore --filter 'profileMilestonesCountActualWatchesAndExcludeFutureRevokedAndPlannedTitles|profileMilestoneStreakUsesLocalHistoryAndCorrectionsUpdateProgress|statsAgreeWithUnchangedWebCalculationAcrossEveryPeriodAndEdgeCase' 2>&1 | tee "$ARTIFACTS/logs/personal-core-tests.log"
 bash ios/scripts/ci.sh build-simulator
 bash ios/scripts/ci.sh boot
-xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+python3 ios/scripts/native-test-watchdog.py --label "${slug:-main}" -- xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
   -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
   -parallel-testing-enabled NO -test-timeouts-enabled YES \
@@ -29,16 +29,23 @@ xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDi
   -only-testing:TwilDiaryTests/NativeNavigationAndSynopsisTests \
   -only-testing:TwilDiaryTests/HomeMediaCardsTests \
   -only-testing:TwilDiaryUITests/PersonalSettingsUITests \
+  -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/PersonalSettings.xcresult" \
+  2>&1 | tee "$ARTIFACTS/logs/personal-settings-tests.log"
+python3 ios/scripts/native-test-watchdog.py --label home-history --budget 900 -- xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+  -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
+  -parallel-testing-enabled NO -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 150 -maximum-test-execution-time-allowance 240 \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testHomeMediaShelvesAndListCardsKeepRoutesAndIndependentSavedLayouts \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testHistoryGridReusesCompactWatchedCardsAndKeepsTitleNavigation \
   -only-testing:TwilDiaryUITests/NativeScreensTests/testHomeStatsUsesTodayAndKeepsTheOriginalRangeBar \
-  -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/PersonalSettings.xcresult" \
-  2>&1 | tee "$ARTIFACTS/logs/personal-settings-tests.log"
+  -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/PersonalSettings-HomeHistory.xcresult" \
+  2>&1 | tee "$ARTIFACTS/logs/personal-home-history.log"
 xcrun simctl shutdown "$SIMULATOR_ID"
 while read -r slug layout_id; do
   export SIMULATOR_ID="$layout_id"
   bash ios/scripts/ci.sh boot
-  xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+  python3 ios/scripts/native-test-watchdog.py --label "${slug:-main}" -- xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
     -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
     -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
     -parallel-testing-enabled NO -test-timeouts-enabled YES \
@@ -61,7 +68,7 @@ bash ios/scripts/ci.sh package
 python3 - <<'PY'
 import hashlib, json, os, pathlib, re, shutil, subprocess
 root = pathlib.Path('ios/.artifacts')
-for name in ['personal-settings-tests.log', 'personal-settings-iphone-17e.log', 'personal-settings-iphone-17-pro-max.log']:
+for name in ['personal-settings-tests.log', 'personal-home-history.log', 'personal-settings-iphone-17e.log', 'personal-settings-iphone-17-pro-max.log']:
     log = (root / 'logs' / name).read_text(errors='replace')
     if '** TEST EXECUTE SUCCEEDED **' not in log or re.search(r'\berror:|Test Case .* failed', log):
         raise SystemExit('Native settings checks did not pass: ' + name)

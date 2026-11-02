@@ -852,3 +852,9 @@ reversible authorized fixes and tests, report material results concisely.
 - Add separate Cast, Characters and Voice actors search scopes with native routes and bounded All previews. Add a native journey that opens all three profile kinds and returns with its query.
 - Owner requested full-screen scrolling everywhere, using Person/Cast blur as reference. Extract that exact feathered material, reuse it in all page scrollers and title chrome, and remove opaque root header/status panels. Preserve initial safe-area margins, keyboard handling, horizontal shelves and existing buttons. Add all-root and nested Statistics viewport captures/assertions on main, compact and large phones.
 - Changed Swift grammar has no new parse errors versus HEAD; whitespace check passes. Native type-check, screen geometry and device packaging remain pending. No server deployment performed; people API publication decision remains pending.
+
+
+### 2026-11-03 — preserve evidence from stalled native automation
+
+- Run `6ae8c783e83a9019991c62fa` at `a949d03` passed native compilation, all three core cases and all 21 app units. It then stopped producing output during XCTest's second History-grid cell geometry query at 26 seconds; the Codemagic 50-minute timeout killed the runner before attachment export. No crash/assertion or actionable stack was retained, so an app deadlock is not established.
+- Add a bounded test-process watchdog that captures the app/runner process samples, simulator screenshot and recent app logs after 180 seconds without output before terminating the invocation. Keep assertions and gates intact. Run the seven new settings journeys before the separate three Home/History journeys so unrelated automation stalls cannot erase their evidence. No app source changes in this follow-up.
