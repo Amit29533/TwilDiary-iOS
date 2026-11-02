@@ -688,3 +688,10 @@ export const jellyfinLibraryState = sqliteTable(
   },
   (t) => [check('jellyfin_library_state_one', sql`${t.id} = 1`)]
 );
+
+/** Bounded, expiring sign-in counters; identifiers contain only hashes and time buckets. */
+export const authAttempts = sqliteTable('auth_attempts', {
+  id: text('id').primaryKey().notNull(),
+  attempts: integer('attempts').notNull(),
+  expiresAt: integer('expires_at').notNull()
+}, (t) => [index('auth_attempts_expiry').on(t.expiresAt)]);

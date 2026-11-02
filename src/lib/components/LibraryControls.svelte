@@ -46,6 +46,21 @@
   const genreNames = $derived([
     ...new Set([...genreOptions.map((g) => g.genre), ...(values.genre ? [values.genre] : [])])
   ]);
+  const tagCounts = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const title of snapshot.titles) {
+      if (title.deletedAt) continue;
+      for (const tag of title.tags ?? []) {
+        if (tag) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return counts;
+  });
+  const tagNames = $derived(
+    [...new Set([...tagCounts.keys(), ...(values.tag ? [values.tag] : [])])].sort((a, b) =>
+      a.localeCompare(b)
+    )
+  );
   const filtered = $derived(
     !!values.query ||
       values.category !== 'all' ||
@@ -87,6 +102,21 @@
           >{/each}
       </select>
     </label>
+    {#if tagNames.length > 0}
+      <label class="native-chip" class:active={!!values.tag}>
+        <span aria-hidden="true">{values.tag || 'Collection'}<ChevronDown size={15} /></span>
+        <select
+          aria-label="Collection filter"
+          value={values.tag}
+          onchange={(event) => onchange({ ...values, tag: event.currentTarget.value })}
+        >
+          <option value="">All collections</option>
+          {#each tagNames as name}<option value={name}
+              >{name} ({tagCounts.get(name) ?? 0})</option
+            >{/each}
+        </select>
+      </label>
+    {/if}
     <label class="native-chip" class:active={values.disk !== 'all'}>
       <span aria-hidden="true">{diskLabel}<ChevronDown size={15} /></span>
       <select
@@ -115,7 +145,7 @@
       >{#if values.favorites}<span class="extra-filter">Favorites</span
         >{/if}{#if values.availability !== 'all'}<span class="extra-filter"
           >{values.availability === 'present' ? 'On my PC' : 'Not confirmed on PC'}</span
-        >{/if}{#if values.tag}<span class="extra-filter">{values.tag}</span>{/if}
+        >{/if}
     </div>{/if}
 </div>
 

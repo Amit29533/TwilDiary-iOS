@@ -626,3 +626,101 @@ test('a re-sync skips settled plays and titles in bulk yet still finds every rea
   assert.ok(steps < 400, `the re-sync preview took ${steps} build requests`);
   assert.equal(fake.state.posts.length, 0);
 });
+
+test('ready rating and watchlist pulls and pushes apply in PULL_BATCH batches and plan existing titles in bulk', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await connectFixture(f);
+  const fake = fakeTrakt();
+  // Seed 16 remote movie ratings and 8 remote movie watchlist entries.
+  for (let i = 1; i <= 16; i++) fake.state.movieRatings.set(40000 + i, (i % 10) + 1);
+  for (let i = 1; i <= 8; i++) fake.state.movieWatchlist.add(50000 + i);
+  const { id, status: ready } = await preview(f, fake);
+  assert.equal((ready.counts as Record<string, number>).safe, 24);
+  const tmdb = tmdbFixture();
+  let status = ready;
+  let applyRequests = 0;
+  while (Number((status.counts as Record<string, number>).safe) > 0 && applyRequests < 20) {
+    const { db, meter } = metered(f);
+    status = await applySyncChange(
+      db,
+      traktEnv,
+      id,
+      undefined,
+      'apply',
+      tmdb.transport,
+      fake.transport
+    );
+    applyRequests++;
+    assert.ok(meter.trips < 20, `bulk title pull made ${meter.trips} D1 round trips`);
+  }
+  // 24 items at PULL_BATCH = 8 take exactly 3 bulk apply requests.
+  assert.equal(applyRequests, 3);
+  assert.equal((status.counts as Record<string, number>).applied, 24);
+  // Complete the run.
+  status = await applySyncChange(
+    f.db,
+    traktEnv,
+    id,
+    undefined,
+    'apply',
+    tmdb.transport,
+    fake.transport
+  );
+  assert.equal(status.run?.state, 'complete');
+
+  // Now change 16 ratings on Trakt for those existing local titles and add 16 new local ratings to push.
+  for (let i = 1; i <= 16; i++) fake.state.movieRatings.set(40000 + i, ((i + 3) % 10) + 1);
+  for (let i = 1; i <= 16; i++) {
+    const titleId = `local-push-${i}`;
+    const tmdbId = 60000 + i;
+    await addManualTitle(f.db, {
+      id: titleId,
+      name: `Local Push ${i}`,
+      category: 'movie',
+      year: 2024,
+      status: 'completed'
+    });
+    f.sqlite
+      .prepare(
+        "INSERT INTO provider_identities(id,title_id,provider,kind,external_id) VALUES(?,?,'tmdb','movie',?)"
+      )
+      .run(`${titleId}-tmdb`, titleId, String(tmdbId));
+    f.sqlite.prepare('UPDATE titles SET score=? WHERE id=?').run((i % 10) + 1, titleId);
+  }
+  const second = (await startSync(f.db, traktEnv, 'round', fake.transport)).id;
+  let planRemoteSteps = 0;
+  status = await syncStatus(f.db, second);
+  while (status.run?.state === 'building') {
+    if (status.run.stage === 'plan-remote-batch') planRemoteSteps++;
+    status = await buildSyncStep(f.db, traktEnv, second, fake.transport);
+  }
+  // All 16 changed remote ratings on existing local titles are decided in 1 bulk plan-remote-batch step.
+  assert.equal(planRemoteSteps, 1);
+  let pushPullRequests = 0;
+  const postsBefore = fake.state.posts.length;
+  while (Number((status.counts as Record<string, number>).safe) > 0 && pushPullRequests < 20) {
+    status = await applySyncChange(
+      f.db,
+      traktEnv,
+      second,
+      undefined,
+      'apply',
+      tmdb.transport,
+      fake.transport
+    );
+    pushPullRequests++;
+  }
+  // 16 rating pulls + 16 rating pushes + 16 watchlist pushes (from the newly imported planned titles)
+  // = 48 items -> 6 bulk requests of 8 items each, and only 2 POSTs to /sync/ratings.
+  assert.equal(pushPullRequests, 6);
+  assert.equal((status.counts as Record<string, number>).applied, 48);
+  assert.equal(
+    fake.state.posts.slice(postsBefore).filter((p) => p.path === '/sync/ratings').length,
+    2
+  );
+  assert.equal(
+    fake.state.posts.slice(postsBefore).filter((p) => p.path === '/sync/watchlist').length,
+    2
+  );
+});

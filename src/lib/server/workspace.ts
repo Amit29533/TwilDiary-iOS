@@ -298,3 +298,59 @@ export async function workspaceTitles(db: Db, params: URLSearchParams) {
     locations
   };
 }
+
+/**
+ * Single-request delta sync (`GET /api/workspace/changes?since=<iso>`).
+ * Returns the current revision token plus either:
+ * - `fullRefreshRequired: false` with the complete rows for the `0..50` titles modified since `since`, or
+ * - `fullRefreshRequired: true` when `since` is outside the delta window, >50 titles changed, or a structural purge occurred.
+ */
+export async function workspaceChanges(
+  db: Db,
+  params: URLSearchParams,
+  readRevision: (
+    db: Db,
+    params?: URLSearchParams
+  ) => Promise<{ revision: string; changedTitleIds?: string[]; fullRefreshRequired?: boolean }>
+) {
+  const cursor = new Date(Date.now() - 1000).toISOString();
+  const since = params.get('since')?.trim() ?? '';
+  if (!since || since.length > 64 || /[\u0000-\u001f]/.test(since) || Number.isNaN(Date.parse(since)))
+    throw new ApiError(400, 'invalid_input', 'Provide a valid ISO timestamp in since');
+  const rev = await readRevision(db, params);
+  if (rev.fullRefreshRequired || !rev.changedTitleIds) {
+    return {
+      cursor,
+      revision: rev.revision,
+      fullRefreshRequired: true,
+      ids: [] as string[],
+      titles: [],
+      episodes: [],
+      events: [],
+      locations: []
+    };
+  }
+  if (!rev.changedTitleIds.length) {
+    return {
+      cursor,
+      revision: rev.revision,
+      fullRefreshRequired: false,
+      ids: [] as string[],
+      titles: [],
+      episodes: [],
+      events: [],
+      locations: []
+    };
+  }
+  const delta = await workspaceTitles(
+    db,
+    new URLSearchParams({ ids: rev.changedTitleIds.join(',') })
+  );
+  return {
+    cursor,
+    revision: rev.revision,
+    fullRefreshRequired: false,
+    ...delta
+  };
+}
+

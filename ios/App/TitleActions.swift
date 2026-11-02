@@ -65,11 +65,30 @@ extension DiaryStore {
                 switch change {
                 case .record(let operation, let episode, let date):
                     let receipt: EpisodeWatchReceipt = try await self.read("/api/titles/\(title.id)/watches", method: "POST", body: ["operationId": operation, "episodeId": episode, "watchedAt": date, "rewatch": false])
+                    self.recordDirectProviderMutation(
+                        .markWatch(
+                            operationId: receipt.event.operationId,
+                            titleId: title.id,
+                            episodeId: receipt.event.episodeId ?? episode,
+                            watchedAt: receipt.event.watchedAt ?? receipt.event.recordedAt,
+                    recordedAt: receipt.event.recordedAt,
+                    rewatch: false
+                        ),
+                        operationId: operation
+                    )
                     if receipt.added || (receipt.event.operationId == operation && receipt.event.version == 1 && receipt.event.revokedAt == nil) {
                         transaction.undo.append((receipt.event, "revoke"))
                     }
                 case .revoke(let event):
                     let receipt: EpisodeEventReceipt = try await self.read("/api/watch-events/\(event.id)", method: "PATCH", body: ["action": "revoke", "expectedVersion": event.version ?? 1])
+                    self.recordDirectProviderMutation(
+                        .revokeWatch(
+                            operationId: receipt.event.operationId,
+                            titleId: title.id,
+                            expectedVersion: event.version ?? 1,
+                            revokedAt: receipt.event.revokedAt ?? self.now.ISO8601Format()
+                        )
+                    )
                     transaction.undo.append((receipt.event, "restore"))
                 }
                 transaction.remaining.removeFirst()
@@ -96,6 +115,18 @@ extension DiaryStore {
             do { receipt = try await self.read("/api/titles/\(title.id)/watches", method: "POST", body: operation) }
             catch { self.rejectPendingViewing(key: key, error: error); throw error }
             self.clearPendingViewing(key: key)
+            let opID = (operation["operationId"] as? String) ?? receipt.event.id
+            self.recordDirectProviderMutation(
+                .markWatch(
+                    eventId: receipt.event.id,
+                    titleId: title.id,
+                    episodeId: receipt.event.episodeId ?? episode?.id,
+                    watchedAt: receipt.event.watchedAt ?? receipt.event.recordedAt,
+                    recordedAt: receipt.event.recordedAt,
+                    rewatch: rewatch
+                ),
+                operationId: opID
+            )
             if receipt.added || (receipt.event.operationId == operation["operationId"] as? String && receipt.event.version == 1 && receipt.event.revokedAt == nil) {
                 self.installUndo([(receipt.event, "revoke")], label: "Watch marked")
                 confirmed = receipt.event
@@ -109,6 +140,14 @@ extension DiaryStore {
             var undo: [(event: WatchEvent, action: String)] = []
             for event in reviewed {
                 let receipt: EpisodeEventReceipt = try await self.read("/api/watch-events/\(event.id)", method: "PATCH", body: ["action": "revoke", "expectedVersion": event.version ?? 1])
+                self.recordDirectProviderMutation(
+                    .revokeWatch(
+                        eventId: receipt.event.id,
+                        titleId: episode.titleId,
+                        expectedVersion: event.version ?? 1,
+                        revokedAt: receipt.event.revokedAt ?? self.now.ISO8601Format()
+                    )
+                )
                 undo.append((receipt.event, "restore"))
                 self.installUndo(undo, label: "Watch removed")
             }

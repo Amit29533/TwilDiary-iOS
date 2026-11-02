@@ -55,6 +55,8 @@ struct TitleDetailView: View {
     @State private var preparingSeason = false
     @State private var seasonRequest = UUID()
     @State private var seasonLoadError: String?
+    @State private var criticScores: [MDBListSyncEngine.SourceRating] = []
+    @State private var newTagText = ""
     var body: some View {
         Group {
             if let title = store.title(id) {
@@ -63,6 +65,27 @@ struct TitleDetailView: View {
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title)
+                                if !criticScores.isEmpty {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 6) {
+                                            ForEach(criticScores, id: \.source) { item in
+                                                HStack(spacing: 4) {
+                                                    Text(item.source.uppercased())
+                                                        .font(.system(size: 10.5, weight: .medium))
+                                                        .foregroundStyle(.secondary)
+                                                    Text(item.score.map { "\($0)%" } ?? (item.value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—"))
+                                                        .font(.system(size: 11.5, weight: .semibold))
+                                                }
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 5)
+                                                .background(.white.opacity(0.06), in: Capsule())
+                                                .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                                            }
+                                        }
+                                    }
+                                    .padding(.top, -18)
+                                    .accessibilityIdentifier("title-critic-breakdown")
+                                }
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -97,6 +120,9 @@ struct TitleDetailView: View {
                                     Button { Task { await store.patch(title, values: ["favorite": !title.favorite]) } } label: { Image(systemName: title.favorite ? "heart.fill" : "heart") }.accessibilityLabel("Favorite").disabled(store.writesBlocked)
                                     Menu {
                                             Button("Community information", systemImage: "info.circle") { showInformation = true }
+                                            if title.tmdbId != nil {
+                                                Button("Refresh metadata", systemImage: "arrow.clockwise") { Task { await store.refreshTitleMetadata(title) } }.disabled(store.writesBlocked)
+                                            }
                                             Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patch(title, values: ["favorite": !title.favorite]) } }.disabled(store.writesBlocked)
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
@@ -152,6 +178,15 @@ struct TitleDetailView: View {
             }
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
             .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
+            .task(id: title.id) {
+                criticScores = []
+                guard let apiKey = store.providerSettings.mdblist.apiKey, !apiKey.isEmpty,
+                      let tmdbId = title.tmdbId else { return }
+                let client = DirectProviderClient()
+                if let summary = try? await client.fetchMDBListRatings(apiKey: apiKey, tmdbId: tmdbId, isSeries: title.isSeries) {
+                    criticScores = summary.ratings.filter { ($0.score ?? 0) > 0 || ($0.value ?? 0) > 0 }
+                }
+            }
             .onChange(of: title.version) { _, _ in
                 guard initializedEditor else { return }
                 notesField.observe(.init(value: title.notes, version: title.version))
@@ -168,6 +203,23 @@ struct TitleDetailView: View {
         return NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title.name).font(.system(size: 15)).foregroundStyle(.secondary)
+                DisclosureGroup("Collections") {
+                    InlineFlowLayout {
+                        ForEach(title.tags ?? [], id: \.self) { tag in
+                            Button { Task { await store.patch(title, values: ["tags": (title.tags ?? []).filter { $0 != tag }]) } } label: {
+                                Label(tag, systemImage: "xmark.circle").font(.caption)
+                            }.buttonStyle(.plain).disabled(store.writesBlocked)
+                        }
+                    }
+                    HStack {
+                        TextField("Add collection tag", text: $newTagText).accessibilityIdentifier("title-new-tag")
+                        Button("Add") {
+                            let value = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !value.isEmpty, value.count <= 64, !(title.tags ?? []).contains(value), (title.tags ?? []).count < 20 else { return }
+                            Task { if await store.patch(title, values: ["tags": (title.tags ?? []) + [value]]) { newTagText = "" } }
+                        }.disabled(store.writesBlocked || newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }.font(.subheadline).padding(.horizontal, 14)
                 NotesEditor(text: $notesField.draft, accent: theme.accent)
                 if notesField.conflict != nil {
                     fieldConflict("Notes changed elsewhere.", useSaved: { notesField.useSaved() }, keepDraft: { notesField.keepDraft() })
@@ -184,8 +236,8 @@ struct TitleDetailView: View {
                             .disabled(store.writesBlocked || !notesField.isDirty || notesField.submission == nil || count > 20_000)
                     }
                 }
-        // A short sheet: the note field and its count, not half the screen.
-        }.presentationDetents([.height(320)]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
+        // Notes and collections expand together on smaller devices.
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(notesField.isDirty)
     }
     /// "On your drive": where the files are, at a glance; the full list opens in the locations sheet.
     private func driveRow(_ title: MediaTitle) -> some View {

@@ -1756,6 +1756,155 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertTrue(store.workspace.events.isEmpty)
         XCTAssertNil(cache.load(scope: credential.cacheScope))
     }
+    func testForegroundDeltaRefreshReloadsOnlyChangedTitlesAndOutboxProjectsImmediately() async throws {
+        let original = PreviewData.workspace
+        let pages = try workspacePages(original)
+        let revA = String(repeating: "a", count: 32)
+        let revB = String(repeating: "b", count: 32)
+        var modified = original
+        if let idx = modified.titles.firstIndex(where: { $0.id == "again" }) {
+            modified.titles[idx].score = 9.5
+            modified.titles[idx].version = (modified.titles[idx].version ?? 1) + 1
+        }
+        let targetedPayload = try JSONSerialization.data(withJSONObject: [
+            "ids": ["again"],
+            "titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.titles.filter { $0.id == "again" })),
+            "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.episodes.filter { $0.titleId == "again" })),
+            "events": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.events.filter { $0.titleId == "again" })),
+            "locations": try JSONSerialization.jsonObject(with: JSONEncoder().encode(modified.locations.filter { $0.titleId == "again" }))
+        ])
+        let targetedReply = String(decoding: targetedPayload, as: UTF8.self)
+
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" {
+                return .init(#"{"revision":"\#(revA)"}"#)
+            }
+            return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
+        }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let outboxStore = MemorySyncOutboxStore()
+        let directConfiguration = URLSessionConfiguration.ephemeral
+        directConfiguration.protocolClasses = [StubProtocol.self]
+        directConfiguration.httpAdditionalHeaders = ["X-TwilDiary-Test-Case": StubProtocol.state.testIdentifier]
+        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: outboxStore, providerSettingsStore: EmptyProviderSettings(), directClient: DirectProviderClient(session: URLSession(configuration: directConfiguration)))
+        let start = Date.now
+        await store.refreshOnForeground(at: start)
+        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+
+        StubProtocol.state.reset { request in
+            if request.url?.path == "/api/workspace/revision" {
+                return .init(#"{"revision":"\#(revB)","changedTitleIds":["again"]}"#)
+            }
+            if request.url?.path == "/api/workspace/titles" {
+                return .init(targetedReply)
+            }
+            return .init(500, #"{"error":"Unexpected full workspace download"}"#)
+        }
+        await store.refreshOnForeground(at: start.addingTimeInterval(20))
+        XCTAssertEqual(StubProtocol.state.recorded().count, 2, "Delta foreground sync needs only revision + targeted titles read")
+        XCTAssertEqual(store.title("again")?.score, 9.5)
+
+        let entry = try store.enqueueOptimistic(
+            .patchTitle(titleId: "again", expectedVersion: 2, status: nil, score: 10.0, clearScore: false, favorite: true, queued: nil, notes: "Instant local-first edit"),
+            providers: [.cloudflare, .trakt]
+        )
+        XCTAssertEqual(store.title("again")?.score, 10.0)
+        XCTAssertEqual(store.title("again")?.favorite, true)
+        XCTAssertEqual(outboxStore.load(scope: credential.cacheScope).count, 1)
+        try store.acknowledgeOutbox(entry.id, provider: .cloudflare)
+        XCTAssertEqual(outboxStore.load(scope: credential.cacheScope).pending(for: .trakt).count, 1)
+        try store.acknowledgeOutbox(entry.id, provider: .trakt)
+        XCTAssertTrue(outboxStore.load(scope: credential.cacheScope).isEmpty)
+
+        // Verify custom TMDB token & external provider config updates and watch-logging fan-out
+        store.updateCustomTmdbToken("  custom-tmdb-read-token  ")
+        XCTAssertEqual(store.providerSettings.customTmdbToken, "custom-tmdb-read-token")
+        store.updateProviderConfig(ExternalProviderConfig(
+            provider: .wetrakr,
+            enabled: true,
+            loggingMethod: .serverAndDirectAPI,
+            clientId: "wtk_test_cid",
+            accessToken: "wtk_test_token"
+        ))
+        XCTAssertEqual(store.providerSettings.activeDirectLoggingProviders, Set([.wetrakr]))
+        store.recordDirectProviderMutation(
+            .markWatch(
+                operationId: "op-direct-1",
+                titleId: "again",
+                episodeId: nil,
+                watchedAt: "2026-10-23T12:00:00Z",
+                recordedAt: "2026-10-23T12:00:00Z",
+                rewatch: false
+            ),
+            operationId: "op-direct-1"
+        )
+        XCTAssertEqual(store.outbox.pending(for: .wetrakr).count, 1)
+    }
+    func testOfflinePatchPersistsBeforePublishingAndReplaysAfterRelaunch() async throws {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let cache = MemoryWorkspaceCache(), queue = MemorySyncOutboxStore()
+        let original = PreviewData.workspace
+        let title = try XCTUnwrap(original.titles.first { $0.id == "again" })
+        try cache.save(original, scope: credential.cacheScope, at: .now)
+        StubProtocol.state.reset { _ in var reply = StubProtocol.Reply("{}"); reply.failureCode = .notConnectedToInternet; return reply }
+        let store = DiaryStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
+        let saved = await store.patch(title, values: ["score": 9.5, "tags": ["Weekend"]])
+        XCTAssertTrue(saved); XCTAssertEqual(store.pendingDiaryEdits, 1)
+        XCTAssertEqual(store.title(title.id)?.score, 9.5)
+        XCTAssertFalse(store.needsMutationRefresh)
+        XCTAssertEqual(queue.load(scope: credential.cacheScope).count, 1)
+        let relaunched = DiaryStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
+        XCTAssertEqual(relaunched.title(title.id)?.tags, ["Weekend"])
+        let remote = original.applying(.patchTitle(titleId: title.id, expectedVersion: title.version, status: nil, score: 9.5, clearScore: false, favorite: nil, queued: nil, notes: nil, tags: ["Weekend"]))
+        let targeted = try targetedReply(remote, title: title.id)
+        let receipt = #"{"title":{"id":"\#(title.id)","version":\#((title.version ?? 1) + 1)}}"#
+        StubProtocol.state.reset { request in request.httpMethod == "PATCH" ? .init(receipt) : .init(targeted) }
+        await relaunched.flushOutbox()
+        XCTAssertEqual(relaunched.pendingDiaryEdits, 0)
+        XCTAssertTrue(queue.load(scope: credential.cacheScope).isEmpty)
+        XCTAssertEqual(relaunched.title(title.id)?.score, 9.5)
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.httpMethod == "PATCH" }.count, 1)
+    }
+
+    func testConflictingRemotePatchKeepsThePendingIntentAndDoesNotRebaseOverIt() async throws {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let cache = MemoryWorkspaceCache(), queue = MemorySyncOutboxStore()
+        let original = PreviewData.workspace
+        try cache.save(original, scope: credential.cacheScope, at: .now)
+        let store = DiaryStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
+        _ = try store.enqueueOptimistic(.patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 9.5, clearScore: false, favorite: nil, queued: nil, notes: nil), uncertain: true)
+        let remote = original.applying(.patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 2, clearScore: false, favorite: nil, queued: nil, notes: nil))
+        let targeted = try targetedReply(remote, title: "again")
+        StubProtocol.state.reset { request in request.httpMethod == "PATCH" ? .init(409, #"{"error":{"message":"Version conflict"}}"#) : .init(targeted) }
+        await store.flushOutbox()
+        XCTAssertEqual(store.pendingDiaryEdits, 1)
+        XCTAssertEqual(store.title("again")?.score, 9.5)
+        XCTAssertTrue(store.outboxNotice?.contains("changed on another device") == true)
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.httpMethod == "PATCH" }.count, 1)
+    }
+
+    func testOfflineStorageFailureCannotClaimTheEditWasSaved() async throws {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let cache = MemoryWorkspaceCache(), original = PreviewData.workspace
+        try cache.save(original, scope: credential.cacheScope, at: .now)
+        let title = try XCTUnwrap(original.titles.first { $0.id == "again" })
+        let store = DiaryStore(api: api(storage), cache: cache, outboxStore: RejectingOutbox(), providerSettingsStore: EmptyProviderSettings())
+        StubProtocol.state.reset { _ in var reply = StubProtocol.Reply("{}"); reply.failureCode = .notConnectedToInternet; return reply }
+        let saved = await store.patch(title, values: ["score": 9.5])
+        XCTAssertFalse(saved); XCTAssertEqual(store.pendingDiaryEdits, 0)
+        XCTAssertEqual(store.title(title.id)?.score, title.score)
+        XCTAssertTrue(store.error?.contains("Synthetic disk failure") == true)
+    }
+
+    private func targetedReply(_ workspace: Workspace, title: String) throws -> String {
+        let rows: [String: Any] = ["ids": [title],
+            "titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.titles.filter { $0.id == title })),
+            "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.episodes.filter { $0.titleId == title })),
+            "events": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.events.filter { $0.titleId == title })),
+            "locations": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.locations.filter { $0.titleId == title }))]
+        return String(decoding: try JSONSerialization.data(withJSONObject: rows), as: UTF8.self)
+    }
+
     private func workspacePages(_ workspace: Workspace) throws -> [String: String] {
         let sections: [String: Any] = ["titles": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.titles)),
                                        "episodes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace.episodes)),
@@ -1774,4 +1923,14 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         }
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
+}
+
+private struct EmptyProviderSettings: ProviderSettingsStoring {
+    func load() -> ProviderConnectionSettings { ProviderConnectionSettings() }
+    func save(_ settings: ProviderConnectionSettings) {}
+}
+private struct RejectingOutbox: SyncOutboxStoring {
+    func load(scope: String) -> SyncOutboxQueue { SyncOutboxQueue() }
+    func save(_ queue: SyncOutboxQueue, scope: String) throws { throw APIError.message("Synthetic disk failure") }
+    func removeAll() throws {}
 }

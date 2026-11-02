@@ -1,6 +1,11 @@
 import { building, dev } from '$app/env';
 import type { Handle } from '@sveltejs/kit/hooks';
-import { AccessFailure, assertSameOriginWrite, createAccessVerifier } from '#lib/server/access.ts';
+import {
+  AccessFailure,
+  assertSameOriginWrite,
+  createAccessVerifier,
+  verifyMultiMethodRequest
+} from '#lib/server/access.ts';
 import { localDevelopmentAllowed, localNetworkAllowed } from '#lib/server/local-development.ts';
 import { bumpWorkspaceRevision, changesDiary } from '#lib/server/workspace-revision.ts';
 import { withSavedKeys } from '#lib/server/api-keys.ts';
@@ -56,26 +61,36 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (dev && !event.url.pathname.startsWith('/api/')) return resolve(event);
   try {
     const env = event.locals.bindings;
-    if (!env?.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUDIENCE || !env.ACCESS_OWNER_EMAIL) {
-      throw new AccessFailure(
-        503,
-        'Private Cloudflare Access setup is required before this app is hosted.'
-      );
+    let cfVerifier: ReturnType<typeof createAccessVerifier> | undefined;
+    if (env?.ACCESS_TEAM_DOMAIN && env.ACCESS_AUDIENCE && env.ACCESS_OWNER_EMAIL) {
+      const issuer =
+        'https://' + env.ACCESS_TEAM_DOMAIN.replace(/^https:\/\//, '').replace(/\/$/, '');
+      const key = JSON.stringify([issuer, env.ACCESS_AUDIENCE, env.ACCESS_OWNER_EMAIL]);
+      if (cached?.key !== key)
+        cached = {
+          key,
+          verify: createAccessVerifier({
+            issuer,
+            audience: env.ACCESS_AUDIENCE,
+            ownerEmail: env.ACCESS_OWNER_EMAIL
+          })
+        };
+      cfVerifier = cached.verify;
     }
-    const issuer =
-      'https://' + env.ACCESS_TEAM_DOMAIN.replace(/^https:\/\//, '').replace(/\/$/, '');
-    const key = JSON.stringify([issuer, env.ACCESS_AUDIENCE, env.ACCESS_OWNER_EMAIL]);
-    if (cached?.key !== key)
-      cached = {
-        key,
-        verify: createAccessVerifier({
-          issuer,
-          audience: env.ACCESS_AUDIENCE,
-          ownerEmail: env.ACCESS_OWNER_EMAIL
-        })
-      };
-    event.locals.owner = await cached.verify(event.request);
-    // Keys replaced in Settings → APIs stand in for their Worker secrets, for the owner only.
+    if (event.url.pathname === '/api/auth') {
+      assertSameOriginWrite(event.request);
+      try {
+        event.locals.owner = await verifyMultiMethodRequest(event.request, env, cfVerifier);
+      } catch {
+        /* Unauthenticated callers may inspect or initiate sign-in at /api/auth */
+      }
+      const response = await resolve(event);
+      response.headers.set('Cache-Control', 'private, no-store');
+      response.headers.set('X-Content-Type-Options', 'nosniff');
+      return response;
+    }
+    event.locals.owner = await verifyMultiMethodRequest(event.request, env, cfVerifier);
+    // Only authenticated owners may replace server provider keys.
     if (event.url.pathname.startsWith('/api/')) event.locals.bindings = await withSavedKeys(env);
     assertSameOriginWrite(event.request);
     const response = await resolve(event);

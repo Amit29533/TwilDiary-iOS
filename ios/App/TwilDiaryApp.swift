@@ -3,7 +3,7 @@ import UIKit
 import TwilDiaryCore
 
 @main struct TwilDiaryApp: App {
-    @State private var store = DiaryStore()
+    @State private var store: DiaryStore
     @State private var router = AppRouter()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     init() {
@@ -37,6 +37,10 @@ import TwilDiaryCore
             }
         }
         #endif
+        let diaryStore = DiaryStore()
+        _store = State(initialValue: diaryStore)
+        BackgroundSyncCoordinator.shared.registerBackgroundTasksIfNeeded(store: diaryStore)
+        diaryStore.observeConnectivity()
     }
     var body: some Scene {
         // No app-wide glass button style: it turned every text link, toolbar item and
@@ -66,7 +70,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
     }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, anilist, cloudflare, apis, favourites, about }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, wetrakr, simkl, mdblist, anilist, cloudflare, apis, favourites, about }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -249,6 +253,7 @@ struct RootView: View {
                     case .statistics: StatsView()
                     case .explore: ExploreView()
                     case .canvas: CanvasView()
+                    case .calendar: AiringCalendarView()
                     case .history: HistoryView()
                     case .files: FilesView()
                     case .jellyfin: JellyfinLibraryView()
@@ -261,6 +266,9 @@ struct RootView: View {
                     case .cloudflare: CloudflareUsageView()
                     case .apis: APIsView()
                     case .favourites: FavouritesView()
+                    case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)
+                    case .simkl: ExternalProviderConnectionView(provider: .simkl)
+                    case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
                     case .about: AboutView()
                     } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
@@ -283,6 +291,13 @@ private struct RootNoticeBanner: View {
                 Button("Refresh") { Task { await store.refresh() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
                     .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
             }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).fixedSize().padding(.bottom, 140)
+        } else if store.pendingDiaryEdits > 0 {
+            HStack(spacing: 10) {
+                Text("Saved on device · \(store.pendingDiaryEdits) pending sync").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Button("Retry") { Task { await store.flushOutbox() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
+                    .disabled(store.replayingOutbox || store.busy)
+            }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).padding(.horizontal, 20).padding(.bottom, 140)
+                .accessibilityIdentifier("pending-sync-notice")
         } else if let error = store.error {
             HStack(spacing: 8) { Text(error).font(.system(size: 12)).lineLimit(2); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly).frame(minWidth: 36, minHeight: 40) }
                 .padding(.leading, 14).padding(.trailing, 4).glassEffect(.regular, in: Capsule()).padding(.horizontal, 24).padding(.bottom, 140)

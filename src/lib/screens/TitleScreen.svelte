@@ -16,6 +16,7 @@
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { useDiary } from '#lib/client/diary-context.ts';
+  import { requestJson } from '#lib/client/api.ts';
   import { categoryLabels, statusLabels, isSeries, type WatchStatus } from '#lib/domain/types.ts';
   import {
     episodeHasAired,
@@ -142,7 +143,30 @@
   let expandedEpisodes = $state<string[]>([]);
   let draftId = $state('');
   let notes = $state('');
+  let tagDraft = $state('');
   let error = $state('');
+
+  async function addCollectionTag(rawTag?: string) {
+    if (!title) return;
+    const cleanTag = (rawTag ?? tagDraft).normalize('NFKC').trim();
+    if (!cleanTag || cleanTag.length > 60) return;
+    const current = Array.isArray(title.tags) ? title.tags : [];
+    if (current.includes(cleanTag) || current.length >= 20) {
+      tagDraft = '';
+      return;
+    }
+    tagDraft = '';
+    await diary.updateTitle(title.id, { tags: [...current, cleanTag] });
+  }
+
+  async function removeCollectionTag(tag: string) {
+    if (!title) return;
+    const current = Array.isArray(title.tags) ? title.tags : [];
+    await diary.updateTitle(
+      title.id,
+      { tags: current.filter((item) => item !== tag) }
+    );
+  }
   let watchError = $state('');
   let copied = $state('');
   let allEpisodes = $state(false);
@@ -153,6 +177,31 @@
   let notePanel = $state<HTMLDetailsElement>();
   let savedEpisodeError = $state('');
   let savedEpisodeLoading = $state(false);
+  let criticSources = $state<Array<{ source: string; label: string; value: number; score: number }>>([]);
+  $effect(() => {
+    const currentId = !catalog && diary.real ? title?.id : undefined;
+    if (!currentId || !/^[a-zA-Z0-9_-]{1,128}$/.test(currentId)) {
+      criticSources = [];
+      return;
+    }
+    let active = true;
+    void requestJson<{
+      ratings?: Record<
+        string,
+        { sources?: Array<{ source: string; label: string; value: number; score: number }> }
+      >;
+    }>(`/api/library/ratings?source=mdblist&breakdown=1&ids=${encodeURIComponent(currentId)}`)
+      .then((res) => {
+        if (!active) return;
+        criticSources = res.ratings?.[currentId]?.sources ?? [];
+      })
+      .catch(() => {
+        if (active) criticSources = [];
+      });
+    return () => {
+      active = false;
+    };
+  });
   let episodeGeneration = 0;
   let retryEpisode: string | null = null;
   async function loadSavedSeason(
@@ -406,6 +455,20 @@
                 ></button
               >{/if}
           </div>
+          {#if criticSources.length > 0}
+            <div class="critic-breakdown" aria-label="Multi-critic scores">
+              {#each criticSources as item (item.source)}
+                <span class="critic-pill">
+                  <small>{item.label}</small>
+                  <strong>
+                    {item.source === 'tomatoes' || item.source === 'rotten_tomatoes' || item.source === 'metacritic'
+                      ? `${item.score}%`
+                      : item.value.toFixed(1)}
+                  </strong>
+                </span>
+              {/each}
+            </div>
+          {/if}
           <div class="overview-wrap" class:expanded={fullOverview}>
             <p id="title-overview" class="overview" class:expanded={fullOverview}>
               {title.overview || 'Add your own thoughts in Notes.'}
@@ -749,6 +812,43 @@
             <summary
               ><NotebookPen size={20} />Notes<ChevronDown size={17} class="disclosure" /></summary
             >
+            <div class="collection-tags-box">
+              <div class="tags-chip-row">
+                {#each title.tags ?? [] as tag (tag)}
+                  <span class="collection-tag-pill">
+                    <span>{tag}</span>
+                    <button
+                      type="button"
+                      aria-label="Remove {tag} collection"
+                      disabled={!diary.ready || diary.saving}
+                      onclick={() => void removeCollectionTag(tag)}>×</button
+                    >
+                  </span>
+                {/each}
+              </div>
+              <div class="tag-add-row">
+                <input
+                  type="text"
+                  placeholder="Add collection tag (e.g. Weekend, Fall Anime)…"
+                  maxlength="60"
+                  bind:value={tagDraft}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addCollectionTag();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  class="tag-add-btn"
+                  disabled={!diary.ready || diary.saving || !tagDraft.trim()}
+                  onclick={() => void addCollectionTag()}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
             <form onsubmit={save}>
               <label class="sr-only" for="title-notes">Notes</label><textarea
                 id="title-notes"
@@ -1771,6 +1871,92 @@
     .tracking-panel {
       padding: 22px;
     }
+  }
+  .critic-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .critic-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.72rem;
+    line-height: 1;
+  }
+  .critic-pill small {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 500;
+  }
+  .critic-pill strong {
+    color: var(--text);
+    font-weight: 650;
+  }
+  .collection-tags-box {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .tags-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .collection-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .collection-tag-pill button {
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+  }
+  .tag-add-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .tag-add-row input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 11px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8rem;
+  }
+  .tag-add-btn {
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
   }
   @media (prefers-reduced-motion: reduce) {
     summary > :global(.disclosure) {

@@ -370,4 +370,21 @@ import TwilDiaryCore
         XCTAssertEqual(service.applies, 0); XCTAssertNil(checkpoint.runID); XCTAssertNil(controller.error)
         XCTAssertFalse(controller.restoringApproval)
     }
+    func testDynamicIslandLiveActivityStateTracksTraktAndWeTrakrProgress() async {
+        let service = TransferService(total: 4), clock = TransferClock()
+        let controller = TraktController(service: service, clock: { clock.now }, sleep: { await clock.sleep($0) })
+        await controller.refresh()
+        XCTAssertEqual(BackgroundSyncCoordinator.shared.currentActivityState?.provider, .trakt)
+        XCTAssertEqual(BackgroundSyncCoordinator.shared.currentActivityState?.phase, .importing)
+        XCTAssertEqual(BackgroundSyncCoordinator.shared.currentActivityState?.percent, 0)
+
+        controller.suspendForBackground()
+        XCTAssertEqual(BackgroundSyncCoordinator.shared.currentActivityState?.phase, .paused)
+
+        BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: .wetrakr, completed: 2, total: 4, phase: .flushingOutbox)
+        XCTAssertEqual(BackgroundSyncCoordinator.shared.currentActivityState?.compactBadge, "WT")
+        XCTAssertEqual(BackgroundSyncCoordinator.shared.currentActivityState?.percent, 50)
+        BackgroundSyncCoordinator.shared.endLiveActivity()
+        XCTAssertNil(BackgroundSyncCoordinator.shared.currentActivityState)
+    }
 }

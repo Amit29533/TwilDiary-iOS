@@ -8,6 +8,12 @@ import TwilDiaryCore
     @State private var showSignIn = false
     /// The side the conflict switch turns back on with: the last one chosen.
     @AppStorage("traktConflictPrefer") private var preferredSide = TraktConflictDefault.local.rawValue
+    @State private var showApiSettings = false
+    @State private var customClientId = ""
+    @State private var customAccessToken = ""
+    @State private var loggingMethod: WatchLoggingMethod = .serverAndDirectAPI
+    @State private var apiSavedMessage: String?
+    @State private var apiTesting = false
     @State private var clock = Date.now
     @State private var groupAction: GroupAction?
     @Environment(\.scenePhase) private var scenePhase
@@ -19,12 +25,17 @@ import TwilDiaryCore
         self.store = store
         _controller = State(initialValue: store.traktController)
         _incoming = State(initialValue: IncomingTraktController(service: makeIncomingTraktService(store: store)))
+        let saved = store.providerSettings.trakt
+        _customClientId = State(initialValue: saved.clientId ?? "")
+        _customAccessToken = State(initialValue: saved.accessToken ?? "")
+        _loggingMethod = State(initialValue: saved.loggingMethod)
     }
     var body: some View {
         @Bindable var controller = controller
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 24) {
                 connection
+                apiAndLoggingSettings
                 if controller.restoringApproval { restoringImport }
                 if controller.status?.connected == true {
                     // A running scan leads the page; settings follow it.
@@ -235,6 +246,133 @@ import TwilDiaryCore
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
     }
     private var scanning: Bool { controller.sync?.run?.state == "building" }
+    private var apiAndLoggingSettings: some View {
+        let saved = store.providerSettings.trakt
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                HStack(spacing: 8) {
+                    DiaryIcon(name: "key-round", size: 16).foregroundStyle(theme.accent)
+                    Text("API & logging settings").font(.subheadline.weight(.semibold))
+                }
+                Spacer()
+                Button(showApiSettings ? "Hide" : (saved.hasCredentials ? "Change API" : "Configure API")) {
+                    customClientId = saved.clientId ?? ""
+                    customAccessToken = saved.accessToken ?? ""
+                    loggingMethod = saved.loggingMethod
+                    apiSavedMessage = nil
+                    showApiSettings.toggle()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("trakt-api-toggle")
+            }
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Watch logging method").font(.subheadline.weight(.semibold))
+                    Text("Keeps server watch logging and optionally fans out directly to Trakt").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Picker("Watch logging method", selection: $loggingMethod) {
+                    ForEach(WatchLoggingMethod.allCases) { method in
+                        Text(method.label).tag(method)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: loggingMethod) { _, next in
+                    var updated = store.providerSettings.trakt
+                    updated.loggingMethod = next
+                    store.updateProviderConfig(updated)
+                }
+                .accessibilityIdentifier("trakt-logging-method-picker")
+            }
+            if let apiSavedMessage {
+                Text(apiSavedMessage).font(.caption).foregroundStyle(.mint)
+                    .accessibilityIdentifier("trakt-api-saved-message")
+            }
+            if showApiSettings {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Client ID (trakt-api-key)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    TextField("Your Trakt app Client ID", text: $customClientId)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(12)
+                        .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                        .accessibilityIdentifier("trakt-client-id-field")
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Direct Access Token / PAT (optional Bearer)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    SecureField("Optional token for direct device API sync", text: $customAccessToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(12)
+                        .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                        .accessibilityIdentifier("trakt-access-token-field")
+                }
+                HStack(spacing: 10) {
+                    Button("Save API settings") {
+                        let hasCid = !customClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        let cfg = ExternalProviderConfig(
+                            provider: .trakt,
+                            enabled: hasCid,
+                            loggingMethod: loggingMethod,
+                            clientId: customClientId,
+                            accessToken: customAccessToken,
+                            username: controller.status?.username ?? saved.username,
+                            lastSyncedAt: saved.lastSyncedAt
+                        )
+                        store.updateProviderConfig(cfg)
+                        apiSavedMessage = "Trakt API settings saved."
+                        showApiSettings = false
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(customClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("trakt-api-save")
+
+                    if !customClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                       !customAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button(apiTesting ? "Testing…" : "Test API") {
+                            Task {
+                                apiTesting = true
+                                defer { apiTesting = false }
+                                let cfg = ExternalProviderConfig(
+                                    provider: .trakt,
+                                    enabled: true,
+                                    loggingMethod: loggingMethod,
+                                    clientId: customClientId,
+                                    accessToken: customAccessToken
+                                )
+                                do {
+                                    try await store.testProviderConnection(cfg)
+                                    store.updateProviderConfig(cfg)
+                                    apiSavedMessage = "Direct Trakt API verified."
+                                } catch {
+                                    apiSavedMessage = error.localizedDescription
+                                }
+                            }
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(apiTesting)
+                        .accessibilityIdentifier("trakt-api-test")
+                    }
+
+                    if saved.hasCredentials {
+                        Button("Reset API", role: .destructive) {
+                            customClientId = ""
+                            customAccessToken = ""
+                            store.updateProviderConfig(ExternalProviderConfig(provider: .trakt, loggingMethod: loggingMethod))
+                            apiSavedMessage = "Reverted to server Trakt settings."
+                            showApiSettings = false
+                        }
+                        .buttonStyle(.glass)
+                        .accessibilityIdentifier("trakt-api-reset")
+                    }
+                }
+            }
+        }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-api-settings-panel")
+    }
     private var preferences: some View {
         @Bindable var controller = controller
         return VStack(alignment: .leading, spacing: 12) {

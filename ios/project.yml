@@ -22,16 +22,19 @@ targets:
     sources:
       - path: App
         excludes: [PrivacyInfo.xcprivacy]
+      - path: Shared
       - path: App/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
+      - target: TwilDiaryWidgets
+        embed: true
       - sdk: AppIntents.framework
       - package: TwilDiaryCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary
         MARKETING_VERSION: '2.0.0'
-        CURRENT_PROJECT_VERSION: '66'
+        CURRENT_PROJECT_VERSION: '67'
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
@@ -41,10 +44,30 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates: YES
         TARGETED_DEVICE_FAMILY: '1'
       configs:
         Release:
           EXCLUDED_SOURCE_FILE_NAMES: 'catalog-*.json trakt-*.json reference-workspace.json'
+  TwilDiaryWidgets:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets, Shared]
+    dependencies:
+      - package: TwilDiaryCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary.widgets
+        MARKETING_VERSION: '2.0.0'
+        CURRENT_PROJECT_VERSION: '67'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Support/Widgets-Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: '1'
   TwilDiaryTests:
     type: bundle.unit-test
     platform: iOS

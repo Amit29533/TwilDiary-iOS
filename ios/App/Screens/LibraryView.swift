@@ -14,6 +14,7 @@ struct LibraryView: View {
     @SceneStorage("library.category") private var categoryRaw = LibraryCategory.all.rawValue
     @SceneStorage("library.status") private var status = "all"
     @SceneStorage("library.genres") private var genresRaw = ""
+    @SceneStorage("library.tag") private var tag = ""
     @SceneStorage("library.drive") private var drive = ""
     @SceneStorage("library.favorites") private var favoritesOnly = false
     @State private var showFilters = false
@@ -145,11 +146,11 @@ struct LibraryView: View {
                 CategoryPicker(selection: Binding(get: { category }, set: { category = $0 }))
                 statusChips
                 sortRow
-                if ratingSource == .trakt {
-                    if store.communityRatings.loading { ratingStatus("Loading Trakt community ratings…") }
+                if ratingSource == .trakt || ratingSource == .mdblist {
+                    if store.communityRatings.loading { ratingStatus("Loading community ratings…") }
                     else if store.communityRatings.unavailable {
                         HStack(alignment: .top, spacing: 8) {
-                            Text("Some Trakt ratings are unavailable.").font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            Text("Some \(ratingSource.label) ratings are unavailable.").font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                             Button("Retry") { Task { await store.loadPublicRatings(collection, source: ratingSource, retry: true) } }.font(.system(size: 12, weight: .semibold)).accessibilityIdentifier("ratings-retry")
                         }.padding(.horizontal, 14).padding(.bottom, 10)
                     }
@@ -306,6 +307,15 @@ struct LibraryView: View {
                                 .accessibilityLabel(name).accessibilityValue("\(count) titles").accessibilityIdentifier("filter-genre-" + name)
                         }
                     }
+                    if !collectionTags.isEmpty || !tag.isEmpty {
+                        sheetLabel("Collection")
+                        InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                            sheetChip("All collections", on: tag.isEmpty) { tag = "" }
+                            ForEach(collectionTags, id: \.self) { value in
+                                sheetChip(value, on: tag == value) { tag = value }.accessibilityIdentifier("filter-tag-" + value)
+                            }
+                        }
+                    }
                     sheetLabel("Availability")
                     InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                         sheetChip("Any", on: drive.isEmpty) { drive = "" }.accessibilityIdentifier("filter-disk-any")
@@ -334,7 +344,7 @@ struct LibraryView: View {
             }
             .containerBackground(Color.clear, for: .navigation)
             .navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Clear all") { genres = []; drive = ""; favoritesOnly = false }.tint(theme.accent).disabled(activeFilterCount == 0) } }
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Clear all") { genres = []; tag = ""; drive = ""; favoritesOnly = false }.tint(theme.accent).disabled(activeFilterCount == 0) } }
         }
     }
     private func sheetLabel(_ text: String) -> some View {
@@ -356,23 +366,25 @@ struct LibraryView: View {
     private func applyShortcut() {
         guard router.libraryRevision > appliedShortcutRevision else { return }
         appliedShortcutRevision = router.libraryRevision
-        category = .all; genres = router.libraryGenreShortcut.isEmpty ? [] : [router.libraryGenreShortcut]; drive = router.libraryDiskShortcut; status = "all"; favoritesOnly = false
+        category = .all; genres = router.libraryGenreShortcut.isEmpty ? [] : [router.libraryGenreShortcut]; drive = router.libraryDiskShortcut; status = "all"; tag = ""; favoritesOnly = false
         switch router.libraryShortcut { case "queue": status = "queue"; case "planned", "watching", "completed", "dropped": status = router.libraryShortcut ?? "all"; case "disk": drive = HomeDiskShortcut.all.first?.key ?? ""; case "add": router.search(); default: break }
     }
-    private var filterScope: String { [category.rawValue, status, genresRaw, drive, String(favoritesOnly), sort.rawValue].joined(separator: "\n") }
+    private var filterScope: String { [category.rawValue, status, genresRaw, tag, drive, String(favoritesOnly), sort.rawValue].joined(separator: "\n") }
+    private var collectionTags: [String] { Array(Set(collection.flatMap { $0.tags ?? [] })).sorted() }
     private var collection: [MediaTitle] { store.workspace.activeTitles }
     private var trashCount: Int { store.workspace.titles.count { $0.deletedAt != nil } }
-    private var activeFilterCount: Int { genres.count + (drive.isEmpty ? 0 : 1) + (favoritesOnly ? 1 : 0) }
+    private var activeFilterCount: Int { genres.count + (tag.isEmpty ? 0 : 1) + (drive.isEmpty ? 0 : 1) + (favoritesOnly ? 1 : 0) }
     private var activeFilterNames: [String] {
         var names: [String] = []
         if category != .all { names.append(category.rawValue) }
         if status != "all" { names.append(status.capitalized) }
         names += genres.sorted()
+        if !tag.isEmpty { names.append(tag) }
         if !drive.isEmpty { names.append(driveLabel) }
         if favoritesOnly { names.append("Favorites") }
         return names
     }
-    private func clearFilters() { category = .all; status = "all"; genres = []; drive = ""; favoritesOnly = false }
+    private func clearFilters() { category = .all; status = "all"; genres = []; tag = ""; drive = ""; favoritesOnly = false }
     /// Genres in the current category and status, most common first.
     private var genreCounts: [(String, Int)] {
         let diary = LibraryShelf.make(query(status: status, genres: [], drive: "", favorites: false)).filter { $0.genre != "Without a genre" }.map { ($0.genre, $0.titles.count) }
@@ -417,6 +429,7 @@ struct LibraryView: View {
     private func query(status: String, genres: Set<String>, drive: String, favorites: Bool) -> [MediaTitle] {
         var query = LibraryQuery()
         query.category = categoryKey
+        query.tag = tag
         query.status = ["queue", "jellyfin"].contains(status) ? "all" : status; query.queued = status == "queue"; query.genres = genres; query.favorites = favorites
         // The saved Jellyfin list (JellyfinShelf) works away from home and after sign-out.
         query.jellyfin = status == "jellyfin"; query.jellyfinTitles = status == "jellyfin" ? jellyfin.titleIDs(diary: collection) : []
@@ -430,7 +443,7 @@ struct LibraryView: View {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--ui-testing") && !arguments.contains("--ui-keep-library-preferences") {
-            categoryRaw = LibraryCategory.all.rawValue; status = "all"; genresRaw = ""; drive = ""; favoritesOnly = false
+            categoryRaw = LibraryCategory.all.rawValue; status = "all"; genresRaw = ""; tag = ""; drive = ""; favoritesOnly = false
         }
         #endif
     }

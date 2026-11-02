@@ -54,12 +54,12 @@ struct AccessCredential: Codable {
 }
 
 enum APIError: LocalizedError {
-    case signIn, notModified, message(String), rejected(Int, String), databaseLimit(Date?)
+    case signIn, notModified, message(String), transport(String), rejected(Int, String), databaseLimit(Date?)
     var errorDescription: String? {
         switch self {
         case .signIn: "Your private session expired. Sign in again to continue."
         case .notModified: "Your diary has not changed."
-        case .message(let text): text
+        case .message(let text), .transport(let text): text
         case .rejected(_, let text): text
         case .databaseLimit(let reset):
             if let reset {
@@ -83,6 +83,8 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
 
 @MainActor @Observable final class DiaryAPI {
     var credential: AccessCredential?
+    var customTmdbToken: String?
+    var customMdblistApiKey: String?
     private let session: URLSession
     private let boundedReadSession: URLSession
     private let storage: any SessionStoring
@@ -147,6 +149,12 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("CF_Authorization=\(credential.token)", forHTTPHeaderField: "Cookie")
+        if let tmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines), !tmdbToken.isEmpty {
+            request.setValue(tmdbToken, forHTTPHeaderField: "X-TMDB-Read-Token")
+        }
+        if let mdblistKey = customMdblistApiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !mdblistKey.isEmpty {
+            request.setValue(mdblistKey, forHTTPHeaderField: "X-MDBList-API-Key")
+        }
         if method != "GET" {
             request.setValue(AppConfiguration.backend.absoluteString, forHTTPHeaderField: "Origin")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -213,7 +221,7 @@ private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked 
                 if request.url?.path.hasPrefix("/api/trakt/sync") == true || request.url?.path == "/api/trakt/status" {
                     throw TraktTransferFailure(status: 0, code: "network_unavailable", message: message)
                 }
-                throw APIError.message(message)
+                throw APIError.transport(message)
             }
         }
         throw APIError.message("The diary could not be reached. Please try again.")

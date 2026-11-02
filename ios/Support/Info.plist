@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>UIBackgroundModes</key>
+    <array><string>fetch</string><string>processing</string></array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array><string>com.amit29533.TwilDiary.sync</string><string>com.amit29533.TwilDiary.outbox</string></array>
 	<!-- Jellyfin on the home network usually serves plain HTTP (192.168.x.x:8096). This allows
 	     only local addresses; every other connection keeps App Transport Security. The rest of
 	     the Info.plist is generated from the INFOPLIST_KEY_ build settings in project.yml. -->
