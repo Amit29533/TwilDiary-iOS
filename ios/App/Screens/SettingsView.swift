@@ -11,7 +11,6 @@ struct SettingsView: View {
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showSearch = false
     @State private var confirmSignOut = false
     @State private var summary: TraktController?
     @State private var showExport = false
@@ -20,8 +19,19 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    PageHeader(name: "Settings", onSearch: { showSearch.toggle() }, part: .title).padding(.horizontal, -14).padding(.bottom, -14)
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+                    PageHeader(name: "Profile", part: .title).padding(.horizontal, -14).padding(.bottom, -14)
+                    NavigationLink(value: AppDestination.profile) {
+                        HStack(spacing: 14) {
+                            PersonalAvatar()
+                            VStack(alignment: .leading, spacing: 3) { Text(PersonalProfile.shared.name).font(.title3.bold()); Text("Profile").font(.footnote).foregroundStyle(.secondary) }
+                            Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        }.foregroundStyle(.primary).padding(.vertical, 10).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("settings-personal-profile")
+                    NavigationLink(value: AppDestination.statistics) {
+                        settingsRow("chart.bar.fill", .purple, "Statistics", subtitle: "Watch time and trends", disclosure: true)
+                            .background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+                    }.buttonStyle(.plain).accessibilityIdentifier("settings-statistics")
                     diaryCard
                     if let warning = store.cacheWarning {
                         Text(warning).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -102,7 +112,7 @@ struct SettingsView: View {
                     }.frame(maxWidth: .infinity)
                 }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
-        }.overlay(alignment: .top) { PageHeader(name: "Settings", onSearch: { showSearch.toggle() }, part: .buttons) }
+        }.overlay(alignment: .top) { PageHeader(name: "Profile", part: .buttons) }
         .confirmationDialog("Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
             .task(id: store.sessionRevision) { summary = TraktController(service: makeTraktService(store: store)); await summary?.refresh() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }

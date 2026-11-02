@@ -1,6 +1,25 @@
 # Candidate track. Only a complete pass permits same-SHA promotion to ios-native.
 # No automatic triggers, signing, deployment, credentials or hosted-data writes.
 workflows:
+  native-ios-personal-settings-check:
+    name: TwilDiary Profile, milestones and universal Search
+    instance_type: mac_mini_m2
+    max_build_duration: 50
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify Profile, avatars, milestones, Statistics and Search
+        script: bash ios/scripts/personal-settings-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-personal-settings.ipa
+      - ios/.artifacts/TwilDiary-personal-settings.ipa.sha256
+      - ios/.artifacts/personal-settings-provenance.json
+      - ios/.artifacts/PersonalSettings*.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
   native-ios-profile-repair-check:
     name: TwilDiary focused profile repairs and Home dates
     instance_type: mac_mini_m2

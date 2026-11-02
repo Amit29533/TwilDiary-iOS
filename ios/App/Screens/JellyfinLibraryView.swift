@@ -14,7 +14,6 @@ struct JellyfinLibraryView: View {
     @State private var failure: String?
     @State private var show = Show.all
     @State private var drive: String?
-    @State private var query = ""
     enum Show: String, CaseIterable { case all = "All", missing = "Not in diary", saved = "In diary" }
     var body: some View {
         ScrollView {
@@ -51,7 +50,6 @@ struct JellyfinLibraryView: View {
                 chip(Self.driveLabel(item.name) + " " + item.count.formatted(), on: drive == item.name, id: "jellyfin-drive-" + item.name) { drive = drive == item.name ? nil : item.name }
             }
         }
-        SearchField(placeholder: "Find in Jellyfin", text: $query, label: "Search Jellyfin")
         let items = shown
         if items.isEmpty { Text("Nothing here with these filters.").font(.system(size: 13)).foregroundStyle(.secondary).padding(.top, 8) }
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 18) {
@@ -82,8 +80,7 @@ struct JellyfinLibraryView: View {
             && (option == .all || (option == .saved) == (entry.diaryID != nil))
     }
     private var shown: [JellyfinEntry] {
-        let text = query.trimmingCharacters(in: .whitespaces)
-        return entries.filter { matches($0, show: show, drive: drive) && (text.isEmpty || $0.name.localizedCaseInsensitiveContains(text)) }
+        return entries.filter { matches($0, show: show, drive: drive) }
     }
     private func chipRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         ScrollView(.horizontal) { HStack(spacing: 8) { content() } }.scrollIndicators(.hidden)

@@ -144,6 +144,43 @@ export function createTmdb(
     }
   }
   return {
+    async searchPeople(params: URLSearchParams) {
+      const query = searchQuery(params.get('q') ?? '');
+      const page = params.get('page') ?? '1';
+      if (
+        query.length < 2 ||
+        query.length > 200 ||
+        /[\u0000-\u001f\u007f]/.test(query) ||
+        !/^\d+$/.test(page) ||
+        +page < 1 ||
+        +page > 500
+      )
+        throw new ApiError(
+          400,
+          'invalid_input',
+          'Enter 2–200 characters and choose a valid search page'
+        );
+      const data = await request('search/person', { query, page, include_adult: 'false' });
+      if (!Array.isArray(data.results) || data.results.length > 100) throw upstream();
+      const seen = new Set<number>();
+      const items = data.results.flatMap((value) => {
+        const item = record(value);
+        if (item.adult === true) return [];
+        const id = int(item.id, 1, 9999999999),
+          name = text(item.name, 300);
+        if (!name || seen.has(id)) return [];
+        seen.add(id);
+        return [
+          {
+            id,
+            name,
+            image: tmdbImage(path(item.profile_path)),
+            department: text(item.known_for_department, 100)
+          }
+        ];
+      });
+      return { items, page: int(data.page, 1, 500), totalPages: int(data.total_pages, 0, 100000) };
+    },
     async person(id: number): Promise<PersonDetails> {
       personInput(id);
       const data = await request(`person/${id}`, { append_to_response: 'combined_credits' });

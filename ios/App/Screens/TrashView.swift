@@ -10,7 +10,6 @@ struct TrashView: View {
     @AppStorage("trashGrid") private var grid = true
     @AppStorage("trashCategory") private var category = LibraryCategory.all
     @AppStorage("trashSort") private var sort = "library"
-    @State private var showSearch = false
     @State private var selecting = false
     @State private var selected = Set<String>()
     @State private var review: CollectionReview?
@@ -21,7 +20,7 @@ struct TrashView: View {
         let shown = self.shown
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
                         Label("Removed titles", systemImage: "trash").font(.headline)
@@ -62,7 +61,7 @@ struct TrashView: View {
             .navigationTitle("Trash").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { showSearch.toggle() } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search library and online").accessibilityIdentifier("search-trash")
+
                     Button(selecting ? "Done selecting" : "Select") { selecting.toggle(); selected = [] }.disabled(archived.isEmpty).accessibilityIdentifier("trash-select")
                 }
             }

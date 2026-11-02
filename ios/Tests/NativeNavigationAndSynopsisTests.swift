@@ -74,7 +74,7 @@ import SwiftUI
         router.paths[.library] = path
         XCTAssertTrue(router.goBack()); XCTAssertEqual(router.paths[.library]?.count, 1)
         XCTAssertTrue(router.goBack()); XCTAssertEqual(router.paths[.library]?.count, 0)
-        XCTAssertFalse(router.goBack()); XCTAssertFalse(router.goBack(tab: .stats))
+        XCTAssertFalse(router.goBack()); XCTAssertFalse(router.goBack(tab: .search))
     }
     func testNestedDoneActionUsesItsOwnStackInsteadOfTheParent() {
         let router = AppRouter(); router.paths[.more] = NavigationPath([AppDestination.files])

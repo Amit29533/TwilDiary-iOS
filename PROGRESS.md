@@ -828,3 +828,12 @@ reversible authorized fixes and tests, report material results concisely.
 - The old character → appearance → voice journey exceeded its 120-second allowance during slow simulator accessibility calls. Exported recording was a 60-byte XCTest pending-attachment error, not video; app stack was mostly idle and its last accessibility snapshot had no children. This evidence does not establish a shipping app deadlock or an overscroll defect.
 - Update that journey only: explicitly wait for title detail after opening it; use measured, bidirectional held drags instead of one-way full-screen flings; retain bounded attempts and existence/hittability assertions, with a failure screenshot. Allow 240 seconds for this multi-screen journey. No app source changes.
 - Full acceptance and device packaging remain pending. The failed run did not execute compact/large matrices or produce the diagnostic IPA.
+
+
+### 2026-11-02 — personal Profile, milestones and universal Search draft
+
+- Implement owner-approved Profile menu (identity → Statistics → Your diary), nested personal profile with Popular Characters before Milestones, and custom photos only through tapping the avatar. Minimal derived badges; editable local name/character/photo persistence. Statistics no longer renders Fun facts.
+- Replace Stats root tab with Search; More is labelled Profile. Preserve the internal More storage identity, migrate the former Stats launch preference, and route the Home Stats shortcut into nested Statistics. Remove duplicate general search surfaces while retaining scanner replacement and Trakt review-specific filtering.
+- Reuse existing diary search/discovery/artwork/history/Statistics code; add authenticated TMDB people read endpoint for native Cast results and AniList performer/character search. No hosted diary mutations or schema changes.
+- Local checks: 48 targeted provider/discovery/search tests pass (47 initial cases plus anonymous people-route denial); TypeScript/Svelte zero errors/warnings and production build pass. Swift grammar has no new errors versus baseline; YAML and shell/embedded Python validate.
+- Added PersonalProfile units, core milestone history edge cases, five settings UI journeys and dedicated three-phone Codemagic workflow. Native compilation/UI proof and device IPA remain pending. Version 2.0.0 (66). See ios/docs/PERSONAL-PROFILE-AND-SEARCH.md.

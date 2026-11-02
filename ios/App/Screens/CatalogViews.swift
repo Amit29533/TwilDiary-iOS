@@ -64,6 +64,10 @@ struct CatalogPoster: View {
 }
 
 struct CatalogSearchView: View {
+    var universal = false
+    private enum Scope: String, CaseIterable { case all = "All", library = "Library", movies = "Movies", shows = "Shows", people = "People", history = "History", jellyfin = "Jellyfin" }
+    @State private var scope = Scope.all
+    @AppStorage("recentSearches.v1") private var recentJSON = "[]"
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
     var onClose: (() -> Void)? = nil
@@ -85,11 +89,21 @@ struct CatalogSearchView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                SearchField(placeholder: "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: true, dismissRevision: dismissKeyboard)
+                SearchField(placeholder: universal ? "Search everything…" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, dismissRevision: dismissKeyboard)
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
-            if !ready { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
-            else {
+            if universal {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) { ForEach(Scope.allCases, id: \.self) { value in
+                        Button { scope = value } label: { Text(value.rawValue).font(.subheadline).padding(.horizontal, 14).frame(minHeight: 38).background(scope == value ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.06), in: Capsule()) }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityAddTraits(scope == value ? .isSelected : [])
+                    } }
+                }.scrollIndicators(.hidden)
+            }
+            if !ready {
+                if universal { SearchLandingView(recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }) }
+                else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
+            }
+            if ready && (!universal || ![.people, .history, .jellyfin].contains(scope)) {
                 HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
                 CollectionLayout(grid: grid) { ForEach(localMatches.prefix(libraryLimit)) { title in
                     Button { chooseLibrary(title.id) } label: { searchRow(title) }.buttonStyle(.plain)
@@ -97,10 +111,11 @@ struct CatalogSearchView: View {
                 } }
                 if localMatches.count > libraryLimit { Button("More library matches") { libraryLimit += 20 }.font(.system(size: 13)).frame(minHeight: 44) }
                 if localMatches.isEmpty { Text("No library matches").font(.system(size: 13)).foregroundStyle(.secondary) }
+                if !universal || scope != .library {
                 Text("Not In Library · TMDB").font(.system(size: 15, weight: .semibold))
                 if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
                 if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
-                CollectionLayout(grid: grid) { ForEach(results, id: \.key) { item in
+                CollectionLayout(grid: grid) { ForEach(visibleOnline, id: \.key) { item in
                     Button { chooseCatalog(item.route) } label: { onlineRow(item) }
                         .buttonStyle(.plain).accessibilityIdentifier("search-" + item.key)
                 } }
@@ -108,6 +123,14 @@ struct CatalogSearchView: View {
                 if totalPages > 1 {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
+                }
+            }
+            if universal && ready && [.all, .people].contains(scope) { SearchPeopleView(query: normalized, onChoose: rememberQuery) }
+            if universal && ready && [.all, .jellyfin].contains(scope) { SearchJellyfinView(query: normalized) }
+            if universal && ready && [.all, .history].contains(scope) {
+                NavigationLink(value: HistoryRoute(query: normalized)) {
+                    Label("Watch history matches", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }.simultaneousGesture(TapGesture().onEnded { rememberQuery() }).foregroundStyle(.primary).accessibilityIdentifier("search-history-matches")
             }
         }.padding(.horizontal, 14).padding(.bottom, 12)
             .task(id: normalized) { if completedQuery != normalized || failure != nil { await search(number: 1, reset: true) } }
@@ -123,7 +146,19 @@ struct CatalogSearchView: View {
     }
     private var normalized: String { DiarySearchTools.normalize(query) }
     private var ready: Bool { DiarySearchTools.ready(normalized) }
-    private var localMatches: [SearchLibraryTitle] { DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), identified) }
+    private var localMatches: [SearchLibraryTitle] {
+        DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), identified).filter { title in
+            !universal || scope != .movies && scope != .shows || (scope == .movies ? ["movie", "anime-movie"].contains(title.category) : ["show", "anime"].contains(title.category))
+        }
+    }
+    private var visibleOnline: [CatalogItem] { results.filter { !universal || scope != .movies && scope != .shows || $0.mediaType == (scope == .movies ? .movie : .tv) } }
+    private var recent: [String] { recentJSON.data(using: .utf8).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
+    private func rememberQuery() {
+        guard universal, ready else { return }
+        let value = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+        let values = [value] + recent.filter { $0.localizedCaseInsensitiveCompare(value) != .orderedSame }
+        if let data = try? JSONEncoder().encode(Array(values.prefix(6))), let json = String(data: data, encoding: .utf8) { recentJSON = json }
+    }
     private func searchRow(_ title: SearchLibraryTitle) -> some View {
         let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
         return layout {
@@ -133,6 +168,7 @@ struct CatalogSearchView: View {
         }.padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).foregroundStyle(.primary)
     }
     private func chooseLibrary(_ id: String) {
+        rememberQuery()
         dismissKeyboard += 1
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         Task {
@@ -143,6 +179,7 @@ struct CatalogSearchView: View {
         }
     }
     private func chooseCatalog(_ route: CatalogRoute) {
+        rememberQuery()
         dismissKeyboard += 1
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         if let onCatalogChoose { onCatalogChoose(route) }

@@ -3,13 +3,12 @@ import Charts
 import TwilDiaryCore
 
 /// Stats (owner's design): the Journey card over the period's most-watched backdrop, Watch
-/// time with its chart and one range control, Streaks, Fun facts, Backlog, Gone quiet,
+/// time with its chart and one range control, Streaks, Backlog, Gone quiet,
 /// Genre mix and a link to the full history.
 struct StatsView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @State private var showSearch = false
     @State private var period = Period.today
     @State private var year: Int?
     @State private var appliedShortcutRevision = 0
@@ -23,16 +22,12 @@ struct StatsView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    PageHeader(name: "Stats", onSearch: { showSearch.toggle() }, part: .title).padding(.horizontal, -16).padding(.bottom, -6)
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
                     journey(data.coverage, highlights: highlights)
                     trend(data, highlights: highlights)
                     streaks(data.streaks)
                     backlog(data.backlog)
                     goneQuiet(data.backlog.stale)
                     genres(data.genres)
-                    // Owner's layout: fun facts at the bottom, just above Watch history.
-                    funFacts(highlights)
                     NavigationLink(value: AppDestination.history) {
                         HStack(spacing: 12) {
                             DiaryIcon(name: "history", size: 18).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
@@ -42,7 +37,7 @@ struct StatsView: View {
                     }.buttonStyle(.plain).accessibilityIdentifier("stats-history")
                 }.padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); clock = store.now }
-        }.overlay(alignment: .top) { PageHeader(name: "Stats", onSearch: { showSearch.toggle() }, part: .buttons) }
+        }.navigationTitle("Statistics").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .onChange(of: router.statsRevision) { _, _ in applyShortcut() }
             .onAppear { clock = store.now; applyShortcut() }
             .onChange(of: period) { _, _ in selectedBucket = nil }
@@ -274,32 +269,6 @@ struct StatsView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08))).accessibilityElement(children: .combine)
     }
 
-    // MARK: Fun facts
-
-    private func funFacts(_ value: StatsHighlights) -> some View {
-        let top = value.topTitleIDs.first.flatMap { store.title($0) }
-        // Built step by step: one long literal of optional tuples is slow to type-check.
-        var facts: [(String, String, String)] = []
-        if let top { facts.append(("crown", top.name, "Top title · \(DiaryDate.duration(value.topMinutes)) over \(value.topPlays) \(value.topPlays == 1 ? "play" : "plays")")) }
-        if let binge = value.binge, let show = store.title(binge.titleID) {
-            facts.append(("bolt", "\(binge.episodes) episodes in a day", "Biggest binge · \(show.name) · \(StatsHighlights.shortDate(binge.date))"))
-        }
-        if value.minutes >= 24 * 60 { facts.append(("hourglass", String(format: "%.1f full days", Double(value.minutes) / 1440), "of watching in this period")) }
-        if let night = value.nightOwl { facts.append(("moon.stars", "\(night)% after 10 pm", night >= 40 ? "Certified night owl" : "Late-night watches")) }
-        if let day = value.weekday { facts.append(("calendar.badge.clock", day.name, "Your favourite day · \(day.share)% of watches")) }
-        facts.append(("arrow.counterclockwise", "\(value.rewatches) \(value.rewatches == 1 ? "rewatch" : "rewatches")", "Things you went back to"))
-        facts.append(("sparkles", "\(value.newStarts) new \(value.newStarts == 1 ? "start" : "starts")", "Titles you began · \(value.episodes.counted("episode", "episodes")) · \(value.movies) \(value.movies == 1 ? "movie" : "movies")"))
-        return VStack(alignment: .leading, spacing: 14) {
-            heading("Fun facts")
-            if value.episodes + value.movies == 0 { caption("Watch something in this period to unlock its fun facts.") }
-            else {
-                // Four at a time; swipe for the next four.
-                let pages = stride(from: 0, to: facts.count, by: 4).map { Array(facts[$0..<min($0 + 4, facts.count)]) }
-                FunFactPager(pages: pages.map { $0.map { FunFact(symbol: $0.0, title: $0.1, detail: $0.2) } })
-            }
-        }.statsPanel().accessibilityIdentifier("stats-fun-facts")
-    }
-
     // MARK: Backlog and Gone quiet
 
     private func backlog(_ value: StatsOverview.Backlog) -> some View {
@@ -394,45 +363,6 @@ struct StatsView: View {
     private func localDay(_ value: String) -> Date { let fields = value.split(separator: "-").compactMap { Int($0) }; return fields.count == 3 ? DiaryDate.calendar().date(from: DateComponents(year: fields[0], month: fields[1], day: fields[2], hour: 12)) ?? store.now : store.now }
     private var statuses: [String] { ["planned", "watching", "completed", "dropped"] }
     private func statusColor(_ status: String) -> Color { status == "dropped" ? Color(webHex: "#646075") : theme.accent.opacity(status == "planned" ? 0.65 : status == "watching" ? 0.85 : 1) }
-}
-
-struct FunFact: Hashable { let symbol: String, title: String, detail: String }
-
-/// Fun facts four to a page (2 × 2), paging sideways, with dots when there's more than one page.
-private struct FunFactPager: View {
-    let pages: [[FunFact]]
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @State private var page: Int? = 0
-    var body: some View {
-        VStack(spacing: 10) {
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 0) {
-                    ForEach(pages.indices, id: \.self) { index in
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                            ForEach(pages[index], id: \.self) { fact in tile(fact) }
-                        }.containerRelativeFrame(.horizontal).id(index)
-                    }
-                }.scrollTargetLayout()
-            }.scrollTargetBehavior(.paging).scrollIndicators(.hidden).scrollPosition(id: $page)
-                .accessibilityIdentifier("stats-fun-facts-pager")
-            if pages.count > 1 {
-                HStack(spacing: 6) {
-                    ForEach(pages.indices, id: \.self) { index in
-                        Capsule().fill(index == (page ?? 0) ? theme.accent : .white.opacity(0.25)).frame(width: index == (page ?? 0) ? 16 : 6, height: 6)
-                    }
-                }.animation(.snappy(duration: 0.25), value: page).accessibilityHidden(true)
-            }
-        }
-    }
-    private func tile(_ fact: FunFact) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: fact.symbol).font(.system(size: 17)).foregroundStyle(theme.accent)
-            Text(fact.title).font(.system(size: 15, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8)
-            Text(fact.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
-        }.frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading).padding(12)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
-            .accessibilityElement(children: .combine)
-    }
 }
 
 private extension View {

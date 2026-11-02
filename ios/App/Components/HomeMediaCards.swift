@@ -189,10 +189,9 @@ struct HomeFavouriteCard: View {
 /// not re-diff on every scroll frame, and the original upper Home stays intact.
 struct HomeMediaHeader: View {
     let state: CompactHeaderState
-    let onSearch: () -> Void
     var body: some View {
         let compact = state.progress > 0
-        PageHeader(name: "TwilDiary", onSearch: onSearch, overArtwork: !compact, part: compact ? .full : .buttons)
+        PageHeader(name: "TwilDiary", overArtwork: !compact, part: compact ? .full : .buttons)
             .background {
                 if compact {
                     Color(webHex: "#050507").ignoresSafeArea(.container, edges: .top)

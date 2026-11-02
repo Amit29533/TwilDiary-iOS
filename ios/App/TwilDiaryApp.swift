@@ -12,6 +12,9 @@ import TwilDiaryCore
             UserDefaults.standard.set(DiaryTheme.twilight.rawValue, forKey: "theme")
             UserDefaults.standard.set(PublicRatingSource.tmdb.rawValue, forKey: "publicRatingSource")
             UserDefaults.standard.set(true, forKey: "hideSpoilers")
+            if ProcessInfo.processInfo.arguments.contains("--ui-personal-profile-reset") {
+                for key in ["profileName", "profileCharacter", "profileUsesPhoto", "recentSearches.v1"] { UserDefaults.standard.removeObject(forKey: key) }
+            }
             for key in ["historyGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-home-layouts") {
                 for key in ["homeHistoryGrid", "upcomingGrid"] { UserDefaults.standard.set(false, forKey: key) }
@@ -44,8 +47,8 @@ import TwilDiaryCore
 }
 
 enum AppTab: String, CaseIterable, Hashable {
-    case home, library, glance, stats, more
-    var label: String { rawValue.capitalized }
+    case home, library, glance, search, more
+    var label: String { self == .more ? "Profile" : rawValue.capitalized }
     /// Settings → Appearance → Opens on: the tab a fresh launch starts on (Glance until chosen).
     static let launchKey = "launchTab"
     static var launch: AppTab {
@@ -54,17 +57,20 @@ enum AppTab: String, CaseIterable, Hashable {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--ui-testing") && !arguments.contains("--ui-keep-launch-tab") { return .glance }
         #endif
-        return UserDefaults.standard.string(forKey: launchKey).flatMap(AppTab.init(rawValue:)) ?? .glance
+        let saved = UserDefaults.standard.string(forKey: launchKey)
+        if saved == "stats" { UserDefaults.standard.set(AppTab.more.rawValue, forKey: launchKey); return .more }
+        return saved.flatMap(AppTab.init(rawValue:)) ?? .glance
     }
-    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "eye"; case .stats: "chart.bar"; case .more: "ellipsis" } }
+    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "eye"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
     var icon: String {
-        switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
+        switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
     }
 }
-enum AppDestination: Hashable { case explore, canvas, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, anilist, cloudflare, apis, favourites, about }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, anilist, cloudflare, apis, favourites, about }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
+    var query = ""
 }
 struct SavedTitleRoute: Hashable {
     let id: String
@@ -121,10 +127,11 @@ struct SavedTitleRoute: Hashable {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         randomPick = RandomPickScope(titleIDs: titleIDs)
     }
-    func library(_ shortcut: String) { libraryGenreShortcut = ""; libraryDiskShortcut = ""; libraryShortcut = shortcut; libraryRevision += 1; paths[.library] = NavigationPath(); selectedTab = .library }
+    func library(_ shortcut: String) { if shortcut == "add" { search(); return }; libraryGenreShortcut = ""; libraryDiskShortcut = ""; libraryShortcut = shortcut; libraryRevision += 1; paths[.library] = NavigationPath(); selectedTab = .library }
     func libraryGenre(_ genre: String) { library("all"); libraryGenreShortcut = genre }
     func libraryDisk(_ key: String) { library("all"); libraryDiskShortcut = key == "all" ? "" : key }
-    func statsToday() { statsRevision += 1; paths[.stats] = NavigationPath(); selectedTab = .stats }
+    func statsToday() { statsRevision += 1; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.statistics); selectedTab = .more }
+    func search() { selectedTab = .search; paths[.search] = NavigationPath() }
     func files() { selectedTab = .more; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.files) }
     func openTitle(_ id: String, tab: AppTab) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -212,7 +219,7 @@ struct RootView: View {
         case .home: diaryStack(tab) { HomeView() }
         case .library: diaryStack(tab) { LibraryView() }
         case .glance: diaryStack(tab) { GlanceView() }
-        case .stats: diaryStack(tab) { StatsView() }
+        case .search: diaryStack(tab) { UniversalSearchView() }
         case .more: diaryStack(tab) { SettingsView() }
         }
     }
@@ -233,11 +240,13 @@ struct RootView: View {
                 .navigationDestination(for: AniAppearance.self) { AnimeAppearanceView(appearance: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: VoiceActorRoute.self) { VoiceActorView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: HistoryRoute.self) { route in
-                    HistoryView(initialDay: route.day, initialUnknown: route.unknown).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
+                    HistoryView(initialDay: route.day, initialUnknown: route.unknown, initialQuery: route.query).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
                 .navigationDestination(for: CanvasListRoute.self) { CanvasListView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {
+                    case .profile: PersonalProfileView()
+                    case .statistics: StatsView()
                     case .explore: ExploreView()
                     case .canvas: CanvasView()
                     case .history: HistoryView()
@@ -253,7 +262,7 @@ struct RootView: View {
                     case .apis: APIsView()
                     case .favourites: FavouritesView()
                     case .about: AboutView()
-                    } }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
+                    } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })

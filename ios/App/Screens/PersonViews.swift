@@ -111,14 +111,13 @@ struct PersonFilmographyView: View {
     @State private var person: PersonDetails?
     @State private var failure: String?
     @State private var filters: PersonFilmographyFilters
-    @State private var showSearch = false
     @State private var shown = 40
     init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+
                     HStack(alignment: .center, spacing: 8) {
                         Text(person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label)
                             .font(.system(size: 22, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
@@ -140,7 +139,7 @@ struct PersonFilmographyView: View {
                 }.padding(.horizontal, 14).padding(.bottom, 100)
             }.scrollDismissesKeyboard(.interactively)
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { showSearch.toggle() } label: { DiaryIcon(name: "search", size: 22) }.accessibilityLabel("Search").accessibilityIdentifier("search-person-filmography") } }
+
             .task(id: route) { await load() }.onChange(of: filters) { _, _ in shown = 40 }
     }
     private func load() async {

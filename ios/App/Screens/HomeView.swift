@@ -10,7 +10,6 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var clock = Date.now
-    @State private var showSearch = false
     @State private var upcomingLimit = 3
     /// Changes only when vertical scrolling starts or settles, never per frame.
     @State private var scrolling = false
@@ -27,9 +26,8 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // While searching, the plain header keeps the field and its results at the top.
-                if watching.isEmpty || showSearch { header(overArtwork: false) } else { continueSection(watching) }
+                if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: 28) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
                     // Explore is systematic discovery; Canvas is for browsing artwork at random.
                     HStack(spacing: 10) {
                         NavigationLink(value: AppDestination.explore) { discoverButton("Explore", icon: "compass") }.buttonStyle(.plain).accessibilityIdentifier("explore-shortcut")
@@ -101,7 +99,7 @@ struct HomeView: View {
             }
         }.coordinateSpace(name: "home-scroll")
         .contentMargins(.bottom, 90, for: .scrollContent)
-        .overlay(alignment: .top) { HomeMediaHeader(state: mediaHeader, onSearch: { showSearch.toggle() }) }
+        .overlay(alignment: .top) { HomeMediaHeader(state: mediaHeader) }
         .onScrollPhaseChange { _, phase in
             // The automatic carousel step must not animate mid-fling under the finger.
             let active = phase != .idle
@@ -120,7 +118,7 @@ struct HomeView: View {
         }
     }
     /// The scrolling title row; the logo and search stay pinned above it (see body).
-    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() }, overArtwork: overArtwork, part: .title) }
+    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork, part: .title) }
     /// The selected title's backdrop fills the top of the page, under the status bar and header,
     /// and fades into the page so the text below it stays readable.
     private func continueSection(_ titles: [MediaTitle]) -> some View {
@@ -129,7 +127,7 @@ struct HomeView: View {
             header(overArtwork: true)
             Spacer(minLength: 72)
             // "CONTINUE WATCHING" sits inside each page, right above its title.
-            ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !showSearch && !scrolling).padding(.horizontal, 8)
+            ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !scrolling).padding(.horizontal, 8)
         }.background(alignment: .top) {
             // The art fills the section and reaches just under the status bar. It used to reach 140 pt
             // higher, which enlarged a 16:9 backdrop about 2x and cut off half of it; with only the

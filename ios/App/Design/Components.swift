@@ -172,12 +172,9 @@ struct PageHeader: View {
     enum Part { case full, title, buttons }
     let name: String
     var count: String? = nil
-    var onSearch: (() -> Void)? = nil
-    /// Kept for callers; every search button is now a glass circle.
-    var circledSearch = false
     /// Home draws the header over the Continue watching backdrop.
     var overArtwork = false
-    /// Library's Select button, beside search.
+    /// Library's Select button.
     var onSelect: (() -> Void)? = nil
     var height: CGFloat = 56
     var part: Part = .full
@@ -195,10 +192,9 @@ struct PageHeader: View {
             Spacer(minLength: 0)
             if part == .title {
                 // Keeps the title clear of the pinned buttons above it.
-                Color.clear.frame(width: CGFloat((onSelect == nil ? 0 : 1) + (onSearch == nil ? 0 : 1)) * 54, height: 1)
+                Color.clear.frame(width: CGFloat(onSelect == nil ? 0 : 1) * 54, height: 1)
             } else {
                 if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
-                if let onSearch { glassButton("search", label: name == "Library" ? "Search library" : "Search", id: "search-" + name.lowercased(), action: onSearch) }
             }
         }.frame(height: height).padding(.horizontal, 14)
             .background { if part == .full && theme != .glass && !overArtwork { Color(webHex: ["Library", "Trash"].contains(name) ? "#0e0d13" : "#050507") } }

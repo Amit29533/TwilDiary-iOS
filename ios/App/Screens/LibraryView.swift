@@ -16,7 +16,6 @@ struct LibraryView: View {
     @SceneStorage("library.genres") private var genresRaw = ""
     @SceneStorage("library.drive") private var drive = ""
     @SceneStorage("library.favorites") private var favoritesOnly = false
-    @State private var showSearch = false
     @State private var showFilters = false
     /// The status chips scroll sideways, so a drag that starts on them never changes the category.
     @State private var chipRow = CGRect.null
@@ -44,11 +43,7 @@ struct LibraryView: View {
     var body: some View {
         VStack(spacing: 0) {
             if selecting { selectionHeader }
-            if showSearch && !selecting {
-                ScrollView { libraryHeader(.title); CatalogSearchView(onClose: { showSearch = false }).padding(.top, 2) }
-            } else {
-                collectionContent
-            }
+            collectionContent
         }.overlay(alignment: .top) { if !selecting { libraryHeader(.buttons) } }
         .background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
@@ -141,7 +136,7 @@ struct LibraryView: View {
 
     /// The title row scrolls with the collection; its Select and Search stay pinned above it.
     private func libraryHeader(_ part: PageHeader.Part) -> some View {
-        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSearch: { showSearch.toggle() }, onSelect: { selecting = true; selected = [] }, height: 54, part: part)
+        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSelect: { selecting = true; selected = [] }, height: 54, part: part)
     }
     private var collectionContent: some View {
         ScrollView {
@@ -362,7 +357,7 @@ struct LibraryView: View {
         guard router.libraryRevision > appliedShortcutRevision else { return }
         appliedShortcutRevision = router.libraryRevision
         category = .all; genres = router.libraryGenreShortcut.isEmpty ? [] : [router.libraryGenreShortcut]; drive = router.libraryDiskShortcut; status = "all"; favoritesOnly = false
-        switch router.libraryShortcut { case "queue": status = "queue"; case "planned", "watching", "completed", "dropped": status = router.libraryShortcut ?? "all"; case "disk": drive = HomeDiskShortcut.all.first?.key ?? ""; case "add": showSearch = true; default: break }
+        switch router.libraryShortcut { case "queue": status = "queue"; case "planned", "watching", "completed", "dropped": status = router.libraryShortcut ?? "all"; case "disk": drive = HomeDiskShortcut.all.first?.key ?? ""; case "add": router.search(); default: break }
     }
     private var filterScope: String { [category.rawValue, status, genresRaw, drive, String(favoritesOnly), sort.rawValue].joined(separator: "\n") }
     private var collection: [MediaTitle] { store.workspace.activeTitles }
@@ -537,19 +532,17 @@ struct GlanceView: View {
     @Environment(DiaryStore.self) private var store
     /// Remembered between visits, like the layout and sort.
     @AppStorage("glanceCategory") private var category = LibraryCategory.all
-    @State private var search = ""
-    @State private var showSearch = false
     var body: some View {
         // One pass over the library per update instead of three.
         let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
-        let titles = watching.filter { category.includes($0) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }
+        let titles = watching.filter { category.includes($0) }
         let ordered = order(titles)
         // The title row, search and filters scroll with the cards; the logo and search stay pinned.
-        let header = { (part: PageHeader.Part) in PageHeader(name: "Glance", count: "\(watching.count) watching", onSearch: { showSearch.toggle(); if !showSearch { search = "" } }, part: part) }
+        let header = { (part: PageHeader.Part) in PageHeader(name: "Glance", count: "\(watching.count) watching", part: part) }
         ScrollView {
                 VStack(spacing: 0) {
                     header(.title)
-                    if showSearch { SearchField(placeholder: "Find a current watch…", text: $search, label: "Find a current watch", autoFocus: true).padding(.horizontal, 14).padding(.bottom, 10) }
+
                     CategoryPicker(selection: $category)
                     SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
                         CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
@@ -560,7 +553,7 @@ struct GlanceView: View {
                     if let first = ordered.first { ProgressCard(title: first, hero: true).zoomSource(ZoomID.title(first.id)) }
                     CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid).zoomSource(ZoomID.title($0.id)) } }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
-                if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category or clear your search.").padding(.horizontal, 14).padding(.top, 20) }
+                if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.").padding(.horizontal, 14).padding(.top, 20) }
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
             .overlay(alignment: .top) { header(.buttons) }
     }

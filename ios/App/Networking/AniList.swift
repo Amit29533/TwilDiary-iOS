@@ -417,6 +417,25 @@ actor AniListClient {
     /// Pull to refresh asks AniList again.
     func forgetStats() { userStats = [:]; userCharacters = [:] }
 
+    func searchPeople(_ search: String) async throws -> [SearchPerson] {
+        struct Reply: Decodable { let Page: PageValue; struct PageValue: Decodable { let characters: [Node]; let staff: [Performer] }; struct Performer: Decodable { let id: Int; let name: Name; let image: Image?; let primaryOccupations: [String]? } }
+        let reply: Reply = try await query("query($search: String) { Page(perPage: 12) { characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } } staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations } } }", ["search": search])
+        return reply.Page.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
+            + reply.Page.staff.filter { $0.primaryOccupations?.contains(where: { $0.localizedCaseInsensitiveContains("voice") }) == true }.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "voice") } }
+    }
+
+    private var avatarCache: (date: Date, values: [ProfileAvatarChoice])?
+    func popularAvatars() async throws -> [ProfileAvatarChoice] {
+        if let avatarCache, Date.now.timeIntervalSince(avatarCache.date) < 3600 { return avatarCache.values }
+        struct Reply: Decodable { let Page: PageValue; struct PageValue: Decodable { let characters: [Node] } }
+        let response: Reply = try await query("query { Page(perPage: 18) { characters(sort: FAVOURITES_DESC) { id name { full } image { large } } } }", [:])
+        let values = response.Page.characters.compactMap { node -> ProfileAvatarChoice? in
+            guard let name = node.name.full, !name.isEmpty else { return nil }
+            return ProfileAvatarChoice(id: node.id, name: name, image: node.image?.large)
+        }
+        avatarCache = (.now, values); return values
+    }
+
     // MARK: Shared shapes and the request
 
     fileprivate struct Name: Decodable { let full: String?; let native: String?; let alternative: [String]? }

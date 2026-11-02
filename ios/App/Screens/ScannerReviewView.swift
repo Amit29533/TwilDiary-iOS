@@ -3,7 +3,6 @@ import TwilDiaryCore
 
 struct ScannerReviewView: View {
     @Environment(DiaryStore.self) private var store
-    @State private var showSearch = false
     @State private var items: [UnmatchedScan] = []
     @AppStorage("scannerGrid") private var grid = false
     @State private var next: String?
@@ -16,7 +15,7 @@ struct ScannerReviewView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+
                     HStack { Text("Unmatched scans").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "scans"); Button("Refresh unmatched scans", systemImage: "arrow.clockwise") { Task { await load() } }.labelStyle(.iconOnly).disabled(loading) }
                     Text("Scanned folders that need a title match.").font(.subheadline).foregroundStyle(.secondary)
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
@@ -27,7 +26,7 @@ struct ScannerReviewView: View {
                     if next != nil { Button("Show more") { Task { await load(more: true) } }.buttonStyle(.glass).disabled(loading) }
                 }.padding(14)
             }.refreshable { await load() }
-        }.diaryScreenBackground().diaryPageNavigation("Fix mismatches", searchIdentifier: "search-scanner") { showSearch.toggle() }
+        }.diaryScreenBackground().diaryPageNavigation("Fix mismatches")
 
             .task { await load() }
             .task(id: message) { guard message != nil else { return }; do { try await Task.sleep(for: .seconds(2)); message = nil } catch { } }

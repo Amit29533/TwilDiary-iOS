@@ -6,7 +6,6 @@ struct FilesView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @State private var showSearch = false
     @State private var selected = "all"
     @AppStorage("filesGrid") private var grid = false
     @State private var copied = ""
@@ -14,7 +13,7 @@ struct FilesView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+
                     JellyfinCard()
                     ForEach(DiskSummary.make(activeLocations)) { disk in diskButton(disk) }
                     HStack { Text("Mapped folders").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); Button("Browse titles →") { router.libraryDisk(selected) }.font(.caption.bold()) }
@@ -28,7 +27,7 @@ struct FilesView: View {
                 // Keep the final action above the floating tab bar, matching the web shell's bottom clearance.
                 }.padding(14).padding(.bottom, 100)
             }.accessibilityIdentifier("files-content").refreshable { await store.refresh() }
-        }.diaryScreenBackground().diaryPageNavigation("Files & drives", searchIdentifier: "search-files") { showSearch.toggle() }
+        }.diaryScreenBackground().diaryPageNavigation("Files & drives")
 
     }
     private var activeLocations: [FileLocation] { let ids = Set(store.workspace.activeTitles.map(\.id)); return store.workspace.locations.filter { ids.contains($0.titleId) } }

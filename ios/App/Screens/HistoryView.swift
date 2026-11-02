@@ -9,11 +9,10 @@ struct HistoryView: View {
     @State private var filters: HistoryQuery
     @State private var showRange: Bool
     @State private var limit = 12
-    @State private var showSearch = false
     @State private var dateSelection: HistoryDateSelection?
-    init(initialDay: Date? = nil, initialUnknown: Bool = false) {
+    init(initialDay: Date? = nil, initialUnknown: Bool = false, initialQuery: String = "") {
         let day = initialDay.map { DiaryDate.day($0) } ?? ""
-        _filters = State(initialValue: HistoryQuery(from: initialUnknown ? "" : day, to: initialUnknown ? "" : day, unknownOnly: initialUnknown))
+        _filters = State(initialValue: HistoryQuery(query: initialQuery, from: initialUnknown ? "" : day, to: initialUnknown ? "" : day, unknownOnly: initialUnknown))
         _showRange = State(initialValue: initialDay != nil || initialUnknown)
     }
     var body: some View {
@@ -21,7 +20,7 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
+
                     HStack(spacing: 10) {
                         Text("Your watch history").font(.system(size: 19, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
                         Text("\(entries.count) \(entries.count == 1 ? "watch" : "watches")").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -31,7 +30,6 @@ struct HistoryView: View {
                             .buttonStyle(.plain).foregroundStyle(showRange || filters.filtered ? theme.accent : .secondary)
                             .accessibilityLabel("Date filters").accessibilityAddTraits(showRange ? .isSelected : [])
                     }
-                    SearchField(placeholder: "Filter watch history…", text: $filters.query, label: "Filter watch history")
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
                             ForEach(HistoryPreset.allCases) { preset in
@@ -72,7 +70,7 @@ struct HistoryView: View {
                     HStack(alignment: .top, spacing: 6) { DiaryIcon(name: "clock-3", size: 13); Text("Unknown dates stay unknown. Dates are never guessed.").font(.system(size: 12)) }.foregroundStyle(.secondary)
                 }.padding(14).padding(.bottom, 100)
             }.refreshable { await store.refresh() }
-        }.diaryScreenBackground().diaryPageNavigation("Recently watched", searchIdentifier: "search-history") { showSearch.toggle() }
+        }.diaryScreenBackground().diaryPageNavigation("Recently watched")
             .onChange(of: filters) { _, _ in limit = 12 }
             .sheet(item: $dateSelection) { selection in
                 HistoryCalendarSheet(selection: selection) { day in
