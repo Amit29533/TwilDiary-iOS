@@ -1,8 +1,24 @@
 import XCTest
+import SwiftUI
+import UIKit
 import TwilDiaryCore
 @testable import TwilDiary
 
 final class ProfileFormattingTests: XCTestCase {
+    @MainActor func testNarrowPosterRatingKeepsOneLineAndSourceDoesNotChangeItsSize() {
+        for score in [6.8, 8.1, 10.0] {
+            let standard = UIHostingController(rootView: RatingBadge(score: score))
+            let sourced = UIHostingController(rootView: RatingBadge(score: score, source: "AniList")
+                .environment(\.dynamicTypeSize, .accessibility5))
+            let proposal = CGSize(width: 44, height: 100)
+            let expected = standard.sizeThatFits(in: proposal)
+            let actual = sourced.sizeThatFits(in: proposal)
+            XCTAssertLessThan(actual.height, 30, "A poster score must never stack digits vertically")
+            XCTAssertLessThan(actual.width, 60, "Use the existing compact badge rather than a provider panel")
+            XCTAssertEqual(actual.width, expected.width, accuracy: 0.5)
+            XCTAssertEqual(actual.height, expected.height, accuracy: 0.5)
+        }
+    }
     func testAuditedMatrixCoversAllThreeProfileTypesAndBothProviders() {
         let samples = ProfileFormattingPreview.samples
         XCTAssertEqual(samples.count, 22)

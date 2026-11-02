@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import SwiftUI
 import TwilDiaryCore
 
 /// Public factual fields from the profile audit plus synthetic biography prose.
@@ -51,6 +52,19 @@ enum ProfileFormattingPreview {
                             "deathday": sample.deathday as Any? ?? NSNull(), "aliases": sample.aliases,
                             "birthplace": sample.homeTown ?? "", "department": "Acting", "credits": []], "stale": false]
         return try JSONDecoder().decode(PersonResponse.self, from: JSONSerialization.data(withJSONObject: value))
+    }
+}
+
+/// High-frequency portrait substitute exposes unwanted system blur in native
+/// screenshot checks. It is opt-in and absent from the Release binary.
+struct ProfileHeaderTestPattern: View {
+    var body: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+            for x in stride(from: CGFloat(0), to: size.width, by: 8) {
+                context.fill(Path(CGRect(x: x, y: 0, width: 4, height: size.height)), with: .color(.white))
+            }
+        }
     }
 }
 #endif

@@ -139,7 +139,8 @@ struct VoiceActorView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ProfileCardCaption(title: role.anime, secondary: true)
                     if let score = role.rating, score > 0 {
-                        HStack(spacing: 3) { RatingBadge(score: score); Text("AniList").font(.caption2).foregroundStyle(.secondary) }
+                        RatingBadge(score: score, source: "AniList")
+                            .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")
                     }
                 }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")

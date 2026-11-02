@@ -169,11 +169,7 @@ struct ProfileMediaRow: View {
                 ProfileCardCaption(title: name)
                 if let detail = ProfileText.line(detail) { ProfileCardCaption(title: detail, secondary: true) }
                 if let score, score > 0 {
-                    HStack(spacing: 5) {
-                        Image(systemName: "star.fill").foregroundStyle(.yellow)
-                        Text(score, format: .number.precision(.fractionLength(1)))
-                        if let provider { Text(provider).foregroundStyle(.secondary) }
-                    }.font(.caption).foregroundStyle(.primary)
+                    RatingBadge(score: score, source: provider)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.primary)

@@ -28,9 +28,16 @@ were inspected in the browser; no diary or hosted data was changed.
   lookup for voice actor, AniList identity for character. Website icons stay below.
 - Saved history defines Watched. Credit ratings retain their provider; missing
   ratings never become fabricated zero scores. Portrait/credit captions wrap.
+- Scores reuse the app's compact star-and-score RatingBadge, kept on one line.
+  Provider identity is in its accessibility label rather than a second visible
+  label or nested panel. Character appearances use the same inset as Watched.
 - At accessibility sizes, narrow poster shelves and voice-role grids become
   full-width rows, keeping long names readable. Source/heart actions remain
   available; the compact backdrop covers only the safe navigation area.
+- Portrait headers explicitly hide iOS 26's top scroll-edge effect as well as the
+  toolbar background. Compact-header material has a feathered lower edge. This
+  follow-up has a three-profile screenshot sharpness check; native execution is
+  pending and is not covered by the older formatting acceptance below.
 - Existing server response does not expose TMDB's external/social IDs or stage-name
   field. Do not invent them or scrape the website in the app. The Cast layout uses
   available API fields and its existing native TMDB action.

@@ -1,5 +1,36 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — profile rating badge follow-up draft
+
+Owner screenshots show character Appears in scores wrapping digit-by-digit inside
+an oversized AniList panel. Removed that nested panel/provider text and reused
+the same RatingBadge as Watched/other posters, with the same bottom-leading inset.
+Voice actor anime scores and accessible profile rows now reuse that badge too.
+The shared badge keeps a single intrinsic-width line; optional provider identity
+is announced by VoiceOver instead of taking space in the visible score.
+Added a native hosting-layout regression for narrow scores 6.8, 8.1 and 10.0 and
+accessibility text, verifying provider identity does not enlarge the badge.
+Local syntax/static checks only; native test execution and new build are pending.
+This draft includes the uncommitted portrait-header correction below.
+
+## 2 November 2026 — portrait toolbar strip reported on physical phone
+
+Owner screenshot still shows a hard blurred strip over Jenna Ortega's portrait.
+Prior retained geometry/format screenshots did not establish that this visual
+defect was fixed. Profile ScrollView hid the navigation-bar background but did
+not disable iOS 26's separate scroll-edge effect. Draft now hides the top effect
+in the shared Cast/Character/Voice shell and feathers the custom compact backdrop.
+Native Back/heart controls and scroll-linked compact title remain in place.
+
+Added a DEBUG-only striped portrait and a native screenshot pixel check at
+initial/partial scroll for all three profile kinds, selected on all three phone
+sizes by the existing format workflow. Swift grammar, Bash/embedded Python syntax
+and git diff checks pass locally. Native compilation/execution remain pending:
+Windows browser automation stopped because it could not confidently determine
+the current browser URL. No new build started, no new accepted IPA, no commit or
+push for this draft. Do not treat the older accepted formatting build as evidence
+that this specific strip is fixed.
+
 ## 2 November 2026 — focused profile build accepted with retained evidence
 
 Codemagic 6ae829f22dd1b7e16dab9367 completed successfully for exact source

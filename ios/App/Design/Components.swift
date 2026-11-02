@@ -351,17 +351,21 @@ struct Artwork: View {
 struct RatingBadge: View {
     let score: Double
     var community = true
+    var source: String? = nil
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: "star.fill").font(.system(size: community ? 10 : 12))
                 .foregroundStyle(Color(webHex: community ? "#ffe030" : "#f4d06a"))
             Text(score, format: .number.precision(.fractionLength(1))).frame(minHeight: community ? 17.25 : 18)
         }.font(.system(size: community ? 11.5 : 12, weight: community ? .medium : .semibold))
+            .lineLimit(1).fixedSize(horizontal: true, vertical: true)
             .foregroundStyle(Color(webHex: community ? "#f5f5f5" : "#f3f0f7"))
             // No text shadow: the badge already sits on a dark capsule, and a blurred
             // shadow costs an offscreen render pass for every poster in a scrolling grid.
             .padding(.horizontal, community ? 6 : 4).padding(.vertical, 3)
             .background(Color(webHex: community ? "#00000099" : "#07090cdd"), in: RoundedRectangle(cornerRadius: community ? 99 : 7))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("\(source ?? (community ? "Community" : "Your")) rating \(score, format: .number.precision(.fractionLength(1))) out of 10"))
     }
 }
 

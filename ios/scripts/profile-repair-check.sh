@@ -85,7 +85,7 @@ if not re.search(r"Test Suite '[^']*RankedPeopleTests' passed", tests):
 for suite in ['ProfileRepairTests', 'ProfileFormattingTests', 'HomeMediaCardsTests']:
     if not re.search(r"Test Suite '[^']*" + suite + r"' passed", tests):
         raise SystemExit('Required focused unit suite did not pass: ' + suite)
-format_cases = ['testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath', 'testCharacterProfilesPreserveRangesYearOnlyDatesAndNativeRelationships', 'testVoiceProfilesSeparateLinksFactsCareerAndBiography', 'testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes']
+format_cases = ['testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath', 'testCharacterProfilesPreserveRangesYearOnlyDatesAndNativeRelationships', 'testVoiceProfilesSeparateLinksFactsCareerAndBiography', 'testLargeTextStacksFactsAndKeepsHeartsPinnedAcrossProfileTypes', 'testPortraitStaysClearBehindPinnedControlsBeforeTheNameCollapses']
 for name in ['profile-repair-tests.log', 'profile-layout-iphone-17e.log', 'profile-layout-iphone-17-pro-max.log']:
     log = (root / 'logs' / name).read_text(errors='replace')
     for case in format_cases:
@@ -107,7 +107,7 @@ info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-i
 value = {'kind': 'device-diagnostic', 'regressionAcceptance': False, 'uiRegressionPassed': True,
          'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
          'buildNumber': info['CFBundleVersion'], 'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest,
-         'note': 'Five focused core cases; lookup, profile, formatting, ranking and Home model units; seven navigation/Home journeys and four profile matrix journeys on each of three phone sizes, including accessibility text. No full regression rerun.'}
+         'note': 'Five focused core cases; lookup, profile, formatting, ranking and Home model units; seven navigation/Home journeys and five profile matrix journeys on each of three phone sizes, including accessibility text and pixel checks for portrait blur. No full regression rerun.'}
 (root / 'profile-repair-provenance.json').write_text(json.dumps(value, indent=2) + '\n')
 print('Focused profile repair checks passed; unsigned phone IPA packaged.')
 PY

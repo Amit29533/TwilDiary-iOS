@@ -27,6 +27,9 @@ struct PersonProfilePage<Content: View>: View {
                 }.padding(.bottom, 28)
             }.coordinateSpace(name: "profile-scroll")
                 .ignoresSafeArea(.container, edges: .top)
+                // iOS 26's scroll-edge material is independent of the toolbar
+                // background. It otherwise blurs a hard strip over the portrait.
+                .scrollEdgeEffectHidden(true, for: .top)
                 .background(.black).tint(Color(webHex: "#e6e2ec"))
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
@@ -67,7 +70,7 @@ struct PersonProfilePage<Content: View>: View {
             .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
             .background {
                 GeometryReader { proxy in
-                    Artwork(path: image, title: name).frame(width: proxy.size.width, height: proxy.size.height)
+                    portrait.frame(width: proxy.size.width, height: proxy.size.height)
                         .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.14), location: 0),
                             .init(color: .black.opacity(0.15), location: 0.45), .init(color: .black.opacity(0.8), location: 0.82),
                             .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
@@ -76,6 +79,16 @@ struct PersonProfilePage<Content: View>: View {
                 }
             }
     }
+
+    @ViewBuilder private var portrait: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-profile-header-pattern") {
+            ProfileHeaderTestPattern()
+        } else { Artwork(path: image, title: name) }
+        #else
+        Artwork(path: image, title: name)
+        #endif
+    }
 }
 
 private struct ProfileHeaderBackdrop: View {
@@ -83,6 +96,10 @@ private struct ProfileHeaderBackdrop: View {
     let topInset: CGFloat
     var body: some View {
         Rectangle().fill(.ultraThinMaterial).overlay(.black.opacity(0.22))
+            // Keep compact-title contrast without a rectangular lower edge.
+            .mask(LinearGradient(stops: [.init(color: .white, location: 0),
+                .init(color: .white, location: 0.55), .init(color: .clear, location: 1)],
+                startPoint: .top, endPoint: .bottom))
             .opacity(Double(state.progress)).frame(height: topInset).offset(y: -topInset)
             .allowsHitTesting(false).accessibilityHidden(true)
     }

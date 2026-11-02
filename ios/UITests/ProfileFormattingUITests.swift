@@ -1,12 +1,14 @@
 import XCTest
+import UIKit
 
 @MainActor final class ProfileFormattingUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
-    private func open(_ kind: String, _ id: Int, large: Bool = false) -> XCUIApplication {
+    private func open(_ kind: String, _ id: Int, large: Bool = false, headerPattern: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-profile-repairs", "--ui-profile-format=\(kind):\(id)"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        if headerPattern { app.launchArguments.append("--ui-profile-header-pattern") }
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         let favourite = kind == "cast" ? "person-favourite" : kind == "voice" ? "voice-actor-favourite" : "character-favourite"
@@ -52,6 +54,44 @@ import XCTest
     private func capture(_ name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+    }
+    private func assertPortraitIsSharpBehindToolbar(_ app: XCUIApplication) {
+        let shot = app.screenshot().image
+        guard let image = shot.cgImage else { XCTFail("Missing header screenshot"); return }
+        let scale = CGFloat(image.width) / app.frame.width
+        let y = app.navigationBars.firstMatch.frame.midY
+        var values: [Int] = []
+        // This clear area lies between Back and the hidden compact name. The
+        // alternating 4-point stripes should remain sharp beneath the toolbar.
+        for x in 96..<128 {
+            guard let pixel = image.cropping(to: CGRect(x: CGFloat(x) * scale, y: y * scale, width: 1, height: 1)) else { XCTFail("Missing header pixel"); return }
+            var bytes = [UInt8](repeating: 0, count: 4)
+            let rendered = bytes.withUnsafeMutableBytes { buffer -> Bool in
+                guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+                context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1)); return true
+            }
+            XCTAssertTrue(rendered); values.append(Int(bytes[0]))
+        }
+        XCTAssertGreaterThan((values.max() ?? 0) - (values.min() ?? 0), 100,
+            "Portrait detail must remain sharp under the toolbar; hiding its background alone leaves iOS's scroll-edge blur")
+    }
+    func testPortraitStaysClearBehindPinnedControlsBeforeTheNameCollapses() {
+        for (kind, id, prefix) in [("cast", 974169, "person"), ("character", 70069, "character"), ("voice", 100250, "voice-actor")] {
+            let app = open(kind, id, headerPattern: true)
+            let heart = app.buttons[prefix + "-favourite"], heartY = heart.frame.midY
+            capture("Header pattern \(kind) initial portrait", app: app)
+            assertPortraitIsSharpBehindToolbar(app)
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            start.press(forDuration: 0.03, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)))
+            XCTAssertFalse(element(app, "profile-compact-name").exists)
+            capture("Header pattern \(kind) partly scrolled portrait", app: app)
+            assertPortraitIsSharpBehindToolbar(app)
+            XCTAssertEqual(heart.frame.midY, heartY, accuracy: 2)
+            XCTAssertTrue(heart.isHittable)
+            XCTAssertEqual(app.tabBars.count, 0)
+            app.terminate()
+        }
     }
     func testCastProfilesKeepLocationsContextAliasesAndAgeAtDeath() {
         executionTimeAllowance = 180

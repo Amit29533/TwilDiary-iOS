@@ -144,8 +144,8 @@ struct CharacterView: View {
                                 Artwork(path: item.cover, title: item.title).frame(width: 104, height: 156).clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(alignment: .bottomLeading) {
                                         if let score = item.rating, score > 0 {
-                                            HStack(spacing: 3) { RatingBadge(score: score); Text("AniList").font(.system(size: 9)) }
-                                                .padding(4).background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 6)).padding(4)
+                                            RatingBadge(score: score, source: "AniList").padding(5)
+                                                .accessibilityIdentifier("character-appearance-rating-\(item.id)")
                                         }
                                     }
                                 ProfileCardCaption(title: item.title)
