@@ -445,9 +445,9 @@ import TwilDiaryTestSupport
         overview: "", poster: nil, backdrop: nil, communityScore: nil, tmdbId: 209867,
         genres: ["Animation"], tags: ["Simulcast", "Top 10"], runtimeMinutes: 24,
         status: "watching", favorite: true, queued: false, score: 9.5, notes: "", deletedAt: nil,
-        version: 1, seasons: [Season(number: 1, name: "Season 1", expectedEpisodes: 2)])
-    let epPast = Episode(id: "ep1", titleId: "frieren", season: 1, number: 1, name: "The Journey's End", overview: "", airedOn: "2026-10-20")
-    let epFuture = Episode(id: "ep2", titleId: "frieren", season: 1, number: 2, name: "It Didn't Have to Be Magic", overview: "", airedOn: "2026-10-27")
+        version: 1, seasons: [Season(number: 1, name: "Season 1", expectedEpisodes: 2, metadataLoadedAt: nil, metadataVersion: nil)], createdAt: nil)
+    let epPast = Episode(id: "ep1", titleId: "frieren", season: 1, number: 1, name: "The Journey's End", overview: "", airedOn: "2026-10-20", still: nil, hidden: nil, communityScore: nil)
+    let epFuture = Episode(id: "ep2", titleId: "frieren", season: 1, number: 2, name: "It Didn't Have to Be Magic", overview: "", airedOn: "2026-10-27", still: nil, hidden: nil, communityScore: nil)
     let workspace = Workspace(titles: [anime], episodes: [epPast, epFuture], events: [], locations: [])
     let now = try #require(DiaryDate.parse("2026-10-23T12:00:00Z"))
 
