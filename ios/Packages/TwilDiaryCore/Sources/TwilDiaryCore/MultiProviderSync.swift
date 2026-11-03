@@ -294,12 +294,12 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
 /// Simkl (`https://api.simkl.com`) activity timestamps and payload normalization engine.
 public enum SimklSyncEngine {
     public struct ActivityTimestamps: Codable, Equatable, Sendable {
-        public let all: String
+        public let all: String?
         public let tvShowsAll: String?
         public let animeAll: String?
         public let moviesAll: String?
 
-        public init(all: String, tvShowsAll: String? = nil, animeAll: String? = nil, moviesAll: String? = nil) {
+        public init(all: String?, tvShowsAll: String? = nil, animeAll: String? = nil, moviesAll: String? = nil) {
             self.all = all
             self.tvShowsAll = tvShowsAll
             self.animeAll = animeAll
@@ -318,10 +318,13 @@ public enum SimklSyncEngine {
     public static func decodeActivities(from data: Data) throws -> ActivityTimestamps {
         struct Bucket: Decodable { let all: String? }
         struct Raw: Decodable {
-            let all: String
+            let all: String?
             let tv_shows: Bucket?
             let anime: Bucket?
             let movies: Bucket?
+        }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any], object.keys.contains("all") else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl activities are incomplete."))
         }
         let raw = try JSONDecoder().decode(Raw.self, from: data)
         return ActivityTimestamps(
@@ -364,6 +367,9 @@ public enum SimklSyncEngine {
             let shows: [Item]?
             let anime: [Item]?
         }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any], ["movies", "shows", "anime"].contains(where: { object[$0] is [Any] }) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl library snapshot is incomplete."))
+        }
         let raw = try JSONDecoder().decode(RawAllItems.self, from: data)
         var plays: [DirectTraktWatchPlay] = []
         var ratings: [DirectTraktRatingItem] = []
@@ -371,22 +377,22 @@ public enum SimklSyncEngine {
 
         for item in raw.movies ?? [] {
             guard let tmdbId = item.movie?.ids?.tmdb?.intValue, tmdbId > 0 else { continue }
-            if item.status == "completed", let stamp = item.last_watched_at {
-                plays.append(DirectTraktWatchPlay(tmdbId: tmdbId, isSeries: false, watchedAt: stamp))
+            if item.status == "completed" {
+                plays.append(DirectTraktWatchPlay(tmdbId: tmdbId, isSeries: false, watchedAt: item.last_watched_at))
             }
             if let rating = item.user_rating, (1...10).contains(rating) {
                 ratings.append(DirectTraktRatingItem(
                     tmdbId: tmdbId,
                     isSeries: false,
                     rating: rating,
-                    ratedAt: item.user_rated_at ?? item.last_watched_at ?? "2026-01-01T00:00:00Z"
+                    ratedAt: item.user_rated_at ?? item.last_watched_at
                 ))
             }
             if item.status == "plantowatch" {
                 watchlist.append(DirectTraktWatchlistItem(
                     tmdbId: tmdbId,
                     isSeries: false,
-                    listedAt: item.added_to_watchlist_at ?? "2026-01-01T00:00:00Z"
+                    listedAt: item.added_to_watchlist_at
                 ))
             }
         }
@@ -400,7 +406,7 @@ public enum SimklSyncEngine {
                         isSeries: true,
                         season: season.number,
                         episode: ep.number,
-                        watchedAt: ep.watched_at ?? item.last_watched_at ?? "2026-01-01T00:00:00Z"
+                        watchedAt: ep.watched_at
                     ))
                 }
             }
@@ -409,14 +415,14 @@ public enum SimklSyncEngine {
                     tmdbId: tmdbId,
                     isSeries: true,
                     rating: rating,
-                    ratedAt: item.user_rated_at ?? item.last_watched_at ?? "2026-01-01T00:00:00Z"
+                    ratedAt: item.user_rated_at ?? item.last_watched_at
                 ))
             }
             if item.status == "plantowatch" {
                 watchlist.append(DirectTraktWatchlistItem(
                     tmdbId: tmdbId,
                     isSeries: true,
-                    listedAt: item.added_to_watchlist_at ?? "2026-01-01T00:00:00Z"
+                    listedAt: item.added_to_watchlist_at
                 ))
             }
         }
@@ -662,10 +668,10 @@ public enum WeTrakrSyncEngine {
     public struct FavoriteState: Codable, Equatable, Sendable {
         public let tmdbId: Int
         public let isSeries: Bool
-        public let favoritedAt: String
+        public let favoritedAt: String?
         public let removed: Bool
 
-        public init(tmdbId: Int, isSeries: Bool, favoritedAt: String, removed: Bool = false) {
+        public init(tmdbId: Int, isSeries: Bool, favoritedAt: String?, removed: Bool = false) {
             self.tmdbId = tmdbId
             self.isSeries = isSeries
             self.favoritedAt = favoritedAt
@@ -797,14 +803,14 @@ public enum WeTrakrSyncEngine {
 
         for row in watchedMovies {
             guard let tmdbId = row.tmdbId, tmdbId > 0 else { continue }
-            let stamp = row.lastWatchedAt ?? row.watchedAt ?? row.trackedAt ?? "2026-01-01T00:00:00Z"
+            let stamp = row.lastWatchedAt ?? row.watchedAt ?? row.trackedAt
             plays.append(DirectTraktWatchPlay(tmdbId: tmdbId, isSeries: false, watchedAt: stamp))
         }
 
         for row in watchedEpisodes {
             guard let tmdbId = row.showTmdbId ?? row.tmdbId, tmdbId > 0,
                   let season = row.seasonNumber, let episode = row.number, episode > 0 else { continue }
-            let stamp = row.lastWatchedAt ?? row.watchedAt ?? row.trackedAt ?? "2026-01-01T00:00:00Z"
+            let stamp = row.lastWatchedAt ?? row.watchedAt ?? row.trackedAt
             plays.append(DirectTraktWatchPlay(tmdbId: tmdbId, isSeries: true, season: season, episode: episode, watchedAt: stamp))
         }
 
@@ -814,7 +820,7 @@ public enum WeTrakrSyncEngine {
                 watchlist.append(DirectTraktWatchlistItem(
                     tmdbId: tmdbId,
                     isSeries: isSeries,
-                    listedAt: row.trackedAt ?? "2026-01-01T00:00:00Z"
+                    listedAt: row.trackedAt
                 ))
             }
         }
@@ -831,7 +837,7 @@ public enum WeTrakrSyncEngine {
                     tmdbId: tmdbId,
                     isSeries: isSeries,
                     rating: intRating,
-                    ratedAt: row.ratedAt ?? "2026-01-01T00:00:00Z"
+                    ratedAt: row.ratedAt
                 ))
             }
         }
@@ -843,7 +849,7 @@ public enum WeTrakrSyncEngine {
                 favorites.append(FavoriteState(
                     tmdbId: tmdbId,
                     isSeries: isSeries,
-                    favoritedAt: (removed ? row.removedAt : row.favoritedAt) ?? row.favoritedAt ?? "2026-01-01T00:00:00Z",
+                    favoritedAt: (removed ? row.removedAt : row.favoritedAt) ?? row.favoritedAt,
                     removed: removed
                 ))
             }

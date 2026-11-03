@@ -18,8 +18,7 @@ import type {
 import type { DiaryController } from './diary-context.ts';
 import { isSeries } from '../domain/types.ts';
 import type { SavedTitle, SeasonPage } from './contracts.ts';
-import { readPreview, readSpoilerPreference, writeSpoilerPreference } from '../preview/storage.ts';
-import { sampleDiary } from '../preview/fixtures.ts';
+import { readSpoilerPreference, writeSpoilerPreference } from '../preview/storage.ts';
 import {
   flushOfflineDiaryMutations,
   flushWebProviderOutbox,
@@ -110,7 +109,8 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
                   known: knownRevision.revision
                 })
             );
-            if (!delta.cursor || !Number.isFinite(Date.parse(delta.cursor))) throw new Error('Server cursor unavailable');
+            if (!delta.cursor || !Number.isFinite(Date.parse(delta.cursor)))
+              throw new Error('Server cursor unavailable');
             if (delta.unchanged) {
               knownRevision = { revision: delta.revision, sinceIso: delta.cursor };
               lastRead = Date.now();
@@ -142,10 +142,7 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
               for (const ep of delta.episodes) if (ep.skipped) skippedSet.add(ep.id);
               snapshot = {
                 schemaVersion: 1,
-                titles: [
-                  ...snapshot.titles.filter((t) => !changedSet.has(t.id)),
-                  ...delta.titles
-                ],
+                titles: [...snapshot.titles.filter((t) => !changedSet.has(t.id)), ...delta.titles],
                 episodes: mergedEpisodes,
                 events: [
                   ...snapshot.events.filter((e) => !changedSet.has(e.titleId)),
@@ -168,7 +165,9 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
         }
         // Capture the server cursor and revision BEFORE downloading independent pages.
         // Changes during pagination are then included by the next delta request.
-        const revResult = await request<{ revision: string; cursor: string }>('/api/workspace/revision').catch(() => null);
+        const revResult = await request<{ revision: string; cursor: string }>(
+          '/api/workspace/revision'
+        ).catch(() => null);
         const [titles, rawEpisodes, events, locations] = await Promise.all([
           section<MediaTitle>('titles'),
           section<Episode & { skipped: boolean }>('episodes'),
@@ -193,8 +192,10 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
           locations,
           skippedEpisodeIds: rawEpisodes.filter((e) => e.skipped).map((e) => e.id)
         };
-        knownRevision = revResult?.revision && Number.isFinite(Date.parse(revResult.cursor))
-          ? { revision: revResult.revision, sinceIso: revResult.cursor } : null;
+        knownRevision =
+          revResult?.revision && Number.isFinite(Date.parse(revResult.cursor))
+            ? { revision: revResult.revision, sinceIso: revResult.cursor }
+            : null;
         lastRead = Date.now();
         ready = true;
         warning = '';
@@ -571,14 +572,8 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
       if (initialized) return;
       initialized = true;
       try {
-        const status = await request<{ migrated: boolean }>('/api/workspace/migrate');
-        if (!status.migrated) {
-          const stored = await readPreview();
-          await request('/api/workspace/migrate', {
-            method: 'POST',
-            body: JSON.stringify(stored.snapshot ?? sampleDiary())
-          });
-        }
+        // Opening a live diary is read-only. Preview/archive imports require an
+        // explicit import action; a missing migration marker is not consent.
         try {
           hideSpoilers = await readSpoilerPreference();
         } catch {}

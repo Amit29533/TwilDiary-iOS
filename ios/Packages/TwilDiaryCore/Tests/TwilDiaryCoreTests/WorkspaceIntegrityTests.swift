@@ -24,6 +24,10 @@ import TwilDiaryTestSupport
     rewatch.events.append(WatchEvent(id: "different-event", operationId: "different-operation", titleId: event.titleId, episodeId: event.episodeId,
                                     watchedAt: event.watchedAt, recordedAt: event.recordedAt, revokedAt: nil, origin: event.origin, version: event.version))
     #expect(try rewatch.validatingIdentities().events.count == original.events.count + 1)
+    var duplicateOperation = original
+    duplicateOperation.events.append(WatchEvent(id: "different-identity", operationId: event.operationId, titleId: event.titleId, episodeId: event.episodeId,
+                                               watchedAt: event.watchedAt, recordedAt: event.recordedAt, revokedAt: nil, origin: event.origin, version: event.version))
+    #expect(throws: WorkspaceIntegrityError.duplicateIdentity(section: "watch operations")) { try duplicateOperation.validatingIdentities() }
 }
 
 @Test func malformedInMemorySnapshotsCannotCrashOrDoubleCountHomeAndHistory() throws {

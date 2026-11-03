@@ -131,7 +131,8 @@ import TwilDiaryCore
     private let vaultStateDefaults: UserDefaults?
     @ObservationIgnored private var vaultSyncTask: Task<Void, Never>?
     private var vaultSending = false
-    var providerVaultBusy: Bool { vaultSending }
+    private var vaultResolving = false
+    var providerVaultBusy: Bool { vaultSending || vaultResolving }
     private(set) var providerVaultNotice: String?
     var providerSettings = ProviderConnectionSettings()
     @ObservationIgnored let directClient: DirectProviderClient
@@ -271,6 +272,8 @@ import TwilDiaryCore
         } catch { if generation == sessionGeneration { fail(error) } }
     }
     func signOut() {
+        BackgroundSyncCoordinator.shared.endLiveActivity()
+        BackgroundSyncCoordinator.shared.endBackgroundExecution()
         vaultSyncTask?.cancel(); vaultSyncTask = nil; vaultDirty = [:]; providerVaultNotice = nil
         cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
@@ -626,7 +629,7 @@ import TwilDiaryCore
         let key = CardKey(titleID: title.id, revision: revision, session: sessionGeneration, season: season, day: DiaryDate.day(now))
         return cachedCards[key]?.value
     }
-    /// Returns a server-confirmed WatchCard if cached, or calculates it locally in < 0.1 ms from `workspace`.
+    /// Returns a server-confirmed WatchCard if cached, or calculates it locally from `workspace` without a network request.
     func localCard(_ title: MediaTitle, season: Int? = nil) -> WatchCard {
         cachedCard(title, season: season) ?? WatchCard.calculate(title: title, in: workspace, day: DiaryDate.day(now), season: season)
     }
@@ -759,7 +762,7 @@ import TwilDiaryCore
         }
     }
     func pushProviderVaultToServer() async {
-        guard !isPreview, !needsSignIn, !vaultSending else { return }
+        guard !isPreview, !needsSignIn, !vaultSending, !vaultResolving else { return }
         vaultSending = true; defer { vaultSending = false }
         let session = sessionGeneration
         while !vaultDirty.isEmpty, session == sessionGeneration, !Task.isCancelled {
@@ -837,19 +840,27 @@ import TwilDiaryCore
         } catch { providerVaultNotice = "Online provider settings are unavailable. Device settings are unchanged." }
     }
     func resolveProviderVaultConflict(keepDevice: Bool) async {
-        guard !needsSignIn, !isPreview else { return }
+        guard !needsSignIn, !isPreview, !vaultSending, !vaultResolving else { return }
+        vaultResolving = true; defer { vaultResolving = false }
+        let selected = vaultDirty, session = sessionGeneration
+        var shouldFlush = false
         do {
             let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
+            guard session == sessionGeneration else { return }
             guard remote.protocolVersion == 2 else { throw APIError.message("Update the diary server before syncing provider settings.") }
             guard remote.revision == nil || remote.synced else { throw APIError.message("Saved provider settings could not be decrypted.") }
+            let paths = Set(selected.keys.filter { vaultDirty[$0]?.generation == selected[$0]?.generation })
             if keepDevice {
-                for path in vaultDirty.keys { vaultDirty[path] = VaultDirtyField(baseline: vaultHash(vaultValue(path, remote: remote.settings)), generation: UUID()) }
-                saveVaultDirty(); await pushProviderVaultToServer()
+                for path in paths { vaultDirty[path] = VaultDirtyField(baseline: vaultHash(vaultValue(path, remote: remote.settings)), generation: UUID()) }
+                saveVaultDirty(); shouldFlush = true
             } else {
-                guard persistProviderSettings(applyingVault(remote.settings, paths: Set(vaultDirty.keys), to: providerSettings)) else { return }
-                vaultDirty = [:]; saveVaultDirty(); providerVaultNotice = nil
+                guard persistProviderSettings(applyingVault(remote.settings, paths: paths, to: providerSettings)) else { return }
+                for path in paths { vaultDirty.removeValue(forKey: path) }
+                saveVaultDirty(); providerVaultNotice = nil; shouldFlush = !vaultDirty.isEmpty
             }
-        } catch { providerVaultNotice = error.localizedDescription }
+        } catch { if session == sessionGeneration { providerVaultNotice = error.localizedDescription } }
+        vaultResolving = false
+        if shouldFlush { await pushProviderVaultToServer() }
     }
     /// Hosted imports publish only after the server confirms the merge. Offline imports never claim success.
     @discardableResult
@@ -902,7 +913,11 @@ import TwilDiaryCore
         guard !activeProviders.isEmpty else { return }
         for provider in activeProviders {
             let pending = outbox.pending(for: provider).filter { !$0.pendingProviders.contains(.cloudflare) }
+            var completed = 0
+            var blockedTitles = Set<String>()
+            if !pending.isEmpty { BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: 0, total: pending.count) }
             for entry in pending {
+                if blockedTitles.contains(entry.mutation.titleId) { continue }
                 let config = providerSettings.config(for: provider)
                 let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: workspace)
                 do {
@@ -919,23 +934,34 @@ import TwilDiaryCore
                             throw APIError.rejected(status, message)
                         }
                         guard session == sessionGeneration, !Task.isCancelled else { return }
+                        let currentConfig = providerSettings.config(for: provider)
+                        guard config.clientId == currentConfig.clientId, config.accessToken == currentConfig.accessToken, config.apiKey == currentConfig.apiKey, currentConfig.enabled else {
+                            throw APIError.message("The provider connection changed during delivery. Review pending edits before retrying.")
+                        }
                         try persistDelivery(entryID: entry.id, key: key, confirmed: true)
                     }
                     if !plan.blocked.isEmpty { throw APIError.message(plan.blocked.joined(separator: " ")) }
                     guard !plan.deliveries.isEmpty else { throw APIError.message("This edit has no supported provider operation.") }
                     try acknowledgeOutbox(entry.id, provider: provider)
+                    completed += 1
+                    BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: completed, total: pending.count, phase: completed == pending.count ? .completed : .flushingOutbox)
                     var updated = providerSettings.config(for: provider)
                     updated.lastSyncedAt = now.ISO8601Format()
                     updateProviderConfig(updated, syncVault: false)
                 } catch {
                     guard session == sessionGeneration else { return }
+                    BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: completed, total: pending.count, phase: .failed)
                     var next = outbox
                     next.recordFailure(entryID: entry.id, error: error.localizedDescription)
                     if let scope = api.credential?.cacheScope {
                         do { try outboxStore.save(next, scope: scope); outbox = next }
                         catch { self.error = error.localizedDescription }
                     }
-                    // Preserve ordering: later edits must not overtake an unconfirmed earlier edit.
+                    if error.localizedDescription == plan.blocked.joined(separator: " ") || error.localizedDescription.hasPrefix("A previous history request needs reconciliation") {
+                        blockedTitles.insert(entry.mutation.titleId)
+                        continue
+                    }
+                    // Transport/auth failures stop the provider; unsupported titles do not block unrelated titles.
                     break
                 }
             }

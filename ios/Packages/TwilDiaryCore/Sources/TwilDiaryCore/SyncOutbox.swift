@@ -20,7 +20,7 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
 }
 
 /// A local-first diary mutation that can be applied optimistically to an in-memory `Workspace`
-/// in 0 ms and queued in `SyncOutboxQueue` for durable delivery to Cloudflare D1 and external providers.
+/// without networking and queued in `SyncOutboxQueue` for durable delivery to Cloudflare D1 and external providers.
 public enum OptimisticMutation: Codable, Equatable, Sendable {
     case markWatch(operationId: String, titleId: String, episodeId: String?, watchedAt: String, recordedAt: String, rewatch: Bool)
     case revokeWatch(eventId: String, titleId: String, expectedVersion: Int, revokedAt: String)
@@ -229,7 +229,7 @@ public final class FileSyncOutboxStore: SyncOutboxStoring, @unchecked Sendable {
 }
 
 public extension WatchCard {
-    /// Computes a `WatchCard` locally on-device from `Workspace` in < 0.1 ms, matching
+    /// Computes a `WatchCard` locally on-device from `Workspace`, matching
     /// the server's `watchCard` projection in `src/lib/server/dashboard.ts`.
     static func calculate(title: MediaTitle, in workspace: Workspace, day: String, season selectedSeason: Int? = nil) -> WatchCard {
         if !title.isSeries {

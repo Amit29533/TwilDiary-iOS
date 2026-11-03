@@ -22,6 +22,7 @@ extension Workspace {
         try requireUnique(episodes, section: "episodes")
         try requireUnique(events, section: "watches")
         try requireUnique(locations, section: "locations")
+        guard Set(events.map(\.operationId)).count == events.count else { throw WorkspaceIntegrityError.duplicateIdentity(section: "watch operations") }
         // Independent paginated sections can straddle a scheduled import or
         // deletion. Never publish/cache watches whose title/episode was missed.
         let titleIDs = Set(titles.map(\.id))

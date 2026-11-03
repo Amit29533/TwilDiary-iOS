@@ -13,33 +13,33 @@ export type NormalizedRemotePlay = {
   mediaType: 'movie' | 'tv';
   season?: number;
   episode?: number;
-  watchedAt: string;
+  watchedAt: string | null;
 };
 
 export type NormalizedRemoteRating = {
   tmdbId: number;
   mediaType: 'movie' | 'tv';
   rating: number;
-  ratedAt: string;
+  ratedAt: string | null;
 };
 
 export type NormalizedRemoteWatchlist = {
   tmdbId: number;
   mediaType: 'movie' | 'tv';
-  listedAt: string;
+  listedAt: string | null;
 };
 
 export type NormalizedRemoteFavorite = {
   tmdbId: number;
   mediaType: 'movie' | 'tv';
-  favoritedAt: string;
+  favoritedAt: string | null;
   removed?: boolean;
 };
 
 export type NormalizedRemoteDropped = {
   tmdbId: number;
   mediaType: 'tv';
-  droppedAt: string;
+  droppedAt: string | null;
 };
 
 export type NormalizedProviderSnapshot = {
@@ -110,13 +110,19 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
   for (const row of movies) {
     if (!row || typeof row !== 'object') continue;
     const item = row as Record<string, unknown>;
-    const movie = item.movie && typeof item.movie === 'object' ? (item.movie as Record<string, unknown>) : null;
-    const ids = movie?.ids && typeof movie.ids === 'object' ? (movie.ids as Record<string, unknown>) : null;
+    const movie =
+      item.movie && typeof item.movie === 'object' ? (item.movie as Record<string, unknown>) : null;
+    const ids =
+      movie?.ids && typeof movie.ids === 'object' ? (movie.ids as Record<string, unknown>) : null;
     const tmdbId = parseTmdbId(ids?.tmdb);
     if (!tmdbId) continue;
 
-    if (item.status === 'completed' && typeof item.last_watched_at === 'string') {
-      plays.push({ tmdbId, mediaType: 'movie', watchedAt: item.last_watched_at });
+    if (item.status === 'completed') {
+      plays.push({
+        tmdbId,
+        mediaType: 'movie',
+        watchedAt: typeof item.last_watched_at === 'string' ? item.last_watched_at : null
+      });
     }
     if (typeof item.user_rating === 'number' && item.user_rating >= 1 && item.user_rating <= 10) {
       ratings.push({
@@ -126,7 +132,7 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
         ratedAt:
           (typeof item.user_rated_at === 'string' && item.user_rated_at) ||
           (typeof item.last_watched_at === 'string' && item.last_watched_at) ||
-          new Date(0).toISOString()
+          null
       });
     }
     if (item.status === 'plantowatch') {
@@ -134,8 +140,7 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
         tmdbId,
         mediaType: 'movie',
         listedAt:
-          (typeof item.added_to_watchlist_at === 'string' && item.added_to_watchlist_at) ||
-          new Date(0).toISOString()
+          (typeof item.added_to_watchlist_at === 'string' && item.added_to_watchlist_at) || null
       });
     }
   }
@@ -143,8 +148,10 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
   for (const row of [...shows, ...anime]) {
     if (!row || typeof row !== 'object') continue;
     const item = row as Record<string, unknown>;
-    const show = item.show && typeof item.show === 'object' ? (item.show as Record<string, unknown>) : null;
-    const ids = show?.ids && typeof show.ids === 'object' ? (show.ids as Record<string, unknown>) : null;
+    const show =
+      item.show && typeof item.show === 'object' ? (item.show as Record<string, unknown>) : null;
+    const ids =
+      show?.ids && typeof show.ids === 'object' ? (show.ids as Record<string, unknown>) : null;
     const tmdbId = parseTmdbId(ids?.tmdb);
     if (!tmdbId) continue;
 
@@ -165,10 +172,7 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
           mediaType: 'tv',
           season: seasonNum,
           episode: epNum,
-          watchedAt:
-            (typeof epObj.watched_at === 'string' && epObj.watched_at) ||
-            (typeof item.last_watched_at === 'string' && item.last_watched_at) ||
-            new Date(0).toISOString()
+          watchedAt: (typeof epObj.watched_at === 'string' && epObj.watched_at) || null
         });
       }
     }
@@ -181,7 +185,7 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
         ratedAt:
           (typeof item.user_rated_at === 'string' && item.user_rated_at) ||
           (typeof item.last_watched_at === 'string' && item.last_watched_at) ||
-          new Date(0).toISOString()
+          null
       });
     }
     if (item.status === 'plantowatch') {
@@ -189,8 +193,7 @@ export const normalizeSimklAllItems = (raw: unknown): NormalizedProviderSnapshot
         tmdbId,
         mediaType: 'tv',
         listedAt:
-          (typeof item.added_to_watchlist_at === 'string' && item.added_to_watchlist_at) ||
-          new Date(0).toISOString()
+          (typeof item.added_to_watchlist_at === 'string' && item.added_to_watchlist_at) || null
       });
     }
   }
@@ -226,7 +229,8 @@ export const normalizeMDBListSummary = (
 
 const parseActivitySection = (raw: unknown): WeTrakrActivitySection => {
   const sec = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const str = (key: string) => (typeof sec[key] === 'string' && sec[key] ? (sec[key] as string) : null);
+  const str = (key: string) =>
+    typeof sec[key] === 'string' && sec[key] ? (sec[key] as string) : null;
   return {
     all: str('all'),
     ratedAt: str('last_rated_at'),
@@ -326,12 +330,12 @@ export const normalizeWeTrakrCompactRows = (input: {
     return null;
   };
 
-  const firstTimestamp = (row: Record<string, unknown>, ...keys: string[]): string => {
+  const firstTimestamp = (row: Record<string, unknown>, ...keys: string[]): string | null => {
     for (const key of keys) {
       const val = row[key];
       if (typeof val === 'string' && val) return val;
     }
-    return new Date(0).toISOString();
+    return null;
   };
 
   for (const raw of input.watchedMovies ?? []) {
@@ -551,9 +555,7 @@ export const buildOutboundProviderPayloads = (
           }
         : null,
     ratings:
-      ratedMovies.length || ratedShows.length
-        ? { movies: ratedMovies, shows: ratedShows }
-        : null,
+      ratedMovies.length || ratedShows.length ? { movies: ratedMovies, shows: ratedShows } : null,
     watchlist:
       watchlistMovies.length || watchlistShows.length
         ? { movies: watchlistMovies, shows: watchlistShows }
@@ -578,6 +580,9 @@ export interface ProviderSyncResult {
   updatedFavorites: number;
   updatedStatuses: number;
   syncedAt: string;
+  conflicts?: number;
+  unmatched?: number;
+  preserved?: number;
 }
 
 /**
@@ -606,12 +611,26 @@ export async function applyNormalizedProviderSnapshotToDiary(
   let importedPlays = 0;
   let updatedRatings = 0;
   let updatedFavorites = 0;
-  let updatedStatuses = 0;
+  let updatedStatuses = 0,
+    conflicts = 0,
+    unmatched = 0,
+    preserved = 0;
+  function expectedConflict(error: unknown) {
+    if (error instanceof ApiError && [400, 404, 409].includes(error.status)) {
+      conflicts++;
+      return;
+    }
+    // A database/quota/network failure is not a completed import.
+    throw error;
+  }
 
   for (const play of snapshot.plays) {
     const kind = play.mediaType === 'movie' ? 'movie' : 'series';
     const titleId = titleIdByTmdbKey.get(`${kind}:${play.tmdbId}`);
-    if (!titleId) continue;
+    if (!titleId) {
+      unmatched++;
+      continue;
+    }
 
     let episodeId: string | null = null;
     if (kind === 'series') {
@@ -628,15 +647,19 @@ export async function applyNormalizedProviderSnapshotToDiary(
           )
         )
         .get();
-      if (!ep) continue;
+      if (!ep) {
+        unmatched++;
+        continue;
+      }
       episodeId = ep.id;
     }
 
-    const cleanStamp = play.watchedAt.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const opId = `provider-${snapshot.provider}-${kind}-${play.tmdbId}-${play.season ?? 0}-${play.episode ?? 0}-${cleanStamp}`.slice(
-      0,
-      120
-    );
+    const cleanStamp = (play.watchedAt ?? 'undated').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const opId =
+      `provider-${snapshot.provider}-${kind}-${play.tmdbId}-${play.season ?? 0}-${play.episode ?? 0}-${cleanStamp}`.slice(
+        0,
+        120
+      );
     try {
       const res = await logWatch(db, titleId, {
         operationId: opId,
@@ -645,16 +668,22 @@ export async function applyNormalizedProviderSnapshotToDiary(
         rewatch: false
       });
       if (res.added) importedPlays++;
-    } catch {
-      /* Ignore future/un-aired or deleted title watch conflicts */
+    } catch (error) {
+      expectedConflict(error);
     }
   }
 
   for (const rating of snapshot.ratings) {
-    if (rating.removed) continue;
+    if (rating.removed) {
+      preserved++;
+      continue;
+    }
     const kind = rating.mediaType === 'movie' ? 'movie' : 'series';
     const titleId = titleIdByTmdbKey.get(`${kind}:${rating.tmdbId}`);
-    if (!titleId) continue;
+    if (!titleId) {
+      unmatched++;
+      continue;
+    }
     try {
       const current = await getTitle(db, titleId);
       const cleanScore = Math.max(1, Math.min(10, Math.round(rating.rating * 10) / 10));
@@ -664,17 +693,25 @@ export async function applyNormalizedProviderSnapshotToDiary(
           score: cleanScore
         });
         updatedRatings++;
+      } else if (current.score !== cleanScore) {
+        preserved++;
       }
-    } catch {
-      /* Ignore concurrent version conflict */
+    } catch (error) {
+      expectedConflict(error);
     }
   }
 
   for (const fav of snapshot.favorites ?? []) {
-    if (fav.removed) continue;
+    if (fav.removed) {
+      preserved++;
+      continue;
+    }
     const kind = fav.mediaType === 'movie' ? 'movie' : 'series';
     const titleId = titleIdByTmdbKey.get(`${kind}:${fav.tmdbId}`);
-    if (!titleId) continue;
+    if (!titleId) {
+      unmatched++;
+      continue;
+    }
     try {
       const current = await getTitle(db, titleId);
       if (!current.favorite) {
@@ -684,15 +721,18 @@ export async function applyNormalizedProviderSnapshotToDiary(
         });
         updatedFavorites++;
       }
-    } catch {
-      /* Ignore concurrent version conflict */
+    } catch (error) {
+      expectedConflict(error);
     }
   }
 
   for (const item of snapshot.watchlist) {
     const kind = item.mediaType === 'movie' ? 'movie' : 'series';
     const titleId = titleIdByTmdbKey.get(`${kind}:${item.tmdbId}`);
-    if (!titleId) continue;
+    if (!titleId) {
+      unmatched++;
+      continue;
+    }
     try {
       const current = await getTitle(db, titleId);
       if (!current.queued && current.status === 'planned') {
@@ -702,25 +742,30 @@ export async function applyNormalizedProviderSnapshotToDiary(
         });
         updatedStatuses++;
       }
-    } catch {
-      /* Ignore concurrent version conflict */
+    } catch (error) {
+      expectedConflict(error);
     }
   }
 
   for (const drop of snapshot.dropped ?? []) {
     const titleId = titleIdByTmdbKey.get(`series:${drop.tmdbId}`);
-    if (!titleId) continue;
+    if (!titleId) {
+      unmatched++;
+      continue;
+    }
     try {
       const current = await getTitle(db, titleId);
-      if (current.status !== 'dropped') {
+      if (current.status === 'planned') {
         await patchTitle(db, titleId, {
           expectedVersion: current.version,
           status: 'dropped'
         });
         updatedStatuses++;
+      } else if (current.status !== 'dropped') {
+        preserved++;
       }
-    } catch {
-      /* Ignore concurrent version conflict */
+    } catch (error) {
+      expectedConflict(error);
     }
   }
 
@@ -730,7 +775,10 @@ export async function applyNormalizedProviderSnapshotToDiary(
     updatedRatings,
     updatedFavorites,
     updatedStatuses,
-    syncedAt: new Date().toISOString()
+    syncedAt: new Date().toISOString(),
+    conflicts,
+    unmatched,
+    preserved
   };
 }
 
@@ -749,20 +797,35 @@ export async function syncExternalProviderWithDiary(
 
   if (provider === 'simkl') {
     if (!clientId || !accessToken) {
-      throw new ApiError(400, 'invalid_credentials', 'Simkl Client ID and Access Token are required.');
+      throw new ApiError(
+        400,
+        'invalid_credentials',
+        'Simkl Client ID and Access Token are required.'
+      );
     }
-    const res = await transport('https://api.simkl.com/sync/all-items/', {
-      headers: {
-        Accept: 'application/json',
-        'simkl-api-key': clientId,
-        Authorization: `Bearer ${accessToken}`
-      },
-      redirect: 'manual'
-    });
+    const res = await transport(
+      'https://api.simkl.com/sync/all-items/?extended=full&episode_watched_at=yes&include_all_episodes=yes',
+      {
+        headers: {
+          Accept: 'application/json',
+          'simkl-api-key': clientId,
+          Authorization: `Bearer ${accessToken}`
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(20000)
+      }
+    );
     if (!res.ok) {
       throw new ApiError(502, 'provider_unavailable', `Simkl sync returned HTTP ${res.status}.`);
     }
     const raw = await res.json();
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      Array.isArray(raw) ||
+      !['movies', 'shows', 'anime'].some((key) => Array.isArray(raw[key]))
+    )
+      throw new ApiError(502, 'provider_incomplete', 'Simkl returned no usable library snapshot.');
     const snapshot = normalizeSimklAllItems(raw);
     return applyNormalizedProviderSnapshotToDiary(db, snapshot);
   }
@@ -782,13 +845,23 @@ export async function syncExternalProviderWithDiary(
       Authorization: `Bearer ${accessToken}`
     };
     const fetchRows = async (path: string): Promise<unknown[]> => {
-      const res = await transport(`https://api.wetrakr.com${path}`, {
+      const res = await transport(`https://api.wetrakr.com${path}?compact=true&limit=1000`, {
         headers,
-        redirect: 'manual'
+        redirect: 'error',
+        signal: AbortSignal.timeout(20000)
       });
-      if (!res.ok) throw new ApiError(502, 'provider_unavailable', `WeTrakr returned HTTP ${res.status}.`);
+      if (!res.ok)
+        throw new ApiError(502, 'provider_unavailable', `WeTrakr returned HTTP ${res.status}.`);
       const parsed = await res.json();
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed))
+        throw new ApiError(502, 'provider_incomplete', 'WeTrakr returned no usable item list.');
+      if (parsed.length >= 1000)
+        throw new ApiError(
+          502,
+          'provider_pagination_required',
+          'This WeTrakr list needs paginated import; no partial snapshot was imported.'
+        );
+      return parsed;
     };
     const [
       watchedMovies,
@@ -801,15 +874,15 @@ export async function syncExternalProviderWithDiary(
       favoritesShows,
       droppedShows
     ] = await Promise.all([
-      fetchRows('/sync/watched/movies'),
-      fetchRows('/sync/watched/episodes'),
+      fetchRows('/sync/tracking/watched/movies'),
+      fetchRows('/sync/tracking/watched/episodes'),
       fetchRows('/sync/ratings/movies'),
       fetchRows('/sync/ratings/shows'),
-      fetchRows('/sync/watchlist/movies'),
-      fetchRows('/sync/watchlist/shows'),
+      fetchRows('/sync/tracking/planning/movies'),
+      fetchRows('/sync/tracking/planning/shows'),
       fetchRows('/sync/favorites/movies'),
       fetchRows('/sync/favorites/shows'),
-      fetchRows('/sync/dropped/shows')
+      fetchRows('/sync/tracking/dropped/shows')
     ]);
     const snapshot = normalizeWeTrakrCompactRows({
       watchedMovies,
@@ -825,12 +898,9 @@ export async function syncExternalProviderWithDiary(
     return applyNormalizedProviderSnapshotToDiary(db, snapshot);
   }
 
-  return {
-    provider,
-    importedPlays: 0,
-    updatedRatings: 0,
-    updatedFavorites: 0,
-    updatedStatuses: 0,
-    syncedAt: new Date().toISOString()
-  };
+  throw new ApiError(
+    400,
+    'provider_pull_unsupported',
+    'This provider does not support this import route. Use its supported connection or review flow.'
+  );
 }

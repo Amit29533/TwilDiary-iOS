@@ -1934,3 +1934,48 @@ private struct RejectingOutbox: SyncOutboxStoring {
     func save(_ queue: SyncOutboxQueue, scope: String) throws { throw APIError.message("Synthetic disk failure") }
     func removeAll() throws {}
 }
+
+private struct RejectingProviderSettings: ProviderSettingsStoring {
+    func load() -> ProviderConnectionSettings { ProviderConnectionSettings() }
+    func save(_ settings: ProviderConnectionSettings) throws { throw ProviderSettingsPersistenceError.secureStoreUnavailable }
+}
+
+extension SessionTests {
+    func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), providerSettingsStore: RejectingProviderSettings())
+        XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
+        XCTAssertNil(store.providerSettings.customTmdbToken)
+        XCTAssertFalse(store.updateProviderConfig(ExternalProviderConfig(provider: .simkl, enabled: true, clientId: "fixture", accessToken: "fixture")))
+        XCTAssertNil(store.providerSettings.simkl.accessToken)
+        XCTAssertNotNil(store.error)
+    }
+
+    func testDirectProviderPartialSuccessIsDurableAndOnlyUnconfirmedRequestsRetry() async throws {
+        let storage = MemorySessionStorage(); storage.credential = credential
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-TwilDiary-Test-Case": StubProtocol.state.testIdentifier]
+        let queueStore = MemorySyncOutboxStore()
+        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: queueStore, providerSettingsStore: EmptyProviderSettings(), directClient: DirectProviderClient(session: URLSession(configuration: configuration)))
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(PreviewData.workspace)) as? [String: Any])
+        var titles = try XCTUnwrap(json["titles"] as? [[String: Any]])
+        titles[0]["tmdbId"] = 123; json["titles"] = titles
+        store.workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: json))
+        let title = try XCTUnwrap(store.workspace.titles.first)
+        store.providerSettings = ProviderConnectionSettings(wetrakr: ExternalProviderConfig(provider: .wetrakr, enabled: true, loggingMethod: .directAPIOnly, clientId: "fixture-client", accessToken: "fixture-token"))
+        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: nil, score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil), providers: [.wetrakr])
+        StubProtocol.state.reset { request in
+            request.url?.path == "/sync/ratings" ? .init(#"{"added":{"movies":1}}"#) : .init(503, "{}")
+        }
+        await store.flushDirectProviders()
+        let saved = try XCTUnwrap(queueStore.load(scope: credential.cacheScope).entries.first { $0.id == entry.id })
+        XCTAssertEqual(saved.confirmedActions, ["wetrakr:rating"])
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/ratings" }.count, 1)
+        StubProtocol.state.reset { _ in .init(#"{"added":{"movies":1}}"#) }
+        await store.flushDirectProviders()
+        XCTAssertTrue(queueStore.load(scope: credential.cacheScope).isEmpty)
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/ratings" }.count, 0)
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/tracking" }.count, 1)
+    }
+}

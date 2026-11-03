@@ -19,6 +19,16 @@ export const handle: Handle = async ({ event, resolve }) => {
   // Resolve them lazily: the adapter also renders a data-free fallback in Node at build time.
   const cloudflareEnv = (await import('cloudflare:workers')).env;
   event.locals.bindings = cloudflareEnv;
+  // This route renders only the sign-in UI. It reads no diary data; private APIs still verify owners.
+  if (
+    (event.url.pathname === '/sign-in' || event.route.id === '/sign-in') &&
+    ['GET', 'HEAD'].includes(event.request.method)
+  ) {
+    const response = await resolve(event);
+    response.headers.set('Cache-Control', 'private, no-store');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    return response;
+  }
   if (dev && cloudflareEnv.LOCAL_DIARY === '1') {
     const localPC = localDevelopmentAllowed(
       dev,
@@ -106,6 +116,22 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!(error instanceof AccessFailure)) throw error;
     // Status and path only; never the assertion, cookies or headers.
     console.warn('access_rejected', { status: error.status, path: event.url.pathname });
+    if (
+      error.status === 401 &&
+      !event.url.pathname.startsWith('/api/') &&
+      event.request.method === 'GET' &&
+      event.request.headers.get('Accept')?.includes('text/html')
+    ) {
+      return new Response(null, {
+        status: 303,
+        headers: {
+          Location:
+            '/sign-in?' + new URLSearchParams({ returnTo: event.url.pathname + event.url.search }),
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff'
+        }
+      });
+    }
     return new Response(error.message, {
       status: error.status,
       headers: {

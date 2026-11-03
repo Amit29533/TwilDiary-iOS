@@ -89,7 +89,7 @@
           accessToken: traktAccessToken.trim()
         };
       } else {
-        window.location.href = '/api/session';
+        window.location.href = '/preview/home';
         return;
       }
 
@@ -143,9 +143,7 @@
       <header class="auth-head">
         <div>
           <h3>Sign-in methods</h3>
-          <p class="muted">
-            Authenticate with a Personal Access Token, Owner Passcode, Trakt OAuth, or Cloudflare Access.
-          </p>
+          <p class="muted">Choose how to sign in to your private diary.</p>
         </div>
         <button type="button" class="close-btn" aria-label="Close" onclick={onClose}>
           <X size={18} />
@@ -223,20 +221,18 @@
       <div class="method-body">
         {#if activeTab === 'token'}
           <label class="field">
-            <span>Personal Access Token (<code>DIARY_ACCESS_TOKEN</code>)</span>
+            <span>Personal access token</span>
             <input
               type="password"
-              placeholder="Paste your personal access token or session JWT"
+              placeholder="Enter your diary access token"
               bind:value={personalToken}
               autocomplete="off"
             />
           </label>
-          <p class="hint">
-            Ideal for self-hosted deployments, iOS native sign-in, or bypassing Cloudflare Zero Trust browser redirects.
-          </p>
+          <p class="hint">Use the personal access token configured for your diary.</p>
         {:else if activeTab === 'passcode'}
           <label class="field">
-            <span>Owner Email (<code>DIARY_OWNER_EMAIL</code>)</span>
+            <span>Email</span>
             <input
               type="email"
               placeholder="owner@example.com"
@@ -245,7 +241,7 @@
             />
           </label>
           <label class="field">
-            <span>Passcode (<code>DIARY_OWNER_PASSCODE</code>)</span>
+            <span>Passcode</span>
             <input
               type="password"
               placeholder="Enter your owner passcode"
@@ -253,12 +249,10 @@
               autocomplete="current-password"
             />
           </label>
-          <p class="hint">
-            Issues a 30-day HMAC-SHA256 signed session cookie and bearer token.
-          </p>
+          <p class="hint">Use the email and passcode configured for your diary.</p>
         {:else if activeTab === 'trakt'}
           <label class="field">
-            <span>Trakt Client ID (optional if set on server)</span>
+            <span>Trakt client ID (optional)</span>
             <input
               type="text"
               placeholder="Trakt API client ID"
@@ -275,13 +269,9 @@
               autocomplete="off"
             />
           </label>
-          <p class="hint">
-            Verifies your Trakt account against the owner account linked to this diary.
-          </p>
+          <p class="hint">Use the Trakt account linked to this diary.</p>
         {:else}
-          <p class="hint">
-            Redirects through your Cloudflare Zero Trust team domain (`ACCESS_TEAM_DOMAIN`) to issue a `CF_Authorization` session.
-          </p>
+          <p class="hint">Continue using your Cloudflare sign-in.</p>
         {/if}
 
         {#if feedback}

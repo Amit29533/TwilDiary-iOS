@@ -12,6 +12,7 @@
     pendingOutboxForProvider,
     pollProviderDeviceToken,
     startProviderDeviceAuth,
+    testWebProviderConnection,
     type DeviceAuthSession
   } from '#lib/client/provider-outbox.ts';
   import {
@@ -136,8 +137,7 @@
         persist({
           ...currentDraft,
           accessToken: result.accessToken,
-          enabled: true,
-          lastSyncedAt: new Date().toISOString()
+          enabled: true
         });
         savedMessage = `${meta.name} authorized and connected.`;
       } else if (result.status === 'expired') {
@@ -159,37 +159,55 @@
     errorMessage = '';
     savedMessage = '';
     try {
+      persist(currentDraft);
       const flushResult = await flushWebProviderOutbox(diary.archive);
+      outboxCount = pendingOutboxForProvider(provider).length;
+      if (Object.keys(flushResult.errors).length)
+        throw new Error(
+          Object.entries(flushResult.errors)
+            .map(([name, error]) => name + ': ' + error)
+            .join(' ')
+        );
+      if (outboxCount > 0) throw new Error(`${outboxCount} edits remain pending for ${meta.name}.`);
       let pullSummary = '';
+      let complete = true;
       if (provider === 'wetrakr' || provider === 'simkl') {
-        try {
-          const pull = await requestJson<{
-            importedPlays: number;
-            updatedRatings: number;
-            updatedFavorites: number;
-          }>(`/api/providers/${provider}/sync`, {
-            method: 'POST',
-            body: JSON.stringify({
-              clientId: currentDraft.clientId,
-              accessToken: currentDraft.accessToken
-            })
-          });
-          if (pull.importedPlays || pull.updatedRatings || pull.updatedFavorites) {
-            await diary.refresh();
-          }
-          pullSummary = ` · ${pull.importedPlays} plays, ${pull.updatedRatings} ratings pulled`;
-        } catch {
-          /* Preview or offline mode: outbound outbox still processed */
+        const pull = await requestJson<{
+          importedPlays: number;
+          updatedRatings: number;
+          updatedFavorites: number;
+          updatedStatuses: number;
+          preserved?: number;
+          unmatched?: number;
+          conflicts?: number;
+        }>(`/api/providers/${provider}/sync`, {
+          method: 'POST',
+          body: JSON.stringify({
+            clientId: currentDraft.clientId,
+            accessToken: currentDraft.accessToken
+          })
+        });
+        if (
+          pull.importedPlays ||
+          pull.updatedRatings ||
+          pull.updatedFavorites ||
+          pull.updatedStatuses
+        ) {
+          await diary.refresh();
         }
+        pullSummary = ` · ${pull.importedPlays} plays, ${pull.updatedRatings} ratings, ${pull.updatedFavorites} favourites, ${pull.updatedStatuses} statuses imported`;
+        if (pull.preserved) pullSummary += ` · ${pull.preserved} local choices preserved`;
+        if (pull.unmatched) pullSummary += ` · ${pull.unmatched} unmatched items skipped`;
+        if (pull.conflicts) pullSummary += ` · ${pull.conflicts} conflicts need review`;
+        complete = !pull.unmatched && !pull.conflicts;
       }
       const next: ExternalProviderConfig = {
         ...currentDraft,
-        enabled: true,
-        lastSyncedAt: new Date().toISOString()
+        lastSyncedAt: complete ? new Date().toISOString() : currentDraft.lastSyncedAt
       };
       persist(next);
       outboxCount = pendingOutboxForProvider(provider).length;
-      savedMessage = `Synced with ${meta.name} (${flushResult.flushedEntries} outbound queued items sent${pullSummary}).`;
+      savedMessage = `Completed ${flushResult.flushedEntries} outbound deliveries${pullSummary}.`;
     } catch (err) {
       errorMessage = err instanceof Error ? err.message : 'Sync failed.';
     } finally {
@@ -231,10 +249,10 @@
       if (!isProviderAuthenticated(currentDraft)) {
         throw new Error(`Enter your ${meta.name} API credentials and access token first.`);
       }
+      await testWebProviderConnection(currentDraft);
       const next: ExternalProviderConfig = {
         ...currentDraft,
-        enabled: true,
-        lastSyncedAt: new Date().toISOString()
+        enabled: true
       };
       persist(next);
       savedMessage = `${meta.name} API verified and ready for watch logging.`;
@@ -275,11 +293,7 @@
         <strong>Enable {meta.name} sync</strong>
         <small>Keep your primary diary watch logging and fan out changes to {meta.name}</small>
       </span>
-      <input
-        type="checkbox"
-        bind:checked={enabled}
-        onchange={() => persist(currentDraft)}
-      />
+      <input type="checkbox" bind:checked={enabled} onchange={() => persist(currentDraft)} />
     </label>
     <label class="method-row">
       <span>
@@ -385,11 +399,18 @@
     {#if deviceAuth}
       <div class="pin-box" role="region" aria-label="Device PIN authorization">
         <p>
-          Open <a href={deviceAuth.verificationUrl} target="_blank" rel="noreferrer">{deviceAuth.verificationUrl}</a>
+          Open <a href={deviceAuth.verificationUrl} target="_blank" rel="noreferrer"
+            >{deviceAuth.verificationUrl}</a
+          >
           and enter code: <strong>{deviceAuth.userCode}</strong>
         </p>
         <div class="actions">
-          <button class="button primary" type="button" disabled={pollingPin} onclick={checkPinAuthorization}>
+          <button
+            class="button primary"
+            type="button"
+            disabled={pollingPin}
+            onclick={checkPinAuthorization}
+          >
             {#if pollingPin}<LoaderCircle class="spin" size={16} />{/if}I’ve authorized this PIN
           </button>
           <button class="button" type="button" onclick={() => (deviceAuth = null)}>Cancel</button>
@@ -414,7 +435,9 @@
           disabled={syncingNow || !isProviderAuthenticated(currentDraft)}
           onclick={syncProviderNow}
         >
-          {#if syncingNow}<LoaderCircle class="spin" size={16} />{:else}<RefreshCw size={16} />{/if}Sync now
+          {#if syncingNow}<LoaderCircle class="spin" size={16} />{:else}<RefreshCw
+              size={16}
+            />{/if}Sync now
         </button>
       </div>
     </section>

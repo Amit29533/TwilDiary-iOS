@@ -101,9 +101,9 @@ public struct DirectTraktWatchPlay: Codable, Equatable, Hashable, Sendable {
     public let isSeries: Bool
     public let season: Int?
     public let episode: Int?
-    public let watchedAt: String
+    public let watchedAt: String?
 
-    public init(tmdbId: Int, isSeries: Bool, season: Int? = nil, episode: Int? = nil, watchedAt: String) {
+    public init(tmdbId: Int, isSeries: Bool, season: Int? = nil, episode: Int? = nil, watchedAt: String?) {
         self.tmdbId = tmdbId
         self.isSeries = isSeries
         self.season = season
@@ -116,9 +116,9 @@ public struct DirectTraktRatingItem: Codable, Equatable, Hashable, Sendable {
     public let tmdbId: Int
     public let isSeries: Bool
     public let rating: Int
-    public let ratedAt: String
+    public let ratedAt: String?
 
-    public init(tmdbId: Int, isSeries: Bool, rating: Int, ratedAt: String) {
+    public init(tmdbId: Int, isSeries: Bool, rating: Int, ratedAt: String?) {
         self.tmdbId = tmdbId
         self.isSeries = isSeries
         self.rating = rating
@@ -129,9 +129,9 @@ public struct DirectTraktRatingItem: Codable, Equatable, Hashable, Sendable {
 public struct DirectTraktWatchlistItem: Codable, Equatable, Hashable, Sendable {
     public let tmdbId: Int
     public let isSeries: Bool
-    public let listedAt: String
+    public let listedAt: String?
 
-    public init(tmdbId: Int, isSeries: Bool, listedAt: String) {
+    public init(tmdbId: Int, isSeries: Bool, listedAt: String?) {
         self.tmdbId = tmdbId
         self.isSeries = isSeries
         self.listedAt = listedAt
@@ -181,7 +181,7 @@ public struct DirectTraktSyncBaseline: Codable, Equatable, Sendable {
 
 /// Actions produced by the on-device 3-way Trakt diff engine.
 public enum DirectTraktDiffAction: Codable, Equatable, Sendable {
-    case pullWatch(titleId: String, episodeId: String?, watchedAt: String)
+    case pullWatch(titleId: String, episodeId: String?, watchedAt: String?)
     case pullRating(titleId: String, score: Double)
     case pullWatchlist(titleId: String, status: String, queued: Bool)
     case pushWatch(titleId: String, tmdbId: Int, isSeries: Bool, season: Int?, episode: Int?, watchedAt: String)
@@ -298,7 +298,7 @@ public enum DirectTraktEngine {
                         isSeries: false,
                         season: nil,
                         episode: nil,
-                        watchedAt: firstEvent.watchedAt ?? firstEvent.recordedAt
+                        watchedAt: firstEvent.watchedAt ?? "unknown"
                     ))
                 }
             } else {
@@ -314,7 +314,7 @@ public enum DirectTraktEngine {
                             isSeries: true,
                             season: ep.season,
                             episode: ep.number,
-                            watchedAt: event.watchedAt ?? event.recordedAt
+                            watchedAt: event.watchedAt ?? "unknown"
                         ))
                     }
                 }
@@ -400,14 +400,16 @@ public enum DirectTraktEngine {
         for (index, action) in plan.actions.enumerated() {
             switch action {
             case .pullWatch(let titleId, let episodeId, let watchedAt):
+                let operationID = "trakt-direct-\(titleId)-\(episodeId ?? "movie")-\(index)"
                 current = current.applying(.markWatch(
-                    operationId: "trakt-direct-\(titleId)-\(episodeId ?? "movie")-\(index)",
+                    operationId: operationID,
                     titleId: titleId,
                     episodeId: episodeId,
-                    watchedAt: watchedAt,
+                    watchedAt: watchedAt ?? recordedAt,
                     recordedAt: recordedAt,
                     rewatch: false
                 ))
+                if watchedAt == nil, let eventIndex = current.events.firstIndex(where: { $0.operationId == operationID }) { current.events[eventIndex].watchedAt = nil }
             case .pullRating(let titleId, let score):
                 current = current.applying(.patchTitle(
                     titleId: titleId,

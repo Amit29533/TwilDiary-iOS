@@ -1,32 +1,15 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { api, ApiError } from '#lib/server/api.ts';
-import {
-  importDiaryArchive,
-  parseExternalCsvToArchive
-} from '#lib/server/workspace-migration.ts';
+import { api, ApiError, readJson } from '#lib/server/api.ts';
+import { importDiaryArchive, parseExternalCsvToArchive } from '#lib/server/workspace-migration.ts';
 
 const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024;
 
 export const POST: RequestHandler = (event) =>
   api(event, async (db) => {
-    const contentType = event.request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-    if (contentType !== 'application/json') {
-      throw new ApiError(415, 'json_required', 'Send backup archive as application/json');
-    }
-    const contentLength = Number(event.request.headers.get('content-length'));
-    if (contentLength > MAX_ARCHIVE_BYTES) {
-      throw new ApiError(413, 'too_large', 'Keep backup archive within 8 MB');
-    }
-    const text = await event.request.text();
-    if (text.length > MAX_ARCHIVE_BYTES) {
-      throw new ApiError(413, 'too_large', 'Keep backup archive within 8 MB');
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new ApiError(400, 'invalid_json', 'Choose a valid TwilDiary JSON backup file.');
-    }
+    const parsed = await readJson(event.request, {
+      maxBytes: MAX_ARCHIVE_BYTES,
+      sizeLabel: '8 MB'
+    });
     if (
       parsed &&
       typeof parsed === 'object' &&
@@ -34,8 +17,12 @@ export const POST: RequestHandler = (event) =>
       typeof (parsed as { csv?: unknown }).csv === 'string'
     ) {
       const zone = (parsed as { timeZone?: unknown }).timeZone;
-      if (zone !== undefined && (typeof zone !== 'string' || zone.length > 100)) throw new ApiError(400, 'invalid_timezone', 'Choose a valid CSV time zone.');
-      const archive = parseExternalCsvToArchive((parsed as { csv: string }).csv, zone as string | undefined);
+      if (zone !== undefined && (typeof zone !== 'string' || zone.length > 100))
+        throw new ApiError(400, 'invalid_timezone', 'Choose a valid CSV time zone.');
+      const archive = parseExternalCsvToArchive(
+        (parsed as { csv: string }).csv,
+        zone as string | undefined
+      );
       return importDiaryArchive(db, archive);
     }
     return importDiaryArchive(db, parsed);

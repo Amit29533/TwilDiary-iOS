@@ -28,7 +28,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 15
             configuration.timeoutIntervalForResource = 30
-            self.session = URLSession(configuration: configuration)
+            self.session = URLSession(configuration: configuration, delegate: StopRedirects(), delegateQueue: nil)
         }
     }
 
@@ -52,9 +52,9 @@ enum DeviceCodePollStatus: Equatable, Sendable {
 
     func fetchSimklAllItems(config: ExternalProviderConfig, dateFrom: String? = nil) async throws -> DirectTraktRemoteSnapshot {
         var components = URLComponents(string: "https://api.simkl.com/sync/all-items/")!
-        if let dateFrom, !dateFrom.isEmpty {
-            components.queryItems = [URLQueryItem(name: "date_from", value: dateFrom)]
-        }
+        var query = [URLQueryItem(name: "extended", value: "full"), URLQueryItem(name: "episode_watched_at", value: "yes"), URLQueryItem(name: "include_all_episodes", value: "yes")]
+        if let dateFrom, !dateFrom.isEmpty { query.append(URLQueryItem(name: "date_from", value: dateFrom)) }
+        components.queryItems = query
         let data = try await send(
             url: components.url!,
             method: "GET",

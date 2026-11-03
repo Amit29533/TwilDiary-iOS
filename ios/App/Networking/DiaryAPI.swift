@@ -71,7 +71,7 @@ enum APIError: LocalizedError {
     }
 }
 
-private final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,

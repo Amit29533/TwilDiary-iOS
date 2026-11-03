@@ -10,7 +10,10 @@ export const POST: RequestHandler = (event) =>
     if (!VALID_PROVIDERS.has(rawProvider as ExternalProvider)) {
       throw new ApiError(400, 'invalid_provider', 'Unsupported external sync provider.');
     }
-    const body = (await readJson(event.request)) as {
+    const raw = await readJson(event.request);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+      throw new ApiError(400, 'invalid_input', 'Provide provider credentials as an object.');
+    const body = raw as {
       clientId?: unknown;
       accessToken?: unknown;
       apiKey?: unknown;

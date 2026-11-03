@@ -124,14 +124,18 @@ export async function ownerApi(context: ApiContext, action: () => Promise<unknow
     );
   }
 }
-export async function readJson(request: Request): Promise<unknown> {
+export async function readJson(
+  request: Request,
+  options: { maxBytes?: number; sizeLabel?: string } = {}
+): Promise<unknown> {
   if (
     request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json'
   )
     throw new ApiError(415, 'json_required', 'Send changes as application/json');
-  const limit = 131072;
-  if (Number(request.headers.get('content-length')) > limit)
-    throw new ApiError(413, 'too_large', 'Keep this request within 128 KB');
+  const limit = options.maxBytes ?? 131072;
+  const tooLarge = () =>
+    new ApiError(413, 'too_large', `Keep this request within ${options.sizeLabel ?? '128 KB'}`);
+  if (Number(request.headers.get('content-length')) > limit) throw tooLarge();
   const reader = request.body?.getReader();
   if (!reader) throw new ApiError(400, 'invalid_json', 'A JSON object is required');
   let size = 0;
@@ -143,7 +147,7 @@ export async function readJson(request: Request): Promise<unknown> {
       size += value.byteLength;
       if (size > limit) {
         await reader.cancel();
-        throw new ApiError(413, 'too_large', 'Keep this request within 128 KB');
+        throw tooLarge();
       }
       parts.push(value);
     }

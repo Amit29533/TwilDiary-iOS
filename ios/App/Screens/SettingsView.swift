@@ -701,22 +701,32 @@ struct ExternalProviderConnectionView: View {
                 Task {
                     syncing = true
                     defer { syncing = false }
+                    errorMessage = nil; statusMessage = nil
+                    guard draftConfig() == currentConfig else { errorMessage = "Save connection settings before syncing."; return }
                     await store.flushDirectProviders()
-                    if (provider == .wetrakr || provider == .simkl), !store.isPreview {
-                        struct PullReceipt: Decodable { let importedPlays: Int; let updatedRatings: Int }
-                        if let receipt: PullReceipt = try? await store.read(
-                            "/api/providers/\(provider.rawValue)/sync",
-                            method: "POST",
-                            body: ["clientId": clientId, "accessToken": accessToken]
-                        ) {
-                            if receipt.importedPlays > 0 || receipt.updatedRatings > 0 {
-                                await store.refresh()
-                            }
-                            statusMessage = "Synced with \(displayName) (\(receipt.importedPlays) plays, \(receipt.updatedRatings) ratings pulled)."
-                            return
-                        }
+                    let pending = store.outbox.pending(for: provider)
+                    if !pending.isEmpty {
+                        errorMessage = "\(pending.count) edits remain pending. " + (pending.first?.lastError ?? "Waiting for diary confirmation or provider delivery.")
+                        return
                     }
-                    statusMessage = "Synced pending changes with \(displayName)."
+                    do {
+                        if (provider == .wetrakr || provider == .simkl), !store.isPreview {
+                            struct PullReceipt: Decodable {
+                                let importedPlays: Int; let updatedRatings: Int; let updatedFavorites: Int; let updatedStatuses: Int
+                                let preserved: Int?; let unmatched: Int?; let conflicts: Int?
+                            }
+                            let receipt: PullReceipt = try await store.read(
+                                "/api/providers/\(provider.rawValue)/sync", method: "POST",
+                                body: ["clientId": currentConfig.clientId ?? "", "accessToken": currentConfig.accessToken ?? ""])
+                            if receipt.importedPlays + receipt.updatedRatings + receipt.updatedFavorites + receipt.updatedStatuses > 0 { await store.refresh() }
+                            var summary = "Imported \(receipt.importedPlays) plays, \(receipt.updatedRatings) ratings, \(receipt.updatedFavorites) favourites and \(receipt.updatedStatuses) statuses from \(displayName)."
+                            if let count = receipt.preserved, count > 0 { summary += " \(count) local choices preserved." }
+                            if let count = receipt.unmatched, count > 0 { summary += " \(count) unmatched items skipped." }
+                            if let count = receipt.conflicts, count > 0 { summary += " \(count) conflicts need review." }
+                            statusMessage = summary
+                        } else { statusMessage = "No pending outbound edits for \(displayName)." }
+                    } catch { errorMessage = error.localizedDescription }
+
                 }
             }
             .buttonStyle(.glass)
@@ -793,7 +803,6 @@ struct ExternalProviderConnectionView: View {
                 var connectedCfg = draftConfig()
                 connectedCfg.accessToken = token
                 connectedCfg.enabled = true
-                connectedCfg.lastSyncedAt = store.now.ISO8601Format()
                 guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
                 statusMessage = "\(displayName) authorized and connected."
             case .expired:

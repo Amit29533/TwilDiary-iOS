@@ -1,6 +1,6 @@
 # Arena integration into the current UI
 
-**Build/merge gate: HOLD. See [the pre-build review](ARENA-PREBUILD-REVIEW.md) for unresolved blockers.**
+**Release/merge gate: HOLD. See [the updated review](ARENA-PREBUILD-REVIEW.md) and [regression evidence](STRICT-REGRESSION-2026-11-03.md) for repairs and remaining native/live verification.**
 
 Integration branch: `codex/arena-ui-integration`.
 Parents: current UI `b52f3e0` and Arena PR #12 `53daceb`.
@@ -39,11 +39,14 @@ generated `DIARY_AUTH_SECRET` (at least 32 characters), or a strong existing `TR
 Personal access tokens must have at least 32 characters. Existing Cloudflare Access remains supported.
 Legacy Arena vault ciphertext is deliberately not decrypted with weak fallback secrets; reconnect
 providers when moving from that draft format. Never put secrets in source or Codemagic logs.
+Apply custom SQL migration `0025_history_display_order.sql` for the history-query improvement.
+Preserve its expression index when rebuilding watch-events; the current Drizzle generator cannot
+correctly serialize this expression, so the index is maintained as custom SQL.
 
 ## Verification
 
 The dedicated Codemagic workflow is `native-ios-arena-integration-check` (build 67).
-It runs the entire Core and app unit suites, focused current-UI and Arena navigation checks,
+It runs the entire Core and app unit suites, the complete native UI target and simulator performance checks,
 and unsigned device packaging including the WidgetKit extension. Evidence is retained on failures.
 Native CI results and any remaining integration issues must be recorded before merging to main.
 No physical-device or live external-provider acceptance is claimed by fixture tests.

@@ -69,6 +69,7 @@ import BackgroundTasks
             let processingRequest = BGProcessingTaskRequest(identifier: Self.outboxTaskIdentifier)
             processingRequest.requiresNetworkConnectivity = true
             processingRequest.requiresExternalPower = false
+            processingRequest.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
             try? BGTaskScheduler.shared.submit(processingRequest)
         }
         #endif
@@ -197,7 +198,7 @@ import BackgroundTasks
             Task { @MainActor in store.suspendTraktForBackground() }
         }
         await work.value
-        task.setTaskCompleted(success: !work.isCancelled && store.pendingDiaryEdits == 0)
+        task.setTaskCompleted(success: !work.isCancelled && store.outbox.isEmpty)
         scheduleBackgroundTasks(hasPendingOutbox: !store.outbox.isEmpty)
     }
     #endif

@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 public struct ProviderDelivery {
     public let key: String
@@ -86,6 +87,16 @@ public enum ProviderDeliveryPlanner {
             return false
         }
         if nonempty(object["not_found"]) || nonempty(object["errors"]) || nonempty(object["failed"]) || nonempty(object["error"]) { return false }
-        return ["added", "updated", "existing", "deleted", "removed", "matched"].contains { nonempty(object[$0]) }
+        func positiveCount(_ value: Any?) -> Bool {
+            guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return false }
+            let count = number.doubleValue
+            return count.isFinite && count > 0 && count <= 9_007_199_254_740_991 && count.rounded(.towardZero) == count
+        }
+        func confirmedCount(_ value: Any?) -> Bool {
+            if positiveCount(value) { return true }
+            guard let counts = value as? [String: Any] else { return false }
+            return ["movies", "shows", "episodes", "seasons", "items", "ratings"].contains { positiveCount(counts[$0]) }
+        }
+        return ["added", "updated", "existing", "deleted", "removed", "matched"].contains { confirmedCount(object[$0]) }
     }
 }

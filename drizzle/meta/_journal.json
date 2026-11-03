@@ -176,6 +176,13 @@
       "when": 1793664000000,
       "tag": "0024_auth_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1793681009612,
+      "tag": "0025_history_display_order",
+      "breakpoints": true
     }
   ]
 }

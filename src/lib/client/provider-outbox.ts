@@ -2,6 +2,7 @@ import { planProviderDelivery, providerReceiptConfirmed } from './provider-deliv
 import { type DiarySnapshot } from '../domain/types.ts';
 import {
   activeDirectLoggingProviders,
+  isProviderAuthenticated,
   readProviderConnectionSettings,
   writeProviderConnectionSettings,
   type ExternalProviderConfig,
@@ -64,7 +65,8 @@ export function writeWebProviderOutbox(
     : undefined
 ): WebOutboxEntry[] {
   const active = entries.filter((e) => e.pendingProviders.length > 0);
-  if (!storage) throw new Error('Device storage is unavailable; pending provider edits were not saved.');
+  if (!storage)
+    throw new Error('Device storage is unavailable; pending provider edits were not saved.');
   storage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(active));
   return active;
 }
@@ -130,14 +132,57 @@ function providerHeaders(
   return headers;
 }
 
+/** Read-only credential verification; saving a token alone does not verify a connection. */
+export async function testWebProviderConnection(
+  config: ExternalProviderConfig,
+  transport: typeof fetch = fetch
+): Promise<void> {
+  if (!isProviderAuthenticated(config))
+    throw new Error('Enter the required provider credentials first.');
+  const url =
+    config.provider === 'trakt'
+      ? 'https://api.trakt.tv/users/settings'
+      : config.provider === 'simkl'
+        ? 'https://api.simkl.com/sync/activities'
+        : config.provider === 'wetrakr'
+          ? 'https://api.wetrakr.com/sync/last_activities'
+          : 'https://api.mdblist.com/tmdb/movie/550?apikey=' +
+            encodeURIComponent(config.apiKey?.trim() ?? '');
+  const response = await transport(url, {
+    headers: providerHeaders(config),
+    redirect: 'error',
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok)
+    throw new Error(`${config.provider} credential check returned HTTP ${response.status}.`);
+  const value = (await response.json()) as Record<string, unknown>;
+  const valid =
+    config.provider === 'trakt'
+      ? !!value.user && typeof value.user === 'object'
+      : config.provider === 'simkl'
+        ? Object.hasOwn(value, 'all') && (typeof value.all === 'string' || value.all === null)
+        : config.provider === 'wetrakr'
+          ? !!value.movies && typeof value.movies === 'object'
+          : Array.isArray(value.ratings);
+  if (!valid) throw new Error('The provider returned no usable verification response.');
+}
+
 type QueueStorage = Pick<Storage, 'getItem' | 'setItem'>;
-const providerFlights = new WeakMap<object, Promise<{ flushedEntries: number; errors: Record<string, string> }>>();
+const providerFlights = new WeakMap<
+  object,
+  Promise<{ flushedEntries: number; errors: Record<string, string> }>
+>();
 
 export async function flushWebProviderOutbox(
   snapshot: DiarySnapshot,
-  options: { settings?: ProviderConnectionSettings; storage?: QueueStorage; transport?: typeof fetch } = {}
+  options: {
+    settings?: ProviderConnectionSettings;
+    storage?: QueueStorage;
+    transport?: typeof fetch;
+  } = {}
 ): Promise<{ flushedEntries: number; errors: Record<string, string> }> {
-  const storage = options.storage ?? (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  const storage =
+    options.storage ?? (typeof localStorage !== 'undefined' ? localStorage : undefined);
   if (!storage) return { flushedEntries: 0, errors: { storage: 'Device storage is unavailable.' } };
   const existing = providerFlights.get(storage);
   if (existing) return existing;
@@ -148,12 +193,19 @@ export async function flushWebProviderOutbox(
     const errors: Record<string, string> = {};
     // Always edit the latest durable queue, preserving entries added while a request is in flight.
     function update(id: string, edit: (entry: WebOutboxEntry) => WebOutboxEntry) {
-      return writeWebProviderOutbox(readWebProviderOutbox(storage).map((entry) => entry.id === id ? edit(entry) : entry), storage);
+      return writeWebProviderOutbox(
+        readWebProviderOutbox(storage).map((entry) => (entry.id === id ? edit(entry) : entry)),
+        storage
+      );
     }
     for (const provider of activeDirectLoggingProviders(settings)) {
       const config = settings[provider];
-      const initial = readWebProviderOutbox(storage).filter((entry) => entry.pendingProviders.includes(provider));
+      const initial = readWebProviderOutbox(storage).filter((entry) =>
+        entry.pendingProviders.includes(provider)
+      );
+      const blockedTitles = new Set<string>();
       for (const entry of initial) {
+        if (blockedTitles.has(entry.mutation.titleId)) continue;
         const plan = planProviderDelivery(entry, provider, snapshot);
         try {
           for (const delivery of plan.deliveries) {
@@ -161,32 +213,94 @@ export async function flushWebProviderOutbox(
             const current = readWebProviderOutbox(storage).find((item) => item.id === entry.id);
             if (!current) break;
             if (current.confirmedActions?.includes(key)) continue;
-            if (current.uncertainActions?.includes(key)) throw new Error('A previous history request needs reconciliation before retrying; no duplicate watch was sent.');
-            if (delivery.history) update(entry.id, (item) => ({ ...item, uncertainActions: [...(item.uncertainActions ?? []), key] }));
+            if (current.uncertainActions?.includes(key))
+              throw new Error(
+                'A previous history request needs reconciliation before retrying; no duplicate watch was sent.'
+              );
+            if (delivery.history)
+              update(entry.id, (item) => ({
+                ...item,
+                uncertainActions: [...(item.uncertainActions ?? []), key]
+              }));
             const idempotencyKey = entry.operationId + ':' + delivery.key;
-            const base = provider === 'trakt' ? 'https://api.trakt.tv' : provider === 'simkl' ? 'https://api.simkl.com' : provider === 'wetrakr' ? 'https://api.wetrakr.com' : 'https://api.mdblist.com';
-            const url = base + delivery.path + (provider === 'mdblist' ? '?apikey=' + encodeURIComponent(config.apiKey?.trim() ?? '') : '');
-            const response = await transport(url, { method: 'POST', redirect: 'error', headers: providerHeaders(config, idempotencyKey), body: JSON.stringify(delivery.body) });
+            const base =
+              provider === 'trakt'
+                ? 'https://api.trakt.tv'
+                : provider === 'simkl'
+                  ? 'https://api.simkl.com'
+                  : provider === 'wetrakr'
+                    ? 'https://api.wetrakr.com'
+                    : 'https://api.mdblist.com';
+            const url =
+              base +
+              delivery.path +
+              (provider === 'mdblist'
+                ? '?apikey=' + encodeURIComponent(config.apiKey?.trim() ?? '')
+                : '');
+            const response = await transport(url, {
+              method: 'POST',
+              redirect: 'error',
+              headers: providerHeaders(config, idempotencyKey),
+              body: JSON.stringify(delivery.body)
+            });
             if (!response.ok) {
               // Definitive client rejection did not accept a history event. An ambiguous 5xx stays uncertain.
-              if (response.status >= 400 && response.status < 500) update(entry.id, (item) => ({ ...item, uncertainActions: item.uncertainActions?.filter((value) => value !== key) ?? [] }));
+              if (response.status >= 400 && response.status < 500)
+                update(entry.id, (item) => ({
+                  ...item,
+                  uncertainActions: item.uncertainActions?.filter((value) => value !== key) ?? []
+                }));
               throw new Error(`${provider} HTTP ${response.status}; the edit remains pending.`);
             }
             const receipt: unknown = await response.json();
-            if (!providerReceiptConfirmed(receipt)) throw new Error('The provider did not confirm this item; the edit remains pending.');
-            update(entry.id, (item) => ({ ...item, confirmedActions: [...(item.confirmedActions ?? []), key], uncertainActions: item.uncertainActions?.filter((value) => value !== key) ?? [] }));
+            if (!providerReceiptConfirmed(receipt))
+              throw new Error('The provider did not confirm this item; the edit remains pending.');
+            const currentConfig = readProviderConnectionSettings(storage)[provider];
+            if (
+              currentConfig.clientId !== config.clientId ||
+              currentConfig.accessToken !== config.accessToken ||
+              currentConfig.apiKey !== config.apiKey ||
+              !currentConfig.enabled
+            )
+              throw new Error(
+                'The provider connection changed during delivery. Review pending edits before retrying.'
+              );
+            update(entry.id, (item) => ({
+              ...item,
+              confirmedActions: [...(item.confirmedActions ?? []), key],
+              uncertainActions: item.uncertainActions?.filter((value) => value !== key) ?? []
+            }));
           }
           if (plan.blocked.length) throw new Error(plan.blocked.join(' '));
-          if (!plan.deliveries.length) throw new Error('This edit has no supported provider operation.');
-          update(entry.id, (item) => ({ ...item, pendingProviders: item.pendingProviders.filter((value) => value !== provider), lastError: undefined }));
+          if (!plan.deliveries.length)
+            throw new Error('This edit has no supported provider operation.');
+          update(entry.id, (item) => ({
+            ...item,
+            pendingProviders: item.pendingProviders.filter((value) => value !== provider),
+            lastError: undefined
+          }));
           flushedEntries++;
           const latestSettings = readProviderConnectionSettings(storage);
           latestSettings[provider].lastSyncedAt = new Date().toISOString();
           writeProviderConnectionSettings(latestSettings, storage, { syncVault: false });
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Direct sync failed; the edit remains pending.';
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Direct sync failed; the edit remains pending.';
           errors[provider] = message;
-          update(entry.id, (item) => ({ ...item, attempts: item.attempts + 1, lastError: message }));
+          update(entry.id, (item) => ({
+            ...item,
+            attempts: item.attempts + 1,
+            lastError: message
+          }));
+          if (
+            message === plan.blocked.join(' ') ||
+            message.startsWith('A previous history request needs reconciliation')
+          ) {
+            blockedTitles.add(entry.mutation.titleId);
+            continue;
+          }
           // Preserve ordering: a later edit must not overtake an unconfirmed earlier edit.
           break;
         }
@@ -195,7 +309,11 @@ export async function flushWebProviderOutbox(
     return { flushedEntries, errors };
   })();
   providerFlights.set(storage, work);
-  try { return await work; } finally { if (providerFlights.get(storage) === work) providerFlights.delete(storage); }
+  try {
+    return await work;
+  } finally {
+    if (providerFlights.get(storage) === work) providerFlights.delete(storage);
+  }
 }
 
 export interface DeviceAuthSession {

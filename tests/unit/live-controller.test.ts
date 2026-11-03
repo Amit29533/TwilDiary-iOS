@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
+import { sampleDiary } from '../../src/lib/preview/fixtures.ts';
+import { writePreview } from '../../src/lib/preview/storage.ts';
 import { d1Fixture } from '../helpers/d1.ts';
 import { fakeTmdb } from '../helpers/trakt.ts';
 import { createTmdb } from '../../src/lib/server/tmdb.ts';
@@ -49,9 +51,11 @@ async function idle(diary: DiaryController) {
   for (let i = 0; diary.saving && i < 200; i++) await new Promise((r) => setImmediate(r));
   assert.equal(diary.saving, false);
 }
-function fixture() {
+function fixture(seed = true) {
   globalThis.indexedDB = new IDBFactory();
   const f = d1Fixture();
+  const seeded = seed ? importPreviewWorkspace(f.db, sampleDiary()) : Promise.resolve();
+  const mutations: string[] = [];
   let loseWatch = false;
   let loseProgress = false;
   let failSeason = false;
@@ -59,9 +63,11 @@ function fixture() {
   let failUndoAt = 0;
   let heldRead: { captured: () => void; released: Promise<void> } | null = null;
   const transport: typeof fetch = async (input, options = {}) => {
+    await seeded;
     const url = new URL(String(input), 'http://local.test'),
       path = url.pathname,
       method = options.method ?? 'GET';
+    if (method !== 'GET') mutations.push(path);
     const body = options.body ? JSON.parse(String(options.body)) : {};
     try {
       let value: unknown;
@@ -131,6 +137,7 @@ function fixture() {
   };
   return {
     ...f,
+    mutations,
     create: () => createLiveDiary(transport),
     loseWatch: () => {
       loseWatch = true;
@@ -158,6 +165,19 @@ function fixture() {
     }
   };
 }
+
+test('opening an empty live diary never imports demo data or a saved preview', async (t) => {
+  const f = fixture(false);
+  t.after(f.close);
+  await writePreview(sampleDiary(), 0);
+  const diary = f.create();
+  await diary.initialize();
+  assert.equal(diary.ready, true);
+  assert.equal(diary.snapshot.titles.length, 0);
+  assert.equal(diary.snapshot.events.length, 0);
+  assert.deepEqual(f.mutations, []);
+  assert.equal((await migrationStatus(f.db)).migrated, false);
+});
 
 test('one real controller keeps preview art, persists edits in D1 and handles stale edits without false success', async (t) => {
   const f = fixture();
