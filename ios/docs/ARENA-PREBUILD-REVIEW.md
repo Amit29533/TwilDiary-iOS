@@ -22,11 +22,11 @@ The current native five-tab shell, Search/Profile and nested Statistics remain. 
 - Server-owned web delta cursors. Live web startup no longer imports sample/preview data merely because a migration marker is absent; existing offline edits can still replay.
 - Data-free web sign-in shell, protected private APIs and internal-only return paths.
 - Custom history index `0025`, full-outbox background completion checks and sign-out activity/task cleanup.
-- Native CI compiler fixes for the Trakt activity member and current-model schedule fixture fields; successful Xcode verification remains pending.
+- Native compiler repairs now pass the simulator app/test build at `8c65f4a`, including ActivityKit concurrency and correct operation/event mutation identities. Runtime fixture corrections preserve sync/data assertions while isolating session tests from host Keychain state.
 
 ## Remaining gates
 
-1. The latest native run passed all **114 Core tests**, then stopped during simulator app compilation. Two shadowed-name references in `DiaryStore` are corrected, with recompilation pending. App/UI suites, rendered geometry, launch/scroll metrics, screenshots, unsigned device packaging and Widget embedding remain unverified. Parser checks are not compilation.
+1. The latest native run passed all **114 Core tests** and compiled the simulator app/test targets. Its **316 app test methods** had six failed methods (16 assertion failures): obsolete navigation expectations, non-isolated Keychain access, and two fixtures bypassing confirmed-snapshot loading. Those fixtures are corrected, with runtime revalidation pending. UI suites, rendered geometry, launch/scroll metrics, screenshots, unsigned device packaging and Widget embedding remain unverified. Parser checks are not compilation.
 2. Real accounts remain read-only. Trakt live reads returned external HTTP 403. WeTrakr, Simkl and MDBList are fixture-only, as instructed. No provider refresh/write was attempted.
 3. Some removal/favourite/status operations and MDBList history/rating delivery remain unsupported/pending. Ambiguous history needs reconciliation. WeTrakr pages at the unverified 1,000-row limit reject explicitly. Fixtures do not certify live contracts.
 4. Production is unchanged. Alternative sign-in needs independent strong secrets and migration `0024`; the index needs `0025`. Hosted maximum-import CPU/plan limits are unverified.

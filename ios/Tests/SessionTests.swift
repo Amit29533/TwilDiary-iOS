@@ -147,6 +147,18 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         configuration.httpAdditionalHeaders = ["X-TwilDiary-Test-Case": StubProtocol.state.testIdentifier]
         return DiaryAPI(configuration: configuration, storage: storage, clock: clock)
     }
+    // Session tests must never read the host app's Keychain or persisted provider account.
+    // Tests for persistence failures explicitly supply a rejecting store below.
+    private func makeStore(
+        api: DiaryAPI,
+        cache: (any WorkspaceCaching)? = nil,
+        outboxStore: (any SyncOutboxStoring)? = nil,
+        providerSettingsStore: any ProviderSettingsStoring = EmptyProviderSettings(),
+        directClient: DirectProviderClient? = nil
+    ) -> DiaryStore {
+        DiaryStore(api: api, cache: cache, outboxStore: outboxStore,
+                   providerSettingsStore: providerSettingsStore, directClient: directClient)
+    }
     func testStubSessionsCannotConsumeAnotherTestsHandlerOrRequestCount() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
         let old = api(storage)
@@ -179,7 +191,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         for code in [URLError.notConnectedToInternet, .timedOut, .cancelled] {
             StubProtocol.state.reset { _ in var reply = StubProtocol.Reply("{}"); reply.failureCode = code; return reply }
             let storage = MemorySessionStorage(); storage.credential = credential
-            let store = DiaryStore(api: api(storage))
+            let store = makeStore(api: api(storage))
             do {
                 let _: EmptyResponse = try await store.read("/api/glance/again")
                 XCTFail("Expected transport failure")
@@ -193,7 +205,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let start = Date(timeIntervalSince1970: 1_792_886_400)
         let network = api(storage, clock: { start })
         // Use the same transport instance for the store and its quota state.
-        let blockedStore = DiaryStore(api: network)
+        let blockedStore = makeStore(api: network)
         StubProtocol.state.reset { _ in .init(503, #"{"error":{"code":"database_read_limit","message":"Quota","resetAt":"2999-01-01T00:00:00Z"}}"#) }
         let _: EmptyResponse? = try? await blockedStore.read("/api/glance/again")
         XCTAssertNotNil(blockedStore.quotaBlockedUntil)
@@ -283,7 +295,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testForegroundRefreshReadsTheLatestDiaryAndCoalescesRapidSceneChanges() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset(Self.revisionStub("a"))
-        let store = DiaryStore(api: api(storage)), start = Date.now
+        let store = makeStore(api: api(storage)), start = Date.now
         store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         await store.refreshOnForeground(at: start)
         // The revision check, then the complete four-section download.
@@ -296,7 +308,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testForegroundRefreshDownloadsAgainWhenTheRevisionChangesOrIsOld() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset(Self.revisionStub("a"))
-        let store = DiaryStore(api: api(storage)), start = Date.now
+        let store = makeStore(api: api(storage)), start = Date.now
         await store.refreshOnForeground(at: start)
         XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertEqual(StubProtocol.state.recorded().count, 5)
         StubProtocol.state.reset(Self.revisionStub("b"))
@@ -310,7 +322,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testForegroundReadWaitsForAnInFlightWriteBeforeLoadingTheServerSnapshot() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
-        let store = DiaryStore(api: api(storage)); store.busy = true
+        let store = makeStore(api: api(storage)); store.busy = true
         var started = false
         let pending = Task { started = true; await store.refreshOnForeground() }
         guard await waitForRegressionCondition({ started }) else {
@@ -323,7 +335,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testCancelledForegroundWaitDoesNotConsumeTheNextResumeRefresh() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
-        let store = DiaryStore(api: api(storage)); store.busy = true
+        let store = makeStore(api: api(storage)); store.busy = true
         var started = false
         let pending = Task { started = true; await store.refreshOnForeground() }
         guard await waitForRegressionCondition({ started }) else {
@@ -338,7 +350,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testCatalogSeasonUsesReadOnlyEndpointAndExplicitSpoilerChoice() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset { _ in .init(#"{"items":[{"number":1,"name":"","overview":"","airedOn":null,"stillPath":null,"communityScore":8.1}]}"#) }
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         let result = try await store.catalogEpisodes(CatalogRoute(kind: .tv, id: 900001), season: 2, reveal: false)
         XCTAssertEqual(result.items.first?.name, "")
         _ = try await store.catalogEpisodes(CatalogRoute(kind: .tv, id: 900001), season: 2, reveal: true)
@@ -359,7 +371,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             if request.url?.path == "/api/metadata/import" { return .init(#"{"title":{"id":"tmdb-tv-900001"}}"#) }
             return .init(503, #"{"error":{"message":"Synthetic read outage"}}"#)
         }
-        let store = DiaryStore(api: api(storage)), details = PreviewCatalog.browse(CatalogRoute(kind: .tv, id: 900001)).details
+        let store = makeStore(api: api(storage)), details = PreviewCatalog.browse(CatalogRoute(kind: .tv, id: 900001)).details
         let first = await store.importTitle(details, category: details.suggestedCategory)
         XCTAssertNil(first); XCTAssertFalse(store.busy)
         XCTAssertTrue(store.error?.contains("a second copy will not be created") == true)
@@ -375,7 +387,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             if request.url?.path == "/api/titles" { return .init(#"{"title":{"id":"manual-reference"}}"#) }
             return .init(503, #"{"error":{"message":"Synthetic read outage"}}"#)
         }
-        let store = DiaryStore(api: api(storage)); var draft = ManualTitleDraft(); draft.name = "Reference"
+        let store = makeStore(api: api(storage)); var draft = ManualTitleDraft(); draft.name = "Reference"
         do { _ = try await store.createManualTitle(draft.validated(id: "manual-reference")); XCTFail("A failed refresh must remain retryable") }
         catch { XCTAssertTrue(error.localizedDescription.contains("a second copy will not be created")) }
         XCTAssertFalse(store.busy)
@@ -387,7 +399,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testLateCatalogImportCannotPublishAnErrorAfterSignOut() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset { _ in var reply = StubProtocol.Reply(#"{"title":{"id":"tmdb-tv-900001"}}"#); reply.delay = 0.15; return reply }
-        let store = DiaryStore(api: api(storage)), details = PreviewCatalog.browse(CatalogRoute(kind: .tv, id: 900001)).details
+        let store = makeStore(api: api(storage)), details = PreviewCatalog.browse(CatalogRoute(kind: .tv, id: 900001)).details
         let task = Task { await store.importTitle(details, category: details.suggestedCategory) }
         guard await waitForRegressionCondition({ !StubProtocol.state.recorded().isEmpty }) else { task.cancel(); XCTFail("The import request did not start"); return }
         store.signOut(); let result = await task.value
@@ -404,7 +416,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return reply
         }
         let storage = MemorySessionStorage(), api = api(storage)
-        let store = DiaryStore(api: api)
+        let store = makeStore(api: api)
         let connection = Task { await store.connect(credential) }
         guard await waitForRegressionCondition({ StubProtocol.state.recorded().count == 5 }) else {
             connection.cancel(); titles.release(); siblings.release(); await connection.value
@@ -467,7 +479,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         StubProtocol.state.reset { request in
             .init(request.url?.path == "/api/session" ? #"{"authenticated":true}"# : #"{"items":[],"next":null}"#)
         }
-        let storage = MemorySessionStorage(), store = DiaryStore(api: api(storage))
+        let storage = MemorySessionStorage(), store = makeStore(api: api(storage))
         await store.connect(credential)
         XCTAssertFalse(store.needsSignIn)
         XCTAssertTrue(store.hasLoadedWorkspace)
@@ -486,7 +498,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let gate = CachePreparationGate()
         let cache = ProtectedWorkspaceCache(directory: directory, key: SymmetricKey(size: .bits256), beforePrepare: { try gate.holdFirst() })
         StubProtocol.state.reset { _ in .init(#"{"items":[],"next":null}"#) }
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         let refresh = Task { await store.refresh() }
         guard await waitForRegressionCondition({ gate.hasStarted }) else {
             refresh.cancel(); gate.resume(); await refresh.value; XCTFail("Cache preparation never started"); return
@@ -500,7 +512,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     }
     func testLibraryPresentationIndexReconcilesHistoryLocationsAndSignOutWithTheWorkspace() throws {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         var workspace = PreviewData.workspace
         let title = try XCTUnwrap(workspace.titles.first { $0.id == "again" })
         store.workspace = workspace
@@ -525,7 +537,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testFailedRefreshPreservesPreviouslyLoadedDiaryAndSession() async {
         StubProtocol.state.reset { _ in .init(503, "Service temporarily unavailable", contentType: "text/plain") }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         let ids = store.workspace.titles.map(\.id)
         await store.refresh()
@@ -540,7 +552,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             let storage = MemorySessionStorage(); storage.credential = credential
             let cache = MemoryWorkspaceCache()
             try cache.save(workspace, scope: credential.cacheScope, at: .now)
-            let store = DiaryStore(api: api(storage), cache: cache)
+            let store = makeStore(api: api(storage), cache: cache)
             StubProtocol.state.reset { request in
                 let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
                 if query?.first(where: { $0.name == "section" })?.value == section {
@@ -564,7 +576,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     }
     func testWorkspaceSectionsStartTogetherAndPublishOnlyAfterTheResponsesComplete() async {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         let original = store.workspace.titles, gate = StubProtocol.ResponseGate()
         StubProtocol.state.reset { _ in
             var reply = StubProtocol.Reply(#"{"items":[],"next":null}"#)
@@ -612,7 +624,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testRepeatedWorkspaceCursorFailsWithoutPublishingOrContinuingForever() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset { _ in .init(#"{"items":[],"next":"synthetic-loop"}"#) }
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         await store.refresh()
         XCTAssertEqual(store.error, "The diary returned a repeated page. Please refresh.")
         let requests = StubProtocol.state.recorded()
@@ -650,7 +662,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
 
     func testAuthenticationRejectionDoesNotSaveCredential() async {
         StubProtocol.state.reset { _ in .init(401, "Access denied", contentType: "text/plain") }
-        let storage = MemorySessionStorage(), store = DiaryStore(api: api(storage))
+        let storage = MemorySessionStorage(), store = makeStore(api: api(storage))
         await store.connect(credential)
         XCTAssertTrue(store.needsSignIn)
         XCTAssertNil(storage.credential)
@@ -660,7 +672,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testStorageFailureDoesNotPretendSignInSucceeded() async {
         StubProtocol.state.reset { _ in .init(#"{"authenticated":true}"#) }
         let storage = MemorySessionStorage(); storage.rejectSave = true
-        let api = api(storage), store = DiaryStore(api: api)
+        let api = api(storage), store = makeStore(api: api)
         await store.connect(credential)
         XCTAssertTrue(store.needsSignIn)
         XCTAssertNil(api.credential)
@@ -730,7 +742,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testT26JSONForbiddenIsAnApplicationRejectionAndKeepsTheSession() async {
         StubProtocol.state.reset { _ in .init(403, #"{"error":{"message":"Not allowed"}}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         do {
             let _: EmptyResponse = try await store.read("/api/workspace")
             XCTFail("Expected application rejection")
@@ -743,7 +755,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         for status in [304, 403] {
             StubProtocol.state.reset { _ in .init(status, "", contentType: "text/html") }
             let storage = MemorySessionStorage(); storage.credential = credential
-            let store = DiaryStore(api: api(storage))
+            let store = makeStore(api: api(storage))
             do {
                 let _: EmptyResponse = try await store.read("/api/workspace")
                 XCTFail("Expected typed status")
@@ -784,7 +796,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let cache = MemoryWorkspaceCache()
         try cache.save(PreviewData.workspace, scope: credential.cacheScope, at: .now)
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertTrue(store.showingCachedSnapshot)
         XCTAssertEqual(store.workspace.titles.count, PreviewData.workspace.titles.count)
         StubProtocol.state.reset { _ in .init(503, "Offline", contentType: "text/plain") }
@@ -803,7 +815,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         try cache.save(PreviewData.workspace, scope: credential.cacheScope, at: .now)
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset { _ in .init(503, "Synthetic offline", contentType: "text/plain") }
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         XCTAssertFalse(store.hasLoadedWorkspace); XCTAssertTrue(store.restoringCache)
         let refresh = Task { await store.refresh() }
         guard await waitForRegressionCondition({ gate.hasStarted }) else {
@@ -825,7 +837,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let cache = ProtectedWorkspaceCache(directory: folder, key: SymmetricKey(size: .bits256), beforeLoad: { try gate.holdFirst() })
         try cache.save(PreviewData.workspace, scope: credential.cacheScope, at: .now)
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         let refresh = Task { await store.refresh() }
         guard await waitForRegressionCondition({ gate.hasStarted && store.loading }) else {
             refresh.cancel(); gate.resume(); await refresh.value; XCTFail("Cold restore never started"); return
@@ -844,7 +856,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let cache = ProtectedWorkspaceCache(directory: folder, key: SymmetricKey(size: .bits256), beforeLoad: { try gate.holdFirst() })
         try cache.save(PreviewData.workspace, scope: credential.cacheScope, at: .now)
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         let oldRefresh = Task { await store.refresh() }
         guard await waitForRegressionCondition({ gate.hasStarted && store.loading }) else {
             oldRefresh.cancel(); gate.resume(); await oldRefresh.value; XCTFail("Cold restore never started"); return
@@ -863,7 +875,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             var reply = StubProtocol.Reply(#"{"items":[],"next":null}"#); reply.delay = 0.15; return reply
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let cache = MemoryWorkspaceCache(), store = DiaryStore(api: api(storage), cache: cache)
+        let cache = MemoryWorkspaceCache(), store = makeStore(api: api(storage), cache: cache)
         let refresh = Task { await store.refresh() }
         for _ in 0..<100 {
             if !StubProtocol.state.recorded().isEmpty { break }
@@ -881,7 +893,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         StubProtocol.state.reset { _ in
             var reply = StubProtocol.Reply(#"{"authenticated":true}"#); reply.delay = 0.15; return reply
         }
-        let storage = MemorySessionStorage(), store = DiaryStore(api: api(storage))
+        let storage = MemorySessionStorage(), store = makeStore(api: api(storage))
         let connection = Task { await store.connect(credential) }
         for _ in 0..<100 {
             if !StubProtocol.state.recorded().isEmpty { break }
@@ -910,7 +922,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(#"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         let earlier = Task { await store.refresh() }
         guard await waitForRegressionCondition({ StubProtocol.state.recorded().contains { $0.url?.query == "section=titles" } }) else {
             earlier.cancel(); await earlier.value; XCTFail("The delayed title section did not start"); return
@@ -934,7 +946,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let success = await store.recordViewing(title, episode: episode, watchedAt: date)
         XCTAssertTrue(success); XCTAssertEqual(store.undoLabel, "Watch marked")
         let write = try XCTUnwrap(StubProtocol.state.recorded().first { $0.httpMethod == "POST" })
@@ -958,7 +970,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let first = await store.recordViewing(title, rewatch: true, watchedAt: date)
         XCTAssertFalse(first)
         let second = await store.recordViewing(title, rewatch: true, watchedAt: date.addingTimeInterval(1))
@@ -972,7 +984,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     }
     func testT35NormalWatchAndRewatchUseDifferentStablePendingOperations() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace
         let title = try XCTUnwrap(store.workspace.titles.first { !$0.isSeries })
         StubProtocol.state.reset { _ in .init(503, #"{"error":{"message":"Uncertain response"}}"#) }
         _ = await store.recordViewing(title, rewatch: false, watchedAt: .now)
@@ -1003,7 +1015,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(503, #"{"error":{"message":"Synthetic refresh outage"}}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let saved = await store.recordViewing(title, rewatch: true, watchedAt: date)
         XCTAssertTrue(saved, "A confirmed POST must not become an unconfirmed write because a subsequent GET fails")
         XCTAssertNil(store.error); XCTAssertNotNil(store.mutationRefreshNotice)
@@ -1039,7 +1051,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         StubProtocol.state.reset { request in
             request.httpMethod == "PATCH" ? .init("{}") : .init(401, "Sign in", contentType: "text/plain")
         }
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let saved = await store.patch(title, values: ["favorite": !title.favorite])
         XCTAssertTrue(saved); XCTAssertTrue(store.needsSignIn); XCTAssertTrue(store.needsMutationRefresh)
         XCTAssertNotNil(store.mutationRefreshNotice); XCTAssertFalse(store.busy)
@@ -1052,7 +1064,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     }
     func testFailedReconciliationRetainsTheWriteGateAndOldCompleteWorkspace() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         StubProtocol.state.reset { request in
             request.httpMethod == "PATCH" ? .init("{}") : .init(503, #"{"error":{"message":"Synthetic offline"}}"#)
         }
@@ -1084,7 +1096,11 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(503, #"{"error":{"message":"A complete diary read is not expected"}}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let cache = MemoryWorkspaceCache()
+        try cache.save(workspace, scope: credential.cacheScope, at: .now)
+        let store = makeStore(api: api(storage), cache: cache)
+        XCTAssertTrue(store.hasLoadedWorkspace)
+        XCTAssertEqual(store.workspace.titles, workspace.titles)
         let saved = await store.patch(title, values: ["favorite": !title.favorite])
         XCTAssertTrue(saved); XCTAssertFalse(store.needsMutationRefresh); XCTAssertNil(store.error)
         let reads = StubProtocol.state.recorded().filter { $0.httpMethod == "GET" }
@@ -1109,7 +1125,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let saved = await store.patch(title, values: ["favorite": !title.favorite])
         XCTAssertTrue(saved); XCTAssertFalse(store.needsMutationRefresh)
         let full = StubProtocol.state.recorded().filter { $0.url?.path == "/api/workspace" }
@@ -1152,7 +1168,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let title = try XCTUnwrap(store.title("again"))
         let saved = await store.setStatus(title, status: "completed")
         XCTAssertTrue(saved, store.error ?? "")
@@ -1164,7 +1180,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     }
     func testSignOutDuringConfirmedWriteRefreshCannotRestoreTheSaveNoticeOrWorkspace() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         let title = try XCTUnwrap(store.workspace.titles.first)
         StubProtocol.state.reset { request in
             if request.httpMethod == "PATCH" { return .init("{}") }
@@ -1187,7 +1203,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let displayed = PreviewData.card(title, workspace: workspace).previous
         StubProtocol.state.reset { _ in .init(#"{"progress":{"watched":9,"total":16},"previous":{"id":"different-watch","version":1,"episodeId":"different-episode","number":9},"next":null,"season":null}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         await store.removeLatest(title, expected: displayed)
         XCTAssertTrue(store.error?.contains("history changed") == true)
         XCTAssertFalse(StubProtocol.state.recorded().contains { $0.httpMethod == "PATCH" })
@@ -1197,7 +1213,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let response = try String(contentsOf: url, encoding: .utf8)
         StubProtocol.state.reset { _ in .init(response) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let owner = DiaryStore(api: api(storage))
+        let owner = makeStore(api: api(storage))
         defer { withExtendedLifetime(owner) {} }
         let service = LiveTraktService(store: owner)
         for choice in [TraktChoice.apply, .local, .trakt, .skip] {
@@ -1216,7 +1232,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         weak var released: DiaryStore?
         var controller: TraktController?
         do {
-            let owner = DiaryStore(api: api(storage)); released = owner
+            let owner = makeStore(api: api(storage)); released = owner
             controller = owner.traktController
         }
         XCTAssertNil(released, "The retained transfer must not form a store/service ownership cycle")
@@ -1233,7 +1249,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let success = await store.manage(reviewed, change: .queue(true))
         XCTAssertTrue(success)
         let writes = StubProtocol.state.recorded().filter { $0.httpMethod == "POST" }
@@ -1258,7 +1274,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = workspace; store.hasLoadedWorkspace = true
         let first = await store.manage(reviewed, change: .status("planned"))
         XCTAssertFalse(first)
         let second = await store.manage(reviewed, change: .status("planned"))
@@ -1279,7 +1295,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testUnifiedSearchUsesExistingDiaryEndpointAndPreservesProviderFailureAsPartialData() async throws {
         StubProtocol.state.reset { _ in .init(#"{"library":[{"id":"known","name":"Identity match","year":2020,"category":"show","posterPath":null}],"online":[],"page":2,"totalPages":4,"onlineError":"Online search temporarily unavailable"}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         let result = try await store.searchDiary(DiarySearchTools.normalize("https://imdb.com/title/TT1234567/"), page: 2)
         XCTAssertEqual(result.library.first?.id, "known"); XCTAssertEqual(result.page, 2); XCTAssertFalse(result.onlineError.isEmpty)
         let request = try XCTUnwrap(StubProtocol.state.recorded().first)
@@ -1292,7 +1308,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testDiscoveryCacheUsesCompleteQueryAndCannotServeAfterSignOut() async throws {
         StubProtocol.state.reset { _ in .init(#"{"items":[],"page":1,"totalPages":1}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)), query = DiscoveryFilters(section: .ratedShows).query(section: .ratedShows)
+        let store = makeStore(api: api(storage)), query = DiscoveryFilters(section: .ratedShows).query(section: .ratedShows)
         let service = LiveDiscoveryService(store: store)
         _ = try await service.page(query); _ = try await service.page(query)
         XCTAssertEqual(StubProtocol.state.recorded().count, 1)
@@ -1309,7 +1325,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             reply.delay = 0.15; return reply
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)), title = try XCTUnwrap(PreviewData.workspace.activeTitles.first)
+        let store = makeStore(api: api(storage)), title = try XCTUnwrap(PreviewData.workspace.activeTitles.first)
         let pending = Task { () -> Bool in
             do { _ = try await store.card(title); return true }
             catch is CancellationError { return false }
@@ -1329,7 +1345,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             reply.delay = 0.15; return reply
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         let pending = Task { () -> Bool in
             do { let _: EmptyResponse = try await store.read("/api/metadata/status"); return false }
             catch is CancellationError { return true }
@@ -1346,7 +1362,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testPublicRatingsUseExistingEndpointAndKeepProviderFailureOutOfTheGlobalError() async throws {
         StubProtocol.state.reset { _ in .init(503, #"{"error":{"message":"Synthetic provider unavailable"}}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)), title = try XCTUnwrap(PreviewData.workspace.activeTitles.first)
+        let store = makeStore(api: api(storage)), title = try XCTUnwrap(PreviewData.workspace.activeTitles.first)
         await store.loadPublicRatings([title, title], source: .tmdb)
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty)
         await store.loadPublicRatings([title, title], source: .trakt)
@@ -1364,7 +1380,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             reply.delay = 0.15; return reply
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)), title = try XCTUnwrap(PreviewData.workspace.activeTitles.first { $0.id == "again" })
+        let store = makeStore(api: api(storage)), title = try XCTUnwrap(PreviewData.workspace.activeTitles.first { $0.id == "again" })
         let pending = Task { await store.loadPublicRatings([title], source: .trakt) }
         for _ in 0..<100 { if !StubProtocol.state.recorded().isEmpty { break }; try await Task.sleep(for: .milliseconds(5)) }
         store.signOut(); await pending.value
@@ -1377,7 +1393,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let cache = MemoryWorkspaceCache()
         try cache.save(PreviewData.workspace, scope: credential.cacheScope, at: .now)
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         XCTAssertFalse(store.workspace.titles.isEmpty)
         StubProtocol.state.reset { request in
             request.url?.path == "/api/session" ? .init(#"{"authenticated":true}"#) : .init(503, #"{"error":{"message":"Synthetic offline"}}"#)
@@ -1396,7 +1412,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(#"{"items":[],"page":1,"totalPages":1}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)), service = LiveDiscoveryService(store: store)
+        let store = makeStore(api: api(storage)), service = LiveDiscoveryService(store: store)
         let query = DiscoveryFilters(section: .recommended).query(section: .recommended)
         _ = try await service.page(query)
         await store.connect(AccessCredential(token: "synthetic-other-owner", expires: .distantFuture))
@@ -1410,7 +1426,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let json = String(decoding: data, as: UTF8.self)
         StubProtocol.state.reset { _ in .init(json) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         _ = try await store.person(700001); _ = try await store.person(700001)
         XCTAssertEqual(StubProtocol.state.recorded().count, 1)
         for id in 700002...700034 { _ = try await store.person(id) }
@@ -1425,7 +1441,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             reply.delay = 0.03; return reply
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace
         let title = try XCTUnwrap(store.title("again"))
         let revision = store.cardRevision(title.id)
         async let first = store.card(title)
@@ -1453,7 +1469,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let pages = try workspacePages(PreviewData.workspace)
         StubProtocol.state.reset { request in .init(pages[request.url?.query ?? ""] ?? "{}") }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         var gate: CheckedContinuation<Void, Never>?
         var secondRan = false
         let first = Task { await store.perform(cardID: "again", cardAction: .mark) { await withCheckedContinuation { gate = $0 } } }
@@ -1472,7 +1488,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testSignOutDiscardsQueuedCardWorkBeforeItCanRunInAnotherSession() async throws {
         StubProtocol.state.reset { _ in .init("{}") }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         var gate: CheckedContinuation<Void, Never>?
         var secondRan = false
         let first = Task { await store.perform(cardID: "again") { await withCheckedContinuation { gate = $0 } } }
@@ -1487,7 +1503,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testConfirmedWriteRefreshFailurePreventsQueuedCardFromWritingAgainstStaleData() async throws {
         StubProtocol.state.reset { _ in .init(503, #"{"error":{"message":"Synthetic refresh outage"}}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         var gate: CheckedContinuation<Void, Never>?
         var secondRan = false
         let first = Task { await store.perform(cardID: "again") { await withCheckedContinuation { gate = $0 } } }
@@ -1501,7 +1517,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     }
     func testIdenticalUndoLabelsHaveDistinctLifetimes() {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage))
+        let store = makeStore(api: api(storage))
         store.undoLabel = "Watch marked"; let first = store.undoNoticeID
         store.undoLabel = "Watch marked"
         XCTAssertNotEqual(store.undoNoticeID, first)
@@ -1520,7 +1536,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? "{}")
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace
+        let store = makeStore(api: api(storage)); store.workspace = workspace
         let result = await store.completeCardSeason("again", season: 1)
         XCTAssertTrue(result); XCTAssertEqual(store.undoLabel, "Season progress updated")
         let recorded = try StubProtocol.state.recorded().filter { $0.url?.path.hasSuffix("/watches") == true }.map(bodyObject)
@@ -1545,7 +1561,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(pages[request.url?.query ?? ""] ?? "{}")
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = workspace
+        let store = makeStore(api: api(storage)); store.workspace = workspace
         let title = try XCTUnwrap(store.title("again"))
         let result = await store.setSeasonStatus(title, season: 1, status: "completed", watchedAt: .now)
         XCTAssertTrue(result)
@@ -1564,7 +1580,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             response.gate = gate; return response
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace
         let title = try XCTUnwrap(store.title("again"))
         let disappearing = Task { () -> Bool in
             do { _ = try await store.card(title); return true }
@@ -1583,7 +1599,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         for status in [401, 403, 302] {
             StubProtocol.state.reset { _ in .init(status, "Private sign-in", contentType: "text/html") }
             let storage = MemorySessionStorage(); storage.credential = credential
-            let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+            let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace
             await store.communityRatings.prepare(["older-score"]) { _ in ["older-score": PublicRating(score: 8.0, state: "rated")] }
             await store.loadPublicRatings([try XCTUnwrap(store.workspace.titles.first)], source: .trakt)
             XCTAssertTrue(store.needsSignIn)
@@ -1596,7 +1612,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
     func testPublicRatingProviderFailureDoesNotExpireThePrivateSession() async throws {
         StubProtocol.state.reset { _ in .init(503, "Provider unavailable", contentType: "text/plain") }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace
         let title = try XCTUnwrap(store.workspace.titles.first)
         await store.loadPublicRatings([title], source: .trakt)
         XCTAssertFalse(store.needsSignIn); XCTAssertNil(store.error)
@@ -1613,7 +1629,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(#"{"items":[],"next":null}"#)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = PreviewData.workspace
+        let store = makeStore(api: api(storage)); store.workspace = PreviewData.workspace
         let title = try XCTUnwrap(store.workspace.titles.first)
         let old = Task { await store.loadPublicRatings([title], source: .trakt) }
         guard await waitForRegressionCondition({ StubProtocol.state.recorded().contains { $0.url?.path == "/api/library/ratings" } }) else {
@@ -1642,7 +1658,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             let storage = MemorySessionStorage(); storage.credential = credential
             let cache = MemoryWorkspaceCache()
             try cache.save(original, scope: credential.cacheScope, at: .now)
-            let store = DiaryStore(api: api(storage), cache: cache)
+            let store = makeStore(api: api(storage), cache: cache)
             await store.refresh()
             XCTAssertNotNil(store.error, "Duplicate \(section) must be rejected")
             XCTAssertEqual(store.workspace.titles, original.titles); XCTAssertEqual(store.workspace.episodes, original.episodes)
@@ -1666,7 +1682,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(query.contains(where: { $0.name == "after" }) ? overlap : initial)
         }
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage)); store.workspace = original; store.hasLoadedWorkspace = true
+        let store = makeStore(api: api(storage)); store.workspace = original; store.hasLoadedWorkspace = true
         await store.refresh()
         XCTAssertEqual(store.error, WorkspaceIntegrityError.duplicateIdentity(section: "titles").localizedDescription)
         XCTAssertEqual(store.workspace.titles, original.titles)
@@ -1685,7 +1701,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         }
         let storage = MemorySessionStorage(); storage.credential = credential
         let cache = MemoryWorkspaceCache(); try cache.save(original, scope: credential.cacheScope, at: .now)
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         await store.refresh()
         XCTAssertNil(store.error); XCTAssertEqual(StubProtocol.state.recorded().count, 8)
         XCTAssertEqual(store.workspace.titles, original.titles); XCTAssertEqual(store.workspace.events, original.events)
@@ -1700,7 +1716,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         StubProtocol.state.reset { request in .init(pages[request.url?.query ?? ""] ?? #"{"items":[],"next":null}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
         let cache = MemoryWorkspaceCache(); try cache.save(original, scope: credential.cacheScope, at: .now)
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         await store.refresh()
         XCTAssertEqual(store.error, WorkspaceIntegrityError.incompleteSnapshot.localizedDescription)
         XCTAssertEqual(StubProtocol.state.recorded().count, 8)
@@ -1722,7 +1738,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         }
         let storage = MemorySessionStorage(); storage.credential = credential
         let cache = MemoryWorkspaceCache(); try cache.save(original, scope: credential.cacheScope, at: .now)
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         await store.refresh()
         XCTAssertNotNil(store.quotaBlockedUntil); XCTAssertNotNil(store.error)
         XCTAssertLessThanOrEqual(StubProtocol.state.recorded().count, 8)
@@ -1746,7 +1762,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         }
         let storage = MemorySessionStorage(); storage.credential = credential
         let cache = MemoryWorkspaceCache(); try cache.save(original, scope: credential.cacheScope, at: .now)
-        let store = DiaryStore(api: api(storage), cache: cache)
+        let store = makeStore(api: api(storage), cache: cache)
         let task = Task { await store.refresh() }
         guard await waitForRegressionCondition({ StubProtocol.state.recorded().filter { $0.url?.query == "section=titles" }.count == 2 }) else {
             gate.release(); await task.value; XCTFail("No consistency retry"); return
@@ -1786,7 +1802,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let directConfiguration = URLSessionConfiguration.ephemeral
         directConfiguration.protocolClasses = [StubProtocol.self]
         directConfiguration.httpAdditionalHeaders = ["X-TwilDiary-Test-Case": StubProtocol.state.testIdentifier]
-        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: outboxStore, providerSettingsStore: EmptyProviderSettings(), directClient: DirectProviderClient(session: URLSession(configuration: directConfiguration)))
+        let store = makeStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: outboxStore, providerSettingsStore: EmptyProviderSettings(), directClient: DirectProviderClient(session: URLSession(configuration: directConfiguration)))
         let start = Date.now
         await store.refreshOnForeground(at: start)
         XCTAssertEqual(StubProtocol.state.recorded().count, 5)
@@ -1847,13 +1863,13 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let title = try XCTUnwrap(original.titles.first { $0.id == "again" })
         try cache.save(original, scope: credential.cacheScope, at: .now)
         StubProtocol.state.reset { _ in var reply = StubProtocol.Reply("{}"); reply.failureCode = .notConnectedToInternet; return reply }
-        let store = DiaryStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
+        let store = makeStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
         let saved = await store.patch(title, values: ["score": 9.5, "tags": ["Weekend"]])
         XCTAssertTrue(saved); XCTAssertEqual(store.pendingDiaryEdits, 1)
         XCTAssertEqual(store.title(title.id)?.score, 9.5)
         XCTAssertFalse(store.needsMutationRefresh)
         XCTAssertEqual(queue.load(scope: credential.cacheScope).count, 1)
-        let relaunched = DiaryStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
+        let relaunched = makeStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
         XCTAssertEqual(relaunched.title(title.id)?.tags, ["Weekend"])
         let remote = original.applying(.patchTitle(titleId: title.id, expectedVersion: title.version, status: nil, score: 9.5, clearScore: false, favorite: nil, queued: nil, notes: nil, tags: ["Weekend"]))
         let targeted = try targetedReply(remote, title: title.id)
@@ -1871,7 +1887,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let cache = MemoryWorkspaceCache(), queue = MemorySyncOutboxStore()
         let original = PreviewData.workspace
         try cache.save(original, scope: credential.cacheScope, at: .now)
-        let store = DiaryStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
+        let store = makeStore(api: api(storage), cache: cache, outboxStore: queue, providerSettingsStore: EmptyProviderSettings())
         _ = try store.enqueueOptimistic(.patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 9.5, clearScore: false, favorite: nil, queued: nil, notes: nil), uncertain: true)
         let remote = original.applying(.patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 2, clearScore: false, favorite: nil, queued: nil, notes: nil))
         let targeted = try targetedReply(remote, title: "again")
@@ -1888,7 +1904,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let cache = MemoryWorkspaceCache(), original = PreviewData.workspace
         try cache.save(original, scope: credential.cacheScope, at: .now)
         let title = try XCTUnwrap(original.titles.first { $0.id == "again" })
-        let store = DiaryStore(api: api(storage), cache: cache, outboxStore: RejectingOutbox(), providerSettingsStore: EmptyProviderSettings())
+        let store = makeStore(api: api(storage), cache: cache, outboxStore: RejectingOutbox(), providerSettingsStore: EmptyProviderSettings())
         StubProtocol.state.reset { _ in var reply = StubProtocol.Reply("{}"); reply.failureCode = .notConnectedToInternet; return reply }
         let saved = await store.patch(title, values: ["score": 9.5])
         XCTAssertFalse(saved); XCTAssertEqual(store.pendingDiaryEdits, 0)
@@ -1943,7 +1959,7 @@ private struct RejectingProviderSettings: ProviderSettingsStoring {
 extension SessionTests {
     func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
         let storage = MemorySessionStorage(); storage.credential = credential
-        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), providerSettingsStore: RejectingProviderSettings())
+        let store = makeStore(api: api(storage), cache: MemoryWorkspaceCache(), providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
         XCTAssertNil(store.providerSettings.customTmdbToken)
         XCTAssertFalse(store.updateProviderConfig(ExternalProviderConfig(provider: .simkl, enabled: true, clientId: "fixture", accessToken: "fixture")))
@@ -1957,14 +1973,19 @@ extension SessionTests {
         configuration.protocolClasses = [StubProtocol.self]
         configuration.httpAdditionalHeaders = ["X-TwilDiary-Test-Case": StubProtocol.state.testIdentifier]
         let queueStore = MemorySyncOutboxStore()
-        let store = DiaryStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: queueStore, providerSettingsStore: EmptyProviderSettings(), directClient: DirectProviderClient(session: URLSession(configuration: configuration)))
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(PreviewData.workspace)) as? [String: Any])
         var titles = try XCTUnwrap(json["titles"] as? [[String: Any]])
         titles[0]["tmdbId"] = 123; json["titles"] = titles
-        store.workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: json))
+        let workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: json))
+        let cache = MemoryWorkspaceCache()
+        try cache.save(workspace, scope: credential.cacheScope, at: .now)
+        let store = makeStore(api: api(storage), cache: cache, outboxStore: queueStore, directClient: DirectProviderClient(session: URLSession(configuration: configuration)))
+        XCTAssertEqual(store.workspace.titles, workspace.titles)
         let title = try XCTUnwrap(store.workspace.titles.first)
         store.providerSettings = ProviderConnectionSettings(wetrakr: ExternalProviderConfig(provider: .wetrakr, enabled: true, loggingMethod: .directAPIOnly, clientId: "fixture-client", accessToken: "fixture-token"))
         let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: nil, score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil), providers: [.wetrakr])
+        XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
+        XCTAssertEqual(store.workspace.titles.first?.tmdbId, 123)
         StubProtocol.state.reset { request in
             request.url?.path == "/sync/ratings" ? .init(#"{"added":{"movies":1}}"#) : .init(503, "{}")
         }

@@ -11,13 +11,26 @@ import TwilDiaryTestSupport
         let ids = workspace.titles.prefix(2).map(\.id)
         XCTAssertEqual(RandomPickScope(titleIDs: ids + ["missing"]).candidates(in: workspace).map(\.id), ids)
     }
-    func testTheAddShortcutStartsAUniqueLibraryTransition() {
+    func testTheAddShortcutOpensUniversalSearchWithoutResettingLibrary() {
         let router = AppRouter()
+        router.library("planned")
+        let revision = router.libraryRevision
         router.library("add")
+        XCTAssertEqual(router.selectedTab, .search)
+        XCTAssertEqual(router.libraryShortcut, "planned")
+        XCTAssertEqual(router.libraryRevision, revision)
+        router.library("add")
+        XCTAssertEqual(router.selectedTab, .search)
+        XCTAssertEqual(router.libraryRevision, revision)
+        XCTAssertEqual(router.paths[.search]?.count, 0)
+    }
+    func testLibraryShortcutsStillStartUniqueLibraryTransitions() {
+        let router = AppRouter()
+        router.library("planned")
         XCTAssertEqual(router.selectedTab, .library)
-        XCTAssertEqual(router.libraryShortcut, "add")
+        XCTAssertEqual(router.libraryShortcut, "planned")
         XCTAssertEqual(router.libraryRevision, 1)
-        router.library("add")
+        router.library("planned")
         XCTAssertEqual(router.libraryRevision, 2)
     }
 }
