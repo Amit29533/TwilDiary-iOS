@@ -77,7 +77,7 @@ import TwilDiaryTestSupport
 }
 
 @Test func directTraktThreeWayDiffPlansPullsPushesAndConflicts() throws {
-    let base = SampleWorkspace.make()
+    let base = try SampleWorkspace.mapped()
     let series = try #require(base.titles.first { $0.id == "again" && $0.tmdbId != nil })
     let tmdbId = try #require(series.tmdbId)
     let card = WatchCard.calculate(title: series, in: base, day: "2026-10-23")
@@ -299,7 +299,15 @@ import TwilDiaryTestSupport
         ratingsShows: ratingsShows,
         favoritesShows: favoritesShows
     )
-    let updatedWorkspace = WeTrakrSyncEngine.applySnapshot(snapshot, to: workspace, recordedAt: "2026-10-23T19:00:00Z")
+    // Without a shared baseline, an existing personal rating must survive a
+    // different remote score. With the matching baseline, only the remote side
+    // changed, so its decimal score can be imported safely.
+    let unreviewedWorkspace = WeTrakrSyncEngine.applySnapshot(snapshot, to: workspace, recordedAt: "2026-10-23T19:00:00Z")
+    #expect(unreviewedWorkspace.titles.first { $0.id == series.id }?.score == series.score)
+    let matchingBaseline = DirectTraktSyncBaseline(titles: [
+        series.id: DirectTraktTitleBaseline(titleId: series.id, score: series.score.map { Int($0.rounded()) }, watchlisted: false)
+    ])
+    let updatedWorkspace = WeTrakrSyncEngine.applySnapshot(snapshot, to: workspace, baseline: matchingBaseline, recordedAt: "2026-10-23T19:00:00Z")
     let updatedSeries = try #require(updatedWorkspace.titles.first { $0.id == series.id })
     #expect(updatedSeries.score == 9.5)
     #expect(updatedSeries.favorite == true)

@@ -17,6 +17,7 @@ workflows:
       - ios/.artifacts/TwilDiary-arena-integration.ipa.sha256
       - ios/.artifacts/arena-integration-provenance.json
       - ios/.artifacts/Arena*.xcresult
+      - ios/.artifacts/Layout-*.xcresult
       - ios/.artifacts/logs/*.log
       - ios/.artifacts/screenshots/**
       - ios/.artifacts/toolchain.txt

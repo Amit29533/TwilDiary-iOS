@@ -93,7 +93,8 @@ Screenshots: `web-empty-home-fixed.png`, `web-notes-saved.png`, `web-library-lis
 | --- | --- | --- |
 | `6ae92fdae83a9019991c83da` | `77bac45` | Core compile failed: incorrect Trakt activity member; fixed in `4b649dc` |
 | `6ae930f7e83a9019991c8416` | `4b649dc` | Core test compile failed: incomplete schedule fixtures; fixed in `3eab289` |
+| `6ae97717e83a9019991c9502` | `2c6c74a` | Core compiled; **112/114 passed**. Two fixture assumptions failed: unmapped sample title and a remote rating without a shared baseline. Corrected with explicit mapped data and assertions for both unreviewed preservation and baseline-approved decimal import. |
 
-Neither reached full runtime UI/performance tests. The next integration run must compile final repairs, execute Core/app/UI suites, inspect screenshots/metrics and verify unsigned packaging with Widget extension. Its result will be recorded after execution. The old successful current-UI build is not substituted as evidence.
+No attempt yet reached full app runtime UI/performance tests. The next integration run must compile final repairs, execute Core/app/UI suites, inspect screenshots/metrics and verify unsigned packaging with Widget extension. It now also invokes the existing compact/large-phone layout runner with profile formatting and large-text personal-profile cases, preserving those result bundles/screenshots. Its result will be recorded after execution. The old successful current-UI build is not substituted as evidence.
 
 No merge, production deployment/migration or real-account mutation is represented by local passes. Production dependency audit is clear; full toolchain retains one unpatched low [deepmerge advisory](https://github.com/advisories/GHSA-gcqx-w48m-w2h4), surfaced as four entries. npm's obsolete framework downgrade was not applied.

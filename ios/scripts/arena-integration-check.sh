@@ -6,7 +6,7 @@ mkdir -p "$ARTIFACTS/logs"
 finish() {
   local status=$?
   trap - EXIT
-  for result in "$ARTIFACTS"/Arena*.xcresult; do
+  for result in "$ARTIFACTS"/Arena*.xcresult "$ARTIFACTS"/Layout-*.xcresult; do
     [ -d "$result" ] || continue
     xcrun xcresulttool export attachments --path "$result" --output-path "$ARTIFACTS/screenshots/$(basename "$result" .xcresult)" || true
   done
@@ -36,6 +36,7 @@ python3 ios/scripts/native-test-watchdog.py --label arena-ui --budget 5400 -- xc
   -only-testing:TwilDiaryUITests \
   -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/ArenaUI.xcresult" \
   2>&1 | tee "$ARTIFACTS/logs/arena-ui-tests.log"
+python3 ios/scripts/native-test-watchdog.py --label arena-layout --budget 1800 -- env TWIL_LAYOUT_PROFILE_CHECKS=1 bash ios/scripts/ci.sh test-layouts
 bash ios/scripts/ci.sh build-device
 bash ios/scripts/ci.sh package
 python3 - <<'PY'
@@ -55,6 +56,6 @@ digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
 (root / 'arena-integration-provenance.json').write_text(json.dumps({
     'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
     'version': '2.0.0', 'build': '67', 'signed': False, 'sha256': digest,
-    'scope': 'Full Core and app unit suites; all native UI tests and simulator performance metrics; unsigned device compile including WidgetKit extension.'
+    'scope': 'Full Core and app unit suites; all native UI tests and simulator performance metrics; compact and large-phone layout tests; unsigned device compile including WidgetKit extension.'
 }, indent=2) + '\n')
 PY
