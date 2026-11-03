@@ -26,7 +26,7 @@ The current native five-tab shell, Search/Profile and nested Statistics remain. 
 
 ## Remaining gates
 
-1. Two native attempts stopped in compilation. Full Core/app/UI suites, rendered geometry, launch/scroll metrics, screenshots, unsigned device packaging and Widget embedding still require Xcode. Parser checks are not compilation.
+1. The latest native run passed all **114 Core tests**, then stopped during simulator app compilation. Two shadowed-name references in `DiaryStore` are corrected, with recompilation pending. App/UI suites, rendered geometry, launch/scroll metrics, screenshots, unsigned device packaging and Widget embedding remain unverified. Parser checks are not compilation.
 2. Real accounts remain read-only. Trakt live reads returned external HTTP 403. WeTrakr, Simkl and MDBList are fixture-only, as instructed. No provider refresh/write was attempted.
 3. Some removal/favourite/status operations and MDBList history/rating delivery remain unsupported/pending. Ambiguous history needs reconciliation. WeTrakr pages at the unverified 1,000-row limit reject explicitly. Fixtures do not certify live contracts.
 4. Production is unchanged. Alternative sign-in needs independent strong secrets and migration `0024`; the index needs `0025`. Hosted maximum-import CPU/plan limits are unverified.

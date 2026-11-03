@@ -213,7 +213,7 @@ import TwilDiaryCore
         if !isPreview {
             needsSignIn = self.api.credential == nil
             if let scope = self.api.credential?.cacheScope {
-                outbox = outboxStore.load(scope: scope)
+                outbox = self.outboxStore.load(scope: scope)
             }
             if let scope = self.api.credential?.cacheScope,
                let data = vaultStateDefaults?.data(forKey: "providerVault.pending." + scope),
@@ -674,7 +674,7 @@ import TwilDiaryCore
     }
     private func persistProviderSettings(_ next: ProviderConnectionSettings) -> Bool {
         do { try providerSettingsStore.save(next) }
-        catch { error = error.localizedDescription; return false }
+        catch { self.error = error.localizedDescription; return false }
         providerSettings = next
         api.customTmdbToken = next.customTmdbToken
         api.customMdblistApiKey = next.mdblist.apiKey
