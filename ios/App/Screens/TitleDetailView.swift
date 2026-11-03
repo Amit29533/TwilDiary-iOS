@@ -55,7 +55,7 @@ struct TitleDetailView: View {
     @State private var preparingSeason = false
     @State private var seasonRequest = UUID()
     @State private var seasonLoadError: String?
-    @State private var criticScores: [MDBListSyncEngine.SourceRating] = []
+    @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
     @State private var newTagText = ""
     var body: some View {
         Group {
