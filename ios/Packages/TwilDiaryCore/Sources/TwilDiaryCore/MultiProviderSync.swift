@@ -162,7 +162,7 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
 }
 
 public protocol ProviderSecretStoring: Sendable {
-    func readSecret(for account: String) -> String?
+    func readSecret(for account: String) throws -> String?
     @discardableResult func writeSecret(_ value: String?, for account: String) -> Bool
 }
 
@@ -173,7 +173,7 @@ public final class KeychainProviderSecretStore: ProviderSecretStoring, @unchecke
         self.service = service
     }
 
-    public func readSecret(for account: String) -> String? {
+    public func readSecret(for account: String) throws -> String? {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -184,15 +184,16 @@ public final class KeychainProviderSecretStore: ProviderSecretStoring, @unchecke
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw ProviderSettingsPersistenceError.secureStoreUnavailable }
+        guard let data = result as? Data,
               let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else {
-            return nil
+            throw ProviderSettingsPersistenceError.secureStoreUnavailable
         }
         return text
         #else
-        return nil
+        throw ProviderSettingsPersistenceError.secureStoreUnavailable
         #endif
     }
 
@@ -226,80 +227,67 @@ public final class KeychainProviderSecretStore: ProviderSecretStoring, @unchecke
     }
 }
 
+public enum ProviderSettingsPersistenceError: LocalizedError, Sendable {
+    case secureStoreUnavailable
+    public var errorDescription: String? { "Provider credentials could not be saved securely. Unlock this device and try again. Your previous settings were kept." }
+}
+
 public protocol ProviderSettingsStoring: Sendable {
-    func load() -> ProviderConnectionSettings
-    func save(_ settings: ProviderConnectionSettings)
+    func load() throws -> ProviderConnectionSettings
+    func save(_ settings: ProviderConnectionSettings) throws
 }
 
 public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @unchecked Sendable {
     private let defaults: UserDefaults
     private let key: String
     private let secrets: (any ProviderSecretStoring)?
-
-    public init(
-        defaults: UserDefaults = .standard,
-        key: String = "twildiary.provider.connection.settings",
-        secrets: (any ProviderSecretStoring)? = KeychainProviderSecretStore()
-    ) {
-        self.defaults = defaults
-        self.key = key
-        self.secrets = secrets
+    public init(defaults: UserDefaults = .standard, key: String = "twildiary.provider.connection.settings", secrets: (any ProviderSecretStoring)? = KeychainProviderSecretStore()) {
+        self.defaults = defaults; self.key = key; self.secrets = secrets
     }
-
-    public func load() -> ProviderConnectionSettings {
-        var decoded: ProviderConnectionSettings
-        if let data = defaults.data(forKey: key),
-           let stored = try? JSONDecoder().decode(ProviderConnectionSettings.self, from: data) {
-            decoded = stored
-        } else {
-            decoded = ProviderConnectionSettings()
+    public func load() throws -> ProviderConnectionSettings {
+        let metadata = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(ProviderConnectionSettings.self, from: $0) }
+        var decoded = metadata ?? ProviderConnectionSettings()
+        guard let secrets else {
+            guard Self.stripped(decoded) == decoded else { throw ProviderSettingsPersistenceError.secureStoreUnavailable }
+            return decoded
         }
-        guard let secrets else { return decoded }
-        var migratedLegacyPlaintext = false
-        if let keychainTmdb = secrets.readSecret(for: "\(key).tmdb.token") {
-            decoded.customTmdbToken = keychainTmdb
-        } else if let legacyTmdb = decoded.customTmdbToken, secrets.writeSecret(legacyTmdb, for: "\(key).tmdb.token") {
-            migratedLegacyPlaintext = true
+        if let sealed = try secrets.readSecret(for: "\(key).credentials.v2") {
+            let stored = try JSONDecoder().decode(ProviderConnectionSettings.self, from: Data(sealed.utf8))
+            // The atomic envelope owns credentials AND their matching client/configuration.
+            // A crash between Keychain and preferences writes must not combine two accounts.
+            defaults.set(try JSONEncoder().encode(Self.stripped(stored)), forKey: key)
+            return stored
         }
+        // One-time migration: do not claim success or erase the old copy unless the atomic Keychain write succeeds.
+        if let token = try secrets.readSecret(for: "\(key).tmdb.token") { decoded.customTmdbToken = token }
         for provider in [SyncProviderKind.trakt, .wetrakr, .simkl, .mdblist] {
-            var cfg = decoded.config(for: provider)
-            if let keychainApiKey = secrets.readSecret(for: "\(key).\(provider.rawValue).apiKey") {
-                cfg.apiKey = keychainApiKey
-            } else if let legacyKey = cfg.apiKey, secrets.writeSecret(legacyKey, for: "\(key).\(provider.rawValue).apiKey") {
-                migratedLegacyPlaintext = true
-            }
-            if let keychainToken = secrets.readSecret(for: "\(key).\(provider.rawValue).accessToken") {
-                cfg.accessToken = keychainToken
-            } else if let legacyToken = cfg.accessToken, secrets.writeSecret(legacyToken, for: "\(key).\(provider.rawValue).accessToken") {
-                migratedLegacyPlaintext = true
-            }
-            decoded.setConfig(cfg)
+            var config = decoded.config(for: provider)
+            if let token = try secrets.readSecret(for: "\(key).\(provider.rawValue).accessToken") { config.accessToken = token }
+            if let token = try secrets.readSecret(for: "\(key).\(provider.rawValue).apiKey") { config.apiKey = token }
+            decoded.setConfig(config)
         }
-        if migratedLegacyPlaintext {
-            save(decoded)
-        }
+        if Self.stripped(decoded) != decoded { try save(decoded) }
         return decoded
     }
-
-    public func save(_ settings: ProviderConnectionSettings) {
-        var sanitized = settings
+    public func save(_ settings: ProviderConnectionSettings) throws {
+        let sanitized = Self.stripped(settings)
+        let metadata = try JSONEncoder().encode(sanitized)
+        let sealed = String(decoding: try JSONEncoder().encode(settings), as: UTF8.self)
         if let secrets {
-            if secrets.writeSecret(settings.customTmdbToken, for: "\(key).tmdb.token") {
-                sanitized.customTmdbToken = nil
-            }
-            for provider in [SyncProviderKind.trakt, .wetrakr, .simkl, .mdblist] {
-                var cfg = sanitized.config(for: provider)
-                if secrets.writeSecret(cfg.apiKey, for: "\(key).\(provider.rawValue).apiKey") {
-                    cfg.apiKey = nil
-                }
-                if secrets.writeSecret(cfg.accessToken, for: "\(key).\(provider.rawValue).accessToken") {
-                    cfg.accessToken = nil
-                }
-                sanitized.setConfig(cfg)
-            }
+            // A single Keychain item makes all provider credential updates atomic, including explicit clears.
+            guard secrets.writeSecret(sealed, for: "\(key).credentials.v2") else { throw ProviderSettingsPersistenceError.secureStoreUnavailable }
+        } else if sanitized != settings { throw ProviderSettingsPersistenceError.secureStoreUnavailable }
+        defaults.set(metadata, forKey: key)
+    }
+    private static func stripped(_ settings: ProviderConnectionSettings) -> ProviderConnectionSettings {
+        var value = settings
+        value.customTmdbToken = nil
+        for provider in [SyncProviderKind.trakt, .wetrakr, .simkl, .mdblist] {
+            var config = value.config(for: provider)
+            config.accessToken = nil; config.apiKey = nil
+            value.setConfig(config)
         }
-        guard let data = try? JSONEncoder().encode(sanitized) else { return }
-        defaults.set(data, forKey: key)
+        return value
     }
 }
 
@@ -1049,90 +1037,24 @@ public enum MultiProviderOutboxDispatcher {
         from queue: SyncOutboxQueue,
         in workspace: Workspace
     ) -> ProviderBatch? {
-        let pending = queue.pending(for: provider).filter { !$0.pendingProviders.contains(.cloudflare) }
-        guard !pending.isEmpty else { return nil }
-        let titlesByID = Dictionary(workspace.titles.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
-        let episodesByID = Dictionary(workspace.episodes.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
-
-        var actions: [DirectTraktDiffAction] = []
-        var entryIDs: [String] = []
-        var decimalScoresByTitle: [String: Double] = [:]
-        var favorites: [(tmdbId: Int, isSeries: Bool)] = []
-        var droppedShows: [Int] = []
-
-        for entry in pending {
-            guard let title = titlesByID[entry.mutation.titleId], let tmdbId = title.tmdbId else {
-                entryIDs.append(entry.id)
-                continue
-            }
-            entryIDs.append(entry.id)
-            switch entry.mutation {
-            case .markWatch(_, _, let episodeId, let watchedAt, _, _):
-                if !title.isSeries {
-                    actions.append(.pushWatch(titleId: title.id, tmdbId: tmdbId, isSeries: false, season: nil, episode: nil, watchedAt: watchedAt))
-                } else if let episodeId, let ep = episodesByID[episodeId], ep.season > 0 {
-                    actions.append(.pushWatch(titleId: title.id, tmdbId: tmdbId, isSeries: true, season: ep.season, episode: ep.number, watchedAt: watchedAt))
+        guard provider != .cloudflare else { return nil }
+        var ids: [String] = []
+        var payloads: [String: [String: [[String: Any]]]] = [:]
+        for entry in queue.pending(for: provider) where !entry.pendingProviders.contains(.cloudflare) {
+            let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: workspace)
+            guard plan.blocked.isEmpty, !plan.deliveries.isEmpty,
+                  !plan.deliveries.contains(where: { $0.path.hasSuffix("/remove") }) else { continue }
+            ids.append(entry.id)
+            for delivery in plan.deliveries {
+                let bucket = delivery.key == "status" ? "watchlist" : delivery.key
+                for slot in ["movies", "shows"] {
+                    payloads[bucket, default: [:]][slot, default: []].append(contentsOf: delivery.body[slot] as? [[String: Any]] ?? [])
                 }
-            case .patchTitle(_, _, let status, let score, _, let favorite, let queued, _, _):
-                if let score {
-                    decimalScoresByTitle[title.id] = (score * 10).rounded() / 10
-                    let rounded = max(1, min(10, Int(score.rounded())))
-                    actions.append(.pushRating(titleId: title.id, tmdbId: tmdbId, isSeries: title.isSeries, rating: rounded))
-                }
-                if status == "planned" || queued == true {
-                    actions.append(.pushWatchlist(titleId: title.id, tmdbId: tmdbId, isSeries: title.isSeries))
-                } else if status == "dropped" && title.isSeries {
-                    droppedShows.append(tmdbId)
-                }
-                if favorite == true {
-                    favorites.append((tmdbId: tmdbId, isSeries: title.isSeries))
-                }
-            default:
-                break
             }
         }
-
-        let plan = DirectTraktPlan(actions: actions)
-        switch provider {
-        case .wetrakr:
-            let payloads = WeTrakrSyncEngine.buildPushPayloads(
-                from: plan,
-                decimalScoresByTitle: decimalScoresByTitle,
-                favorites: favorites,
-                droppedShowTmdbIds: droppedShows
-            )
-            return ProviderBatch(
-                provider: provider,
-                entryIDs: entryIDs,
-                historyPayload: payloads.history,
-                ratingsPayload: payloads.ratings,
-                watchlistPayload: payloads.watchlist,
-                favoritesPayload: payloads.favorites,
-                idempotencyKey: WeTrakrSyncEngine.idempotencyKey(path: "/sync", entryIDs: entryIDs)
-            )
-        case .simkl:
-            let payloads = SimklSyncEngine.buildPushPayloads(from: plan)
-            return ProviderBatch(
-                provider: provider,
-                entryIDs: entryIDs,
-                historyPayload: payloads.history,
-                ratingsPayload: payloads.ratings,
-                watchlistPayload: payloads.watchlist,
-                favoritesPayload: nil,
-                idempotencyKey: nil
-            )
-        case .trakt, .mdblist, .cloudflare:
-            let payloads = DirectTraktEngine.buildPushPayloads(from: plan)
-            return ProviderBatch(
-                provider: provider,
-                entryIDs: entryIDs,
-                historyPayload: payloads.history,
-                ratingsPayload: payloads.ratings,
-                watchlistPayload: payloads.watchlist,
-                favoritesPayload: nil,
-                idempotencyKey: nil
-            )
-        }
+        guard !ids.isEmpty else { return nil }
+        func body(_ key: String) -> [String: Any]? { payloads[key].map { $0 as [String: Any] } }
+        return ProviderBatch(provider: provider, entryIDs: ids, historyPayload: body("history"), ratingsPayload: body("rating"), watchlistPayload: body("watchlist"), favoritesPayload: body("favorite"), idempotencyKey: provider == .wetrakr ? WeTrakrSyncEngine.idempotencyKey(path: "/sync", entryIDs: ids) : nil)
     }
 }
 

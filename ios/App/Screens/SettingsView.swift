@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmSignOut = false
     @State private var confirmDiscardPending = false
+    @State private var reviewProviderConflict = false
     @State private var summary: TraktController?
     @State private var showExport = false
     @State private var showImport = false
@@ -40,6 +41,13 @@ struct SettingsView: View {
                     if let warning = store.cacheWarning {
                         Text(warning).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 4).accessibilityIdentifier("settings-cache-warning")
+                    }
+                    if let notice = store.providerVaultNotice {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(notice).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            Button("Review provider settings sync") { reviewProviderConflict = true }.font(.subheadline)
+                                .disabled(store.providerVaultBusy).accessibilityIdentifier("settings-review-vault")
+                        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
                     }
                     if store.pendingDiaryEdits > 0 {
                         settingsSection("Pending sync") {
@@ -146,6 +154,10 @@ struct SettingsView: View {
             }.refreshable { await store.refresh(); await summary?.refresh() }
         }.overlay(alignment: .top) { PageHeader(name: "Profile", part: .buttons) }
         .confirmationDialog(store.pendingDiaryEdits > 0 ? "Sign out? Pending edits on this device will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
+        .confirmationDialog("Which provider settings should this device keep? Only your pending fields will change.", isPresented: $reviewProviderConflict, titleVisibility: .visible) {
+            Button("Keep this device’s settings") { Task { await store.resolveProviderVaultConflict(keepDevice: true) } }
+            Button("Use saved online settings") { Task { await store.resolveProviderVaultConflict(keepDevice: false) } }
+        }
         .confirmationDialog("Discard all pending edits on this device? The latest hosted diary will be loaded first.", isPresented: $confirmDiscardPending, titleVisibility: .visible) {
             Button("Discard pending edits", role: .destructive) { Task { await store.discardPendingEdits() } }
         }
@@ -362,7 +374,7 @@ struct TMDBConnectionView: View {
                             .accessibilityIdentifier("tmdb-api-token-field")
                         HStack(spacing: 10) {
                             Button("Save API key") {
-                                store.updateCustomTmdbToken(tokenInput)
+                                guard store.updateCustomTmdbToken(tokenInput) else { savedMessage = store.error; return }
                                 savedMessage = "Custom TMDB API key saved."
                                 verified = true
                                 editingApi = false
@@ -373,7 +385,7 @@ struct TMDBConnectionView: View {
                             if store.providerSettings.customTmdbToken != nil {
                                 Button("Use server default", role: .destructive) {
                                     tokenInput = ""
-                                    store.updateCustomTmdbToken(nil)
+                                    guard store.updateCustomTmdbToken(nil) else { savedMessage = store.error; return }
                                     savedMessage = "Reverted to server TMDB token."
                                     editingApi = false
                                 }
@@ -737,7 +749,7 @@ struct ExternalProviderConnectionView: View {
     }
 
     private func persistDraft() {
-        store.updateProviderConfig(draftConfig())
+        if !store.updateProviderConfig(draftConfig()) { errorMessage = store.error }
     }
 
     private func testConnection() async {
@@ -751,7 +763,7 @@ struct ExternalProviderConnectionView: View {
             var connectedCfg = cfg
             connectedCfg.enabled = true
             enabled = true
-            store.updateProviderConfig(connectedCfg)
+            guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
             statusMessage = "Connected to \(displayName) API."
         } catch {
             errorMessage = error.localizedDescription
@@ -782,7 +794,7 @@ struct ExternalProviderConnectionView: View {
                 connectedCfg.accessToken = token
                 connectedCfg.enabled = true
                 connectedCfg.lastSyncedAt = store.now.ISO8601Format()
-                store.updateProviderConfig(connectedCfg)
+                guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
                 statusMessage = "\(displayName) authorized and connected."
             case .expired:
                 deviceSession = nil

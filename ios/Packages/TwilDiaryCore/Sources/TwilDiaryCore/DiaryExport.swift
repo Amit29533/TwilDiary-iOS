@@ -35,118 +35,11 @@ public struct DiaryExport: Codable, Sendable {
             _ = try archive.toWorkspace()
             return archive
         }
-        if let csvText = String(data: data, encoding: .utf8),
-           !csvText.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
-            return try fromExternalCSV(csvText)
-        }
+        // CSV uploads are parsed by the server's canonical parser; decoding here is JSON-only.
         let archive = try JSONDecoder().decode(DiaryExport.self, from: data)
-        guard archive.schemaVersion == 1 else {
-            throw DiaryExportError.unsupportedSchema(archive.schemaVersion)
-        }
+        guard archive.schemaVersion == 1 else { throw DiaryExportError.unsupportedSchema(archive.schemaVersion) }
         _ = try archive.toWorkspace()
         return archive
-    }
-    public static func fromExternalCSV(_ csvText: String, now: Date = .now) throws -> DiaryExport {
-        let lines = csvText
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard lines.count >= 2 else {
-            throw DiaryExportError.unsupportedSchema(0)
-        }
-        func splitCSV(_ line: String) -> [String] {
-            var cols: [String] = []
-            var cur = ""
-            var inQuotes = false
-            let chars = Array(line)
-            var idx = 0
-            while idx < chars.count {
-                let ch = chars[idx]
-                if ch == "\"" {
-                    if inQuotes && idx + 1 < chars.count && chars[idx + 1] == "\"" {
-                        cur.append("\"")
-                        idx += 1
-                    } else {
-                        inQuotes.toggle()
-                    }
-                } else if ch == "," && !inQuotes {
-                    cols.append(cur.trimmingCharacters(in: .whitespacesAndNewlines))
-                    cur = ""
-                } else {
-                    cur.append(ch)
-                }
-                idx += 1
-            }
-            cols.append(cur.trimmingCharacters(in: .whitespacesAndNewlines))
-            return cols
-        }
-        let headers = splitCSV(lines[0]).map { $0.lowercased() }
-        let nameIdx = headers.firstIndex { ["name", "title", "series_title", "original title"].contains($0) }
-        guard let nameIdx else { throw DiaryExportError.unsupportedSchema(0) }
-        let yearIdx = headers.firstIndex { ["year", "release year"].contains($0) }
-        let ratingIdx = headers.firstIndex { ["rating", "your rating", "my_score", "score"].contains($0) }
-        let watchedIdx = headers.firstIndex { ["watched date", "date", "date rated", "my_finish_date"].contains($0) }
-        let isLetterboxd = headers.contains("letterboxd uri")
-        let nowISO = ISO8601DateFormatter().string(from: now)
-        var titles: [MediaTitle] = []
-        var events: [WatchEvent] = []
-        var seen = Set<String>()
-
-        for line in lines.dropFirst().prefix(5000) {
-            let cols = splitCSV(line)
-            guard nameIdx < cols.count else { continue }
-            let rawName = cols[nameIdx]
-            guard !rawName.isEmpty else { continue }
-            let year = yearIdx.flatMap { $0 < cols.count ? Int(cols[$0]) : nil } ?? 2024
-            let slugBase = rawName.lowercased().replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-            let id = "\(slugBase.isEmpty ? "imported" : String(slugBase.prefix(64)))-\(year)"
-            var score: Double? = nil
-            if let rIdx = ratingIdx, rIdx < cols.count, let rawVal = Double(cols[rIdx]), rawVal > 0 {
-                let scaled = (isLetterboxd && rawVal <= 5.0) ? rawVal * 2.0 : rawVal
-                score = min(10.0, max(1.0, (scaled * 10.0).rounded() / 10.0))
-            }
-            var watchedISO: String? = nil
-            if let wIdx = watchedIdx, wIdx < cols.count {
-                let rawDate = cols[wIdx]
-                if rawDate.range(of: "^\\d{4}-\\d{2}-\\d{2}$", options: .regularExpression) != nil {
-                    watchedISO = "\(rawDate)T20:00:00Z"
-                }
-            }
-            if seen.insert(id).inserted {
-                let dict: [String: Any?] = [
-                    "id": id,
-                    "name": rawName,
-                    "category": headers.contains("series_title") ? "anime" : "movie",
-                    "year": year,
-                    "overview": "",
-                    "poster": nil,
-                    "backdrop": nil,
-                    "communityScore": nil,
-                    "tmdbId": nil,
-                    "genres": [String](),
-                    "tags": [String](),
-                    "runtimeMinutes": 110,
-                    "status": (watchedISO != nil || score != nil) ? "completed" : "planned",
-                    "favorite": false,
-                    "queued": false,
-                    "score": score,
-                    "notes": "",
-                    "deletedAt": nil,
-                    "version": 1,
-                    "seasons": nil
-                ]
-                if let jsonData = try? JSONSerialization.data(withJSONObject: dict.compactMapValues { $0 }),
-                   let decodedTitle = try? JSONDecoder().decode(MediaTitle.self, from: jsonData) {
-                    titles.append(decodedTitle)
-                }
-            }
-            if let watchedISO {
-                let opId = "csv_\(id)_\(watchedISO.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression))"
-                events.append(WatchEvent(id: String(opId.prefix(120)), operationId: String(opId.prefix(120)), titleId: id, episodeId: nil, watchedAt: watchedISO, recordedAt: nowISO, origin: "import"))
-            }
-        }
-        return DiaryExport(workspace: Workspace(titles: titles, episodes: [], events: events, locations: []))
     }
     public func toWorkspace() throws -> Workspace {
         guard schemaVersion == 1 else {
@@ -167,33 +60,24 @@ public struct DiaryExport: Codable, Sendable {
         ).validatingIdentities()
     }
     /// Deterministically merges this archive into `base` (for cross-device sync, iCloud backup,
-    /// or standalone local recovery), preferring higher versions and preserving tombstones.
+    /// or standalone local recovery), filling absent personal fields while preserving current edits and tombstones.
     public func merged(into base: Workspace) throws -> Workspace {
         let base = try base.validatingIdentities()
         let incoming = try toWorkspace()
 
-        // 1. Merge titles by ID, preferring the higher `version` while preserving personal notes/scores when equal.
+        // Archive versions belong to another timeline and are not authority over current edits.
         var titleByID = Dictionary(uniqueKeysWithValues: base.titles.map { ($0.id, $0) })
         for item in incoming.titles {
             if let existing = titleByID[item.id] {
-                let existingVer = existing.version ?? 1
-                let incomingVer = item.version ?? 1
-                if incomingVer > existingVer {
-                    titleByID[item.id] = item
-                } else if incomingVer == existingVer {
-                    var merged = existing
-                    if merged.score == nil, let s = item.score { merged.score = s }
-                    if merged.notes.isEmpty, !item.notes.isEmpty { merged.notes = item.notes }
-                    if (merged.tags ?? []).isEmpty, let incomingTags = item.tags, !incomingTags.isEmpty {
-                        merged.tags = incomingTags
-                    }
-                    if item.favorite { merged.favorite = true }
-                    if item.deletedAt != nil && merged.deletedAt == nil { merged.deletedAt = item.deletedAt }
-                    titleByID[item.id] = merged
-                }
-            } else {
-                titleByID[item.id] = item
-            }
+                var merged = existing
+                if merged.score == nil { merged.score = item.score }
+                if merged.notes.isEmpty { merged.notes = item.notes }
+                if (merged.tags ?? []).isEmpty { merged.tags = item.tags }
+                merged.favorite = merged.favorite || item.favorite
+                if item.queued == true { merged.queued = true }
+                if merged != existing { merged.version = (existing.version ?? 1) + 1 }
+                titleByID[item.id] = merged
+            } else { titleByID[item.id] = item }
         }
         let mergedTitles = titleByID.values.sorted { $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) }
         let validTitleIDs = Set(mergedTitles.map(\.id))
@@ -216,13 +100,7 @@ public struct DiaryExport: Codable, Sendable {
         var eventByID = Dictionary(uniqueKeysWithValues: base.events.map { ($0.id, $0) })
         var seenOperationIDs = Set(base.events.map(\.operationId))
         for ev in incoming.events where validTitleIDs.contains(ev.titleId) {
-            if let existing = eventByID[ev.id] {
-                let existingVer = existing.version ?? 1
-                let incomingVer = ev.version ?? 1
-                if incomingVer > existingVer || (incomingVer == existingVer && ev.revokedAt != nil && existing.revokedAt == nil) {
-                    eventByID[ev.id] = ev
-                }
-            } else if !seenOperationIDs.contains(ev.operationId) {
+            if eventByID[ev.id] == nil && !seenOperationIDs.contains(ev.operationId) {
                 eventByID[ev.id] = ev
                 seenOperationIDs.insert(ev.operationId)
             }

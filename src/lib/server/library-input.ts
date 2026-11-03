@@ -128,19 +128,12 @@ export function patchInput(value: unknown) {
     patch.notes = data.notes;
   }
   if ('tags' in data) {
-    if (
-      !Array.isArray(data.tags) ||
-      data.tags.length > 20 ||
-      data.tags.some(
-        (tag) =>
-          typeof tag !== 'string' ||
-          !tag.trim() ||
-          tag.trim().length > 60 ||
-          /[\u0000-\u001f\u007f]/.test(tag)
-      )
-    )
+    if (!Array.isArray(data.tags) || data.tags.length > 20 || data.tags.some((tag) => typeof tag !== 'string'))
       return invalid('Keep up to 20 collection tags of 1 to 60 characters');
-    tags = [...new Set(data.tags.map((t: string) => t.normalize('NFKC').trim()))];
+    const normalized = data.tags.map((tag: string) => tag.normalize('NFKC').trim());
+    if (normalized.some((tag: string) => !tag || tag.length > 60 || /[\u0000-\u001f\u007f]/.test(tag)))
+      return invalid('Keep up to 20 collection tags of 1 to 60 characters');
+    tags = [...new Set(normalized)];
   }
   if (!Object.keys(patch).length && tags === undefined) return invalid('Choose a field to update');
   return { expectedVersion, patch, tags };

@@ -36,6 +36,8 @@
     defaultProviderConnectionSettings,
     providerStatusBadge,
     pullProviderSettingsFromVault,
+    readProviderVaultNotice,
+    resolveProviderVaultConflict,
     readProviderConnectionSettings,
     type ProviderConnectionSettings
   } from '#lib/client/provider-settings.ts';
@@ -51,6 +53,8 @@
   let status = $state<TraktStatus | null>(null),
     sync = $state<TraktSync | null>(null),
     providerSettings = $state<ProviderConnectionSettings>(defaultProviderConnectionSettings());
+  let vaultNotice = $state('');
+  let vaultReviewBusy = $state(false);
   let checked = $state(false),
     unavailable = $state(false),
     timeZone = $state('Device time zone'),
@@ -62,6 +66,9 @@
   const reviewing = $derived(liveSync?.run && ['review', 'applying'].includes(liveSync.run.state));
   onMount(() => {
     let active = true;
+    vaultNotice = readProviderVaultNotice();
+    const vaultChanged = () => { if (active) vaultNotice = readProviderVaultNotice(); };
+    window.addEventListener('provider-vault-status', vaultChanged);
     timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ');
     const preference = matchMedia('(prefers-reduced-motion: reduce)');
     const updateMotion = () => (motion = preference.matches ? 'Reduced · device' : 'Follow device');
@@ -96,6 +103,7 @@
     return () => {
       active = false;
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('provider-vault-status', vaultChanged);
       preference.removeEventListener('change', updateMotion);
     };
   });
@@ -127,7 +135,7 @@
       const text = await file.text();
       let payload = text;
       if (file.name.toLowerCase().endsWith('.csv') || !text.trim().startsWith('{')) {
-        payload = JSON.stringify({ csv: text });
+        payload = JSON.stringify({ csv: text, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       } else {
         const parsed = JSON.parse(text) as { schemaVersion?: number; titles?: unknown[] };
         if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.titles)) {
@@ -150,11 +158,24 @@
       importingBackup = false;
     }
   }
+  async function reviewVault(keepDevice: boolean) {
+    vaultReviewBusy = true;
+    try { await resolveProviderVaultConflict(keepDevice); providerSettings = readProviderConnectionSettings(); }
+    catch (error) { vaultNotice = error instanceof Error ? error.message : 'Settings sync remains pending.'; }
+    finally { vaultReviewBusy = false; }
+  }
 </script>
 
 <svelte:head><title>More · TwilDiary</title></svelte:head>
 <ScreenHeading title="More" />
 <div class="settings-page">
+  {#if vaultNotice}
+    <section class="panel vault-notice" aria-label="Provider settings sync">
+      <p role="status">{vaultNotice}</p>
+      <button onclick={() => reviewVault(true)} disabled={vaultReviewBusy}>Keep this device’s settings</button>
+      <button onclick={() => reviewVault(false)} disabled={vaultReviewBusy}>Use saved online settings</button>
+    </section>
+  {/if}
   <section class="panel sync-card" aria-labelledby="sync-summary">
     <div class="sync-top">
       <span class="sync-label"><Link2 size={16} />Trakt sync</span><span
@@ -431,6 +452,9 @@
 </div>
 
 <style>
+  .vault-notice { padding: 16px; display: grid; gap: 10px; }
+  .vault-notice p { margin: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
+  .vault-notice button { min-height: 44px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 12px; }
   .rating-source-select {
     flex: 0 0 auto;
     max-width: 105px;

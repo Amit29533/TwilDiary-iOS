@@ -1,4 +1,5 @@
-import { isSeries, type DiarySnapshot } from '../domain/types.ts';
+import { planProviderDelivery, providerReceiptConfirmed } from './provider-delivery.ts';
+import { type DiarySnapshot } from '../domain/types.ts';
 import {
   activeDirectLoggingProviders,
   readProviderConnectionSettings,
@@ -31,6 +32,8 @@ export interface WebOutboxEntry {
   mutation: WebOutboxMutation;
   pendingProviders: ExternalSyncProviderId[];
   attempts: number;
+  confirmedActions?: string[];
+  uncertainActions?: string[];
   lastError?: string | undefined;
 }
 
@@ -61,11 +64,8 @@ export function writeWebProviderOutbox(
     : undefined
 ): WebOutboxEntry[] {
   const active = entries.filter((e) => e.pendingProviders.length > 0);
-  try {
-    storage?.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(active));
-  } catch {
-    /* Ignore quota errors */
-  }
+  if (!storage) throw new Error('Device storage is unavailable; pending provider edits were not saved.');
+  storage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(active));
   return active;
 }
 
@@ -130,199 +130,72 @@ function providerHeaders(
   return headers;
 }
 
+type QueueStorage = Pick<Storage, 'getItem' | 'setItem'>;
+const providerFlights = new WeakMap<object, Promise<{ flushedEntries: number; errors: Record<string, string> }>>();
+
 export async function flushWebProviderOutbox(
   snapshot: DiarySnapshot,
-  options: {
-    settings?: ProviderConnectionSettings;
-    storage?: Pick<Storage, 'getItem' | 'setItem'>;
-    transport?: typeof fetch;
-  } = {}
+  options: { settings?: ProviderConnectionSettings; storage?: QueueStorage; transport?: typeof fetch } = {}
 ): Promise<{ flushedEntries: number; errors: Record<string, string> }> {
+  const storage = options.storage ?? (typeof localStorage !== 'undefined' ? localStorage : undefined);
+  if (!storage) return { flushedEntries: 0, errors: { storage: 'Device storage is unavailable.' } };
+  const existing = providerFlights.get(storage);
+  if (existing) return existing;
   const transport = options.transport ?? fetch;
-  const settings = options.settings ?? readProviderConnectionSettings(options.storage);
-  const activeProviders = activeDirectLoggingProviders(settings);
-  let queue = readWebProviderOutbox(options.storage);
-  if (queue.length === 0 || activeProviders.length === 0) {
-    return { flushedEntries: 0, errors: {} };
-  }
-
-  const titlesById = new Map(snapshot.titles.map((t) => [t.id, t]));
-  const episodesById = new Map(snapshot.episodes.map((e) => [e.id, e]));
-  let flushedEntries = 0;
-  const errors: Record<string, string> = {};
-
-  for (const provider of activeProviders) {
-    const config = settings[provider];
-    const pending = queue.filter((e) => e.pendingProviders.includes(provider));
-    if (pending.length === 0) continue;
-
-    const historyMovies: Record<string, unknown>[] = [];
-    const historyShows: Record<string, unknown>[] = [];
-    const ratingMovies: Record<string, unknown>[] = [];
-    const ratingShows: Record<string, unknown>[] = [];
-    const watchlistMovies: Record<string, unknown>[] = [];
-    const watchlistShows: Record<string, unknown>[] = [];
-    const favMovies: Record<string, unknown>[] = [];
-    const favShows: Record<string, unknown>[] = [];
-    const processedIds: string[] = [];
-
-    for (const entry of pending) {
-      const title = titlesById.get(entry.mutation.titleId);
-      if (!title || !title.tmdbId || title.tmdbId <= 0) {
-        processedIds.push(entry.id);
-        continue;
-      }
-      const series = isSeries(title);
-      processedIds.push(entry.id);
-
-      if (entry.mutation.kind === 'watch') {
-        if (!series) {
-          historyMovies.push({
-            ids: { tmdb: title.tmdbId },
-            watched_at: entry.mutation.watchedAt
-          });
-        } else if (entry.mutation.episodeId) {
-          const ep = episodesById.get(entry.mutation.episodeId);
-          if (ep && ep.season > 0) {
-            historyShows.push({
-              ids: { tmdb: title.tmdbId },
-              seasons: [
-                {
-                  number: ep.season,
-                  episodes: [{ number: ep.number, watched_at: entry.mutation.watchedAt }]
-                }
-              ]
-            });
+  const work = (async () => {
+    const settings = options.settings ?? readProviderConnectionSettings(storage);
+    let flushedEntries = 0;
+    const errors: Record<string, string> = {};
+    // Always edit the latest durable queue, preserving entries added while a request is in flight.
+    function update(id: string, edit: (entry: WebOutboxEntry) => WebOutboxEntry) {
+      return writeWebProviderOutbox(readWebProviderOutbox(storage).map((entry) => entry.id === id ? edit(entry) : entry), storage);
+    }
+    for (const provider of activeDirectLoggingProviders(settings)) {
+      const config = settings[provider];
+      const initial = readWebProviderOutbox(storage).filter((entry) => entry.pendingProviders.includes(provider));
+      for (const entry of initial) {
+        const plan = planProviderDelivery(entry, provider, snapshot);
+        try {
+          for (const delivery of plan.deliveries) {
+            const key = provider + ':' + delivery.key;
+            const current = readWebProviderOutbox(storage).find((item) => item.id === entry.id);
+            if (!current) break;
+            if (current.confirmedActions?.includes(key)) continue;
+            if (current.uncertainActions?.includes(key)) throw new Error('A previous history request needs reconciliation before retrying; no duplicate watch was sent.');
+            if (delivery.history) update(entry.id, (item) => ({ ...item, uncertainActions: [...(item.uncertainActions ?? []), key] }));
+            const idempotencyKey = entry.operationId + ':' + delivery.key;
+            const base = provider === 'trakt' ? 'https://api.trakt.tv' : provider === 'simkl' ? 'https://api.simkl.com' : provider === 'wetrakr' ? 'https://api.wetrakr.com' : 'https://api.mdblist.com';
+            const url = base + delivery.path + (provider === 'mdblist' ? '?apikey=' + encodeURIComponent(config.apiKey?.trim() ?? '') : '');
+            const response = await transport(url, { method: 'POST', redirect: 'error', headers: providerHeaders(config, idempotencyKey), body: JSON.stringify(delivery.body) });
+            if (!response.ok) {
+              // Definitive client rejection did not accept a history event. An ambiguous 5xx stays uncertain.
+              if (response.status >= 400 && response.status < 500) update(entry.id, (item) => ({ ...item, uncertainActions: item.uncertainActions?.filter((value) => value !== key) ?? [] }));
+              throw new Error(`${provider} HTTP ${response.status}; the edit remains pending.`);
+            }
+            const receipt: unknown = await response.json();
+            if (!providerReceiptConfirmed(receipt)) throw new Error('The provider did not confirm this item; the edit remains pending.');
+            update(entry.id, (item) => ({ ...item, confirmedActions: [...(item.confirmedActions ?? []), key], uncertainActions: item.uncertainActions?.filter((value) => value !== key) ?? [] }));
           }
-        }
-      } else if (entry.mutation.kind === 'patch') {
-        if (typeof entry.mutation.score === 'number' && entry.mutation.score > 0) {
-          const scoreVal =
-            provider === 'wetrakr'
-              ? Math.round(entry.mutation.score * 10) / 10
-              : Math.max(1, Math.min(10, Math.round(entry.mutation.score)));
-          const item = {
-            ids: { tmdb: title.tmdbId },
-            rating: scoreVal,
-            rated_at: entry.createdAt
-          };
-          if (series) ratingShows.push(item);
-          else ratingMovies.push(item);
-        }
-        if (entry.mutation.status === 'planned' || entry.mutation.queued === true) {
-          const item: Record<string, unknown> = { ids: { tmdb: title.tmdbId } };
-          if (provider === 'simkl') item.to = 'plantowatch';
-          if (series) watchlistShows.push(item);
-          else watchlistMovies.push(item);
-        } else if (entry.mutation.status === 'dropped' && series && provider === 'wetrakr') {
-          historyShows.push({
-            ids: { tmdb: title.tmdbId },
-            status: 'dropped'
-          });
-        }
-        if (entry.mutation.favorite === true && provider === 'wetrakr') {
-          const item = { ids: { tmdb: title.tmdbId } };
-          if (series) favShows.push(item);
-          else favMovies.push(item);
+          if (plan.blocked.length) throw new Error(plan.blocked.join(' '));
+          if (!plan.deliveries.length) throw new Error('This edit has no supported provider operation.');
+          update(entry.id, (item) => ({ ...item, pendingProviders: item.pendingProviders.filter((value) => value !== provider), lastError: undefined }));
+          flushedEntries++;
+          const latestSettings = readProviderConnectionSettings(storage);
+          latestSettings[provider].lastSyncedAt = new Date().toISOString();
+          writeProviderConnectionSettings(latestSettings, storage, { syncVault: false });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Direct sync failed; the edit remains pending.';
+          errors[provider] = message;
+          update(entry.id, (item) => ({ ...item, attempts: item.attempts + 1, lastError: message }));
+          // Preserve ordering: a later edit must not overtake an unconfirmed earlier edit.
+          break;
         }
       }
     }
-
-    try {
-      const idempKey = `twildiary-web-${processedIds.join('-').slice(0, 48)}`;
-      const headers = providerHeaders(config, idempKey);
-      const sendPost = async (url: string, body: Record<string, unknown>) => {
-        const res = await transport(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error(`${provider} HTTP ${res.status}`);
-      };
-
-      if (provider === 'wetrakr') {
-        if (historyMovies.length || historyShows.length)
-          await sendPost('https://api.wetrakr.com/sync/history', {
-            movies: historyMovies,
-            shows: historyShows
-          });
-        if (ratingMovies.length || ratingShows.length)
-          await sendPost('https://api.wetrakr.com/sync/ratings', {
-            movies: ratingMovies,
-            shows: ratingShows
-          });
-        if (watchlistMovies.length || watchlistShows.length)
-          await sendPost('https://api.wetrakr.com/sync/watchlist', {
-            movies: watchlistMovies,
-            shows: watchlistShows
-          });
-        if (favMovies.length || favShows.length)
-          await sendPost('https://api.wetrakr.com/sync/favorites', {
-            movies: favMovies,
-            shows: favShows
-          });
-      } else if (provider === 'simkl') {
-        if (historyMovies.length || historyShows.length)
-          await sendPost('https://api.simkl.com/sync/history', {
-            movies: historyMovies,
-            shows: historyShows
-          });
-        if (ratingMovies.length || ratingShows.length)
-          await sendPost('https://api.simkl.com/sync/ratings', {
-            movies: ratingMovies,
-            shows: ratingShows
-          });
-        if (watchlistMovies.length || watchlistShows.length)
-          await sendPost('https://api.simkl.com/sync/add-to-list', {
-            movies: watchlistMovies,
-            shows: watchlistShows
-          });
-      } else if (provider === 'trakt') {
-        if (historyMovies.length || historyShows.length)
-          await sendPost('https://api.trakt.tv/sync/history', {
-            movies: historyMovies,
-            shows: historyShows
-          });
-        if (ratingMovies.length || ratingShows.length)
-          await sendPost('https://api.trakt.tv/sync/ratings', {
-            movies: ratingMovies,
-            shows: ratingShows
-          });
-        if (watchlistMovies.length || watchlistShows.length)
-          await sendPost('https://api.trakt.tv/sync/watchlist', {
-            movies: watchlistMovies,
-            shows: watchlistShows
-          });
-      } else if (provider === 'mdblist') {
-        const key = encodeURIComponent(config.apiKey?.trim() ?? '');
-        if (watchlistMovies.length || watchlistShows.length)
-          await sendPost(`https://api.mdblist.com/watchlist/items/add?apikey=${key}`, {
-            movies: watchlistMovies.map((m) => ({ tmdb: (m.ids as { tmdb: number }).tmdb })),
-            shows: watchlistShows.map((s) => ({ tmdb: (s.ids as { tmdb: number }).tmdb }))
-          });
-      }
-
-      queue = queue
-        .map((e) =>
-          processedIds.includes(e.id)
-            ? { ...e, pendingProviders: e.pendingProviders.filter((p) => p !== provider) }
-            : e
-        )
-        .filter((e) => e.pendingProviders.length > 0);
-      flushedEntries += processedIds.length;
-      settings[provider] = { ...config, lastSyncedAt: new Date().toISOString() };
-      writeProviderConnectionSettings(settings, options.storage, { syncVault: false });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Direct sync failed';
-      errors[provider] = msg;
-      queue = queue.map((e) =>
-        processedIds.includes(e.id) ? { ...e, attempts: e.attempts + 1, lastError: msg } : e
-      );
-    }
-  }
-
-  writeWebProviderOutbox(queue, options.storage);
-  return { flushedEntries, errors };
+    return { flushedEntries, errors };
+  })();
+  providerFlights.set(storage, work);
+  try { return await work; } finally { if (providerFlights.get(storage) === work) providerFlights.delete(storage); }
 }
 
 export interface DeviceAuthSession {

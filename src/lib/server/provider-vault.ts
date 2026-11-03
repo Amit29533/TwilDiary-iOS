@@ -1,5 +1,5 @@
 import { sessionSigningSecret } from './access.ts';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { database } from './db/index.ts';
 import { workspaceMigrations } from './db/schema.ts';
 import { ApiError, type ServerBindings } from './api.ts';
@@ -15,6 +15,7 @@ export interface VaultProviderEntry {
   accessToken?: string;
   apiKey?: string;
   username?: string;
+  loggingMethod?: 'server_only' | 'server_and_direct' | 'direct_only';
 }
 
 export interface ProviderVaultPayload {
@@ -99,92 +100,92 @@ export async function decryptVaultPayload(
   }
 }
 
-function cleanOptionalString(val: unknown, maxLen = 2048): string | undefined {
-  if (typeof val !== 'string') return undefined;
-  const trimmed = val.trim();
-  return trimmed && trimmed.length <= maxLen ? trimmed : undefined;
+type EntryPatch = { [K in keyof VaultProviderEntry]?: VaultProviderEntry[K] | null };
+export interface ProviderVaultPatch {
+  customTmdbToken?: string | null;
+  trakt?: EntryPatch | null;
+  wetrakr?: EntryPatch | null;
+  simkl?: EntryPatch | null;
+  mdblist?: EntryPatch | null;
 }
-
-function sanitizeEntry(raw: unknown): VaultProviderEntry | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const obj = raw as Record<string, unknown>;
-  const entry: VaultProviderEntry = {
-    enabled: Boolean(obj.enabled)
-  };
-  const clientId = cleanOptionalString(obj.clientId, 512);
-  const accessToken = cleanOptionalString(obj.accessToken, 2048);
-  const apiKey = cleanOptionalString(obj.apiKey, 512);
-  const username = cleanOptionalString(obj.username, 256);
-  if (clientId) entry.clientId = clientId;
-  if (accessToken) entry.accessToken = accessToken;
-  if (apiKey) entry.apiKey = apiKey;
-  if (username) entry.username = username;
-  return entry;
+const providers = ['trakt', 'wetrakr', 'simkl', 'mdblist'] as const;
+function object(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(400, 'invalid_vault', 'Provide provider settings as an object.');
+  return value as Record<string, unknown>;
 }
-
-export function validateVaultInput(raw: unknown): ProviderVaultPayload {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new ApiError(400, 'invalid_input', 'Provide provider vault settings as a JSON object.');
+function nullableString(value: unknown, max: number): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > max || /[\u0000-\u001f\u007f]/.test(value))
+    throw new ApiError(400, 'invalid_vault', 'Provider fields must be valid nonempty text, or null to clear them.');
+  return value.trim();
+}
+export function validateVaultInput(raw: unknown): ProviderVaultPatch {
+  const input = object(raw);
+  const allowed = new Set<string>(['customTmdbToken', ...providers]);
+  if (Object.keys(input).some((key) => !allowed.has(key))) throw new ApiError(400, 'invalid_vault', 'Unknown provider setting.');
+  const patch: ProviderVaultPatch = {};
+  if ('customTmdbToken' in input) patch.customTmdbToken = nullableString(input.customTmdbToken, 2048);
+  for (const provider of providers) {
+    if (!(provider in input)) continue;
+    if (input[provider] === null) { patch[provider] = null; continue; }
+    const fields = object(input[provider]);
+    const entry: EntryPatch = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (key === 'enabled') {
+        if (typeof value !== 'boolean') throw new ApiError(400, 'invalid_vault', 'Provider enabled must be true or false.');
+        entry.enabled = value;
+      } else if (key === 'loggingMethod') {
+        if (value !== null && !['server_only', 'server_and_direct', 'direct_only'].includes(String(value))) throw new ApiError(400, 'invalid_vault', 'Invalid logging method.');
+        entry.loggingMethod = value as Exclude<EntryPatch['loggingMethod'], undefined>;
+      } else if (key === 'clientId' || key === 'accessToken' || key === 'apiKey' || key === 'username') {
+        entry[key] = nullableString(value, key === 'username' ? 256 : key === 'clientId' ? 512 : 2048);
+      } else throw new ApiError(400, 'invalid_vault', 'Unknown provider field.');
+    }
+    patch[provider] = entry;
   }
-  const obj = raw as Record<string, unknown>;
-  const payload: ProviderVaultPayload = {};
-  const tmdb = cleanOptionalString(obj.customTmdbToken, 2048);
-  if (tmdb) payload.customTmdbToken = tmdb;
-  const trakt = sanitizeEntry(obj.trakt);
-  if (trakt) payload.trakt = trakt;
-  const wetrakr = sanitizeEntry(obj.wetrakr);
-  if (wetrakr) payload.wetrakr = wetrakr;
-  const simkl = sanitizeEntry(obj.simkl);
-  if (simkl) payload.simkl = simkl;
-  const mdblist = sanitizeEntry(obj.mdblist);
-  if (mdblist) payload.mdblist = mdblist;
-  return payload;
+  return patch;
 }
-
-export async function readProviderVault(
-  db: Db,
-  env: ServerBindings | undefined
-): Promise<{ synced: boolean; updatedAt: string | null; settings: ProviderVaultPayload | null }> {
-  const row = await db
-    .select()
-    .from(workspaceMigrations)
-    .where(eq(workspaceMigrations.id, VAULT_ROW_ID))
-    .get();
-  if (!row) {
-    return { synced: false, updatedAt: null, settings: null };
-  }
+export async function readProviderVault(db: Db, env: ServerBindings | undefined) {
+  const row = await db.select().from(workspaceMigrations).where(eq(workspaceMigrations.id, VAULT_ROW_ID)).get();
+  if (!row) return { protocolVersion: 2, synced: false, revision: null, updatedAt: null, settings: null };
   const settings = await decryptVaultPayload(row.snapshot, env);
-  return {
-    synced: settings !== null,
-    updatedAt: row.createdAt,
-    settings
-  };
+  return { protocolVersion: 2, synced: settings !== null, revision: row.token, updatedAt: row.createdAt, settings };
 }
-
-export async function writeProviderVault(
-  db: Db,
-  env: ServerBindings | undefined,
-  rawInput: unknown
-): Promise<{ synced: true; updatedAt: string; settings: ProviderVaultPayload }> {
-  const payload = validateVaultInput(rawInput);
-  const encrypted = await encryptVaultPayload(payload, env);
-  const now = new Date().toISOString();
-  await db
-    .insert(workspaceMigrations)
-    .values({
-      id: VAULT_ROW_ID,
-      token: 'v1',
-      snapshot: encrypted,
-      createdAt: now
-    })
-    .onConflictDoUpdate({
-      target: workspaceMigrations.id,
-      set: {
-        token: 'v1',
-        snapshot: encrypted,
-        createdAt: now
-      }
-    })
-    .run();
-  return { synced: true, updatedAt: now, settings: payload };
+export async function writeProviderVault(db: Db, env: ServerBindings | undefined, rawInput: unknown) {
+  const input = object(rawInput);
+  const explicit = Object.hasOwn(input, 'changes');
+  if (explicit && Object.keys(input).some((key) => key !== 'changes' && key !== 'expectedRevision')) throw new ApiError(400, 'invalid_vault', 'Unknown vault envelope field.');
+  const patch = validateVaultInput(explicit ? input.changes : Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'expectedRevision')));
+  const expected = input.expectedRevision;
+  if (expected !== undefined && expected !== null && (typeof expected !== 'string' || expected.length > 128)) throw new ApiError(400, 'invalid_vault', 'Invalid settings revision.');
+  const row = await db.select().from(workspaceMigrations).where(eq(workspaceMigrations.id, VAULT_ROW_ID)).get();
+  if ((row && expected !== row.token) || (!row && expected != null)) throw new ApiError(409, 'vault_conflict', 'Provider settings changed on another device. Refresh them before saving.');
+  const previous = row ? await decryptVaultPayload(row.snapshot, env) : {};
+  if (!previous) throw new ApiError(409, 'vault_unreadable', 'The saved provider settings cannot be decrypted. They have been preserved.');
+  const merged: ProviderVaultPayload = { ...previous };
+  if ('customTmdbToken' in patch) {
+    if (patch.customTmdbToken === null) delete merged.customTmdbToken;
+    else if (patch.customTmdbToken !== undefined) merged.customTmdbToken = patch.customTmdbToken;
+  }
+  for (const provider of providers) {
+    const update = patch[provider];
+    if (update === undefined) continue;
+    if (update === null) { delete merged[provider]; continue; }
+    const entry = { ...(merged[provider] ?? { enabled: false }) } as VaultProviderEntry;
+    for (const [key, value] of Object.entries(update)) {
+      if (value === null) delete (entry as unknown as Record<string, unknown>)[key];
+      else (entry as unknown as Record<string, unknown>)[key] = value;
+    }
+    merged[provider] = entry;
+  }
+  const encrypted = await encryptVaultPayload(merged, env);
+  const revision = crypto.randomUUID();
+  const updatedAt = new Date().toISOString();
+  const saved = row
+    ? await db.update(workspaceMigrations).set({ token: revision, snapshot: encrypted, createdAt: updatedAt })
+        .where(and(eq(workspaceMigrations.id, VAULT_ROW_ID), eq(workspaceMigrations.token, row.token))).returning({ id: workspaceMigrations.id }).get()
+    : await db.insert(workspaceMigrations).values({ id: VAULT_ROW_ID, token: revision, snapshot: encrypted, createdAt: updatedAt })
+        .onConflictDoNothing().returning({ id: workspaceMigrations.id }).get();
+  if (!saved) throw new ApiError(409, 'vault_conflict', 'Provider settings changed on another device. Refresh them before saving.');
+  return { protocolVersion: 2, synced: true, revision, updatedAt, settings: merged };
 }

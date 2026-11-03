@@ -323,7 +323,7 @@ import TwilDiaryCore
                             username: controller.status?.username ?? saved.username,
                             lastSyncedAt: saved.lastSyncedAt
                         )
-                        store.updateProviderConfig(cfg)
+                        guard store.updateProviderConfig(cfg) else { apiSavedMessage = store.error; return }
                         apiSavedMessage = "Trakt API settings saved."
                         showApiSettings = false
                     }
@@ -346,7 +346,7 @@ import TwilDiaryCore
                                 )
                                 do {
                                     try await store.testProviderConnection(cfg)
-                                    store.updateProviderConfig(cfg)
+                                    guard store.updateProviderConfig(cfg) else { apiSavedMessage = store.error; return }
                                     apiSavedMessage = "Direct Trakt API verified."
                                 } catch {
                                     apiSavedMessage = error.localizedDescription
@@ -362,7 +362,7 @@ import TwilDiaryCore
                         Button("Reset API", role: .destructive) {
                             customClientId = ""
                             customAccessToken = ""
-                            store.updateProviderConfig(ExternalProviderConfig(provider: .trakt, loggingMethod: loggingMethod))
+                            guard store.updateProviderConfig(ExternalProviderConfig(provider: .trakt, loggingMethod: loggingMethod)) else { apiSavedMessage = store.error; return }
                             apiSavedMessage = "Reverted to server Trakt settings."
                             showApiSettings = false
                         }

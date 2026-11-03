@@ -50,6 +50,8 @@ public struct SyncOutboxEntry: Codable, Identifiable, Equatable, Sendable {
     public var pendingProviders: Set<SyncProviderKind>
     public var attempts: Int
     public var lastError: String?
+    public var confirmedActions: Set<String>?
+    public var uncertainActions: Set<String>?
 
     public init(
         id: String = UUID().uuidString,
@@ -67,6 +69,8 @@ public struct SyncOutboxEntry: Codable, Identifiable, Equatable, Sendable {
         self.pendingProviders = pendingProviders
         self.attempts = attempts
         self.lastError = lastError
+        self.confirmedActions = nil
+        self.uncertainActions = nil
     }
 }
 
@@ -95,6 +99,8 @@ public struct SyncOutboxQueue: Codable, Equatable, Sendable {
         if case .patchTitle(let titleId, let expVer, let status, let score, let clearScore, let favorite, let queued, let notes, let tags) = entry.mutation,
            let lastIndex = entries.indices.last(where: { entries[$0].mutation.titleId == titleId }),
            entries[lastIndex].attempts == 0,
+           (entries[lastIndex].confirmedActions ?? []).isEmpty,
+           (entries[lastIndex].uncertainActions ?? []).isEmpty,
            entries[lastIndex].pendingProviders == entry.pendingProviders,
            case .patchTitle(_, let prevExpVer, let prevStatus, let prevScore, let prevClearScore, let prevFav, let prevQueued, let prevNotes, let prevTags) = entries[lastIndex].mutation {
             let mergedScore: Double? = clearScore ? nil : (score ?? prevScore)
@@ -130,6 +136,15 @@ public struct SyncOutboxQueue: Codable, Equatable, Sendable {
         guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
         entries[index].attempts += 1
         entries[index].lastError = error
+    }
+
+    public mutating func recordDelivery(entryID: String, key: String, confirmed: Bool, rejected: Bool = false) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+        if confirmed {
+            entries[index].confirmedActions = (entries[index].confirmedActions ?? []).union([key])
+        }
+        if confirmed || rejected { entries[index].uncertainActions?.remove(key) }
+        else { entries[index].uncertainActions = (entries[index].uncertainActions ?? []).union([key]) }
     }
 
     public mutating func remove(entryID: String) {

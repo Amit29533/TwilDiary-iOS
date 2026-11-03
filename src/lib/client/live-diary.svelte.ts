@@ -95,6 +95,7 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
           try {
             const delta = await request<{
               revision: string;
+              cursor: string;
               unchanged?: boolean;
               fullRefreshRequired: boolean;
               ids: string[];
@@ -109,7 +110,9 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
                   known: knownRevision.revision
                 })
             );
+            if (!delta.cursor || !Number.isFinite(Date.parse(delta.cursor))) throw new Error('Server cursor unavailable');
             if (delta.unchanged) {
+              knownRevision = { revision: delta.revision, sinceIso: delta.cursor };
               lastRead = Date.now();
               warning = '';
               return;
@@ -154,7 +157,7 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
                 ],
                 skippedEpisodeIds: [...skippedSet]
               };
-              knownRevision = { revision: delta.revision, sinceIso: new Date().toISOString() };
+              knownRevision = { revision: delta.revision, sinceIso: delta.cursor };
               lastRead = Date.now();
               warning = '';
               return;
@@ -163,13 +166,14 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
             /* Older server or unavailable delta route: fall back to full section download */
           }
         }
-        const sinceIso = new Date().toISOString();
-        const [titles, rawEpisodes, events, locations, revResult] = await Promise.all([
+        // Capture the server cursor and revision BEFORE downloading independent pages.
+        // Changes during pagination are then included by the next delta request.
+        const revResult = await request<{ revision: string; cursor: string }>('/api/workspace/revision').catch(() => null);
+        const [titles, rawEpisodes, events, locations] = await Promise.all([
           section<MediaTitle>('titles'),
           section<Episode & { skipped: boolean }>('episodes'),
           section<WatchEvent>('events'),
-          section<DiarySnapshot['locations'][number]>('locations'),
-          request<{ revision: string }>('/api/workspace/revision').catch(() => null)
+          section<DiarySnapshot['locations'][number]>('locations')
         ]);
         snapshot = {
           schemaVersion: 1,
@@ -189,9 +193,8 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
           locations,
           skippedEpisodeIds: rawEpisodes.filter((e) => e.skipped).map((e) => e.id)
         };
-        if (revResult?.revision) {
-          knownRevision = { revision: revResult.revision, sinceIso };
-        }
+        knownRevision = revResult?.revision && Number.isFinite(Date.parse(revResult.cursor))
+          ? { revision: revResult.revision, sinceIso: revResult.cursor } : null;
         lastRead = Date.now();
         ready = true;
         warning = '';

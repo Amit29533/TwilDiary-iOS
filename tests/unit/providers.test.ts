@@ -325,7 +325,7 @@ test('Web provider outbox queues mutations, flushes outbound payloads, and handl
       headers: (init?.headers ?? {}) as Record<string, string>,
       body: init?.body ? JSON.parse(String(init.body)) : null
     });
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    return new Response(JSON.stringify({ added: { movies: 1 } }), { status: 200 });
   };
 
   const snapshot = {
@@ -359,10 +359,10 @@ test('Web provider outbox queues mutations, flushes outbound payloads, and handl
     storage,
     transport: fakeTransport
   });
-  assert.equal(flushRes.flushedEntries, 4);
+  assert.equal(flushRes.flushedEntries, 3);
   assert.equal(pendingOutboxForProvider('wetrakr', storage).length, 0);
-  assert.equal(pendingOutboxForProvider('simkl', storage).length, 0);
-  assert.equal(requests.some((r) => r.url === 'https://api.wetrakr.com/sync/history'), true);
+  assert.equal(pendingOutboxForProvider('simkl', storage).length, 1, 'Unsupported favourite is retained after the rating is confirmed');
+  assert.equal(requests.some((r) => r.url === 'https://api.wetrakr.com/sync/tracking'), true);
   assert.equal(requests.some((r) => r.url === 'https://api.wetrakr.com/sync/ratings'), true);
   assert.equal(requests.some((r) => r.url === 'https://api.wetrakr.com/sync/favorites'), true);
   assert.equal(requests.some((r) => r.url === 'https://api.simkl.com/sync/history'), true);
@@ -533,7 +533,7 @@ test('importDiaryArchive performs repeatable 3-way merge of DiaryExport JSON bac
     assert.equal(res2.importedTitles, 1);
 
     const t2 = await getTitle(f.db, 'backup-series-1');
-    assert.equal(t2.status, 'completed');
+    assert.equal(t2.status, 'watching', 'Archive versions do not override current personal status');
     assert.equal(t2.favorite, true);
     assert.equal(t2.score, 9.5);
     assert.equal(t2.notes, 'Initial note');
@@ -841,7 +841,7 @@ test('importDiaryArchive marks unchanged titles with historic child events as up
       readWorkspaceRevision
     );
     assert.equal(delta.fullRefreshRequired, false);
-    assert.deepEqual(delta.titles.map((t) => t.id).sort(), ['movie-a', 'movie-b']);
+    assert.deepEqual(delta.titles.map((t) => t.id).sort(), ['movie-b'], 'Preserved current status does not create a false title change');
     assert.equal(delta.events.some((e) => e.id === 'historic-ev-b'), true);
   } finally {
     f.close();

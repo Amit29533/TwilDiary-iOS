@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import Network
+import CryptoKit
 import TwilDiaryCore
 
 @MainActor @Observable final class DiaryStore {
@@ -21,6 +22,7 @@ import TwilDiaryCore
     func resumeTraktOnForeground() async {
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
         await flushOutbox()
+        await pushProviderVaultToServer()
         guard retainedTraktController != nil || (!isPreview && PreferencesTraktApplyCheckpoint().runID != nil) else { return }
         let controller = traktController
         await controller.finishSuspendingTransfer()
@@ -124,6 +126,13 @@ import TwilDiaryCore
     private var savedLocallyInAction = false
     @ObservationIgnored private var directFlushActive = false
     var pendingDiaryEdits: Int { outbox.pending(for: .cloudflare).count }
+    struct VaultDirtyField: Codable { let baseline: String; let generation: UUID }
+    private var vaultDirty: [String: VaultDirtyField] = [:]
+    private let vaultStateDefaults: UserDefaults?
+    @ObservationIgnored private var vaultSyncTask: Task<Void, Never>?
+    private var vaultSending = false
+    var providerVaultBusy: Bool { vaultSending }
+    private(set) var providerVaultNotice: String?
     var providerSettings = ProviderConnectionSettings()
     @ObservationIgnored let directClient: DirectProviderClient
     @ObservationIgnored private var cacheRestoration: Task<Void, Never>?
@@ -165,6 +174,7 @@ import TwilDiaryCore
         directClient: DirectProviderClient? = nil
     ) {
         self.api = api ?? DiaryAPI()
+        self.vaultStateDefaults = api == nil ? .standard : nil
         self.directClient = directClient ?? DirectProviderClient()
         if let cache { self.cache = cache }
         else if api == nil { self.cache = ProtectedWorkspaceCache() }
@@ -173,7 +183,8 @@ import TwilDiaryCore
         else if api == nil { self.outboxStore = FileSyncOutboxStore() }
         else { self.outboxStore = MemorySyncOutboxStore() }
         self.providerSettingsStore = providerSettingsStore ?? UserDefaultsProviderSettingsStore()
-        self.providerSettings = self.providerSettingsStore.load()
+        do { self.providerSettings = try self.providerSettingsStore.load() }
+        catch { self.providerSettings = ProviderConnectionSettings(); self.error = error.localizedDescription }
         self.api.customTmdbToken = self.providerSettings.customTmdbToken
         self.api.customMdblistApiKey = self.providerSettings.mdblist.apiKey
         #if DEBUG
@@ -203,6 +214,9 @@ import TwilDiaryCore
             if let scope = self.api.credential?.cacheScope {
                 outbox = outboxStore.load(scope: scope)
             }
+            if let scope = self.api.credential?.cacheScope,
+               let data = vaultStateDefaults?.data(forKey: "providerVault.pending." + scope),
+               let pending = try? JSONDecoder().decode([String: VaultDirtyField].self, from: data) { vaultDirty = Self.validVaultDirty(pending) }
             restoreCachedWorkspace()
             if api == nil { persistsPendingWatches = true; restorePendingWatches() }
         }
@@ -226,6 +240,7 @@ import TwilDiaryCore
         pendingWatches = items.filter { (DiaryDate.parse($0.value["watchedAt"] as? String) ?? .distantPast) > cutoff }
     }
     func connect(_ credential: AccessCredential) async {
+        vaultSyncTask?.cancel(); vaultSyncTask = nil
         cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
         let previousScope = api.credential?.cacheScope
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
@@ -245,6 +260,9 @@ import TwilDiaryCore
                 workspace = Workspace(); hasLoadedWorkspace = false; showingCachedSnapshot = false; lastRefreshedAt = nil; cacheWarning = nil
                 needsMutationRefresh = false
                 outbox = outboxStore.load(scope: credential.cacheScope)
+                vaultDirty = [:]
+                if let data = vaultStateDefaults?.data(forKey: "providerVault.pending." + credential.cacheScope),
+                   let pending = try? JSONDecoder().decode([String: VaultDirtyField].self, from: data) { vaultDirty = Self.validVaultDirty(pending) }
                 pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); pendingSeasonAdjustments.removeAll()
                 undoLabel = nil; undoAction = nil
             }
@@ -253,6 +271,7 @@ import TwilDiaryCore
         } catch { if generation == sessionGeneration { fail(error) } }
     }
     func signOut() {
+        vaultSyncTask?.cancel(); vaultSyncTask = nil; vaultDirty = [:]; providerVaultNotice = nil
         cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
         if !isPreview { PreferencesTraktApplyCheckpoint().runID = nil }
@@ -633,20 +652,30 @@ import TwilDiaryCore
         outbox = next
     }
     /// Updates the custom TMDB API Read Access Token and persists provider connection settings.
-    func updateCustomTmdbToken(_ token: String?) {
+    @discardableResult func updateCustomTmdbToken(_ token: String?) -> Bool {
+        var next = providerSettings
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
-        providerSettings.customTmdbToken = (trimmed?.isEmpty == false) ? trimmed : nil
-        api.customTmdbToken = providerSettings.customTmdbToken
-        providerSettingsStore.save(providerSettings)
+        next.customTmdbToken = trimmed?.isEmpty == false ? trimmed : nil
+        let previous = providerSettings
+        guard persistProviderSettings(next) else { return false }
         invalidateDiscovery()
-        if !isPreview { Task { await pushProviderVaultToServer() } }
+        stageVaultChanges(from: previous, to: next)
+        return true
     }
-    /// Updates the configuration for an external provider (`trakt`, `wetrakr`, `simkl`, `mdblist`) and persists it.
-    func updateProviderConfig(_ config: ExternalProviderConfig, syncVault: Bool = true) {
-        providerSettings.setConfig(config)
-        api.customMdblistApiKey = providerSettings.mdblist.apiKey
-        providerSettingsStore.save(providerSettings)
-        if syncVault && !isPreview { Task { await pushProviderVaultToServer() } }
+    @discardableResult func updateProviderConfig(_ config: ExternalProviderConfig, syncVault: Bool = true) -> Bool {
+        let previous = providerSettings
+        var next = previous; next.setConfig(config)
+        guard persistProviderSettings(next) else { return false }
+        if syncVault { stageVaultChanges(from: previous, to: next) }
+        return true
+    }
+    private func persistProviderSettings(_ next: ProviderConnectionSettings) -> Bool {
+        do { try providerSettingsStore.save(next) }
+        catch { error = error.localizedDescription; return false }
+        providerSettings = next
+        api.customTmdbToken = next.customTmdbToken
+        api.customMdblistApiKey = next.mdblist.apiKey
+        return true
     }
     struct ProviderVaultResponse: Decodable {
         struct Entry: Decodable {
@@ -655,6 +684,7 @@ import TwilDiaryCore
             let accessToken: String?
             let apiKey: String?
             let username: String?
+            let loggingMethod: WatchLoggingMethod?
         }
         struct Payload: Decodable {
             let customTmdbToken: String?
@@ -662,58 +692,164 @@ import TwilDiaryCore
             let wetrakr: Entry?
             let simkl: Entry?
             let mdblist: Entry?
+            func entry(_ key: String) -> Entry? {
+                switch key { case "trakt": trakt; case "wetrakr": wetrakr; case "simkl": simkl; case "mdblist": mdblist; default: nil }
+            }
         }
+        let protocolVersion: Int?
         let synced: Bool
+        let revision: String?
         let settings: Payload?
     }
+    private static let vaultPaths = ["customTmdbToken"] + ["trakt", "wetrakr", "simkl", "mdblist"].flatMap { provider in
+        ["enabled", "clientId", "accessToken", "apiKey", "username", "loggingMethod"].map { provider + "." + $0 }
+    }
+    private static func validVaultDirty(_ fields: [String: VaultDirtyField]) -> [String: VaultDirtyField] {
+        fields.filter { vaultPaths.contains($0.key) && $0.value.baseline.count == 64 && $0.value.baseline.allSatisfy { $0.isHexDigit } }
+    }
+    private func vaultValue(_ path: String, settings: ProviderConnectionSettings) -> Any {
+        if path == "customTmdbToken" { return settings.customTmdbToken as Any? ?? NSNull() }
+        let parts = path.split(separator: ".").map(String.init)
+        guard parts.count == 2, let provider = SyncProviderKind(rawValue: parts[0]) else { return NSNull() }
+        let cfg = settings.config(for: provider)
+        switch parts[1] {
+        case "enabled": return cfg.enabled
+        case "clientId": return cfg.clientId as Any? ?? NSNull()
+        case "accessToken": return cfg.accessToken as Any? ?? NSNull()
+        case "apiKey": return cfg.apiKey as Any? ?? NSNull()
+        case "username": return cfg.username as Any? ?? NSNull()
+        case "loggingMethod": return cfg.loggingMethod.rawValue
+        default: return NSNull()
+        }
+    }
+    private func vaultValue(_ path: String, remote: ProviderVaultResponse.Payload?) -> Any {
+        if path == "customTmdbToken" { return remote?.customTmdbToken as Any? ?? NSNull() }
+        let parts = path.split(separator: ".").map(String.init)
+        guard parts.count == 2 else { return NSNull() }
+        let entry = remote?.entry(parts[0])
+        switch parts[1] {
+        case "enabled": return entry?.enabled ?? false
+        case "clientId": return entry?.clientId as Any? ?? NSNull()
+        case "accessToken": return entry?.accessToken as Any? ?? NSNull()
+        case "apiKey": return entry?.apiKey as Any? ?? NSNull()
+        case "username": return entry?.username as Any? ?? NSNull()
+        case "loggingMethod": return (entry?.loggingMethod ?? .serverAndDirectAPI).rawValue
+        default: return NSNull()
+        }
+    }
+    private func vaultHash(_ value: Any) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value], options: [.sortedKeys]) else { return "invalid" }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    private func saveVaultDirty() {
+        guard let scope = api.credential?.cacheScope, let data = try? JSONEncoder().encode(vaultDirty) else { return }
+        vaultStateDefaults?.set(data, forKey: "providerVault.pending." + scope)
+    }
+    private func stageVaultChanges(from previous: ProviderConnectionSettings, to next: ProviderConnectionSettings) {
+        guard !isPreview else { return }
+        for path in Self.vaultPaths where vaultHash(vaultValue(path, settings: previous)) != vaultHash(vaultValue(path, settings: next)) {
+            vaultDirty[path] = VaultDirtyField(baseline: vaultDirty[path]?.baseline ?? vaultHash(vaultValue(path, settings: previous)), generation: UUID())
+        }
+        saveVaultDirty()
+        guard vaultSyncTask == nil else { return }
+        vaultSyncTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.pushProviderVaultToServer()
+            self.vaultSyncTask = nil
+        }
+    }
     func pushProviderVaultToServer() async {
-        guard !isPreview, !needsSignIn else { return }
-        func encodeEntry(_ cfg: ExternalProviderConfig) -> [String: Any] {
-            var dict: [String: Any] = ["enabled": cfg.enabled]
-            if let cid = cfg.clientId, !cid.isEmpty { dict["clientId"] = cid }
-            if let tok = cfg.accessToken, !tok.isEmpty { dict["accessToken"] = tok }
-            if let key = cfg.apiKey, !key.isEmpty { dict["apiKey"] = key }
-            if let usr = cfg.username, !usr.isEmpty { dict["username"] = usr }
-            return dict
+        guard !isPreview, !needsSignIn, !vaultSending else { return }
+        vaultSending = true; defer { vaultSending = false }
+        let session = sessionGeneration
+        while !vaultDirty.isEmpty, session == sessionGeneration, !Task.isCancelled {
+            let pending = vaultDirty
+            let desired = providerSettings
+            do {
+                let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
+                guard remote.protocolVersion == 2 else { throw APIError.message("Online settings sync requires an updated diary server. Device settings are unchanged.") }
+                if remote.revision != nil && !remote.synced { throw APIError.message("Saved provider settings could not be decrypted. They have been preserved.") }
+                var changes: [String: Any] = [:]
+                for (path, field) in pending {
+                    let wanted = vaultValue(path, settings: desired)
+                    let remoteHash = vaultHash(vaultValue(path, remote: remote.settings))
+                    guard remoteHash == field.baseline || remoteHash == vaultHash(wanted) else {
+                        throw APIError.message("Provider settings changed on another device. Review which settings to keep.")
+                    }
+                    if path == "customTmdbToken" { changes[path] = wanted }
+                    else {
+                        let parts = path.split(separator: ".").map(String.init)
+                        var entry = changes[parts[0]] as? [String: Any] ?? [:]
+                        entry[parts[1]] = wanted; changes[parts[0]] = entry
+                    }
+                }
+                let receipt: ProviderVaultResponse = try await read("/api/providers/vault/v2", method: "PUT", body: ["expectedRevision": remote.revision as Any? ?? NSNull(), "changes": changes])
+                guard receipt.protocolVersion == 2, receipt.synced, receipt.revision != nil else { throw APIError.message("Online settings returned no confirmation. Sync remains pending.") }
+                guard session == sessionGeneration else { return }
+                for (path, field) in pending where vaultDirty[path]?.generation == field.generation { vaultDirty.removeValue(forKey: path) }
+                saveVaultDirty(); providerVaultNotice = nil
+            } catch {
+                guard session == sessionGeneration else { return }
+                providerVaultNotice = "Provider settings are saved on this device; online sync is pending. " + error.localizedDescription
+                return
+            }
         }
-        var body: [String: Any] = [
-            "trakt": encodeEntry(providerSettings.trakt),
-            "wetrakr": encodeEntry(providerSettings.wetrakr),
-            "simkl": encodeEntry(providerSettings.simkl),
-            "mdblist": encodeEntry(providerSettings.mdblist)
-        ]
-        if let tmdb = providerSettings.customTmdbToken, !tmdb.isEmpty {
-            body["customTmdbToken"] = tmdb
+    }
+    private func applyingVault(_ remote: ProviderVaultResponse.Payload?, paths: Set<String>, to original: ProviderConnectionSettings) -> ProviderConnectionSettings {
+        var result = original
+        for path in paths {
+            let value = vaultValue(path, remote: remote)
+            if path == "customTmdbToken" { result.customTmdbToken = value as? String; continue }
+            let parts = path.split(separator: ".").map(String.init)
+            guard parts.count == 2, let provider = SyncProviderKind(rawValue: parts[0]) else { continue }
+            var config = result.config(for: provider)
+            switch parts[1] {
+            case "enabled": config.enabled = value as? Bool ?? false
+            case "clientId": config.clientId = value as? String
+            case "accessToken": config.accessToken = value as? String
+            case "apiKey": config.apiKey = value as? String
+            case "username": config.username = value as? String
+            case "loggingMethod": config.loggingMethod = (value as? String).flatMap(WatchLoggingMethod.init(rawValue:)) ?? .serverAndDirectAPI
+            default: break
+            }
+            result.setConfig(config)
         }
-        let _: ProviderVaultResponse? = try? await read("/api/providers/vault", method: "PUT", body: body)
+        return result
     }
     func pullProviderVaultFromServer() async {
         guard !isPreview, !needsSignIn else { return }
-        guard let res: ProviderVaultResponse = try? await read("/api/providers/vault"),
-              res.synced, let remote = res.settings else { return }
-        var changed = false
-        if providerSettings.customTmdbToken == nil, let tmdb = remote.customTmdbToken, !tmdb.isEmpty {
-            providerSettings.customTmdbToken = tmdb
-            api.customTmdbToken = tmdb
-            changed = true
-        }
-        func mergeEntry(_ current: inout ExternalProviderConfig, _ incoming: ProviderVaultResponse.Entry?) {
-            guard !current.hasCredentials, let incoming else { return }
-            if let enabled = incoming.enabled { current.enabled = enabled }
-            if let cid = incoming.clientId { current.clientId = cid }
-            if let tok = incoming.accessToken { current.accessToken = tok }
-            if let key = incoming.apiKey { current.apiKey = key }
-            if let usr = incoming.username { current.username = usr }
-            changed = true
-        }
-        mergeEntry(&providerSettings.trakt, remote.trakt)
-        mergeEntry(&providerSettings.wetrakr, remote.wetrakr)
-        mergeEntry(&providerSettings.simkl, remote.simkl)
-        mergeEntry(&providerSettings.mdblist, remote.mdblist)
-        if changed {
-            api.customMdblistApiKey = providerSettings.mdblist.apiKey
-            providerSettingsStore.save(providerSettings)
-        }
+        do {
+            let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
+            guard remote.synced else { return }
+            // Existing local credentials are never replaced implicitly; dirty clears are never resurrected.
+            let paths = Set(Self.vaultPaths.filter { path in
+                guard vaultDirty[path] == nil else { return false }
+                if path == "customTmdbToken" { return providerSettings.customTmdbToken == nil }
+                let parts = path.split(separator: ".").map(String.init)
+                guard parts.count == 2, let provider = SyncProviderKind(rawValue: parts[0]) else { return false }
+                let current = providerSettings.config(for: provider)
+                if !current.hasCredentials, !vaultDirty.keys.contains(where: { $0.hasPrefix(parts[0] + ".") }) { return true }
+                if current.clientId != remote.settings?.entry(parts[0])?.clientId { return false }
+                return vaultValue(path, settings: providerSettings) is NSNull
+            })
+            _ = persistProviderSettings(applyingVault(remote.settings, paths: paths, to: providerSettings))
+            if !vaultDirty.isEmpty { await pushProviderVaultToServer() }
+        } catch { providerVaultNotice = "Online provider settings are unavailable. Device settings are unchanged." }
+    }
+    func resolveProviderVaultConflict(keepDevice: Bool) async {
+        guard !needsSignIn, !isPreview else { return }
+        do {
+            let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
+            guard remote.protocolVersion == 2 else { throw APIError.message("Update the diary server before syncing provider settings.") }
+            guard remote.revision == nil || remote.synced else { throw APIError.message("Saved provider settings could not be decrypted.") }
+            if keepDevice {
+                for path in vaultDirty.keys { vaultDirty[path] = VaultDirtyField(baseline: vaultHash(vaultValue(path, remote: remote.settings)), generation: UUID()) }
+                saveVaultDirty(); await pushProviderVaultToServer()
+            } else {
+                guard persistProviderSettings(applyingVault(remote.settings, paths: Set(vaultDirty.keys), to: providerSettings)) else { return }
+                vaultDirty = [:]; saveVaultDirty(); providerVaultNotice = nil
+            }
+        } catch { providerVaultNotice = error.localizedDescription }
     }
     /// Hosted imports publish only after the server confirms the merge. Offline imports never claim success.
     @discardableResult
@@ -721,15 +857,21 @@ import TwilDiaryCore
         guard !busy, !replayingOutbox, pendingDiaryEdits == 0 else { throw APIError.message("Sync pending edits before importing a diary.") }
         let session = sessionGeneration
         busy = true; defer { if session == sessionGeneration { busy = false } }
-        let archive = try await Task.detached(priority: .userInitiated) { try DiaryExport.decoded(from: data) }.value
-        guard session == sessionGeneration, !Task.isCancelled else { throw CancellationError() }
-        if isPreview {
-            workspace = try archive.merged(into: workspace)
-            indexWorkspace()
-            return (archive.titles.count, archive.events.count)
+        let body: [String: Any]
+        if let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
+            guard !isPreview else { throw APIError.message("CSV import requires your online diary server.") }
+            body = ["csv": text, "timeZone": TimeZone.current.identifier]
+        } else {
+            let archive = try await Task.detached(priority: .userInitiated) { try DiaryExport.decoded(from: data) }.value
+            guard session == sessionGeneration, !Task.isCancelled else { throw CancellationError() }
+            if isPreview {
+                workspace = try archive.merged(into: workspace); indexWorkspace()
+                return (archive.titles.count, archive.events.count)
+            }
+            let encoded = try archive.encoded()
+            guard let decoded = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else { throw APIError.message("This diary archive is invalid.") }
+            body = decoded
         }
-        let encoded = try archive.encoded()
-        guard let body = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else { throw APIError.message("This diary archive is invalid.") }
         struct ImportReceipt: Decodable { let importedTitles: Int; let importedEvents: Int }
         let receipt: ImportReceipt = try await read("/api/workspace/import", method: "POST", body: body)
         do { try await reload() }
@@ -742,15 +884,13 @@ import TwilDiaryCore
     func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString) {
         let activeProviders = providerSettings.activeDirectLoggingProviders
         guard !activeProviders.isEmpty, !outbox.pending(for: .cloudflare).contains(where: { $0.mutation.titleId == mutation.titleId }) else { return }
-        _ = outbox.enqueue(SyncOutboxEntry(
-            operationId: operationId,
-            createdAt: now.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true)),
-            mutation: mutation,
-            pendingProviders: activeProviders
-        ))
-        if let scope = api.credential?.cacheScope {
-            try? outboxStore.save(outbox, scope: scope)
-        }
+        guard let scope = api.credential?.cacheScope else { return }
+        if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
+           status == nil, score == nil, !clearScore, favorite == nil, queued == nil { return }
+        var next = outbox
+        _ = next.enqueue(SyncOutboxEntry(operationId: operationId, createdAt: now.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true)), mutation: mutation, pendingProviders: activeProviders))
+        do { try outboxStore.save(next, scope: scope); outbox = next }
+        catch { self.error = "Provider delivery could not be saved: " + error.localizedDescription; return }
         Task { await flushDirectProviders() }
     }
     /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `wetrakr`, `simkl`, `mdblist`).
@@ -761,28 +901,52 @@ import TwilDiaryCore
         let activeProviders = providerSettings.activeDirectLoggingProviders
         guard !activeProviders.isEmpty else { return }
         for provider in activeProviders {
-            guard let batch = MultiProviderOutboxDispatcher.prepareBatch(for: provider, from: outbox, in: workspace) else {
-                continue
-            }
-            let config = providerSettings.config(for: provider)
-            do {
-                try await directClient.flushProviderBatch(batch, config: config)
-                guard session == sessionGeneration, !Task.isCancelled else { return }
-                for entryID in batch.entryIDs {
-                    try acknowledgeOutbox(entryID, provider: provider)
-                }
-                var updated = config
-                updated.lastSyncedAt = now.ISO8601Format()
-                updateProviderConfig(updated, syncVault: false)
-            } catch {
-                for entryID in batch.entryIDs {
-                    outbox.recordFailure(entryID: entryID, error: error.localizedDescription)
-                }
-                if let scope = api.credential?.cacheScope {
-                    try? outboxStore.save(outbox, scope: scope)
+            let pending = outbox.pending(for: provider).filter { !$0.pendingProviders.contains(.cloudflare) }
+            for entry in pending {
+                let config = providerSettings.config(for: provider)
+                let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: workspace)
+                do {
+                    for delivery in plan.deliveries {
+                        let key = provider.rawValue + ":" + delivery.key
+                        guard let current = outbox.entries.first(where: { $0.id == entry.id }) else { break }
+                        if current.confirmedActions?.contains(key) == true { continue }
+                        if current.uncertainActions?.contains(key) == true { throw APIError.message("A previous history request needs reconciliation before retrying; no duplicate watch was sent.") }
+                        if delivery.history { try persistDelivery(entryID: entry.id, key: key, confirmed: false) }
+                        do { try await directClient.deliver(delivery, entry: entry, config: config) }
+                        catch APIError.rejected(let status, let message) {
+                            guard session == sessionGeneration, !Task.isCancelled else { return }
+                            if (400..<500).contains(status) { try persistDelivery(entryID: entry.id, key: key, confirmed: false, rejected: true) }
+                            throw APIError.rejected(status, message)
+                        }
+                        guard session == sessionGeneration, !Task.isCancelled else { return }
+                        try persistDelivery(entryID: entry.id, key: key, confirmed: true)
+                    }
+                    if !plan.blocked.isEmpty { throw APIError.message(plan.blocked.joined(separator: " ")) }
+                    guard !plan.deliveries.isEmpty else { throw APIError.message("This edit has no supported provider operation.") }
+                    try acknowledgeOutbox(entry.id, provider: provider)
+                    var updated = providerSettings.config(for: provider)
+                    updated.lastSyncedAt = now.ISO8601Format()
+                    updateProviderConfig(updated, syncVault: false)
+                } catch {
+                    guard session == sessionGeneration else { return }
+                    var next = outbox
+                    next.recordFailure(entryID: entry.id, error: error.localizedDescription)
+                    if let scope = api.credential?.cacheScope {
+                        do { try outboxStore.save(next, scope: scope); outbox = next }
+                        catch { self.error = error.localizedDescription }
+                    }
+                    // Preserve ordering: later edits must not overtake an unconfirmed earlier edit.
+                    break
                 }
             }
         }
+    }
+    private func persistDelivery(entryID: String, key: String, confirmed: Bool, rejected: Bool = false) throws {
+        guard let scope = api.credential?.cacheScope else { throw APIError.signIn }
+        var next = outbox
+        next.recordDelivery(entryID: entryID, key: key, confirmed: confirmed, rejected: rejected)
+        try outboxStore.save(next, scope: scope)
+        outbox = next
     }
     /// Tests an external provider's API credentials directly from the device (or simulates verification in UI preview mode).
     func testProviderConnection(_ config: ExternalProviderConfig) async throws {

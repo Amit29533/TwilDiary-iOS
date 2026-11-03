@@ -44,7 +44,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     func fetchSimklActivities(config: ExternalProviderConfig) async throws -> SimklSyncEngine.ActivityTimestamps {
         let data = try await send(
             url: URL(string: "https://api.simkl.com/sync/activities")!,
-            method: "POST",
+            method: "GET",
             headers: simklHeaders(config)
         )
         return try SimklSyncEngine.decodeActivities(from: data)
@@ -157,93 +157,25 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return (activities, snapshot)
     }
 
-    /// Transport only. DiaryStore owns durable acknowledgement and session checks.
-    func flushProviderBatch(_ batch: MultiProviderOutboxDispatcher.ProviderBatch, config: ExternalProviderConfig) async throws {
-        guard config.enabled, config.isAuthenticated, batch.provider == config.provider else {
-            throw APIError.message("Reconnect this provider before syncing pending edits.")
-        }
-        let totalEntries = batch.entryIDs.count
-        BackgroundSyncCoordinator.shared.updateForProviderBatch(
-            provider: config.provider,
-            completed: 0,
-            total: totalEntries,
-            phase: .flushingOutbox
-        )
-
+    /// Acknowledgement is owned by DiaryStore and requires an item-level response receipt.
+    func deliver(_ delivery: ProviderDelivery, entry: SyncOutboxEntry, config: ExternalProviderConfig) async throws {
+        guard config.enabled, config.isAuthenticated else { throw APIError.message("Reconnect this provider before syncing pending edits.") }
+        let base: String
+        var headers: [String: String]
         switch config.provider {
         case .trakt:
-            guard let clientId = config.clientId, !clientId.isEmpty,
-                  let token = config.accessToken, !token.isEmpty else { return }
-            let headers = traktHeaders(DirectTraktCredentials(clientId: clientId, accessToken: token))
-            if let history = batch.historyPayload {
-                _ = try await send(url: URL(string: "https://api.trakt.tv/sync/history")!, method: "POST", headers: headers, jsonBody: history)
-            }
-            if let ratings = batch.ratingsPayload {
-                _ = try await send(url: URL(string: "https://api.trakt.tv/sync/ratings")!, method: "POST", headers: headers, jsonBody: ratings)
-            }
-            if let watchlist = batch.watchlistPayload {
-                _ = try await send(url: URL(string: "https://api.trakt.tv/sync/watchlist")!, method: "POST", headers: headers, jsonBody: watchlist)
-            }
-        case .simkl:
-            guard let clientId = config.clientId, !clientId.isEmpty,
-                  let token = config.accessToken, !token.isEmpty else { return }
-            let headers = simklHeaders(config)
-            if let history = batch.historyPayload {
-                _ = try await send(url: URL(string: "https://api.simkl.com/sync/history")!, method: "POST", headers: headers, jsonBody: history)
-            }
-            if let ratings = batch.ratingsPayload {
-                _ = try await send(url: URL(string: "https://api.simkl.com/sync/ratings")!, method: "POST", headers: headers, jsonBody: ratings)
-            }
-            if let watchlist = batch.watchlistPayload {
-                _ = try await send(url: URL(string: "https://api.simkl.com/sync/add-to-list")!, method: "POST", headers: headers, jsonBody: watchlist)
-            }
-        case .mdblist:
-            guard let apiKey = config.apiKey, !apiKey.isEmpty else { return }
-            let headers = ["Accept": "application/json", "Content-Type": "application/json"]
-            if let history = batch.historyPayload {
-                var comps = URLComponents(string: "https://api.mdblist.com/sync/watched")!
-                comps.queryItems = [URLQueryItem(name: "apikey", value: apiKey)]
-                _ = try await send(url: comps.url!, method: "POST", headers: headers, jsonBody: history)
-            }
-            if let watchlist = batch.watchlistPayload {
-                var comps = URLComponents(string: "https://api.mdblist.com/watchlist/items/add")!
-                comps.queryItems = [URLQueryItem(name: "apikey", value: apiKey)]
-                _ = try await send(url: comps.url!, method: "POST", headers: headers, jsonBody: watchlist)
-            }
-        case .wetrakr:
-            guard let clientId = config.clientId, !clientId.isEmpty,
-                  let token = config.accessToken, !token.isEmpty else { return }
-            let baseHeaders = wetrakrHeaders(config)
-            if let history = batch.historyPayload {
-                var headers = baseHeaders
-                headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: "/sync/tracking:watched", entryIDs: batch.entryIDs)
-                _ = try await send(url: URL(string: "https://api.wetrakr.com/sync/tracking")!, method: "POST", headers: headers, jsonBody: history)
-            }
-            if let watchlist = batch.watchlistPayload {
-                var headers = baseHeaders
-                headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: "/sync/tracking:planning", entryIDs: batch.entryIDs)
-                _ = try await send(url: URL(string: "https://api.wetrakr.com/sync/tracking")!, method: "POST", headers: headers, jsonBody: watchlist)
-            }
-            if let ratings = batch.ratingsPayload {
-                var headers = baseHeaders
-                headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: "/sync/ratings", entryIDs: batch.entryIDs)
-                _ = try await send(url: URL(string: "https://api.wetrakr.com/sync/ratings")!, method: "POST", headers: headers, jsonBody: ratings)
-            }
-            if let favorites = batch.favoritesPayload {
-                var headers = baseHeaders
-                headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: "/sync/favorites", entryIDs: batch.entryIDs)
-                _ = try await send(url: URL(string: "https://api.wetrakr.com/sync/favorites")!, method: "POST", headers: headers, jsonBody: favorites)
-            }
-        case .cloudflare:
-            break
+            base = "https://api.trakt.tv"
+            headers = traktHeaders(DirectTraktCredentials(clientId: config.clientId ?? "", accessToken: config.accessToken ?? ""))
+        case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
+        case .wetrakr: base = "https://api.wetrakr.com"; headers = wetrakrHeaders(config)
+        case .mdblist: base = "https://api.mdblist.com"; headers = ["Accept": "application/json", "Content-Type": "application/json"]
+        case .cloudflare: throw APIError.message("Diary mutations must use the authenticated diary API.")
         }
-
-        BackgroundSyncCoordinator.shared.updateForProviderBatch(
-            provider: config.provider,
-            completed: totalEntries,
-            total: totalEntries,
-            phase: .completed
-        )
+        if config.provider == .wetrakr { headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: delivery.path + ":" + delivery.key, entryIDs: [entry.operationId]) }
+        var components = URLComponents(string: base + delivery.path)!
+        if config.provider == .mdblist { components.queryItems = [URLQueryItem(name: "apikey", value: config.apiKey)] }
+        let data = try await send(url: components.url!, method: "POST", headers: headers, jsonBody: delivery.body)
+        guard ProviderDeliveryPlanner.confirms(data) else { throw APIError.message("The provider did not confirm this item; the edit remains pending.") }
     }
 
     private func traktHeaders(_ credentials: DirectTraktCredentials) -> [String: String] {

@@ -209,27 +209,23 @@ export async function patchTitle(db: Db, id: string, value: unknown) {
     version: sql`${titles.version}+1`,
     updatedAt: new Date().toISOString()
   };
-  const changed = await db
-    .update(titles)
-    .set(changes)
-    .where(and(eq(titles.id, id), isNull(titles.deletedAt), eq(titles.version, expectedVersion)))
-    .returning()
-    .get();
-  if (!changed) {
-    await getTitle(db, id);
-    throw conflict();
+  const update = db.update(titles).set(changes)
+    .where(and(eq(titles.id, id), isNull(titles.deletedAt), eq(titles.version, expectedVersion)));
+  if (tags === undefined) {
+    const changed = await update.returning().get();
+    if (!changed) { await getTitle(db, id); throw conflict(); }
+    return { title: changed };
   }
-  if (tags !== undefined) {
-    await db
-      .insert(workspaceUi)
-      .values({ titleId: id, tags, demo: false })
-      .onConflictDoUpdate({
-        target: workspaceUi.titleId,
-        set: { tags }
-      })
-      .run();
-  }
-  return { title: tags !== undefined ? { ...changed, tags } : changed };
+  const dialect = new SQLiteAsyncDialect();
+  const statements = [update.getSQL(), sql`INSERT INTO workspace_ui(title_id,tags,demo)
+    SELECT ${id},${JSON.stringify(tags)},0 WHERE changes() = 1
+    ON CONFLICT(title_id) DO UPDATE SET tags=excluded.tags`];
+  const result = await db.$client.batch(statements.map((statement) => {
+    const query = dialect.sqlToQuery(statement);
+    return db.$client.prepare(query.sql).bind(...query.params);
+  }));
+  if (!result[0]?.meta.changes) { await getTitle(db, id); throw conflict(); }
+  return { title: { ...(await getTitle(db, id)), tags } };
 }
 export async function trashTitle(db: Db, id: string, expectedVersion: number) {
   const existing = await getTitle(db, id, true);

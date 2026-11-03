@@ -7,9 +7,9 @@ import TwilDiaryTestSupport
     var queue = SyncOutboxQueue()
     let entry = SyncOutboxEntry(createdAt: "2026-11-03T00:00:00Z", mutation: .patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 9, clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.cloudflare, .trakt])
     queue.enqueue(entry)
-    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .trakt, from: queue, in: SampleWorkspace.make()) == nil)
+    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .trakt, from: queue, in: try SampleWorkspace.mapped()) == nil)
     queue.acknowledge(entryID: entry.id, provider: .cloudflare)
-    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .trakt, from: queue, in: SampleWorkspace.make()) != nil)
+    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .trakt, from: queue, in: try SampleWorkspace.mapped()) != nil)
 }
 
 @Test func ambiguousPatchIsNotCoalescedAndTagsSurviveSerialization() throws {

@@ -4,7 +4,7 @@ import Testing
 import TwilDiaryTestSupport
 
 @Test func localWatchCardCalculationMatchesSeriesAndMovieProgress() throws {
-    let workspace = SampleWorkspace.make()
+    let workspace = try SampleWorkspace.mapped()
     let series = try #require(workspace.titles.first { $0.id == "again" })
     let card = WatchCard.calculate(title: series, in: workspace, day: "2026-10-23")
     #expect(card.season?.number == 1)
@@ -153,7 +153,7 @@ import TwilDiaryTestSupport
     #expect(summary.aggregatedScore == 86)
     #expect(summary.score(for: "imdb") == 87)
 
-    let workspace = SampleWorkspace.make()
+    let workspace = try SampleWorkspace.mapped()
     let series = try #require(workspace.titles.first { $0.id == "again" })
     var queue = SyncOutboxQueue()
     queue.enqueue(SyncOutboxEntry(
@@ -251,7 +251,7 @@ import TwilDiaryTestSupport
     #expect(act1.changedDomains(since: nil).anyChanged == true)
     #expect(act1.changedDomains(since: act1).anyChanged == false)
 
-    let workspace = SampleWorkspace.make()
+    let workspace = try SampleWorkspace.mapped()
     let series = try #require(workspace.titles.first { $0.id == "again" && $0.tmdbId != nil })
     let tmdbId = try #require(series.tmdbId)
     let card = WatchCard.calculate(title: series, in: workspace, day: "2026-10-23")
@@ -369,7 +369,7 @@ import TwilDiaryTestSupport
     #expect(diTraktState.title == "Background Trakt import")
 }
 
-@Test func providerConnectionSettingsAndLoggingMethods() {
+@Test func providerConnectionSettingsAndLoggingMethods() throws {
     var settings = ProviderConnectionSettings()
     #expect(settings.wetrakr.statusBadge == "Set up")
     #expect(settings.activeDirectLoggingProviders.isEmpty)
@@ -425,37 +425,27 @@ import TwilDiaryTestSupport
     let suite = UserDefaults(suiteName: "twildiary.test.\(UUID().uuidString)")!
     let secretStore = MemorySecretStore()
     let store = UserDefaultsProviderSettingsStore(defaults: suite, key: "test.settings", secrets: secretStore)
-    store.save(settings)
+    try store.save(settings)
 
     // Verify UserDefaults payload stripped plaintext tokens and stored them in the secret store
     let rawJSON = String(data: suite.data(forKey: "test.settings") ?? Data(), encoding: .utf8) ?? ""
     #expect(!rawJSON.contains("custom-tmdb-token"))
     #expect(!rawJSON.contains("wtk_pat_456"))
     #expect(!rawJSON.contains("mdb-key"))
-    #expect(secretStore.readSecret(for: "test.settings.tmdb.token") == "custom-tmdb-token")
-    #expect(secretStore.readSecret(for: "test.settings.wetrakr.accessToken") == "wtk_pat_456")
-    #expect(secretStore.readSecret(for: "test.settings.mdblist.apiKey") == "mdb-key")
-    #expect(store.load() == settings)
+    let sealed = try #require(secretStore.readSecret(for: "test.settings.credentials.v2"))
+    let protectedSettings = try JSONDecoder().decode(ProviderConnectionSettings.self, from: Data(sealed.utf8))
+    #expect(protectedSettings.customTmdbToken == "custom-tmdb-token")
+    #expect(protectedSettings.wetrakr.accessToken == "wtk_pat_456")
+    #expect(protectedSettings.mdblist.apiKey == "mdb-key")
+    #expect(try store.load() == settings)
 }
 
 @Test func airingScheduleCatchUpIcsAndCollectionTags() throws {
-    let anime = MediaTitle(
-        id: "frieren",
-        name: "Frieren",
-        category: "anime",
-        year: 2023,
-        runtimeMinutes: 24,
-        genres: ["Animation"],
-        status: "watching",
-        score: 9.5,
-        favorite: true,
-        queued: false,
-        notes: "",
-        tags: ["Simulcast", "Top 10"],
-        tmdbId: 209867,
-        seasons: [Season(id: "s1", number: 1, name: "Season 1", expectedEpisodes: 2)],
-        version: 1
-    )
+    let anime = MediaTitle(id: "frieren", name: "Frieren", category: "anime", year: 2023,
+        overview: "", poster: nil, backdrop: nil, communityScore: nil, tmdbId: 209867,
+        genres: ["Animation"], tags: ["Simulcast", "Top 10"], runtimeMinutes: 24,
+        status: "watching", favorite: true, queued: false, score: 9.5, notes: "", deletedAt: nil,
+        version: 1, seasons: [Season(number: 1, name: "Season 1", expectedEpisodes: 2)])
     let epPast = Episode(id: "ep1", titleId: "frieren", season: 1, number: 1, name: "The Journey's End", overview: "", airedOn: "2026-10-20")
     let epFuture = Episode(id: "ep2", titleId: "frieren", season: 1, number: 2, name: "It Didn't Have to Be Magic", overview: "", airedOn: "2026-10-27")
     let workspace = Workspace(titles: [anime], episodes: [epPast, epFuture], events: [], locations: [])
@@ -476,7 +466,6 @@ import TwilDiaryTestSupport
     #expect(catchup.items.first?.episode.id == "ep1")
     #expect(catchup.strip.first?.daysAway == -1)
 
-    let csv = "Date,Name,Year,Rating,Watched Date\n2026-10-01,\"Half Star\",2020,0.5,2026-10-01\n"
-    let csvExport = try DiaryExport.fromExternalCSV(csv, exportedAt: now)
-    #expect(csvExport.titles.first?.score == 1.0)
+    // CSV rating/date behaviour is covered by the canonical server parser regression suite.
+
 }
