@@ -174,6 +174,12 @@ import TwilDiaryCore
         providerSettingsStore: (any ProviderSettingsStoring)? = nil,
         directClient: DirectProviderClient? = nil
     ) {
+        // Establish every immutable dependency before reading observed settings.
+        #if DEBUG
+        self.isPreview = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+        #else
+        self.isPreview = false
+        #endif
         self.api = api ?? DiaryAPI()
         self.vaultStateDefaults = api == nil ? .standard : nil
         self.directClient = directClient ?? DirectProviderClient()
@@ -188,11 +194,6 @@ import TwilDiaryCore
         catch { self.providerSettings = ProviderConnectionSettings(); self.error = error.localizedDescription }
         self.api.customTmdbToken = self.providerSettings.customTmdbToken
         self.api.customMdblistApiKey = self.providerSettings.mdblist.apiKey
-        #if DEBUG
-        isPreview = ProcessInfo.processInfo.arguments.contains("--ui-testing")
-        #else
-        isPreview = false
-        #endif
         #if DEBUG
         if isPreview {
             workspace = PreviewData.workspace; needsSignIn = false; hasLoadedWorkspace = true
