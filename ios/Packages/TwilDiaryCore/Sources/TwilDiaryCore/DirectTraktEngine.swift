@@ -88,7 +88,7 @@ public struct DirectTraktLastActivities: Codable, Equatable, Sendable {
         return DomainsToFetch(
             watchedMovies: moviesWatchedAt != previous.moviesWatchedAt,
             watchedShows: episodesWatchedAt != previous.episodesWatchedAt,
-            ratedMovies: moviesRatedAt != previous.ratedMovies,
+            ratedMovies: moviesRatedAt != previous.moviesRatedAt,
             ratedShows: showsRatedAt != previous.showsRatedAt,
             watchlistMovies: moviesWatchlistedAt != previous.moviesWatchlistedAt,
             watchlistShows: showsWatchlistedAt != previous.showsWatchlistedAt

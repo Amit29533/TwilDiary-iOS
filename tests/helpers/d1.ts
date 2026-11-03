@@ -5,6 +5,9 @@ import { database } from '../../src/lib/server/db/index.ts';
 
 // Run the real Drizzle D1 driver against SQLite. Network/Worker behavior is tested separately.
 export function d1Fixture() {
+  const metrics = { statements: 0, roundTrips: 0, batches: 0 };
+  let batching = false;
+  const counted = () => { metrics.statements++; if (!batching) metrics.roundTrips++; };
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
   for (const file of readdirSync(new URL('../../drizzle/', import.meta.url))
@@ -17,6 +20,7 @@ export function d1Fixture() {
         return statement(query, params);
       },
       execute() {
+        counted();
         const prepared = sqlite.prepare(query);
         const results = prepared.all(...values);
         return {
@@ -32,11 +36,13 @@ export function d1Fixture() {
         return this.execute();
       },
       async raw() {
+        counted();
         const prepared = sqlite.prepare(query);
         prepared.setReturnArrays(true);
         return prepared.all(...values);
       },
       async first(column?: string) {
+        counted();
         const row = sqlite.prepare(query).get(...values);
         return column ? (row?.[column] ?? null) : (row ?? null);
       }
@@ -45,6 +51,7 @@ export function d1Fixture() {
   const binding = {
     prepare: statement,
     async batch(statements: ReturnType<typeof statement>[]) {
+      metrics.batches++; metrics.roundTrips++; batching = true;
       sqlite.exec('BEGIN');
       try {
         const results = statements.map((statement) => statement.execute());
@@ -53,8 +60,8 @@ export function d1Fixture() {
       } catch (error) {
         sqlite.exec('ROLLBACK');
         throw error;
-      }
+      } finally { batching = false; }
     }
   } as unknown as D1Database;
-  return { sqlite, binding, db: database(binding), close: () => sqlite.close() };
+  return { sqlite, binding, db: database(binding), metrics, resetMetrics: () => { metrics.statements = 0; metrics.roundTrips = 0; metrics.batches = 0; }, close: () => sqlite.close() };
 }

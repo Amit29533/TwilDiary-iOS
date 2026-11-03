@@ -140,7 +140,7 @@ export const POST: RequestHandler = async (event) => {
     if (method === 'provider' || method === 'provider_oauth') {
       const provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
       const accessToken = typeof body.accessToken === 'string' ? body.accessToken.trim() : '';
-      if (provider !== 'trakt' || !accessToken) {
+      if (provider !== 'trakt' || !accessToken || accessToken.length > 4096) {
         throw new ApiError(400, 'invalid_input', 'Provide a valid Trakt OAuth access token.');
       }
       if (!env?.DB) {
@@ -171,6 +171,7 @@ export const POST: RequestHandler = async (event) => {
           'Provide a valid Trakt client ID and OAuth access token.'
         );
       }
+      if (clientId.length > 512) throw new ApiError(400, 'invalid_input', 'Provide a valid Trakt client ID.');
       const verifyRes = await fetch('https://api.trakt.tv/users/settings', {
         headers: {
           Accept: 'application/json',
@@ -178,7 +179,8 @@ export const POST: RequestHandler = async (event) => {
           'trakt-api-key': clientId,
           Authorization: `Bearer ${accessToken}`
         },
-        redirect: 'error'
+        redirect: 'error',
+        signal: AbortSignal.timeout(15000)
       }).catch(() => null);
       if (!verifyRes || !verifyRes.ok) {
         throw new ApiError(401, 'invalid_credentials', 'Could not verify Trakt account token.');
@@ -190,7 +192,7 @@ export const POST: RequestHandler = async (event) => {
         profile?.user?.ids?.uuid || profile?.user?.ids?.slug || profile?.user?.username || '';
       if (
         !remoteAccountId ||
-        (connected.accountId !== remoteAccountId && connected.username !== profile?.user?.username)
+        connected.accountId !== remoteAccountId
       ) {
         throw new ApiError(
           403,
