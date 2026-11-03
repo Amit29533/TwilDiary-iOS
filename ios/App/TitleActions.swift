@@ -71,8 +71,8 @@ extension DiaryStore {
                             titleId: title.id,
                             episodeId: receipt.event.episodeId ?? episode,
                             watchedAt: receipt.event.watchedAt ?? receipt.event.recordedAt,
-                    recordedAt: receipt.event.recordedAt,
-                    rewatch: false
+                            recordedAt: receipt.event.recordedAt,
+                            rewatch: false
                         ),
                         operationId: operation
                     )
@@ -83,7 +83,7 @@ extension DiaryStore {
                     let receipt: EpisodeEventReceipt = try await self.read("/api/watch-events/\(event.id)", method: "PATCH", body: ["action": "revoke", "expectedVersion": event.version ?? 1])
                     self.recordDirectProviderMutation(
                         .revokeWatch(
-                            operationId: receipt.event.operationId,
+                            eventId: receipt.event.id,
                             titleId: title.id,
                             expectedVersion: event.version ?? 1,
                             revokedAt: receipt.event.revokedAt ?? self.now.ISO8601Format()
@@ -118,7 +118,7 @@ extension DiaryStore {
             let opID = (operation["operationId"] as? String) ?? receipt.event.id
             self.recordDirectProviderMutation(
                 .markWatch(
-                    eventId: receipt.event.id,
+                    operationId: receipt.event.operationId,
                     titleId: title.id,
                     episodeId: receipt.event.episodeId ?? episode?.id,
                     watchedAt: receipt.event.watchedAt ?? receipt.event.recordedAt,
