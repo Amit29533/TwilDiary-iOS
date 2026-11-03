@@ -26,7 +26,8 @@ import BackgroundTasks
     private var hasRegisteredBGTasks = false
 
     #if canImport(ActivityKit)
-    @ObservationIgnored private var liveActivity: Activity<SyncLiveActivityAttributes>?
+    @ObservationIgnored private var liveActivityID: String?
+    @ObservationIgnored private var liveActivityUpdate: Task<Void, Never>?
     #endif
 
     init() {}
@@ -139,16 +140,9 @@ import BackgroundTasks
         let finalState = currentActivityState
         currentActivityState = nil
         #if canImport(ActivityKit)
-        guard let activity = liveActivity else { return }
-        liveActivity = nil
-        Task {
-            if let finalState {
-                let content = ActivityContent(state: finalState, staleDate: nil)
-                await activity.end(content, dismissalPolicy: .default)
-            } else {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
+        guard let id = liveActivityID else { return }
+        liveActivityID = nil
+        enqueueLiveActivityUpdate(id: id, state: finalState, ending: true)
         #endif
     }
 
@@ -158,24 +152,37 @@ import BackgroundTasks
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") { return }
         #endif
         #if canImport(ActivityKit)
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(300))
-        if let existing = liveActivity {
-            Task {
-                await existing.update(content)
-                if state.phase == .completed {
-                    await existing.end(content, dismissalPolicy: .default)
-                }
-            }
-            if state.phase == .completed {
-                liveActivity = nil
-            }
+        if let id = liveActivityID {
+            let ending = state.phase == .completed
+            if ending { liveActivityID = nil }
+            enqueueLiveActivityUpdate(id: id, state: state, ending: ending)
         } else if state.phase != .completed {
+            guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+            let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(300))
             let attributes = SyncLiveActivityAttributes()
-            liveActivity = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+            liveActivityID = try? Activity.request(attributes: attributes, content: content, pushType: nil).id
         }
         #endif
     }
+
+    #if canImport(ActivityKit)
+    /// Only send value types across isolation boundaries. Each ordered operation
+    /// resolves its own ActivityKit handle and keeps that handle local to its task.
+    private func enqueueLiveActivityUpdate(id: String, state: SyncLiveActivityState?, ending: Bool) {
+        let previous = liveActivityUpdate
+        liveActivityUpdate = Task.detached(priority: .utility) {
+            await previous?.value
+            guard let activity = Activity<SyncLiveActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+            if ending {
+                let content = state.map { ActivityContent(state: $0, staleDate: nil) }
+                await activity.end(content, dismissalPolicy: state == nil ? .immediate : .default)
+            } else if let state {
+                let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(300))
+                await activity.update(content)
+            }
+        }
+    }
+    #endif
 
     #if canImport(BackgroundTasks)
     private func handleAppRefresh(task: BGTask, store: DiaryStore) async {
