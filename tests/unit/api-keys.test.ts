@@ -107,3 +107,37 @@ test('a key test asks the service and never echoes the key', async () => {
     'a token without access to the account is not working'
   );
 });
+
+test('TwilDiary app client IDs for Sign in with Simkl and MDBList are checked with each service', async () => {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const answer = (status: number) => async (url: string, init?: RequestInit) => (
+    calls.push({ url, init }),
+    new Response('{}', { status })
+  );
+  const simkl = { SIMKL_CLIENT_ID: 'simkl-client-1234' };
+  assert.deepEqual(await testKey(simkl, 'SIMKL_CLIENT_ID', answer(200)), {
+    ok: true,
+    message: 'Working'
+  });
+  assert.match(calls[0]!.url, /^https:\/\/api\.simkl\.com\/.+client_id=simkl-client-1234$/);
+  // Simkl answers an unknown client ID with 412 client_id_failed.
+  assert.deepEqual(await testKey(simkl, 'SIMKL_CLIENT_ID', answer(412)), {
+    ok: false,
+    message: 'Rejected by the service'
+  });
+  const mdblist = { MDBLIST_CLIENT_ID: 'mdblist-client-1234' };
+  assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', answer(200))).ok, true);
+  const device = calls.at(-1)!;
+  assert.equal(device.url, 'https://api.mdblist.com/oauth/device-authorization/');
+  assert.equal(device.init?.method, 'POST');
+  assert.equal(String(device.init?.body), 'client_id=mdblist-client-1234&scope=write');
+  assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', answer(400))).ok, false);
+  assert.equal((await testKey({}, 'SIMKL_CLIENT_ID', answer(200))).message, 'Not set');
+  const wetrakr = await testKey(
+    { WETRAKR_CLIENT_ID: 'wtk_client_1234' },
+    'WETRAKR_CLIENT_ID',
+    answer(200)
+  );
+  assert.equal(wetrakr.ok, false);
+  assert.match(wetrakr.message, /hasn’t published/);
+});

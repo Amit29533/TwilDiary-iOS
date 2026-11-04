@@ -34,6 +34,9 @@ export interface ServerBindings {
   TRAKT_REDIRECT_URI?: string;
   TRAKT_PERSONAL_ACCESS_TOKEN?: string;
   MDBLIST_API_KEY?: string;
+  SIMKL_CLIENT_ID?: string;
+  MDBLIST_CLIENT_ID?: string;
+  WETRAKR_CLIENT_ID?: string;
   /** Account Analytics: Read. Settings → Cloudflare shows nothing without it. */
   CF_ANALYTICS_TOKEN?: string;
   CF_ACCOUNT_ID?: string;

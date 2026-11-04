@@ -31,6 +31,13 @@ public enum WatchLoggingMethod: String, Codable, CaseIterable, Identifiable, Sen
     }
 }
 
+/// How a provider was connected: by signing in to it (TwilDiary's app, or your own client ID with
+/// a device code/PIN), or by pasting your own API key or access token.
+public enum ProviderConnectionMethod: String, Codable, Sendable {
+    case signIn = "sign_in"
+    case apiKey = "api_key"
+}
+
 /// Configuration for an external sync provider (Trakt, Simkl, MDBList, WeTrakr).
 public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable {
     public let provider: SyncProviderKind
@@ -41,6 +48,11 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     public var accessToken: String?
     public var username: String?
     public var lastSyncedAt: String?
+    /// From a sign-in that issues one (MDBList, Simkl's newer sign-in); renews the access token.
+    public var refreshToken: String?
+    /// ISO 8601; when the access token stops working, if the service says.
+    public var tokenExpiresAt: String?
+    public var connection: ProviderConnectionMethod?
 
     public var id: SyncProviderKind { provider }
 
@@ -52,7 +64,10 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
         apiKey: String? = nil,
         accessToken: String? = nil,
         username: String? = nil,
-        lastSyncedAt: String? = nil
+        lastSyncedAt: String? = nil,
+        refreshToken: String? = nil,
+        tokenExpiresAt: String? = nil,
+        connection: ProviderConnectionMethod? = nil
     ) {
         self.provider = provider
         self.enabled = enabled
@@ -62,6 +77,16 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
         self.accessToken = Self.trimmed(accessToken)
         self.username = Self.trimmed(username)
         self.lastSyncedAt = Self.trimmed(lastSyncedAt)
+        self.refreshToken = Self.trimmed(refreshToken)
+        self.tokenExpiresAt = Self.trimmed(tokenExpiresAt)
+        self.connection = connection
+    }
+
+    /// True when the access token expires within `margin` seconds and a refresh token can renew it.
+    public func needsRefresh(now: Date = .now, margin: TimeInterval = 86_400) -> Bool {
+        guard refreshToken != nil, let text = tokenExpiresAt,
+              let expires = try? Date(text, strategy: .iso8601) else { return false }
+        return expires.timeIntervalSince(now) < margin
     }
 
     /// True when the required API credentials for this provider have been entered.
@@ -71,8 +96,8 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
             guard let cid = Self.trimmed(clientId), !cid.isEmpty else { return false }
             return true
         case .mdblist:
-            guard let key = Self.trimmed(apiKey), !key.isEmpty else { return false }
-            return true
+            // An API key, or a sign-in token (sent as Bearer instead of ?apikey=).
+            return Self.trimmed(apiKey) != nil || Self.trimmed(accessToken) != nil
         case .cloudflare:
             return true
         }
@@ -284,7 +309,7 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
         value.customTmdbToken = nil
         for provider in [SyncProviderKind.trakt, .wetrakr, .simkl, .mdblist] {
             var config = value.config(for: provider)
-            config.accessToken = nil; config.apiKey = nil
+            config.accessToken = nil; config.apiKey = nil; config.refreshToken = nil
             value.setConfig(config)
         }
         return value

@@ -6,6 +6,14 @@ export const API_KEYS = {
   TMDB_ACCESS_TOKEN: { service: 'tmdb', label: 'Read access token' },
   TRAKT_CLIENT_ID: { service: 'trakt', label: 'Client ID' },
   TRAKT_PERSONAL_ACCESS_TOKEN: { service: 'trakt', label: 'Personal access token' },
+  // TwilDiary's own registered apps, so "Sign in with …" works without your own developer keys.
+  // Client IDs are public by design (device sign-in sends them from the phone); no secrets here.
+  SIMKL_CLIENT_ID: { service: 'simkl', label: 'App client ID (Sign in with Simkl)' },
+  MDBLIST_CLIENT_ID: {
+    service: 'mdblist',
+    label: 'Device Code app client ID (Sign in with MDBList)'
+  },
+  WETRAKR_CLIENT_ID: { service: 'wetrakr', label: 'App client ID' },
   CF_ANALYTICS_TOKEN: { service: 'cloudflare', label: 'Analytics API token' },
   CF_ACCOUNT_ID: { service: 'cloudflare', label: 'Account ID' }
 } as const;
@@ -229,6 +237,26 @@ export async function testKey(
       );
       break;
     }
+    case 'SIMKL_CLIENT_ID':
+      // Any Simkl request names its app; an unknown client ID answers 412 client_id_failed.
+      response = await call(
+        'https://api.simkl.com/search/id?imdb=tt0133093&client_id=' + encodeURIComponent(value),
+        { headers: { 'User-Agent': 'TwilDiary/2.0.0', Accept: 'application/json' } }
+      );
+      break;
+    case 'MDBLIST_CLIENT_ID':
+      // Starting a device sign-in is the only check MDBList offers; the unused code lapses in 5 minutes.
+      response = await call('https://api.mdblist.com/oauth/device-authorization/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json'
+        },
+        body: new URLSearchParams({ client_id: value, scope: 'write' }).toString()
+      });
+      break;
+    case 'WETRAKR_CLIENT_ID':
+      return { ok: false, message: 'Can’t be checked yet: WeTrakr hasn’t published its API' };
     case 'CF_ANALYTICS_TOKEN':
     case 'CF_ACCOUNT_ID': {
       const token = env.CF_ANALYTICS_TOKEN,
@@ -256,7 +284,8 @@ export async function testKey(
   }
   if (!response) return { ok: false, message: 'The service didn’t answer' };
   if (response.ok) return { ok: true, message: 'Working' };
-  if (response.status === 401 || response.status === 403)
+  // Simkl answers 412 and MDBList 400 for an unknown client ID.
+  if ([400, 401, 403, 412].includes(response.status))
     return { ok: false, message: 'Rejected by the service' };
   return { ok: false, message: 'The service answered ' + response.status };
 }

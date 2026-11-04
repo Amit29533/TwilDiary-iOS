@@ -180,10 +180,9 @@ struct TitleDetailView: View {
             .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
             .task(id: title.id) {
                 criticScores = []
-                guard let apiKey = store.providerSettings.mdblist.apiKey, !apiKey.isEmpty,
-                      let tmdbId = title.tmdbId else { return }
-                let client = DirectProviderClient()
-                if let summary = try? await client.fetchMDBListRatings(apiKey: apiKey, tmdbId: tmdbId, isSeries: title.isSeries) {
+                guard store.providerSettings.mdblist.isAuthenticated, let tmdbId = title.tmdbId else { return }
+                let config = await store.freshProviderConfig(.mdblist)
+                if let summary = try? await store.directClient.fetchMDBListRatings(config: config, tmdbId: tmdbId, isSeries: title.isSeries) {
                     criticScores = summary.ratings.filter { ($0.score ?? 0) > 0 || ($0.value ?? 0) > 0 }
                 }
             }

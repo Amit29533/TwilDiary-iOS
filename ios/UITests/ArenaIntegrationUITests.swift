@@ -45,4 +45,25 @@ import XCTest
         capture("Collection filter in current Library sheet", app: app)
         XCTAssertTrue(tag.exists)
     }
+    /// Each service offers both ways in: sign in (when TwilDiary has an app ID for it) or your own
+    /// API key or token. The preview server has no Simkl/MDBList app ID, so their pages explain where
+    /// to add one; WeTrakr has no published sign-in yet.
+    func testEveryServiceOffersSignInOrYourOwnKey() {
+        let app = launch()
+        app.tabBars.buttons["Profile"].tap()
+        for (row, title, signIn, key) in [("settings-wetrakr", "WeTrakr", "wetrakr-sign-in-unavailable", "wetrakr-client-id-field"),
+                                          ("settings-simkl", "Simkl", "simkl-sign-in-unavailable", "simkl-client-id-field"),
+                                          ("settings-mdblist", "MDBList", "mdblist-sign-in-unavailable", "mdblist-api-key-field")] {
+            let entry = app.buttons[row]
+            reveal(entry, app: app); entry.tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), title)
+            XCTAssertTrue(app.descendants(matching: .any)[signIn].waitForExistence(timeout: 5), "\(title) explains its sign-in")
+            let field = app.descendants(matching: .any)[key]
+            reveal(field, app: app)
+            XCTAssertTrue(field.exists, "\(title) still takes your own key or token")
+            capture("\(title) connect options", app: app)
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.buttons[row].waitForExistence(timeout: 5))
+        }
+    }
 }

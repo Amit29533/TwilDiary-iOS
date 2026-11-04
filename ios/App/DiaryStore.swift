@@ -920,7 +920,8 @@ import TwilDiaryCore
             if !pending.isEmpty { BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: 0, total: pending.count) }
             for entry in pending {
                 if blockedTitles.contains(entry.mutation.titleId) { continue }
-                let config = providerSettings.config(for: provider)
+                let config = await freshProviderConfig(provider)
+                guard session == sessionGeneration, !Task.isCancelled else { return }
                 let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: workspace)
                 do {
                     for delivery in plan.deliveries {
@@ -976,6 +977,20 @@ import TwilDiaryCore
         try outboxStore.save(next, scope: scope)
         outbox = next
     }
+    /// The provider's settings, with a sign-in token renewed first when it expires within a day
+    /// (MDBList and Simkl sign-ins). A failed renewal keeps the old token; the request then reports it.
+    func freshProviderConfig(_ provider: SyncProviderKind) async -> ExternalProviderConfig {
+        let config = providerSettings.config(for: provider)
+        guard config.needsRefresh(now: now), let clientId = config.clientId, let refresh = config.refreshToken,
+              let tokens = try? await directClient.refreshSignIn(provider: provider, clientId: clientId, refreshToken: refresh) else { return config }
+        // Settings changed while renewing (disconnect, another sign-in): leave them alone.
+        guard providerSettings.config(for: provider) == config else { return providerSettings.config(for: provider) }
+        var renewed = config
+        renewed.accessToken = tokens.accessToken
+        renewed.refreshToken = tokens.refreshToken ?? refresh
+        renewed.tokenExpiresAt = tokens.expiresAt
+        return updateProviderConfig(renewed) ? renewed : config
+    }
     /// Tests an external provider's API credentials directly from the device (or simulates verification in UI preview mode).
     func testProviderConnection(_ config: ExternalProviderConfig) async throws {
         guard config.hasCredentials else {
@@ -1004,10 +1019,10 @@ import TwilDiaryCore
             }
             _ = try await directClient.fetchSimklActivities(config: config)
         case .mdblist:
-            guard let apiKey = config.apiKey, !apiKey.isEmpty else {
-                throw APIError.message("Enter your MDBList API Key.")
+            guard config.isAuthenticated else {
+                throw APIError.message("Sign in to MDBList or enter your MDBList API key.")
             }
-            _ = try await directClient.fetchMDBListRatings(apiKey: apiKey, tmdbId: 550, isSeries: false)
+            _ = try await directClient.fetchMDBListRatings(config: config, tmdbId: 550, isSeries: false)
         case .cloudflare:
             break
         }

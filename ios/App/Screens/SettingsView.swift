@@ -437,6 +437,13 @@ struct ExternalProviderConnectionView: View {
     @State private var pollingPin = false
     @State private var statusMessage: String?
     @State private var errorMessage: String?
+    /// TwilDiary's own app client IDs from the server (Settings → APIs), for "Sign in with …".
+    @State private var apps: ProviderApps?
+    /// A device sign-in waiting for approval on the service's site.
+    @State private var pendingSignIn: ProviderDeviceSignIn.Authorization?
+    @State private var signInTask: Task<Void, Never>?
+
+    struct ProviderApps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String?; let wetrakr: String? }
 
     private var iconKind: ConnectionProviderIconKind {
         switch provider {
@@ -489,6 +496,7 @@ struct ExternalProviderConnectionView: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 20) {
                 headerCard
+                connectCard
                 loggingCard
                 apiSettingsCard
                 if currentConfig.hasCredentials || pendingOutboxCount > 0 {
@@ -501,6 +509,126 @@ struct ExternalProviderConnectionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .onAppear { loadFromStore() }
+        .task { await loadApps() }
+        .onDisappear { signInTask?.cancel(); signInTask = nil; pendingSignIn = nil }
+    }
+
+    /// Two ways in: sign in to the service, or (below) your own API key or token.
+    private var connectCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Connect").font(.subheadline.bold()).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                switch provider {
+                case .trakt:
+                    let connected = store.traktController.status?.connected == true
+                    Text(connected ? "Signed in through TwilDiary." : "Sign in with your Trakt account on the Trakt page; TwilDiary keeps the connection.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    NavigationLink(value: AppDestination.trakt) {
+                        Label(connected ? "Open Trakt" : "Sign in with Trakt", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity)
+                    }.buttonStyle(.glassProminent).accessibilityIdentifier("trakt-sign-in")
+                case .simkl, .mdblist:
+                    if let appId = appClientId {
+                        Text("Approve TwilDiary on \(displayName)’s site with a short code. No developer keys needed.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if let auth = pendingSignIn { signInWaiting(auth) }
+                        else {
+                            Button { startSignIn(appId) } label: {
+                                Label(currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity)
+                            }.buttonStyle(.glassProminent).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                        }
+                    } else {
+                        Text(apps == nil ? "Checking whether TwilDiary can sign you in…" : "Sign-in needs TwilDiary’s \(displayName) app ID. Add it in Settings → APIs → Sign-in apps, or use your own API key or token below.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
+                    }
+                case .wetrakr:
+                    Text("WeTrakr hasn’t published how apps sign in yet. Use an app key and personal access token below.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("wetrakr-sign-in-unavailable")
+                case .cloudflare:
+                    EmptyView()
+                }
+            }.diaryPanel()
+        }
+    }
+    private var appClientId: String? {
+        switch provider {
+        case .simkl: apps?.simkl
+        case .mdblist: apps?.mdblist
+        case .wetrakr: apps?.wetrakr
+        case .trakt: apps?.trakt
+        case .cloudflare: nil
+        }
+    }
+    private func signInWaiting(_ auth: ProviderDeviceSignIn.Authorization) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Enter this code on \(auth.verificationURL.host ?? displayName):").font(.caption.bold())
+            Text(auth.userCode).font(.title2.monospaced().bold()).foregroundStyle(theme.accent).textSelection(.enabled)
+                .accessibilityIdentifier("\(provider.rawValue)-sign-in-code")
+            Link(destination: auth.verificationURLComplete ?? auth.verificationURL) {
+                Label("Open \(auth.verificationURL.host ?? "the sign-in page")", systemImage: "arrow.up.forward.app").frame(maxWidth: .infinity)
+            }.buttonStyle(.glassProminent)
+            HStack {
+                ProgressView().controlSize(.small)
+                Text("Waiting for approval…").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") { signInTask?.cancel(); signInTask = nil; pendingSignIn = nil }.buttonStyle(.glass)
+            }
+        }.padding(12).background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+    }
+    private func loadApps() async {
+        #if DEBUG
+        if store.isPreview { apps = ProviderApps(trakt: "preview", simkl: nil, mdblist: nil, wetrakr: nil); return }
+        #endif
+        let loaded: ProviderApps? = try? await store.read("/api/providers/apps")
+        apps = loaded ?? ProviderApps(trakt: nil, simkl: nil, mdblist: nil, wetrakr: nil)
+    }
+    private func startSignIn(_ appId: String) {
+        signInTask?.cancel()
+        signInTask = Task { await runSignIn(appId) }
+    }
+    /// Starts the device sign-in and asks the service every few seconds until it is approved,
+    /// declined or the code lapses; then saves the tokens and turns sync on.
+    private func runSignIn(_ appId: String) async {
+        errorMessage = nil; statusMessage = nil
+        do {
+            switch try await store.directClient.startSignIn(provider: provider, clientId: appId) {
+            case .simklPin(let pin):
+                // An older Simkl app: the PIN panel below finishes the sign-in.
+                clientId = appId; deviceSession = pin
+            case .device(let auth):
+                pendingSignIn = auth
+                defer { if pendingSignIn == auth { pendingSignIn = nil } }
+                var interval = auth.interval
+                let deadline = Date.now.addingTimeInterval(TimeInterval(auth.expiresIn))
+                while Date.now < deadline {
+                    try await Task.sleep(for: .seconds(interval))
+                    switch try await store.directClient.pollSignIn(provider: provider, clientId: appId, deviceCode: auth.deviceCode) {
+                    case .pending: continue
+                    case .slowDown: interval += 5
+                    case .authorized(let tokens):
+                        guard ProviderDeviceSignIn.grantsWrite(tokens, provider: provider) else {
+                            throw APIError.message("\(displayName) gave read-only access. Sign in again and allow TwilDiary to make changes.")
+                        }
+                        var signedIn = currentConfig
+                        signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
+                        signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
+                        signedIn.connection = .signIn; signedIn.enabled = true
+                        if provider == .mdblist { signedIn.apiKey = nil }
+                        guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
+                        loadFromStore()
+                        statusMessage = "Signed in to \(displayName). Sync is on."
+                        return
+                    case .expired: throw APIError.message("The code expired. Start the sign-in again.")
+                    case .denied: throw APIError.message("The sign-in was declined on \(displayName).")
+                    case .failed(let message): throw APIError.message(message)
+                    }
+                }
+                throw APIError.message("The code expired before it was approved. Start the sign-in again.")
+            }
+        } catch {
+            if !Task.isCancelled { errorMessage = error.localizedDescription }
+        }
     }
 
     private var headerCard: some View {
@@ -564,7 +692,7 @@ struct ExternalProviderConnectionView: View {
 
     private var apiSettingsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("API settings").font(.subheadline.bold()).foregroundStyle(.secondary)
+            Text(provider == .trakt ? "Or use your own Trakt app" : "Or use your own API key or token").font(.subheadline.bold()).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 14) {
                 if provider == .mdblist {
                     VStack(alignment: .leading, spacing: 6) {
@@ -625,7 +753,12 @@ struct ExternalProviderConnectionView: View {
                     Button("Save API settings") {
                         errorMessage = nil
                         if !enabled && draftConfig().hasCredentials { enabled = true }
-                        persistDraft()
+                        var saved = draftConfig()
+                        // New pasted credentials replace a sign-in: its refresh token belongs to the old token.
+                        if saved.accessToken != currentConfig.accessToken || saved.apiKey != currentConfig.apiKey || saved.clientId != currentConfig.clientId {
+                            saved.connection = .apiKey; saved.refreshToken = nil; saved.tokenExpiresAt = nil
+                        }
+                        if !store.updateProviderConfig(saved) { errorMessage = store.error; return }
                         statusMessage = "\(displayName) API settings saved."
                     }
                     .buttonStyle(.glassProminent)
@@ -754,7 +887,11 @@ struct ExternalProviderConnectionView: View {
             apiKey: apiKey,
             accessToken: accessToken,
             username: username,
-            lastSyncedAt: currentConfig.lastSyncedAt
+            lastSyncedAt: currentConfig.lastSyncedAt,
+            // Toggles and the logging method keep how this was connected.
+            refreshToken: currentConfig.refreshToken,
+            tokenExpiresAt: currentConfig.tokenExpiresAt,
+            connection: currentConfig.connection
         )
     }
 
@@ -803,6 +940,8 @@ struct ExternalProviderConnectionView: View {
                 var connectedCfg = draftConfig()
                 connectedCfg.accessToken = token
                 connectedCfg.enabled = true
+                // Simkl's PIN and Trakt's device codes issue no refresh token.
+                connectedCfg.connection = .signIn; connectedCfg.refreshToken = nil; connectedCfg.tokenExpiresAt = nil
                 guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
                 statusMessage = "\(displayName) authorized and connected."
             case .expired:

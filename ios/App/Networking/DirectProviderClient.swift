@@ -63,11 +63,12 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return try SimklSyncEngine.decodeAllItems(from: data)
     }
 
-    func fetchMDBListRatings(apiKey: String, tmdbId: Int, isSeries: Bool) async throws -> MDBListSyncEngine.RatingSummary {
+    func fetchMDBListRatings(config: ExternalProviderConfig, tmdbId: Int, isSeries: Bool) async throws -> MDBListSyncEngine.RatingSummary {
         let kind = isSeries ? "show" : "movie"
         var components = URLComponents(string: "https://api.mdblist.com/tmdb/\(kind)/\(tmdbId)")!
-        components.queryItems = [URLQueryItem(name: "apikey", value: apiKey)]
-        let data = try await send(url: components.url!, method: "GET", headers: ["Accept": "application/json"])
+        let auth = mdblistAuth(config)
+        if !auth.query.isEmpty { components.queryItems = auth.query }
+        let data = try await send(url: components.url!, method: "GET", headers: auth.headers.merging(["Accept": "application/json"]) { first, _ in first })
         return try MDBListSyncEngine.decodeRatingSummary(from: data, tmdbId: tmdbId, isSeries: isSeries)
     }
 
@@ -168,14 +169,23 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             headers = traktHeaders(DirectTraktCredentials(clientId: config.clientId ?? "", accessToken: config.accessToken ?? ""))
         case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
         case .wetrakr: base = "https://api.wetrakr.com"; headers = wetrakrHeaders(config)
-        case .mdblist: base = "https://api.mdblist.com"; headers = ["Accept": "application/json", "Content-Type": "application/json"]
+        case .mdblist: base = "https://api.mdblist.com"; headers = mdblistAuth(config).headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
         case .cloudflare: throw APIError.message("Diary mutations must use the authenticated diary API.")
         }
         if config.provider == .wetrakr { headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: delivery.path + ":" + delivery.key, entryIDs: [entry.operationId]) }
         var components = URLComponents(string: base + delivery.path)!
-        if config.provider == .mdblist { components.queryItems = [URLQueryItem(name: "apikey", value: config.apiKey)] }
+        if config.provider == .mdblist, !mdblistAuth(config).query.isEmpty { components.queryItems = mdblistAuth(config).query }
         let data = try await send(url: components.url!, method: "POST", headers: headers, jsonBody: delivery.body)
         guard ProviderDeliveryPlanner.confirms(data) else { throw APIError.message("The provider did not confirm this item; the edit remains pending.") }
+    }
+
+    /// MDBList takes a sign-in token as Bearer, or an API key as ?apikey= — never both (MDBList
+    /// warns that sending the same credential both ways fails).
+    private func mdblistAuth(_ config: ExternalProviderConfig) -> (query: [URLQueryItem], headers: [String: String]) {
+        if config.connection == .signIn || config.apiKey == nil, let token = config.accessToken {
+            return ([], ["Authorization": "Bearer \(token)"])
+        }
+        return ([URLQueryItem(name: "apikey", value: config.apiKey)], [:])
     }
 
     private func traktHeaders(_ credentials: DirectTraktCredentials) -> [String: String] {
@@ -235,6 +245,51 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             throw APIError.rejected(http.statusCode, "Provider returned HTTP \(http.statusCode).")
         }
         return data
+    }
+
+    // MARK: - Sign in with MDBList or Simkl (standard device sign-in, no client secret)
+
+    enum SignInStart {
+        /// Show the code and page, then poll.
+        case device(ProviderDeviceSignIn.Authorization)
+        /// An older Simkl app (AUTH V1) can't use the device sign-in; Simkl's PIN instead.
+        case simklPin(DeviceCodeAuthSession)
+    }
+    func startSignIn(provider: SyncProviderKind, clientId: String) async throws -> SignInStart {
+        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
+        let (data, status) = try await postForm(endpoints.authorize, ProviderDeviceSignIn.authorizeBody(clientId: clientId, scope: endpoints.scope))
+        if (200..<300).contains(status) { return .device(try ProviderDeviceSignIn.decodeAuthorization(data)) }
+        if provider == .simkl, status == 400 || status == 401 {
+            let pin = try await requestDeviceCode(provider: .simkl, clientId: clientId)
+            return .simklPin(pin)
+        }
+        if case .failed(let message) = ProviderDeviceSignIn.decodePoll(status: status, data: data) { throw APIError.message(message) }
+        throw APIError.message("The service answered HTTP \(status).")
+    }
+    func pollSignIn(provider: SyncProviderKind, clientId: String, deviceCode: String) async throws -> ProviderDeviceSignIn.Poll {
+        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { return .failed("This service has no sign-in TwilDiary can use.") }
+        let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.pollBody(clientId: clientId, deviceCode: deviceCode))
+        return ProviderDeviceSignIn.decodePoll(status: status, data: data)
+    }
+    /// A new access token from the refresh token (MDBList: 30-day tokens; Simkl: 7 days).
+    func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {
+        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
+        let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.refreshBody(clientId: clientId, refreshToken: refreshToken))
+        switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
+        case .authorized(let tokens): return tokens
+        case .failed(let message): throw APIError.message(message)
+        default: throw APIError.message("The service didn’t renew the sign-in (HTTP \(status)).")
+        }
+    }
+    private func postForm(_ url: URL, _ body: Data) async throws -> (Data, Int) {
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
+        request.httpBody = body
+        let (data, response) = try await session.data(for: request)
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
 
     // MARK: - Interactive OAuth Device Code / PIN Sign-In (Trakt & Simkl)

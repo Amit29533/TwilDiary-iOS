@@ -101,3 +101,21 @@ They become copies of Trakt (Trakt wins).
   (phase 0), or it is lost from the app (still in backups).
 - **Big change, staged:** each phase ships behind the current app until phase 4, so a failed phase does not
   break the app you use.
+
+## Connecting each service (owner request, 5 Nov 2026)
+
+Every service can be connected two ways, from Profile → its page:
+
+| Service | Sign in | Your own key or token |
+| --- | --- | --- |
+| Trakt | Trakt page (the Worker's OAuth; the app reads with `/api/trakt/token`) | Your own client ID and access token, or your client ID with a device code |
+| Simkl | Device sign-in (AUTH V2, `media:read media:write`; refreshed); an AUTH V1 app falls back to Simkl's PIN | Client ID and access token |
+| MDBList | Device sign-in ("Device Code App", scope `write`, 30-day token, refreshed) | API key |
+| WeTrakr | Not yet: no published sign-in (`/oauth/device/code` is 404) | App key (`wetrakr-api-key`) and personal access token |
+
+"Sign in" uses TwilDiary's own app client IDs, set once in Settings → APIs → Sign-in apps
+(`SIMKL_CLIENT_ID`, `MDBLIST_CLIENT_ID`, `WETRAKR_CLIENT_ID`) and handed to the app by
+`GET /api/providers/apps`. Client IDs are public; no client secret is stored or sent. Tokens live
+in the iPhone Keychain envelope; refresh tokens never reach plain preferences. MDBList gets either a
+Bearer token or `?apikey=`, never both. A Simkl sign-in without `media:write` is refused, because
+Simkl silently downgrades to read-only.
