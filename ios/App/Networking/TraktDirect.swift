@@ -28,6 +28,8 @@ struct TraktDirectClient: Sendable {
         if !query.isEmpty { components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var request = URLRequest(url: components.url!, timeoutInterval: 30)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // The same identity as the Worker's Trakt requests, which Trakt's edge accepts.
+        request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
         request.setValue("2", forHTTPHeaderField: "trakt-api-version")
         request.setValue(token.clientId, forHTTPHeaderField: "trakt-api-key")
         request.setValue("Bearer " + token.accessToken, forHTTPHeaderField: "Authorization")
