@@ -83,6 +83,27 @@ struct RoundTool: View {
     }
 }
 
+/// A section heading's "see all": the same round chevron everywhere (Home, Explore, profiles,
+/// rankings), instead of a mix of "Stats →" text links and buttons. The label is for VoiceOver.
+struct SectionMoreLink<Value: Hashable>: View {
+    let label: String
+    let value: Value
+    let identifier: String
+    var body: some View {
+        NavigationLink(value: value) { RoundTool(icon: "chevron-right", size: 36) }
+            .buttonStyle(.springPress).accessibilityLabel(label).accessibilityIdentifier(identifier)
+    }
+}
+struct SectionMoreButton: View {
+    let label: String
+    let identifier: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) { RoundTool(icon: "chevron-right", size: 36) }
+            .buttonStyle(.springPress).accessibilityLabel(label).accessibilityIdentifier(identifier)
+    }
+}
+
 /// Compact 44 pt capsule buttons: the accent fill for the main action, an outline for the rest.
 struct DiaryCapsuleButtonStyle: ButtonStyle {
     var prominent = true
@@ -245,10 +266,9 @@ struct ProviderBrandIcon: View {
     }
 }
 
-/// A tab page's header. Tab pages split it: `.buttons` stays pinned over the page as frosted
-/// glass, and `.title` is the scroll's first row, sliding up beneath them. `.full` draws both.
+/// A tab page's header: the logo, title and actions are the scroll's first row and scroll away
+/// with the page (true full screen; search and navigation live in the tab bar and gestures).
 struct PageHeader: View {
-    enum Part { case full, title, buttons }
     let name: String
     var count: String? = nil
     /// Home draws the header over the Continue watching backdrop.
@@ -256,7 +276,6 @@ struct PageHeader: View {
     /// Library's Select button.
     var onSelect: (() -> Void)? = nil
     var height: CGFloat = 56
-    var part: Part = .full
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var taps: [Double] = []
@@ -266,17 +285,12 @@ struct PageHeader: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         HStack(spacing: 10) {
-            if part == .title { Color.clear.frame(width: 44, height: 44) } else { logo }
-            if part != .buttons { title }
+            logo
+            title
             Spacer(minLength: 0)
-            if part == .title {
-                // Keeps the title clear of the pinned buttons above it.
-                Color.clear.frame(width: CGFloat(onSelect == nil ? 0 : 1) * 54, height: 1)
-            } else {
-                if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
-            }
+            if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
         }.frame(height: height).padding(.horizontal, 14)
-            .modifier(HoldOnPull(enabled: part == .title, restingY: $restingY))
+            .modifier(HoldOnPull(restingY: $restingY))
     }
     private var logo: some View {
         Button {
@@ -355,6 +369,8 @@ struct Artwork: View {
     let path: String?
     var title: String = ""
     var initialsOnly = true
+    /// Where a cropped image anchors: `.top` keeps portraits' faces in frame.
+    var alignment: Alignment = .center
     @Environment(\.displayScale) private var displayScale
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var loadedArtwork: PublicArtworkBitmap?
@@ -368,8 +384,8 @@ struct Artwork: View {
                 LinearGradient(colors: [Color(webHex: "#243638"), Color(webHex: "#17151e"), Color(webHex: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
                 RadialGradient(colors: [theme.placeholderGlow, .clear], center: UnitPoint(x: 0.8, y: 0.05), startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.7)
             }
-            if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
-            else if let image = fixtureImage(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height).clipped() }
+            if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
+            else if let image = fixtureImage(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
             else if let request {
                 // While loading, only the gradient shows: the named placeholder appears
                 // only after a load failed, so new cells no longer flash title text
@@ -379,7 +395,7 @@ struct Artwork: View {
                 let sameImage = loadedRequest?.url == request.url ? loadedArtwork : nil
                 if let bitmap = current ?? PublicArtworkCache.shared.cached(request) ?? sameImage {
                     Image(decorative: bitmap.image, scale: displayScale).resizable().scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped()
                 } else if loadedRequest == request { placeholder(size: proxy.size) }
             } else { placeholder(size: proxy.size) }
           }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
@@ -539,21 +555,18 @@ struct TextShadow: ViewModifier {
     }
 }
 
-/// The scrolling title row stays put while the page is pulled down to refresh, so it never drifts
-/// away from the logo and search pinned above it; scrolling up still carries it away.
+/// The header stays put while the page is pulled down to refresh (the spinner shows above it);
+/// scrolling up still carries it away.
 private struct HoldOnPull: ViewModifier {
-    let enabled: Bool
     @Binding var restingY: CGFloat?
     func body(content: Content) -> some View {
-        if enabled {
-            let rest = restingY
-            content
-                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
-                .visualEffect { view, proxy in
-                    guard let rest else { return view.offset(y: 0) }
-                    return view.offset(y: -max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest))
-                }
-        } else { content }
+        let rest = restingY
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
+            .visualEffect { view, proxy in
+                guard let rest else { return view.offset(y: 0) }
+                return view.offset(y: -max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest))
+            }
     }
 }
 
@@ -599,12 +612,6 @@ struct SortMenuRow<Option: Hashable & Identifiable, Trailing: View>: View {
     }
 }
 
-struct SectionHeading<Trailing: View>: View {
-    let name: String
-    @ViewBuilder var trailing: Trailing
-    var body: some View { HStack(spacing: 8) { Text(name).font(.system(size: 19, weight: .semibold)).tracking(-0.5); Spacer(minLength: 4); trailing.font(.system(size: 12, weight: .semibold)) }.frame(minHeight: 32) }
-}
-
 struct ProgressCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     let title: MediaTitle
@@ -620,6 +627,8 @@ struct ProgressCard: View {
     /// New watches only (not removals): the mark button throws a star burst.
     @State private var sparks = 0
     @State private var suppressNavigationUntil = Date.distantPast
+    /// Notes open as their own sheet over the card, not the whole title page.
+    @State private var showNotes = false
     @Environment(AppRouter.self) private var router
     var body: some View {
         ZStack(alignment: .leading) {
@@ -641,6 +650,7 @@ struct ProgressCard: View {
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .sensoryFeedback(.success, trigger: watchFeedback)
+            .sheet(isPresented: $showNotes) { TitleNotesSheet(titleID: title.id) }
     }
     /// Home's Continue watching text over the page backdrop (owner's design): title, "S2 · E3 of 8",
     /// the bar with "38% complete" and the time left, then the same − / + controls as Glance.
@@ -780,9 +790,7 @@ struct ProgressCard: View {
                 Button(season == 0 ? "Complete Specials" : "Complete Season \(season)", systemImage: "checkmark.circle") { Task { await store.completeCardSeason(title.id, season: season) } }
             }
             Button("Dropped", systemImage: "stop.circle") { Task { await store.patchCard(title.id, values: ["status": "dropped"]) } }
-            Button("Notes", systemImage: "note.text") {
-                router.paths[router.selectedTab, default: NavigationPath()].append(SavedTitleRoute(id: title.id, season: card?.season?.number ?? 1, focusEpisodes: false, focusNotes: true))
-            }
+            Button("Notes", systemImage: "note.text") { showNotes = true }
         } label: { DiaryIcon(name: "ellipsis", size: 19).frame(width: 44, height: 44) }
             .disabled(cardBusy || store.needsMutationRefresh).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("More options for " + title.name).accessibilityIdentifier("progress-menu-" + title.id)
     }

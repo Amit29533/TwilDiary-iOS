@@ -13,7 +13,6 @@ struct HomeView: View {
     @State private var upcomingLimit = 3
     /// Changes only when vertical scrolling starts or settles, never per frame.
     @State private var scrolling = false
-    @State private var mediaHeader = CompactHeaderState()
     @SceneStorage("home.continue.title") private var continueSelection = ""
     @AppStorage("homeHistoryGrid") private var historyGrid = false
     @AppStorage("upcomingGrid") private var upcomingGrid = false
@@ -34,11 +33,11 @@ struct HomeView: View {
                         NavigationLink(value: AppDestination.canvas) { discoverButton("Canvas", icon: "layout-grid") }.buttonStyle(.plain).accessibilityIdentifier("canvas-shortcut")
                     }
                     VStack(spacing: 12) {
-                        heading("This week") { Button("Stats →") { router.statsToday() }.accessibilityIdentifier("home-stats") }
+                        heading("This week") { SectionMoreButton(label: "Stats", identifier: "home-stats") { router.statsToday() } }
                         weekPanel(overview, now: now)
                     }
                     if !overview.planned.isEmpty { VStack(spacing: 12) {
-                        heading("Up next") { Button("Planned →") { router.library("planned") } }
+                        heading("Up next") { SectionMoreButton(label: "Planned", identifier: "home-planned-more") { router.library("planned") } }
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(overview.planned.prefix(12)) { title in
@@ -49,7 +48,6 @@ struct HomeView: View {
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     }.padding(.horizontal, -4)
-                        .modifier(HomeMediaBoundary(state: mediaHeader, enabled: true))
                     }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                     let favourites = FavouritesStore.shared.items
@@ -58,8 +56,7 @@ struct HomeView: View {
                             Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
                             Text("Favourites").font(.system(size: 22, weight: .bold)).tracking(-0.6)
                             Spacer(minLength: 4)
-                            NavigationLink(value: AppDestination.favourites) { RoundTool(icon: "chevron-right", size: 36) }
-                                .buttonStyle(.springPress).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
+                            SectionMoreLink(label: "All favourites", value: AppDestination.favourites, identifier: "home-favourites")
                         }
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
@@ -69,9 +66,9 @@ struct HomeView: View {
                                 }
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
-                    }.padding(.horizontal, -4).modifier(HomeMediaBoundary(state: mediaHeader, enabled: overview.planned.isEmpty)) }
+                    }.padding(.horizontal, -4) }
                     VStack(spacing: 12) {
-                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); Button("Glance →") { router.selectedTab = .glance } }
+                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); SectionMoreButton(label: "Glance", identifier: "home-glance-more") { router.selectedTab = .glance } }
                         HomeActivityLayout(cards: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
                             NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
                                 HomeEpisodeCard(model: HomeEpisodeCardModel(upcoming: item), cards: upcomingGrid)
@@ -86,9 +83,9 @@ struct HomeView: View {
                         }
                         if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 } }
                         Text("Based on your saved episode dates. Air dates may change.").font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).frame(maxWidth: .infinity, alignment: .leading)
-                    }.padding(.horizontal, -4).modifier(HomeMediaBoundary(state: mediaHeader, enabled: overview.planned.isEmpty && favourites.isEmpty))
+                    }.padding(.horizontal, -4)
                     if !recent.isEmpty { VStack(spacing: 12) {
-                        heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history", gridName: "cards"); NavigationLink("All history →", value: AppDestination.history) }
+                        heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history", gridName: "cards"); SectionMoreLink(label: "All history", value: AppDestination.history, identifier: "home-history-more") }
                         HomeActivityLayout(cards: historyGrid) { ForEach(recent) { entry in
                             NavigationLink(value: entry.title.id) {
                                 HomeEpisodeCard(model: HomeEpisodeCardModel(history: entry), cards: historyGrid)
@@ -97,9 +94,8 @@ struct HomeView: View {
                     }.padding(.horizontal, -4) }
                 }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 20).padding(.bottom, 24)
             }
-        }.coordinateSpace(name: "home-scroll")
+        }
         .contentMargins(.bottom, 90, for: .scrollContent)
-        .overlay(alignment: .top) { HomeMediaHeader(state: mediaHeader) }
         .onScrollPhaseChange { _, phase in
             // The automatic carousel step must not animate mid-fling under the finger.
             let active = phase != .idle
@@ -117,8 +113,8 @@ struct HomeView: View {
             }
         }
     }
-    /// The scrolling title row; the logo and search stay pinned above it (see body).
-    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork, part: .title) }
+    /// True full screen: the whole header scrolls away with the artwork.
+    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork) }
     /// The selected title's backdrop fills the top of the page, under the status bar and header,
     /// and fades into the page so the text below it stays readable.
     private func continueSection(_ titles: [MediaTitle]) -> some View {
@@ -207,14 +203,6 @@ private struct StretchOnPull: ViewModifier {
                 let pull = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest)
                 return view.scaleEffect(1 + pull / height, anchor: .bottom)
             }
-    }
-}
-
-struct QueueView: View {
-    @Environment(DiaryStore.self) private var store
-    var planned = false
-    var body: some View {
-        EdgeToEdgeScroll { LazyVStack { ForEach(store.workspace.activeTitles.filter { planned ? $0.status == "planned" : $0.queued == true }) { title in NavigationLink(value: title.id) { titleRow(title) }.buttonStyle(.plain) } }.padding(14) }.navigationTitle(planned ? "Planned" : "Queue").toolbar(.visible, for: .navigationBar)
     }
 }
 

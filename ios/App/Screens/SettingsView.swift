@@ -24,7 +24,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 22) {
-                    PageHeader(name: "Profile", part: .title).padding(.horizontal, -14).padding(.bottom, -14)
+                    PageHeader(name: "Profile").padding(.horizontal, -14).padding(.bottom, -14)
                     NavigationLink(value: AppDestination.profile) {
                         HStack(spacing: 14) {
                             PersonalAvatar()
@@ -152,7 +152,7 @@ struct SettingsView: View {
                     }.frame(maxWidth: .infinity)
                 }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
-        }.overlay(alignment: .top) { PageHeader(name: "Profile", part: .buttons) }
+        }
         .confirmationDialog(store.pendingDiaryEdits > 0 ? "Sign out? Pending edits on this device will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
         .confirmationDialog("Which provider settings should this device keep? Only your pending fields will change.", isPresented: $reviewProviderConflict, titleVisibility: .visible) {
             Button("Keep this device’s settings") { Task { await store.resolveProviderVaultConflict(keepDevice: true) } }

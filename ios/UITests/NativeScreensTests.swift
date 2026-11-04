@@ -502,6 +502,8 @@ import UIKit
         XCTAssertFalse(app.buttons["Close random pick"].exists)
         let logo = app.buttons["random-pick-logo"]
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: dialog)], timeout: 5)
+        // The header scrolls with the page now (true full screen): back to the top for the logo.
+        for _ in 0..<8 where !logo.isHittable { app.swipeDown() }
         wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: logo)], timeout: 5)
         logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
         XCTAssertTrue(name.waitForExistence(timeout: 5)); let previous = name.label
@@ -557,7 +559,7 @@ import UIKit
     }
     func testHistoryUnknownDatesSearchPagingAndReturnKeepTheSourceFilters() {
         let app = launch(); app.tabBars.buttons["Home"].tap()
-        let history = app.buttons["All history →"]
+        let history = app.buttons["home-history-more"]
         for _ in 0..<12 { if history.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(history.isHittable); history.tap()
         let count = app.staticTexts["history-count"]
@@ -583,10 +585,15 @@ import UIKit
         XCTAssertFalse(app.textFields["Filter watch history"].exists)
         capture("History retained universal search query")
         app.buttons["Clear filters"].tap()
-        let more = app.buttons["history-load-more"]
-        for _ in 0..<12 { if more.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(more.isHittable); let before = more.label; more.tap()
-        XCTAssertTrue(!more.exists || more.label != before, "Paging must reveal the next twelve watches")
+        // No "Show more" button: scrolling to the end loads the next twelve watches by itself.
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'history-event-'"))
+        var seen = Set<String>()
+        for _ in 0..<14 {
+            seen.formUnion(rows.allElementsBoundByIndex.map(\.identifier))
+            if seen.count > 12 { break }
+            app.swipeUp()
+        }
+        XCTAssertGreaterThan(seen.count, 12, "Scrolling must reveal the next twelve watches")
         capture("History expanded page")
     }
 
@@ -672,7 +679,7 @@ import UIKit
         XCTAssertEqual(app.buttons["library-order"].value as? String, "Highest TMDB rating")
         capture("Library persisted list layout and typed rating order after relaunch")
     }
-    func testT35WatchedEpisodeOffersRewatchAndUndoKeepsItsOriginalWatch() {
+    func testT35WatchedEpisodeSheetPullsUpWithoutARewatchButton() {
         let app = launch(mutations: true); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].tap()
         let episode = app.buttons["title-episode-8"]
         for _ in 0..<7 {
@@ -684,20 +691,18 @@ import UIKit
         XCTAssertTrue(episode.isHittable); XCTAssertGreaterThan(episode.frame.minY, 120); XCTAssertLessThan(episode.frame.maxY, app.frame.maxY - 40)
         episode.tap()
         XCTAssertTrue(app.staticTexts["episode-summary-8"].waitForExistence(timeout: 5))
-        let rewatch = app.buttons["episode-rewatch-8"]
-        XCTAssertTrue(rewatch.waitForExistence(timeout: 5))
-        for _ in 0..<4 {
-            if rewatch.isHittable, rewatch.frame.maxY < app.frame.maxY - 40 { break }
-            app.swipeUp()
-        }
-        XCTAssertTrue(rewatch.isHittable); XCTAssertLessThan(rewatch.frame.maxY, app.frame.maxY - 40)
-        capture("Visible watched episode rewatch action")
-        rewatch.tap()
-        // The helper itself waits for the toast; a separate existence query here
-        // spent ~1.8 s of the 4.5 s Undo window on Intel runners.
-        tapVisibleUndo(app)
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["undo-action"])], timeout: 8)
-        XCTAssertTrue(app.buttons["Mark episode 8 unwatched"].exists, "Undoing the rewatch must keep the original watch")
+        // The owner removed "Log rewatch" from the episode sheet.
+        XCTAssertFalse(app.buttons["episode-rewatch-8"].exists)
+        // The sheet pulls up to the whole screen, like the other sheets.
+        let bar = app.navigationBars["Episode 8"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5))
+        bar.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.06)))
+        for _ in 0..<10 where bar.frame.minY >= app.frame.height * 0.2 { Thread.sleep(forTimeInterval: 0.2) }
+        XCTAssertLessThan(bar.frame.minY, app.frame.height * 0.2, "The episode sheet pulls up to full height")
+        capture("Episode sheet at full height without rewatch")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["Mark episode 8 unwatched"].waitForExistence(timeout: 5), "The original watch is untouched")
         // Detail pages hide the tab bar: go back until it shows (one tap can land mid-animation).
         let more = app.tabBars.buttons["Profile"]
         for _ in 0..<3 where !more.exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
@@ -707,8 +712,8 @@ import UIKit
         let matches = app.buttons["search-history-matches"]
         for _ in 0..<10 { if matches.isHittable { break }; app.swipeUp() }
         matches.tap()
-        XCTAssertEqual(app.staticTexts["history-count"].label, "8 watches", "Undo must remove the extra play, not merely keep the original episode checked")
-        capture("Episode rewatch Undo restores the original eight history entries")
+        XCTAssertEqual(app.staticTexts["history-count"].label, "8 watches", "Opening an episode never adds a play")
+        capture("Episode sheet leaves the eight history entries")
     }
 
     func testLibraryCommunityRatingPreferenceNeverDisplaysPersonalScores() {
@@ -842,11 +847,10 @@ import UIKit
         XCTAssertTrue(app.staticTexts["No titles in this mix"].waitForExistence(timeout: 5)); capture("Explore filtered empty")
         app.buttons["Reset filters"].tap()
         XCTAssertTrue(app.staticTexts["12 titles"].waitForExistence(timeout: 5))
-        let loadMore = app.buttons["Load more"]
-        for _ in 0..<10 { if loadMore.isHittable && loadMore.frame.maxY < app.tabBars.buttons["Home"].frame.minY { break }; app.swipeUp() }
-        XCTAssertTrue(loadMore.isHittable); XCTAssertLessThan(loadMore.frame.maxY, app.tabBars.buttons["Home"].frame.minY); capture("Explore Load more reachable"); loadMore.tap()
+        // No "Load more" button: reaching the end loads the second page by itself.
+        XCTAssertFalse(app.buttons["Load more"].exists)
         let lastResult = app.buttons["catalog-tv:900002"]
-        for _ in 0..<8 { if lastResult.isHittable { break }; app.swipeUp() }
+        for _ in 0..<14 { if lastResult.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(lastResult.isHittable, "The second page must publish its final unique result")
         capture("Explore second page")
         let count = app.staticTexts["16 titles"]
@@ -1120,7 +1124,9 @@ import UIKit
         XCTAssertTrue(voice.isHittable); voice.tap()
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         capture("Voice actor shared hero before scrolling")
-        let tmdb = app.buttons["voice-actor-tmdb"]
+        // One merged page: the TMDB side is matched in place and adds its credits button.
+        let tmdb = app.buttons["person-tmdb"]
+        XCTAssertTrue(tmdb.waitForExistence(timeout: 10))
         revealProfileControl(tmdb, in: app)
         XCTAssertTrue(tmdb.isHittable)
         let birthday = app.descendants(matching: .any)["voice-actor-birthday"]
@@ -1137,11 +1143,12 @@ import UIKit
         XCTAssertTrue(voiceHeart.isHittable)
         XCTAssertEqual(voiceHeart.frame.midY, heartY, accuracy: 2, "Favourite stays in the native toolbar while scrolling")
         capture("Voice actor pinned favourite after scrolling")
+        XCTAssertFalse(app.buttons["voice-actor-tmdb"].exists, "No separate TMDB profile page any more")
         revealProfileControl(tmdb, in: app)
         tmdb.tap()
-        XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10), "TMDB opens the app's native person page")
+        XCTAssertTrue(app.staticTexts["person-filmography-heading"].waitForExistence(timeout: 10), "TMDB credits open natively")
         XCTAssertEqual(app.state, .runningForeground)
-        capture("Voice actor TMDB profile stays native")
+        capture("Voice actor TMDB credits stay native")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         let anime = app.buttons["voice-actor-anime-154587-2"]
@@ -1516,10 +1523,9 @@ import UIKit
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 10)); assertDetailTabsHidden()
         XCTAssertFalse(app.navigationBars["Find anime"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let tmdb = app.buttons["voice-actor-tmdb"]; reveal(tmdb, down: true); tmdb.tap()
-        XCTAssertTrue(app.buttons["person-favourite"].waitForExistence(timeout: 10)); assertDetailTabsHidden()
-        app.swipeUp(); app.swipeDown(); assertDetailTabsHidden()
-        let castTMDB = app.buttons["person-tmdb"]; reveal(castTMDB, down: true); castTMDB.tap()
+        // The voice actor's TMDB credits live on the same merged page.
+        let castTMDB = app.buttons["person-tmdb"]; XCTAssertTrue(castTMDB.waitForExistence(timeout: 10))
+        reveal(castTMDB, down: true); castTMDB.tap()
         XCTAssertTrue(app.staticTexts["person-filmography-heading"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["person-filmography-heading"].label.contains("Credits"))
         XCTAssertEqual(app.webViews.count, 0)
@@ -1910,22 +1916,25 @@ import UIKit
         }
         capture("All settings native Back and content swipe destinations return")
     }
-    func testGlanceNotesWaitForLateCastAndRelatedLayoutThenKeepEditorVisible() {
+    /// Glance's Notes open as their own sheet over Glance (no title page underneath, which made it
+    /// stutter), even while the title's metadata is slow.
+    func testGlanceNotesOpenAsASheetOverGlanceAndSave() {
         let app = launch(mutations: true, titleMetadata: true, slowMetadata: true)
         app.tabBars.buttons["Glance"].tap()
         XCTAssertTrue(app.buttons["progress-menu-again"].waitForExistence(timeout: 5))
         app.buttons["progress-menu-again"].tap(); app.buttons["Notes"].tap()
         let editor = app.textViews["title-notes"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["catalog-layout"].waitForExistence(timeout: 10), "Related titles must finish growing the content before checking the destination")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["My Note"].exists)
+        XCTAssertFalse(app.buttons["title-more"].exists, "No title page is pushed under the notes")
         let contained = NSPredicate { _, _ in editor.exists && editor.isHittable && editor.frame.minY > 120 && editor.frame.maxY < app.frame.height - 25 }
         wait(for: [expectation(for: contained, evaluatedWith: editor)], timeout: 10)
-        capture("Glance Notes editor after late metadata")
+        capture("Glance Notes sheet over Glance")
         editor.tap(); editor.typeText("Visible from Glance")
         XCTAssertTrue(app.buttons["notes-keyboard-done"].waitForExistence(timeout: 5)); app.buttons["notes-keyboard-done"].tap()
         app.buttons["Save notes"].tap()
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: editor)], timeout: 10)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Saving closes the sheet, straight back on Glance.
         XCTAssertTrue(app.buttons["progress-menu-again"].waitForExistence(timeout: 5))
         app.buttons["progress-menu-again"].tap(); app.buttons["Notes"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 5)); XCTAssertTrue((editor.value as? String)?.contains("Visible from Glance") == true)

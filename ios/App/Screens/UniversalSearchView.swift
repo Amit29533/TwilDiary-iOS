@@ -5,11 +5,10 @@ struct UniversalSearchView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(spacing: 12) {
-                PageHeader(name: "Search", part: .title)
+                PageHeader(name: "Search")
                 CatalogSearchView(universal: true)
             }.padding(.bottom, 24)
         }.scrollDismissesKeyboard(.interactively)
-            .overlay(alignment: .top) { PageHeader(name: "Search", part: .buttons) }
             .diaryScreenBackground()
     }
 }
@@ -20,8 +19,24 @@ struct SearchLandingView: View {
     let clear: () -> Void
     @Environment(DiaryStore.self) private var store
     @State private var items: [CatalogItem] = []
+    @State private var anime: [AniAppearance] = []
     @State private var loading = false
     @State private var failure: String?
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    /// What people are looking up this week: the most trending titles across movies, shows and
+    /// anime, as one-tap searches (TMDB and AniList publish trends, not raw search counts).
+    private var trendingSearches: [String] {
+        var seen = Set<String>(), result: [String] = []
+        let names = items.map(\.name) + anime.map(\.title)
+        let ordered = (0..<max(items.count, anime.count)).flatMap { index in
+            [items.indices.contains(index) ? items[index].name : nil, anime.indices.contains(index) ? anime[index].title : nil].compactMap { $0 }
+        }
+        for name in ordered + names where result.count < 10 {
+            let key = name.lowercased()
+            if !name.isEmpty, name.count <= 40, seen.insert(key).inserted { result.append(name) }
+        }
+        return result
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !recent.isEmpty {
@@ -34,6 +49,24 @@ struct SearchLandingView: View {
                     }
                 }
             }
+            if !trendingSearches.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Trending searches").font(.title3.bold())
+                    InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                        ForEach(Array(trendingSearches.enumerated()), id: \.element) { index, query in
+                            Button { choose(query) } label: {
+                                HStack(spacing: 6) {
+                                    Text("\(index + 1)").font(.caption.weight(.bold)).foregroundStyle(theme.accent)
+                                    Text(query).font(.subheadline).lineLimit(1)
+                                }.padding(.horizontal, 12).frame(minHeight: 36)
+                                    .background(.white.opacity(0.08), in: Capsule())
+                                    .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                            }.buttonStyle(.springPress).foregroundStyle(.primary)
+                                .accessibilityLabel("Search " + query).accessibilityIdentifier("trending-search-\(index)")
+                        }
+                    }
+                }.accessibilityElement(children: .contain).accessibilityIdentifier("search-trending-searches")
+            }
             HStack { Text("Trending this week").font(.title3.bold()); Spacer(); Text("TMDB").font(.caption).foregroundStyle(.secondary) }
             if loading && items.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading trending titles") }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
@@ -44,8 +77,34 @@ struct SearchLandingView: View {
                     }
                 }
             }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending")
+            if !anime.isEmpty {
+                HStack { Text("Trending anime").font(.title3.bold()); Spacer(); Text("AniList").font(.caption).foregroundStyle(.secondary) }
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(anime) { item in
+                            AnimeAppearanceButton(appearance: item) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Artwork(path: item.cover, title: item.title).frame(width: 124, height: 186)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .overlay(alignment: .bottomLeading) { if let score = item.rating, score > 0 { RatingBadge(score: score, source: "AniList").padding(5) } }
+                                    ProfileCardCaption(title: item.title)
+                                }.frame(width: 124, alignment: .leading)
+                            }.buttonStyle(.plain).accessibilityIdentifier("trending-anime-\(item.id)")
+                        }
+                    }
+                }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending-anime")
+            }
             Text("Search your library, online titles, cast, characters and voice actors.").font(.footnote).foregroundStyle(.secondary)
         }.task(id: store.sessionRevision) { items = []; await load() }
+            .task { await loadAnime() }
+    }
+    /// Best effort: AniList being down only hides its rows.
+    private func loadAnime() async {
+        #if DEBUG
+        if store.isPreview { return }
+        #endif
+        guard anime.isEmpty, let found = try? await AniListClient.shared.trendingAnime(), !Task.isCancelled else { return }
+        anime = found
     }
     private func load() async {
         guard !loading else { return }; loading = true; failure = nil

@@ -6,8 +6,6 @@ struct TitleDetailView: View {
     let id: String
     var linkedSeason: Int? = nil
     var focusEpisodes = false
-    var focusNotes = false
-    @State private var didFocusNotes = false
     @State private var pendingScrollTarget: String?
     @State private var contentHeight: CGFloat = 0
     @State private var choosingWatchDate = false
@@ -142,12 +140,6 @@ struct TitleDetailView: View {
                                 if !hideSpoilers { await revealSeason(title) }
                             }
                             .task(id: cardRevision(title)) { await loadCard(title) }
-                            .task {
-                                if focusNotes && !didFocusNotes {
-                                    showNotes = true
-                                    didFocusNotes = true
-                                }
-                            }
                         )
                     }
                 }
@@ -603,21 +595,6 @@ struct TitleDetailView: View {
                     Text(episodeName(episode)).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))
                     Text(episodeSummary(episode)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(webHex: "#c5c0cf")).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("episode-summary-\(episode.number)")
-                    if watched.contains(episode.id) {
-                        Button {
-                            // Close the sheet at once so "Watch marked" and its Undo are
-                            // visible while the save runs, not hidden under the sheet.
-                            // A failed save still reports on the page's error banner.
-                            let instant = watchInstant
-                            selectedEpisode = nil
-                            Task {
-                                await store.recordViewing(title, episode: episode, rewatch: true, watchedAt: instant)
-                                await loadCard(title)
-                            }
-                        } label: { Label("Log rewatch", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity) }
-                            .buttonStyle(.diaryPrimary).disabled(store.writesBlocked || !hasAired(episode))
-                            .accessibilityIdentifier("episode-rewatch-\(episode.number)")
-                    }
                 }.padding(20)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { episodeSheetHeight = $0 }
                     .id(episode.id)
@@ -634,8 +611,10 @@ struct TitleDetailView: View {
                 .accessibilityAction(named: "Previous episode") { showNeighbour(of: episode, forward: false, title: title) }
                 .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
-        // As tall as the synopsis needs, on glass: never the opaque full-screen sheet, so the text colours never jump.
-        }.presentationDetents([SheetFit.detent(episodeSheetHeight, chrome: 96)]).presentationDragIndicator(.visible)
+        // Opens as tall as the synopsis needs, on glass; pull it up (or swipe up on the text) for the
+        // whole screen, like the other sheets, and then a long synopsis scrolls.
+        }.presentationDetents([SheetFit.detent(episodeSheetHeight, chrome: 96), .large])
+            .presentationContentInteraction(.resizes).presentationDragIndicator(.visible)
     }
     /// The next or previous episode of this season in the open sheet. Swiping to it is a deliberate
     /// choice, so a spoiler-hidden one is revealed, as tapping it would.
@@ -770,7 +749,8 @@ struct TitleDetailView: View {
 
 /// The Notes sheet's editor. It keeps its own focus: a page's FocusState does not reach
 /// into a sheet, so the page could never show this Done button.
-private struct NotesEditor: View {
+/// The notes text box with its count; also used by Glance's TitleNotesSheet.
+struct NotesEditor: View {
     @Binding var text: String
     let accent: Color
     @FocusState private var focused: Bool

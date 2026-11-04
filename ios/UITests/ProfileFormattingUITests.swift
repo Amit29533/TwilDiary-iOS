@@ -143,7 +143,8 @@ import UIKit
         executionTimeAllowance = 180
         for id in [100250, 119331, 95065, 106787] {
             let app = open("voice", id)
-            source(app, "voice-actor-tmdb", role: "Voice actor")
+            XCTAssertTrue(app.staticTexts["Voice actor"].exists)
+            XCTAssertFalse(app.buttons["voice-actor-tmdb"].exists, "TMDB merges into this page; no separate profile")
             XCTAssertEqual(app.staticTexts["voice-actor-watched"].label, "15 anime watched")
             factPair(app, first: "voice-actor-birthday", second: "voice-actor-age")
             let home = element(app, "voice-actor-hometown"); reveal(home, in: app)

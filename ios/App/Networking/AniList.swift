@@ -172,6 +172,7 @@ actor AniListClient {
     private var tmdbPeople: [Int: Int] = [:]
     func tmdbTitle(_ id: Int) -> CatalogRoute? { tmdbTitles[id] }
     func tmdbPerson(_ id: Int) -> Int? { tmdbPeople[id] }
+    func staffID(forTMDB id: Int) -> Int? { tmdbPeople.first { $0.value == id }?.key }
     func rememberPerson(staffID: Int, tmdbID: Int) {
         guard staffID > 0, tmdbID > 0 else { return }
         tmdbPeople[staffID] = tmdbID
@@ -219,6 +220,23 @@ actor AniListClient {
             tmdbTitles[match.id] = CatalogRoute(kind: movie ? .movie : .tv, id: tmdbID)
         }
         return list
+    }
+
+    private var trending: (at: Date, items: [AniAppearance])?
+    /// AniList's trending anime right now (public, no sign-in), for Search's start page; kept 30 min.
+    func trendingAnime() async throws -> [AniAppearance] {
+        if let trending, Date().timeIntervalSince(trending.at) < 1800 { return trending.items }
+        struct Reply: Decodable { struct Page: Decodable { let media: [MediaNode] }; let Page: Page }
+        struct MediaNode: Decodable {
+            struct Title: Decodable { let english: String?; let romaji: String? }
+            let id: Int; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts?; let averageScore: Int?
+        }
+        let reply: Reply = try await query("query { Page(perPage: 15) { media(sort: [TRENDING_DESC, POPULARITY_DESC], type: ANIME, isAdult: false) { id format averageScore title { english romaji } coverImage { large } startDate { year } } } }", [:])
+        let items = reply.Page.media.map { m in
+            AniAppearance(id: m.id, title: m.title.english ?? m.title.romaji ?? "Untitled", cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+        }
+        trending = (Date(), items)
+        return items
     }
 
     private var mediaDetails: [Int: AniAppearance] = [:]

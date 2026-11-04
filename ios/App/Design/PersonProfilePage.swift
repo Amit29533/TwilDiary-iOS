@@ -13,6 +13,9 @@ struct PersonProfilePage<Content: View>: View {
     var favouriteSubtitle: String? = nil
     let identifier: String
     var source: ProfileSourceAction? = nil
+    /// The same person's other identity on this merged page: links to it don't push another page.
+    var sameVoice: Int? = nil
+    var samePerson: Int? = nil
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -22,7 +25,7 @@ struct PersonProfilePage<Content: View>: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    hero(height: max(340, geometry.size.width) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
+                    hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
                     content.padding(.horizontal, 14)
                 }.padding(.bottom, 28)
             }.coordinateSpace(name: "profile-scroll")
@@ -43,7 +46,7 @@ struct PersonProfilePage<Content: View>: View {
                     }
                 }
         }.toolbarBackground(.hidden, for: .navigationBar)
-            .modifier(ProfileNativeLinks(kind: kind, ref: ref))
+            .modifier(ProfileNativeLinks(kind: kind, ref: ref, sameVoice: sameVoice, samePerson: samePerson))
     }
 
     private func hero(height: CGFloat, topInset: CGFloat) -> some View {
@@ -84,9 +87,9 @@ struct PersonProfilePage<Content: View>: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-profile-header-pattern") {
             ProfileHeaderTestPattern()
-        } else { Artwork(path: image, title: name) }
+        } else { Artwork(path: image, title: name, alignment: .top) }
         #else
-        Artwork(path: image, title: name)
+        Artwork(path: image, title: name, alignment: .top)
         #endif
     }
 }
@@ -189,13 +192,11 @@ struct ProfileWebsiteButtons: View {
 }
 
 struct ProfileSourceLogo: View {
-    var loading = false
     var body: some View {
         Image("tmdb-logo").renderingMode(.original).resizable().scaledToFit()
-            .frame(width: 30, height: 14).opacity(loading ? 0.3 : 1)
+            .frame(width: 30, height: 14)
             .frame(width: 44, height: 44)
             .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
-            .overlay { if loading { ProgressView().controlSize(.small).tint(.white) } }
     }
 }

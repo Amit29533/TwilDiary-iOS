@@ -45,7 +45,7 @@ struct LibraryView: View {
         VStack(spacing: 0) {
             if selecting { selectionHeader }
             collectionContent
-        }.overlay(alignment: .top) { if !selecting { libraryHeader(.buttons) } }
+        }
         .background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
             .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
@@ -135,14 +135,14 @@ struct LibraryView: View {
 
     // MARK: Content
 
-    /// The title row scrolls with the collection; its Select and Search stay pinned above it.
-    private func libraryHeader(_ part: PageHeader.Part) -> some View {
-        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSelect: { selecting = true; selected = [] }, height: 54, part: part)
+    /// True full screen: the whole header (logo, title, Select) scrolls with the collection.
+    private var libraryHeader: some View {
+        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSelect: { selecting = true; selected = [] }, height: 54)
     }
     private var collectionContent: some View {
         EdgeToEdgeScroll {
             VStack(spacing: 0) {
-                if !selecting { libraryHeader(.title) }
+                if !selecting { libraryHeader }
                 CategoryPicker(selection: Binding(get: { category }, set: { category = $0 }))
                 statusChips
                 sortRow
@@ -551,11 +551,11 @@ struct GlanceView: View {
         let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
         let titles = watching.filter { category.includes($0) }
         let ordered = order(titles)
-        // The title row, search and filters scroll with the cards; the logo and search stay pinned.
-        let header = { (part: PageHeader.Part) in PageHeader(name: "Glance", count: "\(watching.count) watching", part: part) }
+        // True full screen: the header and filters scroll with the cards; nothing stays pinned.
+        let header = PageHeader(name: "Glance", count: "\(watching.count) watching")
         EdgeToEdgeScroll {
                 VStack(spacing: 0) {
-                    header(.title)
+                    header
 
                     CategoryPicker(selection: $category)
                     SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
@@ -569,7 +569,6 @@ struct GlanceView: View {
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.").padding(.horizontal, 14).padding(.top, 20) }
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
-            .overlay(alignment: .top) { header(.buttons) }
     }
     private var sort: Binding<GlanceSort> {
         Binding(get: { GlanceSort(rawValue: sortRaw) ?? .recentlyUpdated }, set: { sortRaw = $0.rawValue })

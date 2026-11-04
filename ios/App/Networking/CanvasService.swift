@@ -39,6 +39,8 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
     func load(sort: String, kind: String, more: Bool = false) async {
         let requested = ["sort": sort, "kind": kind]
         if more && (loading || !hasMore || requested != scope) { return }
+        // Back on the Lists tab: the same sort keeps the lists already loaded.
+        if !more, requested == scope, page > 0, error == nil { return }
         if !more { generation = UUID(); scope = requested; lists = []; page = 0; totalPages = 1 }
         let request = generation, number = more ? page + 1 : 1
         loading = true; error = nil
@@ -68,7 +70,18 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
     private(set) var totalPages = 1
     private(set) var loading = false
     private(set) var error: String?
+    private let created = Date.now
     init(store: DiaryStore, id: Int) { self.store = store; self.id = id }
+    /// The last lists opened, so going back and forth shows them at once instead of reloading
+    /// (a public list changes rarely; after 15 minutes it is read again).
+    private static var recent: [Int: CanvasListItemsLoader] = [:]
+    static func shared(store: DiaryStore, id: Int) -> CanvasListItemsLoader {
+        if let kept = recent[id], Date.now.timeIntervalSince(kept.created) < 900, kept.error == nil { return kept }
+        if recent.count >= 12, let oldest = recent.min(by: { $0.value.created < $1.value.created })?.key { recent[oldest] = nil }
+        let loader = CanvasListItemsLoader(store: store, id: id)
+        recent[id] = loader
+        return loader
+    }
     var hasMore: Bool { page > 0 && page < totalPages }
     func load(more: Bool = false) async {
         if loading || (more && !hasMore) || (!more && page > 0) { return }

@@ -1,80 +1,289 @@
 import SwiftUI
 import TwilDiaryCore
 
+/// One page per person: TMDB cast and AniList voice actors are the same page. Whichever side the
+/// route names loads first (so the page appears at once); the other side is then matched and its
+/// facts, credits and characters join the same page, instead of a second "TMDB profile" page.
 struct PersonView: View {
-    let route: PersonRoute
+    enum Start: Hashable { case tmdb(PersonRoute), voice(VoiceActorRoute) }
+    let start: Start
+    init(route: PersonRoute) { start = .tmdb(route) }
+    init(voice: VoiceActorRoute) { start = .voice(voice) }
     @Environment(DiaryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @AppStorage("voiceActorRolesGrid") private var grid = true
     @State private var person: PersonDetails?
+    @State private var actor: AniVoiceActorDetail?
     @State private var failure: String?
+    @State private var missing = false
+    @State private var matching = false
     @State private var expanded = false
+    @State private var shown = 30
+
+    /// The page keeps the identity the route opened (favourite, identifiers, role line).
+    private var voiceFirst: Bool { if case .voice = start, actor != nil { return true }; return false }
+    private var prefix: String { voiceFirst ? "voice-actor" : "person" }
+
     var body: some View {
         Group {
-            if let person {
-                PersonProfilePage(name: person.name, role: person.department == "Acting" ? "Actor" : person.department,
-                                  image: CatalogTools.image(person.profilePath, size: "w780"), kind: .cast, ref: person.id,
-                                  favouriteSubtitle: person.department, identifier: "person", source: .credits(PersonFilmographyRoute(person: person.id, section: .credits))) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if let role = route.sourceRole, let title = route.sourceTitle, !role.isEmpty, !title.isEmpty {
-                            Button(role + " in " + title) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain)
-                                .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
+            if person != nil || actor != nil {
+                PersonProfilePage(name: voiceFirst ? (actor?.name ?? "") : (person?.name ?? actor?.name ?? ""),
+                                  nativeName: actor?.native, role: role,
+                                  image: CatalogTools.image(person?.profilePath, size: "w780") ?? actor?.image,
+                                  kind: voiceFirst ? .voice : .cast, ref: voiceFirst ? (actor?.id ?? 0) : (person?.id ?? 0),
+                                  favouriteSubtitle: voiceFirst ? actor?.roles.first.map { "Voice of " + $0.character.name } : person?.department,
+                                  identifier: prefix, source: source,
+                                  sameVoice: actor?.id, samePerson: person?.id) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        intro
+                        about
+                        watched
+                        if let person {
+                            let sections = store.personSections(person)
+                            shelf("Known for", person: person, kind: .knownFor, items: sections.knownFor)
+                            shelf("Shows", person: person, kind: .shows, items: sections.shows)
+                            shelf("Movies", person: person, kind: .movies, items: sections.movies)
                         }
-                        details(person)
-                        ProfileBiography(text: AttributedString(person.biography), expanded: $expanded)
-                        watched(person)
-                        let sections = store.personSections(person)
-                        shelf("Known for", person: person, kind: .knownFor, items: sections.knownFor)
-                        shelf("Shows", person: person, kind: .shows, items: sections.shows)
-                        shelf("Movies", person: person, kind: .movies, items: sections.movies)
+                        if let actor, !actor.roles.isEmpty { roles(actor.roles) }
+                        if matching { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8).accessibilityIdentifier("person-matching") }
                     }
                 }
             } else {
                 EdgeToEdgeScroll {
-                    if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
+                    if missing {
+                        Text("No profile was found for \(routeName ?? "this person").").font(.subheadline).foregroundStyle(.secondary).padding(14)
+                            .accessibilityIdentifier("person-missing")
+                    } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
                     else { DiaryLoadingPlaceholder(height: 310, label: "Loading person").padding(14) }
-                }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
+                }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar).tint(.white)
             }
-        }.task(id: route.id) { if person == nil { await load() } }
+        }.task(id: start) { if person == nil && actor == nil { await load() } }
     }
-    private func details(_ person: PersonDetails) -> some View {
-        let died = ProfileText.line(person.deathday)
+
+    private var routeName: String? { if case .voice(let route) = start { return route.name }; return nil }
+    private var role: String? {
+        if voiceFirst { return "Voice actor" }
+        guard let person else { return "Voice actor" }
+        return person.department == "Acting" ? "Actor" : person.department
+    }
+    private var source: ProfileSourceAction? {
+        guard let person else { return nil }
+        return .credits(PersonFilmographyRoute(person: person.id, section: .credits))
+    }
+
+    // MARK: Text
+
+    @ViewBuilder private var intro: some View {
+        if case .tmdb(let route) = start, let role = ProfileText.line(route.sourceRole), let title = ProfileText.line(route.sourceTitle) {
+            Button(role + " in " + title) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain)
+                .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
+        }
+        if case .voice(let route) = start, let count = route.watchedCount.flatMap({ ProfileText.watched($0, anime: true) }) {
+            ProfileSecondaryText(text: count).accessibilityIdentifier("voice-actor-watched")
+        }
+    }
+
+    /// Facts from both sources in one grid (TMDB first where both know it), then one biography:
+    /// AniList's formatted text (links, spoilers, details) when it says more, else TMDB's prose.
+    private var about: some View {
+        let content = actor.map { ProfileFormattedBiography(description: $0.description, hideSpoilers: hideSpoilers) }
+        let died = ProfileText.line(person?.deathday)
         let ageAt = died == nil ? store.now : died.flatMap { DiaryDate.parse($0 + "T00:00:00Z") }
-        let age = ageAt.flatMap { ProfileDate.age(birthday: person.birthday, until: $0) }
+        let tmdbAge = ageAt.flatMap { ProfileDate.age(birthday: person?.birthday, until: $0) }
+        let age = tmdbAge.map(String.init) ?? actor?.age.flatMap { $0 >= 0 ? String($0) : nil }
+        let birthplace = ProfileText.line(person?.birthplace)
+        let born = person?.birthday.map(ProfileDate.short) ?? actor?.birthday.map(ProfileDate.short)
+        let place = birthplace ?? actor?.homeTown
         let facts = [
-            ProfileFact(id: "person-birthday", icon: "calendar", label: "Born", value: person.birthday.map(ProfileDate.short)),
-            ProfileFact(id: "person-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age.map(String.init)),
-            ProfileFact(id: "person-birthplace", icon: "mappin.and.ellipse", label: "Birthplace", value: person.birthplace, wide: true),
-            ProfileFact(id: "person-deathday", icon: "calendar", label: "Died", value: person.deathday.map(ProfileDate.short), wide: true)
+            ProfileFact(id: prefix + "-birthday", icon: "calendar", label: "Born", value: born),
+            ProfileFact(id: prefix + "-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age),
+            ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
+            ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin.and.ellipse",
+                        label: birthplace != nil ? "Birthplace" : "Hometown", value: place, wide: true),
+            ProfileFact(id: prefix + "-deathday", icon: "calendar", label: "Died", value: person?.deathday.map(ProfileDate.short), wide: true)
         ].compactMap { $0 }
-        return VStack(alignment: .leading, spacing: 12) {
-            ProfileFacts(items: facts)
-            ProfileAliases(values: person.aliases ?? [], excluding: [person.name])
-        }
-    }
-    private func watched(_ person: PersonDetails) -> some View {
-        let sections = store.personSections(person)
+        let tmdbProse = person?.biography.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let aniProse = content?.markdown.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let useTMDB = !tmdbProse.isEmpty && aniProse.count < min(160, tmdbProse.count)
+        let biographyID = voiceFirst ? "voice-actor-biography" : "profile-biography"
+        let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 14) {
-            sectionHeading("Watched", route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
-            if sections.watched.isEmpty { Text("No watches from these credits yet.").font(.subheadline).foregroundStyle(.secondary) }
-            else { PersonCreditShelf(items: Array(sections.watched.prefix(12))) }
+            ProfileFacts(items: facts)
+            if let career = actor.flatMap({ ProfileText.career($0.yearsActive) }) { ProfileSecondaryText(text: career) }
+            if let count = actor.flatMap({ ProfileText.favourites($0.favourites) }) { ProfileSecondaryText(text: count) }
+            ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
+            if let actor, let content {
+                ProfileAbout(content: content, excludingFacts: ["height"],
+                             additionalLinks: [ProfileWebsiteLink(url: URL(string: "https://anilist.co/staff/\(actor.id)")!, title: "AniList")].compactMap { $0 },
+                             biographyID: biographyID, biographyOverride: useTMDB ? AttributedString(tmdbProse) : nil)
+            } else {
+                ProfileBiography(text: AttributedString(tmdbProse), expanded: $expanded, identifier: biographyID)
+            }
         }
     }
-    @ViewBuilder private func shelf(_ label: String, person: PersonDetails, kind: PersonSection, items: [CatalogItem], onServer: Bool = false) -> some View {
+
+    // MARK: Shelves
+
+    /// One Watched shelf: TMDB credits match the diary exactly; AniList titles are the fallback.
+    @ViewBuilder private var watched: some View {
+        let tmdb = person.map { store.personSections($0).watched } ?? []
+        if let person, !tmdb.isEmpty || actor == nil {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionHeading("Watched", route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
+                if tmdb.isEmpty { Text("No watches from these credits yet.").font(.subheadline).foregroundStyle(.secondary) }
+                else { PersonCreditShelf(items: Array(tmdb.prefix(12))) }
+            }
+        } else if let actor {
+            ProfileWatchedShelf(appearances: actor.roles.map { AniAppearance(id: $0.animeID, title: $0.anime, cover: $0.cover, year: $0.year, role: $0.role, voiceActor: nil, format: $0.format, alternateTitles: $0.alternateTitles, rating: $0.rating) })
+        }
+    }
+    @ViewBuilder private func shelf(_ label: String, person: PersonDetails, kind: PersonSection, items: [CatalogItem]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                sectionHeading(label + (kind == .shows || kind == .movies ? " \(items.count)" : ""), route: PersonFilmographyRoute(person: person.id, section: kind, onServer: onServer))
+                sectionHeading(label + (kind == .shows || kind == .movies ? " \(items.count)" : ""), route: PersonFilmographyRoute(person: person.id, section: kind))
                 PersonCreditShelf(items: Array(items.prefix(12)))
             }
         }
     }
     private func sectionHeading(_ label: String, route: PersonFilmographyRoute) -> some View {
-        HStack { Text(label).font(.title3.weight(.semibold)); Spacer(minLength: 4); NavigationLink(value: route) { Text("View more").font(.system(size: 13)) }.accessibilityIdentifier("person-more-" + route.section.rawValue + (route.onServer ? "-server" : "")) }
+        HStack {
+            Text(label).font(.title3.weight(.semibold))
+            Spacer(minLength: 4)
+            SectionMoreLink(label: "View more " + label, value: route,
+                            identifier: "person-more-" + route.section.rawValue + (route.onServer ? "-server" : ""))
+        }
     }
+    private var usesGrid: Bool { grid && !typeSize.isAccessibilitySize }
+    private func roles(_ items: [AniRole]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Characters \(items.count)").font(.title3.weight(.semibold))
+                Spacer(minLength: 4)
+                if !typeSize.isAccessibilitySize { CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters") }
+            }
+            LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], alignment: .leading, spacing: 16) {
+                ForEach(items.prefix(shown)) { role in roleCard(role) }
+            }
+            if items.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
+        }
+    }
+    private func roleCard(_ role: AniRole) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
+                if usesGrid {
+                    VStack(alignment: .leading, spacing: 6) {
+                        roleArtwork(role).aspectRatio(2.0 / 3.0, contentMode: .fit)
+                        ProfileCardCaption(title: role.character.name)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        roleArtwork(role).frame(width: 64, height: 96)
+                        Text(role.character.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    }
+                }
+            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
+            AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
+                                               year: role.year, role: role.role, voiceActor: nil,
+                                               format: role.format, alternateTitles: role.alternateTitles)) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProfileCardCaption(title: role.anime, secondary: true)
+                    if let score = role.rating, score > 0 {
+                        RatingBadge(score: score, source: "AniList")
+                            .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")
+                    }
+                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
+        }.multilineTextAlignment(.leading)
+    }
+    private func roleArtwork(_ role: AniRole) -> some View {
+        Artwork(path: role.character.image, title: role.character.name, alignment: .top).clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: Loading
+
     private func load() async {
-        failure = nil
-        do { let result = try await store.person(route.id); guard !Task.isCancelled else { return }; person = result.person }
-        catch is CancellationError { }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        failure = nil; missing = false
+        switch start {
+        case .tmdb(let route):
+            do {
+                let found = try await store.person(route.id).person
+                guard !Task.isCancelled else { return }
+                person = found
+            } catch is CancellationError { return }
+            catch { if !Task.isCancelled { failure = error.localizedDescription }; return }
+            await matchVoice()
+        case .voice(let route):
+            do { actor = try await voiceActor(route) }
+            catch is CancellationError { return }
+            catch {
+                guard !Task.isCancelled else { return }
+                // AniList unreachable: the TMDB side still makes a page when its id is known.
+                if route.tmdbID == nil { failure = error.localizedDescription; return }
+            }
+            guard !Task.isCancelled else { return }
+            if actor == nil && route.tmdbID == nil { missing = true; return }
+            await matchPerson(route)
+            if actor == nil && person == nil && failure == nil { missing = true }
+        }
+    }
+    private func voiceActor(_ route: VoiceActorRoute) async throws -> AniVoiceActorDetail? {
+        #if DEBUG
+        if store.isPreview { return ProfileFormattingPreview.enabled ? (ProfileFormattingPreview.voice(route.id ?? 11) ?? AniListPreview.voiceActor(route.id ?? 11)) : AniListPreview.voiceActor(route.id ?? 11) }
+        #endif
+        var found = route.id
+        if found == nil, let name = route.name { found = await AniListClient.shared.staff(named: [name])[name]?.id }
+        guard let id = found else { return nil }
+        let result = try await AniListClient.shared.voiceActor(id)
+        try Task.checkCancellation()
+        return result
+    }
+    /// Voice route: the TMDB person (known id, a remembered match, or one found in an anime's cast).
+    private func matchPerson(_ route: VoiceActorRoute) async {
+        #if DEBUG
+        // The formatting fixtures check AniList's own facts; they have no TMDB counterpart.
+        if store.isPreview && ProfileFormattingPreview.enabled && route.tmdbID == nil { return }
+        #endif
+        matching = true
+        defer { matching = false }
+        var id = route.tmdbID
+        if let actor {
+            if id == nil { id = try? await store.animeNavigation.person(actor, knownID: nil, service: store) }
+            if let id {
+                store.animeNavigation.rememberPerson(actor.id, tmdbID: id, scope: store.sessionRevision)
+                await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id)
+            }
+        }
+        guard let id, !Task.isCancelled else { return }
+        guard let found = try? await store.person(id).person, !Task.isCancelled else { return }
+        person = found
+    }
+    /// TMDB route: their AniList page, only for people with voice or animation credits, and only an
+    /// exact name match (AniList's search alone could pick a namesake).
+    private func matchVoice() async {
+        guard let person else { return }
+        #if DEBUG
+        if store.isPreview { return }
+        #endif
+        let voiced = person.credits.contains { item in
+            item.character?.localizedCaseInsensitiveContains("(voice)") == true
+                || (item.genres ?? []).contains { $0 == "Animation" || $0 == "16" }
+        }
+        let known = await AniListClient.shared.staffID(forTMDB: person.id)
+        guard known != nil || voiced else { return }
+        matching = true
+        defer { matching = false }
+        var id = known
+        if id == nil { id = await AniListClient.shared.staff(named: [person.name])[person.name]?.id }
+        guard let id, !Task.isCancelled else { return }
+        guard let found = try? await AniListClient.shared.voiceActor(id), !Task.isCancelled, !found.roles.isEmpty else { return }
+        await AniListClient.shared.rememberPerson(staffID: found.id, tmdbID: person.id)
+        store.animeNavigation.rememberPerson(found.id, tmdbID: person.id, scope: store.sessionRevision)
+        actor = found
     }
 }
 
@@ -132,7 +341,7 @@ struct PersonFilmographyView: View {
                             Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
                             if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
                             else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
-                            if shown < items.count { Button("Load more") { shown += 40 }.buttonStyle(.glass).frame(maxWidth: .infinity) }
+                            if shown < items.count { ScrollLoadTrigger(token: shown, loading: false) { shown += 40 } }
                         }
                     } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
                     else { DiaryLoadingPlaceholder(height: 240, label: "Loading filmography").padding(14) }

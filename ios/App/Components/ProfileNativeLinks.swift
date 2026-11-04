@@ -20,6 +20,8 @@ enum ProfileDeepLink: Equatable {
 struct ProfileNativeLinks: ViewModifier {
     let kind: Favourite.Kind
     let ref: Int
+    var sameVoice: Int? = nil
+    var samePerson: Int? = nil
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @State private var lookup: Task<Void, Never>?
@@ -47,8 +49,8 @@ struct ProfileNativeLinks: ViewModifier {
         let tab = router.selectedTab, depth = router.paths[router.selectedTab]?.count ?? 0, session = store.sessionRevision
         switch target {
         case .character(let id): if kind != .character || ref != id { router.paths[tab, default: NavigationPath()].append(CharacterRoute(id: id)) }
-        case .voice(let id): if kind != .voice || ref != id { router.paths[tab, default: NavigationPath()].append(VoiceActorRoute(id: id)) }
-        case .person(let id): if kind != .cast || ref != id { router.paths[tab, default: NavigationPath()].append(PersonRoute(id: id)) }
+        case .voice(let id): if (kind != .voice || ref != id) && sameVoice != id { router.paths[tab, default: NavigationPath()].append(VoiceActorRoute(id: id)) }
+        case .person(let id): if (kind != .cast || ref != id) && samePerson != id { router.paths[tab, default: NavigationPath()].append(PersonRoute(id: id)) }
         case .anime(let id):
             lookup?.cancel(); failure = nil
             resolving = true

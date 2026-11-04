@@ -60,12 +60,7 @@ struct MostWatchedSection<Content: View>: View {
                         .accessibilityLabel("AniList profile " + user + ", change in Settings").accessibilityIdentifier("anilist-user")
                 }
                 if let ranking, !ranking.people.isEmpty {
-                    NavigationLink(value: ranking) {
-                        HStack(spacing: 4) {
-                            Text("View all \(ranking.people.count)")
-                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
-                        }.font(.system(size: 13)).foregroundStyle(.secondary).frame(minHeight: 44)
-                    }.buttonStyle(.plain).accessibilityIdentifier(ranking.identifier + "-more")
+                    SectionMoreLink(label: "View all \(ranking.people.count)", value: ranking, identifier: ranking.identifier + "-more")
                 }
             }
             content

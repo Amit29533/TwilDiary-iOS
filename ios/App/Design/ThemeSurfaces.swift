@@ -80,56 +80,6 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
     }
 }
 
-/// Phone navigation tokens from tokens.css and the Liquid Glass overrides in themes.css.
-struct DiaryNavigationSurface: View {
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    var body: some View {
-        ZStack {
-            if reduceTransparency {
-                Capsule().fill(Color(webHex: theme == .glass ? "#19191d" : "#111115"))
-            } else {
-                Capsule().fill(.clear).glassEffect(in: Capsule())
-                if theme == .glass {
-                    Capsule().fill(Color(webHex: "#242428").opacity(0.2))
-                    Capsule().fill(LinearGradient(stops: [
-                        .init(color: Color(webHex: "#ffffff14"), location: 0),
-                        .init(color: Color(webHex: "#ffffff03"), location: 0.48),
-                        .init(color: Color(webHex: "#ffffff09"), location: 1)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
-                } else {
-                    Capsule().fill(LinearGradient(colors: [Color(webHex: "#111518cf"), Color(webHex: "#080b0ee8")], startPoint: .top, endPoint: .bottom))
-                }
-            }
-            if theme == .glass {
-                Capsule().fill(RadialGradient(colors: [Color(webHex: "#ffffff1c"), .clear], center: UnitPoint(x: 0.1, y: 0), startRadius: 0, endRadius: 245))
-                Capsule().fill(RadialGradient(colors: [Color(webHex: "#b4d4ff0c"), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 160))
-            }
-            Capsule().strokeBorder(Color(webHex: theme == .glass ? "#ffffff30" : "#ffffff26"))
-            Capsule().strokeBorder(LinearGradient(colors: [Color(webHex: theme == .glass ? "#ffffff3b" : "#ffffff20"), .clear, Color(webHex: theme == .glass ? "#ffffff0c" : "#ffffff08")], startPoint: .top, endPoint: .bottom))
-        }.clipShape(Capsule()).shadow(color: .black.opacity(theme == .glass ? 0.6 : 0.53), radius: 16, y: 8).allowsHitTesting(false)
-    }
-}
-
-struct DiaryNavigationSelection: View {
-    let selected: Bool
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    var body: some View {
-        if selected {
-            ZStack {
-                if theme == .glass {
-                    Capsule().fill(LinearGradient(colors: [Color(webHex: "#ffffff14"), Color(webHex: "#ffffff09")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Capsule().fill(RadialGradient(colors: [Color(webHex: "#ffffff2b"), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 0, endRadius: 72))
-                } else {
-                    Capsule().fill(LinearGradient(colors: [theme.accent.opacity(0.19), theme.accent.opacity(0.09)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                }
-                Capsule().strokeBorder(theme == .glass ? Color(webHex: "#ffffff12") : theme.accent.opacity(0.15))
-                Capsule().strokeBorder(LinearGradient(colors: [theme == .glass ? Color(webHex: "#ffffff38") : theme.accent.opacity(0.3), .clear], startPoint: .top, endPoint: .center))
-            }.allowsHitTesting(false)
-        }
-    }
-}
-
 /// Fallback surfaces shown when a title has no artwork yet. Twilight keeps its
 /// original hand-tuned values; other themes derive the same roles from their own
 /// accent and ink instead of showing Twilight's violet in every theme.

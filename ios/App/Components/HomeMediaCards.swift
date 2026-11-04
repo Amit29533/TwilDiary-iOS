@@ -185,24 +185,3 @@ struct HomeFavouriteCard: View {
     }
 }
 
-/// Only this leaf observes the Up next threshold. The hero and media shelves do
-/// not re-diff on every scroll frame, and the original upper Home stays intact.
-struct HomeMediaHeader: View {
-    let state: CompactHeaderState
-    var body: some View {
-        let compact = state.progress > 0
-        PageHeader(name: "TwilDiary", overArtwork: !compact, part: compact ? .full : .buttons)
-    }
-}
-
-struct HomeMediaBoundary: ViewModifier {
-    let state: CompactHeaderState
-    var enabled: Bool
-    func body(content: Content) -> some View {
-        content.onGeometryChange(for: Bool?.self) { proxy in
-            enabled ? proxy.frame(in: .named("home-scroll")).minY < 56 : nil
-        } action: { compact in
-            if let compact { state.update(compact ? 1 : 0) }
-        }
-    }
-}

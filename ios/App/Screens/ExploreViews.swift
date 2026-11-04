@@ -48,8 +48,8 @@ private struct ExploreHeading: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(section.label).font(.system(size: 20, weight: .semibold)).tracking(-0.5)
             Spacer(minLength: 0)
-            NavigationLink(value: ExploreSectionRoute(section: section, filters: filters)) { Text("View more").font(.system(size: 13)).frame(minHeight: 44) }
-                .accessibilityIdentifier("explore-more-" + section.id)
+            SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters),
+                            identifier: "explore-more-" + section.id)
         }
     }
 }
@@ -164,6 +164,8 @@ private struct DiscoveryBrowser: View {
     var promptForGenre: Bool
     @State private var filters: DiscoveryFilters
     @State private var localLimit = 40
+    /// The filters the list was last shown with: coming back from a title keeps its length.
+    @State private var shownFilters: DiscoveryFilters?
     @State private var results: DiscoveryResults
     @State private var recommendations: DiscoveryRecommendations
     init(section: DiscoverySection, service: any DiscoveryServing, store: DiaryStore, initialFilters: DiscoveryFilters? = nil, promptForGenre: Bool = false) {
@@ -183,14 +185,14 @@ private struct DiscoveryBrowser: View {
             HStack(spacing: 10) {
                 Text(section.label).font(.system(size: promptForGenre ? 20 : 26, weight: .semibold)).tracking(-0.5)
                 Spacer(minLength: 0)
-                if promptForGenre { NavigationLink(value: ExploreSectionRoute(section: section, filters: filters)) { Text("View more").font(.system(size: 13)) }.accessibilityIdentifier("explore-more-genres") }
+                if promptForGenre { SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters), identifier: "explore-more-genres") }
             }
             if promptForGenre { genreToolbar }
             // Always visible, as on Canvas: the filters are a row of pills, not a hidden panel.
             if !promptForGenre { filterForm }
             content
         }.task(id: filters) {
-            localLimit = 40
+            if shownFilters != filters { localLimit = 40; shownFilters = filters }
             guard section.source == "tmdb" else { return }
             guard filters.error(section: section) == nil, !promptForGenre || !filters.genre.isEmpty else { results.clear(); return }
             do { try await Task.sleep(for: .milliseconds(250)); try Task.checkCancellation(); await results.load(filters.query(section: section)) } catch { }
@@ -248,8 +250,10 @@ private struct DiscoveryBrowser: View {
                 if section == .recommended && !recommendations.connected { DiscoveryNotice(text: "Connect Trakt in More to load your recommendations.") }
                 else { ContentUnavailableView(section == .daily ? "No unwatched titles in this mix" : "No titles in this mix", systemImage: "sparkles", description: Text("Try another genre, year or rating.")) }
             }
-            if section.source == "tmdb" ? results.hasMore : localLimit < local.count {
-                Button("Load more") { if section.source == "tmdb" { Task { await results.load(filters.query(section: section), more: true) } } else { localLimit += 40 } }.buttonStyle(.glass).disabled(busy).frame(maxWidth: .infinity)
+            if !displayed.isEmpty, section.source == "tmdb" ? results.hasMore || busy : localLimit < local.count {
+                ScrollLoadTrigger(token: displayed.count, loading: busy) {
+                    if section.source == "tmdb" { Task { await results.load(filters.query(section: section), more: true) } } else { localLimit += 40 }
+                }
             }
         }
     }

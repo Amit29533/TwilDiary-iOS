@@ -93,6 +93,9 @@ extension DiscoveryServing {
         if more && (loading || !hasMore) { return }
         var requested = query; requested.removeValue(forKey: "page")
         if more && requested != scope { return }
+        // Back from a title page: the same filters keep every page already loaded (and the scroll
+        // position with them). A failed load is retried.
+        if !more, requested == scope, page > 0, error == nil { return }
         if !more { clear(); scope = requested }
         let request = generation, number = more ? page + 1 : 1
         requested["page"] = String(number)

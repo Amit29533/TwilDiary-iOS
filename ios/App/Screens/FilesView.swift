@@ -16,7 +16,7 @@ struct FilesView: View {
 
                     JellyfinCard()
                     ForEach(DiskSummary.make(activeLocations)) { disk in diskButton(disk) }
-                    HStack { Text("Mapped folders").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); Button("Browse titles →") { router.libraryDisk(selected) }.font(.caption.bold()) }
+                    HStack { Text("Mapped folders").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); SectionMoreButton(label: "Browse titles", identifier: "files-browse") { router.libraryDisk(selected) } }
                     if selected != "all" { Button("All drives") { selected = "all" }.font(.caption.bold()) }
                     CollectionLayout(grid: grid) { ForEach(locations) { location in folderRow(location) } }
                     if locations.isEmpty { ContentUnavailableView("No mapped folders", systemImage: "folder", description: Text("Try another drive. Unmatched scanned folders can be linked in Fix mismatches.")) }

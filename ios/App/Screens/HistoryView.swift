@@ -64,9 +64,7 @@ struct HistoryView: View {
                             }
                         }
                     }
-                    if limit < entries.count {
-                        Button { limit += 12 } label: { Text("Show more watches (\(entries.count - limit))").font(.system(size: 14, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 44) }.buttonStyle(.glass).accessibilityIdentifier("history-load-more")
-                    }
+                    if limit < entries.count { ScrollLoadTrigger(token: limit, loading: false) { limit += 12 } }
                     HStack(alignment: .top, spacing: 6) { DiaryIcon(name: "clock-3", size: 13); Text("Unknown dates stay unknown. Dates are never guessed.").font(.system(size: 12)) }.foregroundStyle(.secondary)
                 }.padding(14).padding(.bottom, 100)
             }.refreshable { await store.refresh() }

@@ -90,16 +90,12 @@ private struct ProfileFactsLayout: Layout {
 
 enum ProfileSourceAction: View {
     case credits(PersonFilmographyRoute)
-    case voice(action: () -> Void, loading: Bool)
     case aniList(URL)
     @ViewBuilder var body: some View {
         switch self {
         case .credits(let route):
             NavigationLink(value: route) { ProfileSourceLogo() }.buttonStyle(.plain)
                 .accessibilityLabel("View TMDB credits").accessibilityIdentifier("person-tmdb")
-        case .voice(let action, let loading):
-            Button(action: action) { ProfileSourceLogo(loading: loading) }.buttonStyle(.plain).disabled(loading)
-                .accessibilityLabel("Open TMDB profile").accessibilityIdentifier("voice-actor-tmdb")
         case .aniList(let url):
             Link(destination: url) {
                 Image("site-anilist").renderingMode(.template).resizable().scaledToFit().frame(width: 22, height: 22)
@@ -187,6 +183,9 @@ struct ProfileAbout: View {
     var excludingFacts: Set<String> = []
     var additionalLinks: [ProfileWebsiteLink] = []
     var biographyID = "profile-biography"
+    /// Prose to show instead of the description's own (the merged person page uses TMDB's when
+    /// AniList's says less); facts, links and references still come from the description.
+    var biographyOverride: AttributedString? = nil
     @State private var expanded = false
     @State private var detailsExpanded = false
     var body: some View {
@@ -230,7 +229,7 @@ struct ProfileAbout: View {
                     }
                 }
             }
-            ProfileBiography(text: AniListText.formatted(content.markdown, hideSpoilers: false), expanded: $expanded,
+            ProfileBiography(text: biographyOverride ?? AniListText.formatted(content.markdown, hideSpoilers: false), expanded: $expanded,
                              identifier: biographyID)
         }
     }

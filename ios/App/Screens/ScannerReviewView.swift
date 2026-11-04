@@ -23,7 +23,7 @@ struct ScannerReviewView: View {
                     CollectionLayout(grid: grid) { ForEach(items) { scan in scanRow(scan) } }
                     if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading unmatched scans") }
                     else if !loading && items.isEmpty && failure == nil { ContentUnavailableView("No unmatched scans", systemImage: "folder.badge.questionmark", description: Text("New unresolved folders will appear here.")) }
-                    if next != nil { Button("Show more") { Task { await load(more: true) } }.buttonStyle(.glass).disabled(loading) }
+                    if next != nil { ScrollLoadTrigger(token: items.count, loading: loading) { Task { await load(more: true) } } }
                 }.padding(14)
             }.refreshable { await load() }
         }.diaryScreenBackground().diaryPageNavigation("Fix mismatches")

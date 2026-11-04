@@ -610,12 +610,9 @@ import TwilDiaryCore
                 groupPanel(sync)
                 LazyVStack(spacing: 8) { ForEach(Array(controller.visibleItems.prefix(controller.limit))) { change in reviewItem(change, sync: sync) } }
                 if controller.visibleItems.isEmpty { Text("No matching changes in this review.").font(.subheadline).foregroundStyle(.secondary) }
-                HStack {
-                    Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.system(size: 13)).foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    if controller.limit < controller.visibleItems.count || sync.next != nil {
-                        Button("Load more") { Task { await controller.loadMore() } }.buttonStyle(.diaryRowSecondary).disabled(controller.busy)
-                    }
+                Text("Showing \(min(controller.limit, controller.visibleItems.count)) of \(controller.visibleItems.count) loaded changes").font(.system(size: 13)).foregroundStyle(.secondary)
+                if controller.limit < controller.visibleItems.count || sync.next != nil {
+                    ScrollLoadTrigger(token: controller.limit, loading: controller.busy) { Task { await controller.loadMore() } }
                 }
                 if sync.reviewing && ((sync.counts["safe"] ?? 0) > 0 || (controller.conflictDefault != .ask && conflicts > 0)) { applyPanel(sync).padding(.top, 6) }
                 if sync.reviewing || sync.run?.state == "building" {
