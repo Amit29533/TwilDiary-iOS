@@ -289,6 +289,7 @@ import TwilDiaryCore
         communityCache.reset()
         needsMutationRefresh = false
         Task { await PublicArtworkCache.shared.removeAll() }
+        TraktDirectStore.shared.forget()
         api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
         showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
         do { try cache.removeAll(); cacheWarning = nil }
