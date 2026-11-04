@@ -90,7 +90,7 @@ private struct DiscoveryShelfView: View {
             if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading titles") }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await load() } } }
             else if !results.loading && results.items.isEmpty { DiscoveryNotice(text: "No titles available.") }
-        }.task { if results.page == 0 { await load() } }
+        }.smoothChange(of: results.items.isEmpty).task { if results.page == 0 { await load() } }
     }
     private func load() async { await results.load(DiscoveryFilters(section: section).query(section: section)) }
 }
@@ -105,7 +105,7 @@ private struct DiscoveryTrack: View {
                         Group {
                             if let id = item.inLibraryId { NavigationLink(value: id) { CatalogPoster(item: item).zoomSource(ZoomID.title(id)) } }
                             else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
-                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: 3, spacing: 12).accessibilityIdentifier("catalog-" + item.displayKey)
+                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: 3, spacing: 12).shelfTransition().accessibilityIdentifier("catalog-" + item.displayKey)
                     }
                 }
             }.scrollIndicators(.hidden).padding(.bottom, 10)
@@ -135,7 +135,7 @@ private struct RecommendedDiscoveryView: View {
             if let error = results.error { DiscoveryNotice(text: error) { Task { await results.load(refresh: true) } } }
             else if !results.loading && !results.connected { DiscoveryNotice(text: "Trakt not connected.") }
             else if !results.loading && results.items.isEmpty { DiscoveryNotice(text: "No recommendations yet.") }
-        }.task(id: store.discoveryRevision) { await results.load(limit: section ? 24 : 8) }
+        }.smoothChange(of: results.items.isEmpty).task(id: store.discoveryRevision) { await results.load(limit: section ? 24 : 8) }
     }
 }
 
@@ -190,7 +190,7 @@ private struct DiscoveryBrowser: View {
             if promptForGenre { genreToolbar }
             // Always visible, as on Canvas: the filters are a row of pills, not a hidden panel.
             if !promptForGenre { filterForm }
-            content
+            content.smoothChange(of: displayed.isEmpty)
         }.task(id: filters) {
             if shownFilters != filters { localLimit = 40; shownFilters = filters }
             guard section.source == "tmdb" else { return }

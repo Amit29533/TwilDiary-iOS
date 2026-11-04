@@ -44,6 +44,7 @@ struct HomeView: View {
                                     NavigationLink(value: title.id) { HomePlannedCard(title: title).zoomSource(ZoomID.title(title.id)) }
                                         .buttonStyle(.plain).accessibilityIdentifier("home-planned-" + title.id)
                                         .containerRelativeFrame(.horizontal) { width, _ in min(144, max(96, (width - 24) / 3.15)) }
+                                        .shelfTransition()
                                 }
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
@@ -63,6 +64,7 @@ struct HomeView: View {
                                 ForEach(favourites.prefix(12)) { item in
                                     FavouriteLink(item: item, homeCard: true)
                                         .containerRelativeFrame(.horizontal) { width, _ in min(144, max(96, (width - 24) / 3.15)) }
+                                        .shelfTransition()
                                 }
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()

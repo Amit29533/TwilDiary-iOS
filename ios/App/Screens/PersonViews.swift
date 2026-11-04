@@ -49,6 +49,8 @@ struct PersonView: View {
                         if let actor, !actor.roles.isEmpty { roles(actor.roles) }
                         if matching { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8).accessibilityIdentifier("person-matching") }
                     }
+                    // The other source's facts and shelves fade in when they join the page.
+                    .smoothChange(of: [person?.id ?? 0, actor?.id ?? 0, matching ? 1 : 0])
                 }
             } else {
                 EdgeToEdgeScroll {
@@ -306,7 +308,7 @@ struct PersonCreditShelf: View {
                         else { NavigationLink(value: item.route) { CatalogPoster(item: item, profileTypography: true).zoomSource(ZoomID.catalog(item.route)) } }
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
                         if !role.isEmpty { ProfileCardCaption(title: role, secondary: true) }
-                    }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress)
+                    }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress).shelfTransition()
                 }
             }
         }.accessibilityIdentifier(identifier)

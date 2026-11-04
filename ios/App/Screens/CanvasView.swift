@@ -60,7 +60,8 @@ private struct CanvasContent: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 pills
-                if tab == .lists { listsContent } else { titlesContent }
+                Group { if tab == .lists { listsContent } else { titlesContent } }
+                    .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             // The tabs share the navigation bar with the back button.
@@ -256,6 +257,7 @@ struct CanvasListView: View {
                     }
                 }
             }.padding(.horizontal, 14).padding(.bottom, 100)
+                .smoothChange(of: loader?.items.isEmpty ?? true)
         }.diaryScreenBackground().navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task {
                 // Kept for a while across visits, so going back and forth shows the list at once.

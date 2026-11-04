@@ -73,7 +73,7 @@ struct SearchLandingView: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(items, id: \.key) { item in
-                        NavigationLink(value: item.route) { CatalogPoster(item: item).frame(width: 124) }.buttonStyle(.plain).accessibilityIdentifier("trending-" + item.key)
+                        NavigationLink(value: item.route) { CatalogPoster(item: item).frame(width: 124) }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-" + item.key)
                     }
                 }
             }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending")
@@ -89,13 +89,14 @@ struct SearchLandingView: View {
                                         .overlay(alignment: .bottomLeading) { if let score = item.rating, score > 0 { RatingBadge(score: score, source: "AniList").padding(5) } }
                                     ProfileCardCaption(title: item.title)
                                 }.frame(width: 124, alignment: .leading)
-                            }.buttonStyle(.plain).accessibilityIdentifier("trending-anime-\(item.id)")
+                            }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-anime-\(item.id)")
                         }
                     }
                 }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending-anime")
             }
             Text("Search your library, online titles, cast, characters and voice actors.").font(.footnote).foregroundStyle(.secondary)
-        }.task(id: store.sessionRevision) { items = []; await load() }
+        }.smoothChange(of: [items.isEmpty, anime.isEmpty])
+            .task(id: store.sessionRevision) { items = []; await load() }
             .task { await loadAnime() }
     }
     /// Best effort: AniList being down only hides its rows.

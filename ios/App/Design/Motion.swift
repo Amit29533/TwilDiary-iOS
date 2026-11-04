@@ -8,6 +8,9 @@ enum Motion {
     static var press: Animation { .spring(duration: 0.28, bounce: 0.45) }
     /// `nil` under Reduce Motion, so changes simply appear.
     static func spring(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : spring }
+    /// Apple's "smooth" curve (no bounce) for content that arrives or changes: a list replacing its
+    /// loading placeholder, a merged profile section, a count ticking over.
+    static var smooth: Animation { .smooth(duration: 0.35) }
     /// The coordinate space a category swipe measures in; rows that scroll sideways report their frame in it.
     static let swipeSpace = "category-swipe"
 }
@@ -60,7 +63,31 @@ private struct ZoomSource: ViewModifier {
     }
 }
 
+/// Changes to the content animate with `Motion.smooth` when `value` changes (never under Reduce Motion).
+private struct SmoothChange<Value: Equatable>: ViewModifier {
+    let value: Value
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View { content.animation(reduceMotion ? nil : Motion.smooth, value: value) }
+}
+
+/// Sideways shelves: cards ease in slightly as they scroll into view, as in Apple's own apps.
+private struct ShelfTransition: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View {
+        if reduceMotion { content } else {
+            content.scrollTransition(.interactive, axis: .horizontal) { view, phase in
+                view.scaleEffect(phase.isIdentity ? 1 : 0.94).opacity(phase.isIdentity ? 1 : 0.7)
+            }
+        }
+    }
+}
+
 extension View {
+    /// Animates this content's changes smoothly whenever `value` changes. Key it on a coarse state
+    /// (loaded or not), not on every appended item, so long lists don't re-animate as they grow.
+    func smoothChange<V: Equatable>(of value: V) -> some View { modifier(SmoothChange(value: value)) }
+    /// For items in a sideways shelf.
+    func shelfTransition() -> some View { modifier(ShelfTransition()) }
     /// Marks the artwork a title page zooms out of, and back into on return.
     func zoomSource(_ id: String) -> some View { modifier(ZoomSource(id: id)) }
     /// A sideways swipe moves between All, Movies, Shows and Anime; it never changes app tabs.

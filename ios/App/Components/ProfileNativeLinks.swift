@@ -125,7 +125,7 @@ struct ProfileWatchedShelf: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
                                         .overlay(alignment: .bottomLeading) { if let score = title.communityScore, score > 0 { RatingBadge(score: score).padding(5) } }
                                     ProfileCardCaption(title: title.name)
-                                }.frame(width: 104).foregroundStyle(.primary)
+                                }.frame(width: 104).foregroundStyle(.primary).shelfTransition()
                             }
                         }.buttonStyle(.plain).accessibilityIdentifier("profile-watched-" + title.id)
                     }

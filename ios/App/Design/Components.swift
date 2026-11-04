@@ -312,7 +312,10 @@ struct PageHeader: View {
                 Text("Diary").foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
             }.font(.system(size: 26, weight: .bold)).tracking(-1.25)
         } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
-        if let count { Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1) }
+        if let count {
+            Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
+                .contentTransition(.numericText()).animation(reduceMotion ? nil : Motion.smooth, value: count)
+        }
     }
     private func glassButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
