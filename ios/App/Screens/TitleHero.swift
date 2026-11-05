@@ -28,7 +28,8 @@ struct TitleHero<PersonalRating: View>: View {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(name).font(.system(size: 24, weight: .bold)).tracking(-1.08).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+                    Text(name).font(.system(size: 24, weight: .bold)).tracking(-1.08).foregroundStyle(.white)
+                        .lineLimit(3).minimumScaleFactor(0.72).allowsTightening(true)
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }

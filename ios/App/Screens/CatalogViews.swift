@@ -43,7 +43,7 @@ struct CatalogPoster: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false)
-                .aspectRatio(2 / 3, contentMode: .fit)
+                .posterAspect()
                 .overlay(alignment: .bottomLeading) {
                     if let score = item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), score > 0 {
                         HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }

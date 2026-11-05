@@ -275,7 +275,7 @@ struct FavouriteLink: View {
                 .multilineTextAlignment(.leading).contentShape(Rectangle()).accessibilityElement(children: .combine)
         } else if poster {
             VStack(alignment: .leading, spacing: 6) {
-                Artwork(path: item.image, title: item.name).aspectRatio(2.0 / 3.0, contentMode: .fit)
+                Artwork(path: item.image, title: item.name).posterAspect()
                     .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
                 Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
                 Text(item.subtitle ?? item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)

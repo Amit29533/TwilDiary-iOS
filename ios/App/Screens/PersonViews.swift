@@ -177,7 +177,7 @@ struct PersonView: View {
             NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
                 if usesGrid {
                     VStack(alignment: .leading, spacing: 6) {
-                        roleArtwork(role).aspectRatio(2.0 / 3.0, contentMode: .fit)
+                        roleArtwork(role).posterAspect()
                         ProfileCardCaption(title: role.character.name)
                     }
                 } else {

@@ -76,7 +76,7 @@ struct MostWatchedShelf: View {
                 ForEach(Array(ranking.people.enumerated()), id: \.element.id) { index, person in
                     RankedPersonLink(person: person, identifier: ranking.identifier) {
                         VStack(alignment: .leading, spacing: 5) {
-                            Artwork(path: person.row.image, title: person.row.name).aspectRatio(2.0 / 3.0, contentMode: .fit)
+                            Artwork(path: person.row.image, title: person.row.name).posterAspect()
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .overlay(alignment: .bottomLeading) {
                                     Text("#\(index + 1)").font(.system(size: 11, weight: .semibold)).monospacedDigit()

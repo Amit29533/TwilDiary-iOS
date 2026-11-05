@@ -110,7 +110,7 @@ struct JellyfinEntryCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         let label = VStack(alignment: .leading, spacing: 6) {
-            Color.clear.aspectRatio(2.0 / 3.0, contentMode: .fit)
+            Color.clear.posterAspect()
                 .overlay { poster(entry) }
                 .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
                 .overlay(alignment: .topLeading) {

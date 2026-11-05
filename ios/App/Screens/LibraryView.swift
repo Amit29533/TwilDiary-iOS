@@ -235,7 +235,7 @@ struct LibraryView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), spacing: 16) {
             ForEach(0..<9, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.06)).aspectRatio(2 / 3, contentMode: .fit)
+                    RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.06)).posterAspect()
                     Capsule().fill(.white.opacity(0.06)).frame(height: 8)
                 }
             }
@@ -461,7 +461,7 @@ struct LibraryPosterCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Artwork(path: title.poster, title: title.name, initialsOnly: false).aspectRatio(2 / 3, contentMode: .fit)
+            Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
                 .overlay(alignment: .topLeading) {
                     if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 5).padding(.vertical, 2).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 6)).padding(6) }

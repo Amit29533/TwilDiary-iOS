@@ -83,6 +83,25 @@ struct RoundTool: View {
     }
 }
 
+/// Sizes a poster by its width alone (height = width × 1.5). `.aspectRatio(contentMode: .fit)`
+/// shrinks the whole poster whenever the height offered is tight, so a two-line title under it
+/// made the poster smaller than its neighbours; this never gives way to the text.
+struct PosterAspectLayout: Layout {
+    var ratio: CGFloat = 1.5
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let offered = proposal.width ?? 0
+        let width = offered.isFinite && offered > 0 ? offered : 120
+        return CGSize(width: width, height: (width * ratio).rounded())
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for view in subviews { view.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(bounds.size)) }
+    }
+}
+extension View {
+    /// A 2:3 poster as wide as its card, whatever the text below it.
+    func posterAspect(_ ratio: CGFloat = 1.5) -> some View { PosterAspectLayout(ratio: ratio) { self } }
+}
+
 /// A section heading's "see all": the same round chevron everywhere (Home, Explore, profiles,
 /// rankings), instead of a mix of "Stats →" text links and buttons. The label is for VoiceOver.
 struct SectionMoreLink<Value: Hashable>: View {
@@ -465,7 +484,7 @@ struct PosterCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Artwork(path: title.poster, title: title.name, initialsOnly: !personalRating).aspectRatio(2 / 3, contentMode: .fit)
+            Artwork(path: title.poster, title: title.name, initialsOnly: !personalRating).posterAspect()
                 .overlay(alignment: personalRating ? .bottomLeading : .topLeading) { if let score = displayedScore { RatingBadge(score: score, community: !personalRating).padding(6) } }
                 .overlay(alignment: .bottom) { if !personalRating && title.status != "completed" && progress > 0 { GeometryReader { proxy in Rectangle().fill(theme.accent.opacity(0.267)).overlay(alignment: .leading) { Rectangle().fill(theme.accent).frame(width: proxy.size.width * progress) } }.frame(height: 4) } }
                 .overlay(alignment: .bottomTrailing) { statusBadge }

@@ -159,7 +159,7 @@ struct HomePlannedCard: View {
     let title: MediaTitle
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Artwork(path: title.poster, title: title.name, initialsOnly: false).aspectRatio(2.0 / 3.0, contentMode: .fit)
+            Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
             Text(title.isSeries ? "Show" : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "))
@@ -173,7 +173,7 @@ struct HomeFavouriteCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Artwork(path: item.image, title: item.name).aspectRatio(2.0 / 3.0, contentMode: .fit)
+            Artwork(path: item.image, title: item.name).posterAspect()
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .topTrailing) {
                     Image(systemName: "heart.fill").font(.system(size: 12)).foregroundStyle(theme.accent)
