@@ -388,18 +388,10 @@ import TwilDiaryCore
         }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-api-settings-panel")
     }
     private var preferences: some View {
-        @Bindable var controller = controller
-        return VStack(alignment: .leading, spacing: 12) {
+        // Ratings are whole numbers 1–10 everywhere now, so there's no decimal-rating choice here.
+        VStack(alignment: .leading, spacing: 12) {
             Text("Sync preferences").font(.subheadline.bold()).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Decimal ratings").font(.subheadline)
-                    Spacer(minLength: 8)
-                    Menu { Picker("Decimal ratings", selection: $controller.mode) { ForEach(TraktRatingMode.allCases) { Text($0.label).tag($0) } } }
-                        label: { FilterPill(label: controller.mode.label) }.disabled(controller.busy).accessibilityIdentifier("trakt-rating-mode")
-                }
-                Text("For the next scan; decimals stay in TwilDiary").font(.caption).foregroundStyle(.secondary)
-                Divider()
                 // A switch for "settle conflicts myself or automatically", then which side wins.
                 Toggle(isOn: Binding(get: { controller.conflictDefault != .ask },
                                      set: { controller.conflictDefault = $0 ? (TraktConflictDefault(rawValue: preferredSide) ?? .local) : .ask })) {

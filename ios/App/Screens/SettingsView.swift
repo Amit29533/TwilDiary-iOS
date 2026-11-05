@@ -89,7 +89,7 @@ struct SettingsView: View {
                         divider
                         NavigationLink(value: AppDestination.calendar) { settingsRow("calendar", .indigo, "Airing calendar", subtitle: "Upcoming and catch-up episodes", disclosure: true) }.accessibilityIdentifier("settings-calendar")
                     }
-                    Text("Weeks start on Monday. Ratings are out of 10, with decimals.").font(.caption).foregroundStyle(.secondary)
+                    Text("Weeks start on Monday. Ratings are whole numbers out of 10.").font(.caption).foregroundStyle(.secondary)
                         .padding(.horizontal, 4).padding(.top, -14)
                     settingsSection("Appearance") {
                         NavigationLink(value: AppDestination.appearance) {
