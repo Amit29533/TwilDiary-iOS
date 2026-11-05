@@ -8,10 +8,13 @@ export const API_KEYS = {
   TRAKT_PERSONAL_ACCESS_TOKEN: { service: 'trakt', label: 'Personal access token' },
   // TwilDiary's own registered apps, so "Sign in with …" works without your own developer keys.
   // Client IDs are public by design (device sign-in sends them from the phone); no secrets here.
-  SIMKL_CLIENT_ID: { service: 'simkl', label: 'App client ID (Sign in with Simkl)' },
+  SIMKL_CLIENT_ID: {
+    service: 'simkl',
+    label: 'V2 mobile app client ID (Sign in with Simkl; redirect twildiary://auth/simkl)'
+  },
   MDBLIST_CLIENT_ID: {
     service: 'mdblist',
-    label: 'Device Code app client ID (Sign in with MDBList)'
+    label: 'Public PKCE app client ID (Sign in with MDBList; redirect twildiary://auth/mdblist)'
   },
   CF_ANALYTICS_TOKEN: { service: 'cloudflare', label: 'Analytics API token' },
   CF_ACCOUNT_ID: { service: 'cloudflare', label: 'Account ID' }
@@ -243,17 +246,28 @@ export async function testKey(
         { headers: { 'User-Agent': 'TwilDiary/2.0.0', Accept: 'application/json' } }
       );
       break;
-    case 'MDBLIST_CLIENT_ID':
-      // Starting a device sign-in is the only check MDBList offers; the unused code lapses in 5 minutes.
-      response = await call('https://api.mdblist.com/oauth/device-authorization/', {
+    case 'MDBLIST_CLIENT_ID': {
+      // Trading a made-up code: a known app answers invalid_grant, an unknown one invalid_client.
+      response = await call('https://api.mdblist.com/oauth/token/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           Accept: 'application/json'
         },
-        body: new URLSearchParams({ client_id: value, scope: 'write' }).toString()
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: 'twildiary-check',
+          redirect_uri: 'twildiary://auth/mdblist',
+          client_id: value,
+          code_verifier: 'twildiary-check-verifier-'.padEnd(64, 'x')
+        }).toString()
       });
+      const body = (await response?.json().catch(() => null)) as { error?: string } | null;
+      if (body?.error === 'invalid_grant') return { ok: true, message: 'Working' };
+      if (body?.error === 'invalid_client' || body?.error === 'unauthorized_client')
+        return { ok: false, message: 'Rejected by the service' };
       break;
+    }
     case 'CF_ANALYTICS_TOKEN':
     case 'CF_ACCOUNT_ID': {
       const token = env.CF_ANALYTICS_TOKEN,

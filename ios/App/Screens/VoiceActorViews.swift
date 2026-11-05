@@ -11,6 +11,93 @@ struct VoiceActorRoute: Hashable {
     var watchedCount: Int? = nil
 }
 
+/// All of a voice actor's characters (the profile shows three), as a grid or a list.
+struct VoiceActorCharactersRoute: Hashable {
+    let id: Int
+    let name: String
+}
+
+struct VoiceActorCharactersView: View {
+    let route: VoiceActorCharactersRoute
+    @Environment(DiaryStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @AppStorage("voiceActorRolesGrid") private var grid = true
+    @State private var roles: [AniRole]?
+    @State private var failure: String?
+    @State private var shown = 30
+    private var usesGrid: Bool { grid && !typeSize.isAccessibilitySize }
+    var body: some View {
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(roles.map { $0.count.counted("character", "characters") } ?? "Characters").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if !typeSize.isAccessibilitySize { CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters") }
+                }
+                if let roles {
+                    LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())],
+                              alignment: .leading, spacing: 16) {
+                        ForEach(roles.prefix(shown)) { role in VoiceActorRoleCard(role: role, grid: usesGrid) }
+                    }
+                    if roles.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
+                } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                else { DiaryLoadingPlaceholder(height: 300, label: "Loading characters") }
+            }.padding(.horizontal, 14).padding(.bottom, 40).smoothChange(of: roles == nil)
+        }.diaryScreenBackground().navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .task(id: route) { if roles == nil { await load() } }
+    }
+    private func load() async {
+        failure = nil
+        #if DEBUG
+        if store.isPreview {
+            let actor = ProfileFormattingPreview.enabled ? (ProfileFormattingPreview.voice(route.id) ?? AniListPreview.voiceActor(route.id)) : AniListPreview.voiceActor(route.id)
+            roles = actor.roles; return
+        }
+        #endif
+        do { roles = try await AniListClient.shared.voiceActor(route.id).roles }
+        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+}
+
+/// A character card: the character opens their page; the anime below opens the title.
+struct VoiceActorRoleCard: View {
+    let role: AniRole
+    let grid: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
+                if grid {
+                    VStack(alignment: .leading, spacing: 6) {
+                        artwork.posterAspect()
+                        ProfileCardCaption(title: role.character.name)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        artwork.frame(width: 64, height: 96)
+                        Text(role.character.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    }
+                }
+            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
+            AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
+                                               year: role.year, role: role.role, voiceActor: nil,
+                                               format: role.format, alternateTitles: role.alternateTitles)) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProfileCardCaption(title: role.anime, secondary: true)
+                    if let score = role.rating, score > 0 {
+                        RatingBadge(score: score, source: "AniList")
+                            .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")
+                    }
+                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
+        }.multilineTextAlignment(.leading)
+    }
+    private var artwork: some View {
+        Artwork(path: role.character.image, title: role.character.name, alignment: .top).clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 /// Voice actors and characters ranked from your public AniList profile, set in Settings →
 /// Connections and data → AniList (shared by both tabs).
 struct AniListMostWatched: View {

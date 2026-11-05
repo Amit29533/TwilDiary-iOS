@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 import TwilDiaryCore
 import UniformTypeIdentifiers
 
@@ -440,9 +441,9 @@ struct ExternalProviderConnectionView: View {
     @State private var errorMessage: String?
     /// TwilDiary's own app client IDs from the server (Settings → APIs), for "Sign in with …".
     @State private var apps: ProviderApps?
-    /// A device sign-in waiting for approval on the service's site.
-    @State private var pendingSignIn: ProviderDeviceSignIn.Authorization?
+    @State private var signingIn = false
     @State private var signInTask: Task<Void, Never>?
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     struct ProviderApps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String? }
 
@@ -507,7 +508,7 @@ struct ExternalProviderConnectionView: View {
         .toolbar(.visible, for: .navigationBar)
         .onAppear { loadFromStore() }
         .task { await loadApps() }
-        .onDisappear { signInTask?.cancel(); signInTask = nil; pendingSignIn = nil }
+        .onDisappear { signInTask?.cancel(); signInTask = nil }
     }
 
     /// Two ways in: sign in to the service, or (below) your own API key or token.
@@ -525,14 +526,14 @@ struct ExternalProviderConnectionView: View {
                     }.buttonStyle(.glassProminent).accessibilityIdentifier("trakt-sign-in")
                 case .simkl, .mdblist:
                     if let appId = appClientId {
-                        Text("Approve TwilDiary on \(displayName)’s site with a short code. No developer keys needed.")
+                        Text("Sign in on \(displayName)’s own page and come straight back. No developer keys needed; the sign-in renews itself.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        if let auth = pendingSignIn { signInWaiting(auth) }
-                        else {
-                            Button { startSignIn(appId) } label: {
-                                Label(currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity)
-                            }.buttonStyle(.glassProminent).accessibilityIdentifier("\(provider.rawValue)-sign-in")
-                        }
+                        Button { startSignIn(appId) } label: {
+                            HStack(spacing: 8) {
+                                if signingIn { ProgressView().controlSize(.small) }
+                                Text(signingIn ? "Signing in…" : currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)")
+                            }.frame(maxWidth: .infinity)
+                        }.buttonStyle(.glassProminent).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
                     } else {
                         Text(apps == nil ? "Checking whether TwilDiary can sign you in…" : "Sign-in needs TwilDiary’s \(displayName) app ID. Add it in Settings → APIs → Sign-in apps, or use your own API key or token below.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -552,22 +553,6 @@ struct ExternalProviderConnectionView: View {
         case .cloudflare: nil
         }
     }
-    private func signInWaiting(_ auth: ProviderDeviceSignIn.Authorization) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Enter this code on \(auth.verificationURL.host ?? displayName):").font(.caption.bold())
-            Text(auth.userCode).font(.title2.monospaced().bold()).foregroundStyle(theme.accent).textSelection(.enabled)
-                .accessibilityIdentifier("\(provider.rawValue)-sign-in-code")
-            Link(destination: auth.verificationURLComplete ?? auth.verificationURL) {
-                Label("Open \(auth.verificationURL.host ?? "the sign-in page")", systemImage: "arrow.up.forward.app").frame(maxWidth: .infinity)
-            }.buttonStyle(.glassProminent)
-            HStack {
-                ProgressView().controlSize(.small)
-                Text("Waiting for approval…").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { signInTask?.cancel(); signInTask = nil; pendingSignIn = nil }.buttonStyle(.glass)
-            }
-        }.padding(12).background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-    }
     private func loadApps() async {
         #if DEBUG
         if store.isPreview { apps = ProviderApps(trakt: "preview", simkl: nil, mdblist: nil); return }
@@ -579,45 +564,32 @@ struct ExternalProviderConnectionView: View {
         signInTask?.cancel()
         signInTask = Task { await runSignIn(appId) }
     }
-    /// Starts the device sign-in and asks the service every few seconds until it is approved,
-    /// declined or the code lapses; then saves the tokens and turns sync on.
+    /// Opens the service's sign-in page in Apple's sign-in sheet; when it comes back approved, trades
+    /// the code for tokens, saves them and turns sync on.
     private func runSignIn(_ appId: String) async {
         errorMessage = nil; statusMessage = nil
+        guard let request = ProviderWebSignIn.start(provider: provider, clientId: appId) else {
+            errorMessage = "TwilDiary can’t sign in to \(displayName) yet."; return
+        }
+        signingIn = true
+        defer { signingIn = false }
         do {
-            switch try await store.directClient.startSignIn(provider: provider, clientId: appId) {
-            case .simklPin(let pin):
-                // An older Simkl app: the PIN panel below finishes the sign-in.
-                clientId = appId; deviceSession = pin
-            case .device(let auth):
-                pendingSignIn = auth
-                defer { if pendingSignIn == auth { pendingSignIn = nil } }
-                var interval = auth.interval
-                let deadline = Date.now.addingTimeInterval(TimeInterval(auth.expiresIn))
-                while Date.now < deadline {
-                    try await Task.sleep(for: .seconds(interval))
-                    switch try await store.directClient.pollSignIn(provider: provider, clientId: appId, deviceCode: auth.deviceCode) {
-                    case .pending: continue
-                    case .slowDown: interval += 5
-                    case .authorized(let tokens):
-                        guard ProviderDeviceSignIn.grantsWrite(tokens, provider: provider) else {
-                            throw APIError.message("\(displayName) gave read-only access. Sign in again and allow TwilDiary to make changes.")
-                        }
-                        var signedIn = currentConfig
-                        signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
-                        signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
-                        signedIn.connection = .signIn; signedIn.enabled = true
-                        if provider == .mdblist { signedIn.apiKey = nil }
-                        guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
-                        loadFromStore()
-                        statusMessage = "Signed in to \(displayName). Sync is on."
-                        return
-                    case .expired: throw APIError.message("The code expired. Start the sign-in again.")
-                    case .denied: throw APIError.message("The sign-in was declined on \(displayName).")
-                    case .failed(let message): throw APIError.message(message)
-                    }
-                }
-                throw APIError.message("The code expired before it was approved. Start the sign-in again.")
+            let callback = try await webAuthenticationSession.authenticate(using: request.url, callbackURLScheme: ProviderWebSignIn.callbackScheme)
+            let code = try ProviderWebSignIn.code(from: callback, for: request)
+            let tokens = try await store.directClient.finishWebSignIn(request, code: code)
+            guard ProviderDeviceSignIn.grantsWrite(tokens, provider: provider) else {
+                throw APIError.message("\(displayName) gave read-only access. Sign in again and allow TwilDiary to make changes.")
             }
+            var signedIn = currentConfig
+            signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
+            signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
+            signedIn.connection = .signIn; signedIn.enabled = true
+            if provider == .mdblist { signedIn.apiKey = nil }
+            guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
+            loadFromStore()
+            statusMessage = "Signed in to \(displayName). Sync is on."
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // Closing the sheet is not an error.
         } catch {
             if !Task.isCancelled { errorMessage = error.localizedDescription }
         }

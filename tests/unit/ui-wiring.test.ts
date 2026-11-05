@@ -393,7 +393,6 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
   );
 
   assert.equal(iosApp.includes('case .calendar: AiringCalendarView()'), true);
-  assert.equal(iosApp.includes('case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)'), true);
   assert.equal(iosApp.includes('case .simkl: ExternalProviderConnectionView(provider: .simkl)'), true);
   assert.equal(iosApp.includes('case .mdblist: ExternalProviderConnectionView(provider: .mdblist)'), true);
   assert.equal(iosSettings.includes('accessibilityIdentifier("settings-calendar")'), true);

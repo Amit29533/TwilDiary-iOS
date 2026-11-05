@@ -82,3 +82,31 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     #expect(try store.load().simkl.refreshToken == "secret-refresh")
     #expect(try store.load().simkl.connection == .signIn)
 }
+
+@Test func webSignInOpensTheServicePageWithPKCEAndChecksTheReply() throws {
+    var counter: UInt8 = 0
+    let bytes: (Int) -> [UInt8] = { count in (0..<count).map { _ in counter &+= 1; return counter } }
+    let simkl = try #require(ProviderWebSignIn.start(provider: .simkl, clientId: " simkl-app ", randomBytes: bytes))
+    let query = Dictionary(uniqueKeysWithValues: (URLComponents(url: simkl.url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+    #expect(simkl.url.host == "simkl.com" && simkl.url.path == "/oauth2/authorize")
+    #expect(query["client_id"] == "simkl-app" && query["response_type"] == "code" && query["code_challenge_method"] == "S256")
+    #expect(query["redirect_uri"] == "twildiary://auth/simkl" && query["scope"] == "media:read media:write")
+    #expect(query["code_challenge"] == ProviderWebSignIn.challenge(for: simkl.verifier))
+    #expect((43...128).contains(simkl.verifier.count))
+    // RFC 7636 appendix B: the S256 challenge of the sample verifier.
+    #expect(ProviderWebSignIn.challenge(for: "dBjftJeZ4CVP-mJ92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    let good = URL(string: "twildiary://auth/simkl?code=abc&state=\(simkl.state)&iss=https://simkl.com")!
+    #expect(try ProviderWebSignIn.code(from: good, for: simkl) == "abc")
+    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=other&iss=https://simkl.com")!, for: simkl) }
+    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=\(simkl.state)&iss=https://evil.example")!, for: simkl) }
+    #expect(throws: ProviderSignInError.unexpected("The sign-in was declined.")) {
+        try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?error=access_denied&state=\(simkl.state)&iss=https://simkl.com")!, for: simkl)
+    }
+    let body = String(decoding: ProviderWebSignIn.tokenBody(code: "abc", for: simkl), as: UTF8.self)
+    #expect(body.contains("grant_type=authorization_code") && body.contains("code_verifier=" + simkl.verifier) && !body.contains("client_secret"))
+    let mdblist = try #require(ProviderWebSignIn.start(provider: .mdblist, clientId: "md-app"))
+    #expect(mdblist.url.absoluteString.hasPrefix("https://mdblist.com/oauth/authorize/?"))
+    #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?code=xyz&state=\(mdblist.state)")!, for: mdblist) == "xyz")
+    #expect(ProviderWebSignIn.start(provider: .trakt, clientId: "x") == nil && ProviderWebSignIn.start(provider: .simkl, clientId: "  ") == nil)
+}
+

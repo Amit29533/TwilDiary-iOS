@@ -195,7 +195,8 @@ struct TraktDirectClient: Sendable {
             let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
             let client = store.directClient
             var requests = 1
-            let activities = try TraktDecode.activities(from: try await client.read(config, path: tracker == .simkl ? "/sync/activities" : "/sync/last_activities"))
+            let activitiesData = try await client.read(config, path: tracker == .simkl ? "/sync/activities" : "/sync/last_activities")
+            let activities = try (tracker == .simkl ? TraktDecode.activities(from: activitiesData) : TrackerDecode.flatActivities(from: activitiesData))
             var library = libraries[tracker] ?? TraktLibrary()
             var fetched: [TraktDomain] = []
             if library.activities != activities || library.fetchedAt == nil {

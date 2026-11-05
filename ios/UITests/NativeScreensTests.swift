@@ -1161,10 +1161,10 @@ import UIKit
         let anime = app.buttons["voice-actor-anime-154587-2"]
         revealProfileControl(anime, in: app)
         XCTAssertTrue(anime.isHittable)
-        let layout = app.buttons["voice-actor-characters-layout"]
-        XCTAssertTrue(layout.isHittable); layout.tap(); XCTAssertEqual(layout.value as? String, "List")
-        capture("Voice actor characters list retains separate anime navigation")
-        layout.tap(); XCTAssertEqual(layout.value as? String, "Grid")
+        // The profile shows three characters like every other section; the grid/list toggle lives on
+        // the full list behind the round > (this fixture voices fewer than four, so there's none).
+        XCTAssertFalse(app.buttons["voice-actor-characters-layout"].exists)
+        XCTAssertFalse(app.buttons["voice-actor-characters-more"].exists)
         capture("Voice actor has a separate anime link")
         anime.tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))

@@ -125,12 +125,19 @@ test('TwilDiary app client IDs for Sign in with Simkl and MDBList are checked wi
     ok: false,
     message: 'Rejected by the service'
   });
+  // MDBList (Public PKCE app): a made-up code is invalid_grant for a known app, invalid_client otherwise.
   const mdblist = { MDBLIST_CLIENT_ID: 'mdblist-client-1234' };
-  assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', answer(200))).ok, true);
-  const device = calls.at(-1)!;
-  assert.equal(device.url, 'https://api.mdblist.com/oauth/device-authorization/');
-  assert.equal(device.init?.method, 'POST');
-  assert.equal(String(device.init?.body), 'client_id=mdblist-client-1234&scope=write');
-  assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', answer(400))).ok, false);
+  const reply = (status: number, error: string) => async (url: string, init?: RequestInit) => (
+    calls.push({ url, init }),
+    new Response(JSON.stringify({ error }), { status })
+  );
+  assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', reply(400, 'invalid_grant'))).ok, true);
+  const check = calls.at(-1)!;
+  assert.equal(check.url, 'https://api.mdblist.com/oauth/token/');
+  assert.equal(check.init?.method, 'POST');
+  assert.match(String(check.init?.body), /grant_type=authorization_code/);
+  assert.match(String(check.init?.body), /client_id=mdblist-client-1234/);
+  assert.doesNotMatch(String(check.init?.body), /client_secret/);
+  assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', reply(401, 'invalid_client'))).ok, false);
   assert.equal((await testKey({}, 'SIMKL_CLIENT_ID', answer(200))).message, 'Not set');
 });

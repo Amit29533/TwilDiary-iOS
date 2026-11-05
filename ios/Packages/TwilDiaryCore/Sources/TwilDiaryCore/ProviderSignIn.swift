@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// "Sign in with …" for services that use the standard device sign-in (RFC 8628): the app shows a
 /// short code, you approve it on the service's site, and the app receives tokens. No client secret
@@ -117,3 +118,80 @@ public enum ProviderSignInError: LocalizedError, Equatable, Sendable {
         switch self { case .unexpected(let message): message }
     }
 }
+
+/// "Sign in with …" the way Cinopsys does it: the service's own sign-in page opens in Apple's
+/// sign-in sheet, you approve, and it returns to the app. Authorization code with PKCE: no client
+/// secret, so the app ID can live on the phone (Simkl: a V2 mobile app; MDBList: a Public PKCE app,
+/// each registered with the redirect `twildiary://auth/<service>`).
+public enum ProviderWebSignIn {
+    public static let callbackScheme = "twildiary"
+    public static func redirect(for provider: SyncProviderKind) -> String { callbackScheme + "://auth/" + provider.rawValue }
+    static func authorizePage(for provider: SyncProviderKind) -> URL? {
+        switch provider {
+        case .simkl: URL(string: "https://simkl.com/oauth2/authorize")
+        case .mdblist: URL(string: "https://mdblist.com/oauth/authorize/")
+        case .trakt, .cloudflare: nil
+        }
+    }
+
+    /// One sign-in attempt: what to open, and what to check when the service comes back.
+    public struct Request: Equatable, Sendable {
+        public let provider: SyncProviderKind
+        public let clientId: String
+        public let state: String
+        public let verifier: String
+        public let url: URL
+    }
+
+    public static func start(provider: SyncProviderKind, clientId: String, randomBytes: (Int) -> [UInt8] = secureBytes) -> Request? {
+        let client = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !client.isEmpty, let page = authorizePage(for: provider), let scope = ProviderDeviceSignIn.endpoints(for: provider)?.scope else { return nil }
+        let verifier = base64URL(Data(randomBytes(64)))
+        let state = base64URL(Data(randomBytes(24)))
+        var components = URLComponents(url: page, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "client_id", value: client),
+            URLQueryItem(name: "redirect_uri", value: redirect(for: provider)),
+            URLQueryItem(name: "scope", value: scope),
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "code_challenge", value: challenge(for: verifier)),
+            URLQueryItem(name: "code_challenge_method", value: "S256")
+        ]
+        guard let url = components.url else { return nil }
+        return Request(provider: provider, clientId: client, state: state, verifier: verifier, url: url)
+    }
+
+    /// The code from the service's reply, once it is checked: same attempt (state), the right
+    /// service (Simkl also names itself in `iss`), and not declined.
+    public static func code(from callback: URL, for request: Request) throws -> String {
+        guard callback.scheme == callbackScheme, let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems else {
+            throw ProviderSignInError.unexpected("The sign-in came back in a form TwilDiary doesn’t recognise.")
+        }
+        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        guard value("state") == request.state else { throw ProviderSignInError.unexpected("This sign-in doesn’t match the one TwilDiary started. Try again.") }
+        if request.provider == .simkl, value("iss") != "https://simkl.com" {
+            throw ProviderSignInError.unexpected("The sign-in didn’t come from Simkl. Try again.")
+        }
+        if let error = value("error") {
+            throw ProviderSignInError.unexpected(error == "access_denied" ? "The sign-in was declined." : "The service refused the sign-in (\(error)).")
+        }
+        guard let code = value("code"), !code.isEmpty else { throw ProviderSignInError.unexpected("The service didn’t return a sign-in code.") }
+        return code
+    }
+
+    public static func tokenBody(code: String, for request: Request) -> Data {
+        ProviderDeviceSignIn.form([("grant_type", "authorization_code"), ("code", code), ("redirect_uri", redirect(for: request.provider)),
+                                   ("client_id", request.clientId), ("code_verifier", request.verifier)])
+    }
+
+    static func challenge(for verifier: String) -> String { base64URL(Data(SHA256.hash(data: Data(verifier.utf8)))) }
+    static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+    public static func secureBytes(_ count: Int) -> [UInt8] {
+        var generator = SystemRandomNumberGenerator()
+        return (0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+    }
+}
+

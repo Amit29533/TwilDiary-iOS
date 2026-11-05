@@ -168,29 +168,17 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return data
     }
 
-    // MARK: - Sign in with MDBList or Simkl (standard device sign-in, no client secret)
+    // MARK: - Sign in with MDBList or Simkl (their sign-in page in Apple's sheet; PKCE, no client secret)
 
-    enum SignInStart {
-        /// Show the code and page, then poll.
-        case device(ProviderDeviceSignIn.Authorization)
-        /// An older Simkl app (AUTH V1) can't use the device sign-in; Simkl's PIN instead.
-        case simklPin(DeviceCodeAuthSession)
-    }
-    func startSignIn(provider: SyncProviderKind, clientId: String) async throws -> SignInStart {
-        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
-        let (data, status) = try await postForm(endpoints.authorize, ProviderDeviceSignIn.authorizeBody(clientId: clientId, scope: endpoints.scope))
-        if (200..<300).contains(status) { return .device(try ProviderDeviceSignIn.decodeAuthorization(data)) }
-        if provider == .simkl, status == 400 || status == 401 {
-            let pin = try await requestDeviceCode(provider: .simkl, clientId: clientId)
-            return .simklPin(pin)
+    /// Trades the code from the sign-in sheet for tokens.
+    func finishWebSignIn(_ request: ProviderWebSignIn.Request, code: String) async throws -> ProviderDeviceSignIn.Tokens {
+        guard let endpoints = ProviderDeviceSignIn.endpoints(for: request.provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
+        let (data, status) = try await postForm(endpoints.token, ProviderWebSignIn.tokenBody(code: code, for: request))
+        switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
+        case .authorized(let tokens): return tokens
+        case .failed(let message): throw APIError.message(message)
+        default: throw APIError.message("The service didn’t finish the sign-in (HTTP \(status)).")
         }
-        if case .failed(let message) = ProviderDeviceSignIn.decodePoll(status: status, data: data) { throw APIError.message(message) }
-        throw APIError.message("The service answered HTTP \(status).")
-    }
-    func pollSignIn(provider: SyncProviderKind, clientId: String, deviceCode: String) async throws -> ProviderDeviceSignIn.Poll {
-        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { return .failed("This service has no sign-in TwilDiary can use.") }
-        let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.pollBody(clientId: clientId, deviceCode: deviceCode))
-        return ProviderDeviceSignIn.decodePoll(status: status, data: data)
     }
     /// A new access token from the refresh token (MDBList: 30-day tokens; Simkl: 7 days).
     func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {

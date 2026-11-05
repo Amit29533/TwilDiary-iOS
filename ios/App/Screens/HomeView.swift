@@ -70,7 +70,7 @@ struct HomeView: View {
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     }.padding(.horizontal, -4) }
                     VStack(spacing: 12) {
-                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); SectionMoreButton(label: "Glance", identifier: "home-glance-more") { router.selectedTab = .glance } }
+                        heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); SectionMoreLink(label: "Airing calendar", value: AppDestination.calendar, identifier: "home-calendar-more") }
                         HomeActivityLayout(cards: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
                             NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
                                 HomeEpisodeCard(model: HomeEpisodeCardModel(upcoming: item), cards: upcomingGrid)
@@ -300,7 +300,7 @@ struct AiringCalendarView: View {
                         }
                         Spacer(minLength: 0)
                         Button { dedupeByTitle.toggle() } label: {
-                            Text(dedupeByTitle ? "Next only" : "All eps")
+                            Text(dedupeByTitle ? "Next only" : "All eps").lineLimit(1).fixedSize()
                                 .font(.system(size: 12, weight: .semibold))
                                 .padding(.horizontal, 11).frame(height: 32)
                                 .foregroundStyle(dedupeByTitle ? .primary : .secondary)
@@ -310,7 +310,7 @@ struct AiringCalendarView: View {
                             ShareLink(item: schedule.icsString(hideSpoilers: hideSpoilers), subject: Text("TwilDiary Airing Schedule")) {
                                 HStack(spacing: 4) {
                                     DiaryIcon(name: "download", size: 12)
-                                    Text(".ics")
+                                    Text(".ics").lineLimit(1).fixedSize()
                                 }
                                 .font(.system(size: 12, weight: .semibold))
                                 .padding(.horizontal, 10).frame(height: 32)
@@ -331,7 +331,7 @@ struct AiringCalendarView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 DiaryIcon(name: "rotate-ccw", size: 12)
-                                Text(syncingDates ? "Syncing…" : "Sync")
+                                Text(syncingDates ? "Syncing…" : "Sync").lineLimit(1).fixedSize()
                             }
                             .font(.system(size: 12, weight: .semibold))
                             .padding(.horizontal, 10).frame(height: 32)

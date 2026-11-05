@@ -13,14 +13,12 @@ struct PersonView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var typeSize
     @AppStorage("hideSpoilers") private var hideSpoilers = true
-    @AppStorage("voiceActorRolesGrid") private var grid = true
     @State private var person: PersonDetails?
     @State private var actor: AniVoiceActorDetail?
     @State private var failure: String?
     @State private var missing = false
     @State private var matching = false
     @State private var expanded = false
-    @State private var shown = 30
 
     /// The page keeps the identity the route opened (favourite, identifiers, role line).
     private var voiceFirst: Bool { if case .voice = start, actor != nil { return true }; return false }
@@ -46,7 +44,7 @@ struct PersonView: View {
                             shelf("Shows", person: person, kind: .shows, items: sections.shows)
                             shelf("Movies", person: person, kind: .movies, items: sections.movies)
                         }
-                        if let actor, !actor.roles.isEmpty { roles(actor.roles) }
+                        if let actor, !actor.roles.isEmpty { roles(actor) }
                         if matching { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8).accessibilityIdentifier("person-matching") }
                     }
                     // The other source's facts and shelves fade in when they join the page.
@@ -158,52 +156,22 @@ struct PersonView: View {
                             identifier: "person-more-" + route.section.rawValue + (route.onServer ? "-server" : ""))
         }
     }
-    private var usesGrid: Bool { grid && !typeSize.isAccessibilitySize }
-    private func roles(_ items: [AniRole]) -> some View {
+    /// Three characters, like every other section, then the round > to all of them.
+    private func roles(_ actor: AniVoiceActorDetail) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Characters \(items.count)").font(.title3.weight(.semibold))
+                Text("Characters \(actor.roles.count)").font(.title3.weight(.semibold))
                 Spacer(minLength: 4)
-                if !typeSize.isAccessibilitySize { CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters") }
-            }
-            LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], alignment: .leading, spacing: 16) {
-                ForEach(items.prefix(shown)) { role in roleCard(role) }
-            }
-            if items.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
-        }
-    }
-    private func roleCard(_ role: AniRole) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
-                if usesGrid {
-                    VStack(alignment: .leading, spacing: 6) {
-                        roleArtwork(role).posterAspect()
-                        ProfileCardCaption(title: role.character.name)
-                    }
-                } else {
-                    HStack(spacing: 12) {
-                        roleArtwork(role).frame(width: 64, height: 96)
-                        Text(role.character.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
-                    }
+                if actor.roles.count > 3 {
+                    SectionMoreLink(label: "All characters", value: VoiceActorCharactersRoute(id: actor.id, name: actor.name),
+                                    identifier: "voice-actor-characters-more")
                 }
-            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-role-\(role.character.id)")
-            AnimeAppearanceButton(appearance: AniAppearance(id: role.animeID, title: role.anime, cover: role.cover,
-                                               year: role.year, role: role.role, voiceActor: nil,
-                                               format: role.format, alternateTitles: role.alternateTitles)) {
-                VStack(alignment: .leading, spacing: 4) {
-                    ProfileCardCaption(title: role.anime, secondary: true)
-                    if let score = role.rating, score > 0 {
-                        RatingBadge(score: score, source: "AniList")
-                            .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")
-                    }
-                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("voice-actor-anime-\(role.animeID)-\(role.character.id)")
-        }.multilineTextAlignment(.leading)
-    }
-    private func roleArtwork(_ role: AniRole) -> some View {
-        Artwork(path: role.character.image, title: role.character.name, alignment: .top).clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3),
+                      alignment: .leading, spacing: 16) {
+                ForEach(actor.roles.prefix(3)) { role in VoiceActorRoleCard(role: role, grid: !typeSize.isAccessibilitySize) }
+            }
+        }
     }
 
     // MARK: Loading

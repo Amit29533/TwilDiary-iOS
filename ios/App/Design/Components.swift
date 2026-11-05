@@ -630,9 +630,9 @@ struct ProgressCard: View {
     /// Poster on the left; title, progress and the − / + controls stacked beside it.
     @ViewBuilder private var glanceContent: some View {
         if grid { gridContent } else {
-            // The text column sets the card's height and the poster fills it, top to bottom: no strip under it.
+            // Every card's poster is the same 2:3 size; a longer title grows the text column, not the poster.
             HStack(alignment: .top, spacing: 14) {
-                Color.clear.frame(width: 86)
+                Color.clear.frame(width: 86, height: 129)
                 VStack(alignment: .leading, spacing: 4) {
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
@@ -643,8 +643,8 @@ struct ProgressCard: View {
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }.background(alignment: .leading) {
                 Button { openTitle() } label: {
-                    Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 86).frame(maxHeight: .infinity).clipShape(RoundedRectangle(cornerRadius: 10))
-                }.buttonStyle(.plain)
+                    Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 86, height: 129).clipShape(RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.plain).frame(maxHeight: .infinity, alignment: .top)
             }.padding(12)
         }
     }

@@ -187,3 +187,28 @@ private func diary() throws -> Workspace {
     """))
     #expect(nested.items.map { "\($0.season ?? -1)x\($0.episode ?? -1)" } == ["0x1", "1x11", "1x12"])
 }
+
+/// MDBList's published examples: watched episodes nest their show, watchlist items are flat with
+/// the TMDB id in "id", and last activities are flat (server_time ignored).
+@Test func mdblistDocumentedShapesAreRead() throws {
+    let watched = try TrackerDecode.mdblistPage(from: data("""
+    {"movies":[],"shows":[],"seasons":[],"episodes":[{"last_watched_at":"2026-10-17T21:30:00.000Z","episode":{"season":2,"number":5,"name":"Episode 5",
+      "ids":{"tmdb":111111},"show":{"title":"Example Show","year":2005,"ids":{"tmdb":1000,"trakt":2000,"imdb":"tt0000001","mdblist":"example-show","tvdb":3000}},
+      "display_code":"S23E05","tvdb":{"season":23,"number":5}}}],"pagination":{"limit":100,"next_cursor":null}}
+    """))
+    #expect(watched.items.count == 1 && watched.skipped == 0)
+    #expect(watched.items[0].title.tmdbId == 1000 && watched.items[0].title.kind == .show)
+    #expect(watched.items[0].season == 2 && watched.items[0].episode == 5)
+    #expect(watched.next == nil)
+    let watchlist = try TrackerDecode.mdblistPage(from: data("""
+    {"movies":[{"id":917496,"title":"Beetlejuice Beetlejuice","imdb_id":"tt2049403","ids":{"mdblist":"m917496","imdb":"tt2049403","tmdb":917496},"mediatype":"movie","release_year":2024}],
+     "shows":[{"id":258902,"title":"English Teacher","imdb_id":"tt20782190","tvdb_id":421968,"mediatype":"show","release_year":2024}]}
+    """))
+    #expect(watchlist.items.map(\.title.tmdbId) == [917496, 258902])
+    #expect(watchlist.items[1].title.kind == .show && watchlist.items[1].title.year == 2024)
+    let first = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","server_time":"2026-11-05T10:00:00Z"}"#))
+    let again = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","server_time":"2026-11-05T10:05:00Z"}"#))
+    #expect(first == again, "Only server_time moved: nothing to read again")
+    #expect(first.stamps["watched_at"] == "2026-11-01T00:00:00Z")
+}
+

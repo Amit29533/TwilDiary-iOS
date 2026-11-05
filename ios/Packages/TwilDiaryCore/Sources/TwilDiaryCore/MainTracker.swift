@@ -84,7 +84,9 @@ public enum TrackerDecode {
     static func ref(_ media: [String: Any], kind: TraktTitleRef.Kind) -> TraktTitleRef? {
         let ids = object(media["ids"]) ?? media
         guard let name = text(media["title"]) ?? text(media["name"]) else { return nil }
+        // MDBList list items have no "ids" block: their "id" is the TMDB id.
         let tmdb = int(ids["tmdb"]) ?? int(ids["tmdb_id"]) ?? int(ids["tmdbid"])
+            ?? (media["ids"] == nil && media["mediatype"] != nil ? int(media["id"]) : nil)
         let trakt = int(ids["trakt"]) ?? int(ids["trakt_id"])
         let imdb = ((ids["imdb"] ?? ids["imdb_id"]) as? String).flatMap { $0.hasPrefix("tt") && $0.count <= 15 ? $0 : nil }
         guard tmdb != nil || trakt != nil || imdb != nil || int(ids["simkl"]) != nil || int(ids["mdblist"]) != nil else { return nil }
@@ -144,6 +146,17 @@ public enum TrackerDecode {
 
     // MARK: MDBList
 
+    /// `GET /sync/last_activities` on MDBList is flat ("watched_at", "rated_at", …), unlike Trakt's
+    /// sections; `server_time` changes on every call, so it's left out.
+    public static func flatActivities(from data: Data) throws -> TraktActivities {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Last activities were not an object."))
+        }
+        var stamps: [String: String] = [:]
+        for (key, value) in root where key != "server_time" { if let stamp = value as? String { stamps[key] = stamp } }
+        return TraktActivities(all: nil, stamps: stamps)
+    }
+
     /// One page of an MDBList sync list (`/sync/watched`, `/sync/ratings`, `/sync/dropped`,
     /// `/watchlist/items`). MDBList doesn't publish its response format outside the browser, so this
     /// reads both Trakt-style items ({"movie": {...}} / {"show": {...}, "episode": {...}}) and flat
@@ -182,7 +195,8 @@ public enum TrackerDecode {
         }
         for (value, bucketKind) in entries {
             guard let item = value as? [String: Any] else { page.skipped += 1; continue }
-            let movieBlock = object(item["movie"]), showBlock = object(item["show"])
+            // MDBList's watched episodes carry their show inside the episode ("episode.show").
+            let movieBlock = object(item["movie"]), showBlock = object(item["show"]) ?? object(object(item["episode"])?["show"])
             let type = ((item["mediatype"] ?? item["type"] ?? item["media_type"]) as? String)?.lowercased()
             let kind: TraktTitleRef.Kind = movieBlock != nil ? .movie : showBlock != nil ? .show
                 : type == "movie" ? .movie : (type == "show" || type == "tv" || type == "episode" || type == "season") ? .show : bucketKind ?? .movie
