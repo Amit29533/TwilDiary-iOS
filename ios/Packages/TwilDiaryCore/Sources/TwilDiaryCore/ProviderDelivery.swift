@@ -56,21 +56,37 @@ public enum ProviderDeliveryPlanner {
                 else if provider == .mdblist { add("watchlist", planned ? "/watchlist/items/add" : "/watchlist/items/remove") }
                 else { add("watchlist", planned ? "/sync/watchlist" : "/sync/watchlist/remove") }
             }
-            if let status, status != "planned" {
+            // A status the service doesn't keep (watching and completed come from the watches
+            // themselves on Trakt and MDBList) and favourites outside Trakt stay in the diary.
+            if let status, status != "planned", statusCarried(status, provider: provider, isSeries: title.isSeries) {
                 if provider == .simkl, let list = TraktWritePlan.simklList(status: status, isSeries: title.isSeries) {
                     // Simkl moves the title to its list (this also takes it off Plan to Watch).
                     var value = item; value["to"] = list; add("status", "/sync/add-to-list", value)
-                } else if provider == .mdblist && status == "dropped" && title.isSeries { add("status", "/sync/dropped") }
-                else { blocked.append("This status needs provider-specific review; no watch history was invented.") }
+                } else if provider == .mdblist { add("status", "/sync/dropped") }
+                else if provider == .trakt { add("status", "/users/hidden/dropped") }
             }
-            if let favorite {
-                _ = favorite
-                blocked.append("Favourite changes are not supported by this provider connection yet.")
-            }
+            if let favorite, provider == .trakt { add("favorite", favorite ? "/sync/favorites" : "/sync/favorites/remove") }
         default:
             blocked.append("This edit requires provider-specific reconciliation before delivery.")
         }
         return ProviderDeliveryPlan(deliveries: deliveries, blocked: blocked)
+    }
+
+    /// Whether a service keeps anything this edit changes. Edits it doesn't keep aren't queued for it
+    /// (a favourite only Trakt keeps; watching and completed come from the watches on Trakt and MDBList).
+    public static func carries(_ mutation: OptimisticMutation, provider: SyncProviderKind, isSeries: Bool) -> Bool {
+        guard case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation else { return true }
+        if provider == .cloudflare || score != nil || clearScore || queued != nil { return true }
+        if let status, statusCarried(status, provider: provider, isSeries: isSeries) { return true }
+        return favorite != nil && provider == .trakt
+    }
+    static func statusCarried(_ status: String, provider: SyncProviderKind, isSeries: Bool) -> Bool {
+        if status == "planned" { return true }
+        switch provider {
+        case .simkl: return TraktWritePlan.simklList(status: status, isSeries: isSeries) != nil
+        case .trakt, .mdblist: return status == "dropped" && isSeries
+        case .cloudflare: return true
+        }
     }
 
     public static func confirms(_ data: Data) -> Bool {

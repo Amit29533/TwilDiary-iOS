@@ -312,4 +312,7 @@ private func diary() throws -> Workspace {
     #expect(built.locations == server.locations)
     // Titles Trakt doesn't know stay as the server has them.
     #expect(byName["Diary only"]?.status == "completed")
+    // Simkl keeps no favourites: the server's favourite stands.
+    let simkl = TraktDiary.build(library: library, server: server, tracker: .simkl)
+    #expect(simkl.titles.first { $0.id == "spooky" }?.favorite == true)
 }

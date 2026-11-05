@@ -1,61 +1,99 @@
 import Foundation
 import TwilDiaryCore
 
-/// Trakt-first phase 4b: with "Show my diary from Trakt" on, edits go to Trakt. Watches (at their
-/// exact time), removing a watch (that very play, by its Trakt id), ratings, Planned, favourites and
-/// dropped are written to Trakt and applied to the phone's Trakt copy at once, so the screen
-/// updates without a full re-read. Notes, tags, Queue and Trash stay on your server.
+/// Trakt-first phase 4b, and phase 5 for Simkl and MDBList: with "Show my diary from <service>" on,
+/// edits go to that service. Watches (at their exact time), removing a watch, ratings, Planned and
+/// dropped are written to the service and applied to the phone's copy of it at once, so the screen
+/// updates without a full re-read. Favourites go to Trakt (Simkl and MDBList keep none, so your
+/// server keeps them); notes, tags, Queue and Trash stay on your server.
 ///
-/// Phase 5: the same edits also go to Simkl and MDBList when they're connected for logging (through
-/// the delivery queue, as in the server diary), within what each keeps. Never back to Trakt.
+/// The same edits also go to the other connected services (the mirrors) through the delivery
+/// queue, as in the server diary, within what each keeps. Never back to the service they came from.
 extension DiaryStore {
-    /// Queues an edit for the connected mirrors (Simkl, MDBList), never Trakt.
-    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.simkl, .mdblist]) {
-        let targets = providers.subtracting([.trakt, .cloudflare]).intersection(providerSettings.activeDirectLoggingProviders)
+    /// The service the diary on screen comes from (nil: your server's diary).
+    var diaryService: MainTracker? { diaryFromTrakt ? .trakt : diaryFromTracker }
+    var diaryFromService: Bool { diaryService != nil }
+    private var service: MainTracker { diaryService ?? .trakt }
+    private func providerKind(_ tracker: MainTracker) -> SyncProviderKind {
+        switch tracker { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist }
+    }
+
+    private func serviceRef(_ title: MediaTitle) throws -> [String: Any] {
+        guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so \(service.name) can’t find it.") }
+        return ["ids": ["tmdb": tmdb]]
+    }
+    private func titleRef(_ title: MediaTitle) -> TraktTitleRef {
+        TraktTitleRef(kind: title.isSeries ? .show : .movie, traktId: nil, tmdbId: title.tmdbId, name: title.name, year: title.year)
+    }
+    private func stamp(_ date: Date) -> String { Date.ISO8601FormatStyle(includingFractionalSeconds: true).format(date) }
+    /// A title only on the service has no server record for notes, tags or files yet.
+    func isServiceOnly(_ title: MediaTitle) -> Bool { title.id.hasPrefix("tv:") || title.id.hasPrefix("movie:") }
+
+    // MARK: Talking to the service
+
+    private func send(_ path: String, _ body: [String: Any]) async throws {
+        switch service {
+        case .trakt: try await TraktDirectStore.shared.write(path, body: body, store: self)
+        case .simkl, .mdblist: try await TrackerPreviewStore.shared.write(service, path, body: body, store: self)
+        }
+    }
+    private func updateCopy(_ change: (inout TraktLibrary) -> Void) {
+        switch service {
+        case .trakt: TraktDirectStore.shared.update(store: self, change)
+        case .simkl, .mdblist: TrackerPreviewStore.shared.update(service, store: self, change)
+        }
+    }
+    private func refreshCopySoon() {
+        switch service {
+        case .trakt: TraktDirectStore.shared.refreshSoon(store: self)
+        case .simkl, .mdblist: TrackerPreviewStore.shared.refreshSoon(service, store: self)
+        }
+    }
+
+    /// Queues an edit for the connected mirrors, never the service the diary comes from.
+    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .simkl, .mdblist]) {
+        var skip: Set<SyncProviderKind> = [.cloudflare]
+        if let diaryService { skip.insert(providerKind(diaryService)) }
+        let targets = providers.subtracting(skip).intersection(providerSettings.activeDirectLoggingProviders)
         guard !targets.isEmpty, !isPreview else { return }
         recordDirectProviderMutation(mutation, providers: targets)
     }
 
-    private func traktRef(_ title: MediaTitle) throws -> [String: Any] {
-        guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so Trakt can’t find it.") }
-        return ["ids": ["tmdb": tmdb]]
-    }
-    private func traktTitleRef(_ title: MediaTitle) -> TraktTitleRef {
-        TraktTitleRef(kind: title.isSeries ? .show : .movie, traktId: nil, tmdbId: title.tmdbId, name: title.name, year: title.year)
-    }
-    private func stamp(_ date: Date) -> String { Date.ISO8601FormatStyle(includingFractionalSeconds: true).format(date) }
-    /// A title only on Trakt has no server record for notes, tags or files yet.
-    func isTraktOnly(_ title: MediaTitle) -> Bool { title.id.hasPrefix("tv:") || title.id.hasPrefix("movie:") }
-
     // MARK: Watches
 
-    /// Adds plays (movie, or episodes of one show) at the given times.
-    func traktAddPlays(_ title: MediaTitle, episodes: [(season: Int, number: Int)], at date: Date) async throws {
-        var item = try traktRef(title)
+    /// Adds plays (movie, or episodes of one show) at the given time.
+    func serviceAddPlays(_ title: MediaTitle, episodes: [(season: Int, number: Int)], at date: Date) async throws {
+        var item = try serviceRef(title)
         let when = stamp(date)
+        let path = service == .mdblist ? "/sync/watched" : "/sync/history"
         if title.isSeries {
             guard !episodes.isEmpty else { throw APIError.message("No episode is ready to mark.") }
             let seasons = Set(episodes.map { $0.season }).sorted().map { season in
                 ["number": season, "episodes": episodes.filter { $0.season == season }.map { ["number": $0.number, "watched_at": when] }] as [String: Any]
             }
             item["seasons"] = seasons
-            try await TraktDirectStore.shared.write("/sync/history", body: ["shows": [item]], store: self)
+            try await send(path, ["shows": [item]])
         } else {
             item["watched_at"] = when
-            try await TraktDirectStore.shared.write("/sync/history", body: ["movies": [item]], store: self)
+            try await send(path, ["movies": [item]])
         }
-        let ref = traktTitleRef(title)
-        TraktDirectStore.shared.update(store: self) { library in
+        let ref = titleRef(title)
+        let oneEach = !service.capabilities.keepsRewatches
+        let key = ref.diaryKey
+        updateCopy { library in
             if title.isSeries {
                 for episode in episodes {
+                    // Simkl and MDBList keep one watch per episode: the new time replaces the old.
+                    if oneEach { library.plays.removeAll { $0.title.diaryKey == key && $0.season == episode.season && $0.episode == episode.number } }
                     library.plays.append(TraktPlay(historyId: -TrackerDecode.playID("local|\(ref.tmdbId ?? 0)|\(episode.season)|\(episode.number)|\(when)"),
                                                    title: ref, season: episode.season, episode: episode.number, watchedAt: when))
                 }
             } else {
+                if oneEach { library.plays.removeAll { $0.title.diaryKey == key && $0.season == nil } }
                 library.plays.append(TraktPlay(historyId: -TrackerDecode.playID("local|\(ref.tmdbId ?? 0)|\(when)"), title: ref, watchedAt: when))
             }
         }
-        // The mirrors get each watch at the same time (the Trakt diary now has the episodes).
+        // The mirrors get each watch at the same time (the diary now has the episodes).
         if title.isSeries {
             for episode in episodes {
                 let id = workspace.episodes.first { $0.titleId == title.id && $0.season == episode.season && $0.number == episode.number }?.id
@@ -65,40 +103,63 @@ extension DiaryStore {
         } else {
             mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: nil, watchedAt: when, recordedAt: when, rewatch: false))
         }
-        TraktDirectStore.shared.refreshSoon(store: self)
+        refreshCopySoon()
     }
-    /// Removes exactly these plays from Trakt history (never all plays of a title or episode).
-    func traktRemovePlays(_ ids: [Int64]) async throws {
-        let known = ids.filter { $0 > 0 }
-        guard !known.isEmpty else { throw APIError.message("That watch is still reaching Trakt. Try again in a moment.") }
-        try await TraktDirectStore.shared.write("/sync/history/remove", body: ["ids": known], store: self)
-        TraktDirectStore.shared.update(store: self) { library in library.plays.removeAll { known.contains($0.historyId) } }
+
+    /// Removes exactly these watches. Trakt removes those very plays (by id, never all plays of an
+    /// episode); Simkl and MDBList keep one watch per episode or movie, so that watch is removed.
+    func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
+        guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
+        let ids = events.compactMap(servicePlayID)
+        if service == .trakt {
+            let known = ids.filter { $0 > 0 }
+            guard known.count == events.count else { throw APIError.message("That watch is still reaching Trakt. Try again in a moment.") }
+            try await send("/sync/history/remove", ["ids": known])
+        } else {
+            var movies: [[String: Any]] = [], shows: [Int: [Int: [Int]]] = [:]
+            for event in events {
+                guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { throw APIError.message("This watch has no TMDB id, so \(service.name) can’t find it.") }
+                if title.isSeries {
+                    guard let episode = workspace.episodes.first(where: { $0.id == event.episodeId }) else { throw APIError.message("This watch has no episode to remove.") }
+                    shows[tmdb, default: [:]][episode.season, default: []].append(episode.number)
+                } else { movies.append(["ids": ["tmdb": tmdb]]) }
+            }
+            let showBodies: [[String: Any]] = shows.keys.sorted().map { tmdb in
+                let seasons = shows[tmdb] ?? [:]
+                return ["ids": ["tmdb": tmdb], "seasons": seasons.keys.sorted().map { season in
+                    ["number": season, "episodes": (seasons[season] ?? []).map { ["number": $0] }] as [String: Any]
+                }]
+            }
+            try await send(service == .mdblist ? "/sync/watched/remove" : "/sync/history/remove", ["movies": movies, "shows": showBodies])
+        }
+        updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) } }
+        refreshCopySoon()
     }
-    /// The Trakt history id behind a diary watch of the Trakt diary ("trakt-123").
-    func traktPlayID(_ event: WatchEvent) -> Int64? {
+    /// The service's play behind a watch in the service diary ("trakt-123").
+    func servicePlayID(_ event: WatchEvent) -> Int64? {
         guard event.id.hasPrefix("trakt-") else { return nil }
         return Int64(event.id.dropFirst("trakt-".count))
     }
     /// The latest play of a title (or one episode of it).
-    func latestTraktEvent(titleID: String, episodeID: String? = nil, any: Bool = false) -> WatchEvent? {
+    func latestServiceEvent(titleID: String, episodeID: String? = nil, any: Bool = false) -> WatchEvent? {
         workspace.activeEvents.filter { $0.titleId == titleID && (any || $0.episodeId == episodeID) }
             .max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) }
     }
 
-    func traktSeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async throws {
+    func serviceSeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async throws {
         let episodes = workspace.episodes.filter { $0.titleId == title.id && $0.season == season }.sorted { $0.number < $1.number }
         let wanted = Set(episodes.prefix(max(0, count)).map(\.id))
         let watched = Set(workspace.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
         let add = episodes.filter { wanted.contains($0.id) && !watched.contains($0.id) }
-        if !add.isEmpty { try await traktAddPlays(title, episodes: add.map { (season: $0.season, number: $0.number) }, at: watchedAt) }
+        if !add.isEmpty { try await serviceAddPlays(title, episodes: add.map { (season: $0.season, number: $0.number) }, at: watchedAt) }
         let remove = episodes.filter { !wanted.contains($0.id) && watched.contains($0.id) }
-            .compactMap { latestTraktEvent(titleID: title.id, episodeID: $0.id) }.compactMap(traktPlayID)
-        if !remove.isEmpty { try await traktRemovePlays(remove) }
+            .compactMap { latestServiceEvent(titleID: title.id, episodeID: $0.id) }
+        if !remove.isEmpty { try await serviceRemoveWatches(remove) }
     }
 
-    /// A title's status in Trakt terms. Completing marks what's aired and unwatched (a movie gets
-    /// its watch); the rest is the watchlist / dropped / favourite side (traktPatch).
-    func traktSetStatus(_ title: MediaTitle, status: String, watchedAt: Date) async throws {
+    /// A title's status on the service. Completing marks what's aired and unwatched (a movie gets
+    /// its watch); the rest is the list side (servicePatch).
+    func serviceSetStatus(_ title: MediaTitle, status: String, watchedAt: Date) async throws {
         if status == "completed" {
             let today = DiaryDate.day(now)
             let watched = Set(workspace.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
@@ -107,28 +168,28 @@ extension DiaryStore {
                     && (episode.airedOn.map { aired in aired <= today } ?? false)
             }
             if !title.isSeries && !workspace.activeEvents.contains(where: { $0.titleId == title.id }) {
-                try await traktAddPlays(title, episodes: [], at: watchedAt)
+                try await serviceAddPlays(title, episodes: [], at: watchedAt)
             } else if !due.isEmpty {
-                try await traktAddPlays(title, episodes: due.map { (season: $0.season, number: $0.number) }, at: watchedAt)
+                try await serviceAddPlays(title, episodes: due.map { (season: $0.season, number: $0.number) }, at: watchedAt)
             }
         }
-        try await traktPatch(title, values: ["status": status])
+        try await servicePatch(title, values: ["status": status])
     }
 
-    // MARK: Titles only on Trakt
+    // MARK: Titles only on the service
 
-    /// Titles only on Trakt join your server diary (details, poster and episodes; then notes, tags
-    /// and Trash work too), a few at a time and once per title per session. Each import refreshes
-    /// the diary, and the Trakt diary then finds the title on the server by its TMDB id.
-    func adoptTraktOnlyTitles() async {
-        guard diaryFromTrakt, !adoptingTraktTitles, !isPreview else { return }
-        let candidates = workspace.titles.filter { isTraktOnly($0) && !adoptedTraktKeys.contains($0.id) }.prefix(8)
+    /// Titles only on the service join your server diary (details, poster and episodes; then notes,
+    /// tags and Trash work too), a few at a time and once per title per session. Each import
+    /// refreshes the diary, and the service diary then finds the title on the server by its TMDB id.
+    func adoptServiceOnlyTitles() async {
+        guard diaryFromService, !adoptingTraktTitles, !isPreview else { return }
+        let candidates = workspace.titles.filter { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }.prefix(8)
         guard !candidates.isEmpty else { return }
         adoptingTraktTitles = true
         defer { adoptingTraktTitles = false }
         for title in candidates {
             adoptedTraktKeys.insert(title.id)
-            guard diaryFromTrakt, let tmdb = title.tmdbId else { continue }
+            guard diaryFromService, let tmdb = title.tmdbId else { continue }
             let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb)
             guard let found = try? await browse(route), found.libraryTitle == nil else { continue }
             _ = await importTitle(found.details, category: found.details.suggestedCategory)
@@ -137,66 +198,90 @@ extension DiaryStore {
 
     // MARK: Title facts
 
-    /// Rating, Planned, dropped and favourite go to Trakt; everything else (notes, tags, Queue) to
-    /// the server's record of the title.
-    func traktPatch(_ title: MediaTitle, values: [String: Any]) async throws {
-        let item = try traktRef(title)
+    /// Rating, Planned and dropped go to the service, and favourites to Trakt; everything else
+    /// (notes, tags, Queue, and what the service can't keep) to the server's record of the title.
+    func servicePatch(_ title: MediaTitle, values: [String: Any]) async throws {
+        let item = try serviceRef(title)
         let slot = title.isSeries ? "shows" : "movies"
         if let score = values["score"] as? Double {
-            try await TraktDirectStore.shared.write("/sync/ratings", body: [slot: [item.merging(["rating": Int(score.rounded())]) { $1 }]], store: self)
+            try await send("/sync/ratings", [slot: [item.merging(["rating": Int(score.rounded())]) { $1 }]])
         } else if values["score"] is NSNull {
-            try await TraktDirectStore.shared.write("/sync/ratings/remove", body: [slot: [item]], store: self)
+            try await send("/sync/ratings/remove", [slot: [item]])
         }
-        if let status = values["status"] as? String {
-            switch status {
-            case "planned":
-                try await TraktDirectStore.shared.write("/sync/watchlist", body: [slot: [item]], store: self)
-                if title.isSeries && title.status == "dropped" { try await TraktDirectStore.shared.write("/users/hidden/dropped/remove", body: ["shows": [item]], store: self) }
-            case "dropped" where title.isSeries:
-                try await TraktDirectStore.shared.write("/users/hidden/dropped", body: ["shows": [item]], store: self)
-            default:
-                if title.status == "planned" { try await TraktDirectStore.shared.write("/sync/watchlist/remove", body: [slot: [item]], store: self) }
-                if title.isSeries && title.status == "dropped" { try await TraktDirectStore.shared.write("/users/hidden/dropped/remove", body: ["shows": [item]], store: self) }
+        let status = values["status"] as? String
+        // Whether the service keeps this status (otherwise the server does).
+        var serviceHolds = true
+        if let status {
+            let wasPlanned = title.status == "planned", wasDropped = title.isSeries && title.status == "dropped"
+            switch service {
+            case .trakt:
+                switch status {
+                case "planned":
+                    try await send("/sync/watchlist", [slot: [item]])
+                    if wasDropped { try await send("/users/hidden/dropped/remove", ["shows": [item]]) }
+                case "dropped" where title.isSeries:
+                    try await send("/users/hidden/dropped", ["shows": [item]])
+                default:
+                    if wasPlanned { try await send("/sync/watchlist/remove", [slot: [item]]) }
+                    if wasDropped { try await send("/users/hidden/dropped/remove", ["shows": [item]]) }
+                    serviceHolds = status != "dropped"
+                }
+            case .simkl:
+                // Simkl moves the title to the list for its status (that keeps its history).
+                if let list = TraktWritePlan.simklList(status: status, isSeries: title.isSeries) {
+                    try await send("/sync/add-to-list", [slot: [item.merging(["to": list]) { $1 }]])
+                } else { serviceHolds = false }
+            case .mdblist:
+                switch status {
+                case "planned":
+                    try await send("/watchlist/items/add", [slot: [item]])
+                    if wasDropped { try await send("/sync/dropped/remove", ["shows": [item]]) }
+                case "dropped" where title.isSeries:
+                    if wasPlanned { try await send("/watchlist/items/remove", [slot: [item]]) }
+                    try await send("/sync/dropped", ["shows": [item]])
+                default:
+                    if wasPlanned { try await send("/watchlist/items/remove", [slot: [item]]) }
+                    if wasDropped { try await send("/sync/dropped/remove", ["shows": [item]]) }
+                    serviceHolds = status != "dropped"
+                }
             }
         }
-        if let favourite = values["favorite"] as? Bool {
-            try await TraktDirectStore.shared.write(favourite ? "/sync/favorites" : "/sync/favorites/remove", body: [slot: [item]], store: self)
+        let favourite = values["favorite"] as? Bool
+        let favouritesHere = service.capabilities.holdsFavourites
+        if let favourite, favouritesHere {
+            try await send(favourite ? "/sync/favorites" : "/sync/favorites/remove", [slot: [item]])
         }
-        let ref = traktTitleRef(title)
-        TraktDirectStore.shared.update(store: self) { library in
+        let ref = titleRef(title)
+        let dropsHere = title.isSeries
+        updateCopy { library in
             let key = ref.diaryKey
             if let score = values["score"] as? Double {
                 library.ratings.removeAll { $0.title.diaryKey == key }
                 library.ratings.append(TraktRating(title: ref, rating: Int(score.rounded()), ratedAt: nil))
             } else if values["score"] is NSNull { library.ratings.removeAll { $0.title.diaryKey == key } }
-            if let status = values["status"] as? String {
+            if let status {
                 library.watchlist.removeAll { $0.title.diaryKey == key }
                 library.dropped.removeAll { $0.title.diaryKey == key }
                 if status == "planned" { library.watchlist.append(TraktListed(title: ref, listedAt: nil)) }
-                if status == "dropped" && title.isSeries { library.dropped.append(TraktListed(title: ref, listedAt: nil)) }
+                if status == "dropped" && dropsHere { library.dropped.append(TraktListed(title: ref, listedAt: nil)) }
             }
-            if let favourite = values["favorite"] as? Bool {
+            if let favourite, favouritesHere {
                 library.favorites.removeAll { $0.title.diaryKey == key }
                 if favourite { library.favorites.append(TraktListed(title: ref, listedAt: nil)) }
             }
         }
-        // The mirrors: ratings to both; a status only where the service can hold it (MDBList keeps
-        // Planned and dropped shows; Simkl moves the title to the list for its status).
+        // The mirrors: ratings to all; a status and a favourite where each service keeps them.
         let score = values["score"] as? Double, clearScore = values["score"] is NSNull
-        if score != nil || clearScore {
-            mirror(.patchTitle(titleId: title.id, expectedVersion: nil, status: nil, score: score, clearScore: clearScore, favorite: nil, queued: nil, notes: nil))
+        if score != nil || clearScore || status != nil || favourite != nil {
+            mirror(.patchTitle(titleId: title.id, expectedVersion: nil, status: status, score: score, clearScore: clearScore, favorite: favourite, queued: nil, notes: nil))
         }
-        if let status = values["status"] as? String {
-            var to: Set<SyncProviderKind> = []
-            if status == "planned" || TraktWritePlan.simklList(status: status, isSeries: title.isSeries) != nil { to.insert(.simkl) }
-            if status == "planned" || (status == "dropped" && title.isSeries) { to.insert(.mdblist) }
-            mirror(.patchTitle(titleId: title.id, expectedVersion: nil, status: status, score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil), to: to)
-        }
-        // The server keeps the rest, and a dropped movie (Trakt only drops shows).
+        // The server keeps the rest: what the service can't hold (a dropped movie; favourites
+        // outside Trakt) and notes, tags and Queue.
         var rest = values.filter { !["score", "favorite", "status"].contains($0.key) }
-        if let status = values["status"] as? String, status == "dropped" || title.status == "dropped", !title.isSeries { rest["status"] = status }
+        if let status, !serviceHolds || (!title.isSeries && title.status == "dropped") { rest["status"] = status }
+        if let favourite, !favouritesHere { rest["favorite"] = favourite }
         if !rest.isEmpty {
-            guard !isTraktOnly(title) else { throw APIError.message("Notes, tags and Queue need this title in your server diary. Add it from its page first.") }
+            guard !isServiceOnly(title) else { throw APIError.message("Notes, tags and Queue need this title in your server diary. It joins on its own in a moment, or add it from its page.") }
             rest["expectedVersion"] = title.version
             let _: EmptyResponse = try await read("/api/titles/\(title.id)", method: "PATCH", body: rest)
         }

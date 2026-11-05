@@ -61,18 +61,18 @@ struct MainTrackerView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
     }
 
-    /// Phase 5: the same preview from Simkl or MDBList. Editing pauses while it's on.
+    /// Phase 5: the same from Simkl or MDBList; edits go to it.
     private var trackerDiarySource: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: Binding(get: { store.diaryFromTracker == tracker }, set: { store.diaryFromTracker = $0 ? tracker : nil })) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show my diary from \(tracker.name)").font(.subheadline.weight(.semibold))
-                    Text("Every screen shows your \(tracker.name) watches, ratings, Planned and dropped, with posters, tags, notes and files from your server. Editing is paused while this is on; your edits reach \(tracker.name) from your server’s diary.")
+                    Text("Every screen shows your \(tracker.name) watches, ratings, Planned and dropped, with posters, tags, notes, favourites and files from your server. Your edits go to \(tracker.name); notes, tags, favourites, Queue and Trash stay on your server.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.accessibilityIdentifier("diary-from-" + tracker.rawValue)
             if store.diaryFromTracker == tracker {
-                Label("Preview from \(tracker.name). Turn this off to edit again.", systemImage: "eye").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                Label("Your diary comes from \(tracker.name). Turn this off to go back to your server’s diary.", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
             }
         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
@@ -151,7 +151,7 @@ struct TrackerPreviewPanel: View {
         })) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Send my edits to Trakt as I make them").font(.subheadline.weight(.semibold))
-                Text("Watches (at their exact time), ratings and Planned go straight to Trakt; favourites and dropped go with “Make Trakt match”.")
+                Text("Watches (at their exact time), ratings, Planned, favourites and dropped shows go straight to Trakt.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }.disabled(savingWriteThrough).accessibilityIdentifier("trakt-write-through")

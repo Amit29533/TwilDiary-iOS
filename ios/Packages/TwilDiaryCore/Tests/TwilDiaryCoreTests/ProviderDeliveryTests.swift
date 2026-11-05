@@ -36,6 +36,16 @@ import TwilDiaryTestSupport
     let moved = ProviderDeliveryPlanner.plan(completed, provider: .simkl, in: base)
     #expect(moved.blocked.isEmpty && moved.deliveries.map(\.path) == ["/sync/add-to-list"])
     #expect((moved.deliveries[0].body["movies"] as? [[String: Any]])?.first?["to"] as? String == "completed")
+    // Favourites go to Trakt only; a status MDBList takes from the watches isn't queued for it.
+    let favourite = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: true, queued: nil, notes: nil)
+    #expect(ProviderDeliveryPlanner.carries(favourite, provider: .trakt, isSeries: false))
+    #expect(!ProviderDeliveryPlanner.carries(favourite, provider: .simkl, isSeries: false) && !ProviderDeliveryPlanner.carries(favourite, provider: .mdblist, isSeries: false))
+    let traktFavourite = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: favourite, pendingProviders: [.trakt]), provider: .trakt, in: base)
+    #expect(traktFavourite.blocked.isEmpty && traktFavourite.deliveries.map(\.path) == ["/sync/favorites"])
+    let done = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "completed", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
+    #expect(!ProviderDeliveryPlanner.carries(done, provider: .mdblist, isSeries: false) && ProviderDeliveryPlanner.carries(done, provider: .simkl, isSeries: false))
+    let dropped = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "dropped", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
+    #expect(ProviderDeliveryPlanner.carries(dropped, provider: .trakt, isSeries: true) && !ProviderDeliveryPlanner.carries(dropped, provider: .trakt, isSeries: false))
 }
 
 @Test func providerDeliveryProgressSurvivesEncodingAndCannotBeCoalesced() throws {

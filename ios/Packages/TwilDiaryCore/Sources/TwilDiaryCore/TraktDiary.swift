@@ -7,7 +7,10 @@ import Foundation
 // notes and tags stay attached. Read-only for now: edits go back to the server diary.
 
 public enum TraktDiary {
-    public static func build(library: TraktLibrary, server: Workspace) -> Workspace {
+    /// `tracker`: the service the library comes from. What it doesn't keep (favourites on Simkl and
+    /// MDBList) stays as the server has it.
+    public static func build(library: TraktLibrary, server: Workspace, tracker: MainTracker = .trakt) -> Workspace {
+        let keepsFavourites = tracker.capabilities.holdsFavourites
         func key(_ title: MediaTitle) -> String? { title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }
         var serverByKey: [String: MediaTitle] = [:]
         for title in server.titles { if let k = key(title), serverByKey[k] == nil || title.deletedAt == nil { serverByKey[k] = title } }
@@ -32,6 +35,7 @@ public enum TraktDiary {
             guard serverByKey[k]?.id == title.id else { titles.append(title); continue }
             var value = title
             apply(&value, key: k, rating: rated[k], watchlist: watchlist, favourites: favourites, dropped: dropped, played: played)
+            if !keepsFavourites { value.favorite = title.favorite }
             titles.append(value); idForKey[k] = title.id
         }
         for (k, ref) in refs.sorted(by: { $0.key < $1.key }) where idForKey[k] == nil {

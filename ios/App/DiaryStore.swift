@@ -99,7 +99,7 @@ import TwilDiaryCore
         for waiter in waiting { waiter.resume() }
     }
     private(set) var needsMutationRefresh = false
-    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh || diaryFromTracker != nil }
+    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh }
     /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
     /// Titles only on Trakt already sent to the server diary this session (each tried once).
@@ -116,8 +116,7 @@ import TwilDiaryCore
         get { diarySource == "trakt" }
         set { diarySource = newValue ? "trakt" : "server" }
     }
-    /// Phase 5: the diary built from Simkl or MDBList, as a preview. Editing is paused meanwhile
-    /// (edits reach them through the server diary and the delivery queue).
+    /// Phase 5: the diary built from Simkl or MDBList; edits go to it (TraktDiaryEditing).
     var diaryFromTracker: MainTracker? {
         get { diarySource == "simkl" ? .simkl : diarySource == "mdblist" ? .mdblist : nil }
         set { diarySource = newValue?.rawValue ?? "server" }
@@ -415,15 +414,18 @@ import TwilDiaryCore
         if diaryFromTrakt {
             if let library = TraktDirectStore.shared.library {
                 workspace = TraktDiary.build(library: library, server: confirmedWorkspace)
-                if workspace.titles.contains(where: { isTraktOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
-                    Task { await self.adoptTraktOnlyTitles() }
+                if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
+                    Task { await self.adoptServiceOnlyTitles() }
                 }
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
             }
         } else if let tracker = diaryFromTracker {
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
-                workspace = TraktDiary.build(library: library, server: confirmedWorkspace)
+                workspace = TraktDiary.build(library: library, server: confirmedWorkspace, tracker: tracker)
+                if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
+                    Task { await self.adoptServiceOnlyTitles() }
+                }
             } else {
                 workspace = outbox.project(onto: confirmedWorkspace)
                 if TrackerPreviewStore.shared.running == nil { Task { await TrackerPreviewStore.shared.check(tracker, store: self) } }
@@ -946,7 +948,9 @@ import TwilDiaryCore
     /// Records a watch or title mutation for any enabled direct providers (`simkl`, `mdblist`, `trakt`)
     /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
     func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind>? = nil) {
+        let isSeries = title(mutation.titleId)?.isSeries ?? true
         let activeProviders = providerSettings.activeDirectLoggingProviders.intersection(providers ?? providerSettings.activeDirectLoggingProviders)
+            .filter { ProviderDeliveryPlanner.carries(mutation, provider: $0, isSeries: isSeries) }
         guard !activeProviders.isEmpty, !outbox.pending(for: .cloudflare).contains(where: { $0.mutation.titleId == mutation.titleId }) else { return }
         guard let scope = api.credential?.cacheScope else { return }
         if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
@@ -995,7 +999,7 @@ import TwilDiaryCore
                         try persistDelivery(entryID: entry.id, key: key, confirmed: true)
                     }
                     if !plan.blocked.isEmpty { throw APIError.message(plan.blocked.joined(separator: " ")) }
-                    guard !plan.deliveries.isEmpty else { throw APIError.message("This edit has no supported provider operation.") }
+                    // No deliveries and nothing blocked: this service keeps none of it, so it's done.
                     try acknowledgeOutbox(entry.id, provider: provider)
                     completed += 1
                     BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: completed, total: pending.count, phase: completed == pending.count ? .completed : .flushingOutbox)
@@ -1142,7 +1146,7 @@ import TwilDiaryCore
     }
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
         await perform(refreshing: [title.id]) {
-            guard !self.isTraktOnly(title) else { throw APIError.message("This title is only on Trakt. Add it to your diary from its page to use Trash.") }
+            guard !self.isServiceOnly(title) else { throw APIError.message("This title is only on \(self.diaryService?.name ?? "Trakt") so far. It joins your server diary on its own in a moment; then Trash works.") }
             let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
             self.undoLabel = "Moved to Trash"
             self.undoAction = {
@@ -1153,7 +1157,7 @@ import TwilDiaryCore
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
         await perform(refreshing: [title.id]) {
-            guard !self.isTraktOnly(title) else { throw APIError.message("This title is only on Trakt. Add it to your diary from its page to use Trash.") }
+            guard !self.isServiceOnly(title) else { throw APIError.message("This title is only on \(self.diaryService?.name ?? "Trakt") so far. It joins your server diary on its own in a moment; then Trash works.") }
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
         }
     }
@@ -1238,16 +1242,16 @@ import TwilDiaryCore
         }
     }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
-        if diaryFromTrakt {
+        if diaryFromService {
             await perform(cardID: title.id, cardAction: .mark) {
                 let card = self.localCard(title, season: season)
                 if title.isSeries {
                     guard let next = card.next, let episode = self.workspace.episodes.first(where: { $0.id == next.id }) else {
                         throw APIError.message("No aired episode is ready to mark. Load this season’s episodes or choose another season.")
                     }
-                    try await self.traktAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
+                    try await self.serviceAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
                 } else {
-                    try await self.traktAddPlays(title, episodes: [], at: self.now)
+                    try await self.serviceAddPlays(title, episodes: [], at: self.now)
                 }
             }
             return
@@ -1289,12 +1293,12 @@ import TwilDiaryCore
         }
     }
     func removeLatest(_ title: MediaTitle, season: Int? = nil, expected: WatchCard.Previous? = nil) async {
-        if diaryFromTrakt {
+        if diaryFromService {
             await perform(cardID: title.id, cardAction: .remove) {
                 let event = expected.flatMap { previous in self.workspace.activeEvents.first { $0.id == previous.id } }
-                    ?? self.latestTraktEvent(titleID: title.id, any: true)
-                guard let event, let id = self.traktPlayID(event) else { throw APIError.message("There’s no watch to remove.") }
-                try await self.traktRemovePlays([id])
+                    ?? self.latestServiceEvent(titleID: title.id, any: true)
+                guard let event else { throw APIError.message("There’s no watch to remove.") }
+                try await self.serviceRemoveWatches([event])
             }
             return
         }
@@ -1334,7 +1338,7 @@ import TwilDiaryCore
     func rejectPendingViewing(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingWatches.removeValue(forKey: key) } }
     func rejectPendingSeason(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingSeasonAdjustments.removeValue(forKey: key) } }
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
-        if diaryFromTrakt { return await perform(refreshing: [title.id]) { try await self.traktPatch(title, values: values) } }
+        if diaryFromService { return await perform(refreshing: [title.id]) { try await self.servicePatch(title, values: values) } }
         return await perform(refreshing: [title.id]) {
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
@@ -1353,7 +1357,7 @@ import TwilDiaryCore
         }
     }
     @discardableResult func patchCard(_ titleID: String, values: [String: Any]) async -> Bool {
-        if diaryFromTrakt, let title = self.title(titleID) { return await perform(cardID: titleID) { try await self.traktPatch(title, values: values) } }
+        if diaryFromService, let title = self.title(titleID) { return await perform(cardID: titleID) { try await self.servicePatch(title, values: values) } }
         return await perform(cardID: titleID) {
             guard let title = self.title(titleID), title.deletedAt == nil else { throw APIError.message("This title is no longer in your library.") }
             var body = values; body["expectedVersion"] = title.version
@@ -1373,30 +1377,30 @@ import TwilDiaryCore
         }
     }
     @discardableResult func setStatus(_ title: MediaTitle, status: String, watchedAt: Date? = nil) async -> Bool {
-        if diaryFromTrakt {
-            return await perform(refreshing: [title.id]) { try await self.traktSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
+        if diaryFromService {
+            return await perform(refreshing: [title.id]) { try await self.serviceSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
         }
         if status != "planned" && status != "completed" { return await patch(title, values: ["status": status]) }
         return await perform(refreshing: [title.id]) { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
-        if diaryFromTrakt {
+        if diaryFromService {
             switch change {
             case .status(let status):
                 return await perform(refreshing: Set(reviewed.map(\.id))) {
-                    for title in reviewed { try await self.traktSetStatus(title, status: status, watchedAt: self.now) }
+                    for title in reviewed { try await self.serviceSetStatus(title, status: status, watchedAt: self.now) }
                 }
             case .favorite(let favourite):
                 return await perform(refreshing: Set(reviewed.map(\.id))) {
-                    for title in reviewed { try await self.traktPatch(title, values: ["favorite": favourite]) }
+                    for title in reviewed { try await self.servicePatch(title, values: ["favorite": favourite]) }
                 }
             default:
                 break
             }
         }
-        // Trash, restore, delete and Queue are your server's: titles only on Trakt aren't there yet.
-        let reviewed = diaryFromTrakt ? reviewed.filter { !isTraktOnly($0) } : reviewed
-        guard !reviewed.isEmpty else { error = "These titles are only on Trakt so far. They join your server diary on their own in a moment."; return false }
+        // Trash, restore, delete and Queue are your server's: titles only on the service aren't there yet.
+        let reviewed = diaryFromService ? reviewed.filter { !isServiceOnly($0) } : reviewed
+        guard !reviewed.isEmpty else { error = "These titles are only on \(diaryService?.name ?? "Trakt") so far. They join your server diary on their own in a moment."; return false }
         return await perform(refreshing: Set(reviewed.map(\.id))) {
             let request = try CollectionRequest(titles: reviewed, change: change)
             if case .status(let status) = change, ["planned", "completed"].contains(status) {

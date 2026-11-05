@@ -346,6 +346,36 @@ struct TraktDirectClient: Sendable {
         }
     }
 
+    // MARK: Phase 5: edits in the Simkl / MDBList diary
+
+    @ObservationIgnored private var lastWrite: Date?
+    @ObservationIgnored private var refresh: Task<Void, Never>?
+    /// One write with the service's own sign-in (one a second at most).
+    func write(_ tracker: MainTracker, _ path: String, body: [String: Any], store: DiaryStore) async throws {
+        if store.isPreview { throw APIError.message("Writing to \(tracker.name) needs a real \(tracker.name) connection.") }
+        if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
+        lastWrite = .now
+        let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
+        _ = try await store.directClient.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body))
+    }
+    /// Applies an edit to the phone's copy and redraws the diary at once.
+    func update(_ tracker: MainTracker, store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
+        guard var value = libraries[tracker] else { return }
+        change(&value)
+        libraries[tracker] = value
+        save(value, tracker)
+        store.applyDiarySource()
+    }
+    /// A quiet re-read a few seconds after an edit.
+    func refreshSoon(_ tracker: MainTracker, store: DiaryStore) {
+        refresh?.cancel()
+        refresh = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard let self, !Task.isCancelled else { return }
+            await self.check(tracker, store: store)
+        }
+    }
+
     // MARK: Phase 5: make Simkl / MDBList match the diary
 
     func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
