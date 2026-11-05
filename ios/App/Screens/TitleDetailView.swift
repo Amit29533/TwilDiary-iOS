@@ -646,7 +646,7 @@ struct TitleDetailView: View {
             }.font(.system(size: 14)).frame(minHeight: 32)
             HStack(spacing: 10) {
                 Text("1").foregroundStyle(.secondary)
-                Slider(value: Binding(get: { ratingField.draft ?? 7 }, set: { ratingField.draft = $0 }), in: 1...10, step: store.diaryFromService ? 1 : 0.5) { editing in
+                Slider(value: Binding(get: { ratingField.draft ?? 7 }, set: { ratingField.draft = $0 }), in: 1...10, step: 1) { editing in
                     if !editing { Task { await saveRating(value: ratingField.draft) } }
                 }.sensoryFeedback(.selection, trigger: ratingField.draft).accessibilityLabel("Your rating out of 10").accessibilityIdentifier("title-rating-slider")
                 Text("10").foregroundStyle(.secondary)
@@ -661,7 +661,9 @@ struct TitleDetailView: View {
     }
     private func saveRating(value: Double?) async {
         if value == 10 { perfectSparks += 1 }
-        ratingField.draft = value.map { store.diaryFromService ? $0.rounded() : ($0 * 2).rounded() / 2 }
+        // Whole numbers only, everywhere: Trakt, Simkl and MDBList keep 1–10 whole ratings (a half
+        // star on a 5-star scale is one whole point), so the diary and every service always agree.
+        ratingField.draft = value.map { min(10, max(1, $0.rounded())) }
         guard let current = store.title(id) else { return }
         ratingField.observe(.init(value: current.score, version: current.version))
         guard let submitted = ratingField.submission else { return }
