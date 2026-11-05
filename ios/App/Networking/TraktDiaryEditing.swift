@@ -76,6 +76,45 @@ extension DiaryStore {
         if !remove.isEmpty { try await traktRemovePlays(remove) }
     }
 
+    /// A title's status in Trakt terms. Completing marks what's aired and unwatched (a movie gets
+    /// its watch); the rest is the watchlist / dropped / favourite side (traktPatch).
+    func traktSetStatus(_ title: MediaTitle, status: String, watchedAt: Date) async throws {
+        if status == "completed" {
+            let today = DiaryDate.day(now)
+            let watched = Set(workspace.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
+            let due = workspace.episodes.filter { episode in
+                episode.titleId == title.id && episode.season > 0 && !watched.contains(episode.id)
+                    && (episode.airedOn.map { aired in aired <= today } ?? false)
+            }
+            if !title.isSeries && !workspace.activeEvents.contains(where: { $0.titleId == title.id }) {
+                try await traktAddPlays(title, episodes: [], at: watchedAt)
+            } else if !due.isEmpty {
+                try await traktAddPlays(title, episodes: due.map { (season: $0.season, number: $0.number) }, at: watchedAt)
+            }
+        }
+        try await traktPatch(title, values: ["status": status])
+    }
+
+    // MARK: Titles only on Trakt
+
+    /// Titles only on Trakt join your server diary (details, poster and episodes; then notes, tags
+    /// and Trash work too), a few at a time and once per title per session. Each import refreshes
+    /// the diary, and the Trakt diary then finds the title on the server by its TMDB id.
+    func adoptTraktOnlyTitles() async {
+        guard diaryFromTrakt, !adoptingTraktTitles, !isPreview else { return }
+        let candidates = workspace.titles.filter { isTraktOnly($0) && !adoptedTraktKeys.contains($0.id) }.prefix(8)
+        guard !candidates.isEmpty else { return }
+        adoptingTraktTitles = true
+        defer { adoptingTraktTitles = false }
+        for title in candidates {
+            adoptedTraktKeys.insert(title.id)
+            guard diaryFromTrakt, let tmdb = title.tmdbId else { continue }
+            let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb)
+            guard let found = try? await browse(route), found.libraryTitle == nil else { continue }
+            _ = await importTitle(found.details, category: found.details.suggestedCategory)
+        }
+    }
+
     // MARK: Title facts
 
     /// Rating, Planned, dropped and favourite go to Trakt; everything else (notes, tags, Queue) to
