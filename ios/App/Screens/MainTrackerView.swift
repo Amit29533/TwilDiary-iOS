@@ -50,12 +50,12 @@ struct MainTrackerView: View {
             Toggle(isOn: $store.diaryFromTrakt) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show my diary from Trakt").font(.subheadline.weight(.semibold))
-                    Text("Every screen shows your Trakt watches, ratings, Planned, favourites and dropped, with posters, tags, notes and files from your server. Editing is paused while this is on.")
+                    Text("Every screen shows your Trakt watches, ratings, Planned, favourites and dropped, with posters, tags, notes and files from your server. Your edits go to Trakt; notes, tags, Queue and Trash stay on your server.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.accessibilityIdentifier("diary-from-trakt")
             if store.diaryFromTrakt {
-                Label("Read-only preview. Turn it off to edit again.", systemImage: "eye").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                Label("Your diary comes from Trakt. Turn this off to go back to your server’s diary.", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
             }
         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))

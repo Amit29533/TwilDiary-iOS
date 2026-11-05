@@ -99,7 +99,7 @@ import TwilDiaryCore
         for waiter in waiting { waiter.resume() }
     }
     private(set) var needsMutationRefresh = false
-    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh || diaryFromTrakt }
+    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh }
     /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
     var diaryFromTrakt = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) == "trakt" {
@@ -1118,6 +1118,7 @@ import TwilDiaryCore
     }
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
         await perform(refreshing: [title.id]) {
+            guard !self.isTraktOnly(title) else { throw APIError.message("This title is only on Trakt. Add it to your diary from its page to use Trash.") }
             let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
             self.undoLabel = "Moved to Trash"
             self.undoAction = {
@@ -1128,6 +1129,7 @@ import TwilDiaryCore
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
         await perform(refreshing: [title.id]) {
+            guard !self.isTraktOnly(title) else { throw APIError.message("This title is only on Trakt. Add it to your diary from its page to use Trash.") }
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
         }
     }
@@ -1172,6 +1174,7 @@ import TwilDiaryCore
     }
     func card(_ title: MediaTitle, season: Int? = nil, fresh: Bool = false) async throws -> WatchCard {
         guard !needsSignIn, !Task.isCancelled else { throw CancellationError() }
+        if diaryFromTrakt { return localCard(title, season: season) }
         let key = CardKey(titleID: title.id, revision: cardRevisions[title.id] ?? snapshotGeneration, session: sessionGeneration, season: season, day: DiaryDate.day(now))
         if pendingDiaryEdits > 0 { return localCard(title, season: season) }
         // The key changes with the title's episodes and watches (revision) and with the day, so a card stays
@@ -1211,6 +1214,20 @@ import TwilDiaryCore
         }
     }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
+        if diaryFromTrakt {
+            await perform(cardID: title.id, cardAction: .mark) {
+                let card = self.localCard(title, season: season)
+                if title.isSeries {
+                    guard let next = card.next, let episode = self.workspace.episodes.first(where: { $0.id == next.id }) else {
+                        throw APIError.message("No aired episode is ready to mark. Load this season’s episodes or choose another season.")
+                    }
+                    try await self.traktAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
+                } else {
+                    try await self.traktAddPlays(title, episodes: [], at: self.now)
+                }
+            }
+            return
+        }
         var confirmed: WatchEvent?
         defer { if let confirmed { celebrate(confirmed, title: title) } }
         await perform(cardID: title.id, cardAction: .mark) {
@@ -1248,6 +1265,15 @@ import TwilDiaryCore
         }
     }
     func removeLatest(_ title: MediaTitle, season: Int? = nil, expected: WatchCard.Previous? = nil) async {
+        if diaryFromTrakt {
+            await perform(cardID: title.id, cardAction: .remove) {
+                let event = expected.flatMap { previous in self.workspace.activeEvents.first { $0.id == previous.id } }
+                    ?? self.latestTraktEvent(titleID: title.id, any: true)
+                guard let event, let id = self.traktPlayID(event) else { throw APIError.message("There’s no watch to remove.") }
+                try await self.traktRemovePlays([id])
+            }
+            return
+        }
         await perform(cardID: title.id, cardAction: .remove) {
             if self.pendingRemovals[title.id] == nil {
                 let card = try await self.card(title, season: season, fresh: true)
@@ -1284,7 +1310,8 @@ import TwilDiaryCore
     func rejectPendingViewing(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingWatches.removeValue(forKey: key) } }
     func rejectPendingSeason(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingSeasonAdjustments.removeValue(forKey: key) } }
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
-        await perform(refreshing: [title.id]) {
+        if diaryFromTrakt { return await perform(refreshing: [title.id]) { try await self.traktPatch(title, values: values) } }
+        return await perform(refreshing: [title.id]) {
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
             self.recordDirectProviderMutation(
@@ -1302,7 +1329,8 @@ import TwilDiaryCore
         }
     }
     @discardableResult func patchCard(_ titleID: String, values: [String: Any]) async -> Bool {
-        await perform(cardID: titleID) {
+        if diaryFromTrakt, let title = title(titleID) { return await perform(cardID: titleID) { try await self.traktPatch(title, values: values) } }
+        return await perform(cardID: titleID) {
             guard let title = self.title(titleID), title.deletedAt == nil else { throw APIError.message("This title is no longer in your library.") }
             var body = values; body["expectedVersion"] = title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(titleID)", method: "PATCH", body: body)
@@ -1321,10 +1349,31 @@ import TwilDiaryCore
         }
     }
     @discardableResult func setStatus(_ title: MediaTitle, status: String, watchedAt: Date? = nil) async -> Bool {
+        if diaryFromTrakt {
+            return await perform(refreshing: [title.id]) {
+                if status == "completed" {
+                    // Completing marks what's aired and unwatched (a movie gets its watch).
+                    let today = DiaryDate.day(self.now)
+                    let watched = Set(self.workspace.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
+                    let due = self.workspace.episodes.filter { $0.titleId == title.id && $0.season > 0 && !watched.contains($0.id)
+                        && ($0.airedOn.map { $0 <= today } ?? false) }
+                    if !title.isSeries && !self.workspace.activeEvents.contains(where: { $0.titleId == title.id }) {
+                        try await self.traktAddPlays(title, episodes: [], at: watchedAt ?? self.now)
+                    } else if !due.isEmpty {
+                        try await self.traktAddPlays(title, episodes: due.map { (season: $0.season, number: $0.number) }, at: watchedAt ?? self.now)
+                    }
+                }
+                try await self.traktPatch(title, values: ["status": status])
+            }
+        }
         if status != "planned" && status != "completed" { return await patch(title, values: ["status": status]) }
         return await perform(refreshing: [title.id]) { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
+        if diaryFromTrakt {
+            error = "Changes to several titles at once don’t go to Trakt yet. Change them one by one, or turn off “Show my diary from Trakt”."
+            return false
+        }
         await perform(refreshing: Set(reviewed.map(\.id))) {
             let request = try CollectionRequest(titles: reviewed, change: change)
             if case .status(let status) = change, ["planned", "completed"].contains(status) {

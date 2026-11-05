@@ -193,6 +193,8 @@ struct TraktDirectClient: Sendable {
     // MARK: Phase 2: make Trakt match the diary
 
     private(set) var writing = false
+    @ObservationIgnored private var lastWrite: Date?
+    @ObservationIgnored private var refresh: Task<Void, Never>?
     private(set) var writeProgress: String?
     private(set) var writeResult: String?
     /// What "Make Trakt match" would send, from the last read (nil before a read).
@@ -229,6 +231,35 @@ struct TraktDirectClient: Sendable {
         }
         await check(store: store)
     }
+    // MARK: Phase 4b: edits in the Trakt diary
+
+    /// One write to Trakt with the server's token (one a second at most, waiting out 429s).
+    func write(_ path: String, body: [String: Any], store: DiaryStore) async throws {
+        if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
+        if token?.usable != true { token = try await store.read("/api/trakt/token") }
+        if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
+        lastWrite = .now
+        _ = try await TraktDirectClient(token: token!).post(path, body: try JSONSerialization.data(withJSONObject: body))
+    }
+    /// Applies an edit to the phone's Trakt copy and redraws the Trakt diary at once.
+    func update(store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
+        guard var value = library else { return }
+        change(&value)
+        library = value
+        save(value)
+        store.applyDiarySource()
+    }
+    /// A quiet re-read a few seconds after an edit, so new plays get their real Trakt ids
+    /// (needed to remove exactly that play later).
+    func refreshSoon(store: DiaryStore) {
+        refresh?.cancel()
+        refresh = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard let self, !Task.isCancelled else { return }
+            await self.check(store: store)
+        }
+    }
+
     /// Trakt's "not_found" lists in a write reply.
     static func notFoundCount(_ data: Data) -> Int {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let missing = root["not_found"] as? [String: Any] else { return 0 }

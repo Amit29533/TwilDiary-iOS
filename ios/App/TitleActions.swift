@@ -49,6 +49,7 @@ extension DiaryStore {
         }
     }
     private func applySeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async throws {
+        if diaryFromTrakt { try await traktSeasonProgress(title, season: season, count: count, watchedAt: watchedAt); return }
             guard DiaryDate.day(watchedAt) <= DiaryDate.day(self.now) else { throw APIError.message("Choose today or a past watch date") }
             let key = title.id + ":" + String(season)
             if self.pendingSeasonAdjustments[key] == nil {
@@ -99,6 +100,12 @@ extension DiaryStore {
     }
 
     @discardableResult func recordViewing(_ title: MediaTitle, episode: Episode? = nil, rewatch: Bool = false, watchedAt: Date) async -> Bool {
+        if diaryFromTrakt {
+            return await perform(refreshing: [title.id]) {
+                let numbers: [(season: Int, number: Int)] = episode.map { [(season: $0.season, number: $0.number)] } ?? []
+                try await self.traktAddPlays(title, episodes: numbers, at: watchedAt)
+            }
+        }
         var confirmed: WatchEvent?
         defer { if let confirmed { celebrate(confirmed, title: title) } }
         return await perform(refreshing: [title.id]) {
@@ -135,6 +142,14 @@ extension DiaryStore {
     }
 
     @discardableResult func unwatchEpisode(_ episode: Episode) async -> Bool {
+        if diaryFromTrakt {
+            return await perform(refreshing: [episode.titleId]) {
+                guard let event = self.latestTraktEvent(titleID: episode.titleId, episodeID: episode.id), let id = self.traktPlayID(event) else {
+                    throw APIError.message("There’s no watch of this episode to remove.")
+                }
+                try await self.traktRemovePlays([id])
+            }
+        }
         let reviewed = workspace.activeEvents.filter { $0.titleId == episode.titleId && $0.episodeId == episode.id }
         return await perform(refreshing: [episode.titleId]) {
             var undo: [(event: WatchEvent, action: String)] = []
