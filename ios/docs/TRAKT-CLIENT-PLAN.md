@@ -164,7 +164,13 @@ add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
   removes Trakt history) and "Send my edits to Trakt as I make them" (the delivery queue with the
   server's token). The incoming worker links a Trakt play to the diary watch with the same time, so
   these never come back as copies.
-- **Phase 3 (next, needs production D1 migrations):** helper tables keyed by TMDB/Trakt id for file
+- **Phase 3 done (deployed, version c86e2766, migration 0026):** `/api/helpers` (extras by TMDB id)
+  and backups (`/api/backups`, Profile → Backups).
+- **Phase 4a/4b done (not yet tried on the phone):** "Show my diary from Trakt" builds the diary from
+  Trakt plus the server's extras (`TraktDiary.build`); edits in that mode go to Trakt (watches at their
+  time, removal by play id, rating, watchlist, favourites, dropped shows) and notes/tags/Queue/Trash to
+  the server. Still to do: posters and episodes for titles only on Trakt; bulk edits in Trakt mode.
+- **Earlier note, phase 3 (needs production D1 migrations):** helper tables keyed by TMDB/Trakt id for file
   locations, tags, anime overrides, trash and people favourites; manual backup and restore.
 - **Phase 4 (needs explicit go-ahead):** the app builds its diary from Trakt; turn off the incoming
   worker's cron and the review sync; keep the server diary read-only for 30 days; retire the web app.
