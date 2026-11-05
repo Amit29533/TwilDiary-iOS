@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Shared title header for saved titles and unimported catalog previews.
-struct TitleHero<PersonalRating: View>: View {
+struct TitleHero<Ratings: View>: View {
     let name: String
     let poster: String?
     /// Shown above the name, like "Sci-Fi & Fantasy • Drama".
@@ -11,13 +11,12 @@ struct TitleHero<PersonalRating: View>: View {
     let category: String
     let runtime: Int?
     let series: Bool
-    let score: Double?
     let summary: String
     @Binding var expanded: Bool
     let onNameScrolled: ((CGFloat) -> Void)?
-    let personalRating: PersonalRating
-    init(name: String, poster: String?, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, score: Double?, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder personalRating: () -> PersonalRating) {
-        self.name = name; self.poster = poster; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.score = score; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.personalRating = personalRating()
+    let ratings: Ratings
+    init(name: String, poster: String?, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
+        self.name = name; self.poster = poster; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
     }
     @State private var synopsisWidth: CGFloat = 0
     @State private var synopsisParts = SynopsisTextLayout.Parts(leading: "", continuation: "")
@@ -25,7 +24,7 @@ struct TitleHero<PersonalRating: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             // Keep the identity down in the darkened lower artwork. Long names
-            // grow vertically; neither ratings nor synopsis compete for its width.
+            // grow vertically; ratings scroll within the remaining column width.
             HStack(alignment: .bottom, spacing: 15) {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("title-hero-poster")
@@ -40,13 +39,7 @@ struct TitleHero<PersonalRating: View>: View {
                         Text(genres.prefix(3).joined(separator: " • ")).font(.system(size: 14.4)).foregroundStyle(.secondary)
                             .lineLimit(1).minimumScaleFactor(0.8).padding(.top, 4).accessibilityIdentifier("title-hero-genres")
                     }
-                    InlineFlowLayout {
-                        // No score, no gold dash: the community score only shows when TMDb has one.
-                        if let score, score > 0 {
-                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(.yellow); Text("TMDb").font(.system(size: 12)).foregroundStyle(.secondary) }.font(.system(size: 13)).frame(minHeight: 44)
-                        }
-                        personalRating
-                    }.font(.system(size: 15.2)).padding(.top, 14)
+                    ratings.padding(.top, 14)
                 }.frame(maxWidth: .infinity, minHeight: 171, alignment: .bottomLeading)
             }
             VStack(alignment: .leading, spacing: 6) {

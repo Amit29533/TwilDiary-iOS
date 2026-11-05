@@ -7,16 +7,20 @@ private final class ArtworkURLProtocol: URLProtocol, @unchecked Sendable {
         private let lock = NSLock()
         private var data = Data()
         private var status = 200
+        private var originalStatus: Int?
         private var count = 0
-        func reset(_ data: Data, status: Int = 200) { lock.lock(); defer { lock.unlock() }; self.data = data; self.status = status; count = 0 }
-        func reply() -> (Data, Int) { lock.lock(); defer { lock.unlock() }; count += 1; return (data, status) }
+        func reset(_ data: Data, status: Int = 200, originalStatus: Int? = nil) { lock.lock(); defer { lock.unlock() }; self.data = data; self.status = status; self.originalStatus = originalStatus; count = 0 }
+        func reply(_ url: URL?) -> (Data, Int) {
+            lock.lock(); defer { lock.unlock() }; count += 1
+            return (data, url?.path.contains("/original/") == true ? originalStatus ?? status : status)
+        }
         func requests() -> Int { lock.lock(); defer { lock.unlock() }; return count }
     }
     static let state = State()
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let (data, status) = Self.state.reply()
+        let (data, status) = Self.state.reply(request.url)
         guard let url = request.url, let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil,
                                                                   headerFields: ["Content-Type":"image/png"]) else { return }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -66,6 +70,32 @@ private final class ArtworkURLProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertNotNil(cache.cached(request))
         _ = await cache.image(request)
         XCTAssertEqual(ArtworkURLProtocol.state.requests(), 1)
+    }
+    func testProfileRequestsOriginalTMDBPortraitWithoutRewritingAniListOrAcceptingPrivateURLs() throws {
+        let resized = "https://image.tmdb.org/t/p/w500/person.jpg"
+        let portrait = try XCTUnwrap(PublicArtworkRequest(path: resized, pixels: 1500, prefersOriginal: true))
+        XCTAssertEqual(portrait.url.absoluteString, "https://image.tmdb.org/t/p/original/person.jpg")
+        XCTAssertEqual(portrait.fallbackURL?.absoluteString, resized)
+        XCTAssertEqual(portrait.pixels, 1536)
+        let aniList = "https://s4.anilist.co/file/anilistcdn/character/large/character.jpg"
+        let character = try XCTUnwrap(PublicArtworkRequest(path: aniList, pixels: 1500, prefersOriginal: true))
+        XCTAssertEqual(character.url.absoluteString, aniList)
+        XCTAssertNil(character.fallbackURL)
+        XCTAssertNil(PublicArtworkRequest(path: resized + "?token=private", pixels: 1500, prefersOriginal: true))
+    }
+    func testUnavailableOriginalFallsBackToExistingPortraitAndCachesTheDecodedResult() async throws {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 500, height: 750), format: format).image { context in
+            UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 500, height: 750))
+        }
+        ArtworkURLProtocol.state.reset(try XCTUnwrap(image.pngData()), originalStatus: 503)
+        let cache = cache()
+        let request = try XCTUnwrap(PublicArtworkRequest(path: "https://image.tmdb.org/t/p/w500/" + UUID().uuidString + ".png", pixels: 1500, prefersOriginal: true))
+        let bitmap = await cache.image(request)
+        XCTAssertEqual(try XCTUnwrap(bitmap).image.height, 750)
+        XCTAssertNotNil(cache.cached(request))
+        _ = await cache.image(request)
+        XCTAssertEqual(ArtworkURLProtocol.state.requests(), 2, "One original attempt and one resized fallback; recycled views use the cache")
     }
     func testConcurrentCellsShareOneTransferAndFailureDoesNotRetryOnEveryScroll() async throws {
         ArtworkURLProtocol.state.reset(Data(), status:503)

@@ -327,21 +327,25 @@ struct Artwork: View {
     var initialsOnly = true
     /// Where a cropped image anchors: `.top` keeps portraits' faces in frame.
     var alignment: Alignment = .center
+    var contentMode: ContentMode = .fill
+    /// Full-width profiles can use the original public TMDB portrait before downsampling.
+    var prefersOriginal = false
     @Environment(\.displayScale) private var displayScale
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var loadedArtwork: PublicArtworkBitmap?
     @State private var loadedRequest: PublicArtworkRequest?
     var body: some View {
         GeometryReader { proxy in
-          let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale))
+          let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale), prefersOriginal: prefersOriginal)
           ZStack {
-            if initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
+            if contentMode == .fit { Color.black }
+            else if initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
             else {
                 LinearGradient(colors: [Color(webHex: "#243638"), Color(webHex: "#17151e"), Color(webHex: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
                 RadialGradient(colors: [theme.placeholderGlow, .clear], center: UnitPoint(x: 0.8, y: 0.05), startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.7)
             }
-            if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
-            else if let image = fixtureImage(path) { Image(uiImage: image).resizable().scaledToFill().frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
+            if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode).frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
+            else if let image = fixtureImage(path) { Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode).frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
             else if let request {
                 // While loading, only the gradient shows: the named placeholder appears
                 // only after a load failed, so new cells no longer flash title text
@@ -350,7 +354,7 @@ struct Artwork: View {
                 let current = loadedRequest == request ? loadedArtwork : nil
                 let sameImage = loadedRequest?.url == request.url ? loadedArtwork : nil
                 if let bitmap = current ?? PublicArtworkCache.shared.cached(request) ?? sameImage {
-                    Image(decorative: bitmap.image, scale: displayScale).resizable().scaledToFill()
+                    Image(decorative: bitmap.image, scale: displayScale).resizable().aspectRatio(contentMode: contentMode)
                         .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped()
                 } else if loadedRequest == request { placeholder(size: proxy.size) }
             } else { placeholder(size: proxy.size) }

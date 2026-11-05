@@ -49,6 +49,9 @@ import UIKit
         XCTAssertEqual(a.frame.height, b.frame.height, accuracy: 1)
         XCTAssertEqual(a.frame.minY, b.frame.minY, accuracy: 1)
         XCTAssertGreaterThan(b.frame.minX, a.frame.maxX)
+        XCTAssertLessThanOrEqual(a.frame.height, 76, "Short facts should use the compact borderless layout")
+        XCTAssertTrue(a.label.hasPrefix(first.hasPrefix("character-") ? "Birthday" : "Born"), "Fact labels must precede their values")
+        XCTAssertTrue(b.label.hasPrefix("Age"))
     }
     private func capture(_ name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -112,7 +115,7 @@ import UIKit
             XCTAssertEqual(place.frame.width, app.frame.width - 28, accuracy: 2)
             if id == 974169 { XCTAssertTrue(app.buttons["person-source-role"].exists) }
             if id == 172069 { XCTAssertTrue(element(app, "person-age").label.contains("43")); XCTAssertTrue(element(app, "person-deathday").exists) }
-            capture("Cast \(id) balanced facts and full location", app: app)
+            capture("Cast \(id) compact borderless facts and full location", app: app)
             let bio = element(app, "profile-biography"); reveal(bio, in: app)
             XCTAssertTrue(app.buttons["Expand biography"].exists)
             app.buttons["Expand biography"].tap()
@@ -126,6 +129,7 @@ import UIKit
         for (id, age) in [(70069, "17 (physically)"), (176754, "1000+"), (138100, "6 (self asserted)"), (12, "14-15")] {
             let app = open("character", id)
             noHeaderLogo(app, role: "Character")
+            if id == 70069 || id == 12 { factPair(app, first: "character-birthday", second: "character-age") }
             // AniList's page is still one tap away, in the Links row with the other sites.
             XCTAssertTrue(element(app, "profile-site-https://anilist.co/character/\(id)").exists)
             let value = element(app, "character-age"); reveal(value, in: app)
@@ -150,7 +154,7 @@ import UIKit
             factPair(app, first: "voice-actor-birthday", second: "voice-actor-age")
             let home = element(app, "voice-actor-hometown"); reveal(home, in: app)
             XCTAssertEqual(home.frame.width, app.frame.width - 28, accuracy: 2)
-            capture("Voice \(id) complete hometown and aligned facts", app: app)
+            capture("Voice \(id) compact borderless facts and complete hometown", app: app)
             let links = element(app, "profile-links-section"); reveal(links, in: app)
             let bio = element(app, "voice-actor-biography"); reveal(bio, in: app)
             XCTAssertGreaterThan(bio.frame.minY, links.frame.maxY)

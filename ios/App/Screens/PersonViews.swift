@@ -35,8 +35,10 @@ struct PersonView: View {
                                   identifier: prefix,
                                   sameVoice: actor?.id, samePerson: person?.id) {
                     VStack(alignment: .leading, spacing: 22) {
-                        intro
-                        about
+                        VStack(alignment: .leading, spacing: 12) {
+                            intro
+                            about
+                        }
                         watched
                         if let person {
                             let sections = store.personSections(person)
@@ -75,7 +77,7 @@ struct PersonView: View {
     @ViewBuilder private var intro: some View {
         if case .tmdb(let route) = start, let role = ProfileText.line(route.sourceRole), let title = ProfileText.line(route.sourceTitle) {
             Button(role + " in " + title) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain)
+                .fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .topLeading).buttonStyle(.plain)
                 .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
         }
     }
@@ -94,11 +96,11 @@ struct PersonView: View {
         let facts = [
             ProfileFact(id: prefix + "-birthday", icon: "calendar", label: "Born", value: born),
             ProfileFact(id: prefix + "-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age),
-            ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
-            ProfileFact(id: prefix + "-career", icon: "briefcase", label: "Career", value: actor.flatMap { ProfileText.careerValue($0.yearsActive) }),
+            ProfileFact(id: prefix + "-career", icon: "briefcase", label: ProfileText.careerLabel(actor?.yearsActive ?? []), value: actor.flatMap { ProfileText.careerValue($0.yearsActive) }),
             ProfileFact(id: prefix + "-favourites", icon: "heart", label: "AniList favourites", value: actor.flatMap { ProfileText.favouritesValue($0.favourites) }),
+            ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
             ProfileFact(id: "voice-actor-watched", icon: "eye", label: "Watched", value: watchedCount.map { $0.formatted() + " anime" }),
-            ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin.and.ellipse",
+            ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin",
                         label: birthplace != nil ? "Birthplace" : "Hometown", value: place, wide: true),
             ProfileFact(id: prefix + "-deathday", icon: "calendar", label: "Died", value: person?.deathday.map(ProfileDate.short), wide: true)
         ].compactMap { $0 }

@@ -65,7 +65,6 @@ struct TitleDetailView: View {
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title)
-                                RatingsStrip(scores: criticScores, tmdbFallback: title.communityScore).padding(.top, -10)
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -290,9 +289,22 @@ struct TitleDetailView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: nil, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
+        TitleHero(name: title.name, poster: title.poster, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
+            RatingsStrip(scores: criticScores, tmdbFallback: title.communityScore) { personalRating(title).frame(minHeight: 44) }
+        }
     }
-    private func personalRating(_ title: MediaTitle) -> some View { Button { openRating(title) } label: { HStack(spacing: 4) { DiaryIcon(name: "star", size: 17); Text("Your rating").font(.system(size: 12)).foregroundStyle(.secondary); Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—") } }.font(.system(size: 13)).buttonStyle(.plain).accessibilityIdentifier("title-personal-rating").accessibilityLabel("Your rating").accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated") }
+    private func personalRating(_ title: MediaTitle) -> some View {
+        Button { openRating(title) } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(.yellow)
+                Text("Rating").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").monospacedDigit()
+            }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
+        }.font(.system(size: 13)).buttonStyle(.plain)
+            .accessibilityIdentifier("title-personal-rating").accessibilityLabel("Rating")
+            .accessibilityHint("Your personal score. Tap to rate this title.")
+            .accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated")
+    }
     private func progressPanel(_ title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {

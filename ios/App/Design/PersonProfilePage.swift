@@ -23,7 +23,7 @@ struct PersonProfilePage<Content: View>: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
                     hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
                     content.padding(.horizontal, 14)
                 }.padding(.bottom, 28)
@@ -64,7 +64,7 @@ struct PersonProfilePage<Content: View>: View {
             if let role = ProfileText.line(role) {
                 Text(role).font(.subheadline).foregroundStyle(.white.opacity(0.7)).fixedSize(horizontal: false, vertical: true)
             }
-        }.padding(.horizontal, 14).padding(.bottom, 16)
+        }.padding(.horizontal, 14).padding(.bottom, 10)
             .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
             .background {
                 GeometryReader { proxy in
@@ -82,9 +82,9 @@ struct PersonProfilePage<Content: View>: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-profile-header-pattern") {
             ProfileHeaderTestPattern()
-        } else { Artwork(path: image, title: name, alignment: .top) }
+        } else { Artwork(path: image, title: name, alignment: .top, contentMode: .fit, prefersOriginal: true) }
         #else
-        Artwork(path: image, title: name, alignment: .top)
+        Artwork(path: image, title: name, alignment: .top, contentMode: .fit, prefersOriginal: true)
         #endif
     }
 }

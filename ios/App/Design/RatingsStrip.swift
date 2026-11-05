@@ -4,9 +4,21 @@ import TwilDiaryCore
 /// Ratings from MDBList (IMDb, TMDB, Trakt, Letterboxd, MyAnimeList, Rotten Tomatoes, Metacritic…),
 /// each with its service's mark and its own scale (IMDb 7.3, Trakt 77%, Letterboxd 3.5). Scrolls
 /// sideways when there are more than fit. Without MDBList, TMDB's score stands alone.
-struct RatingsStrip: View {
+struct RatingsStrip<PersonalRating: View>: View {
     let scores: [MDBListSyncEngine.SourceScore]
     var tmdbFallback: Double?
+    private let personalRating: PersonalRating
+    private let hasPersonalRating: Bool
+
+    init(scores: [MDBListSyncEngine.SourceScore], tmdbFallback: Double? = nil, @ViewBuilder personalRating: () -> PersonalRating) {
+        self.scores = scores; self.tmdbFallback = tmdbFallback
+        self.personalRating = personalRating(); self.hasPersonalRating = true
+    }
+
+    init(scores: [MDBListSyncEngine.SourceScore], tmdbFallback: Double? = nil) where PersonalRating == EmptyView {
+        self.scores = scores; self.tmdbFallback = tmdbFallback
+        self.personalRating = EmptyView(); self.hasPersonalRating = false
+    }
 
     private struct Item: Identifiable { let id: String; let source: String; let text: String }
 
@@ -14,38 +26,42 @@ struct RatingsStrip: View {
         var seen = Set<String>()
         var result: [Item] = []
         for score in scores {
-            let key = RatingsStrip.canonical(score.source)
-            guard !seen.contains(key), let text = RatingsStrip.text(source: key, value: score.value, score: score.score) else { continue }
+            let key = Self.canonical(score.source)
+            guard !seen.contains(key), let text = Self.text(source: key, value: score.value, score: score.score) else { continue }
             seen.insert(key); result.append(Item(id: key, source: key, text: text))
         }
         if result.isEmpty, let tmdbFallback, tmdbFallback > 0 {
             result.append(Item(id: "tmdb", source: "tmdb", text: tmdbFallback.formatted(.number.precision(.fractionLength(1)))))
         }
-        return result.sorted { RatingsStrip.order($0.source) < RatingsStrip.order($1.source) }
+        return result.sorted { Self.order($0.source) < Self.order($1.source) }
     }
 
     var body: some View {
         let items = items
-        if !items.isEmpty {
-            // One line across the page when they fit; sideways scrolling only when they don't.
-            ViewThatFits(in: .horizontal) {
-                row(items, spacing: 14)
-                row(items, spacing: 10)
-                ScrollView(.horizontal, showsIndicators: false) { row(items, spacing: 14) }.scrollClipDisabled()
-            }.accessibilityIdentifier("title-ratings")
+        if hasPersonalRating || !items.isEmpty {
+            // The viewport stays inside the identity column beside the poster.
+            // Keep each score intact and scroll rather than shrink or wrap it.
+            ScrollView(.horizontal, showsIndicators: false) {
+                row(items).fixedSize(horizontal: true, vertical: false)
+            }.scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("title-ratings")
         }
     }
 
-    private func row(_ items: [Item], spacing: CGFloat) -> some View {
-        HStack(spacing: spacing) {
+    private func row(_ items: [Item]) -> some View {
+        HStack(spacing: 14) {
             ForEach(items) { item in
                 HStack(spacing: 5) {
-                    RatingSourceMark(source: item.source).frame(width: 21, height: 21)
+                    RatingSourceMark(source: item.source).frame(width: item.source == "imdb" ? 34 : 21, height: 21)
                     Text(item.text).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(.white).monospacedDigit()
                         .lineLimit(1).fixedSize()
                 }.accessibilityElement(children: .ignore)
-                    .accessibilityLabel(RatingsStrip.name(item.source) + " " + item.text)
+                    .accessibilityLabel(Self.name(item.source) + " " + item.text)
             }
+            personalRating
         }.padding(.vertical, 2)
     }
 
@@ -104,8 +120,10 @@ struct RatingSourceMark: View {
                 case "tmdb": BrandLogo(service: .tmdb, size: size)
                 case "trakt": BrandLogo(service: .trakt, size: size)
                 case "imdb":
-                    Text("IMDb").font(.system(size: size * 0.36, weight: .black)).foregroundStyle(.black)
-                        .frame(width: size, height: size).background(Color(webHex: "#F5C518"), in: RoundedRectangle(cornerRadius: size * 0.18))
+                    Text("IMDb").font(.system(size: size * 0.55, weight: .black)).foregroundStyle(.black)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        .frame(width: proxy.size.width, height: size)
+                        .background(Color(webHex: "#F5C518"), in: RoundedRectangle(cornerRadius: size * 0.14))
                 case "myanimelist":
                     Text("MAL").font(.system(size: size * 0.32, weight: .heavy)).foregroundStyle(.white)
                         .frame(width: size, height: size).background(Color(webHex: "#2E51A2"), in: Circle())

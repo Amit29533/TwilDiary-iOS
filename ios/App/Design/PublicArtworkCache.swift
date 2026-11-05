@@ -12,12 +12,22 @@ final class PublicArtworkBitmap: NSObject, @unchecked Sendable {
 struct PublicArtworkRequest: Hashable, Sendable {
     let url: URL
     let pixels: Int
+    let fallbackURL: URL?
     var key: String { url.absoluteString + "#" + String(pixels) }
-    init?(path: String?, pixels: Double) {
+    init?(path: String?, pixels: Double, prefersOriginal: Bool = false) {
         guard let path, let url = URL(string: path), Self.publicArtwork(url), pixels.isFinite, pixels > 0 else { return nil }
         let bucket = pixels <= 256 ? 256 : pixels <= 512 ? 512 : pixels <= 1024 ? 1024 : 1536
-        self.url = Self.sharper(url, pixels: bucket)
+        let requested = prefersOriginal ? Self.originalPortrait(url) : Self.sharper(url, pixels: bucket)
+        self.url = requested
         self.pixels = bucket
+        self.fallbackURL = prefersOriginal && requested != url ? url : nil
+    }
+    /// Original is a supported TMDB rendition for profiles of any aspect ratio.
+    /// AniList already supplies its largest public image URL; do not invent a larger one.
+    private static func originalPortrait(_ url: URL) -> URL {
+        let parts = url.path.split(separator: "/")
+        guard url.host == "image.tmdb.org", parts.count == 4 else { return url }
+        return URL(string: "https://image.tmdb.org/t/p/original/" + parts[3]) ?? url
     }
     /// Only public artwork hosts: TMDB images and AniList's character and cover images.
     static func publicArtwork(_ url: URL) -> Bool {
@@ -78,8 +88,12 @@ actor PublicArtworkCache {
         // Task inherits this decoding actor, never the UI actor. A recycled cell
         // cancels only its observation; shared work continues for other cells.
         let task = Task { () -> PublicArtworkBitmap? in
-            do {
-                let (data, response) = try await session.data(from: request.url)
+            // A missing/oversized original must not leave a profile without its
+            // existing resized image. Both attempts use the same public-host checks.
+            for url in request.fallbackURL.map({ [request.url, $0] }) ?? [request.url] {
+              guard !Task.isCancelled else { return nil }
+              do {
+                let (data, response) = try await session.data(from: url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let landed = http.url, PublicArtworkRequest.publicArtwork(landed),
                       http.mimeType?.hasPrefix("image/") == true, data.count <= 12 * 1024 * 1024,
@@ -89,9 +103,11 @@ actor PublicArtworkCache {
                         kCGImageSourceCreateThumbnailWithTransform: true,
                         kCGImageSourceThumbnailMaxPixelSize: request.pixels,
                         kCGImageSourceShouldCacheImmediately: true
-                      ] as CFDictionary) else { return nil }
+                      ] as CFDictionary) else { continue }
                 return PublicArtworkBitmap(image)
-            } catch { return nil }
+              } catch { continue }
+            }
+            return nil
         }
         pending[request] = task
         let result = await task.value

@@ -48,7 +48,7 @@ enum ProfileText {
         guard let count, count >= 0 else { return nil }
         return count.formatted() + (count == 1 ? " favourite on AniList" : " favourites on AniList")
     }
-    /// Tile values for the facts grid: the number or span alone, its label says the rest.
+    /// Compact fact values: the number or span alone, its label says the rest.
     static func favouritesValue(_ count: Int?) -> String? {
         guard let count, count >= 0 else { return nil }
         return count.formatted()
@@ -56,9 +56,12 @@ enum ProfileText {
     static func careerValue(_ years: [Int]) -> String? {
         let valid = years.filter { (1...9999).contains($0) }
         guard let first = valid.first else { return nil }
-        if valid.count == 1 { return "Since " + String(first) }
+        if valid.count == 1 { return String(first) }
         if valid.count == 2, let last = valid.last, last >= first { return String(first) + "–" + String(last) }
         return valid.map(String.init).joined(separator: ", ")
+    }
+    static func careerLabel(_ years: [Int]) -> String {
+        years.filter { (1...9999).contains($0) }.count == 1 ? "Active since" : "Active years"
     }
     static func career(_ years: [Int]) -> String? {
         let valid = years.filter { (1...9999).contains($0) }

@@ -5,6 +5,32 @@ import TwilDiaryCore
 @testable import TwilDiary
 
 final class ProfileFormattingTests: XCTestCase {
+    @MainActor func testCompactFactsFitPhoneWidthsAndGrowForAccessibleText() {
+        let facts = [
+            ProfileFact(id: "born", icon: "calendar", label: "Born", value: "22 Feb 1996"),
+            ProfileFact(id: "age", icon: "person", label: "Age", value: "30"),
+            ProfileFact(id: "career", icon: "briefcase", label: "Active since", value: "2012"),
+            ProfileFact(id: "favourites", icon: "heart", label: "AniList favourites", value: "5"),
+            ProfileFact(id: "place", icon: "mappin", label: "Birthplace", value: "New Britain, Connecticut, USA", wide: true)
+        ].compactMap { $0 }
+        for width in [CGFloat(292), 334, 362, 402] {
+            let normal = UIHostingController(rootView: ProfileFacts(items: facts).environment(\.dynamicTypeSize, .large))
+            let large = UIHostingController(rootView: ProfileFacts(items: facts).environment(\.dynamicTypeSize, .accessibility5))
+            let proposal = CGSize(width: width, height: 2000)
+            let compact = normal.sizeThatFits(in: proposal)
+            let accessible = large.sizeThatFits(in: proposal)
+            XCTAssertLessThanOrEqual(compact.width, width + 1)
+            XCTAssertLessThan(compact.height, 200, "Five everyday facts should not become a stack of oversized cards")
+            XCTAssertGreaterThan(accessible.height, compact.height, "Large text must expand naturally instead of shrinking or clipping")
+            XCTAssertLessThanOrEqual(accessible.width, width + 1)
+        }
+    }
+    func testAbsentFactsAreOmittedWithoutChangingFreeformValues() throws {
+        XCTAssertNil(ProfileFact(id: "missing", icon: "calendar", label: "Born", value: nil))
+        XCTAssertNil(ProfileFact(id: "blank", icon: "mappin", label: "Hometown", value: " \n "))
+        let age = try XCTUnwrap(ProfileFact(id: "age", icon: "person", label: "Age", value: "17 (physically)"))
+        XCTAssertEqual(age.value, "17 (physically)")
+    }
     @MainActor func testNarrowPosterRatingKeepsOneLineAndSourceDoesNotChangeItsSize() {
         for score in [6.8, 8.1, 10.0] {
             let standard = UIHostingController(rootView: RatingBadge(score: score))
@@ -129,11 +155,18 @@ final class ProfileFormattingTests: XCTestCase {
         XCTAssertEqual(formatted.markdown, "Public paragraph.")
         XCTAssertEqual(formatted.source, "MAL Rewrite")
     }
-    func testProfileStatsAreShortTileValues() {
+    func testProfileStatsUseCompactValuesWithSeparateCareerLabels() {
         XCTAssertEqual(ProfileText.favouritesValue(10_676), 10_676.formatted())
         XCTAssertNil(ProfileText.favouritesValue(nil))
-        XCTAssertEqual(ProfileText.careerValue([2008]), "Since 2008")
+        XCTAssertEqual(ProfileText.careerValue([2008]), "2008")
+        XCTAssertEqual(ProfileText.careerLabel([2008]), "Active since")
         XCTAssertEqual(ProfileText.careerValue([2008, 2020]), "2008–2020")
+        XCTAssertEqual(ProfileText.careerLabel([2008, 2020]), "Active years")
+        XCTAssertEqual(ProfileText.careerValue([0, 2008, 10000]), "2008")
+        XCTAssertEqual(ProfileText.careerLabel([0, 2008, 10000]), "Active since")
+        XCTAssertEqual(ProfileText.careerValue([2008, 2012, 2020]), "2008, 2012, 2020")
+        XCTAssertEqual(ProfileText.careerValue([2020, 2008]), "2020, 2008", "Do not invent a valid career range from reversed source data")
         XCTAssertNil(ProfileText.careerValue([]))
+        XCTAssertNil(ProfileText.careerValue([0, -1, 10000]))
     }
 }

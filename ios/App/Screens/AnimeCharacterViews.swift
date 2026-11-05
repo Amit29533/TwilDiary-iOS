@@ -102,9 +102,9 @@ struct CharacterView: View {
             ProfileFact(id: "character-birthday", icon: "calendar", label: "Birthday", value: character.birthday.map(ProfileDate.short)),
             ProfileFact(id: "character-age", icon: "person", label: "Age", value: character.age),
             ProfileFact(id: "character-gender", icon: "person.text.rectangle", label: "Gender", value: character.gender),
+            ProfileFact(id: "character-favourites", icon: "heart", label: "AniList favourites", value: ProfileText.favouritesValue(character.favourites)),
             ProfileFact(id: "character-height", icon: "ruler", label: "Height", value: height),
-            ProfileFact(id: "character-blood-type", icon: "drop", label: "Blood type", value: blood),
-            ProfileFact(id: "character-favourites", icon: "heart", label: "AniList favourites", value: ProfileText.favouritesValue(character.favourites))
+            ProfileFact(id: "character-blood-type", icon: "drop", label: "Blood type", value: blood)
         ].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 12) {
             ProfileFacts(items: facts)

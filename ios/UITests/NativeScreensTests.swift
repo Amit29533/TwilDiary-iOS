@@ -1495,9 +1495,15 @@ import UIKit
         app.tabBars.buttons["Library"].tap(); app.buttons["title-frieren"].tap()
         let rating = app.buttons["title-personal-rating"]
         XCTAssertTrue(rating.waitForExistence(timeout: 5))
-        let ratings = app.descendants(matching: .any)["title-ratings"].firstMatch
-        XCTAssertTrue(ratings.exists, "Ratings from MDBList (or TMDB's alone) show under the synopsis")
-        XCTAssertGreaterThan(ratings.frame.minY, rating.frame.maxY)
+        let ratings = app.scrollViews["title-ratings"].firstMatch
+        XCTAssertTrue(ratings.exists, "Personal and community ratings share the hero's horizontal strip")
+        let poster = app.descendants(matching: .any)["title-hero-poster"].firstMatch
+        let synopsis = app.staticTexts["title-synopsis-text"]
+        XCTAssertGreaterThan(ratings.frame.minX, poster.frame.maxX)
+        XCTAssertLessThanOrEqual(ratings.frame.maxX, app.frame.width - 12)
+        XCTAssertGreaterThanOrEqual(rating.frame.minY, ratings.frame.minY)
+        XCTAssertLessThanOrEqual(rating.frame.maxY, ratings.frame.maxY)
+        XCTAssertLessThan(ratings.frame.maxY, synopsis.frame.minY)
         capture("Saved title ratings strip and personal rating")
         let cast = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'cast-person-'")).firstMatch
         reveal(cast)
