@@ -52,6 +52,8 @@ when online. Trakt is the only target, so there is nothing to reconcile.
 
 ## Simkl, WeTrakr, MDBList
 
+> Superseded by "Choose your main tracker" below (owner decision, 5 Nov 2026).
+
 They become copies of Trakt (Trakt wins).
 
 - **Simkl:** has its own Trakt import: one-time free, automatic with Simkl VIP. Updates do not go back to
@@ -119,3 +121,35 @@ Every service can be connected two ways, from Profile → its page:
 in the iPhone Keychain envelope; refresh tokens never reach plain preferences. MDBList gets either a
 Bearer token or `?apikey=`, never both. A Simkl sign-in without `media:write` is refused, because
 Simkl silently downgrades to read-only.
+
+## Choose your main tracker (owner decision, 5 Nov 2026)
+
+The owner wants Trakt, Simkl, MDBList or WeTrakr to be selectable as the main tracker, so the app is
+not tied to Trakt. The diary model stays the same; phases 1–4 build against a `MainTracker` interface
+(read changes, read library, write watch/rating/status/note) with one adapter per service. Whatever
+the chosen tracker can't hold stays in Cloudflare, as tags and file locations already do. The other
+connected services can still receive copies of each change (phase 5).
+
+| Feature | Trakt | Simkl | MDBList | WeTrakr |
+| --- | --- | --- | --- | --- |
+| Watch history (plays, dates) | Yes | Yes (`/sync/history`) | Yes (watched) | Unverified |
+| Ratings 1–10 | Yes | Yes (`/sync/ratings`) | Yes | Unverified |
+| Planned | Watchlist | "Plan to watch" | Watchlist | Unverified |
+| Dropped / on hold | Dropped shows only | Yes (list statuses) | No: Cloudflare | Unverified |
+| Notes | 500 chars (free accounts limited) | Memo, 140 chars | No: Cloudflare | Unverified |
+| Favourite titles | Movies and shows | No: Cloudflare | No: Cloudflare | Unverified |
+| "What changed" check for fast sync | `last_activities` | `/sync/activities` | Cursor paging only | Unverified |
+| Anime coverage | Genre only | Strong (own anime catalogue) | Via TMDB/Trakt ids | Unverified |
+
+- Notes longer than the tracker's limit keep their full text in Cloudflare; the tracker gets the first
+  part (Trakt 500, Simkl 140 characters).
+- **WeTrakr:** no published API (`/oauth/device/code` is 404; every other path answers 401
+  MISSING_API_KEY). It is listed but disabled ("Needs WeTrakr's API") until WeTrakr publishes docs
+  or issues the owner a key.
+- **MDBList:** endpoint paths need confirming from its docs (api.mdblist.com/docs renders in the
+  browser only) before the adapter is written.
+- **Switching trackers:** a one-time copy from the old tracker to the new one, with a review of the
+  counts first; backups in Cloudflare cover a failed switch.
+
+Sources: Simkl API reference (api.simkl.org: add-to-history, add-to-list, add-ratings, sync guide);
+Scrob's MDBList integration (github.com/ellite/scrob/wiki).
