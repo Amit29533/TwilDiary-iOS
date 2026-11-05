@@ -245,12 +245,19 @@ import TwilDiaryTestSupport
         id: "sk-1",
         operationId: "op-sk-1",
         createdAt: "2026-10-23T19:00:00Z",
-        mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: true, queued: true, notes: nil),
+        mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil),
         pendingProviders: [.simkl]
     ))
     let batch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .simkl, from: queue, in: workspace))
     #expect(batch.provider == .simkl)
+    #expect(batch.ratingsPayload != nil && batch.watchlistPayload != nil)
     #expect(batch.idempotencyKey == nil)
+    // Simkl keeps no favourites: an edit that changes one is held back, never half-sent.
+    var favourite = SyncOutboxQueue()
+    favourite.enqueue(SyncOutboxEntry(createdAt: "2026-10-23T19:00:00Z",
+        mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: true, queued: nil, notes: nil),
+        pendingProviders: [.simkl]))
+    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .simkl, from: favourite, in: workspace) == nil)
 
     let diProviderState = SyncLiveActivityState.forProviderBatch(
         provider: .simkl,
