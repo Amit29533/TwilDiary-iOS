@@ -19,7 +19,6 @@ struct SettingsView: View {
     @State private var summary: TraktController?
     @State private var showExport = false
     @State private var showImport = false
-    @State private var showSignInMethods = false
     @State private var backupNotice: String?
     @State private var exportDocument = DiaryJSONDocument(data: Data())
     var body: some View {
@@ -119,33 +118,14 @@ struct SettingsView: View {
                         settingsRow("globe.asia.australia.fill", .cyan, "Time zone", value: TimeZone.current.identifier.replacingOccurrences(of: "_", with: " "))
                     }
                     settingsSection("Connections and data") {
-                        NavigationLink(value: AppDestination.mainTracker) {
-                            settingsRow(leading: BrandLogo(service: (MainTracker(rawValue: mainTracker) ?? .trakt).brand), "Main tracker",
-                                        subtitle: "The service that holds your diary", value: (MainTracker(rawValue: mainTracker) ?? .trakt).name, disclosure: true, padded: true)
-                        }.accessibilityIdentifier("settings-main-tracker")
-                        divider
-                        NavigationLink(value: AppDestination.trakt) { settingsRow(.trakt, "Trakt", subtitle: "History, ratings and watchlist", value: traktBadge, disclosure: true) }.accessibilityIdentifier("settings-trakt")
-                        divider
-                        NavigationLink(value: AppDestination.tmdb) { settingsRow(.tmdb, "TMDB", subtitle: "Posters, details, seasons and episodes", disclosure: true) }.accessibilityIdentifier("settings-tmdb")
-                        divider
-                        NavigationLink(value: AppDestination.simkl) { providerSettingsRow(.simkl, "Simkl", subtitle: "Anime, shows and movie tracking", value: store.providerSettings.simkl.statusBadge, disclosure: true) }.accessibilityIdentifier("settings-simkl")
-                        divider
-                        NavigationLink(value: AppDestination.mdblist) { providerSettingsRow(.mdblist, "MDBList", subtitle: "Multi-source ratings and watchlist", value: store.providerSettings.mdblist.statusBadge, disclosure: true) }.accessibilityIdentifier("settings-mdblist")
-                        divider
-                        NavigationLink(value: AppDestination.anilist) {
-                            settingsRow(.anilist, "AniList", subtitle: "Characters and voice actors in Favourites",
-                                        value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, disclosure: true)
-                        }.accessibilityIdentifier("settings-anilist")
-                        divider
-                        NavigationLink(value: AppDestination.cloudflare) { settingsRow(.cloudflare, "Cloudflare", subtitle: "Usage against the free plan", disclosure: true) }.accessibilityIdentifier("settings-cloudflare")
-                        divider
-                        NavigationLink(value: AppDestination.apis) { settingsRow("key.fill", .yellow, "APIs", subtitle: "TMDB, Trakt, Cloudflare and Jellyfin keys", disclosure: true) }.accessibilityIdentifier("settings-apis")
+                        NavigationLink(value: AppDestination.connections) {
+                            settingsRow(leading: BrandLogo(service: (MainTracker(rawValue: mainTracker) ?? .trakt).brand), "Connections",
+                                        subtitle: "Trakt, Simkl, MDBList, TMDB, AniList and keys", value: connectionsSummary, disclosure: true, padded: true)
+                        }.accessibilityIdentifier("settings-connections")
                         divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
                         divider
                         Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "TwilDiary JSON or Letterboxd, IMDb and MAL CSV", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
-                        divider
-                        Button { showSignInMethods = true } label: { settingsRow("lock.shield.fill", .blue, "Sign-in methods", subtitle: "Manage access to this diary", disclosure: true) }.accessibilityIdentifier("settings-signin-methods")
                     }
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
@@ -166,21 +146,6 @@ struct SettingsView: View {
         .confirmationDialog("Discard all pending edits on this device? The latest hosted diary will be loaded first.", isPresented: $confirmDiscardPending, titleVisibility: .visible) {
             Button("Discard pending edits", role: .destructive) { Task { await store.discardPendingEdits() } }
         }
-            .sheet(isPresented: $showSignInMethods) {
-                NavigationStack {
-                    AccessSignIn { credential in
-                        showSignInMethods = false
-                        Task { await store.connect(credential) }
-                    }
-                    .navigationTitle("Sign-in methods")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showSignInMethods = false }
-                        }
-                    }
-                }
-            }
             .task(id: store.sessionRevision) {
                 summary = TraktController(service: makeTraktService(store: store))
                 await summary?.refresh()
@@ -243,8 +208,10 @@ struct SettingsView: View {
     private var trashCount: Int { store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) } }
     private var driveCount: Int { DiskSummary.make(store.workspace.locations).count }
     /// Trakt's state in a word for its row; the full sync controls live on the Trakt page.
-    private var traktBadge: String {
-        TraktOverview(status: summary?.status, sync: summary?.sync, checked: summary?.status != nil || summary?.error != nil, unavailable: summary?.error != nil).badge
+    /// "Trakt · 2 connected": the main tracker and how many services are signed in.
+    private var connectionsSummary: String {
+        let count = [store.traktController.status?.connected == true, store.providerSettings.simkl.isAuthenticated, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
+        return (MainTracker(rawValue: mainTracker) ?? .trakt).name + (count > 0 ? " · \(count) on" : "")
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -295,9 +262,6 @@ struct SettingsView: View {
             if let value { Text(value).font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.trailing) }
             if disclosure { DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary) }
         }.padding(.horizontal, padded ? 14 : 0).frame(minHeight: padded ? 58 : 40).contentShape(Rectangle())
-    }
-    private func providerSettingsRow(_ provider: BrandLogo.Service, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
-        settingsRow(leading: BrandLogo(service: provider), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: true)
     }
     private func exportDiary() {
         // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.

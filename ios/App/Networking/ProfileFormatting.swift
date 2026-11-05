@@ -1,6 +1,33 @@
 import Foundation
 
 enum ProfileText {
+    /// Bios from TMDB and AniList often end with the same credit lines ("Description above from the
+    /// Wikipedia article …, licensed under CC-BY-SA, full list of contributors on Wikipedia.",
+    /// "From Wikipedia, the free encyclopedia", "(Source: Crunchyroll)"). They're cut from the prose
+    /// and returned as one short source name instead, so every bio ends cleanly.
+    static func withoutSourceCredit(_ text: String) -> (text: String, source: String?) {
+        var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var source: String?
+        let wikipedia = try? NSRegularExpression(pattern: #"\s*Description above (?:is )?from the Wikipedia article[^\n]*?(?:full list of contributors on Wikipedia|licensed under CC-BY-SA[^\n.]*)?\.?\s*$"#, options: [.caseInsensitive])
+        if let wikipedia, let match = wikipedia.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)), let range = Range(match.range, in: body) {
+            body.removeSubrange(range); source = "Wikipedia"
+        }
+        if let range = body.range(of: #"^\s*From Wikipedia, the free encyclopedia\.?\s*"#, options: [.regularExpression, .caseInsensitive]) {
+            body.removeSubrange(range); source = "Wikipedia"
+        }
+        // A last line or bracket like "(Source: Crunchyroll)", "Source: ANN" or "[Written by MAL Rewrite]".
+        let trailing = try? NSRegularExpression(pattern: #"\s*[(\[]?\s*(?:Source|Sources|Written by)\s*:?\s*([^)\]\n]{1,80})[)\]]?\s*$"#, options: [.caseInsensitive])
+        if let trailing, let match = trailing.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
+           let range = Range(match.range, in: body), let name = Range(match.range(at: 1), in: body) {
+            let start = body[..<range.lowerBound]
+            // Only a credit on its own line or in brackets, never a sentence that mentions a source.
+            if start.isEmpty || start.hasSuffix("\n") || body[range].contains("(") || body[range].contains("[") {
+                source = source ?? String(body[name]).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+                body.removeSubrange(range)
+            }
+        }
+        return (body.trimmingCharacters(in: .whitespacesAndNewlines), source)
+    }
     static func line(_ value: String?) -> String? {
         guard let value else { return nil }
         let clean = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -20,6 +47,18 @@ enum ProfileText {
     static func favourites(_ count: Int?) -> String? {
         guard let count, count >= 0 else { return nil }
         return count.formatted() + (count == 1 ? " favourite on AniList" : " favourites on AniList")
+    }
+    /// Tile values for the facts grid: the number or span alone, its label says the rest.
+    static func favouritesValue(_ count: Int?) -> String? {
+        guard let count, count >= 0 else { return nil }
+        return count.formatted()
+    }
+    static func careerValue(_ years: [Int]) -> String? {
+        let valid = years.filter { (1...9999).contains($0) }
+        guard let first = valid.first else { return nil }
+        if valid.count == 1 { return "Since " + String(first) }
+        if valid.count == 2, let last = valid.last, last >= first { return String(first) + "–" + String(last) }
+        return valid.map(String.init).joined(separator: ", ")
     }
     static func career(_ years: [Int]) -> String? {
         let valid = years.filter { (1...9999).contains($0) }
@@ -41,6 +80,8 @@ struct ProfileFormattedBiography {
         var wide: Bool { !["height", "weight", "blood-type"].contains(id) }
     }
     let markdown: String
+    /// Where the prose came from ("Wikipedia", "Crunchyroll"), when it said so in a credit line.
+    let source: String?
     let links: [ProfileWebsiteLink]
     let references: [ProfileReferenceLink]
     let facts: [Fact]
@@ -69,7 +110,9 @@ struct ProfileFormattedBiography {
             if last.range(of: #"^\s*(?:#{1,6}\s+.+|(?:\*\*|__)[^\n]+:(?:\*\*|__)|(?:\*\*|__)[^\n]+(?:\*\*|__):)\s*$"#, options: .regularExpression) != nil { body.removeLast(); continue }
             break
         }
-        markdown = body.joined(separator: "\n").replacing(/\n{3,}/, with: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = ProfileText.withoutSourceCredit(body.joined(separator: "\n").replacing(/\n{3,}/, with: "\n\n"))
+        markdown = cleaned.text
+        source = cleaned.source
     }
 }
 

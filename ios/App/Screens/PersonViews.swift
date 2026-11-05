@@ -63,6 +63,8 @@ struct PersonView: View {
     }
 
     private var routeName: String? { if case .voice(let route) = start { return route.name }; return nil }
+    /// "15 anime" you've watched with them (from a ranking), when the page was opened from one.
+    private var watchedCount: Int? { if case .voice(let route) = start, let count = route.watchedCount, count >= 0 { return count }; return nil }
     private var role: String? {
         if voiceFirst { return "Voice actor" }
         guard let person else { return "Voice actor" }
@@ -81,9 +83,6 @@ struct PersonView: View {
                 .fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain)
                 .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
         }
-        if case .voice(let route) = start, let count = route.watchedCount.flatMap({ ProfileText.watched($0, anime: true) }) {
-            ProfileSecondaryText(text: count).accessibilityIdentifier("voice-actor-watched")
-        }
     }
 
     /// Facts from both sources in one grid (TMDB first where both know it), then one biography:
@@ -101,26 +100,35 @@ struct PersonView: View {
             ProfileFact(id: prefix + "-birthday", icon: "calendar", label: "Born", value: born),
             ProfileFact(id: prefix + "-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age),
             ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
+            ProfileFact(id: prefix + "-career", icon: "briefcase", label: "Career", value: actor.flatMap { ProfileText.careerValue($0.yearsActive) }),
+            ProfileFact(id: prefix + "-favourites", icon: "heart", label: "AniList favourites", value: actor.flatMap { ProfileText.favouritesValue($0.favourites) }),
+            ProfileFact(id: "voice-actor-watched", icon: "eye", label: "Watched", value: watchedCount.map { $0.formatted() + " anime" }),
             ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin.and.ellipse",
                         label: birthplace != nil ? "Birthplace" : "Hometown", value: place, wide: true),
             ProfileFact(id: prefix + "-deathday", icon: "calendar", label: "Died", value: person?.deathday.map(ProfileDate.short), wide: true)
         ].compactMap { $0 }
-        let tmdbProse = person?.biography.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let tmdb = ProfileText.withoutSourceCredit(person?.biography ?? "")
+        let tmdbProse = tmdb.text
         let aniProse = content?.markdown.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Facts already in the grid above aren't repeated in AniList's extra details below.
+        var shownFacts: Set<String> = ["height"]
+        if place != nil { shownFacts.formUnion(["birthplace", "nationality"]) }
         let useTMDB = !tmdbProse.isEmpty && aniProse.count < min(160, tmdbProse.count)
         let biographyID = voiceFirst ? "voice-actor-biography" : "profile-biography"
         let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 14) {
             ProfileFacts(items: facts)
-            if let career = actor.flatMap({ ProfileText.career($0.yearsActive) }) { ProfileSecondaryText(text: career) }
-            if let count = actor.flatMap({ ProfileText.favourites($0.favourites) }) { ProfileSecondaryText(text: count) }
             ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
             if let actor, let content {
-                ProfileAbout(content: content, excludingFacts: ["height"],
+                ProfileAbout(content: content, excludingFacts: shownFacts,
                              additionalLinks: [ProfileWebsiteLink(url: URL(string: "https://anilist.co/staff/\(actor.id)")!, title: "AniList")].compactMap { $0 },
-                             biographyID: biographyID, biographyOverride: useTMDB ? AttributedString(tmdbProse) : nil)
+                             biographyID: biographyID, biographyOverride: useTMDB ? AttributedString(tmdbProse) : nil,
+                             sourceOverride: useTMDB ? tmdb.source : nil)
             } else {
-                ProfileBiography(text: AttributedString(tmdbProse), expanded: $expanded, identifier: biographyID)
+                VStack(alignment: .leading, spacing: 4) {
+                    ProfileBiography(text: AttributedString(tmdbProse), expanded: $expanded, identifier: biographyID)
+                    if !tmdbProse.isEmpty, let source = tmdb.source { ProfileSourceNote(source: source) }
+                }
             }
         }
     }

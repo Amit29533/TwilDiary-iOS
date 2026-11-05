@@ -15,6 +15,12 @@ import XCTest
         for _ in 0..<12 { if element.isHittable { return }; app.swipeUp() }
         XCTAssertTrue(element.isHittable)
     }
+    /// Profile → Connections, where Simkl, MDBList, Trakt and the main tracker live.
+    private func openConnections(_ app: XCUIApplication) {
+        let row = app.buttons["settings-connections"]
+        reveal(row, app: app); row.tap()
+        XCTAssertTrue(app.navigationBars["Connections"].waitForExistence(timeout: 5))
+    }
     private func capture(_ name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
@@ -32,7 +38,7 @@ import XCTest
     }
     func testProviderPagesAndCollectionFilterKeepTheCurrentNavigation() {
         let app = launch()
-        app.tabBars.buttons["Profile"].tap()
+        app.tabBars.buttons["Profile"].tap(); openConnections(app)
         let provider = app.buttons["settings-simkl"]
         reveal(provider, app: app); provider.tap()
         XCTAssertTrue(app.navigationBars["Simkl"].waitForExistence(timeout: 5))
@@ -51,7 +57,7 @@ import XCTest
     /// to add one.
     func testEveryServiceOffersSignInOrYourOwnKey() {
         let app = launch()
-        app.tabBars.buttons["Profile"].tap()
+        app.tabBars.buttons["Profile"].tap(); openConnections(app)
         for (row, title, signIn, key) in [("settings-simkl", "Simkl", "simkl-sign-in-unavailable", "simkl-client-id-field"),
                                           ("settings-mdblist", "MDBList", "mdblist-sign-in-unavailable", "mdblist-api-key-field")] {
             let entry = app.buttons[row]
@@ -70,7 +76,7 @@ import XCTest
     /// service that isn't connected offers its connection page, and the preview reads that service.
     func testMainTrackerOffersTraktSimklAndMDBListOnly() {
         let app = launch()
-        app.tabBars.buttons["Profile"].tap()
+        app.tabBars.buttons["Profile"].tap(); openConnections(app)
         XCTAssertFalse(app.buttons["settings-wetrakr"].exists, "WeTrakr was removed")
         let row = app.buttons["settings-main-tracker"]
         reveal(row, app: app); row.tap()

@@ -114,4 +114,32 @@ final class ProfileFormattingTests: XCTestCase {
         XCTAssertEqual(ProfileText.career([2008, 2020]), "Active 2008–2020")
         XCTAssertNil(ProfileText.career([]))
     }
+    /// Bios end with the same credit lines everywhere; they become a short source, not prose.
+    func testCommonCreditLinesBecomeASourceNote() {
+        let tmdb = ProfileText.withoutSourceCredit("Kana Hanazawa is a Japanese voice actress.
+
+Description above from the Wikipedia article Kana Hanazawa, licensed under CC-BY-SA, full list of contributors on Wikipedia.")
+        XCTAssertEqual(tmdb.text, "Kana Hanazawa is a Japanese voice actress.")
+        XCTAssertEqual(tmdb.source, "Wikipedia")
+        let anilist = ProfileText.withoutSourceCredit("A strange 2nd year student.
+
+(Source: Crunchyroll)")
+        XCTAssertEqual(anilist.text, "A strange 2nd year student.")
+        XCTAssertEqual(anilist.source, "Crunchyroll")
+        let sentence = ProfileText.withoutSourceCredit("Her main source: books")
+        XCTAssertEqual(sentence.text, "Her main source: books", "A sentence that mentions a source is prose")
+        XCTAssertNil(sentence.source)
+        let formatted = ProfileFormattedBiography(description: "Public paragraph.
+
+[Written by MAL Rewrite]", hideSpoilers: true)
+        XCTAssertEqual(formatted.markdown, "Public paragraph.")
+        XCTAssertEqual(formatted.source, "MAL Rewrite")
+    }
+    func testProfileStatsAreShortTileValues() {
+        XCTAssertEqual(ProfileText.favouritesValue(10_676), 10_676.formatted())
+        XCTAssertNil(ProfileText.favouritesValue(nil))
+        XCTAssertEqual(ProfileText.careerValue([2008]), "Since 2008")
+        XCTAssertEqual(ProfileText.careerValue([2008, 2020]), "2008–2020")
+        XCTAssertNil(ProfileText.careerValue([]))
+    }
 }

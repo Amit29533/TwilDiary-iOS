@@ -606,7 +606,7 @@ import UIKit
 
     func testMoreTraktSummaryUsesConnectionAndScanStateInsteadOfStaleCounts() {
         for (scenario, badge) in [("disconnected", "Not connected"), ("reconnect", "Reconnect"), ("scanning", "Connected"), ("unavailable", "Unavailable")] {
-            let app = launch(traktScenario: scenario); app.tabBars.buttons["Profile"].tap()
+            let app = launch(traktScenario: scenario); app.tabBars.buttons["Profile"].tap(); openConnections(app)
             let row = app.buttons["settings-trakt"]
             XCTAssertTrue(row.waitForExistence(timeout: 5))
             wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", badge), evaluatedWith: row)], timeout: 5)
@@ -882,7 +882,7 @@ import UIKit
         capture("Stats from Home")
     }
     func testCloudflareUsageShowsTodayAndDailyChartsFromSettings() {
-        let app = launch(); app.tabBars.buttons["Profile"].tap()
+        let app = launch(); app.tabBars.buttons["Profile"].tap(); openConnections(app)
         let row = app.buttons["settings-cloudflare"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
@@ -900,7 +900,7 @@ import UIKit
         capture("Cloudflare usage 30 days")
     }
     func testAPIsShowKeyEndingsReplaceAndTestAndJellyfinMapsOnlyMoviesAndShows() {
-        let app = launch(); app.tabBars.buttons["Profile"].tap()
+        let app = launch(); app.tabBars.buttons["Profile"].tap(); openConnections(app)
         let row = app.buttons["settings-apis"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
@@ -1020,7 +1020,7 @@ import UIKit
         capture("Favourites most watched voice actors")
         top.tap()
         let voiceHeart = app.buttons["voice-actor-favourite"]
-        XCTAssertTrue(voiceHeart.waitForExistence(timeout: 5)); XCTAssertTrue(app.staticTexts["voice-actor-watched"].exists)
+        XCTAssertTrue(voiceHeart.waitForExistence(timeout: 5)); XCTAssertTrue(app.descendants(matching: .any)["voice-actor-watched"].exists)
         voiceHeart.tap(); XCTAssertEqual(voiceHeart.label, "Remove from favourites"); capture("Voice actor page")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let hearted = app.buttons["favourite-voice:11"]
@@ -1084,7 +1084,7 @@ import UIKit
         app.buttons["top-voice-actor-more"].tap()
         app.buttons["ranking-top-voice-actor-1001"].tap()
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["voice-actor-watched"].label.contains("14 anime"))
+        XCTAssertTrue(app.descendants(matching: .any)["voice-actor-watched"].label.contains("14 anime"))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["favourites-tab-cast"].tap()
@@ -1254,7 +1254,6 @@ import UIKit
     }
     func testTraktReviewAppliesSafeChangesThenRequiresAnExplicitConflictChoice() {
         let app = launch(); app.tabBars.buttons["Profile"].tap()
-        XCTAssertTrue(app.buttons["settings-trakt"].waitForExistence(timeout: 5))
         openTrakt(app)
         XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
         capture("Trakt review")
@@ -1653,8 +1652,17 @@ import UIKit
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66)))
     }
-    /// Settings keeps Trakt as a row under Connections; scroll to it and open the Trakt page.
+    /// Profile → Connections: every service lives on its own page now.
+    private func openConnections(_ app: XCUIApplication) {
+        let row = app.buttons["settings-connections"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Connections"].waitForExistence(timeout: 5))
+    }
+    /// Profile → Connections → Trakt.
     private func openTrakt(_ app: XCUIApplication) {
+        if !app.buttons["settings-trakt"].exists { openConnections(app) }
         let row = app.buttons["settings-trakt"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
@@ -1919,7 +1927,7 @@ import UIKit
     }
     func testNativeBackReturnsFromEverySettingsDestination() {
         let app = launch(); app.tabBars.buttons["Profile"].tap()
-        for (entryID, title) in [("settings-history", "Recently watched"), ("settings-files", "Files & drives"), ("settings-theme", "Appearance"), ("settings-tmdb", "TMDB"), ("settings-trakt", "Trakt"), ("settings-simkl", "Simkl"), ("settings-mdblist", "MDBList"), ("settings-about", "About")] {
+        for (entryID, title) in [("settings-history", "Recently watched"), ("settings-files", "Files & drives"), ("settings-theme", "Appearance"), ("settings-connections", "Connections"), ("settings-about", "About")] {
             let entry = app.buttons[entryID]
             for _ in 0..<12 {
                 if entry.isHittable { break }

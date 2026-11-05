@@ -13,11 +13,20 @@ enum SignInNavigationPolicy {
 /// Supports Cloudflare Access SSO, Personal Access Token, Email & Passcode, and Trakt OAuth sign-in.
 @MainActor struct AccessSignIn: View {
     enum SignInMode: String, CaseIterable, Identifiable {
-        case cloudflare = "Cloudflare SSO"
-        case token = "Access Token"
-        case passcode = "Passcode"
-        case trakt = "Trakt OAuth"
+        case cloudflare = "Google or email"
+        case passcode = "Owner passcode"
+        case token = "Access token"
+        case trakt = "Trakt"
         var id: String { rawValue }
+        /// One line under the picker, so the choice explains itself.
+        var hint: String {
+            switch self {
+            case .cloudflare: "Your server’s usual sign-in page (Cloudflare Access): Google, or a one-time code by email."
+            case .passcode: "The owner email and passcode set on your server."
+            case .token: "A private access token made for this diary."
+            case .trakt: "Your Trakt app ID and access token."
+            }
+        }
     }
     let completion: @MainActor (AccessCredential) -> Void
     @State private var mode: SignInMode = .cloudflare
@@ -32,15 +41,19 @@ enum SignInNavigationPolicy {
     @State private var formError: String?
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Sign-in method", selection: $mode) {
-                ForEach(SignInMode.allCases) { item in
-                    Text(item.rawValue).tag(item)
+            // One clear choice instead of four squeezed tabs: the usual page first, the rest on request.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Sign in with").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Picker("Sign in with", selection: $mode) {
+                        ForEach(SignInMode.allCases) { item in Text(item.rawValue).tag(item) }
+                    }.pickerStyle(.menu).accessibilityIdentifier("sign-in-method-picker")
                 }
+                Text(mode.hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .accessibilityIdentifier("sign-in-method-picker")
             .onChange(of: mode) { _, _ in formError = nil }
 
             if mode == .cloudflare {

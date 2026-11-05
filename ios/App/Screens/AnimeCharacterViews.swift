@@ -102,12 +102,12 @@ struct CharacterView: View {
             ProfileFact(id: "character-age", icon: "person", label: "Age", value: character.age),
             ProfileFact(id: "character-gender", icon: "person.text.rectangle", label: "Gender", value: character.gender),
             ProfileFact(id: "character-height", icon: "ruler", label: "Height", value: height),
-            ProfileFact(id: "character-blood-type", icon: "drop", label: "Blood type", value: blood)
+            ProfileFact(id: "character-blood-type", icon: "drop", label: "Blood type", value: blood),
+            ProfileFact(id: "character-favourites", icon: "heart", label: "AniList favourites", value: ProfileText.favouritesValue(character.favourites))
         ].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 12) {
             ProfileFacts(items: facts)
             ProfileAliases(values: character.alternative, excluding: [character.name] + [character.native].compactMap { $0 })
-            if let count = ProfileText.favourites(character.favourites) { ProfileSecondaryText(text: count) }
         }
     }
     private func voicedBy(_ actors: [AniPerson]) -> some View {

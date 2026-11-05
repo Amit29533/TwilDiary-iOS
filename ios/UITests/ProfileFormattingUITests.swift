@@ -145,7 +145,7 @@ import UIKit
             let app = open("voice", id)
             XCTAssertTrue(app.staticTexts["Voice actor"].exists)
             XCTAssertFalse(app.buttons["voice-actor-tmdb"].exists, "TMDB merges into this page; no separate profile")
-            XCTAssertEqual(app.staticTexts["voice-actor-watched"].label, "15 anime watched")
+            XCTAssertTrue(app.descendants(matching: .any)["voice-actor-watched"].label.contains("15 anime"))
             factPair(app, first: "voice-actor-birthday", second: "voice-actor-age")
             let home = element(app, "voice-actor-hometown"); reveal(home, in: app)
             XCTAssertEqual(home.frame.width, app.frame.width - 28, accuracy: 2)

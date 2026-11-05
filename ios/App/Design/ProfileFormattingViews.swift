@@ -107,6 +107,14 @@ enum ProfileSourceAction: View {
     }
 }
 
+/// "Source: Wikipedia" under a bio, in place of the credit sentence.
+struct ProfileSourceNote: View {
+    let source: String
+    var body: some View {
+        Text("Source: " + source).font(.caption).foregroundStyle(.tertiary).accessibilityIdentifier("profile-biography-source")
+    }
+}
+
 struct ProfileAliases: View {
     let values: [String]
     var excluding: [String] = []
@@ -118,14 +126,6 @@ struct ProfileAliases: View {
                              identifier: "profile-aliases", collapsedLines: 2, style: .subheadline,
                              moreLabel: "More names", lessLabel: "Fewer names")
         }
-    }
-}
-
-struct ProfileSecondaryText: View {
-    let text: String
-    var body: some View {
-        Text(text).font(.subheadline).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -186,6 +186,8 @@ struct ProfileAbout: View {
     /// Prose to show instead of the description's own (the merged person page uses TMDB's when
     /// AniList's says less); facts, links and references still come from the description.
     var biographyOverride: AttributedString? = nil
+    /// Shown under the bio as "Source: …" (the credit line is cut from the prose).
+    var sourceOverride: String? = nil
     @State private var expanded = false
     @State private var detailsExpanded = false
     var body: some View {
@@ -229,8 +231,11 @@ struct ProfileAbout: View {
                     }
                 }
             }
-            ProfileBiography(text: biographyOverride ?? AniListText.formatted(content.markdown, hideSpoilers: false), expanded: $expanded,
-                             identifier: biographyID)
+            VStack(alignment: .leading, spacing: 4) {
+                ProfileBiography(text: biographyOverride ?? AniListText.formatted(content.markdown, hideSpoilers: false), expanded: $expanded,
+                                 identifier: biographyID)
+                if let source = biographyOverride == nil ? content.source : sourceOverride { ProfileSourceNote(source: source) }
+            }
         }
     }
 }
