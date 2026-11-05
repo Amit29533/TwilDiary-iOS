@@ -38,6 +38,9 @@ test('once Trakt holds the diary, watches and ratings are frozen and the Review 
   assert.equal(recordRefusal('trakt', 'POST', '/api/progress/status')?.status, 423, 'season progress logs watches');
   assert.equal(recordRefusal('trakt', 'POST', '/api/providers/simkl/sync')?.status, 423, 'the old pull writes watches');
   assert.equal(recordRefusal('trakt', 'POST', '/api/workspace/migrate')?.status, 423);
+  // Importing an archive or CSV brings in watches and ratings: the frozen copy refuses it too.
+  assert.equal(recordRefusal('trakt', 'POST', '/api/workspace/import')?.status, 423);
+  assert.equal(recordRefusal('server', 'POST', '/api/workspace/import'), null);
   assert.equal(recordRefusal('trakt', 'POST', '/api/providers/vault'), null, 'saving provider keys still works');
   assert.match(recordRefusal('simkl', 'PATCH', '/api/titles/abc', { score: null })?.message ?? '', /Simkl/);
 });
@@ -50,8 +53,7 @@ test('extras stay writable once a service holds the diary', () => {
     ['DELETE', '/api/titles/abc', { expectedVersion: 1 }],
     ['POST', '/api/titles', {}],
     ['POST', '/api/titles/bulk', {}],
-    ['POST', '/api/backups', {}],
-    ['POST', '/api/workspace/import', {}]
+    ['POST', '/api/backups', {}]
   ] as const)
     assert.equal(recordRefusal('trakt', method, path, body), null, method + ' ' + path);
 });

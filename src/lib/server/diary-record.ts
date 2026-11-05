@@ -70,13 +70,16 @@ export function recordRefusal(
     message: `${name} holds your diary now. Your server’s watches and ratings are kept read-only as a backup; turn on “Show my diary from ${name}” in the app to edit.`
   };
   // Watches: logging one, changing or removing one, season progress (which logs or removes
-  // watches), the old pull from a service into the server, and the one-off legacy migration.
+  // watches), the old pull from a service into the server, the one-off legacy migration, and
+  // importing an archive or CSV (which brings in watches and ratings too; the app restores a
+  // backup into the service instead).
   if (
     /^\/api\/titles\/[^/]+\/watches$/.test(path) ||
     path.startsWith('/api/watch-events/') ||
     path === '/api/progress/status' ||
     /^\/api\/providers\/[^/]+\/sync$/.test(path) ||
-    path === '/api/workspace/migrate'
+    path === '/api/workspace/migrate' ||
+    path === '/api/workspace/import'
   )
     return frozen;
   // Ratings on a title. Status stays writable: the server keeps what the service can't

@@ -117,36 +117,13 @@ private struct HistoryCalendarSheet: View {
     }
 }
 
+/// One watch in History: the same compact composition as Home's activity, as a card in grid
+/// mode and as a row (landscape thumbnail, title, episode, date beside them) in list mode.
 struct HistoryRow: View {
     let entry: HistoryEntry
     var grid = false
     var body: some View {
-        if grid {
-            WatchActivityCard(model: HomeEpisodeCardModel(history: entry))
-        } else {
-            HStack(spacing: 10) {
-                Artwork(path: entry.title.poster, title: entry.title.name, initialsOnly: false).frame(width: 60, height: 90).clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(entry.title.name).font(.system(size: 15, weight: .semibold)).fixedSize(horizontal: false, vertical: true).shadow(color: .black.opacity(0.53), radius: 4, y: 1)
-                    InlineFlowLayout {
-                        Text(entry.episode.map { "S\($0.season) E\($0.number)" } ?? "Movie").foregroundStyle(Color(webHex: "#c5c0cf"))
-                        if entry.rewatched { HStack(spacing: 4) { DiaryIcon(name: "rotate-ccw", size: 12); Text("Rewatched") }.foregroundStyle(.tint) }
-                    }.font(.system(size: 13)).padding(.vertical, 3)
-                    Spacer(minLength: 0)
-                    Text(DiaryDate.parse(entry.event.watchedAt).map { $0.formatted(.dateTime.month(.abbreviated).day().year()) } ?? "Watch date unknown").font(.system(size: 12)).foregroundStyle(Color(webHex: "#a09aa9")).padding(.top, 10)
-                }.frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading).padding(.vertical, 3)
-                DiaryIcon(name: "chevron-right", size: 17).foregroundStyle(Color(webHex: "#a09aa9"))
-            }.padding(7).foregroundStyle(Color(webHex: "#f3f0f7"))
-                .background {
-                    ZStack {
-                        Color(webHex: "#111115")
-                        if let path = backdrop { Artwork(path: path).opacity(0.7) }
-                        LinearGradient(stops: [.init(color: Color(webHex: "#0b0c10f2"), location: 0), .init(color: Color(webHex: "#0b0c10e6"), location: 0.38), .init(color: Color(webHex: "#0b0c10b3"), location: 1)], startPoint: .leading, endPoint: .trailing)
-                        LinearGradient(colors: [Color(webHex: "#05060980"), .clear], startPoint: .bottom, endPoint: .top)
-                    }.allowsHitTesting(false)
-                }.clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.13)))
-                .contentShape(Rectangle())
-        }
+        if grid { WatchActivityCard(model: HomeEpisodeCardModel(history: entry)) }
+        else { HomeEpisodeCard(model: HomeEpisodeCardModel(history: entry), cards: false) }
     }
-    private var backdrop: String? { ["again", "night", "severance"].contains(entry.title.id) ? "scene:" + entry.title.id : entry.title.backdrop }
 }

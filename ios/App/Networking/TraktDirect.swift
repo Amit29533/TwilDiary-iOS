@@ -436,6 +436,43 @@ enum TraktDelivery: Equatable, Sendable {
         }
         return true
     }
+    /// Puts a backup back into Trakt while Trakt holds the diary: only what Trakt lacks (plays
+    /// not there at their time, ratings Trakt has none for, Planned for titles never watched,
+    /// favourites, dropped shows). Nothing on Trakt is changed or removed, so running it twice
+    /// adds nothing twice; the answer counts what Trakt accepted, not what was asked.
+    func restore(_ backup: Workspace, store: DiaryStore) async throws -> String {
+        guard !writing, !running else { throw APIError.message("Trakt is busy right now. Try again in a moment.") }
+        let session = generation
+        await check(store: store)
+        guard session == generation else { throw CancellationError() }
+        guard let library, error == nil else { throw APIError.message("Trakt couldn’t be read, so nothing was restored. " + (error ?? "")) }
+        let plan = TraktWritePlan.make(library: library, workspace: backup, fillOnly: true)
+        guard !plan.isEmpty else { return "Trakt already has everything in this backup." }
+        writing = true
+        defer { if session == generation { writing = false; writeProgress = nil } }
+        if token?.usable != true { token = try await store.read("/api/trakt/token") }
+        guard session == generation, let token else { throw CancellationError() }
+        let client = TraktDirectClient(token: token)
+        var tally = ReplyTally(), sent = 0
+        let requests = plan.requests()
+        do {
+            for (index, request) in requests.enumerated() {
+                writeProgress = "Restoring \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
+                if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                guard session == generation else { throw CancellationError() }
+                tally.add(try await client.post(request.path, body: request.body))
+                sent += request.count
+            }
+        } catch {
+            writing = false
+            await check(store: store)
+            throw APIError.message((sent > 0 ? "Restored \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + error.localizedDescription)
+        }
+        writing = false
+        await check(store: store)
+        return "Restored to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
+            + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) watches in the backup have no date and were left out." : "")
+    }
     /// Takes queued history writes for plays at this time out of the queue (Undo before they
     /// reached Trakt); true when there were any.
     func cancelPending(watchedAt when: String) -> Bool {

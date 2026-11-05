@@ -62,7 +62,9 @@ struct BackupsView: View {
                 Button("Restore \(backup.label)") { Task { await restore(backup) } }
                 Button("Cancel", role: .cancel) {}
             } message: { backup in
-                Text("\(backup.titles.counted("title", "titles")) and \(backup.watches.counted("watch", "watches")) from \(date(backup)) are merged into your diary. Anything newer stays.")
+                Text(store.traktHoldsDiary
+                     ? "What Trakt doesn’t have from this backup (\(backup.titles.counted("title", "titles")), \(backup.watches.counted("watch", "watches")) from \(date(backup))) is added to Trakt. Nothing on Trakt is changed or removed."
+                     : "\(backup.titles.counted("title", "titles")) and \(backup.watches.counted("watch", "watches")) from \(date(backup)) are merged into your diary. Anything newer stays.")
             }
             .confirmationDialog("Delete this backup?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { backup in
                 Button("Delete", role: .destructive) { Task { await delete(backup) } }
@@ -117,9 +119,20 @@ struct BackupsView: View {
         defer { working = nil }
         do {
             let snapshot: Snapshot = try await store.read("/api/backups/" + backup.id, timeout: 60)
+            // Restore goes where your diary lives: into Trakt when Trakt holds it (the server's
+            // copy is read-only then, and changing it wouldn't change what you see).
+            if store.traktHoldsDiary {
+                let diary = try snapshot.diary.merged(into: Workspace())
+                message = try await TraktDirectStore.shared.restore(diary, store: store)
+                return
+            }
+            if let service = store.diaryService ?? store.serverRecord {
+                failure = "Restoring a backup isn’t available yet while \(service.name) holds your diary."
+                return
+            }
             let data = try snapshot.diary.encoded()
             let result = try await store.importDiaryArchive(data)
-            message = "Restored: \(result.titles.counted("title", "titles")) and \(result.events.counted("watch", "watches")) merged."
+            message = "Restored to your server diary: \(result.titles.counted("title", "titles")) and \(result.events.counted("watch", "watches")) merged. What was already there was kept."
         } catch { failure = error.localizedDescription }
     }
     private func delete(_ backup: Summary) async {
