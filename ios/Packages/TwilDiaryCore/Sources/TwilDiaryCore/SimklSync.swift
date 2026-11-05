@@ -41,8 +41,12 @@ public enum SimklSync {
         return all.isEmpty || all.contains { $0.simklId != nil }
     }
     static func titles(_ library: TraktLibrary) -> [TraktTitleRef] {
-        library.plays.map(\.title) + library.ratings.map(\.title) + library.watchlist.map(\.title)
-            + library.dropped.map(\.title) + library.notes.map(\.title)
+        var result: [TraktTitleRef] = library.plays.map(\.title)
+        result += library.ratings.map(\.title)
+        result += library.watchlist.map(\.title)
+        result += library.dropped.map(\.title)
+        result += library.notes.compactMap(\.title)
+        return result
     }
 
     /// Changed items replace everything the copy had for those titles (`touched`: every Simkl id
@@ -58,7 +62,7 @@ public enum SimklSync {
         result.ratings = library.ratings.filter { !replaced($0.title) } + delta.ratings
         result.watchlist = library.watchlist.filter { !replaced($0.title) } + delta.watchlist
         result.dropped = library.dropped.filter { !replaced($0.title) } + delta.dropped
-        result.notes = library.notes.filter { !replaced($0.title) } + delta.notes
+        result.notes = library.notes.filter { note in !(note.title.map(replaced) ?? false) } + delta.notes
         return result
     }
 
@@ -70,7 +74,7 @@ public enum SimklSync {
         result.ratings = library.ratings.filter { kept($0.title) }
         result.watchlist = library.watchlist.filter { kept($0.title) }
         result.dropped = library.dropped.filter { kept($0.title) }
-        result.notes = library.notes.filter { kept($0.title) }
+        result.notes = library.notes.filter { note in note.title.map(kept) ?? true }
         return result
     }
 }
