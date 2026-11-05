@@ -35,12 +35,11 @@ import UIKit
         XCTAssertGreaterThanOrEqual(item.frame.minX, 12)
         XCTAssertLessThanOrEqual(item.frame.maxX, app.frame.width - 12)
     }
-    private func source(_ app: XCUIApplication, _ id: String, role: String) {
-        let action = app.buttons[id]
-        XCTAssertTrue(action.exists)
-        XCTAssertEqual(action.frame.width, 44, accuracy: 2)
-        XCTAssertEqual(action.frame.height, 44, accuracy: 2)
-        XCTAssertEqual(action.frame.midY, app.staticTexts[role].firstMatch.frame.midY, accuracy: 4)
+    /// One page per person: the role shows under the name, with no TMDB / AniList logo beside it.
+    private func noHeaderLogo(_ app: XCUIApplication, role: String) {
+        XCTAssertTrue(app.staticTexts[role].firstMatch.exists)
+        XCTAssertFalse(app.buttons["person-tmdb"].exists)
+        XCTAssertFalse(app.buttons["voice-actor-tmdb"].exists)
     }
     private func factPair(_ app: XCUIApplication, first: String, second: String) {
         let a = element(app, first), b = element(app, second)
@@ -107,7 +106,7 @@ import UIKit
         executionTimeAllowance = 180
         for id in [974169, 1134684, 172069, 1116334, 1254672] {
             let app = open("cast", id)
-            source(app, "person-tmdb", role: "Actor")
+            noHeaderLogo(app, role: "Actor")
             factPair(app, first: "person-birthday", second: "person-age")
             let place = element(app, "person-birthplace"); reveal(place, in: app)
             XCTAssertEqual(place.frame.width, app.frame.width - 28, accuracy: 2)
@@ -126,7 +125,9 @@ import UIKit
         executionTimeAllowance = 200
         for (id, age) in [(70069, "17 (physically)"), (176754, "1000+"), (138100, "6 (self asserted)"), (12, "14-15")] {
             let app = open("character", id)
-            source(app, "profile-site-https://anilist.co/character/\(id)", role: "Character")
+            noHeaderLogo(app, role: "Character")
+            // AniList's page is still one tap away, in the Links row with the other sites.
+            XCTAssertTrue(element(app, "profile-site-https://anilist.co/character/\(id)").exists)
             let value = element(app, "character-age"); reveal(value, in: app)
             XCTAssertTrue(value.label.contains(age))
             if id == 12 { XCTAssertTrue(element(app, "character-birthday").label.contains("1900")) }

@@ -12,7 +12,6 @@ struct PersonProfilePage<Content: View>: View {
     let ref: Int
     var favouriteSubtitle: String? = nil
     let identifier: String
-    var source: ProfileSourceAction? = nil
     /// The same person's other identity on this merged page: links to it don't push another page.
     var sameVoice: Int? = nil
     var samePerson: Int? = nil
@@ -62,12 +61,8 @@ struct PersonProfilePage<Content: View>: View {
             if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
                 Text(native).font(.subheadline).foregroundStyle(.white.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
             }
-            if ProfileText.line(role) != nil || source != nil {
-                HStack(alignment: .center, spacing: 12) {
-                    if let role = ProfileText.line(role) { Text(role).font(.subheadline).foregroundStyle(.white.opacity(0.7)).fixedSize(horizontal: false, vertical: true) }
-                    Spacer(minLength: 0)
-                    if let source { source }
-                }
+            if let role = ProfileText.line(role) {
+                Text(role).font(.subheadline).foregroundStyle(.white.opacity(0.7)).fixedSize(horizontal: false, vertical: true)
             }
         }.padding(.horizontal, 14).padding(.bottom, 16)
             .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
@@ -191,12 +186,3 @@ struct ProfileWebsiteButtons: View {
     }
 }
 
-struct ProfileSourceLogo: View {
-    var body: some View {
-        Image("tmdb-logo").renderingMode(.original).resizable().scaledToFit()
-            .frame(width: 30, height: 14)
-            .frame(width: 44, height: 44)
-            .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
-    }
-}

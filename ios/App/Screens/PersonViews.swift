@@ -32,7 +32,7 @@ struct PersonView: View {
                                   image: CatalogTools.image(person?.profilePath, size: "w780") ?? actor?.image,
                                   kind: voiceFirst ? .voice : .cast, ref: voiceFirst ? (actor?.id ?? 0) : (person?.id ?? 0),
                                   favouriteSubtitle: voiceFirst ? actor?.roles.first.map { "Voice of " + $0.character.name } : person?.department,
-                                  identifier: prefix, source: source,
+                                  identifier: prefix,
                                   sameVoice: actor?.id, samePerson: person?.id) {
                     VStack(alignment: .leading, spacing: 22) {
                         intro
@@ -70,11 +70,6 @@ struct PersonView: View {
         guard let person else { return "Voice actor" }
         return person.department == "Acting" ? "Actor" : person.department
     }
-    private var source: ProfileSourceAction? {
-        guard let person else { return nil }
-        return .credits(PersonFilmographyRoute(person: person.id, section: .credits))
-    }
-
     // MARK: Text
 
     @ViewBuilder private var intro: some View {

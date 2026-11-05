@@ -30,7 +30,8 @@ struct ProfileNativeLinks: ViewModifier {
     @State private var generation = UUID()
     func body(content: Content) -> some View {
         content.environment(\.openURL, OpenURLAction { url in
-            guard let target = ProfileDeepLink.parse(url) else { lookup?.cancel(); resolving = false; return .systemAction }
+            // A link to this very page (its own AniList or TMDB page) opens the website instead.
+            guard let target = ProfileDeepLink.parse(url), !isThisPage(target) else { lookup?.cancel(); resolving = false; return .systemAction }
             open(target); return .handled
         }).onDisappear { lookup?.cancel(); resolving = false }
             .overlay(alignment: .bottom) {
@@ -43,6 +44,14 @@ struct ProfileNativeLinks: ViewModifier {
             .alert("Unable to open link", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) { failure = nil }
             } message: { Text(failure ?? "") }
+    }
+    private func isThisPage(_ target: ProfileDeepLink) -> Bool {
+        switch target {
+        case .character(let id): kind == .character && ref == id
+        case .voice(let id): (kind == .voice && ref == id) || sameVoice == id
+        case .person(let id): (kind == .cast && ref == id) || samePerson == id
+        case .anime: false
+        }
     }
     private func open(_ target: ProfileDeepLink) {
         lookup?.cancel(); failure = nil; resolving = false; generation = UUID()

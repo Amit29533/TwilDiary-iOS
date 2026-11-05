@@ -382,9 +382,8 @@ struct AiringCalendarView: View {
                                         Button {
                                             Task { await store.recordViewing(item.title, episode: item.episode, watchedAt: store.now) }
                                         } label: {
-                                            DiaryIcon(name: "check", size: 15)
-                                                .frame(width: 34, height: 34)
-                                                .background(theme.accent.opacity(0.18), in: Circle())
+                                            DiaryIcon(name: "check", size: 18).foregroundStyle(theme.accent)
+                                                .frame(width: 44, height: 44).contentShape(Rectangle())
                                         }.buttonStyle(.plain).disabled(store.writesBlocked)
                                     }
                                 }.diaryPanel()

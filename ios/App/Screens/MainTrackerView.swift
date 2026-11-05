@@ -49,9 +49,8 @@ struct MainTrackerView: View {
                 Text(option.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
-            Image(systemName: option == tracker ? "checkmark.circle.fill" : "circle")
-                .font(.title3).foregroundStyle(option == tracker ? theme.accent : Color.secondary)
-                .contentTransition(.symbolEffect(.replace))
+            Image(systemName: "checkmark").font(.system(size: 17, weight: .bold)).foregroundStyle(theme.accent)
+                .opacity(option == tracker ? 1 : 0).frame(width: 24)
         }.padding(14).frame(minHeight: 64).contentShape(Rectangle())
     }
 }

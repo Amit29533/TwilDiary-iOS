@@ -88,25 +88,6 @@ private struct ProfileFactsLayout: Layout {
     }
 }
 
-enum ProfileSourceAction: View {
-    case credits(PersonFilmographyRoute)
-    case aniList(URL)
-    @ViewBuilder var body: some View {
-        switch self {
-        case .credits(let route):
-            NavigationLink(value: route) { ProfileSourceLogo() }.buttonStyle(.plain)
-                .accessibilityLabel("View TMDB credits").accessibilityIdentifier("person-tmdb")
-        case .aniList(let url):
-            Link(destination: url) {
-                Image("site-anilist").renderingMode(.template).resizable().scaledToFit().frame(width: 22, height: 22)
-                    .foregroundStyle(.white).frame(width: 44, height: 44)
-                    .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
-            }.buttonStyle(.plain).accessibilityLabel("AniList profile").accessibilityIdentifier("profile-site-" + url.absoluteString)
-        }
-    }
-}
-
 /// "Source: Wikipedia" under a bio, in place of the credit sentence.
 struct ProfileSourceNote: View {
     let source: String

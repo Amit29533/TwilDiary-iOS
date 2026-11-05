@@ -399,7 +399,13 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
   assert.equal(iosHome.includes('store.recordViewing(item.title, episode: item.episode, watchedAt: store.now)'), true);
   assert.equal(iosStats.includes('Fun facts'), false);
   assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.calendar)'), true);
-  assert.equal(iosSettings.includes('showSignInMethods = true'), true);
+  // The diary sign-in moved from Profile to Profile → Connections ("Your diary").
+  const iosConnections = await readFile(
+    new URL('../../ios/App/Screens/ConnectionsView.swift', import.meta.url),
+    'utf8'
+  );
+  assert.equal(iosConnections.includes('showDiaryAccess = true'), true);
+  assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.connections)'), true);
   assert.equal(iosLibrary.includes('@SceneStorage("library.tag")'), true);
   assert.equal(iosTitleDetail.includes('accessibilityIdentifier("title-critic-breakdown")'), true);
 });

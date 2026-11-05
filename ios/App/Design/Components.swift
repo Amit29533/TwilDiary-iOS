@@ -436,9 +436,9 @@ struct PosterCard: View {
                 .frame(width: 26, height: 26).background(Color(webHex: "#080a10e8"), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.42))).padding(6)
         } else if title.status == "completed" && !archived {
-            Image(systemName: "checkmark").font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color(webHex: "#10291b")).frame(width: 26, height: 26)
-                .background(Color(webHex: "#78e4ab"), in: Circle()).padding(8)
+            Image(systemName: "checkmark").font(.system(size: 17, weight: .heavy))
+                .foregroundStyle(theme.accent).shadow(color: .black.opacity(0.8), radius: 3)
+                .frame(width: 26, height: 26).padding(8)
         }
     }
     private var availabilityBadges: some View {

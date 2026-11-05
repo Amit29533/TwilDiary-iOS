@@ -74,13 +74,14 @@ struct CharacterView: View {
                 let biography = ProfileFormattedBiography(description: character.description, hideSpoilers: hideSpoilers)
                 PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
                                   kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
-                                  identifier: "character", source: .aniList(URL(string: "https://anilist.co/character/\(character.id)")!)) {
+                                  identifier: "character") {
                     VStack(alignment: .leading, spacing: 18) {
                         if let source = route.sourceTitle {
                             Button("In " + source) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain).foregroundStyle(.primary)
                         }
                         details(character, biography: biography)
-                        ProfileAbout(content: biography, excludingFacts: ["height", "blood-type"])
+                        ProfileAbout(content: biography, excludingFacts: ["height", "blood-type"],
+                                     additionalLinks: [ProfileWebsiteLink(url: URL(string: "https://anilist.co/character/\(character.id)")!, title: "AniList")].compactMap { $0 })
                         ProfileWatchedShelf(appearances: character.appearances)
                         if !character.voiceActors.isEmpty { voicedBy(character.voiceActors) }
                         if !character.appearances.isEmpty { appearsIn(character.appearances) }

@@ -554,11 +554,12 @@ struct TitleDetailView: View {
                 await loadCard(title)
             }
         } label: {
-            ZStack {
-                Circle().fill(watched ? theme.accent : .black.opacity(episodesGrid ? 0.45 : 0)).frame(width: 30, height: 30)
-                Circle().strokeBorder(watched ? .black.opacity(0.35) : .white.opacity(0.8), lineWidth: watched ? 2 : 1.5).frame(width: 30, height: 30)
-                if watched { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(theme.ink) }
-            }.frame(width: 44, height: 44)
+            // Just a tick: blue when watched, faint when not (still clearly where to tap).
+            Image(systemName: "checkmark").font(.system(size: 20, weight: .bold))
+                .foregroundStyle(watched ? theme.accent : Color.white.opacity(episodesGrid ? 0.75 : 0.3))
+                .shadow(color: .black.opacity(episodesGrid ? 0.7 : 0), radius: 3)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(store.writesBlocked || (!watched && !hasAired(episode)))
             .accessibilityLabel("Mark episode \(episode.number) \(watched ? "unwatched" : "watched")")
             .accessibilityIdentifier("episode-watch-\(episode.number)")

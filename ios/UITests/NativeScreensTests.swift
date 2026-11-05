@@ -1131,16 +1131,13 @@ import UIKit
         XCTAssertTrue(voice.isHittable); voice.tap()
         XCTAssertTrue(app.buttons["voice-actor-favourite"].waitForExistence(timeout: 5))
         capture("Voice actor shared hero before scrolling")
-        // One merged page: the TMDB side is matched in place and adds its credits button.
-        let tmdb = app.buttons["person-tmdb"]
-        XCTAssertTrue(tmdb.waitForExistence(timeout: 10))
-        revealProfileControl(tmdb, in: app)
-        XCTAssertTrue(tmdb.isHittable)
+        // One merged page: no TMDB / AniList logo in the header; TMDB's shelves join the page.
+        XCTAssertFalse(app.buttons["person-tmdb"].exists)
+        let credits = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'person-more-'")).firstMatch
+        XCTAssertTrue(credits.waitForExistence(timeout: 10), "The TMDB side is matched in place")
         let birthday = app.descendants(matching: .any)["voice-actor-birthday"]
         XCTAssertTrue(birthday.exists)
-        XCTAssertEqual(tmdb.frame.midY, app.staticTexts["Voice actor"].firstMatch.frame.midY, accuracy: 4, "Small source action shares the role row")
-        XCTAssertEqual(tmdb.frame.width, 44, accuracy: 2)
-        XCTAssertLessThan(tmdb.frame.maxY, birthday.frame.minY, "Facts sit below the role and source action")
+        XCTAssertLessThan(app.staticTexts["Voice actor"].firstMatch.frame.maxY, birthday.frame.minY, "Facts sit below the role")
         XCTAssertTrue(app.buttons["profile-site-https://x.com/reference"].exists, "Website lists become labelled icon buttons")
         XCTAssertFalse(app.staticTexts["Facts"].exists)
         let voiceHeart = app.buttons["voice-actor-favourite"]
@@ -1151,8 +1148,8 @@ import UIKit
         XCTAssertEqual(voiceHeart.frame.midY, heartY, accuracy: 2, "Favourite stays in the native toolbar while scrolling")
         capture("Voice actor pinned favourite after scrolling")
         XCTAssertFalse(app.buttons["voice-actor-tmdb"].exists, "No separate TMDB profile page any more")
-        revealProfileControl(tmdb, in: app)
-        tmdb.tap()
+        revealProfileControl(credits, in: app)
+        credits.tap()
         XCTAssertTrue(app.staticTexts["person-filmography-heading"].waitForExistence(timeout: 10), "TMDB credits open natively")
         XCTAssertEqual(app.state, .runningForeground)
         capture("Voice actor TMDB credits stay native")
@@ -1530,11 +1527,11 @@ import UIKit
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 10)); assertDetailTabsHidden()
         XCTAssertFalse(app.navigationBars["Find anime"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        // The voice actor's TMDB credits live on the same merged page.
-        let castTMDB = app.buttons["person-tmdb"]; XCTAssertTrue(castTMDB.waitForExistence(timeout: 10))
-        reveal(castTMDB, down: true); castTMDB.tap()
+        // The voice actor's TMDB credits live on the same merged page, behind each shelf's >.
+        let castCredits = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'person-more-'")).firstMatch
+        XCTAssertTrue(castCredits.waitForExistence(timeout: 10))
+        reveal(castCredits, down: true); castCredits.tap()
         XCTAssertTrue(app.staticTexts["person-filmography-heading"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["person-filmography-heading"].label.contains("Credits"))
         XCTAssertEqual(app.webViews.count, 0)
         capture("Cast TMDB action stays inside native credits")
         app.navigationBars.buttons.element(boundBy: 0).tap(); assertDetailTabsHidden()
