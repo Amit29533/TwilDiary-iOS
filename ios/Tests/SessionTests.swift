@@ -1997,6 +1997,6 @@ extension SessionTests {
         await store.flushDirectProviders()
         XCTAssertTrue(queueStore.load(scope: credential.cacheScope).isEmpty)
         XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/ratings" }.count, 0)
-        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/tracking" }.count, 1)
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/add-to-list" }.count, 1, "Only the unconfirmed Simkl plan is retried")
     }
 }
