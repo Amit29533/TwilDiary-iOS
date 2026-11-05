@@ -100,7 +100,7 @@ struct CatalogSearchView: View {
                 // In your library (only when something matches).
                 if !localMatches.isEmpty {
                     HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
-                    CollectionLayout(grid: grid) { ForEach(localMatches.prefix(libraryShown)) { title in
+                    CollectionLayout(grid: grid, columns: 3) { ForEach(localMatches.prefix(libraryShown)) { title in
                         Button { chooseLibrary(title.id) } label: { searchRow(title) }.buttonStyle(.plain)
                             .accessibilityIdentifier((onLibraryChoose == nil ? "search-library-" : "match-title-") + title.id)
                     } }
@@ -111,7 +111,7 @@ struct CatalogSearchView: View {
                 if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows · TMDB" : "Not In Library · TMDB").font(.system(size: 15, weight: .semibold)) }
                 if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
                 if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
-                CollectionLayout(grid: grid) { ForEach(Array(visibleOnline.prefix(onlineShown)), id: \.key) { item in
+                CollectionLayout(grid: grid, columns: 3) { ForEach(Array(visibleOnline.prefix(onlineShown)), id: \.key) { item in
                     Button { chooseCatalog(item.route) } label: { onlineRow(item) }
                         .buttonStyle(.plain).accessibilityIdentifier("search-" + item.key)
                 } }
@@ -138,12 +138,25 @@ struct CatalogSearchView: View {
             .onDisappear { pageTask?.cancel(); generation = UUID(); loading = false }
     }
     private func onlineRow(_ item: CatalogItem) -> some View {
-        let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+        let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))
         return layout {
-            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: grid ? nil : 72, height: grid ? 170 : 108).frame(maxWidth: grid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 4) { Text(item.name).font(.system(size: 15, weight: .semibold)); Text([item.year.map(String.init), item.mediaType == .tv ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(.secondary) }
+            resultPoster(Artwork(path: item.artwork, title: item.name, initialsOnly: false))
+            resultCaption(item.name, detail: [item.year.map(String.init), item.mediaType == .tv ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
             if !grid { Spacer(minLength: 0); DiaryIcon(name: "arrow-up-right", size: 18).foregroundStyle(.tint) }
         }.padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).foregroundStyle(.primary)
+    }
+    /// A true 2:3 poster in both layouts: the column's width in the grid (not a fixed height,
+    /// which squashed posters to squares), 72 by 108 in the list.
+    @ViewBuilder private func resultPoster(_ artwork: Artwork) -> some View {
+        if grid { artwork.posterAspect().clipShape(RoundedRectangle(cornerRadius: 8)) }
+        else { artwork.frame(width: 72, height: 108).clipShape(RoundedRectangle(cornerRadius: 8)) }
+    }
+    /// Grid captions keep two lines of room, so a row of posters stays level whatever the names.
+    private func resultCaption(_ name: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: grid ? 2 : 4) {
+            Text(name).font(.system(size: grid ? 14 : 15, weight: .semibold)).lineLimit(grid ? 2 : 4, reservesSpace: grid)
+            Text(detail).font(.system(size: grid ? 12 : 13)).foregroundStyle(.secondary).lineLimit(1)
+        }
     }
     private var normalized: String { DiarySearchTools.normalize(query) }
     private var ready: Bool { DiarySearchTools.ready(normalized) }
@@ -162,10 +175,10 @@ struct CatalogSearchView: View {
         if let data = try? JSONEncoder().encode(Array(values.prefix(6))), let json = String(data: data, encoding: .utf8) { recentJSON = json }
     }
     private func searchRow(_ title: SearchLibraryTitle) -> some View {
-        let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+        let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))
         return layout {
-            Artwork(path: title.artwork, title: title.name).frame(width: grid ? nil : 72, height: grid ? 170 : 108).frame(maxWidth: grid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 4) { Text(title.name).font(.system(size: 15, weight: .semibold)); Text([title.year.map(String.init), title.category == "anime-movie" ? "Anime movie" : title.category.capitalized].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(.secondary) }
+            resultPoster(Artwork(path: title.artwork, title: title.name))
+            resultCaption(title.name, detail: [title.year.map(String.init), title.category == "anime-movie" ? "Anime movie" : title.category.capitalized].compactMap { $0 }.joined(separator: " · "))
             if !grid { Spacer(minLength: 0); DiaryIcon(name: "arrow-up-right", size: 18).foregroundStyle(.tint) }
         }.padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).foregroundStyle(.primary)
     }

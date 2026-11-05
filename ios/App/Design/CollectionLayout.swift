@@ -26,12 +26,14 @@ struct CollectionLayoutToggle: View {
 struct CollectionLayout<Content: View>: View {
     let grid: Bool
     var spacing: CGFloat = 12
+    /// Grid columns: two wide cards, or three for poster grids.
+    var columns = 2
     let content: Content
-    init(grid: Bool, spacing: CGFloat = 12, @ViewBuilder content: () -> Content) {
-        self.grid = grid; self.spacing = spacing; self.content = content()
+    init(grid: Bool, spacing: CGFloat = 12, columns: Int = 2, @ViewBuilder content: () -> Content) {
+        self.grid = grid; self.spacing = spacing; self.columns = max(1, columns); self.content = content()
     }
     var body: some View {
-        LazyVGrid(columns: grid ? [GridItem(.flexible(), spacing: spacing, alignment: .top), GridItem(.flexible(), spacing: spacing, alignment: .top)] : [GridItem(.flexible(), alignment: .top)], alignment: .leading, spacing: spacing) { content }
+        LazyVGrid(columns: grid ? Array(repeating: GridItem(.flexible(), spacing: spacing, alignment: .top), count: columns) : [GridItem(.flexible(), alignment: .top)], alignment: .leading, spacing: spacing) { content }
     }
 }
 
