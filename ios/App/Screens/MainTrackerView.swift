@@ -34,11 +34,31 @@ struct MainTrackerView: View {
                         Label("Connect \(tracker.name) first", systemImage: "link").frame(maxWidth: .infinity)
                     }.font(.subheadline).buttonStyle(.diarySecondary).accessibilityIdentifier("main-tracker-connect")
                 }
+                if tracker == .trakt { diarySource }
                 TrackerPreviewPanel(tracker: tracker)
                 Text("Your diary still lives on your server until the switch-over. Choosing here changes nothing yet; it picks which service the preview reads.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(14).padding(.bottom, 40)
         }.diaryScreenBackground().navigationTitle("Main tracker").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+    }
+
+    /// Phase 4a: browse the whole app with the diary built from Trakt (plus your server's extras),
+    /// before Trakt becomes the record. Editing is paused meanwhile; switching back is instant.
+    private var diarySource: some View {
+        @Bindable var store = store
+        return VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $store.diaryFromTrakt) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show my diary from Trakt").font(.subheadline.weight(.semibold))
+                    Text("Every screen shows your Trakt watches, ratings, Planned, favourites and dropped, with posters, tags, notes and files from your server. Editing is paused while this is on.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }.accessibilityIdentifier("diary-from-trakt")
+            if store.diaryFromTrakt {
+                Label("Read-only preview. Turn it off to edit again.", systemImage: "eye").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+            }
+        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
     }
 
     private func row(_ option: MainTracker) -> some View {

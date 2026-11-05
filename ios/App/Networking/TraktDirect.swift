@@ -149,8 +149,10 @@ struct TraktDirectClient: Sendable {
             library.fetchedAt = Date.now.formatted(.iso8601)
             self.library = library
             save(library)
+            // Compare with the server's diary (the record until the switch-over), not the Trakt view.
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
-                            skipped: skipped, comparison: TraktComparison.compare(library, with: store.workspace))
+                            skipped: skipped, comparison: TraktComparison.compare(library, with: store.serverDiary))
+            if store.diaryFromTrakt { store.applyDiarySource() }
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
         }
@@ -195,7 +197,7 @@ struct TraktDirectClient: Sendable {
     private(set) var writeResult: String?
     /// What "Make Trakt match" would send, from the last read (nil before a read).
     func matchPlan(store: DiaryStore) -> TraktWritePlan? {
-        library.map { TraktWritePlan.make(library: $0, workspace: store.workspace) }
+        library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary) }
     }
     /// Sends the plan to Trakt one request a second, marks Trakt-only favourites in the diary,
     /// then reads Trakt again so the comparison shows the result.
@@ -301,7 +303,7 @@ struct TraktDirectClient: Sendable {
             libraries[tracker] = library
             save(library, tracker)
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
-                                     skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.workspace, tracker: tracker))
+                                     skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.serverDiary, tracker: tracker))
         } catch {
             if !Task.isCancelled { errors[tracker] = error.localizedDescription }
         }

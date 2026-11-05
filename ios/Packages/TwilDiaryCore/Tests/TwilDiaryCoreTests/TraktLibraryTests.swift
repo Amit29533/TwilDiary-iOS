@@ -245,3 +245,37 @@ private func diary() throws -> Workspace {
     done.favorites = [TraktListed(title: spooky, listedAt: nil)]
     #expect(TraktWritePlan.make(library: done, workspace: try diary()).isEmpty)
 }
+
+// MARK: Phase 4a: the diary built from Trakt
+
+@Test func theTraktDiaryTakesWatchesAndListsFromTraktAndExtrasFromTheServer() throws {
+    let spooky = TraktTitleRef(kind: .show, traktId: 1, tmdbId: 284172, name: "Spooky in Love")
+    let alya = TraktTitleRef(kind: .show, traktId: 7, tmdbId: 777, name: "Alya Sometimes Hides Her Feelings in Russian", year: 2024)
+    let obsession = TraktTitleRef(kind: .movie, traktId: 2, tmdbId: 3, name: "Obsession")
+    let library = TraktLibrary(
+        plays: [TraktPlay(historyId: 10, title: spooky, season: 1, episode: 11, watchedAt: "2026-11-04T07:42:00.000Z"),
+                TraktPlay(historyId: 11, title: spooky, season: 2, episode: 1, watchedAt: "2026-11-05T07:00:00.000Z"),
+                TraktPlay(historyId: 12, title: alya, season: 1, episode: 1, watchedAt: "2026-10-01T00:00:00.000Z")],
+        ratings: [TraktRating(title: spooky, rating: 8, ratedAt: nil)],
+        watchlist: [TraktListed(title: obsession, listedAt: nil)],
+        favorites: [TraktListed(title: alya, listedAt: nil)])
+    let server = try diary()
+    let built = TraktDiary.build(library: library, server: server)
+    let byName = Dictionary(uniqueKeysWithValues: built.titles.map { ($0.name, $0) })
+    // Server titles keep their ids (so notes, tags and files stay attached); Trakt decides the rest.
+    let spookyTitle = try #require(byName["Spooky in Love"])
+    #expect(spookyTitle.id == "spooky" && spookyTitle.score == 8 && spookyTitle.favorite == false && spookyTitle.status == "completed")
+    #expect(byName["Obsession"]?.status == "planned")
+    // A Trakt-only title joins with its Trakt name, as a show being watched and a favourite.
+    let alyaTitle = try #require(byName["Alya Sometimes Hides Her Feelings in Russian"])
+    #expect(alyaTitle.id == "tv:777" && alyaTitle.status == "watching" && alyaTitle.favorite && alyaTitle.year == 2024)
+    // Watches come from Trakt only: the server's own (E12, the movie) aren't there; S2E1 gets an episode.
+    #expect(built.events.allSatisfy { $0.origin == "trakt" })
+    #expect(built.events.count == 3)
+    let s2e1 = try #require(built.episodes.first { $0.titleId == "spooky" && $0.season == 2 && $0.number == 1 })
+    #expect(built.events.contains { $0.episodeId == s2e1.id })
+    #expect(built.events.contains { $0.episodeId == "e11" }, "A known episode keeps the server's id")
+    #expect(built.locations == server.locations)
+    // Titles Trakt doesn't know stay as the server has them.
+    #expect(byName["Diary only"]?.status == "completed")
+}

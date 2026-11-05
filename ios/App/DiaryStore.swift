@@ -99,7 +99,15 @@ import TwilDiaryCore
         for waiter in waiting { waiter.resume() }
     }
     private(set) var needsMutationRefresh = false
-    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh }
+    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh || diaryFromTrakt }
+    /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
+    static let diarySourceKey = "diarySource"
+    var diaryFromTrakt = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) == "trakt" {
+        didSet {
+            UserDefaults.standard.set(diaryFromTrakt ? "trakt" : "server", forKey: Self.diarySourceKey)
+            applyDiarySource()
+        }
+    }
     var mutationRefreshNotice: String? {
         needsMutationRefresh ? "Saved, but refreshing failed. Refresh your diary before making another change." : nil
     }
@@ -120,6 +128,8 @@ import TwilDiaryCore
     private let providerSettingsStore: any ProviderSettingsStoring
     private(set) var outbox = SyncOutboxQueue()
     private var confirmedWorkspace = Workspace()
+    /// The server's diary with pending edits, whichever diary is on screen (comparisons use this).
+    var serverDiary: Workspace { diaryFromTrakt ? outbox.project(onto: confirmedWorkspace) : workspace }
     @ObservationIgnored private var connectivityMonitor: NWPathMonitor?
     private(set) var replayingOutbox = false
     private(set) var outboxNotice: String?
@@ -381,6 +391,24 @@ import TwilDiaryCore
         return value
     }
     func reload() async throws {
+        try await reloadFromServer()
+        applyDiarySource()
+    }
+    /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
+    /// with the server's extras. Reads Trakt first when there's no Trakt read yet.
+    func applyDiarySource() {
+        guard hasLoadedWorkspace else { return }
+        if diaryFromTrakt {
+            if let library = TraktDirectStore.shared.library {
+                workspace = TraktDiary.build(library: library, server: confirmedWorkspace)
+            } else if !TraktDirectStore.shared.running {
+                Task { await TraktDirectStore.shared.check(store: self) }
+            }
+        } else {
+            workspace = outbox.project(onto: confirmedWorkspace)
+        }
+    }
+    private func reloadFromServer() async throws {
         #if DEBUG
         if let fixture {
             if failNextFixtureRefresh {
