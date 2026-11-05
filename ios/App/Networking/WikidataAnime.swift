@@ -69,13 +69,13 @@ actor WikidataAnime {
                 let ids = Set(found.compactMap { $0[keyPath: path] })
                 return ids.count == 1 ? ids.first : nil
             }
-            func any(_ path: KeyPath<Row, Int?>) -> Bool { found.contains { $0[keyPath: path] != nil } }
+            func has(_ path: KeyPath<Row, Int?>) -> Bool { found.contains { $0[keyPath: path] != nil } }
             let route: CatalogRoute?
             if item.format == "MOVIE" {
                 route = single(\.film).map { CatalogRoute(kind: .movie, id: $0) }
-            } else if any(\.show) {
+            } else if has(\.show) {
                 route = single(\.show).map { CatalogRoute(kind: .tv, id: $0) }
-            } else if any(\.film) {
+            } else if has(\.film) {
                 route = single(\.film).map { CatalogRoute(kind: .movie, id: $0) }
             } else {
                 route = single(\.seriesShow).map { CatalogRoute(kind: .tv, id: $0) }

@@ -1612,11 +1612,11 @@ import UIKit
         let clear = app.buttons["Clear your rating"]
         for _ in 0..<6 { if clear.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(clear.isHittable); capture("Title inline rating"); clear.tap()
-        let rate = app.buttons["Rate 7.0"]
+        let rate = app.buttons["Rate 7"]
         XCTAssertTrue(rate.waitForExistence(timeout: 5)); rate.tap()
         XCTAssertTrue(clear.waitForExistence(timeout: 5)); capture("Title rating saved")
         for _ in 0..<6 { if personal.isHittable { break }; app.swipeDown() }
-        XCTAssertEqual(personal.value as? String, "7.0")
+        XCTAssertEqual(personal.value as? String, "7", "your ratings are whole numbers")
         XCTAssertEqual(app.sliders["episode-progress"].value as? String, "8 of 16 episodes watched")
     }
     func testNotesSheetSavesTheDraftAndCancelDiscardsIt() {

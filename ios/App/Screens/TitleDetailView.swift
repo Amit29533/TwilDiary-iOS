@@ -299,12 +299,12 @@ struct TitleDetailView: View {
             HStack(spacing: 4) {
                 Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(.yellow)
                 Text("Rating").font(.system(size: 12)).foregroundStyle(.secondary)
-                Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").monospacedDigit()
+                Text(title.score.map { $0.formatted(.number.precision(.fractionLength(0...1))) } ?? "—").monospacedDigit()
             }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
         }.font(.system(size: 13)).buttonStyle(.plain)
             .accessibilityIdentifier("title-personal-rating").accessibilityLabel("Rating")
             .accessibilityHint("Your personal score. Tap to rate this title.")
-            .accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated")
+            .accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(0...1))) } ?? "Not rated")
     }
     private func progressPanel(_ title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -667,11 +667,11 @@ struct TitleDetailView: View {
             HStack(spacing: 12) {
                 HStack(spacing: 7) { DiaryIcon(name: "star", size: 16); Text("Your rating") }.foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                Text(ratingField.draft.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated").monospacedDigit()
+                Text(ratingField.draft.map { $0.formatted(.number.precision(.fractionLength(0...1))) } ?? "Not rated").monospacedDigit()
                     .contentTransition(.numericText(value: ratingField.draft ?? 0)).animation(Motion.press, value: ratingField.draft)
                     .starBurst(trigger: perfectSparks)
                 if ratingField.draft != nil { Button("Clear") { Task { await saveRating(value: nil) } }.accessibilityLabel("Clear your rating") }
-                else { Button("Rate 7.0") { Task { await saveRating(value: 7) } } }
+                else { Button("Rate 7") { Task { await saveRating(value: 7) } } }
             }.font(.system(size: 14)).frame(minHeight: 32)
             HStack(spacing: 10) {
                 Text("1").foregroundStyle(.secondary)

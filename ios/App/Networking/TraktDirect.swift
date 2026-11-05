@@ -144,8 +144,8 @@ enum TraktDelivery: Equatable, Sendable {
         guard !running else { return }
         if store.isPreview { error = "Direct Trakt reads need a real Trakt connection."; return }
         running = true; error = nil
-        defer { running = false }
         let started = Date.now, session = generation
+        defer { if session == generation { running = false } }
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
             guard session == generation, let token else { return }
@@ -442,10 +442,13 @@ enum TraktDelivery: Equatable, Sendable {
     /// adds nothing twice; the answer counts what Trakt accepted, not what was asked.
     func restore(_ backup: Workspace, store: DiaryStore) async throws -> String {
         guard !writing, !running else { throw APIError.message("Trakt is busy right now. Try again in a moment.") }
-        let session = generation
+        let session = generation, before = library?.fetchedAt
         await check(store: store)
         guard session == generation else { throw CancellationError() }
-        guard let library, error == nil else { throw APIError.message("Trakt couldn’t be read, so nothing was restored. " + (error ?? "")) }
+        // A fresh read is needed (a note left by sending queued edits isn't a failure).
+        guard let library, library.fetchedAt != before || before == nil else {
+            throw APIError.message("Trakt couldn’t be read, so nothing was restored. " + (error ?? "Check your connection and try again."))
+        }
         let plan = TraktWritePlan.make(library: library, workspace: backup, fillOnly: true)
         guard !plan.isEmpty else { return "Trakt already has everything in this backup." }
         writing = true
@@ -612,6 +615,9 @@ enum TraktDelivery: Equatable, Sendable {
     func forget() {
         generation = UUID()
         refresh?.cancel(); refresh = nil
+        // Work still running for the old account no longer resets these (it checks the session),
+        // so they're cleared here; otherwise "busy" would stay on and stop the automatic reads.
+        running = false; writing = false; writeProgress = nil
         library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil; pending = []
         try? FileManager.default.removeItem(at: file)
     }
@@ -645,8 +651,8 @@ enum TraktDelivery: Equatable, Sendable {
         guard tracker == .simkl || tracker == .mdblist, running == nil else { return }
         if store.isPreview { errors[tracker] = "Direct reads need a real \(tracker.name) connection."; return }
         running = tracker; errors[tracker] = nil
-        defer { running = nil }
         let started = Date.now, session = generation
+        defer { if session == generation { running = nil } }
         do {
             let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
             let client = store.directClient
@@ -839,6 +845,7 @@ enum TraktDelivery: Equatable, Sendable {
     func forget() {
         generation = UUID()
         refresh?.cancel(); refresh = nil
+        running = nil; writing = nil; writeProgress = nil
         libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]
         try? FileManager.default.removeItem(at: folder)
     }
