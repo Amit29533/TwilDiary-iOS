@@ -639,6 +639,7 @@ struct ProgressCard: View {
     @ViewBuilder private var glanceContent: some View {
         if grid { gridContent } else {
             // Every card's poster is the same 2:3 size; a longer title grows the text column, not the poster.
+            // The poster sits centred, so a two-line name's extra height is split above and below it.
             HStack(alignment: .top, spacing: 14) {
                 Color.clear.frame(width: 86, height: 129)
                 VStack(alignment: .leading, spacing: 4) {
@@ -652,7 +653,7 @@ struct ProgressCard: View {
             }.background(alignment: .leading) {
                 Button { openTitle() } label: {
                     Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 86, height: 129).clipShape(RoundedRectangle(cornerRadius: 10))
-                }.buttonStyle(.plain).frame(maxHeight: .infinity, alignment: .top)
+                }.buttonStyle(.plain).frame(maxHeight: .infinity, alignment: .center)
             }.padding(12)
         }
     }
