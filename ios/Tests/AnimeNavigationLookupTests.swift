@@ -9,7 +9,12 @@ import TwilDiaryTestSupport
     var searches = 0, casts = 0
     var rotateSession = false, fail = false
     var knownRoute: CatalogRoute?, knownPerson: Int?
-    func knownAnimeRoute(_ id: Int) async -> CatalogRoute? { knownRoute }
+    var firstSeasons: [Int: AniAppearance] = [:], remembered: [Int: CatalogRoute] = [:]
+    /// Search results per query; `page` answers any other query.
+    var pages: [String: DiarySearchPage] = [:]
+    func knownAnimeRoute(_ id: Int, format: String?) async -> CatalogRoute? { knownRoute ?? remembered[id] }
+    func firstSeason(_ appearance: AniAppearance) async -> AniAppearance? { firstSeasons[appearance.id] }
+    func rememberAnimeRoute(_ id: Int, route: CatalogRoute) async { remembered[id] = route }
     func knownPersonID(_ id: Int) async -> Int? { knownPerson }
     var page = DiarySearchPage(library: [], online: [], page: 1, totalPages: 1)
     var credits: CastResponse {
@@ -21,7 +26,7 @@ import TwilDiaryTestSupport
         searches += 1
         if rotateSession { sessionRevision = UUID(); rotateSession = false }
         if fail { throw APIError.message("Synthetic metadata outage") }
-        return self.page
+        return pages[query] ?? self.page
     }
     func cast(_ route: CatalogRoute) async throws -> CastResponse { casts += 1; return try credits }
 }
@@ -128,5 +133,32 @@ import TwilDiaryTestSupport
         clock = clock.addingTimeInterval(301)
         _ = try await lookup.title(santa, service: service)
         XCTAssertEqual(service.searches, 2)
+    }
+    func testLaterSeasonOpensTheShowTMDBFilesItUnderAndRemembersIt() async throws {
+        let service = AnimeNavigationFixture(), lookup = AnimeNavigationLookup()
+        let second = AniAppearance(id: 182255, title: "Frieren: Beyond Journey’s End Season 2", cover: nil, year: 2026, role: "MAIN",
+                                   voiceActor: nil, format: "TV", alternateTitles: ["Sousou no Frieren 2nd Season"])
+        let first = AniAppearance(id: 154587, title: "Frieren: Beyond Journey’s End", cover: nil, year: 2023, role: nil,
+                                  voiceActor: nil, format: "TV", alternateTitles: ["Sousou no Frieren"])
+        service.workspace.titles.removeAll { $0.name.localizedCaseInsensitiveContains("frieren") }
+        let show = CatalogItem(id: 209867, mediaType: .tv, name: "Frieren: Beyond Journey's End", year: 2023)
+        // TMDB keeps both seasons under the 2023 show: the season's own name and year find no exact match.
+        service.page = DiarySearchPage(library: [], online: [show], page: 1, totalPages: 1)
+        service.firstSeasons[second.id] = first
+        let result = try await lookup.title(second, service: service)
+        XCTAssertEqual(result.destination, .catalog(show.route))
+        XCTAssertEqual(service.remembered[second.id], show.route)
+        let searches = service.searches
+        let again = try await lookup.title(second, service: service)
+        XCTAssertEqual(again.destination, .catalog(show.route)); XCTAssertEqual(service.searches, searches, "the bridge is reused")
+    }
+    func testFirstSeasonIsNotTriedWhenTheTitleMatchesItself() async throws {
+        let service = AnimeNavigationFixture(), lookup = AnimeNavigationLookup()
+        let item = CatalogItem(id: 910002, mediaType: .tv, name: santa.title, year: 2025)
+        service.page = DiarySearchPage(library: [], online: [item], page: 1, totalPages: 1)
+        service.firstSeasons[santa.id] = AniAppearance(id: 1, title: "Rascal Does Not Dream of Bunny Girl Senpai", cover: nil, year: 2018,
+                                                       role: nil, voiceActor: nil, format: "TV")
+        let result = try await lookup.title(santa, service: service)
+        XCTAssertEqual(result.destination, .catalog(item.route)); XCTAssertTrue(service.remembered.isEmpty)
     }
 }

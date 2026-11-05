@@ -6,15 +6,26 @@ import TwilDiaryCore
     var sessionRevision: UUID { get }
     func searchDiary(_ query: String, page: Int) async throws -> DiarySearchPage
     func cast(_ route: CatalogRoute) async throws -> CastResponse
-    func knownAnimeRoute(_ id: Int) async -> CatalogRoute?
+    func knownAnimeRoute(_ id: Int, format: String?) async -> CatalogRoute?
     func knownPersonID(_ id: Int) async -> Int?
+    /// The first season or main story `appearance` continues, when it is a later one.
+    func firstSeason(_ appearance: AniAppearance) async -> AniAppearance?
+    func rememberAnimeRoute(_ id: Int, route: CatalogRoute) async
 }
 extension AnimeNavigationServing {
-    func knownAnimeRoute(_ id: Int) async -> CatalogRoute? { nil }
+    func knownAnimeRoute(_ id: Int, format: String?) async -> CatalogRoute? { nil }
     func knownPersonID(_ id: Int) async -> Int? { nil }
+    func firstSeason(_ appearance: AniAppearance) async -> AniAppearance? { nil }
+    func rememberAnimeRoute(_ id: Int, route: CatalogRoute) async {}
 }
 extension DiaryStore: AnimeNavigationServing {
-    func knownAnimeRoute(_ id: Int) async -> CatalogRoute? { await AniListClient.shared.tmdbTitle(id) }
+    /// A remembered bridge, else Wikidata's AniList-to-TMDB link (also for later seasons).
+    func knownAnimeRoute(_ id: Int, format: String?) async -> CatalogRoute? {
+        if let saved = await AniListClient.shared.tmdbTitle(id) { return saved }
+        return await WikidataAnime.shared.route(WikidataAnime.Anime(id: id, format: format))
+    }
+    func firstSeason(_ appearance: AniAppearance) async -> AniAppearance? { await AniListClient.shared.firstSeason(appearance.id) }
+    func rememberAnimeRoute(_ id: Int, route: CatalogRoute) async { await AniListClient.shared.rememberTitle(id, route: route) }
     /// A remembered match, else Wikidata's AniList-to-TMDB link (exact, unlike matching cast names).
     func knownPersonID(_ id: Int) async -> Int? {
         if let saved = await AniListClient.shared.tmdbPerson(id) { return saved }
@@ -43,13 +54,28 @@ struct AnimeNavigationResult {
         synchronize(scope)
         if let tmdbID, tmdbID > 0 { people[aniListID] = tmdbID }
     }
+    /// A later season, part or special TMDB files under its first season: when its own names find
+    /// no single match, the first season's names and year are tried, and that bridge is kept.
     func title(_ appearance: AniAppearance, service: any AnimeNavigationServing) async throws -> AnimeNavigationResult {
+        let revision = service.sessionRevision
+        let own = try await directTitle(appearance, service: service)
+        guard own.destination == nil else { return own }
+        let first = await service.firstSeason(appearance)
+        try Task.checkCancellation()
+        guard revision == service.sessionRevision else { throw CancellationError() }
+        guard let first, first.id != appearance.id else { return own }
+        let found = try await directTitle(first, service: service)
+        guard let destination = found.destination else { return own }
+        if case .catalog(let route) = destination { await service.rememberAnimeRoute(appearance.id, route: route) }
+        return found
+    }
+    private func directTitle(_ appearance: AniAppearance, service: any AnimeNavigationServing) async throws -> AnimeNavigationResult {
         let revision = service.sessionRevision; synchronize(revision)
         let local = AnimeTitleMatching.saved(service.workspace.activeTitles, names: appearance.names, year: appearance.year, kind: appearance.kind)
         let empty = DiarySearchPage(library: local.map(SearchLibraryTitle.init), online: [], page: 1, totalPages: 1)
         if local.count == 1 { return AnimeNavigationResult(destination: .saved(local[0].id), page: empty) }
         if local.count > 1 { return AnimeNavigationResult(destination: nil, page: empty) }
-        let knownRoute = await service.knownAnimeRoute(appearance.id)
+        let knownRoute = await service.knownAnimeRoute(appearance.id, format: appearance.format)
         try Task.checkCancellation()
         guard revision == service.sessionRevision else { throw CancellationError() }
         if let route = knownRoute {
@@ -124,7 +150,7 @@ struct AnimeNavigationResult {
             // Legacy/local anime can match by name without having a TMDB identity.
             // Reuse a confirmed bridge or an exact catalog result to read credits.
             if route == nil, case .saved(_)? = found.destination {
-                route = await service.knownAnimeRoute(role.animeID)
+                route = await service.knownAnimeRoute(role.animeID, format: role.format)
                 try Task.checkCancellation()
                 guard revision == service.sessionRevision else { throw CancellationError() }
                 if route == nil, DiarySearchTools.ready(role.anime) {

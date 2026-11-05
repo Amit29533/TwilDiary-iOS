@@ -177,6 +177,46 @@ actor AniListClient {
         guard staffID > 0, tmdbID > 0 else { return }
         tmdbPeople[staffID] = tmdbID
     }
+    func rememberTitle(_ id: Int, route: CatalogRoute) {
+        guard id > 0, route.id > 0 else { return }
+        tmdbTitles[id] = route
+    }
+
+    private var firstSeasons: [Int: AniAppearance?] = [:]
+    /// The first season or main story an anime continues: its PARENT (for a special or side
+    /// story), else its PREQUEL, followed back up to six steps. TMDB files later seasons and
+    /// specials under that first entry. nil when the anime is itself the first, or AniList failed.
+    func firstSeason(_ id: Int) async -> AniAppearance? {
+        if let saved = firstSeasons[id] { return saved }
+        struct Reply: Decodable { let Media: Node }
+        struct Node: Decodable {
+            let id: Int; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts?; let relations: Relations?
+        }
+        struct Relations: Decodable { let edges: [Edge?] }
+        struct Edge: Decodable { let relationType: String?; let node: Link? }
+        struct Link: Decodable { let id: Int; let type: String? }
+        struct Title: Decodable { let romaji: String?; let english: String? }
+        var current = id, visited: Set<Int> = [id], first: Node?
+        for _ in 0..<6 {
+            guard let reply: Reply = try? await query("""
+                query($id: Int) { Media(id: $id) { id format title { romaji english } coverImage { large } startDate { year } relations { edges { relationType node { id type } } } } }
+                """, ["id": current]) else { return nil }
+            first = reply.Media
+            let edges = reply.Media.relations?.edges.compactMap { $0 } ?? []
+            let earlier = edges.first { $0.relationType == "PARENT" && $0.node?.type == "ANIME" }
+                ?? edges.first { $0.relationType == "PREQUEL" && $0.node?.type == "ANIME" }
+            guard let next = earlier?.node?.id, visited.insert(next).inserted else { break }
+            current = next
+        }
+        let found = first.flatMap { node -> AniAppearance? in
+            guard node.id != id else { return nil }
+            return AniAppearance(id: node.id, title: node.title.english ?? node.title.romaji ?? "Untitled", cover: node.coverImage?.large,
+                                 year: node.startDate?.year, role: nil, voiceActor: nil, format: node.format,
+                                 alternateTitles: [node.title.english, node.title.romaji].compactMap { $0 })
+        }
+        firstSeasons.updateValue(found, forKey: id)
+        return found
+    }
 
     /// The anime's characters, main roles first, each with their Japanese voice actor. Empty when
     /// AniList has no anime of that name released within a year of `year` (better none than wrong).

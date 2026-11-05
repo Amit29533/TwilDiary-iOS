@@ -167,6 +167,8 @@ struct CharacterView: View {
             let result = try await AniListClient.shared.character(route.id)
             try Task.checkCancellation()
             character = result
+            // One Wikidata request links every anime below to TMDB, so a tap usually opens at once.
+            Task { await WikidataAnime.shared.routes(result.appearances.map { WikidataAnime.Anime(id: $0.id, format: $0.format) }) }
         }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }

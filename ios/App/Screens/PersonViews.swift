@@ -215,6 +215,7 @@ struct PersonView: View {
         guard let id = found else { return nil }
         let result = try await AniListClient.shared.voiceActor(id)
         try Task.checkCancellation()
+        prefetchAnime(result)
         return result
     }
     /// Voice route: the TMDB person (known id, a remembered match, or one found in an anime's cast).
@@ -261,6 +262,11 @@ struct PersonView: View {
         await AniListClient.shared.rememberPerson(staffID: found.id, tmdbID: person.id)
         store.animeNavigation.rememberPerson(found.id, tmdbID: person.id, scope: store.sessionRevision)
         actor = found
+        prefetchAnime(found)
+    }
+    /// One Wikidata request links every role's anime to TMDB, so a tap usually opens at once.
+    private func prefetchAnime(_ actor: AniVoiceActorDetail) {
+        Task { await WikidataAnime.shared.routes(actor.roles.map { WikidataAnime.Anime(id: $0.animeID, format: $0.format) }) }
     }
 }
 
