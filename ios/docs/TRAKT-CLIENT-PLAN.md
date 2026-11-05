@@ -173,7 +173,9 @@ add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
   status and favourite changes work in Trakt mode.
 - **Earlier note, phase 3 (needs production D1 migrations):** helper tables keyed by TMDB/Trakt id for file
   locations, tags, anime overrides, trash and people favourites; manual backup and restore.
-- **Phase 4c code done, not deployed:** one Worker variable, `DIARY_RECORD` (`server`, `trakt`,
+- **Phase 4c deployed 5 Nov 2026 10:09 UTC** (main Worker 823c92d8 with `DIARY_RECORD=trakt`; incoming
+  worker 2621287a with no cron; previous main version c86e2766). Server read-only until 5 Dec 2026.
+  Details: one Worker variable, `DIARY_RECORD` (`server`, `trakt`,
   `simkl`, `mdblist`) with `DIARY_RECORD_SINCE`. Once it names a service, the server's watches and
   ratings are read-only for 30 days (extras stay writable), the Review sync and incoming toggle
   answer 410, the web app shows a notice, and the app (`/api/diary-record`) shows the diary from that
