@@ -24,13 +24,13 @@ public enum ProviderDeliveryPlanner {
         let item: [String: Any] = ["ids": ["tmdb": tmdb]]
         var deliveries: [ProviderDelivery] = [], blocked: [String] = []
         func add(_ key: String, _ path: String, _ value: [String: Any]? = nil, history: Bool = false) {
-            let body: [String: Any] = provider == .mdblist ? ["tmdb": tmdb] : (value ?? item)
+            // MDBList takes Trakt's shape ("ids"), per its published API (api.mdblist.com/docs).
+            let body: [String: Any] = value ?? item
             deliveries.append(ProviderDelivery(key: key, path: path, body: [slot: [body]], history: history))
         }
         switch entry.mutation {
         case .markWatch(_, _, let episodeID, let watchedAt, _, _):
-            if provider == .mdblist { blocked.append("MDBList watch-history delivery needs a verified endpoint contract.") }
-            else {
+            do {
                 var watch = item
                 if title.isSeries {
                     guard let episode = workspace.episodes.first(where: { $0.id == episodeID && $0.titleId == title.id }), episode.season >= 0, episode.number > 0 else {
@@ -39,12 +39,11 @@ public enum ProviderDeliveryPlanner {
                     let episodeItem: [String: Any] = ["number": episode.number, "watched_at": watchedAt]
                     watch["seasons"] = [["number": episode.season, "episodes": [episodeItem]]]
                 } else { watch["watched_at"] = watchedAt }
-                add("history", "/sync/history", watch, history: true)
+                add("history", provider == .mdblist ? "/sync/watched" : "/sync/history", watch, history: true)
             }
         case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _):
             if clearScore || score != nil {
-                if provider == .mdblist { blocked.append("This provider cannot yet confirm rating removal or delivery for this edit.") }
-                else if clearScore { add("rating", "/sync/ratings/remove") }
+                if clearScore { add("rating", "/sync/ratings/remove") }
                 else if let score, score.isFinite, (1...10).contains(score) {
                     var rated = item; rated["rating"] = score.rounded(); rated["rated_at"] = entry.createdAt
                     add("rating", "/sync/ratings", rated)
@@ -58,7 +57,10 @@ public enum ProviderDeliveryPlanner {
                 else { add("watchlist", planned ? "/sync/watchlist" : "/sync/watchlist/remove") }
             }
             if let status, status != "planned" {
-                if status == "dropped" && provider == .simkl { var value = item; value["to"] = "dropped"; add("status", "/sync/add-to-list", value) }
+                if provider == .simkl, let list = TraktWritePlan.simklList(status: status, isSeries: title.isSeries) {
+                    // Simkl moves the title to its list (this also takes it off Plan to Watch).
+                    var value = item; value["to"] = list; add("status", "/sync/add-to-list", value)
+                } else if provider == .mdblist && status == "dropped" && title.isSeries { add("status", "/sync/dropped") }
                 else { blocked.append("This status needs provider-specific review; no watch history was invented.") }
             }
             if let favorite {

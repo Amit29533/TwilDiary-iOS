@@ -113,6 +113,29 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
     }
 
+    /// A write for "Make Simkl / MDBList match the diary": POST of a ready JSON body, returning the reply.
+    func write(_ config: ExternalProviderConfig, path: String, body: Data) async throws -> Data {
+        let name = config.provider == .simkl ? "Simkl" : "MDBList"
+        guard config.enabled, config.isAuthenticated else { throw APIError.message("Connect \(name) first, in Connections.") }
+        let base: String, headers: [String: String]
+        var items: [URLQueryItem] = []
+        switch config.provider {
+        case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
+        case .mdblist:
+            base = "https://api.mdblist.com"
+            let auth = mdblistAuth(config)
+            headers = auth.headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
+            items = auth.query
+        default: throw APIError.message("This service is written by its own client.")
+        }
+        var components = URLComponents(string: base + path)!
+        if !items.isEmpty { components.queryItems = items }
+        do { return try await send(url: components.url!, method: "POST", headers: headers, rawBody: body) }
+        catch APIError.rejected(let status, _) where status == 401 || status == 403 {
+            throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
+        }
+    }
+
     /// MDBList takes a sign-in token as Bearer, or an API key as ?apikey= — never both (MDBList
     /// warns that sending the same credential both ways fails).
     private func mdblistAuth(_ config: ExternalProviderConfig) -> (query: [URLQueryItem], headers: [String: String]) {
@@ -148,14 +171,17 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         url: URL,
         method: String,
         headers: [String: String],
-        jsonBody: [String: Any]? = nil
+        jsonBody: [String: Any]? = nil,
+        rawBody: Data? = nil
     ) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = method
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
-        if let jsonBody {
+        if let rawBody {
+            request.httpBody = rawBody
+        } else if let jsonBody {
             request.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
         }
         let (data, response) = try await session.data(for: request)

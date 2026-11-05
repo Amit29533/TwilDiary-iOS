@@ -116,22 +116,16 @@ final class ProfileFormattingTests: XCTestCase {
     }
     /// Bios end with the same credit lines everywhere; they become a short source, not prose.
     func testCommonCreditLinesBecomeASourceNote() {
-        let tmdb = ProfileText.withoutSourceCredit("Kana Hanazawa is a Japanese voice actress.
-
-Description above from the Wikipedia article Kana Hanazawa, licensed under CC-BY-SA, full list of contributors on Wikipedia.")
+        let tmdb = ProfileText.withoutSourceCredit("Kana Hanazawa is a Japanese voice actress.\n\nDescription above from the Wikipedia article Kana Hanazawa, licensed under CC-BY-SA, full list of contributors on Wikipedia.")
         XCTAssertEqual(tmdb.text, "Kana Hanazawa is a Japanese voice actress.")
         XCTAssertEqual(tmdb.source, "Wikipedia")
-        let anilist = ProfileText.withoutSourceCredit("A strange 2nd year student.
-
-(Source: Crunchyroll)")
+        let anilist = ProfileText.withoutSourceCredit("A strange 2nd year student.\n\n(Source: Crunchyroll)")
         XCTAssertEqual(anilist.text, "A strange 2nd year student.")
         XCTAssertEqual(anilist.source, "Crunchyroll")
         let sentence = ProfileText.withoutSourceCredit("Her main source: books")
         XCTAssertEqual(sentence.text, "Her main source: books", "A sentence that mentions a source is prose")
         XCTAssertNil(sentence.source)
-        let formatted = ProfileFormattedBiography(description: "Public paragraph.
-
-[Written by MAL Rewrite]", hideSpoilers: true)
+        let formatted = ProfileFormattedBiography(description: "Public paragraph.\n\n[Written by MAL Rewrite]", hideSpoilers: true)
         XCTAssertEqual(formatted.markdown, "Public paragraph.")
         XCTAssertEqual(formatted.source, "MAL Rewrite")
     }

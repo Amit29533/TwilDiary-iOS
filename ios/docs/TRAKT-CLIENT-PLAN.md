@@ -169,9 +169,15 @@ add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
 - **Phase 4a/4b done (not yet tried on the phone):** "Show my diary from Trakt" builds the diary from
   Trakt plus the server's extras (`TraktDiary.build`); edits in that mode go to Trakt (watches at their
   time, removal by play id, rating, watchlist, favourites, dropped shows) and notes/tags/Queue/Trash to
-  the server. Still to do: posters and episodes for titles only on Trakt; bulk edits in Trakt mode.
+  the server. Titles only on Trakt join the server diary on their own (posters, episodes); bulk
+  status and favourite changes work in Trakt mode.
 - **Earlier note, phase 3 (needs production D1 migrations):** helper tables keyed by TMDB/Trakt id for file
   locations, tags, anime overrides, trash and people favourites; manual backup and restore.
 - **Phase 4 (needs explicit go-ahead):** the app builds its diary from Trakt; turn off the incoming
   worker's cron and the review sync; keep the server diary read-only for 30 days; retire the web app.
-- **Phase 5:** Simkl and MDBList as main-tracker writers and as mirrors.
+- **Phase 5 done (not yet tried on the phone):** "Make Simkl / MDBList match the diary" (the same
+  plan within what each keeps: one watch per episode or movie, no favourites; Simkl moves titles
+  between its lists, MDBList uses `/sync/watched`, `/watchlist/items/*`, `/sync/dropped` per its
+  published API). Edits mirror to connected Simkl/MDBList from both diaries (MDBList now gets watches,
+  ratings and dropped shows; never sent back to Trakt from the Trakt diary). "Show my diary from
+  Simkl / MDBList" is a preview with editing paused; edits reach them from the server diary.

@@ -246,6 +246,40 @@ private func diary() throws -> Workspace {
     #expect(TraktWritePlan.make(library: done, workspace: try diary()).isEmpty)
 }
 
+// MARK: Phase 5: Simkl and MDBList match the diary
+
+@Test func simklAndMDBListGetOneWatchPerEpisodeAndTheirOwnEndpoints() throws {
+    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love")
+    let obsession = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 3, name: "Obsession")
+    let diaryOnly = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 9, name: "Diary only")
+    // E11 is there at another time: one watch per episode, so that counts. "Diary only" is on
+    // the watchlist though the diary has it completed.
+    let library = TraktLibrary(
+        plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: "2025-01-01T00:00:00.000Z")],
+        watchlist: [TraktListed(title: diaryOnly, listedAt: nil)])
+    let simkl = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .simkl)
+    #expect(simkl.plays.map { "\($0.title.tmdbId) s\($0.season ?? 0)e\($0.episode ?? 0)" }.sorted() == ["284172 s1e12", "9 s0e0"])
+    #expect(simkl.favouritesAdd.isEmpty && simkl.diaryFavourites.isEmpty, "Simkl keeps no favourites")
+    #expect(simkl.watchlistAdd.map(\.tmdbId) == [3])
+    #expect(simkl.watchlistRemove.isEmpty && simkl.moves == [.init(title: .init(movie: true, tmdbId: 9, name: "Diary only"), to: "completed")])
+    let simklPaths = simkl.requests().map(\.path)
+    #expect(simklPaths == ["/sync/history", "/sync/ratings", "/sync/add-to-list", "/sync/add-to-list"])
+    let plan = String(decoding: simkl.requests()[2].body, as: UTF8.self)
+    #expect(plan.contains("\"to\":\"plantowatch\"") && plan.contains("\"tmdb\":3"))
+    #expect(simkl.summary.contains { $0.contains("Simkl history") })
+
+    let mdblist = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .mdblist)
+    #expect(mdblist.requests().map(\.path) == ["/sync/watched", "/sync/ratings", "/watchlist/items/add", "/watchlist/items/remove"])
+    // Once the service has a watch of each, nothing more is sent.
+    var done = library
+    done.plays += [TraktPlay(historyId: 2, title: spooky, season: 1, episode: 12, watchedAt: nil),
+                   TraktPlay(historyId: 3, title: diaryOnly, watchedAt: nil)]
+    done.ratings = [TraktRating(title: spooky, rating: 9, ratedAt: nil)]
+    done.watchlist = [TraktListed(title: obsession, listedAt: nil)]
+    #expect(TraktWritePlan.make(library: done, workspace: try diary(), tracker: .mdblist).isEmpty)
+    #expect(TraktWritePlan.make(library: done, workspace: try diary(), tracker: .simkl).isEmpty)
+}
+
 // MARK: Phase 4a: the diary built from Trakt
 
 @Test func theTraktDiaryTakesWatchesAndListsFromTraktAndExtrasFromTheServer() throws {

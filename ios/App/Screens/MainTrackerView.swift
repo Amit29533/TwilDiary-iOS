@@ -34,9 +34,9 @@ struct MainTrackerView: View {
                         Label("Connect \(tracker.name) first", systemImage: "link").frame(maxWidth: .infinity)
                     }.font(.subheadline).buttonStyle(.diarySecondary).accessibilityIdentifier("main-tracker-connect")
                 }
-                if tracker == .trakt { diarySource }
+                if tracker == .trakt { diarySource } else { trackerDiarySource }
                 TrackerPreviewPanel(tracker: tracker)
-                Text("Your diary still lives on your server until the switch-over. Choosing here changes nothing yet; it picks which service the preview reads.")
+                Text("Your diary still lives on your server until the switch-over. Choosing here picks which service the preview reads and where “Make \(tracker.name) match the diary” writes.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(14).padding(.bottom, 40)
         }.diaryScreenBackground().navigationTitle("Main tracker").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
@@ -56,6 +56,23 @@ struct MainTrackerView: View {
             }.accessibilityIdentifier("diary-from-trakt")
             if store.diaryFromTrakt {
                 Label("Your diary comes from Trakt. Turn this off to go back to your server’s diary.", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+            }
+        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+    }
+
+    /// Phase 5: the same preview from Simkl or MDBList. Editing pauses while it's on.
+    private var trackerDiarySource: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(get: { store.diaryFromTracker == tracker }, set: { store.diaryFromTracker = $0 ? tracker : nil })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show my diary from \(tracker.name)").font(.subheadline.weight(.semibold))
+                    Text("Every screen shows your \(tracker.name) watches, ratings, Planned and dropped, with posters, tags, notes and files from your server. Editing is paused while this is on; your edits reach \(tracker.name) from your server’s diary.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }.accessibilityIdentifier("diary-from-" + tracker.rawValue)
+            if store.diaryFromTracker == tracker {
+                Label("Preview from \(tracker.name). Turn this off to edit again.", systemImage: "eye").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
             }
         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
@@ -110,12 +127,12 @@ struct TrackerPreviewPanel: View {
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
                 }
-                if tracker == .trakt { matchSection }
+                if tracker == .trakt { matchSection } else { trackerMatchSection }
                 Button {
                     Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
                 } label: {
                     Label(running ? "Reading \(tracker.name)…" : "Check now", systemImage: "bolt.horizontal.circle").frame(maxWidth: .infinity)
-                }.font(.subheadline).buttonStyle(.diarySecondary).disabled(running || trakt.writing).accessibilityIdentifier(id + "-check")
+                }.font(.subheadline).buttonStyle(.diarySecondary).disabled(running || trakt.writing || others.writing != nil).accessibilityIdentifier(id + "-check")
             }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
                 .smoothChange(of: report?.comparison.matchingPlays ?? -1)
@@ -153,11 +170,31 @@ struct TrackerPreviewPanel: View {
                     Button("Send to Trakt") { Task { await trakt.makeTraktMatch(store: store) } }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text(plan.summary.map { "• " + $0 }.joined(separator: "
-")
-                         + "
+                    Text(plan.summary.map { "• " + $0 }.joined(separator: "\n")
+                         + "\n\nNothing is removed from your Trakt history. Watches only on Trakt stay and come into the diary on their own.")
+                }
+        }
+    }
 
-Nothing is removed from your Trakt history. Watches only on Trakt stay and come into the diary on their own.")
+    /// Phase 5: the same for Simkl and MDBList, within what each keeps.
+    @ViewBuilder private var trackerMatchSection: some View {
+        let plan = report != nil ? others.matchPlan(tracker, store: store) : nil
+        if others.writing == tracker, let progress = others.writeProgress {
+            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
+        } else if let result = others.writeResults[tracker] {
+            Label(result, systemImage: "checkmark").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(tracker.rawValue + "-match-result")
+        }
+        if let plan, !plan.isEmpty, others.writing == nil {
+            Button { confirmMatch = true } label: {
+                Label("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+            }.font(.subheadline.weight(.semibold)).buttonStyle(.glassProminent).disabled(running).accessibilityIdentifier(tracker.rawValue + "-make-match")
+                .confirmationDialog("Make \(tracker.name) match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
+                    Button("Send to \(tracker.name)") { Task { await others.makeMatch(tracker, store: store) } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(plan.summary.map { "• " + $0 }.joined(separator: "\n")
+                         + "\n\nNothing is removed from your \(tracker.name) history. \(tracker.name) keeps one watch per episode, so the first is sent and rewatches stay in your diary.")
                 }
         }
     }
@@ -165,8 +202,8 @@ Nothing is removed from your Trakt history. Watches only on Trakt stay and come 
     private var intro: String {
         switch tracker {
         case .trakt: "Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed."
-        case .simkl: "Reads your Simkl library (watches, ratings, plan to watch, dropped and memos) and compares it with your diary. Simkl keeps one watch per episode, so rewatches aren’t counted as differences. Nothing is changed."
-        case .mdblist: "Reads your MDBList watched items, ratings, dropped titles and watchlist and compares them with your diary. MDBList’s read format isn’t published, so items it can’t read are counted, not guessed. Nothing is changed."
+        case .simkl: "Reads your Simkl library (watches, ratings, plan to watch, dropped and memos) and compares it with your diary. Simkl keeps one watch per episode, so rewatches aren’t counted as differences. Nothing changes until you send."
+        case .mdblist: "Reads your MDBList watched items, ratings, dropped shows and watchlist and compares them with your diary. Items it can’t read are counted, not guessed. Nothing changes until you send."
         }
     }
 

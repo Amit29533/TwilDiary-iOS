@@ -262,7 +262,9 @@ struct TraktDirectClient: Sendable {
 
     /// Trakt's "not_found" lists in a write reply.
     static func notFoundCount(_ data: Data) -> Int {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let missing = root["not_found"] as? [String: Any] else { return 0 }
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return 0 }
+        if let list = root["not_found"] as? [Any] { return list.count }
+        guard let missing = root["not_found"] as? [String: Any] else { return 0 }
         return missing.values.reduce(0) { $0 + (($1 as? [Any])?.count ?? 0) }
     }
 
@@ -281,6 +283,9 @@ struct TraktDirectClient: Sendable {
     private(set) var reports: [MainTracker: TraktDirectStore.Report] = [:]
     private(set) var running: MainTracker?
     var errors: [MainTracker: String] = [:]
+    private(set) var writing: MainTracker?
+    private(set) var writeProgress: String?
+    private(set) var writeResults: [MainTracker: String] = [:]
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
@@ -333,11 +338,44 @@ struct TraktDirectClient: Sendable {
             library.fetchedAt = Date.now.formatted(.iso8601)
             libraries[tracker] = library
             save(library, tracker)
+            if store.diaryFromTracker == tracker { store.applyDiarySource() }
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
                                      skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.serverDiary, tracker: tracker))
         } catch {
             if !Task.isCancelled { errors[tracker] = error.localizedDescription }
         }
+    }
+
+    // MARK: Phase 5: make Simkl / MDBList match the diary
+
+    func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
+        libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.serverDiary, tracker: tracker) }
+    }
+    /// Sends the plan one request a second (each service's own endpoints, within what it keeps),
+    /// then reads the service again so the comparison shows the result.
+    func makeMatch(_ tracker: MainTracker, store: DiaryStore) async {
+        guard writing == nil, running == nil, let plan = matchPlan(tracker, store: store), !plan.isEmpty else { return }
+        if store.isPreview { errors[tracker] = "Writing to \(tracker.name) needs a real \(tracker.name) connection."; return }
+        writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
+        var sent = 0, notFound = 0
+        do {
+            let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
+            let requests = plan.requests()
+            for (index, request) in requests.enumerated() {
+                writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
+                if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                let reply = try await store.directClient.write(config, path: request.path, body: request.body)
+                sent += request.count
+                notFound += TraktDirectStore.notFoundCount(reply)
+            }
+            writeResults[tracker] = "Sent to \(tracker.name): " + plan.summary.joined(separator: "; ") + "."
+                + (notFound > 0 ? " \(tracker.name) couldn’t find \(notFound) of them by their TMDB id." : "")
+                + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
+        } catch {
+            if !Task.isCancelled { errors[tracker] = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
+        }
+        writing = nil; writeProgress = nil
+        await check(tracker, store: store)
     }
 
     /// Follows MDBList's cursor, 1,000 items a page, at most 50 pages.
@@ -364,7 +402,7 @@ struct TraktDirectClient: Sendable {
     }
     /// Sign-out: these copies are diary data, so they go with the diary.
     func forget() {
-        libraries = [:]; reports = [:]; errors = [:]
+        libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]
         try? FileManager.default.removeItem(at: folder)
     }
 }

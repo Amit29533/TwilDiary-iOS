@@ -18,6 +18,26 @@ import TwilDiaryTestSupport
     #expect(ProviderDeliveryPlanner.confirms(Data(#"{"deleted":{"movies":1},"not_found":{"movies":[]}}"#.utf8)))
 }
 
+/// Phase 5: MDBList's published contract (Trakt-style "ids") and Simkl's lists.
+@Test func mdblistAndSimklGetTheirOwnPathsForWatchesRatingsAndStatus() throws {
+    let base = try SampleWorkspace.mapped()
+    let movie = try #require(base.titles.first { !$0.isSeries && $0.tmdbId != nil })
+    let watch = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .markWatch(operationId: "w", titleId: movie.id, episodeId: nil,
+        watchedAt: "2026-11-05T00:00:00.000Z", recordedAt: "2026-11-05T00:00:00.000Z", rewatch: false), pendingProviders: [.mdblist])
+    let watched = ProviderDeliveryPlanner.plan(watch, provider: .mdblist, in: base)
+    #expect(watched.blocked.isEmpty && watched.deliveries.map(\.path) == ["/sync/watched"])
+    let body = try #require((watched.deliveries[0].body["movies"] as? [[String: Any]])?.first)
+    #expect((body["ids"] as? [String: Any])?["tmdb"] as? Int == movie.tmdbId && body["watched_at"] as? String == "2026-11-05T00:00:00.000Z")
+    let rated = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: 8,
+        clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.mdblist])
+    #expect(ProviderDeliveryPlanner.plan(rated, provider: .mdblist, in: base).deliveries.map(\.path) == ["/sync/ratings"])
+    let completed = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .patchTitle(titleId: movie.id, expectedVersion: 1, status: "completed",
+        score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.simkl])
+    let moved = ProviderDeliveryPlanner.plan(completed, provider: .simkl, in: base)
+    #expect(moved.blocked.isEmpty && moved.deliveries.map(\.path) == ["/sync/add-to-list"])
+    #expect((moved.deliveries[0].body["movies"] as? [[String: Any]])?.first?["to"] as? String == "completed")
+}
+
 @Test func providerDeliveryProgressSurvivesEncodingAndCannotBeCoalesced() throws {
     let mutation = OptimisticMutation.patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: true, notes: nil)
     let entry = SyncOutboxEntry(createdAt: "2026-11-03T00:00:00Z", mutation: mutation, pendingProviders: [.simkl])

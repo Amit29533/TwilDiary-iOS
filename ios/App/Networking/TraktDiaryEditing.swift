@@ -5,7 +5,17 @@ import TwilDiaryCore
 /// exact time), removing a watch (that very play, by its Trakt id), ratings, Planned, favourites and
 /// dropped are written to Trakt and applied to the phone's Trakt copy at once, so the screen
 /// updates without a full re-read. Notes, tags, Queue and Trash stay on your server.
+///
+/// Phase 5: the same edits also go to Simkl and MDBList when they're connected for logging (through
+/// the delivery queue, as in the server diary), within what each keeps. Never back to Trakt.
 extension DiaryStore {
+    /// Queues an edit for the connected mirrors (Simkl, MDBList), never Trakt.
+    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.simkl, .mdblist]) {
+        let targets = providers.subtracting([.trakt, .cloudflare]).intersection(providerSettings.activeDirectLoggingProviders)
+        guard !targets.isEmpty, !isPreview else { return }
+        recordDirectProviderMutation(mutation, providers: targets)
+    }
+
     private func traktRef(_ title: MediaTitle) throws -> [String: Any] {
         guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so Trakt can’t find it.") }
         return ["ids": ["tmdb": tmdb]]
@@ -44,6 +54,16 @@ extension DiaryStore {
             } else {
                 library.plays.append(TraktPlay(historyId: -TrackerDecode.playID("local|\(ref.tmdbId ?? 0)|\(when)"), title: ref, watchedAt: when))
             }
+        }
+        // The mirrors get each watch at the same time (the Trakt diary now has the episodes).
+        if title.isSeries {
+            for episode in episodes {
+                let id = workspace.episodes.first { $0.titleId == title.id && $0.season == episode.season && $0.number == episode.number }?.id
+                    ?? "\(title.id)|s\(episode.season)e\(episode.number)"
+                mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: id, watchedAt: when, recordedAt: when, rewatch: false))
+            }
+        } else {
+            mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: nil, watchedAt: when, recordedAt: when, rewatch: false))
         }
         TraktDirectStore.shared.refreshSoon(store: self)
     }
@@ -159,6 +179,18 @@ extension DiaryStore {
                 library.favorites.removeAll { $0.title.diaryKey == key }
                 if favourite { library.favorites.append(TraktListed(title: ref, listedAt: nil)) }
             }
+        }
+        // The mirrors: ratings to both; a status only where the service can hold it (MDBList keeps
+        // Planned and dropped shows; Simkl moves the title to the list for its status).
+        let score = values["score"] as? Double, clearScore = values["score"] is NSNull
+        if score != nil || clearScore {
+            mirror(.patchTitle(titleId: title.id, expectedVersion: nil, status: nil, score: score, clearScore: clearScore, favorite: nil, queued: nil, notes: nil))
+        }
+        if let status = values["status"] as? String {
+            var to: Set<SyncProviderKind> = []
+            if status == "planned" || TraktWritePlan.simklList(status: status, isSeries: title.isSeries) != nil { to.insert(.simkl) }
+            if status == "planned" || (status == "dropped" && title.isSeries) { to.insert(.mdblist) }
+            mirror(.patchTitle(titleId: title.id, expectedVersion: nil, status: status, score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil), to: to)
         }
         // The server keeps the rest, and a dropped movie (Trakt only drops shows).
         var rest = values.filter { !["score", "favorite", "status"].contains($0.key) }

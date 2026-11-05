@@ -99,17 +99,28 @@ import TwilDiaryCore
         for waiter in waiting { waiter.resume() }
     }
     private(set) var needsMutationRefresh = false
-    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh }
+    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh || diaryFromTracker != nil }
     /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
     /// Titles only on Trakt already sent to the server diary this session (each tried once).
     @ObservationIgnored var adoptedTraktKeys = Set<String>()
     @ObservationIgnored var adoptingTraktTitles = false
-    var diaryFromTrakt = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) == "trakt" {
+    /// Which diary is on screen: "server", "trakt", "simkl" or "mdblist".
+    var diarySource = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) ?? "server" {
         didSet {
-            UserDefaults.standard.set(diaryFromTrakt ? "trakt" : "server", forKey: Self.diarySourceKey)
+            UserDefaults.standard.set(diarySource, forKey: Self.diarySourceKey)
             applyDiarySource()
         }
+    }
+    var diaryFromTrakt: Bool {
+        get { diarySource == "trakt" }
+        set { diarySource = newValue ? "trakt" : "server" }
+    }
+    /// Phase 5: the diary built from Simkl or MDBList, as a preview. Editing is paused meanwhile
+    /// (edits reach them through the server diary and the delivery queue).
+    var diaryFromTracker: MainTracker? {
+        get { diarySource == "simkl" ? .simkl : diarySource == "mdblist" ? .mdblist : nil }
+        set { diarySource = newValue?.rawValue ?? "server" }
     }
     var mutationRefreshNotice: String? {
         needsMutationRefresh ? "Saved, but refreshing failed. Refresh your diary before making another change." : nil
@@ -132,7 +143,7 @@ import TwilDiaryCore
     private(set) var outbox = SyncOutboxQueue()
     private var confirmedWorkspace = Workspace()
     /// The server's diary with pending edits, whichever diary is on screen (comparisons use this).
-    var serverDiary: Workspace { diaryFromTrakt ? outbox.project(onto: confirmedWorkspace) : workspace }
+    var serverDiary: Workspace { diarySource != "server" ? outbox.project(onto: confirmedWorkspace) : workspace }
     @ObservationIgnored private var connectivityMonitor: NWPathMonitor?
     private(set) var replayingOutbox = false
     private(set) var outboxNotice: String?
@@ -409,6 +420,13 @@ import TwilDiaryCore
                 }
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
+            }
+        } else if let tracker = diaryFromTracker {
+            if let library = TrackerPreviewStore.shared.libraries[tracker] {
+                workspace = TraktDiary.build(library: library, server: confirmedWorkspace)
+            } else {
+                workspace = outbox.project(onto: confirmedWorkspace)
+                if TrackerPreviewStore.shared.running == nil { Task { await TrackerPreviewStore.shared.check(tracker, store: self) } }
             }
         } else {
             workspace = outbox.project(onto: confirmedWorkspace)
@@ -927,8 +945,8 @@ import TwilDiaryCore
     }
     /// Records a watch or title mutation for any enabled direct providers (`simkl`, `mdblist`, `trakt`)
     /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
-    func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString) {
-        let activeProviders = providerSettings.activeDirectLoggingProviders
+    func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind>? = nil) {
+        let activeProviders = providerSettings.activeDirectLoggingProviders.intersection(providers ?? providerSettings.activeDirectLoggingProviders)
         guard !activeProviders.isEmpty, !outbox.pending(for: .cloudflare).contains(where: { $0.mutation.titleId == mutation.titleId }) else { return }
         guard let scope = api.credential?.cacheScope else { return }
         if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
@@ -1180,7 +1198,7 @@ import TwilDiaryCore
     }
     func card(_ title: MediaTitle, season: Int? = nil, fresh: Bool = false) async throws -> WatchCard {
         guard !needsSignIn, !Task.isCancelled else { throw CancellationError() }
-        if diaryFromTrakt { return localCard(title, season: season) }
+        if diarySource != "server" { return localCard(title, season: season) }
         let key = CardKey(titleID: title.id, revision: cardRevisions[title.id] ?? snapshotGeneration, session: sessionGeneration, season: season, day: DiaryDate.day(now))
         if pendingDiaryEdits > 0 { return localCard(title, season: season) }
         // The key changes with the title's episodes and watches (revision) and with the day, so a card stays
