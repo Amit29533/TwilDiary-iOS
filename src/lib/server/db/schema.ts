@@ -3,6 +3,7 @@ import type { CastMember } from '../../domain/types.ts';
 import type { DiscoveryItem } from '../../discovery.ts';
 import type { PersonDetails } from '../../people.ts';
 import {
+  blob,
   check,
   foreignKey,
   index,
@@ -695,3 +696,19 @@ export const authAttempts = sqliteTable('auth_attempts', {
   attempts: integer('attempts').notNull(),
   expiresAt: integer('expires_at').notNull()
 }, (t) => [index('auth_attempts_expiry').on(t.expiresAt)]);
+
+/** Trakt-first phase 3 (migration 0026): manual backups, gzip'd JSON, newest 20 kept. */
+export const backups = sqliteTable(
+  'backups',
+  {
+    id: text('id').primaryKey(),
+    createdAt: text('created_at').notNull(),
+    label: text('label').notNull(),
+    titles: integer('titles').notNull().default(0),
+    watches: integer('watches').notNull().default(0),
+    sizeBytes: integer('size_bytes').notNull(),
+    body: blob('body').notNull()
+  },
+  (t) => [index('backups_created').on(t.createdAt)]
+);
+

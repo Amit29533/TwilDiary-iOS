@@ -126,6 +126,8 @@ struct SettingsView: View {
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
                         divider
                         Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "TwilDiary JSON or Letterboxd, IMDb and MAL CSV", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
+                        divider
+                        NavigationLink(value: AppDestination.backups) { settingsRow("externaldrive.badge.icloud", .teal, "Backups", subtitle: "Your whole diary and Trakt read, kept on your server", disclosure: true) }.accessibilityIdentifier("settings-backups")
                     }
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
