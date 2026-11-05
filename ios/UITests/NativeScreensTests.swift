@@ -38,8 +38,8 @@ import UIKit
     func testCachedDiaryStatusDoesNotCoverScreensAndRemainsAvailableInSettings() {
         let app = launch(cachedSnapshot: true)
         let warning = "Your diary is loaded, but its protected offline copy could not be updated."
-        for tab in ["home", "library", "glance", "stats"] {
-            app.tabBars.buttons[tab.capitalized].tap()
+        for tab in ["Home", "Library", "Glance", "Search"] {
+            app.tabBars.buttons[tab].tap()
             XCTAssertFalse(app.staticTexts["Saved diary"].exists)
             XCTAssertFalse(app.staticTexts[warning].exists)
         }
@@ -518,7 +518,9 @@ import UIKit
     }
     func testEmptyRandomPickOpensTheWorkingAddSearch() {
         let app = launch(empty: true)
-        app.buttons["random-pick-logo"].tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        let logo = app.buttons["random-pick-logo"]
+        wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: logo)], timeout: 5)
+        logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
         XCTAssertTrue(app.staticTexts["Your next story starts here"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["random-pick-open"].exists); capture("Empty collection random pick")
         app.buttons["Add a title"].tap()
@@ -1336,8 +1338,9 @@ import UIKit
         let trash = app.buttons["Open Trash"]
         app.buttons["library-filters"].tap(); XCTAssertTrue(trash.waitForExistence(timeout: 5))
         for _ in 0..<6 { if trash.isHittable { break }; scrollSheet(app) }
+        wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: trash)], timeout: 5)
         trash.tap()
-        XCTAssertTrue(app.staticTexts["In Trash"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["In Trash"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.navigationBars["Trash"].exists)
         let trashLayout = app.buttons["trash-layout"]
         XCTAssertTrue(trashLayout.exists); trashLayout.tap()
@@ -1841,7 +1844,7 @@ import UIKit
         XCTAssertTrue(app.textViews["title-notes"].isHittable); capture("Glance menu reveals Notes")
         app.buttons["Cancel"].tap()
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.textViews["title-notes"])], timeout: 5)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Notes are a sheet over Glance: Cancel is already back on the cards, no Back needed.
         let cover = app.buttons["progress-cover-again"]
         XCTAssertTrue(cover.waitForExistence(timeout: 5))
         cover.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)).tap()

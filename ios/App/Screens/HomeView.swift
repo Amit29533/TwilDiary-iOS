@@ -37,7 +37,7 @@ struct HomeView: View {
                         weekPanel(overview, now: now)
                     }
                     if !overview.planned.isEmpty { VStack(spacing: 12) {
-                        heading("Up next") { SectionMoreButton(label: "Planned", identifier: "home-planned-more") { router.library("planned") } }
+                        heading("Up next") { SectionMoreButton(label: "Planned", identifier: "home-upnext-more") { router.library("planned") } }
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(overview.planned.prefix(12)) { title in

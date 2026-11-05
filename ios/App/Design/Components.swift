@@ -230,8 +230,6 @@ struct PageHeader: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var taps: [Double] = []
     @State private var angle = 0.0
-    /// Where the scrolling title rests; pulling to refresh holds it there beside the pinned buttons.
-    @State private var restingY: CGFloat?
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         HStack(spacing: 10) {
@@ -240,7 +238,6 @@ struct PageHeader: View {
             Spacer(minLength: 0)
             if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
         }.frame(height: height).padding(.horizontal, 14)
-            .modifier(HoldOnPull(restingY: $restingY))
     }
     private var logo: some View {
         Button {
@@ -509,21 +506,6 @@ struct TextShadow: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {
         if on { content.shadow(color: .black.opacity(0.6), radius: 4, y: 1) } else { content }
-    }
-}
-
-/// The header stays put while the page is pulled down to refresh (the spinner shows above it);
-/// scrolling up still carries it away.
-private struct HoldOnPull: ViewModifier {
-    @Binding var restingY: CGFloat?
-    func body(content: Content) -> some View {
-        let rest = restingY
-        content
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
-            .visualEffect { view, proxy in
-                guard let rest else { return view.offset(y: 0) }
-                return view.offset(y: -max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest))
-            }
     }
 }
 
