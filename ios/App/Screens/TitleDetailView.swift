@@ -300,7 +300,7 @@ struct TitleDetailView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: title.communityScore, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
+        TitleHero(name: title.name, poster: title.poster, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: title.communityScore, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
     }
     private func personalRating(_ title: MediaTitle) -> some View { Button { openRating(title) } label: { HStack(spacing: 4) { DiaryIcon(name: "star", size: 17); Text("Your rating").font(.system(size: 12)).foregroundStyle(.secondary); Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—") } }.font(.system(size: 13)).buttonStyle(.plain).accessibilityIdentifier("title-personal-rating").accessibilityLabel("Your rating").accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated") }
     private func progressPanel(_ title: MediaTitle) -> some View {
@@ -390,7 +390,7 @@ struct TitleDetailView: View {
                     RetryNotice(message: cardError) { Task { await loadCard(title) } }
                 }.padding(.vertical, 12)
             } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
-        }.diaryPanel(padding: 15, radius: 24, accentBorder: true)
+        }.diaryPanel(padding: 15, radius: 24, bordered: false)
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
     private func episodeSlider(_ title: MediaTitle, card: WatchCard) -> some View {

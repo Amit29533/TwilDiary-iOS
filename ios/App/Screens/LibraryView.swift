@@ -1,7 +1,7 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Library (approved design): header with Select and Search, category pills, status chips
+/// Library (approved design): header with Search, category pills, status chips
 /// with live counts, a sort row with the filter sheet and a Grid → List → Shelves toggle,
 /// then posters, rows or genre shelves. Select mode swaps the header for Cancel · N selected · All
 /// and shows a glass action bar.
@@ -137,7 +137,7 @@ struct LibraryView: View {
 
     /// True full screen: the whole header (logo, title, Select) scrolls with the collection.
     private var libraryHeader: some View {
-        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", onSelect: { selecting = true; selected = [] }, height: 54)
+        PageHeader(name: "Library", count: "\(collection.count) \(collection.count == 1 ? "title" : "titles")", height: 54)
     }
     private var collectionContent: some View {
         EdgeToEdgeScroll {

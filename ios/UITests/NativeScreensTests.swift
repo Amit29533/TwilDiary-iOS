@@ -87,7 +87,8 @@ import UIKit
         app.tabBars.buttons["Home"].tap()
         XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5)); capture("Home")
         app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.buttons["library-select"].waitForExistence(timeout: 5)); capture("Library")
+        XCTAssertTrue(app.buttons["title-after-rain"].waitForExistence(timeout: 5)); capture("Library")
+        XCTAssertFalse(app.buttons["library-select"].exists, "Select starts from a long press, not the header")
         XCTAssertEqual(app.tabBars.count, 1, "The system Liquid Glass tab bar must be the only tab bar")
         let first = app.buttons["title-after-rain"].frame, second = app.buttons["title-again"].frame, third = app.buttons["title-frieren"].frame
         XCTAssertLessThan(first.maxX, second.minX)

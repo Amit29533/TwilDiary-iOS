@@ -6,6 +6,8 @@ struct DiaryPanelModifier: ViewModifier {
     var padding: CGFloat = 16
     var radius: CGFloat = 22
     var accentBorder = false
+    /// False: no outline (a panel on a dark page whose edge would read as a stray line).
+    var bordered = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
@@ -18,7 +20,7 @@ struct DiaryPanelModifier: ViewModifier {
                     RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).fill(Color(webHex: "#111115"))
                 }
             }
-            .overlay(RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).strokeBorder(theme == .glass ? .white.opacity(28.0 / 255) : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
+            .overlay(RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).strokeBorder(!bordered ? .clear : theme == .glass ? .white.opacity(28.0 / 255) : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
             // Glass panels float; the others are flat, with no (invisible, still rendered) shadow at all.
             .modifier(PanelShadow(on: theme == .glass))
     }

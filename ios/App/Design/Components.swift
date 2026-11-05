@@ -54,8 +54,8 @@ extension Color {
 }
 
 extension View {
-    func diaryPanel(padding: CGFloat = 16, radius: CGFloat = 22, accentBorder: Bool = false) -> some View {
-        modifier(DiaryPanelModifier(padding: padding, radius: radius, accentBorder: accentBorder))
+    func diaryPanel(padding: CGFloat = 16, radius: CGFloat = 22, accentBorder: Bool = false, bordered: Bool = true) -> some View {
+        modifier(DiaryPanelModifier(padding: padding, radius: radius, accentBorder: accentBorder, bordered: bordered))
     }
 }
 

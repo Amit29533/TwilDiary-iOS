@@ -5,6 +5,8 @@ import UIKit
 struct TitleHero<PersonalRating: View>: View {
     let name: String
     let poster: String?
+    /// Shown above the name, like "Sci-Fi & Fantasy • Drama".
+    let genres: [String]
     let year: Int?
     let category: String
     let runtime: Int?
@@ -14,8 +16,8 @@ struct TitleHero<PersonalRating: View>: View {
     @Binding var expanded: Bool
     let onNameScrolled: ((CGFloat) -> Void)?
     let personalRating: PersonalRating
-    init(name: String, poster: String?, year: Int?, category: String, runtime: Int?, series: Bool, score: Double?, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder personalRating: () -> PersonalRating) {
-        self.name = name; self.poster = poster; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.score = score; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.personalRating = personalRating()
+    init(name: String, poster: String?, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, score: Double?, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder personalRating: () -> PersonalRating) {
+        self.name = name; self.poster = poster; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.score = score; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.personalRating = personalRating()
     }
     @State private var synopsisWidth: CGFloat = 0
     @State private var synopsisParts = SynopsisTextLayout.Parts(leading: "", continuation: "")
@@ -28,6 +30,11 @@ struct TitleHero<PersonalRating: View>: View {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {
+                    if !genres.isEmpty {
+                        Text(genres.prefix(2).joined(separator: " • ")).font(.system(size: 14.4)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.8).shadow(color: .black.opacity(0.6), radius: 4, y: 2)
+                            .padding(.bottom, 6).accessibilityIdentifier("title-hero-genres")
+                    }
                     Text(name).font(.system(size: 24, weight: .bold)).tracking(-1.08).foregroundStyle(.white)
                         .lineLimit(3).minimumScaleFactor(0.72).allowsTightening(true)
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)

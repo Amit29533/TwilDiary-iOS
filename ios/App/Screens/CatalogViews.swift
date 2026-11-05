@@ -229,7 +229,7 @@ struct CatalogDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let details {
-                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
+                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
                         if details.libraryTitle?.trashed == true {
                             NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.glassProminent).controlSize(.large)
                         } else if let saved = details.libraryTitle {
