@@ -230,7 +230,7 @@ extension DiaryStore {
             guard let found = try? await browse(route) else { failed(title.id); continue }
             guard session == sessionRevision else { return }
             if found.libraryTitle != nil { adoptedTraktKeys.insert(title.id); adoptionRetry[title.id] = nil; continue }
-            if await importTitle(found.details, category: found.details.suggestedCategory) != nil {
+            if await importTitle(found.details, category: found.details.suggestedCategory, sendToService: false) != nil {
                 adoptedTraktKeys.insert(title.id); adoptionRetry[title.id] = nil
             } else if session == sessionRevision { failed(title.id) }
         }

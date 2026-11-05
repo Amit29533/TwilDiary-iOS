@@ -86,7 +86,9 @@ extension DiaryStore {
         }
         return try await read(CatalogTools.apiPath("/api/metadata/season", query: ["type": route.kind.rawValue, "id": String(route.id), "season": String(season), "reveal": reveal ? "1" : "0"]))
     }
-    func importTitle(_ details: CatalogDetails, category: String) async -> String? {
+    /// `sendToService`: also put it on the watchlist of the service that holds the diary (a title
+    /// you add); false when the title came from that service (joining the server diary).
+    func importTitle(_ details: CatalogDetails, category: String, sendToService: Bool = true) async -> String? {
         guard !busy, canMutate else { return nil }
         let revision = sessionRevision
         busy = true; defer { if revision == sessionRevision { busy = false } }
@@ -96,6 +98,18 @@ extension DiaryStore {
             confirmed = true
             try await refreshAfterWrite([result.title.id])
             error = nil
+            // Trakt (or the service) holds the diary: what you add goes on its watchlist at once,
+            // instead of only into the server's copy, where nothing would send it on.
+            if sendToService, diaryFromService || traktHoldsDiary {
+                let name = diaryService?.name ?? "Trakt"
+                if let saved = title(result.title.id) {
+                    do { try await servicePatch(saved, values: ["status": "planned"]) }
+                    catch is CancellationError {}
+                    catch { self.error = "Added to your library, but it couldn’t go on your \(name) watchlist: " + error.localizedDescription }
+                } else {
+                    self.error = "Added to your library. Open it and set it to Planned to put it on your \(name) watchlist."
+                }
+            }
             return result.title.id
         } catch is CancellationError { return nil }
         catch {
