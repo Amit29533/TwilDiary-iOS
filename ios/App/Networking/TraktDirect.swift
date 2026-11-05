@@ -109,6 +109,8 @@ struct TraktDirectClient: Sendable {
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
             let client = TraktDirectClient(token: token!)
+            // Edits made offline go first; still offline means there's nothing to read either.
+            guard await sendPending(client) else { return }
             var requests = 1
             let activities = try TraktDecode.activities(from: try await client.get("/sync/last_activities").data)
             var library = self.library ?? TraktLibrary()
@@ -272,12 +274,57 @@ struct TraktDirectClient: Sendable {
     // MARK: Phase 4b: edits in the Trakt diary
 
     /// One write to Trakt with the server's token (one a second at most, waiting out 429s).
+    /// With no connection (the request never left the phone), the edit is kept and sent before the
+    /// next read instead of failing, so nothing has to be redone by hand.
     func write(_ path: String, body: [String: Any], store: DiaryStore) async throws {
         if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
-        if token?.usable != true { token = try await store.read("/api/trakt/token") }
-        if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
-        lastWrite = .now
-        _ = try await TraktDirectClient(token: token!).post(path, body: try JSONSerialization.data(withJSONObject: body))
+        let data = try JSONSerialization.data(withJSONObject: body)
+        do {
+            if token?.usable != true { token = try await store.read("/api/trakt/token") }
+            if !pending.isEmpty { pending.append(PendingWrite(path: path, body: data)); return }
+            if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
+            lastWrite = .now
+            _ = try await TraktDirectClient(token: token!).post(path, body: data)
+        } catch let error where Self.neverSent(error) {
+            pending.append(PendingWrite(path: path, body: data))
+        }
+    }
+
+    // MARK: Edits waiting for a connection
+
+    struct PendingWrite: Codable, Equatable { let path: String; let body: Data }
+    /// Kept on the phone (in order) until Trakt takes them.
+    private(set) var pending: [PendingWrite] = TraktDirectStore.loadPending() {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(pending), forKey: "trakt.pendingWrites") }
+    }
+    nonisolated private static func loadPending() -> [PendingWrite] {
+        (UserDefaults.standard.data(forKey: "trakt.pendingWrites")).flatMap { try? JSONDecoder().decode([PendingWrite].self, from: $0) } ?? []
+    }
+    /// The request never reached Trakt (no network, no route), so sending it later can't double it.
+    nonisolated static func neverSent(_ error: Error) -> Bool {
+        let codes: Set<Int> = [NSURLErrorNotConnectedToInternet, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
+                               NSURLErrorDNSLookupFailed, NSURLErrorDataNotAllowed, NSURLErrorInternationalRoamingOff, NSURLErrorCallIsActive]
+        let error = error as NSError
+        return error.domain == NSURLErrorDomain && codes.contains(error.code)
+    }
+    /// Sends what's waiting, oldest first. False while still offline. A change Trakt refuses is
+    /// dropped (and said), since Trakt is the record: the read that follows shows what it kept.
+    private func sendPending(_ client: TraktDirectClient) async -> Bool {
+        while let next = pending.first {
+            do {
+                if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
+                lastWrite = .now
+                _ = try await client.post(next.path, body: next.body)
+                pending.removeFirst()
+            } catch let error where Self.neverSent(error) {
+                return false
+            } catch {
+                if Task.isCancelled { return false }
+                pending.removeFirst()
+                self.error = "A change made offline didn’t reach Trakt: " + error.localizedDescription
+            }
+        }
+        return true
     }
     /// A Trakt client with your server's token, for reads outside the library (community info).
     func client(store: DiaryStore) async throws -> TraktDirectClient {
@@ -289,7 +336,21 @@ struct TraktDirectClient: Sendable {
     /// Applies an edit to the phone's Trakt copy and redraws the Trakt diary at once.
     func update(store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
         guard var value = library else { return }
+        let before = value
         change(&value)
+        // Trakt is the record: every list this edit touched is read again from Trakt on the next
+        // check, even if Trakt's activity times didn't move (an edit Trakt quietly didn't apply,
+        // such as a title it couldn't find, then disappears instead of showing forever).
+        var touched: [TraktDomain] = []
+        if value.plays != before.plays { touched.append(.history) }
+        if value.ratings != before.ratings { touched.append(.ratings) }
+        if value.watchlist != before.watchlist { touched.append(.watchlist) }
+        if value.favorites != before.favorites { touched.append(.favorites) }
+        if value.dropped != before.dropped { touched.append(.dropped) }
+        if let activities = value.activities, !touched.isEmpty {
+            let keys = Set(touched.flatMap(\.activityKeys))
+            value.activities = TraktActivities(all: nil, stamps: activities.stamps.filter { !keys.contains($0.key) })
+        }
         library = value
         save(value)
         store.applyDiarySource()
@@ -556,6 +617,33 @@ struct TraktDirectClient: Sendable {
 extension DiaryStore {
     /// Trakt holds the diary (your server says so, or the diary on screen comes from it).
     var traktHoldsDiary: Bool { diaryFromTrakt || serverRecord == .trakt }
+
+    /// Keeps the service your diary lives on current while the app is open: a read when you open or
+    /// come back to the app (unless one ran in the last two minutes), then every ten minutes. Each
+    /// read first asks the service what changed, so a quiet check is one small request; edits made
+    /// offline are sent first. Runs until the app leaves the foreground (the task is cancelled).
+    func keepDiaryServiceCurrent() async {
+        while !Task.isCancelled {
+            await readDiaryServiceIfDue(olderThan: 120)
+            try? await Task.sleep(for: .seconds(600))
+        }
+    }
+    func readDiaryServiceIfDue(olderThan seconds: TimeInterval) async {
+        guard !isPreview, hasLoadedWorkspace, !Task.isCancelled else { return }
+        func due(_ stamp: String?) -> Bool {
+            guard let stamp, let date = try? Date(stamp, strategy: .iso8601) else { return true }
+            return Date.now.timeIntervalSince(date) >= seconds
+        }
+        if traktHoldsDiary {
+            let trakt = TraktDirectStore.shared
+            guard !trakt.running, !trakt.writing, due(trakt.library?.fetchedAt) || !trakt.pending.isEmpty else { return }
+            await trakt.check(store: self)
+        } else if let tracker = diaryFromTracker {
+            let others = TrackerPreviewStore.shared
+            guard others.running == nil, others.writing == nil, due(others.libraries[tracker]?.fetchedAt) else { return }
+            await others.check(tracker, store: self)
+        }
+    }
     /// What the mirrors are compared with and made to match: the diary you see when it comes
     /// from a service, else your server's.
     var diaryToMatch: Workspace { diaryFromService ? workspace : serverDiary }

@@ -218,7 +218,10 @@ struct RootView: View {
                 }
             }.onChange(of: store.sessionRevision) { _, _ in router.randomPick = nil }
             .task(id: scenePhase) {
-                if scenePhase == .active { await store.refreshOnForeground(); await store.resumeTraktOnForeground() }
+                if scenePhase == .active {
+                    await store.refreshOnForeground(); await store.resumeTraktOnForeground()
+                    await store.keepDiaryServiceCurrent()
+                }
                 else { store.suspendTraktForBackground() }
             }
     }

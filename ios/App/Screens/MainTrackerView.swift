@@ -139,6 +139,10 @@ struct TrackerPreviewPanel: View {
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
                 }
+                if tracker == .trakt, !trakt.pending.isEmpty {
+                    Label(trakt.pending.count.counted("change", "changes") + " waiting for a connection; sent on their own when you’re back online.", systemImage: "icloud.and.arrow.up")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-pending")
+                }
                 if tracker == .trakt { matchSection } else if holdsDiary {
                     Text("\(tracker.name) holds your diary, so nothing is sent to it from here. The differences above are against your old server copy (kept read-only), for reference.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")

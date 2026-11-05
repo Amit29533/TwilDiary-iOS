@@ -63,7 +63,7 @@ public struct TraktNote: Codable, Hashable, Sendable {
 public enum TraktDomain: String, Codable, CaseIterable, Sendable {
     case history, ratings, watchlist, favorites, dropped, notes
     /// The `/sync/last_activities` fields ("section.field") that move when this list changes.
-    var activityKeys: [String] {
+    public var activityKeys: [String] {
         switch self {
         case .history: ["movies.watched_at", "episodes.watched_at"]
         case .ratings: ["movies.rated_at", "shows.rated_at"]
