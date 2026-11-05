@@ -980,6 +980,17 @@ import TwilDiaryCore
     /// (MDBList and Simkl sign-ins). A failed renewal keeps the old token; the request then reports it.
     func freshProviderConfig(_ provider: SyncProviderKind) async -> ExternalProviderConfig {
         let config = providerSettings.config(for: provider)
+        // Trakt through TwilDiary: the server keeps the refresh token and hands out a current one.
+        let traktExpiry = config.tokenExpiresAt.flatMap { try? Date($0, strategy: .iso8601) }
+        let traktDue = traktExpiry.map { $0.timeIntervalSince(now) < 86_400 } ?? true
+        if provider == .trakt, config.connection == .signIn, config.refreshToken == nil, traktDue,
+           let token: TraktDirectToken = try? await read("/api/trakt/token") {
+            guard providerSettings.config(for: provider) == config else { return providerSettings.config(for: provider) }
+            var renewed = config
+            renewed.clientId = token.clientId; renewed.accessToken = token.accessToken
+            renewed.tokenExpiresAt = Date(timeIntervalSince1970: token.expiresAt / 1000).ISO8601Format()
+            return updateProviderConfig(renewed) ? renewed : config
+        }
         guard config.needsRefresh(now: now), let clientId = config.clientId, let refresh = config.refreshToken,
               let tokens = try? await directClient.refreshSignIn(provider: provider, clientId: clientId, refreshToken: refresh) else { return config }
         // Settings changed while renewing (disconnect, another sign-in): leave them alone.

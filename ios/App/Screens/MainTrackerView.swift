@@ -78,6 +78,8 @@ struct TrackerPreviewPanel: View {
     private var error: String? { tracker == .trakt ? trakt.error : others.errors[tracker] }
     private var running: Bool { tracker == .trakt ? trakt.running : others.running == tracker }
     @State private var confirmMatch = false
+    @State private var writeThroughError: String?
+    @State private var savingWriteThrough = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -103,6 +105,20 @@ struct TrackerPreviewPanel: View {
     /// Phase 2: bring Trakt in line with the diary, after showing exactly what will be sent.
     @ViewBuilder private var matchSection: some View {
         let plan = report != nil ? trakt.matchPlan(store: store) : nil
+        Toggle(isOn: Binding(get: { store.traktWriteThrough }, set: { on in
+            savingWriteThrough = true; writeThroughError = nil
+            Task {
+                do { try await store.setTraktWriteThrough(on) } catch { writeThroughError = error.localizedDescription }
+                savingWriteThrough = false
+            }
+        })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Send my edits to Trakt as I make them").font(.subheadline.weight(.semibold))
+                Text("Watches (at their exact time), ratings and Planned go straight to Trakt; favourites and dropped go with “Make Trakt match”.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.disabled(savingWriteThrough).accessibilityIdentifier("trakt-write-through")
+        if let writeThroughError { Text(writeThroughError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
         if let progress = trakt.writeProgress {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
         } else if let result = trakt.writeResult {
