@@ -23,9 +23,11 @@ struct TitleHero<Ratings: View>: View {
     private var synopsisText: String { summary.isEmpty ? "Add your own thoughts in Notes." : summary }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            // Keep the identity down in the darkened lower artwork. Long names
-            // grow vertically; ratings scroll within the remaining column width.
-            HStack(alignment: .bottom, spacing: 15) {
+            // Keep the identity down in the darkened lower artwork. The column is at least the
+            // poster's height with its text at the bottom, so short names sit low beside the
+            // poster; a long name makes the column taller downwards, never up past the poster's
+            // top. Ratings scroll within the remaining column width.
+            HStack(alignment: .top, spacing: 15) {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {

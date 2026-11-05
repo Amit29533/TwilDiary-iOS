@@ -97,7 +97,7 @@ struct PersonView: View {
             ProfileFact(id: prefix + "-birthday", icon: "calendar", label: "Born", value: born),
             ProfileFact(id: prefix + "-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age),
             ProfileFact(id: prefix + "-career", icon: "briefcase", label: ProfileText.careerLabel(actor?.yearsActive ?? []), value: actor.flatMap { ProfileText.careerValue($0.yearsActive) }),
-            ProfileFact(id: prefix + "-favourites", icon: "heart", label: "AniList favourites", value: actor.flatMap { ProfileText.favouritesValue($0.favourites) }),
+            ProfileFact(id: prefix + "-favourites", icon: "heart", label: "Favourites", value: actor.flatMap { ProfileText.favouritesValue($0.favourites) }),
             ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
             ProfileFact(id: "voice-actor-watched", icon: "eye", label: "Watched", value: watchedCount.map { $0.formatted() + " anime" }),
             ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin",

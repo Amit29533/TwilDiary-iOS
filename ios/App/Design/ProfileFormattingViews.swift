@@ -13,47 +13,75 @@ struct ProfileFact: Identifiable {
     }
 }
 
+/// A profile's facts in one card. Short facts (dates, age, height, counts) share a grid of up to
+/// three columns, fewer when a value wouldn't fit, so nothing is truncated; long facts (places,
+/// date of death) are full-width rows with the label on the left and the value on the right, and
+/// a value too long for one line moves under its label and wraps. Labels read before values.
 struct ProfileFacts: View {
     let items: [ProfileFact]
     @Environment(\.dynamicTypeSize) private var typeSize
-    @ScaledMetric(relativeTo: .caption) private var iconWidth = 16
     var body: some View {
-        if !items.isEmpty { facts }
+        if !items.isEmpty { card }
     }
-    private var facts: some View {
-        ProfileFactsLayout(singleColumn: typeSize.isAccessibilitySize) {
-            ForEach(items) { fact in
-                VStack(alignment: .leading, spacing: 10) {
-                    if fact.wide { Divider().overlay(.white.opacity(0.08)).accessibilityHidden(true) }
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: fact.icon).font(.subheadline).foregroundStyle(.secondary)
-                            .frame(width: iconWidth).padding(.top, 1).accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(fact.label).font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(AniListText.formatted(fact.value, hideSpoilers: false))
-                                .font(fact.wide ? .subheadline : .subheadline.weight(.semibold))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .foregroundStyle(Color(webHex: "#e6e2ec")).tint(Color(webHex: "#d1cdd8"))
-                    .contentShape(Rectangle())
-                    .accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
-                    .layoutValue(key: ProfileFactWide.self, value: fact.wide)
+    private var card: some View {
+        let short = items.filter { !$0.wide }, wide = items.filter(\.wide)
+        return VStack(alignment: .leading, spacing: 0) {
+            if !short.isEmpty {
+                ProfileStatGrid(maxColumns: typeSize.isAccessibilitySize ? 1 : 3) {
+                    ForEach(short) { fact in stat(fact) }
+                }.padding(.vertical, 4)
+            }
+            ForEach(Array(wide.enumerated()), id: \.element.id) { index, fact in
+                if index > 0 || !short.isEmpty { Divider().overlay(.white.opacity(0.06)).padding(.horizontal, 12).accessibilityHidden(true) }
+                row(fact)
             }
         }
+        .foregroundStyle(Color(webHex: "#e6e2ec")).tint(Color(webHex: "#d1cdd8"))
+        .background(Color(webHex: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+    }
+    private func label(_ fact: ProfileFact) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: fact.icon).imageScale(.small).accessibilityHidden(true)
+            Text(fact.label).fixedSize(horizontal: false, vertical: true)
+        }.font(.caption).foregroundStyle(.secondary)
+    }
+    private func value(_ fact: ProfileFact) -> Text {
+        Text(AniListText.formatted(fact.value, hideSpoilers: false)).font(.subheadline.weight(.semibold))
+    }
+    private func stat(_ fact: ProfileFact) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            label(fact)
+            value(fact).fixedSize(horizontal: false, vertical: true)
+        }.padding(.horizontal, 12).padding(.vertical, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
+    }
+    private func row(_ fact: ProfileFact) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                label(fact).fixedSize()
+                Spacer(minLength: 12)
+                value(fact).lineLimit(1).fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                label(fact)
+                value(fact).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.horizontal, 12).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
     }
 }
 
-private struct ProfileFactWide: LayoutValueKey { static let defaultValue = false }
-
-/// Pair compact, borderless facts at equal width and height. Location/agency fields span the
-/// available width; neither their words nor the user's text size are shortened.
-private struct ProfileFactsLayout: Layout {
-    let singleColumn: Bool
-    private let columnGap: CGFloat = 20
-    private let rowGap: CGFloat = 14
+/// Short facts in equal columns and equal-height rows: three when every value fits, else two,
+/// else one; of the counts that fit, the one with the fewest rows and empty cells (four facts
+/// make two by two rather than three and one).
+private struct ProfileStatGrid: Layout {
+    let maxColumns: Int
+    private let columnGap: CGFloat = 4
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = max(0, proposal.width ?? 320)
         return CGSize(width: width, height: frames(subviews, width: width).map(\.maxY).max() ?? 0)
@@ -64,34 +92,30 @@ private struct ProfileFactsLayout: Layout {
                                  proposal: ProposedViewSize(width: frame.width, height: frame.height))
         }
     }
-    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
-        var result: [CGRect] = [], pending: Int?, y: CGFloat = 0
-        let column = max(0, (width - columnGap) / 2)
-        for view in subviews {
-            if singleColumn || width < 280 || view[ProfileFactWide.self] {
-                if let previous = pending {
-                    let height = max(44, subviews[previous].sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
-                    result[previous].size = CGSize(width: width, height: height)
-                    y = result[previous].maxY + rowGap; pending = nil
-                }
-                let height = max(44, view.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
-                result.append(CGRect(x: 0, y: y, width: width, height: height)); y += height + rowGap
-            } else {
-                let height = max(44, view.sizeThatFits(ProposedViewSize(width: column, height: nil)).height)
-                if let previous = pending {
-                    let row = max(height, result[previous].height)
-                    result[previous].size.height = row
-                    result.append(CGRect(x: column + columnGap, y: y, width: column, height: row))
-                    y += row + rowGap; pending = nil
-                } else {
-                    pending = result.count
-                    result.append(CGRect(x: 0, y: y, width: column, height: height))
-                }
-            }
+    private func columnWidth(_ count: Int, _ width: CGFloat) -> CGFloat {
+        max(0, (width - columnGap * CGFloat(count - 1)) / CGFloat(count))
+    }
+    private func columns(_ subviews: Subviews, width: CGFloat) -> Int {
+        guard !subviews.isEmpty else { return 1 }
+        var best = 1, bestScore = (subviews.count, 0)
+        for count in 2...max(2, maxColumns) where count <= maxColumns && count <= subviews.count {
+            let column = columnWidth(count, width)
+            guard subviews.allSatisfy({ $0.sizeThatFits(.unspecified).width <= column + 0.5 }) else { continue }
+            let rows = (subviews.count + count - 1) / count, empty = rows * count - subviews.count
+            if (rows, empty) < bestScore { best = count; bestScore = (rows, empty) }
         }
-        if let previous = pending {
-            let height = max(44, subviews[previous].sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
-            result[previous].size = CGSize(width: width, height: height)
+        return best
+    }
+    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        let count = columns(subviews, width: width), column = columnWidth(count, width)
+        var result: [CGRect] = [], y: CGFloat = 0
+        for start in stride(from: 0, to: subviews.count, by: count) {
+            let row = start..<min(start + count, subviews.count)
+            let height = row.map { subviews[$0].sizeThatFits(ProposedViewSize(width: column, height: nil)).height }.max() ?? 0
+            for (offset, _) in row.enumerated() {
+                result.append(CGRect(x: CGFloat(offset) * (column + columnGap), y: y, width: column, height: height))
+            }
+            y += height
         }
         return result
     }

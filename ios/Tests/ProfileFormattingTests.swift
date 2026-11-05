@@ -10,7 +10,7 @@ final class ProfileFormattingTests: XCTestCase {
             ProfileFact(id: "born", icon: "calendar", label: "Born", value: "22 Feb 1996"),
             ProfileFact(id: "age", icon: "person", label: "Age", value: "30"),
             ProfileFact(id: "career", icon: "briefcase", label: "Active since", value: "2012"),
-            ProfileFact(id: "favourites", icon: "heart", label: "AniList favourites", value: "5"),
+            ProfileFact(id: "favourites", icon: "heart", label: "Favourites", value: "5"),
             ProfileFact(id: "place", icon: "mappin", label: "Birthplace", value: "New Britain, Connecticut, USA", wide: true)
         ].compactMap { $0 }
         for width in [CGFloat(292), 334, 362, 402] {

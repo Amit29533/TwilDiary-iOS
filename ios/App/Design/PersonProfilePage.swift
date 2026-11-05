@@ -82,10 +82,21 @@ struct PersonProfilePage<Content: View>: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-profile-header-pattern") {
             ProfileHeaderTestPattern()
-        } else { Artwork(path: image, title: name, alignment: .top, contentMode: .fit, prefersOriginal: true) }
+        } else { framedPortrait }
         #else
-        Artwork(path: image, title: name, alignment: .top, contentMode: .fit, prefersOriginal: true)
+        framedPortrait
         #endif
+    }
+    /// The whole portrait, uncropped, at the top of a fixed-size header, never enlarged past ~2.5×
+    /// its own pixels (so a small AniList image stays sharp). A blurred, darkened copy of the same
+    /// image fills the rest, instead of black bars. Both use one request, so it downloads once.
+    private var framedPortrait: some View {
+        ZStack {
+            Artwork(path: image, title: name, alignment: .top, prefersOriginal: true)
+                .blur(radius: 28, opaque: true).overlay(Color.black.opacity(0.45))
+            Artwork(path: image, title: name, alignment: .top, contentMode: .fit, prefersOriginal: true, maxUpscale: 2.5)
+                .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
+        }
     }
 }
 
