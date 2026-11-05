@@ -236,7 +236,12 @@ public struct TraktComparison: Equatable, Sendable {
 
     /// `tracker` names the service in the details and skips what it can't hold: with no rewatches,
     /// "watched at least once" is compared; without favourites or dropped, those stay in Cloudflare.
-    public static func compare(_ library: TraktLibrary, with workspace: Workspace, tracker: MainTracker = .trakt) -> TraktComparison {
+    ///
+    /// `oneWay`: the service holds the diary and `workspace` is the old server copy, so only what
+    /// that copy has and the service lacks altogether is a difference (the same rules as
+    /// `TraktWritePlan.make(fillOnly:)`, skipping `except`); anything newer on the service is the diary.
+    public static func compare(_ library: TraktLibrary, with workspace: Workspace, tracker: MainTracker = .trakt,
+                               oneWay: Bool = false, except: Set<String> = []) -> TraktComparison {
         var result = TraktComparison()
         let service = tracker.name, can = tracker.capabilities
         let titles = workspace.activeTitles
@@ -268,7 +273,8 @@ public struct TraktComparison: Equatable, Sendable {
             let cap = can.keepsRewatches ? Int.max : 1
             let onTrakt = min(trakt[key] ?? 0, cap), inDiary = min(diary[key] ?? 0, cap)
             result.matchingPlays += min(onTrakt, inDiary)
-            if onTrakt > inDiary { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on \(service), \(inDiary) in the diary")) }
+            if oneWay && except.contains("play|" + key) { continue }
+            if onTrakt > inDiary && !oneWay { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on \(service), \(inDiary) in the diary")) }
             if inDiary > onTrakt { result.onlyInDiary.append(Difference(title: labels[key] ?? key, detail: "\(inDiary) in the diary, \(onTrakt) on \(service)")) }
         }
 
@@ -277,6 +283,24 @@ public struct TraktComparison: Equatable, Sendable {
         let ratings = Dictionary(library.ratings.compactMap { rating in rating.title.diaryKey.map { ($0, rating.rating) } }, uniquingKeysWith: { first, _ in first })
         func keys(_ list: [TraktListed]) -> Set<String> { Set(list.compactMap(\.title.diaryKey)) }
         let watchlist = keys(library.watchlist), favorites = keys(library.favorites), dropped = keys(library.dropped)
+        let played = Set(library.plays.compactMap(\.title.diaryKey))
+        if oneWay {
+            for (key, title) in byKey.sorted(by: { $0.key < $1.key }) {
+                if let score = title.score, score.isFinite, (1...10).contains(score), ratings[key] == nil, !except.contains("rating|" + key) {
+                    result.ratingDifferences.append(Difference(title: title.name, detail: "rated \(Int(score.rounded())) in your old copy, not rated on \(service)"))
+                }
+                if title.status == "planned", !watchlist.contains(key), !played.contains(key), !except.contains("planned|" + key) {
+                    result.plannedDifferences.append(Difference(title: title.name, detail: "Planned in your old copy, not on the \(service) watchlist"))
+                }
+                if can.holdsFavourites, title.favorite, !favorites.contains(key), !except.contains("favourite|" + key) {
+                    result.favoriteDifferences.append(Difference(title: title.name, detail: "a favourite in your old copy, not on \(service)"))
+                }
+                if can.holdsDropped, title.status == "dropped", title.isSeries, !dropped.contains(key), !except.contains("dropped|" + key) {
+                    result.droppedDifferences.append(Difference(title: title.name, detail: "dropped in your old copy, not on \(service)"))
+                }
+            }
+            return result
+        }
         for key in Set(byKey.keys).union(ratings.keys).union(watchlist).union(favorites).union(dropped).sorted() {
             let title = byKey[key]
             let listedName = (library.watchlist + library.favorites + library.dropped).first { $0.title.diaryKey == key }?.title.name

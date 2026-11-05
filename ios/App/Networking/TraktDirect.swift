@@ -149,9 +149,10 @@ struct TraktDirectClient: Sendable {
             library.fetchedAt = Date.now.formatted(.iso8601)
             self.library = library
             save(library)
-            // Compare with the server's diary (the record until the switch-over), not the Trakt view.
+            // Compare with the server's diary (the record until the switch-over), not the Trakt view;
+            // after it, only what that old copy has and Trakt lacks altogether.
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
-                            skipped: skipped, comparison: TraktComparison.compare(library, with: store.serverDiary))
+                            skipped: skipped, comparison: comparison(library, store: store))
             if store.diaryFromTrakt { store.applyDiarySource() }
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
@@ -197,10 +198,21 @@ struct TraktDirectClient: Sendable {
     @ObservationIgnored private var refresh: Task<Void, Never>?
     private(set) var writeProgress: String?
     private(set) var writeResult: String?
-    /// What "Make Trakt match" would send, from the last read (nil before a read).
+    /// What "Make Trakt match" would send, from the last read (nil before a read). Once Trakt
+    /// holds the diary: only what the old server copy has and Trakt lacks, each thing once.
     func matchPlan(store: DiaryStore) -> TraktWritePlan? {
-        guard !store.traktHoldsDiary else { return nil }
-        return library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary) }
+        let fill = store.traktHoldsDiary
+        return library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary, fillOnly: fill, except: fill ? copied : []) }
+    }
+    private func comparison(_ library: TraktLibrary, store: DiaryStore) -> TraktComparison {
+        let fill = store.traktHoldsDiary
+        return TraktComparison.compare(library, with: store.serverDiary, oneWay: fill, except: fill ? copied : [])
+    }
+    /// Things already copied from the old server copy into Trakt (never offered twice, so
+    /// something you later take off Trakt stays off).
+    private var copied: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "trakt.copiedFromServer") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue).sorted(), forKey: "trakt.copiedFromServer") }
     }
     /// Sends the plan to Trakt one request a second, marks Trakt-only favourites in the diary,
     /// then reads Trakt again so the comparison shows the result.
@@ -229,6 +241,7 @@ struct TraktDirectClient: Sendable {
                 }
             }
             if !plan.diaryFavourites.isEmpty { try? await store.reload() }
+            if store.traktHoldsDiary { copied.formUnion(plan.tokens) }
             writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
@@ -261,12 +274,12 @@ struct TraktDirectClient: Sendable {
         save(value)
         store.applyDiarySource()
     }
-    /// A quiet re-read a few seconds after an edit, so new plays get their real Trakt ids
+    /// A quiet re-read ten seconds after the last edit (a run of edits makes one read), so new plays get their real Trakt ids
     /// (needed to remove exactly that play later).
     func refreshSoon(store: DiaryStore) {
         refresh?.cancel()
         refresh = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(4))
+            try? await Task.sleep(for: .seconds(10))
             guard let self, !Task.isCancelled else { return }
             await self.check(store: store)
         }
@@ -405,7 +418,7 @@ struct TraktDirectClient: Sendable {
     func refreshSoon(_ tracker: MainTracker, store: DiaryStore) {
         refresh?.cancel()
         refresh = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(4))
+            try? await Task.sleep(for: .seconds(10))
             guard let self, !Task.isCancelled else { return }
             await self.check(tracker, store: store)
         }

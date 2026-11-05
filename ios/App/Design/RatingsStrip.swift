@@ -27,18 +27,26 @@ struct RatingsStrip: View {
     var body: some View {
         let items = items
         if !items.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
-                    ForEach(items) { item in
-                        HStack(spacing: 8) {
-                            RatingSourceMark(source: item.source).frame(width: 30, height: 30)
-                            Text(item.text).font(.system(size: 18, weight: .medium)).foregroundStyle(.white).monospacedDigit()
-                        }.accessibilityElement(children: .ignore)
-                            .accessibilityLabel(RatingsStrip.name(item.source) + " " + item.text)
-                    }
-                }.padding(.vertical, 4)
-            }.scrollClipDisabled().accessibilityIdentifier("title-ratings")
+            // One line across the page when they fit; sideways scrolling only when they don't.
+            ViewThatFits(in: .horizontal) {
+                row(items, spacing: 14)
+                row(items, spacing: 10)
+                ScrollView(.horizontal, showsIndicators: false) { row(items, spacing: 14) }.scrollClipDisabled()
+            }.accessibilityIdentifier("title-ratings")
         }
+    }
+
+    private func row(_ items: [Item], spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            ForEach(items) { item in
+                HStack(spacing: 5) {
+                    RatingSourceMark(source: item.source).frame(width: 21, height: 21)
+                    Text(item.text).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(.white).monospacedDigit()
+                        .lineLimit(1).fixedSize()
+                }.accessibilityElement(children: .ignore)
+                    .accessibilityLabel(RatingsStrip.name(item.source) + " " + item.text)
+            }
+        }.padding(.vertical, 2)
     }
 
     static func canonical(_ source: String) -> String {

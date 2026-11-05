@@ -62,7 +62,14 @@ public struct TraktWritePlan: Equatable, Sendable {
     }
 
     /// What the diary has that Trakt doesn't (with the rules above).
-    public static func make(library: TraktLibrary, workspace: Workspace, tracker: MainTracker = .trakt) -> TraktWritePlan {
+    ///
+    /// `fillOnly`: Trakt holds the diary now and `workspace` is the old server copy. Only what
+    /// Trakt lacks altogether is sent (a play, a rating where Trakt has none, Planned for a title
+    /// never watched on Trakt, a favourite, a dropped show); nothing on Trakt is changed or taken
+    /// off, and nothing is written back to the server. `except` holds `tokens` already sent once,
+    /// so a thing you later took off Trakt isn't offered again.
+    public static func make(library: TraktLibrary, workspace: Workspace, tracker: MainTracker = .trakt,
+                            fillOnly: Bool = false, except: Set<String> = []) -> TraktWritePlan {
         var plan = TraktWritePlan()
         plan.tracker = tracker
         let can = tracker.capabilities
@@ -87,6 +94,7 @@ public struct TraktWritePlan: Equatable, Sendable {
             let episode = event.episodeId.flatMap { episodes[$0] }
             if title.isSeries && episode == nil { plan.skippedPlays += 1; continue }
             let slot = key(titleRef.movie, titleRef.tmdbId) + (episode.map { "|s\($0.season)e\($0.number)" } ?? "")
+            if except.contains("play|" + slot) { continue }
             guard let when = DiaryDate.parse(event.watchedAt) else { plan.skippedPlays += 1; continue }
             if !can.keepsRewatches {
                 // One watch per episode or movie: the first one, and only when the service has none.
@@ -103,27 +111,44 @@ public struct TraktWritePlan: Equatable, Sendable {
         let traktRatings = Dictionary(library.ratings.compactMap { r in r.title.diaryKey.map { ($0, r.rating) } }, uniquingKeysWith: { first, _ in first })
         func keys(_ list: [TraktListed]) -> Set<String> { Set(list.compactMap(\.title.diaryKey)) }
         let watchlist = keys(library.watchlist), favourites = keys(library.favorites), dropped = keys(library.dropped)
+        let played = Set(library.plays.compactMap(\.title.diaryKey))
         for (diaryKey, title) in byKey.sorted(by: { $0.key < $1.key }) {
             guard let titleRef = ref(title) else { continue }
-            if let score = title.score, score.isFinite, (1...10).contains(score), traktRatings[diaryKey] != Int(score.rounded()) {
+            if let score = title.score, score.isFinite, (1...10).contains(score), traktRatings[diaryKey] != Int(score.rounded()),
+               !fillOnly || (traktRatings[diaryKey] == nil && !except.contains("rating|" + diaryKey)) {
                 plan.ratings.append(Rating(title: titleRef, rating: Int(score.rounded())))
             }
             let planned = title.status == "planned"
-            if planned && !watchlist.contains(diaryKey) { plan.watchlistAdd.append(titleRef) }
+            if planned && !watchlist.contains(diaryKey),
+               !fillOnly || (!played.contains(diaryKey) && !except.contains("planned|" + diaryKey)) { plan.watchlistAdd.append(titleRef) }
             var moved = false
-            if !planned && watchlist.contains(diaryKey) {
+            if !fillOnly && !planned && watchlist.contains(diaryKey) {
                 if tracker == .simkl {
                     if let list = simklList(title) { plan.moves.append(Move(title: titleRef, to: list)); moved = true }
                 } else { plan.watchlistRemove.append(titleRef) }
             }
             if can.holdsFavourites {
-                if title.favorite && !favourites.contains(diaryKey) { plan.favouritesAdd.append(titleRef) }
-                if !title.favorite && favourites.contains(diaryKey) { plan.diaryFavourites.append(title.id) }
+                if title.favorite && !favourites.contains(diaryKey) && !except.contains("favourite|" + diaryKey) { plan.favouritesAdd.append(titleRef) }
+                if !fillOnly && !title.favorite && favourites.contains(diaryKey) { plan.diaryFavourites.append(title.id) }
             }
             // Dropped is for shows only (a dropped movie stays in the diary's own record).
-            if title.status == "dropped" && title.isSeries && !dropped.contains(diaryKey) && !moved { plan.dropped.append(titleRef) }
+            if title.status == "dropped" && title.isSeries && !dropped.contains(diaryKey) && !moved && !except.contains("dropped|" + diaryKey) {
+                plan.dropped.append(titleRef)
+            }
         }
         return plan
+    }
+
+    /// One token per thing the plan sends, matching `except` (and `TraktComparison.compare`).
+    public var tokens: Set<String> {
+        func key(_ ref: Ref) -> String { (ref.movie ? "movie:" : "tv:") + String(ref.tmdbId) }
+        var result = Set<String>()
+        for play in plays { result.insert("play|" + key(play.title) + (play.season.map { "|s\($0)e\(play.episode ?? 0)" } ?? "")) }
+        for rating in ratings { result.insert("rating|" + key(rating.title)) }
+        for ref in watchlistAdd { result.insert("planned|" + key(ref)) }
+        for ref in favouritesAdd { result.insert("favourite|" + key(ref)) }
+        for ref in dropped { result.insert("dropped|" + key(ref)) }
+        return result
     }
 
     /// The Simkl list for a title that's no longer Planned (nil: leave it where it is).

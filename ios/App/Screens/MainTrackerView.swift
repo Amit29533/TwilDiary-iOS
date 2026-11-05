@@ -139,10 +139,10 @@ struct TrackerPreviewPanel: View {
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
                 }
-                if holdsDiary {
+                if tracker == .trakt { matchSection } else if holdsDiary {
                     Text("\(tracker.name) holds your diary, so nothing is sent to it from here. The differences above are against your old server copy (kept read-only), for reference.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
-                } else if tracker == .trakt { matchSection } else { trackerMatchSection }
+                } else { trackerMatchSection }
                 Button {
                     Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
                 } label: {
@@ -157,6 +157,13 @@ struct TrackerPreviewPanel: View {
     /// Phase 2: bring Trakt in line with the diary, after showing exactly what will be sent.
     @ViewBuilder private var matchSection: some View {
         let plan = report != nil ? trakt.matchPlan(store: store) : nil
+        let fill = store.traktHoldsDiary
+        if fill {
+            Text(plan?.isEmpty == false
+                 ? "Trakt holds your diary. The list above is what your old server copy has and Trakt doesn’t; copy it in once and it’s done. Anything newer on Trakt stays as it is."
+                 : "Trakt holds your diary and has everything from your old server copy.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
+        } else {
         Toggle(isOn: Binding(get: { store.traktWriteThrough }, set: { on in
             savingWriteThrough = true; writeThroughError = nil
             Task {
@@ -171,6 +178,7 @@ struct TrackerPreviewPanel: View {
             }
         }.disabled(savingWriteThrough).accessibilityIdentifier("trakt-write-through")
         if let writeThroughError { Text(writeThroughError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+        }
         if let progress = trakt.writeProgress {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
         } else if let result = trakt.writeResult {
@@ -179,9 +187,10 @@ struct TrackerPreviewPanel: View {
         }
         if let plan, !plan.isEmpty, !trakt.writing {
             Button { confirmMatch = true } label: {
-                Label("Make Trakt match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                Label(fill ? "Copy what’s missing into Trakt" : "Make Trakt match the diary",
+                      systemImage: fill ? "square.and.arrow.down.on.square" : "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
             }.font(.subheadline.weight(.semibold)).buttonStyle(.glassProminent).disabled(running).accessibilityIdentifier("trakt-make-match")
-                .confirmationDialog("Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
+                .confirmationDialog(fill ? "Copy into Trakt?" : "Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
                     Button("Send to Trakt") { Task { await trakt.makeTraktMatch(store: store) } }
                     Button("Cancel", role: .cancel) {}
                 } message: {
