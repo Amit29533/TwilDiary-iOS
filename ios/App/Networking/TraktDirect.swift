@@ -225,7 +225,7 @@ struct TraktDirectClient: Sendable {
             // favourite to Trakt in the Trakt diary, and the comparison would never settle.
             for id in plan.diaryFavourites {
                 if let title = store.serverDiary.titles.first(where: { $0.id == id }) {
-                    let _: EmptyResponse? = try? await store.read("/api/titles/\(title.id)", method: "PATCH", body: ["favorite": true, "expectedVersion": title.version])
+                    let _: EmptyResponse? = try? await store.read("/api/titles/\(title.id)", method: "PATCH", body: ["favorite": true, "expectedVersion": title.version ?? 1])
                 }
             }
             if !plan.diaryFavourites.isEmpty { try? await store.reload() }
@@ -296,7 +296,7 @@ struct TraktDirectClient: Sendable {
     }
 
     /// Trakt's "not_found" lists in a write reply.
-    static func notFoundCount(_ data: Data) -> Int {
+    nonisolated static func notFoundCount(_ data: Data) -> Int {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return 0 }
         if let list = root["not_found"] as? [Any] { return list.count }
         guard let missing = root["not_found"] as? [String: Any] else { return 0 }
