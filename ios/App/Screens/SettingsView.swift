@@ -408,6 +408,9 @@ struct ExternalProviderConnectionView: View {
     /// TwilDiary's own app client IDs from the server (Settings → APIs), for "Sign in with …".
     @State private var apps: ProviderApps?
     @State private var signingIn = false
+    /// MDBList's code to approve on mdblist.com, while waiting for approval.
+    @State private var approval: ProviderDeviceSignIn.Authorization?
+    @Environment(\.openURL) private var openURL
     /// An app ID pasted on this page, for web sign-in before the server has one.
     @State private var signInAppID = ""
     @State private var signInTask: Task<Void, Never>?
@@ -558,9 +561,25 @@ struct ExternalProviderConnectionView: View {
                             Text(signingIn ? "Signing in…" : currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)")
                         }.frame(maxWidth: .infinity)
                     }.buttonStyle(.glassProminent).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                    if let approval {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Approve TwilDiary on \(displayName) with this code:").font(.caption).foregroundStyle(.secondary)
+                            Text(approval.userCode).font(.system(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
+                                .accessibilityIdentifier("\(provider.rawValue)-user-code")
+                            HStack(spacing: 10) {
+                                Button("Open \(displayName)") { openURL(approval.verificationURLComplete ?? approval.verificationURL) }
+                                    .buttonStyle(.diarySecondary)
+                                Button("Cancel", role: .cancel) { signInTask?.cancel(); self.approval = nil; signingIn = false }
+                                    .buttonStyle(.diarySecondary)
+                            }.font(.subheadline)
+                            Text("Waiting for approval… come back here afterwards; it finishes on its own.").font(.caption).foregroundStyle(.secondary)
+                        }.padding(12).background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+                    }
                     if appClientId == nil {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : "One-time setup: create a free \(provider == .simkl ? "V2 mobile app" : "Public PKCE app") on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here (or under Connections → All keys).")
+                            Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : provider == .mdblist
+                                 ? "One-time setup: create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here (or under Connections → All keys)."
+                                 : "One-time setup: create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here (or under Connections → All keys).")
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
                             TextField("\(displayName) app client ID", text: $signInAppID)
@@ -603,6 +622,7 @@ struct ExternalProviderConnectionView: View {
     /// the code for tokens, saves them and turns sync on.
     private func runSignIn(_ appId: String) async {
         errorMessage = nil; statusMessage = nil
+        if provider == .mdblist { await runDeviceSignIn(appId); return }
         guard let request = ProviderWebSignIn.start(provider: provider, clientId: appId) else {
             errorMessage = "TwilDiary can’t sign in to \(displayName) yet."; return
         }
@@ -627,6 +647,42 @@ struct ExternalProviderConnectionView: View {
             // Closing the sheet is not an error.
         } catch {
             if !Task.isCancelled { errorMessage = error.localizedDescription }
+        }
+    }
+    /// MDBList: its sign-in only redirects to web addresses, so it uses the device code instead.
+    /// Shows the code, opens mdblist.com with it filled in, and asks every few seconds until approved.
+    private func runDeviceSignIn(_ appId: String) async {
+        signingIn = true
+        defer { signingIn = false; approval = nil }
+        do {
+            let auth = try await store.directClient.startDeviceSignIn(provider: provider, clientId: appId)
+            approval = auth
+            openURL(auth.verificationURLComplete ?? auth.verificationURL)
+            var interval = auth.interval
+            let deadline = Date.now.addingTimeInterval(TimeInterval(auth.expiresIn))
+            while Date.now < deadline {
+                try await Task.sleep(for: .seconds(interval))
+                switch try await store.directClient.pollDeviceSignIn(provider: provider, clientId: appId, deviceCode: auth.deviceCode) {
+                case .pending: continue
+                case .slowDown: interval += 5
+                case .authorized(let tokens):
+                    var signedIn = currentConfig
+                    signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
+                    signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
+                    signedIn.connection = .signIn; signedIn.enabled = true; signedIn.loggingMethod = .serverAndDirectAPI
+                    signedIn.apiKey = nil
+                    guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
+                    loadFromStore()
+                    statusMessage = "Signed in to \(displayName). Sync is on."
+                    return
+                case .denied: throw APIError.message("The sign-in was declined.")
+                case .expired: throw APIError.message("The code expired. Sign in again.")
+                case .failed(let message): throw APIError.message(message)
+                }
+            }
+            throw APIError.message("The code expired. Sign in again.")
+        } catch {
+            if !Task.isCancelled && !(error is CancellationError) { errorMessage = error.localizedDescription }
         }
     }
 

@@ -206,6 +206,21 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         default: throw APIError.message("The service didn’t finish the sign-in (HTTP \(status)).")
         }
     }
+    /// MDBList's device sign-in (its OAuth only takes http(s) redirects, so the app can't be the
+    /// redirect): a short code to approve on mdblist.com, then `pollDeviceSignIn` until approved.
+    func startDeviceSignIn(provider: SyncProviderKind, clientId: String) async throws -> ProviderDeviceSignIn.Authorization {
+        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
+        let (data, status) = try await postForm(endpoints.authorize, ProviderDeviceSignIn.authorizeBody(clientId: clientId, scope: endpoints.scope))
+        if case .failed(let message) = ProviderDeviceSignIn.decodePoll(status: status, data: data), !(200..<300).contains(status) {
+            throw APIError.message(message + " (A \"Device Code\" app is needed for this sign-in.)")
+        }
+        return try ProviderDeviceSignIn.decodeAuthorization(data)
+    }
+    func pollDeviceSignIn(provider: SyncProviderKind, clientId: String, deviceCode: String) async throws -> ProviderDeviceSignIn.Poll {
+        guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
+        let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.pollBody(clientId: clientId, deviceCode: deviceCode))
+        return ProviderDeviceSignIn.decodePoll(status: status, data: data)
+    }
     /// A new access token from the refresh token (MDBList: 30-day tokens; Simkl: 7 days).
     func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {
         guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
