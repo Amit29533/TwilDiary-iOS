@@ -154,3 +154,18 @@ copies of each change (phase 5).
 Sources: Simkl API reference (api.simkl.org: get-all-items, get-activities, add-to-history,
 add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
 (github.com/j1lt3d/mdblist-mcp) and Scrob (github.com/ellite/scrob/wiki).
+
+## Progress (5 Nov 2026)
+
+- **Phase 1 done:** direct reads and the shadow comparison (Trakt, Simkl, MDBList), deployed server
+  helpers `/api/trakt/token`, `/api/providers/apps`, `/api/session/app` (version c0730126).
+- **Phase 2 done (not yet tried on the phone):** "Make Trakt match the diary" (`TraktWritePlan`:
+  diary watches at their own times, ratings, watchlist, favourites both ways, dropped shows; never
+  removes Trakt history) and "Send my edits to Trakt as I make them" (the delivery queue with the
+  server's token). The incoming worker links a Trakt play to the diary watch with the same time, so
+  these never come back as copies.
+- **Phase 3 (next, needs production D1 migrations):** helper tables keyed by TMDB/Trakt id for file
+  locations, tags, anime overrides, trash and people favourites; manual backup and restore.
+- **Phase 4 (needs explicit go-ahead):** the app builds its diary from Trakt; turn off the incoming
+  worker's cron and the review sync; keep the server diary read-only for 30 days; retire the web app.
+- **Phase 5:** Simkl and MDBList as main-tracker writers and as mirrors.
