@@ -124,6 +124,8 @@ struct TrackerPreviewPanel: View {
     private var report: TraktDirectStore.Report? { tracker == .trakt ? trakt.report : others.reports[tracker] }
     private var error: String? { tracker == .trakt ? trakt.error : others.errors[tracker] }
     private var running: Bool { tracker == .trakt ? trakt.running : others.running == tracker }
+    /// This service is the diary: there's nothing to make it match.
+    private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker || store.serverRecord == tracker) }
     @State private var confirmMatch = false
     @State private var writeThroughError: String?
     @State private var savingWriteThrough = false
@@ -137,7 +139,10 @@ struct TrackerPreviewPanel: View {
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
                 }
-                if tracker == .trakt { matchSection } else { trackerMatchSection }
+                if holdsDiary {
+                    Text("\(tracker.name) holds your diary, so nothing is sent to it from here. The differences above are against your old server copy (kept read-only), for reference.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
+                } else if tracker == .trakt { matchSection } else { trackerMatchSection }
                 Button {
                     Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
                 } label: {

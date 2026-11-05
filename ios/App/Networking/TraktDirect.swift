@@ -199,7 +199,8 @@ struct TraktDirectClient: Sendable {
     private(set) var writeResult: String?
     /// What "Make Trakt match" would send, from the last read (nil before a read).
     func matchPlan(store: DiaryStore) -> TraktWritePlan? {
-        library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary) }
+        guard !store.traktHoldsDiary else { return nil }
+        return library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary) }
     }
     /// Sends the plan to Trakt one request a second, marks Trakt-only favourites in the diary,
     /// then reads Trakt again so the comparison shows the result.
@@ -208,7 +209,7 @@ struct TraktDirectClient: Sendable {
         if store.isPreview { error = "Writing to Trakt needs a real Trakt connection."; return }
         writing = true; error = nil; writeResult = nil
         defer { writing = false; writeProgress = nil }
-        var sent = 0, notFound = 0
+        var sent = 0, tally = ReplyTally()
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
             let client = TraktDirectClient(token: token!)
@@ -218,13 +219,17 @@ struct TraktDirectClient: Sendable {
                 if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
                 let reply = try await client.post(request.path, body: request.body)
                 sent += request.count
-                notFound += Self.notFoundCount(reply)
+                tally.add(reply)
             }
+            // Straight to the server's record of each title: the usual edit path would send a
+            // favourite to Trakt in the Trakt diary, and the comparison would never settle.
             for id in plan.diaryFavourites {
-                if let title = store.title(id) { _ = await store.patch(title, values: ["favorite": true]) }
+                if let title = store.serverDiary.titles.first(where: { $0.id == id }) {
+                    let _: EmptyResponse? = try? await store.read("/api/titles/\(title.id)", method: "PATCH", body: ["favorite": true, "expectedVersion": title.version])
+                }
             }
-            writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + "."
-                + (notFound > 0 ? " Trakt couldn’t find \(notFound) of them by their TMDB id." : "")
+            if !plan.diaryFavourites.isEmpty { try? await store.reload() }
+            writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
             if !Task.isCancelled { self.error = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
@@ -264,6 +269,29 @@ struct TraktDirectClient: Sendable {
             try? await Task.sleep(for: .seconds(4))
             guard let self, !Task.isCancelled else { return }
             await self.check(store: store)
+        }
+    }
+
+    /// What a service's write replies said: added, already there, not found.
+    struct ReplyTally {
+        var added = 0, existing = 0, notFound = 0
+        mutating func add(_ data: Data) {
+            notFound += TraktDirectStore.notFoundCount(data)
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+            func total(_ value: Any?) -> Int {
+                if let number = value as? Int { return number }
+                guard let counts = value as? [String: Any] else { return 0 }
+                return counts.values.reduce(0) { $0 + (($1 as? Int) ?? 0) }
+            }
+            added += total(root["added"]) + total(root["updated"])
+            existing += total(root["existing"])
+        }
+        func text(service: String) -> String {
+            var parts: [String] = []
+            if added > 0 { parts.append("\(service) added \(added)") }
+            if existing > 0 { parts.append("\(existing) already there") }
+            if notFound > 0 { parts.append("\(notFound) not found by TMDB id") }
+            return parts.isEmpty ? "" : parts.joined(separator: ", ") + "."
         }
     }
 
@@ -347,7 +375,7 @@ struct TraktDirectClient: Sendable {
             save(library, tracker)
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
-                                     skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.serverDiary, tracker: tracker))
+                                     skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.diaryToMatch, tracker: tracker))
         } catch {
             if !Task.isCancelled { errors[tracker] = error.localizedDescription }
         }
@@ -386,7 +414,8 @@ struct TraktDirectClient: Sendable {
     // MARK: Phase 5: make Simkl / MDBList match the diary
 
     func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
-        libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.serverDiary, tracker: tracker) }
+        guard store.diaryService != tracker, store.serverRecord != tracker else { return nil }
+        return libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.diaryToMatch, tracker: tracker) }
     }
     /// Sends the plan one request a second (each service's own endpoints, within what it keeps),
     /// then reads the service again so the comparison shows the result.
@@ -394,7 +423,7 @@ struct TraktDirectClient: Sendable {
         guard writing == nil, running == nil, let plan = matchPlan(tracker, store: store), !plan.isEmpty else { return }
         if store.isPreview { errors[tracker] = "Writing to \(tracker.name) needs a real \(tracker.name) connection."; return }
         writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
-        var sent = 0, notFound = 0
+        var sent = 0, tally = TraktDirectStore.ReplyTally()
         do {
             let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
             let requests = plan.requests()
@@ -403,10 +432,9 @@ struct TraktDirectClient: Sendable {
                 if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
                 let reply = try await store.directClient.write(config, path: request.path, body: request.body)
                 sent += request.count
-                notFound += TraktDirectStore.notFoundCount(reply)
+                tally.add(reply)
             }
-            writeResults[tracker] = "Sent to \(tracker.name): " + plan.summary.joined(separator: "; ") + "."
-                + (notFound > 0 ? " \(tracker.name) couldn’t find \(notFound) of them by their TMDB id." : "")
+            writeResults[tracker] = "Sent to \(tracker.name): " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: tracker.name)
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
             if !Task.isCancelled { errors[tracker] = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
@@ -445,6 +473,11 @@ struct TraktDirectClient: Sendable {
 }
 
 extension DiaryStore {
+    /// Trakt holds the diary (your server says so, or the diary on screen comes from it).
+    var traktHoldsDiary: Bool { diaryFromTrakt || serverRecord == .trakt }
+    /// What the mirrors are compared with and made to match: the diary you see when it comes
+    /// from a service, else your server's.
+    var diaryToMatch: Workspace { diaryFromService ? workspace : serverDiary }
     /// Trakt-first phase 2: your edits go to Trakt as you make them (watches with their exact time,
     /// ratings, Planned), through the same delivery queue as Simkl and MDBList, with the token your
     /// server hands out. The diary on your server stays the record until the switch-over.
