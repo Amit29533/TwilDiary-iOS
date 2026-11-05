@@ -406,6 +406,8 @@ struct ExternalProviderConnectionView: View {
     /// TwilDiary's own app client IDs from the server (Settings → APIs), for "Sign in with …".
     @State private var apps: ProviderApps?
     @State private var signingIn = false
+    /// An app ID pasted on this page, for web sign-in before the server has one.
+    @State private var signInAppID = ""
     @State private var signInTask: Task<Void, Never>?
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
@@ -489,19 +491,32 @@ struct ExternalProviderConnectionView: View {
                         Label(connected ? "Open Trakt" : "Sign in with Trakt", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity)
                     }.buttonStyle(.glassProminent).accessibilityIdentifier("trakt-sign-in")
                 case .simkl, .mdblist:
-                    if let appId = appClientId {
-                        Text("Sign in on \(displayName)’s own page and come straight back. No developer keys needed; the sign-in renews itself.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Button { startSignIn(appId) } label: {
-                            HStack(spacing: 8) {
-                                if signingIn { ProgressView().controlSize(.small) }
-                                Text(signingIn ? "Signing in…" : currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)")
-                            }.frame(maxWidth: .infinity)
-                        }.buttonStyle(.glassProminent).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
-                    } else {
-                        Text(apps == nil ? "Checking whether TwilDiary can sign you in…" : "Sign-in needs TwilDiary’s \(displayName) app ID. Add it in Settings → APIs → Sign-in apps, or use your own API key or token below.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
+                    // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
+                    // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
+                    let appId = appClientId ?? ProfileText.line(signInAppID)
+                    Text("Sign in on \(displayName)’s own page and come straight back. The sign-in renews itself.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        if let appId { startSignIn(appId) } else { errorMessage = "Paste your \(displayName) app ID below first (one-time setup)." }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if signingIn { ProgressView().controlSize(.small) } else { Image(systemName: "globe") }
+                            Text(signingIn ? "Signing in…" : currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)")
+                        }.frame(maxWidth: .infinity)
+                    }.buttonStyle(.glassProminent).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                    if appClientId == nil {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : "One-time setup: create a free \(provider == .simkl ? "V2 mobile app" : "Public PKCE app") on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here (or under Connections → All keys).")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
+                            TextField("\(displayName) app client ID", text: $signInAppID)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled().font(.subheadline)
+                                .padding(10).background(theme.field, in: RoundedRectangle(cornerRadius: 10))
+                                .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
+                            Link(destination: URL(string: provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/")!) {
+                                Label("Open \(displayName)’s developer page", systemImage: "arrow.up.right.square").font(.caption.weight(.semibold))
+                            }
+                        }
                     }
                 case .cloudflare:
                     EmptyView()
@@ -801,6 +816,7 @@ struct ExternalProviderConnectionView: View {
         apiKey = cfg.apiKey ?? ""
         accessToken = cfg.accessToken ?? ""
         username = cfg.username ?? ""
+        if cfg.connection == .signIn, let id = cfg.clientId, !id.isEmpty { signInAppID = id }
     }
 
     private func draftConfig() -> ExternalProviderConfig {

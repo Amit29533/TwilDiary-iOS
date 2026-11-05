@@ -84,7 +84,6 @@ struct HomeView: View {
                             }.padding(.vertical, 6).diaryPanel(radius: 18)
                         }
                         if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 } }
-                        Text("Based on your saved episode dates. Air dates may change.").font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).frame(maxWidth: .infinity, alignment: .leading)
                     }.padding(.horizontal, -4)
                     if !recent.isEmpty { VStack(spacing: 12) {
                         heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history", gridName: "cards"); SectionMoreLink(label: "All history", value: AppDestination.history, identifier: "home-history-more") }

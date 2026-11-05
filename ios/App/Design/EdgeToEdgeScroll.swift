@@ -6,6 +6,8 @@ import UIKit
 struct FeatheredHeaderBackdrop: View {
     let state: CompactHeaderState
     let height: CGFloat
+    /// Pages whose title or switcher lives in the bar keep it frosted from the start.
+    var always = false
     // `height` is the page's top inset: the status bar, plus the navigation bar on pushed pages.
     // Covering all of it (and feathering a little below) keeps scrolled text from showing through
     // under the compact title and the toolbar buttons.
@@ -14,7 +16,7 @@ struct FeatheredHeaderBackdrop: View {
             .mask(LinearGradient(stops: [.init(color: .white, location: 0),
                 .init(color: .white, location: 0.78), .init(color: .clear, location: 1)],
                 startPoint: .top, endPoint: .bottom))
-            .opacity(Double(state.progress)).frame(height: height + 14)
+            .opacity(always ? 1 : Double(state.progress)).frame(height: height + 14)
             .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
@@ -22,6 +24,8 @@ struct FeatheredHeaderBackdrop: View {
 /// Preserve the initial content position, then let scrolled content reach under
 /// the status/navigation area. Keyboard insets and horizontal shelves remain native.
 struct EdgeToEdgeScroll<Content: View>: View {
+    /// Keep the top bar frosted even at the top (for pages with a title or switcher in the bar).
+    var frosted = false
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     var body: some View {
@@ -36,7 +40,7 @@ struct EdgeToEdgeScroll<Content: View>: View {
                 }) { _, progress in header.update(progress) }
                 .overlay(alignment: .top) {
                     if geometry.safeAreaInsets.top > 0 {
-                        FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top)
+                        FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top, always: frosted)
                             .offset(y: -geometry.safeAreaInsets.top)
                     }
                 }

@@ -294,6 +294,8 @@ private struct CatalogSeasonPreview: View {
     @State private var revealed = Set<Int>()
     /// The episode whose details sheet is open (the same sheet as a saved title's episodes).
     @State private var selectedEpisode: Int?
+    @State private var swipeForward = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sheetHeight: CGFloat = 360
     @State private var sheetEpisode: Int?
     init(route: CatalogRoute, details: CatalogDetails, store: DiaryStore) {
@@ -394,11 +396,33 @@ private struct CatalogSeasonPreview: View {
                         .font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(webHex: "#c5c0cf")).fixedSize(horizontal: false, vertical: true)
                 }.padding(20)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sheetHeight = $0 }
+                    .id(episode.number)
+                    .transition(.asymmetric(insertion: .move(edge: swipeForward ? .trailing : .leading).combined(with: .opacity),
+                                            removal: .move(edge: swipeForward ? .leading : .trailing).combined(with: .opacity)))
             }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
+                // Swipe left for the next episode, right for the previous one, as on a saved title.
+                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 60, abs(dx) > abs(value.translation.height) * 1.5 else { return }
+                    showNeighbour(of: episode, forward: dx < 0)
+                })
+                .accessibilityAction(named: "Next episode") { showNeighbour(of: episode, forward: true) }
+                .accessibilityAction(named: "Previous episode") { showNeighbour(of: episode, forward: false) }
                 .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
-        // As tall as the synopsis needs, on glass, like a saved title's episode sheet.
-        }.presentationDetents([SheetFit.detent(sheetHeight, chrome: 96)]).presentationDragIndicator(.visible)
+        // As tall as the synopsis needs, on glass, like a saved title's episode sheet; pull up for more.
+        }.presentationDetents([SheetFit.detent(sheetHeight, chrome: 96), .large])
+            .presentationContentInteraction(.resizes).presentationDragIndicator(.visible)
+    }
+    /// The next or previous episode of this season in the open sheet (a deliberate choice, so a
+    /// spoiler-hidden one is revealed, as tapping it would).
+    private func showNeighbour(of episode: CatalogEpisode, forward: Bool) {
+        let items = controller.items
+        guard let index = items.firstIndex(where: { $0.number == episode.number }), items.indices.contains(index + (forward ? 1 : -1)) else { return }
+        let next = items[index + (forward ? 1 : -1)]
+        revealed.insert(next.number)
+        swipeForward = forward
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { selectedEpisode = next.number }
     }
 }
 

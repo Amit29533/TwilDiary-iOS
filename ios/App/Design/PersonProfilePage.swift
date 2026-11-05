@@ -38,7 +38,7 @@ struct PersonProfilePage<Content: View>: View {
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .overlay(alignment: .top) { FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top).offset(y: -geometry.safeAreaInsets.top) }
                 .toolbar {
-                    ToolbarItem(placement: .principal) { ProfileCompactName(name: name, state: header) }
+                    ToolbarItem(placement: .principal) { ProfileCompactName(name: name, image: image, state: header) }
                     ToolbarItem(placement: .topBarTrailing) {
                         ProfileFavourite(name: name, image: image, kind: kind, ref: ref,
                                          subtitle: favouriteSubtitle, identifier: identifier + "-favourite")
@@ -89,12 +89,18 @@ struct PersonProfilePage<Content: View>: View {
     }
 }
 
+/// The name with a small round photo, as title pages show their poster, once the big name scrolls away.
 private struct ProfileCompactName: View {
     let name: String
+    let image: String?
     let state: CompactHeaderState
     var body: some View {
-        Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+        HStack(spacing: 8) {
+            Artwork(path: image, title: name, alignment: .top).frame(width: 28, height: 28).clipShape(Circle())
+            Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+        }.frame(height: 28)
             .foregroundStyle(.white).opacity(Double(state.progress))
+            .accessibilityElement(children: .ignore).accessibilityLabel(name)
             .accessibilityIdentifier("profile-compact-name").accessibilityHidden(state.progress < 0.5)
     }
 }

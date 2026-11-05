@@ -57,15 +57,15 @@ private struct CanvasContent: View {
         return filters.applying(recommendations.items)
     }
     var body: some View {
-        EdgeToEdgeScroll {
+        // Movies · Shows · Lists sit in the frosted top bar; the pills and art scroll underneath.
+        EdgeToEdgeScroll(frosted: true) {
             VStack(alignment: .leading, spacing: 14) {
-                // Movies · Shows · Lists scroll with the page (true full screen), never over the pills.
-                tabs.padding(.horizontal, 4)
                 pills
                 Group { if tab == .lists { listsContent } else { titlesContent } }
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .principal) { tabs } }
             .task(id: query) {
                 guard tab != .lists, sort != .recommended else { return }
                 do { try await Task.sleep(for: .milliseconds(150)); try Task.checkCancellation() } catch { return }
@@ -81,7 +81,7 @@ private struct CanvasContent: View {
         HStack(spacing: 18) {
             ForEach(CanvasTab.allCases, id: \.self) { item in
                 Button { tab = item; if item == .movies { network = nil } } label: {
-                    Text(item.label).font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                    Text(item.label).font(.system(size: 20, weight: .bold)).tracking(-0.5)
                         .foregroundStyle(tab == item ? Color(webHex: "#f3f0f7") : .white.opacity(0.4))
                 }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }

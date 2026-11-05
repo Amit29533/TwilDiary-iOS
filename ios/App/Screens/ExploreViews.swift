@@ -5,19 +5,14 @@ struct ExploreView: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
         VStack(spacing: 0) {
-            EdgeToEdgeScroll {
+            // "Explore" sits in the frosted top bar; the page scrolls underneath it.
+            EdgeToEdgeScroll(frosted: true) {
                 VStack(alignment: .leading, spacing: 22) {
-                    // The page's title is its first line: there on arrival, gone as you scroll down.
-                    Text("Explore").font(.system(size: 30, weight: .bold)).tracking(-1.1).foregroundStyle(Color(webHex: "#f3f0f7"))
-                        .accessibilityAddTraits(.isHeader).accessibilityIdentifier("explore-title").padding(.bottom, -8)
                     ExploreContent(store: store)
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            // Only Back sits in the bar; "Explore" is the page's first line and scrolls away. The bar's
-            // own title stays the page's name (VoiceOver, the back menu) without being drawn.
-            .toolbar { ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) } }
     }
 }
 
@@ -151,14 +146,13 @@ struct ExploreSectionView: View {
     init(route: ExploreSectionRoute, store: DiaryStore) { self.route = route; self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         VStack(spacing: 0) {
-            EdgeToEdgeScroll {
+            EdgeToEdgeScroll(frosted: true) {
                 VStack(alignment: .leading, spacing: 16) {
 
                     DiscoveryBrowser(section: route.section, service: service, store: store, initialFilters: route.filters)
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) } }
 
     }
 }
