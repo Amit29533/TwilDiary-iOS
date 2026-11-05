@@ -96,7 +96,7 @@ enum TraktDelivery: Equatable, Sendable {
     /// Trakt refused this edit (other 4xx, account limit): sending it again won't help.
     case rejected
 
-    nonisolated static func of(_ error: Error) -> TraktDelivery {
+    static func of(_ error: Error) -> TraktDelivery {
         if let error = error as? TraktWriteError {
             switch error.status {
             case 401, 403: return .authBlocked
