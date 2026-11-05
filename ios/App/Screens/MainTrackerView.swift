@@ -160,7 +160,7 @@ struct TrackerPreviewPanel: View {
         let fill = store.traktHoldsDiary
         if fill {
             Text(plan?.isEmpty == false
-                 ? "Trakt holds your diary. The list above is what your old server copy has and Trakt doesn’t; copy it in once and it’s done. Anything newer on Trakt stays as it is."
+                 ? "Trakt holds your diary. The list above is what your old server copy has and Trakt doesn’t. It’s copied in automatically once; if anything is still listed, tap below to try again. Anything newer on Trakt stays as it is."
                  : "Trakt holds your diary and has everything from your old server copy.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
         } else {

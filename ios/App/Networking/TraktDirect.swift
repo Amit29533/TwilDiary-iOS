@@ -154,9 +154,25 @@ struct TraktDirectClient: Sendable {
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
                             skipped: skipped, comparison: comparison(library, store: store))
             if store.diaryFromTrakt { store.applyDiarySource() }
+            autoFillIfNeeded(store: store)
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
         }
+    }
+
+    /// Like SeriesGuide's first sync: once Trakt holds the diary, what the old server copy has and
+    /// Trakt lacks is copied in on its own, once. It runs after this read finishes (so `running`
+    /// is clear) and is marked done before it starts, so a failure never makes it repeat; the
+    /// button on the Trakt page stays for a retry.
+    private func autoFillIfNeeded(store: DiaryStore) {
+        guard store.traktHoldsDiary, !store.isPreview, !autoFilled, !writing,
+              let plan = matchPlan(store: store), !plan.isEmpty else { return }
+        autoFilled = true
+        Task { await self.makeTraktMatch(store: store) }
+    }
+    private var autoFilled: Bool {
+        get { UserDefaults.standard.bool(forKey: "trakt.autoFilledFromServer") }
+        set { UserDefaults.standard.set(newValue, forKey: "trakt.autoFilledFromServer") }
     }
 
     /// A paged list, up to 1,000 items a page (Trakt reports the page count), at most 100 pages.
