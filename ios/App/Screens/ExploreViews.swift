@@ -13,6 +13,9 @@ struct ExploreView: View {
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
+            // Full screen: the page opens on its artwork with only Back over it; "Explore" stays the
+            // page's name (VoiceOver, the back menu) without being drawn across the poster.
+            .toolbar { ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) } }
     }
 }
 
@@ -153,6 +156,7 @@ struct ExploreSectionView: View {
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) } }
 
     }
 }

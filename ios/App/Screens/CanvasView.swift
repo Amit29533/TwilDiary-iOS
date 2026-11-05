@@ -59,13 +59,13 @@ private struct CanvasContent: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
+                // Movies · Shows · Lists scroll with the page (true full screen), never over the pills.
+                tabs.padding(.horizontal, 4)
                 pills
                 Group { if tab == .lists { listsContent } else { titlesContent } }
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            // The tabs share the navigation bar with the back button.
-            .toolbar { ToolbarItem(placement: .principal) { tabs } }
             .task(id: query) {
                 guard tab != .lists, sort != .recommended else { return }
                 do { try await Task.sleep(for: .milliseconds(150)); try Task.checkCancellation() } catch { return }
