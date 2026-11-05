@@ -6,7 +6,6 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
     case trakt
     case simkl
     case mdblist
-    case wetrakr
     public var id: Self { self }
     public var displayName: String {
         switch self {
@@ -14,7 +13,6 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
         case .trakt: "Trakt"
         case .simkl: "Simkl"
         case .mdblist: "MDBList"
-        case .wetrakr: "WeTrakr"
         }
     }
 }
@@ -52,6 +50,24 @@ public struct SyncOutboxEntry: Codable, Identifiable, Equatable, Sendable {
     public var lastError: String?
     public var confirmedActions: Set<String>?
     public var uncertainActions: Set<String>?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, operationId, createdAt, mutation, pendingProviders, attempts, lastError, confirmedActions, uncertainActions
+    }
+    /// A provider the app no longer has (WeTrakr was removed) is dropped from a saved entry instead
+    /// of failing the whole outbox, which would lose every other pending edit.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        operationId = try c.decode(String.self, forKey: .operationId)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        mutation = try c.decode(OptimisticMutation.self, forKey: .mutation)
+        pendingProviders = Set(try c.decode([String].self, forKey: .pendingProviders).compactMap(SyncProviderKind.init(rawValue:)))
+        attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        confirmedActions = try c.decodeIfPresent(Set<String>.self, forKey: .confirmedActions)
+        uncertainActions = try c.decodeIfPresent(Set<String>.self, forKey: .uncertainActions)
+    }
 
     public init(
         id: String = UUID().uuidString,

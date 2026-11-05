@@ -124,32 +124,33 @@ Simkl silently downgrades to read-only.
 
 ## Choose your main tracker (owner decision, 5 Nov 2026)
 
-The owner wants Trakt, Simkl, MDBList or WeTrakr to be selectable as the main tracker, so the app is
-not tied to Trakt. The diary model stays the same; phases 1–4 build against a `MainTracker` interface
-(read changes, read library, write watch/rating/status/note) with one adapter per service. Whatever
-the chosen tracker can't hold stays in Cloudflare, as tags and file locations already do. The other
-connected services can still receive copies of each change (phase 5).
+The main tracker is a choice of Trakt, Simkl or MDBList (Settings → Main tracker). WeTrakr was
+removed from the app on 5 Nov 2026 (no published API). The diary model stays the same; each
+service is read into the same library model (`TraktLibrary`) by its own reader, so the
+comparison, cache and later the screens are shared. Whatever the chosen tracker can't hold stays in
+Cloudflare, as tags and file locations already do. The other connected services can still receive
+copies of each change (phase 5).
 
-| Feature | Trakt | Simkl | MDBList | WeTrakr |
-| --- | --- | --- | --- | --- |
-| Watch history (plays, dates) | Yes | Yes (`/sync/history`) | Yes (watched) | Unverified |
-| Ratings 1–10 | Yes | Yes (`/sync/ratings`) | Yes | Unverified |
-| Planned | Watchlist | "Plan to watch" | Watchlist | Unverified |
-| Dropped / on hold | Dropped shows only | Yes (list statuses) | No: Cloudflare | Unverified |
-| Notes | 500 chars (free accounts limited) | Memo, 140 chars | No: Cloudflare | Unverified |
-| Favourite titles | Movies and shows | No: Cloudflare | No: Cloudflare | Unverified |
-| "What changed" check for fast sync | `last_activities` | `/sync/activities` | Cursor paging only | Unverified |
-| Anime coverage | Genre only | Strong (own anime catalogue) | Via TMDB/Trakt ids | Unverified |
+| Feature | Trakt | Simkl | MDBList |
+| --- | --- | --- | --- |
+| Watch history | Every play, with rewatches | One watch per episode/movie (rewatches need Simkl PRO/VIP) | Watched items |
+| Ratings 1–10 | Yes | Yes (`/sync/ratings`) | Yes (`/sync/ratings`) |
+| Planned | Watchlist | "Plan to watch" | Watchlist (`/watchlist/items`) |
+| Dropped | Dropped shows | Yes (list status) | Yes (`/sync/dropped`) |
+| Notes | 500 characters | Memo, 140 characters | No: Cloudflare |
+| Favourite titles | Movies and shows | Cloudflare (Simkl's favourites list not used yet) | Cloudflare |
+| "What changed" check | `/sync/last_activities` | `/sync/activities` | `/sync/last_activities` |
+| Anime | Genre only | Strong (own catalogue; TVDB numbering) | Via TMDB ids |
 
-- Notes longer than the tracker's limit keep their full text in Cloudflare; the tracker gets the first
-  part (Trakt 500, Simkl 140 characters).
-- **WeTrakr:** no published API (`/oauth/device/code` is 404; every other path answers 401
-  MISSING_API_KEY). It is listed but disabled ("Needs WeTrakr's API") until WeTrakr publishes docs
-  or issues the owner a key.
-- **MDBList:** endpoint paths need confirming from its docs (api.mdblist.com/docs renders in the
-  browser only) before the adapter is written.
+- Notes longer than the tracker's limit keep their full text in Cloudflare; the tracker gets the
+  first part.
+- MDBList's read responses aren't documented outside its browser docs; the reader accepts
+  Trakt-style and flat items and counts anything it can't read. Confirm against a real account.
 - **Switching trackers:** a one-time copy from the old tracker to the new one, with a review of the
   counts first; backups in Cloudflare cover a failed switch.
+- **Built so far (phase 1, read-only):** the picker, Simkl and MDBList readers, the tracker-aware
+  comparison and the "Direct from … (preview)" check for each.
 
-Sources: Simkl API reference (api.simkl.org: add-to-history, add-to-list, add-ratings, sync guide);
-Scrob's MDBList integration (github.com/ellite/scrob/wiki).
+Sources: Simkl API reference (api.simkl.org: get-all-items, get-activities, add-to-history,
+add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
+(github.com/j1lt3d/mdblist-mcp) and Scrob (github.com/ellite/scrob/wiki).

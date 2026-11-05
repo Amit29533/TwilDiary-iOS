@@ -237,133 +237,31 @@ import TwilDiaryTestSupport
     #expect(reloaded == queue)
 }
 
-@Test func wetrakrFullTwoWaySyncAndDynamicIslandLiveActivityStates() throws {
-    let activitiesJSON = Data(#"""
-    {
-      "movies": { "last_tracking_watched_at": "2026-10-20T10:00:00Z", "last_tracking_planning_at": "2026-10-20T11:00:00Z" },
-      "episodes": { "last_tracking_watched_at": "2026-10-21T10:00:00Z" },
-      "shows": { "last_tracking_dropped_at": "2026-10-22T10:00:00Z" },
-      "ratings": { "all": "2026-10-23T10:00:00Z" },
-      "favorites": { "all": "2026-10-23T11:00:00Z" }
-    }
-    """#.utf8)
-    let act1 = try WeTrakrSyncEngine.decodeActivities(from: activitiesJSON)
-    #expect(act1.changedDomains(since: nil).anyChanged == true)
-    #expect(act1.changedDomains(since: act1).anyChanged == false)
-
+@Test func providerBatchesAndDynamicIslandLiveActivityStates() throws {
     let workspace = try SampleWorkspace.mapped()
     let series = try #require(workspace.titles.first { $0.id == "again" && $0.tmdbId != nil })
-    let tmdbId = try #require(series.tmdbId)
-    let card = WatchCard.calculate(title: series, in: workspace, day: "2026-10-23")
-    let nextEp = try #require(card.next)
-    let ep = try #require(workspace.episodes.first { $0.id == nextEp.id })
-
-    let episodeRowsJSON = Data("""
-    [
-      {
-        "type": "episode",
-        "show_ids": { "tmdb": \(tmdbId) },
-        "season_number": \(ep.season),
-        "number": \(ep.number),
-        "watched_at": "2026-10-23T18:00:00Z",
-        "plays": 1
-      }
-    ]
-    """.utf8)
-    let ratingRowsJSON = Data("""
-    [
-      {
-        "type": "show",
-        "ids": { "tmdb": \(tmdbId) },
-        "rating": 9.5,
-        "rated_at": "2026-10-23T18:30:00Z"
-      }
-    ]
-    """.utf8)
-    let favRowsJSON = Data("""
-    [
-      {
-        "type": "show",
-        "ids": { "tmdb": \(tmdbId) },
-        "favorited_at": "2026-10-23T18:45:00Z"
-      }
-    ]
-    """.utf8)
-
-    let watchedEpisodes = try WeTrakrSyncEngine.decodeCompactRows(from: episodeRowsJSON)
-    let ratingsShows = try WeTrakrSyncEngine.decodeCompactRows(from: ratingRowsJSON)
-    let favoritesShows = try WeTrakrSyncEngine.decodeCompactRows(from: favRowsJSON)
-
-    let snapshot = WeTrakrSyncEngine.normalizeSnapshot(
-        watchedEpisodes: watchedEpisodes,
-        ratingsShows: ratingsShows,
-        favoritesShows: favoritesShows
-    )
-    // Without a shared baseline, an existing personal rating must survive a
-    // different remote score. With the matching baseline, only the remote side
-    // changed, so its decimal score can be imported safely.
-    let unreviewedWorkspace = WeTrakrSyncEngine.applySnapshot(snapshot, to: workspace, recordedAt: "2026-10-23T19:00:00Z")
-    #expect(unreviewedWorkspace.titles.first { $0.id == series.id }?.score == series.score)
-    let matchingBaseline = DirectTraktSyncBaseline(titles: [
-        series.id: DirectTraktTitleBaseline(titleId: series.id, score: series.score.map { Int($0.rounded()) }, watchlisted: false)
-    ])
-    let updatedWorkspace = WeTrakrSyncEngine.applySnapshot(snapshot, to: workspace, baseline: matchingBaseline, recordedAt: "2026-10-23T19:00:00Z")
-    let updatedSeries = try #require(updatedWorkspace.titles.first { $0.id == series.id })
-    #expect(updatedSeries.score == 9.5)
-    #expect(updatedSeries.favorite == true)
-
-    // Verify 3-way diff protection: if local score was changed from baseline (8 -> 10) while WeTrakr still has 8.0,
-    // applySnapshot must NOT overwrite the newer local 10.0 score with WeTrakr's 8.0.
-    let localEditedWorkspace = updatedWorkspace.applying(.patchTitle(
-        titleId: series.id,
-        expectedVersion: nil,
-        status: nil,
-        score: 10.0,
-        clearScore: false,
-        favorite: nil,
-        queued: nil,
-        notes: nil
-    ))
-    let baselineAt8 = DirectTraktSyncBaseline(
-        lastActivities: nil,
-        titles: [
-            series.id: DirectTraktTitleBaseline(titleId: series.id, score: 8, watchlisted: false)
-        ]
-    )
-    let staleRemoteSnapshot = WeTrakrSyncEngine.normalizeSnapshot(
-        ratingsShows: [WeTrakrSyncEngine.CompactRow(type: "show", tmdbId: tmdbId, rating: 8.2, ratedAt: "2026-10-20T00:00:00Z")]
-    )
-    let preservedWorkspace = WeTrakrSyncEngine.applySnapshot(
-        staleRemoteSnapshot,
-        to: localEditedWorkspace,
-        baseline: baselineAt8,
-        recordedAt: "2026-10-23T20:00:00Z"
-    )
-    #expect(preservedWorkspace.titles.first { $0.id == series.id }?.score == 10.0)
-
     var queue = SyncOutboxQueue()
     queue.enqueue(SyncOutboxEntry(
-        id: "wt-1",
-        operationId: "op-wt-1",
+        id: "sk-1",
+        operationId: "op-sk-1",
         createdAt: "2026-10-23T19:00:00Z",
         mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: true, queued: true, notes: nil),
-        pendingProviders: [.wetrakr]
+        pendingProviders: [.simkl]
     ))
-    let batch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .wetrakr, from: queue, in: workspace))
-    #expect(batch.provider == .wetrakr)
-    #expect(batch.favoritesPayload != nil)
-    #expect(batch.idempotencyKey?.hasPrefix("wetrakr-") == true)
+    let batch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .simkl, from: queue, in: workspace))
+    #expect(batch.provider == .simkl)
+    #expect(batch.idempotencyKey == nil)
 
     let diProviderState = SyncLiveActivityState.forProviderBatch(
-        provider: .wetrakr,
+        provider: .simkl,
         completed: 3,
         total: 6,
         phase: .flushingOutbox,
         isBackgrounded: true
     )
-    #expect(diProviderState.compactBadge == "WT")
+    #expect(diProviderState.compactBadge == "SK")
     #expect(diProviderState.percent == 50)
-    #expect(diProviderState.title == "Background WeTrakr sync")
+    #expect(diProviderState.title == "Background Simkl sync")
 
     let traktSync = TraktSync(
         next: nil,
@@ -379,7 +277,7 @@ import TwilDiaryTestSupport
 
 @Test func providerConnectionSettingsAndLoggingMethods() throws {
     var settings = ProviderConnectionSettings()
-    #expect(settings.wetrakr.statusBadge == "Set up")
+    #expect(settings.simkl.statusBadge == "Set up")
     #expect(settings.activeDirectLoggingProviders.isEmpty)
 
     settings.customTmdbToken = "  custom-tmdb-token  "
@@ -392,19 +290,13 @@ import TwilDiaryTestSupport
             clientId: "trakt-cid",
             accessToken: "trakt-token"
         ),
-        wetrakr: ExternalProviderConfig(
-            provider: .wetrakr,
-            enabled: true,
-            loggingMethod: .serverAndDirectAPI,
-            clientId: "wtk_123",
-            accessToken: "wtk_pat_456",
-            username: "cinephile"
-        ),
         simkl: ExternalProviderConfig(
             provider: .simkl,
-            enabled: false,
+            enabled: true,
             loggingMethod: .serverAndDirectAPI,
-            clientId: "simkl-cid"
+            clientId: "simkl-cid",
+            accessToken: "simkl_token_456",
+            username: "cinephile"
         ),
         mdblist: ExternalProviderConfig(
             provider: .mdblist,
@@ -414,12 +306,11 @@ import TwilDiaryTestSupport
         )
     )
     #expect(settings.customTmdbToken == "custom-tmdb-token")
-    #expect(settings.wetrakr.statusBadge == "Connected")
-    #expect(settings.simkl.statusBadge == "Configured")
+    #expect(settings.simkl.statusBadge == "Connected")
     #expect(settings.mdblist.statusBadge == "Connected")
     #expect(settings.trakt.loggingMethod.includesServerLogging == true)
     #expect(settings.trakt.loggingMethod.includesDirectAPI == false)
-    #expect(settings.activeDirectLoggingProviders == Set([.wetrakr, .mdblist]))
+    #expect(settings.activeDirectLoggingProviders == Set([.simkl, .mdblist]))
 
     final class MemorySecretStore: ProviderSecretStoring, @unchecked Sendable {
         var values: [String: String] = [:]
@@ -438,12 +329,12 @@ import TwilDiaryTestSupport
     // Verify UserDefaults payload stripped plaintext tokens and stored them in the secret store
     let rawJSON = String(data: suite.data(forKey: "test.settings") ?? Data(), encoding: .utf8) ?? ""
     #expect(!rawJSON.contains("custom-tmdb-token"))
-    #expect(!rawJSON.contains("wtk_pat_456"))
+    #expect(!rawJSON.contains("simkl_token_456"))
     #expect(!rawJSON.contains("mdb-key"))
     let sealed = try #require(secretStore.readSecret(for: "test.settings.credentials.v2"))
     let protectedSettings = try JSONDecoder().decode(ProviderConnectionSettings.self, from: Data(sealed.utf8))
     #expect(protectedSettings.customTmdbToken == "custom-tmdb-token")
-    #expect(protectedSettings.wetrakr.accessToken == "wtk_pat_456")
+    #expect(protectedSettings.simkl.accessToken == "simkl_token_456")
     #expect(protectedSettings.mdblist.apiKey == "mdb-key")
     #expect(try store.load() == settings)
 }
@@ -476,4 +367,21 @@ import TwilDiaryTestSupport
 
     // CSV rating/date behaviour is covered by the canonical server parser regression suite.
 
+}
+
+/// WeTrakr was removed from the app: a saved outbox naming it still loads, with every other
+/// pending edit kept and WeTrakr simply dropped.
+@Test func aSavedOutboxNamingARemovedProviderStillLoads() throws {
+    let entry = SyncOutboxEntry(createdAt: "2026-10-23T19:00:00Z",
+                                mutation: .patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: nil, notes: nil),
+                                pendingProviders: [.cloudflare, .simkl])
+    // The real encoding of a mutation, with a removed provider added to the saved list.
+    var saved = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(SyncOutboxQueue(entries: [entry]))) as? [String: Any])
+    var entries = try #require(saved["entries"] as? [[String: Any]])
+    entries[0]["pendingProviders"] = ["cloudflare", "simkl", "wetrakr"]
+    saved["entries"] = entries
+    let queue = try JSONDecoder().decode(SyncOutboxQueue.self, from: JSONSerialization.data(withJSONObject: saved))
+    #expect(queue.entries.count == 1)
+    #expect(queue.entries[0].pendingProviders == [.cloudflare, .simkl])
+    #expect(queue.entries[0].mutation == entry.mutation)
 }

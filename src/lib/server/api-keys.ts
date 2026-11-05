@@ -13,7 +13,6 @@ export const API_KEYS = {
     service: 'mdblist',
     label: 'Device Code app client ID (Sign in with MDBList)'
   },
-  WETRAKR_CLIENT_ID: { service: 'wetrakr', label: 'App client ID' },
   CF_ANALYTICS_TOKEN: { service: 'cloudflare', label: 'Analytics API token' },
   CF_ACCOUNT_ID: { service: 'cloudflare', label: 'Account ID' }
 } as const;
@@ -255,8 +254,6 @@ export async function testKey(
         body: new URLSearchParams({ client_id: value, scope: 'write' }).toString()
       });
       break;
-    case 'WETRAKR_CLIENT_ID':
-      return { ok: false, message: 'Can’t be checked yet: WeTrakr hasn’t published its API' };
     case 'CF_ANALYTICS_TOKEN':
     case 'CF_ACCOUNT_ID': {
       const token = env.CF_ANALYTICS_TOKEN,

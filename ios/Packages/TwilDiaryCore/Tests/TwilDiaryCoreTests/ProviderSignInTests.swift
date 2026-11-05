@@ -12,7 +12,7 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     let simkl = try #require(ProviderDeviceSignIn.endpoints(for: .simkl))
     #expect(simkl.authorize.absoluteString == "https://api.simkl.com/oauth2/device")
     #expect(simkl.scope == "media:read media:write")
-    #expect(ProviderDeviceSignIn.endpoints(for: .trakt) == nil && ProviderDeviceSignIn.endpoints(for: .wetrakr) == nil)
+    #expect(ProviderDeviceSignIn.endpoints(for: .trakt) == nil)
     #expect(String(decoding: ProviderDeviceSignIn.authorizeBody(clientId: "abc 1", scope: simkl.scope), as: UTF8.self)
             == "client_id=abc%201&scope=media%3Aread%20media%3Awrite")
     #expect(String(decoding: ProviderDeviceSignIn.pollBody(clientId: "abc", deviceCode: "d/1"), as: UTF8.self)

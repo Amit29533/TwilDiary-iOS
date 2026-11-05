@@ -5,7 +5,7 @@ import TwilDiaryTestSupport
 
 @Test func providerDeliveryDoesNotAcknowledgeMissingMappingsOrUnknownReceipts() throws {
     let queue = SyncOutboxEntry(createdAt: "2026-11-03T00:00:00Z", mutation: .patchTitle(titleId: "missing", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.trakt])
-    for provider in [SyncProviderKind.trakt, .simkl, .wetrakr, .mdblist] {
+    for provider in [SyncProviderKind.trakt, .simkl, .mdblist] {
         let plan = ProviderDeliveryPlanner.plan(queue, provider: provider, in: SampleWorkspace.make())
         #expect(plan.deliveries.isEmpty)
         #expect(!plan.blocked.isEmpty)

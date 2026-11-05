@@ -21,7 +21,6 @@ import TwilDiaryCore
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var scanPace = ProgressPace()
     @State private var applyPace = ProgressPace()
-    @State private var direct = TraktDirectStore.shared
     init(store: DiaryStore) {
         self.store = store
         _controller = State(initialValue: store.traktController)
@@ -43,7 +42,7 @@ import TwilDiaryCore
                     if scanning { scanProgress; foundSoFar }
                     preferences
                     incomingWatches
-                    directPreview
+                    TrackerPreviewPanel(tracker: .trakt)
                     if let sync = controller.sync, sync.run != nil {
                         if sync.reviewing || sync.run?.state == "complete" { transferProgress(sync) }
                         review(sync)
@@ -198,63 +197,6 @@ import TwilDiaryCore
             }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
         }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
-    }
-    /// Trakt-first preview: reads Trakt directly and compares it with the diary. Changes nothing.
-    private var directPreview: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Direct from Trakt (preview)").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if let report = direct.report { directReport(report) }
-                if let error = direct.error {
-                    Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-direct-error")
-                }
-                Button { Task { await direct.check(store: store) } } label: {
-                    Label(direct.running ? "Reading Trakt…" : "Check now", systemImage: "bolt.horizontal.circle").frame(maxWidth: .infinity)
-                }.font(.subheadline).buttonStyle(.diarySecondary).disabled(direct.running).accessibilityIdentifier("trakt-direct-check")
-            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
-        }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-direct-panel")
-    }
-    @ViewBuilder private func directReport(_ report: TraktDirectStore.Report) -> some View {
-        let library = direct.library ?? TraktLibrary()
-        let compared = report.comparison
-        let timing = report.seconds.formatted(.number.precision(.fractionLength(1))) + " s · " + report.requests.counted("request", "requests")
-        Text(report.fetched.isEmpty ? "Nothing changed on Trakt since the last check · \(timing)" : "Read in \(timing) · " + report.fetched.map(\.rawValue).joined(separator: ", "))
-            .font(.system(size: 13, weight: .semibold)).accessibilityIdentifier("trakt-direct-timing")
-        Text([library.plays.count.counted("play", "plays"), library.ratings.count.counted("rating", "ratings"),
-              "\(library.watchlist.count) on the watchlist", library.favorites.count.counted("favourite", "favourites"), "\(library.dropped.count) dropped",
-              library.notes.count.counted("note", "notes")].joined(separator: " · "))
-            .font(.caption).foregroundStyle(.secondary)
-        if !report.unavailable.isEmpty {
-            Text("Trakt didn’t give: " + report.unavailable.map(\.rawValue).joined(separator: ", ") + ". They’re asked for again next time.").font(.caption).foregroundStyle(.secondary)
-        }
-        if report.skipped > 0 || compared.unmatchedTraktTitles > 0 {
-            Text("\(report.skipped) unreadable Trakt items · \(compared.unmatchedTraktTitles) Trakt titles without a TMDB id").font(.caption).foregroundStyle(.secondary)
-        }
-        if compared.matches {
-            Label("Matches your diary: \(compared.matchingPlays.counted("play", "plays"))", systemImage: "checkmark.seal.fill")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("trakt-direct-match")
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(compared.matchingPlays.counted("play", "plays")) match. Differences:").font(.system(size: 13, weight: .semibold))
-                differences("Only on Trakt", compared.onlyOnTrakt)
-                differences("Only in the diary", compared.onlyInDiary)
-                differences("Ratings", compared.ratingDifferences)
-                differences("Planned / watchlist", compared.plannedDifferences)
-                differences("Favourites", compared.favoriteDifferences)
-                differences("Dropped", compared.droppedDifferences)
-            }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-direct-differences")
-        }
-    }
-    @ViewBuilder private func differences(_ heading: String, _ list: [TraktComparison.Difference]) -> some View {
-        if !list.isEmpty {
-            Text("\(heading): \(list.count)").font(.caption.weight(.semibold))
-            ForEach(Array(list.prefix(3).enumerated()), id: \.offset) { _, item in
-                Text("· \(item.title) — \(item.detail)").font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-        }
     }
     private var incomingSubtitle: String {
         guard incoming.status?.enabled == true else { return "Off" }

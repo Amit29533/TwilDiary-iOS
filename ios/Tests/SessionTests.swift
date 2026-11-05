@@ -1836,13 +1836,13 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         store.updateCustomTmdbToken("  custom-tmdb-read-token  ")
         XCTAssertEqual(store.providerSettings.customTmdbToken, "custom-tmdb-read-token")
         store.updateProviderConfig(ExternalProviderConfig(
-            provider: .wetrakr,
+            provider: .simkl,
             enabled: true,
             loggingMethod: .serverAndDirectAPI,
-            clientId: "wtk_test_cid",
-            accessToken: "wtk_test_token"
+            clientId: "simkl_test_cid",
+            accessToken: "simkl_test_token"
         ))
-        XCTAssertEqual(store.providerSettings.activeDirectLoggingProviders, Set([.wetrakr]))
+        XCTAssertEqual(store.providerSettings.activeDirectLoggingProviders, Set([.simkl]))
         store.recordDirectProviderMutation(
             .markWatch(
                 operationId: "op-direct-1",
@@ -1854,7 +1854,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             ),
             operationId: "op-direct-1"
         )
-        XCTAssertEqual(store.outbox.pending(for: .wetrakr).count, 1)
+        XCTAssertEqual(store.outbox.pending(for: .simkl).count, 1)
     }
     func testOfflinePatchPersistsBeforePublishingAndReplaysAfterRelaunch() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
@@ -1982,8 +1982,8 @@ extension SessionTests {
         let store = makeStore(api: api(storage), cache: cache, outboxStore: queueStore, directClient: DirectProviderClient(session: URLSession(configuration: configuration)))
         XCTAssertEqual(store.workspace.titles, workspace.titles)
         let title = try XCTUnwrap(store.workspace.titles.first)
-        store.providerSettings = ProviderConnectionSettings(wetrakr: ExternalProviderConfig(provider: .wetrakr, enabled: true, loggingMethod: .directAPIOnly, clientId: "fixture-client", accessToken: "fixture-token"))
-        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: nil, score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil), providers: [.wetrakr])
+        store.providerSettings = ProviderConnectionSettings(simkl: ExternalProviderConfig(provider: .simkl, enabled: true, loggingMethod: .directAPIOnly, clientId: "fixture-client", accessToken: "fixture-token"))
+        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: nil, score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil), providers: [.simkl])
         XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
         XCTAssertEqual(store.workspace.titles.first?.tmdbId, 123)
         StubProtocol.state.reset { request in
@@ -1991,7 +1991,7 @@ extension SessionTests {
         }
         await store.flushDirectProviders()
         let saved = try XCTUnwrap(queueStore.load(scope: credential.cacheScope).entries.first { $0.id == entry.id })
-        XCTAssertEqual(saved.confirmedActions, ["wetrakr:rating"])
+        XCTAssertEqual(saved.confirmedActions, ["simkl:rating"])
         XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/ratings" }.count, 1)
         StubProtocol.state.reset { _ in .init(#"{"added":{"movies":1}}"#) }
         await store.flushDirectProviders()

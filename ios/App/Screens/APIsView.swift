@@ -34,9 +34,9 @@ struct APIsView: View {
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out; connect again from the Trakt page.")
                     service(nil, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
-                    let signIn = model.keys.filter { ["simkl", "mdblist", "wetrakr"].contains($0.service) }
+                    let signIn = model.keys.filter { ["simkl", "mdblist"].contains($0.service) }
                     if !signIn.isEmpty {
-                        service(nil, "Sign-in apps", keys: signIn, note: "TwilDiary’s own app IDs for Simkl, MDBList and WeTrakr. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
+                        service(nil, "Sign-in apps", keys: signIn, note: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
                 jellyfin

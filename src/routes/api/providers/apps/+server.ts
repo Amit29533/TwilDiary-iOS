@@ -10,7 +10,6 @@ export const GET: RequestHandler = (event) =>
     return {
       trakt: env.TRAKT_CLIENT_ID ?? null,
       simkl: env.SIMKL_CLIENT_ID ?? null,
-      mdblist: env.MDBLIST_CLIENT_ID ?? null,
-      wetrakr: env.WETRAKR_CLIENT_ID ?? null
+      mdblist: env.MDBLIST_CLIENT_ID ?? null
     };
   });

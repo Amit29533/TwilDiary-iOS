@@ -104,3 +104,86 @@ private func diary() throws -> Workspace {
     #expect(result.unmatchedTraktTitles == 1)
     #expect(!result.matches)
 }
+
+// MARK: Main tracker: Simkl and MDBList read into the same library
+
+@Test func everyTrackerSaysWhatStaysInCloudflare() {
+    #expect(MainTracker.trakt.keptInCloudflare == ["the full text of notes over 500 characters"])
+    #expect(MainTracker.simkl.keptInCloudflare.contains("rewatch counts"))
+    #expect(MainTracker.simkl.keptInCloudflare.contains("favourite titles"))
+    #expect(MainTracker.mdblist.keptInCloudflare.contains("notes"))
+    #expect(MainTracker.allCases == [.trakt, .simkl, .mdblist])
+}
+
+@Test func simklAllItemsBecomeWatchesRatingsListsAndNotes() throws {
+    let library = try TrackerDecode.simklLibrary(from: data("""
+    {"shows":[{"status":"completed","user_rating":9,"user_rated_at":"2026-11-01T00:00:00Z","last_watched_at":"2026-11-04T07:42:00Z",
+               "memo":{"text":"Loved the finale","is_private":true},
+               "show":{"title":"Spooky in Love","year":2026,"ids":{"simkl":1,"tmdb":"284172","imdb":"tt1"}},
+               "seasons":[{"number":1,"episodes":[{"number":11,"watched_at":"2026-11-04T07:42:00Z"},{"number":12,"watched_at":"2026-10-31T23:16:00Z"}]}]}],
+     "anime":[{"status":"plantowatch","anime_type":"tv","added_to_watchlist_at":"2026-10-01T00:00:00Z",
+               "show":{"title":"Frieren","year":2023,"ids":{"simkl":2,"mal":"52991"}}},
+              {"status":"watching","anime_type":"tv","show":{"title":"Numbered by TVDB","ids":{"simkl":3,"tmdb":"500"}},
+               "seasons":[{"number":1,"episodes":[{"number":30,"watched_at":"2026-10-01T00:00:00Z","tvdb":{"season":2,"episode":5}}]}]}],
+     "movies":[{"status":"dropped","last_watched_at":"2026-09-01T00:00:00Z","movie":{"title":"Dropped film","year":2020,"ids":{"simkl":4,"tmdb":"77"}}},
+               {"status":"completed","last_watched_at":"2026-08-01T00:00:00Z","user_rating":7,"movie":{"title":"Diary only","ids":{"simkl":5,"tmdb":"9"}}},
+               {"status":"completed","movie":{"title":"","ids":{}}}]}
+    """))
+    #expect(library.plays.filter { $0.title.tmdbId == 284172 }.map(\.episode) == [11, 12])
+    let numbered = library.plays.first { $0.title.tmdbId == 500 }
+    #expect(numbered?.season == 2 && numbered?.episode == 5, "Anime use TVDB numbering when Simkl gives it")
+    #expect(library.ratings.map(\.rating).sorted() == [7, 9])
+    #expect(library.watchlist.map(\.title.name) == ["Frieren"])
+    #expect(library.dropped.map(\.title.name) == ["Dropped film"])
+    #expect(library.notes.map(\.text) == ["Loved the finale"])
+    #expect(library.skipped == 1, "The nameless movie is counted, not guessed")
+    #expect(Set(library.plays.map(\.historyId)).count == library.plays.count, "Each watch gets its own stable id")
+    #expect(try TrackerDecode.simklLibrary(from: data("{}")) == TraktLibrary())
+}
+
+@Test func withoutRewatchesTheComparisonChecksWatchedAtLeastOnce() throws {
+    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love")
+    let obsession = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 3, name: "Obsession")
+    let local = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 9, name: "Diary only")
+    let library = TraktLibrary(
+        plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: nil),
+                TraktPlay(historyId: 2, title: spooky, season: 1, episode: 12, watchedAt: nil),
+                TraktPlay(historyId: 3, title: local, watchedAt: nil)],
+        ratings: [TraktRating(title: spooky, rating: 9, ratedAt: nil)],
+        watchlist: [TraktListed(title: obsession, listedAt: nil)])
+    // Simkl keeps no favourites: the diary favourite is not a difference, it stays in Cloudflare.
+    let simkl = TraktComparison.compare(library, with: try diary(), tracker: .simkl)
+    #expect(simkl.matches)
+    #expect(simkl.matchingPlays == 3)
+    var rewatched = library
+    rewatched.ratings = [TraktRating(title: spooky, rating: 8, ratedAt: nil)]
+    let differs = TraktComparison.compare(rewatched, with: try diary(), tracker: .simkl)
+    #expect(differs.ratingDifferences.map(\.detail) == ["diary 9, Simkl 8"])
+    // Trakt holds favourites, so the same library differs there.
+    #expect(TraktComparison.compare(library, with: try diary()).favoriteDifferences.count == 1)
+}
+
+@Test func mdblistPagesReadTraktStyleAndFlatItemsWithTheirCursor() throws {
+    let page = try TrackerDecode.mdblistPage(from: data("""
+    {"movies":[{"watched_at":"2026-01-01T00:00:00Z","movie":{"title":"Wolf Children","year":2012,"ids":{"tmdb":110420,"imdb":"tt2140203"}}}],
+     "episodes":[{"watched_at":"2026-02-01T00:00:00Z","show":{"title":"Spooky in Love","ids":{"tmdb":284172}},"episode":{"season":1,"number":12}}],
+     "items":[{"title":"Rated show","mediatype":"show","rating":8,"rated_at":"2026-03-01T00:00:00Z","ids":{"tmdb":42}},
+              {"title":"No ids","mediatype":"movie"}],
+     "pagination":{"next_cursor":"abc"}}
+    """))
+    #expect(page.items.count == 3 && page.skipped == 1)
+    #expect(page.items[1].title.kind == .show && page.items[1].season == 1 && page.items[1].episode == 12)
+    #expect(page.items[2].rating == 8 && page.items[2].title.kind == .show)
+    #expect(page.next == "abc")
+    let last = try TrackerDecode.mdblistPage(from: data("""
+    [{"movie":{"title":"Office Space","ids":{"tmdb":1542}},"listed_at":"2026-04-01T00:00:00Z"}]
+    """))
+    #expect(last.items.map(\.title.tmdbId) == [1542] && last.next == nil)
+    // Trakt-style watched shows nest their episodes; season 0 (specials) is kept.
+    let nested = try TrackerDecode.mdblistPage(from: data("""
+    {"shows":[{"show":{"title":"Spooky in Love","ids":{"tmdb":284172}},
+               "seasons":[{"number":0,"episodes":[{"number":1,"last_watched_at":"2026-01-01T00:00:00Z"}]},
+                          {"number":1,"episodes":[{"number":11},{"number":12}]}]}]}
+    """))
+    #expect(nested.items.map { "\($0.season ?? -1)x\($0.episode ?? -1)" } == ["0x1", "1x11", "1x12"])
+}

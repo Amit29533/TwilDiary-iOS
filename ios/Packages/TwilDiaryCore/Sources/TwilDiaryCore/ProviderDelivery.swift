@@ -36,40 +36,34 @@ public enum ProviderDeliveryPlanner {
                     guard let episode = workspace.episodes.first(where: { $0.id == episodeID && $0.titleId == title.id }), episode.season >= 0, episode.number > 0 else {
                         return ProviderDeliveryPlan(deliveries: [], blocked: ["A mapped episode is required before this watch can sync."])
                     }
-                    var episodeItem: [String: Any] = ["number": episode.number]
-                    if provider == .wetrakr { episodeItem["status"] = "watched"; episodeItem["tracked_at"] = watchedAt }
-                    else { episodeItem["watched_at"] = watchedAt }
+                    let episodeItem: [String: Any] = ["number": episode.number, "watched_at": watchedAt]
                     watch["seasons"] = [["number": episode.season, "episodes": [episodeItem]]]
-                } else if provider == .wetrakr { watch["status"] = "watched"; watch["tracked_at"] = watchedAt }
-                else { watch["watched_at"] = watchedAt }
-                add("history", provider == .wetrakr ? "/sync/tracking" : "/sync/history", watch, history: true)
+                } else { watch["watched_at"] = watchedAt }
+                add("history", "/sync/history", watch, history: true)
             }
         case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _):
             if clearScore || score != nil {
-                if provider == .mdblist || (clearScore && provider == .wetrakr) { blocked.append("This provider cannot yet confirm rating removal or delivery for this edit.") }
+                if provider == .mdblist { blocked.append("This provider cannot yet confirm rating removal or delivery for this edit.") }
                 else if clearScore { add("rating", "/sync/ratings/remove") }
                 else if let score, score.isFinite, (1...10).contains(score) {
-                    var rated = item; rated["rating"] = provider == .wetrakr ? (score * 10).rounded() / 10 : score.rounded(); rated["rated_at"] = entry.createdAt
+                    var rated = item; rated["rating"] = score.rounded(); rated["rated_at"] = entry.createdAt
                     add("rating", "/sync/ratings", rated)
                 } else { blocked.append("Ratings must be between 1 and 10.") }
             }
             if queued != nil || status == "planned" {
                 let planned = queued ?? true
                 if provider == .simkl && !planned { blocked.append("Removing a Simkl plan requires review so existing watch history is preserved.") }
-                else if provider == .wetrakr && !planned { blocked.append("WeTrakr plan removal requires a verified endpoint contract.") }
                 else if provider == .simkl { var value = item; value["to"] = "plantowatch"; add("watchlist", "/sync/add-to-list", value) }
-                else if provider == .wetrakr { var value = item; value["status"] = "planning"; add("watchlist", "/sync/tracking", value) }
                 else if provider == .mdblist { add("watchlist", planned ? "/watchlist/items/add" : "/watchlist/items/remove") }
                 else { add("watchlist", planned ? "/sync/watchlist" : "/sync/watchlist/remove") }
             }
             if let status, status != "planned" {
-                if status == "dropped" && provider == .wetrakr { var value = item; value["status"] = "dropped"; add("status", "/sync/tracking", value) }
-                else if status == "dropped" && provider == .simkl { var value = item; value["to"] = "dropped"; add("status", "/sync/add-to-list", value) }
+                if status == "dropped" && provider == .simkl { var value = item; value["to"] = "dropped"; add("status", "/sync/add-to-list", value) }
                 else { blocked.append("This status needs provider-specific review; no watch history was invented.") }
             }
             if let favorite {
-                if provider == .wetrakr && favorite { add("favorite", "/sync/favorites") }
-                else { blocked.append("Favourite changes are not supported by this provider connection yet.") }
+                _ = favorite
+                blocked.append("Favourite changes are not supported by this provider connection yet.")
             }
         default:
             blocked.append("This edit requires provider-specific reconciliation before delivery.")

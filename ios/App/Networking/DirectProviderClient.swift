@@ -72,111 +72,45 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return try MDBListSyncEngine.decodeRatingSummary(from: data, tmdbId: tmdbId, isSeries: isSeries)
     }
 
-    func fetchWeTrakrActivities(config: ExternalProviderConfig) async throws -> WeTrakrSyncEngine.ActivityTimestamps {
-        let data = try await send(
-            url: URL(string: "https://api.wetrakr.com/sync/last_activities")!,
-            method: "GET",
-            headers: wetrakrHeaders(config)
-        )
-        return try WeTrakrSyncEngine.decodeActivities(from: data)
-    }
-
-    func fetchWeTrakrCompactRows(
-        config: ExternalProviderConfig,
-        path: String,
-        fromDate: String? = nil,
-        after: String? = nil
-    ) async throws -> [WeTrakrSyncEngine.CompactRow] {
-        var components = URLComponents(string: "https://api.wetrakr.com" + path)!
-        var items = [
-            URLQueryItem(name: "compact", value: "true"),
-            URLQueryItem(name: "limit", value: "1000")
-        ]
-        if let fromDate, !fromDate.isEmpty {
-            items.append(URLQueryItem(name: "from_date", value: fromDate))
-        }
-        if let after, !after.isEmpty {
-            items.append(URLQueryItem(name: "after", value: after))
-        }
-        components.queryItems = items
-        let data = try await send(
-            url: components.url!,
-            method: "GET",
-            headers: wetrakrHeaders(config)
-        )
-        return try WeTrakrSyncEngine.decodeCompactRows(from: data)
-    }
-
-    func fetchWeTrakrSnapshot(
-        config: ExternalProviderConfig,
-        since previous: WeTrakrSyncEngine.ActivityTimestamps? = nil
-    ) async throws -> (activities: WeTrakrSyncEngine.ActivityTimestamps, snapshot: WeTrakrSyncEngine.NormalizedWeTrakrSnapshot) {
-        let activities = try await fetchWeTrakrActivities(config: config)
-        let domains = activities.changedDomains(since: previous)
-        guard domains.anyChanged else {
-            return (activities, WeTrakrSyncEngine.NormalizedWeTrakrSnapshot(remote: DirectTraktRemoteSnapshot()))
-        }
-        let watchedMovies = domains.watchedMovies
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/tracking/watched/movies", fromDate: previous?.movies.watchedAt)
-            : []
-        let watchedEpisodes = domains.watchedEpisodes
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/tracking/watched/episodes", fromDate: previous?.episodes.watchedAt)
-            : []
-        let planningMovies = domains.watchlist
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/tracking/planning/movies")
-            : []
-        let planningShows = domains.watchlist
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/tracking/planning/shows")
-            : []
-        let ratingsMovies = domains.ratings
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/ratings/movies", fromDate: previous?.ratings.all)
-            : []
-        let ratingsShows = domains.ratings
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/ratings/shows", fromDate: previous?.ratings.all)
-            : []
-        let favoritesMovies = domains.favorites
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/favorites/movies", fromDate: previous?.favorites.all)
-            : []
-        let favoritesShows = domains.favorites
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/favorites/shows", fromDate: previous?.favorites.all)
-            : []
-        let droppedShows = domains.dropped
-            ? try await fetchWeTrakrCompactRows(config: config, path: "/sync/tracking/dropped/shows")
-            : []
-
-        let snapshot = WeTrakrSyncEngine.normalizeSnapshot(
-            watchedMovies: watchedMovies,
-            watchedEpisodes: watchedEpisodes,
-            planningMovies: planningMovies,
-            planningShows: planningShows,
-            ratingsMovies: ratingsMovies,
-            ratingsShows: ratingsShows,
-            favoritesMovies: favoritesMovies,
-            favoritesShows: favoritesShows,
-            droppedShows: droppedShows
-        )
-        return (activities, snapshot)
-    }
-
     /// Acknowledgement is owned by DiaryStore and requires an item-level response receipt.
     func deliver(_ delivery: ProviderDelivery, entry: SyncOutboxEntry, config: ExternalProviderConfig) async throws {
         guard config.enabled, config.isAuthenticated else { throw APIError.message("Reconnect this provider before syncing pending edits.") }
         let base: String
-        var headers: [String: String]
+        let headers: [String: String]
         switch config.provider {
         case .trakt:
             base = "https://api.trakt.tv"
             headers = traktHeaders(DirectTraktCredentials(clientId: config.clientId ?? "", accessToken: config.accessToken ?? ""))
         case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
-        case .wetrakr: base = "https://api.wetrakr.com"; headers = wetrakrHeaders(config)
         case .mdblist: base = "https://api.mdblist.com"; headers = mdblistAuth(config).headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
         case .cloudflare: throw APIError.message("Diary mutations must use the authenticated diary API.")
         }
-        if config.provider == .wetrakr { headers["Idempotency-Key"] = WeTrakrSyncEngine.idempotencyKey(path: delivery.path + ":" + delivery.key, entryIDs: [entry.operationId]) }
         var components = URLComponents(string: base + delivery.path)!
         if config.provider == .mdblist, !mdblistAuth(config).query.isEmpty { components.queryItems = mdblistAuth(config).query }
         let data = try await send(url: components.url!, method: "POST", headers: headers, jsonBody: delivery.body)
         guard ProviderDeliveryPlanner.confirms(data) else { throw APIError.message("The provider did not confirm this item; the edit remains pending.") }
+    }
+
+    /// A read for the main-tracker preview (Simkl or MDBList): GET with the service's own sign-in.
+    func read(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:]) async throws -> Data {
+        guard config.isAuthenticated else { throw APIError.message("Connect \(config.provider == .simkl ? "Simkl" : "MDBList") first, in Settings.") }
+        let base: String, headers: [String: String]
+        var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        switch config.provider {
+        case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
+        case .mdblist:
+            base = "https://api.mdblist.com"
+            let auth = mdblistAuth(config)
+            headers = auth.headers.merging(["Accept": "application/json"]) { first, _ in first }
+            items += auth.query
+        default: throw APIError.message("This service is read by its own client.")
+        }
+        var components = URLComponents(string: base + path)!
+        if !items.isEmpty { components.queryItems = items }
+        do { return try await send(url: components.url!, method: "GET", headers: headers) }
+        catch APIError.rejected(let status, _) where status == 401 || status == 403 {
+            throw APIError.message("\(config.provider == .simkl ? "Simkl" : "MDBList") didn’t accept the sign-in (HTTP \(status)). Reconnect it in Settings.")
+        }
     }
 
     /// MDBList takes a sign-in token as Bearer, or an API key as ?apikey= — never both (MDBList
@@ -203,19 +137,6 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "simkl-api-key": config.clientId ?? ""
-        ]
-        if let token = config.accessToken, !token.isEmpty {
-            headers["Authorization"] = "Bearer \(token)"
-        }
-        return headers
-    }
-
-    private func wetrakrHeaders(_ config: ExternalProviderConfig) -> [String: String] {
-        var headers: [String: String] = [
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "wetrakr-api-version": "1",
-            "wetrakr-api-key": config.clientId ?? ""
         ]
         if let token = config.accessToken, !token.isEmpty {
             headers["Authorization"] = "Bearer \(token)"

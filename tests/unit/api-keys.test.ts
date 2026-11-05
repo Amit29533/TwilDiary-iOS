@@ -133,11 +133,4 @@ test('TwilDiary app client IDs for Sign in with Simkl and MDBList are checked wi
   assert.equal(String(device.init?.body), 'client_id=mdblist-client-1234&scope=write');
   assert.equal((await testKey(mdblist, 'MDBLIST_CLIENT_ID', answer(400))).ok, false);
   assert.equal((await testKey({}, 'SIMKL_CLIENT_ID', answer(200))).message, 'Not set');
-  const wetrakr = await testKey(
-    { WETRAKR_CLIENT_ID: 'wtk_client_1234' },
-    'WETRAKR_CLIENT_ID',
-    answer(200)
-  );
-  assert.equal(wetrakr.ok, false);
-  assert.match(wetrakr.message, /hasn’t published/);
 });

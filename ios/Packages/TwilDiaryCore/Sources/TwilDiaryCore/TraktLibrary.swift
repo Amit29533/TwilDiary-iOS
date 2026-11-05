@@ -234,8 +234,11 @@ public struct TraktComparison: Equatable, Sendable {
             && favoriteDifferences.isEmpty && droppedDifferences.isEmpty
     }
 
-    public static func compare(_ library: TraktLibrary, with workspace: Workspace) -> TraktComparison {
+    /// `tracker` names the service in the details and skips what it can't hold: with no rewatches,
+    /// "watched at least once" is compared; without favourites or dropped, those stay in Cloudflare.
+    public static func compare(_ library: TraktLibrary, with workspace: Workspace, tracker: MainTracker = .trakt) -> TraktComparison {
         var result = TraktComparison()
+        let service = tracker.name, can = tracker.capabilities
         let titles = workspace.activeTitles
         var byKey: [String: MediaTitle] = [:]
         for title in titles { if let tmdb = title.tmdbId { byKey[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] = byKey[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] ?? title } }
@@ -262,10 +265,11 @@ public struct TraktComparison: Equatable, Sendable {
             if labels[full] == nil { labels[full] = episode.map { "\(name(key)) S\($0.season)E\($0.number)" } ?? name(key) }
         }
         for key in Set(trakt.keys).union(diary.keys).sorted() {
-            let onTrakt = trakt[key] ?? 0, inDiary = diary[key] ?? 0
+            let cap = can.keepsRewatches ? Int.max : 1
+            let onTrakt = min(trakt[key] ?? 0, cap), inDiary = min(diary[key] ?? 0, cap)
             result.matchingPlays += min(onTrakt, inDiary)
-            if onTrakt > inDiary { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on Trakt, \(inDiary) in the diary")) }
-            if inDiary > onTrakt { result.onlyInDiary.append(Difference(title: labels[key] ?? key, detail: "\(inDiary) in the diary, \(onTrakt) on Trakt")) }
+            if onTrakt > inDiary { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on \(service), \(inDiary) in the diary")) }
+            if inDiary > onTrakt { result.onlyInDiary.append(Difference(title: labels[key] ?? key, detail: "\(inDiary) in the diary, \(onTrakt) on \(service)")) }
         }
 
         // Title facts: ratings, Planned = watchlist, favourites, Dropped.
@@ -280,16 +284,16 @@ public struct TraktComparison: Equatable, Sendable {
             let label: String = title?.name ?? ratedName ?? listedName ?? key
             let score = title?.score.map { Int($0.rounded()) }
             if score != ratings[key] {
-                result.ratingDifferences.append(Difference(title: label, detail: "diary \(score.map(String.init) ?? "none"), Trakt \(ratings[key].map(String.init) ?? "none")"))
+                result.ratingDifferences.append(Difference(title: label, detail: "diary \(score.map(String.init) ?? "none"), \(service) \(ratings[key].map(String.init) ?? "none")"))
             }
             if (title?.status == "planned") != watchlist.contains(key) {
-                result.plannedDifferences.append(Difference(title: label, detail: watchlist.contains(key) ? "on the Trakt watchlist, not Planned in the diary" : "Planned in the diary, not on the Trakt watchlist"))
+                result.plannedDifferences.append(Difference(title: label, detail: watchlist.contains(key) ? "on the \(service) watchlist, not Planned in the diary" : "Planned in the diary, not on the \(service) watchlist"))
             }
-            if (title?.favorite == true) != favorites.contains(key) {
-                result.favoriteDifferences.append(Difference(title: label, detail: favorites.contains(key) ? "a Trakt favourite, not in the diary" : "a diary favourite, not on Trakt"))
+            if can.holdsFavourites, (title?.favorite == true) != favorites.contains(key) {
+                result.favoriteDifferences.append(Difference(title: label, detail: favorites.contains(key) ? "a \(service) favourite, not in the diary" : "a diary favourite, not on \(service)"))
             }
-            if (title?.status == "dropped") != dropped.contains(key) {
-                result.droppedDifferences.append(Difference(title: label, detail: dropped.contains(key) ? "dropped on Trakt, not in the diary" : "dropped in the diary, not on Trakt"))
+            if can.holdsDropped, (title?.status == "dropped") != dropped.contains(key) {
+                result.droppedDifferences.append(Difference(title: label, detail: dropped.contains(key) ? "dropped on \(service), not in the diary" : "dropped in the diary, not on \(service)"))
             }
         }
         return result

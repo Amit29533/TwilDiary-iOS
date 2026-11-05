@@ -119,7 +119,7 @@ import BackgroundTasks
         applyLiveActivityState(state)
     }
 
-    /// Updates the Dynamic Island Live Activity for a multi-provider sync or outbox batch (`WeTrakr`, `Simkl`, `MDBList`, `Trakt`).
+    /// Updates the Dynamic Island Live Activity for a multi-provider sync or outbox batch (`Simkl`, `MDBList`, `Trakt`).
     func updateForProviderBatch(
         provider: SyncProviderKind,
         completed: Int,

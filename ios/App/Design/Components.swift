@@ -176,17 +176,27 @@ struct FilterPill: View {
 }
 
 /// The official Trakt mark and TMDB logo, used wherever the app names those services.
+/// Each service's own logo, in its own colours, on a tile the size of a settings icon.
 struct BrandLogo: View {
-    enum Service { case trakt, tmdb, jellyfin }
+    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, cloudflare, anilist }
     let service: Service
     var size: CGFloat = 34
     var body: some View {
+        let corner = RoundedRectangle(cornerRadius: size * 0.225)
         Group {
             switch service {
             case .trakt: Image("trakt-mark").resizable().scaledToFit()
             case .jellyfin: Image("jellyfin-mark").resizable().scaledToFit().padding(size * 0.06)
             case .tmdb: Image("tmdb-logo").resizable().scaledToFit().padding(size * 0.16)
-                .background(Color(webHex: "#0d253f"), in: RoundedRectangle(cornerRadius: size * 0.225))
+                .background(Color(webHex: "#0d253f"), in: corner)
+            // Simkl's mark is a black tile with the S cut out: drawn over white, the S shows white.
+            case .simkl: Image("brand-simkl").resizable().scaledToFit().foregroundStyle(.black)
+                .background(.white, in: corner.inset(by: size * 0.08))
+            case .mdblist: Image("brand-mdblist").resizable().scaledToFit().clipShape(corner)
+            case .cloudflare: Image("brand-cloudflare").resizable().scaledToFit().foregroundStyle(Color(webHex: "#f38020"))
+                .padding(size * 0.14).background(.white, in: corner)
+            case .anilist: Image("site-anilist").resizable().scaledToFit().foregroundStyle(Color(webHex: "#02a9ff"))
+                .padding(size * 0.18).background(Color(webHex: "#2b2d42"), in: corner)
             }
         }.frame(width: size, height: size).accessibilityHidden(true)
     }
@@ -203,85 +213,6 @@ struct BrandMark: Shape {
         path.addCurve(to: point(1, 12), control1: point(10.5, 15.5), control2: point(8.5, 13.5))
         path.addCurve(to: point(12, 1), control1: point(8.5, 10.5), control2: point(10.5, 8.5))
         path.closeSubpath(); return path
-    }
-}
-
-enum ConnectionProviderIconKind: String, CaseIterable, Sendable {
-    case tmdb, trakt, wetrakr, simkl, mdblist
-}
-
-/// Vector brand icons for Connections (TMDB, Trakt, WeTrakr, Simkl, MDBList) rendered at Lucide's
-/// 24x24 1.75pt stroke geometry so they match every settings row and header badge.
-struct ProviderBrandIcon: View {
-    let provider: ConnectionProviderIconKind
-    var size: CGFloat = 18
-
-    var body: some View {
-        Canvas { context, canvasSize in
-            let sx = canvasSize.width / 24
-            let sy = canvasSize.height / 24
-            let stroke = StrokeStyle(lineWidth: 1.8 * min(sx, sy), lineCap: .round, lineJoin: .round)
-            func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * sx, y: y * sy) }
-            var path = Path()
-            switch provider {
-            case .tmdb:
-                // TMDB stacked rounded pill bars mark
-                path.addRoundedRect(in: CGRect(x: 3 * sx, y: 5 * sy, width: 11 * sx, height: 3.2 * sy), cornerSize: CGSize(width: 1.6 * sx, height: 1.6 * sy))
-                path.addRoundedRect(in: CGRect(x: 16.5 * sx, y: 5 * sy, width: 4.5 * sx, height: 3.2 * sy), cornerSize: CGSize(width: 1.6 * sx, height: 1.6 * sy))
-                path.addRoundedRect(in: CGRect(x: 3 * sx, y: 10.4 * sy, width: 6.5 * sx, height: 3.2 * sy), cornerSize: CGSize(width: 1.6 * sx, height: 1.6 * sy))
-                path.addRoundedRect(in: CGRect(x: 12 * sx, y: 10.4 * sy, width: 9 * sx, height: 3.2 * sy), cornerSize: CGSize(width: 1.6 * sx, height: 1.6 * sy))
-                path.addRoundedRect(in: CGRect(x: 3 * sx, y: 15.8 * sy, width: 13 * sx, height: 3.2 * sy), cornerSize: CGSize(width: 1.6 * sx, height: 1.6 * sy))
-                path.addRoundedRect(in: CGRect(x: 18.2 * sx, y: 15.8 * sy, width: 2.8 * sx, height: 3.2 * sy), cornerSize: CGSize(width: 1.4 * sx, height: 1.4 * sy))
-            case .trakt:
-                // Trakt circle + diagonal check-slash emblem
-                path.addEllipse(in: CGRect(x: 2.5 * sx, y: 2.5 * sy, width: 19 * sx, height: 19 * sy))
-                path.move(to: pt(7.5, 12.5))
-                path.addLine(to: pt(10.8, 15.8))
-                path.addLine(to: pt(17.2, 8.2))
-                path.move(to: pt(13.5, 6.2))
-                path.addLine(to: pt(18.5, 11.2))
-            case .wetrakr:
-                // WeTrakr W-pulse tracker wave inside rounded frame
-                path.addRoundedRect(in: CGRect(x: 2.5 * sx, y: 3.5 * sy, width: 19 * sx, height: 17 * sy), cornerSize: CGSize(width: 4.5 * sx, height: 4.5 * sy))
-                path.move(to: pt(6.0, 9.0))
-                path.addLine(to: pt(8.8, 15.5))
-                path.addLine(to: pt(12.0, 10.2))
-                path.addLine(to: pt(15.2, 15.5))
-                path.addLine(to: pt(18.0, 9.0))
-            case .simkl:
-                // Simkl hexagonal play-shield mark
-                path.move(to: pt(12, 2.5))
-                path.addLine(to: pt(20, 7.0))
-                path.addLine(to: pt(20, 17.0))
-                path.addLine(to: pt(12, 21.5))
-                path.addLine(to: pt(4, 17.0))
-                path.addLine(to: pt(4, 7.0))
-                path.closeSubpath()
-                path.move(to: pt(10, 8.8))
-                path.addLine(to: pt(15.8, 12.0))
-                path.addLine(to: pt(10, 15.2))
-                path.closeSubpath()
-            case .mdblist:
-                // MDBList star + curated list lines mark
-                path.move(to: pt(6.5, 5.5))
-                path.addLine(to: pt(7.6, 7.8))
-                path.addLine(to: pt(10.1, 8.1))
-                path.addLine(to: pt(8.3, 9.8))
-                path.addLine(to: pt(8.7, 12.3))
-                path.addLine(to: pt(6.5, 11.1))
-                path.addLine(to: pt(4.3, 12.3))
-                path.addLine(to: pt(4.7, 9.8))
-                path.addLine(to: pt(2.9, 8.1))
-                path.addLine(to: pt(5.4, 7.8))
-                path.closeSubpath()
-                path.move(to: pt(13, 7.5)); path.addLine(to: pt(20.5, 7.5))
-                path.move(to: pt(13, 12.0)); path.addLine(to: pt(20.5, 12.0))
-                path.move(to: pt(4.5, 17.0)); path.addLine(to: pt(20.5, 17.0))
-            }
-            context.stroke(path, with: .foreground, style: stroke)
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
     }
 }
 

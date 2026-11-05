@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
+    @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmSignOut = false
@@ -117,22 +118,25 @@ struct SettingsView: View {
                         settingsRow("globe.asia.australia.fill", .cyan, "Time zone", value: TimeZone.current.identifier.replacingOccurrences(of: "_", with: " "))
                     }
                     settingsSection("Connections and data") {
+                        NavigationLink(value: AppDestination.mainTracker) {
+                            settingsRow(leading: BrandLogo(service: (MainTracker(rawValue: mainTracker) ?? .trakt).brand), "Main tracker",
+                                        subtitle: "The service that holds your diary", value: (MainTracker(rawValue: mainTracker) ?? .trakt).name, disclosure: true, padded: true)
+                        }.accessibilityIdentifier("settings-main-tracker")
+                        divider
                         NavigationLink(value: AppDestination.trakt) { settingsRow(.trakt, "Trakt", subtitle: "History, ratings and watchlist", value: traktBadge, disclosure: true) }.accessibilityIdentifier("settings-trakt")
                         divider
                         NavigationLink(value: AppDestination.tmdb) { settingsRow(.tmdb, "TMDB", subtitle: "Posters, details, seasons and episodes", disclosure: true) }.accessibilityIdentifier("settings-tmdb")
-                        divider
-                        NavigationLink(value: AppDestination.wetrakr) { providerSettingsRow(.wetrakr, "WeTrakr", subtitle: "History, ratings and favorites", value: store.providerSettings.wetrakr.statusBadge, disclosure: true) }.accessibilityIdentifier("settings-wetrakr")
                         divider
                         NavigationLink(value: AppDestination.simkl) { providerSettingsRow(.simkl, "Simkl", subtitle: "Anime, shows and movie tracking", value: store.providerSettings.simkl.statusBadge, disclosure: true) }.accessibilityIdentifier("settings-simkl")
                         divider
                         NavigationLink(value: AppDestination.mdblist) { providerSettingsRow(.mdblist, "MDBList", subtitle: "Multi-source ratings and watchlist", value: store.providerSettings.mdblist.statusBadge, disclosure: true) }.accessibilityIdentifier("settings-mdblist")
                         divider
                         NavigationLink(value: AppDestination.anilist) {
-                            settingsRow("person.text.rectangle.fill", .blue, "AniList", subtitle: "Characters and voice actors in Favourites",
+                            settingsRow(.anilist, "AniList", subtitle: "Characters and voice actors in Favourites",
                                         value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, disclosure: true)
                         }.accessibilityIdentifier("settings-anilist")
                         divider
-                        NavigationLink(value: AppDestination.cloudflare) { settingsRow("cloud.fill", .cloudflare, "Cloudflare", subtitle: "Usage against the free plan", disclosure: true) }.accessibilityIdentifier("settings-cloudflare")
+                        NavigationLink(value: AppDestination.cloudflare) { settingsRow(.cloudflare, "Cloudflare", subtitle: "Usage against the free plan", disclosure: true) }.accessibilityIdentifier("settings-cloudflare")
                         divider
                         NavigationLink(value: AppDestination.apis) { settingsRow("key.fill", .yellow, "APIs", subtitle: "TMDB, Trakt, Cloudflare and Jellyfin keys", disclosure: true) }.accessibilityIdentifier("settings-apis")
                         divider
@@ -291,8 +295,8 @@ struct SettingsView: View {
             if disclosure { DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary) }
         }.padding(.horizontal, padded ? 14 : 0).frame(minHeight: padded ? 58 : 40).contentShape(Rectangle())
     }
-    private func providerSettingsRow(_ provider: ConnectionProviderIconKind, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
-        settingsRow(leading: ProviderBrandIcon(provider: provider, size: 20).foregroundStyle(.white).frame(width: 34, height: 34).background(theme.strong.gradient, in: RoundedRectangle(cornerRadius: 9)), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: true)
+    private func providerSettingsRow(_ provider: BrandLogo.Service, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
+        settingsRow(leading: BrandLogo(service: provider), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: true)
     }
     private func exportDiary() {
         // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.
@@ -329,10 +333,7 @@ struct TMDBConnectionView: View {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(spacing: 12) {
-                        ProviderBrandIcon(provider: .tmdb, size: 22)
-                            .foregroundStyle(theme.accent)
-                            .padding(12)
-                            .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                        BrandLogo(service: .tmdb, size: 46)
                         Text("TMDB").font(.title2.bold())
                         Spacer()
                         Text(verified ? "Connected" : checking ? "Checking…" : store.providerSettings.customTmdbToken != nil ? "Custom API" : "Not connected")
@@ -443,21 +444,19 @@ struct ExternalProviderConnectionView: View {
     @State private var pendingSignIn: ProviderDeviceSignIn.Authorization?
     @State private var signInTask: Task<Void, Never>?
 
-    struct ProviderApps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String?; let wetrakr: String? }
+    struct ProviderApps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String? }
 
-    private var iconKind: ConnectionProviderIconKind {
+    private var brand: BrandLogo.Service {
         switch provider {
-        case .wetrakr: .wetrakr
         case .simkl: .simkl
         case .mdblist: .mdblist
         case .trakt: .trakt
-        case .cloudflare: .tmdb
+        case .cloudflare: .cloudflare
         }
     }
 
     private var displayName: String {
         switch provider {
-        case .wetrakr: "WeTrakr"
         case .simkl: "Simkl"
         case .mdblist: "MDBList"
         case .trakt: "Trakt"
@@ -467,7 +466,6 @@ struct ExternalProviderConnectionView: View {
 
     private var subtitleText: String {
         switch provider {
-        case .wetrakr: "Compact sync, decimal ratings, watchlist and favorites."
         case .simkl: "Anime, TV and movie watch history, ratings and lists."
         case .mdblist: "Multi-source public ratings and watchlist sync."
         case .trakt: "Watch history, ratings and watchlist."
@@ -477,7 +475,6 @@ struct ExternalProviderConnectionView: View {
 
     private var includedDomainsText: String {
         switch provider {
-        case .wetrakr: "Watch history · Decimal ratings (0.5–10) · Watchlist · Favorites · Dropped"
         case .simkl: "Watch history · Ratings · Plan to watch · Dropped"
         case .mdblist: "IMDb / RT / Metacritic / Letterboxd ratings · Watchlist"
         case .trakt, .cloudflare: "Watch history · Ratings · Watchlist"
@@ -541,10 +538,6 @@ struct ExternalProviderConnectionView: View {
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
                     }
-                case .wetrakr:
-                    Text("WeTrakr hasn’t published how apps sign in yet. Use an app key and personal access token below.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("wetrakr-sign-in-unavailable")
                 case .cloudflare:
                     EmptyView()
                 }
@@ -555,7 +548,6 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .simkl: apps?.simkl
         case .mdblist: apps?.mdblist
-        case .wetrakr: apps?.wetrakr
         case .trakt: apps?.trakt
         case .cloudflare: nil
         }
@@ -578,10 +570,10 @@ struct ExternalProviderConnectionView: View {
     }
     private func loadApps() async {
         #if DEBUG
-        if store.isPreview { apps = ProviderApps(trakt: "preview", simkl: nil, mdblist: nil, wetrakr: nil); return }
+        if store.isPreview { apps = ProviderApps(trakt: "preview", simkl: nil, mdblist: nil); return }
         #endif
         let loaded: ProviderApps? = try? await store.read("/api/providers/apps")
-        apps = loaded ?? ProviderApps(trakt: nil, simkl: nil, mdblist: nil, wetrakr: nil)
+        apps = loaded ?? ProviderApps(trakt: nil, simkl: nil, mdblist: nil)
     }
     private func startSignIn(_ appId: String) {
         signInTask?.cancel()
@@ -636,10 +628,7 @@ struct ExternalProviderConnectionView: View {
         let color: Color = badge == "Connected" ? .mint : badge == "Configured" ? .yellow : .secondary
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                ProviderBrandIcon(provider: iconKind, size: 22)
-                    .foregroundStyle(theme.accent)
-                    .padding(12)
-                    .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                BrandLogo(service: brand, size: 46)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(displayName).font(.title3.bold())
                     Text(currentConfig.username.map { "@" + $0 } ?? subtitleText)
@@ -707,9 +696,9 @@ struct ExternalProviderConnectionView: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(provider == .wetrakr ? "WeTrakr App API Key (wetrakr-api-key)" : "Client ID (\(provider.rawValue)-api-key)")
+                        Text("Client ID (\(provider.rawValue)-api-key)")
                             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        TextField(provider == .wetrakr ? "wtk_..." : "Your \(displayName) Client ID", text: $clientId)
+                        TextField("Your \(displayName) Client ID", text: $clientId)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .padding(12)
@@ -718,9 +707,9 @@ struct ExternalProviderConnectionView: View {
                             .accessibilityIdentifier("\(provider.rawValue)-client-id-field")
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(provider == .wetrakr ? "Access Token or PAT (Bearer)" : "OAuth Access Token (Bearer)")
+                        Text("OAuth Access Token (Bearer)")
                             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        SecureField(provider == .wetrakr ? "wtk_pat_..." : "Paste your access token", text: $accessToken)
+                        SecureField("Paste your access token", text: $accessToken)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .padding(12)
@@ -843,7 +832,7 @@ struct ExternalProviderConnectionView: View {
                         return
                     }
                     do {
-                        if (provider == .wetrakr || provider == .simkl), !store.isPreview {
+                        if provider == .simkl, !store.isPreview {
                             struct PullReceipt: Decodable {
                                 let importedPlays: Int; let updatedRatings: Int; let updatedFavorites: Int; let updatedStatuses: Int
                                 let preserved: Int?; let unmatched: Int?; let conflicts: Int?

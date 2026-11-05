@@ -31,7 +31,6 @@ declare global {
         MDBLIST_API_KEY?: string;
         SIMKL_CLIENT_ID?: string;
         MDBLIST_CLIENT_ID?: string;
-        WETRAKR_CLIENT_ID?: string;
         CF_ANALYTICS_TOKEN?: string;
         CF_ACCOUNT_ID?: string;
       };

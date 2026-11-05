@@ -21,7 +21,7 @@ public enum ProviderDeviceSignIn {
         case .simkl:
             Endpoints(authorize: URL(string: "https://api.simkl.com/oauth2/device")!,
                       token: URL(string: "https://api.simkl.com/oauth2/token")!, scope: "media:read media:write")
-        case .trakt, .wetrakr, .cloudflare:
+        case .trakt, .cloudflare:
             nil
         }
     }

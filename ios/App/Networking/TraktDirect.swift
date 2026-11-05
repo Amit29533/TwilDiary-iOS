@@ -167,3 +167,98 @@ struct TraktDirectClient: Sendable {
         try? FileManager.default.removeItem(at: file)
     }
 }
+
+/// The same read-and-compare preview for Simkl and MDBList as the main tracker. Trakt keeps its own
+/// store above (its lists are fetched one by one); these two are read whole when anything changed.
+@MainActor @Observable final class TrackerPreviewStore {
+    static let shared = TrackerPreviewStore()
+    private(set) var libraries: [MainTracker: TraktLibrary] = [:]
+    private(set) var reports: [MainTracker: TraktDirectStore.Report] = [:]
+    private(set) var running: MainTracker?
+    var errors: [MainTracker: String] = [:]
+    private let folder: URL
+    init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
+        self.folder = folder
+        for tracker in [MainTracker.simkl, .mdblist] {
+            libraries[tracker] = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
+        }
+    }
+    private func file(_ tracker: MainTracker) -> URL { folder.appending(path: tracker.rawValue + ".json") }
+
+    func check(_ tracker: MainTracker, store: DiaryStore) async {
+        guard tracker == .simkl || tracker == .mdblist, running == nil else { return }
+        if store.isPreview { errors[tracker] = "Direct reads need a real \(tracker.name) connection."; return }
+        running = tracker; errors[tracker] = nil
+        defer { running = nil }
+        let started = Date.now
+        do {
+            let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
+            let client = store.directClient
+            var requests = 1
+            let activities = try TraktDecode.activities(from: try await client.read(config, path: tracker == .simkl ? "/sync/activities" : "/sync/last_activities"))
+            var library = libraries[tracker] ?? TraktLibrary()
+            var fetched: [TraktDomain] = []
+            if library.activities != activities || library.fetchedAt == nil {
+                if tracker == .simkl {
+                    library = try TrackerDecode.simklLibrary(from: try await client.read(config, path: "/sync/all-items/", query: [
+                        "extended": "full", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]))
+                    requests += 1
+                    fetched = [.history, .ratings, .watchlist, .dropped, .notes]
+                } else {
+                    var fresh = TraktLibrary()
+                    let watched = try await mdblistPages(client, config, "/sync/watched")
+                    fresh.plays = watched.items.map { item in
+                        TraktPlay(historyId: TrackerDecode.playID("mdblist|\(item.title.kind.rawValue)|\(item.title.tmdbId ?? 0)|\(item.title.name)|\(item.season ?? -1)|\(item.episode ?? -1)"),
+                                  title: item.title, season: item.season, episode: item.episode, watchedAt: item.date)
+                    }
+                    let ratings = try await mdblistPages(client, config, "/sync/ratings")
+                    fresh.ratings = ratings.items.compactMap { item in item.rating.map { TraktRating(title: item.title, rating: $0, ratedAt: item.date) } }
+                    let dropped = try await mdblistPages(client, config, "/sync/dropped")
+                    fresh.dropped = dropped.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
+                    let watchlist = try await mdblistPages(client, config, "/watchlist/items")
+                    fresh.watchlist = watchlist.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
+                    fresh.skipped = watched.skipped + ratings.skipped + dropped.skipped + watchlist.skipped
+                    requests += watched.calls + ratings.calls + dropped.calls + watchlist.calls
+                    library = fresh
+                    fetched = [.history, .ratings, .dropped, .watchlist]
+                }
+                library.activities = activities
+            }
+            library.fetchedAt = Date.now.formatted(.iso8601)
+            libraries[tracker] = library
+            save(library, tracker)
+            reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
+                                     skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.workspace, tracker: tracker))
+        } catch {
+            if !Task.isCancelled { errors[tracker] = error.localizedDescription }
+        }
+    }
+
+    /// Follows MDBList's cursor, 1,000 items a page, at most 50 pages.
+    private func mdblistPages(_ client: DirectProviderClient, _ config: ExternalProviderConfig, _ path: String) async throws
+        -> (items: [TrackerDecode.MDBListPage.Item], skipped: Int, calls: Int) {
+        var items: [TrackerDecode.MDBListPage.Item] = [], skipped = 0, calls = 0, cursor: String?
+        repeat {
+            var query = ["limit": "1000"]
+            if let cursor { query["cursor"] = cursor }
+            let page = try TrackerDecode.mdblistPage(from: try await client.read(config, path: path, query: query))
+            items += page.items; skipped += page.skipped; calls += 1
+            cursor = page.next == cursor ? nil : page.next
+        } while cursor != nil && calls < 50
+        return (items, skipped, calls)
+    }
+
+    private func save(_ library: TraktLibrary, _ tracker: MainTracker) {
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try JSONEncoder().encode(library).write(to: file(tracker), options: [.atomic, .completeFileProtection])
+            var values = URLResourceValues(); values.isExcludedFromBackup = true
+            var url = folder; try url.setResourceValues(values)
+        } catch { }
+    }
+    /// Sign-out: these copies are diary data, so they go with the diary.
+    func forget() {
+        libraries = [:]; reports = [:]; errors = [:]
+        try? FileManager.default.removeItem(at: folder)
+    }
+}

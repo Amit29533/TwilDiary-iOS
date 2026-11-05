@@ -289,7 +289,7 @@ import TwilDiaryCore
         communityCache.reset()
         needsMutationRefresh = false
         Task { await PublicArtworkCache.shared.removeAll() }
-        TraktDirectStore.shared.forget()
+        TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget()
         api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
         showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
         do { try cache.removeAll(); cacheWarning = nil }
@@ -694,11 +694,10 @@ import TwilDiaryCore
         struct Payload: Decodable {
             let customTmdbToken: String?
             let trakt: Entry?
-            let wetrakr: Entry?
             let simkl: Entry?
             let mdblist: Entry?
             func entry(_ key: String) -> Entry? {
-                switch key { case "trakt": trakt; case "wetrakr": wetrakr; case "simkl": simkl; case "mdblist": mdblist; default: nil }
+                switch key { case "trakt": trakt; case "simkl": simkl; case "mdblist": mdblist; default: nil }
             }
         }
         let protocolVersion: Int?
@@ -706,7 +705,7 @@ import TwilDiaryCore
         let revision: String?
         let settings: Payload?
     }
-    private static let vaultPaths = ["customTmdbToken"] + ["trakt", "wetrakr", "simkl", "mdblist"].flatMap { provider in
+    private static let vaultPaths = ["customTmdbToken"] + ["trakt", "simkl", "mdblist"].flatMap { provider in
         ["enabled", "clientId", "accessToken", "apiKey", "username", "loggingMethod"].map { provider + "." + $0 }
     }
     private static func validVaultDirty(_ fields: [String: VaultDirtyField]) -> [String: VaultDirtyField] {
@@ -892,7 +891,7 @@ import TwilDiaryCore
         guard session == sessionGeneration else { throw CancellationError() }
         return (receipt.importedTitles, receipt.importedEvents)
     }
-    /// Records a watch or title mutation for any enabled direct providers (`wetrakr`, `simkl`, `mdblist`, `trakt`)
+    /// Records a watch or title mutation for any enabled direct providers (`simkl`, `mdblist`, `trakt`)
     /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
     func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString) {
         let activeProviders = providerSettings.activeDirectLoggingProviders
@@ -906,7 +905,7 @@ import TwilDiaryCore
         catch { self.error = "Provider delivery could not be saved: " + error.localizedDescription; return }
         Task { await flushDirectProviders() }
     }
-    /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `wetrakr`, `simkl`, `mdblist`).
+    /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `simkl`, `mdblist`).
     func flushDirectProviders() async {
         guard !directFlushActive, !needsSignIn else { return }
         let session = sessionGeneration
@@ -1008,11 +1007,6 @@ import TwilDiaryCore
             _ = try await directClient.fetchTraktLastActivities(
                 credentials: DirectTraktCredentials(clientId: clientId, accessToken: token)
             )
-        case .wetrakr:
-            guard config.isAuthenticated else {
-                throw APIError.message("Enter both a WeTrakr API Key and Access Token / PAT.")
-            }
-            _ = try await directClient.fetchWeTrakrActivities(config: config)
         case .simkl:
             guard config.isAuthenticated else {
                 throw APIError.message("Enter both a Simkl Client ID and Access Token.")
