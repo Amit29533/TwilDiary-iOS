@@ -212,3 +212,36 @@ private func diary() throws -> Workspace {
     #expect(first.stamps["watched_at"] == "2026-11-01T00:00:00Z")
 }
 
+
+// MARK: Phase 2: make Trakt match the diary
+
+@Test func makeTraktMatchSendsOnlyWhatTraktLacksWithTheDiarysOwnTimes() throws {
+    let spooky = TraktTitleRef(kind: .show, traktId: 1, tmdbId: 284172, name: "Spooky in Love")
+    let alya = TraktTitleRef(kind: .show, traktId: 7, tmdbId: 777, name: "Alya")
+    let library = TraktLibrary(
+        plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: "2026-11-04T07:42:20.000Z")],
+        ratings: [TraktRating(title: spooky, rating: 8, ratedAt: nil)],
+        favorites: [TraktListed(title: alya, listedAt: nil)])
+    let plan = TraktWritePlan.make(library: library, workspace: try diary())
+    // E11 is on Trakt (20 s apart counts as the same watch); E12 and the movie are not; the revoked copy never goes.
+    #expect(plan.plays.map { "\($0.title.tmdbId) s\($0.season ?? 0)e\($0.episode ?? 0) \($0.watchedAt)" }.sorted()
+            == ["284172 s1e12 2026-10-31T23:16:00.000Z", "9 s0e0 2026-01-01T00:00:00.000Z"])
+    #expect(plan.ratings.map(\.rating) == [9], "The diary's rating wins")
+    #expect(plan.watchlistAdd.map(\.tmdbId) == [3])
+    #expect(plan.favouritesAdd.map(\.name) == ["Spooky in Love"])
+    #expect(plan.diaryFavourites.isEmpty, "Alya isn't in the diary, so there's nothing to mark")
+    #expect(plan.dropped.isEmpty && plan.watchlistRemove.isEmpty)
+    let requests = plan.requests()
+    #expect(requests.map(\.path) == ["/sync/history", "/sync/ratings", "/sync/watchlist", "/sync/favorites"])
+    let history = String(decoding: requests[0].body, as: UTF8.self)
+    #expect(history.contains("\"watched_at\":\"2026-10-31T23:16:00.000Z\"") && history.contains("\"tmdb\":284172"))
+    #expect(!plan.summary.isEmpty)
+    // Once Trakt has everything, nothing is sent.
+    var done = library
+    done.plays += [TraktPlay(historyId: 2, title: spooky, season: 1, episode: 12, watchedAt: "2026-10-31T23:16:00.000Z"),
+                   TraktPlay(historyId: 3, title: TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 9, name: "Diary only"), watchedAt: "2026-01-01T00:00:00.000Z")]
+    done.ratings = [TraktRating(title: spooky, rating: 9, ratedAt: nil)]
+    done.watchlist = [TraktListed(title: TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 3, name: "Obsession"), listedAt: nil)]
+    done.favorites = [TraktListed(title: spooky, listedAt: nil)]
+    #expect(TraktWritePlan.make(library: done, workspace: try diary()).isEmpty)
+}

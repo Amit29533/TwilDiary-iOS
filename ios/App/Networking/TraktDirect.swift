@@ -23,6 +23,33 @@ struct TraktDirectClient: Sendable {
     var session: URLSession = .shared
     private static let base = URL(string: "https://api.trakt.tv")!
     struct Reply: Sendable { let data: Data; let pageCount: Int }
+    /// A write (Trakt allows one a second): waits out "too many requests", and never retries a
+    /// write whose answer was lost, so a play is never sent twice.
+    func post(_ path: String, body: Data) async throws -> Data {
+        var request = URLRequest(url: Self.base.appending(path: path), timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("2", forHTTPHeaderField: "trakt-api-version")
+        request.setValue(token.clientId, forHTTPHeaderField: "trakt-api-key")
+        request.setValue("Bearer " + token.accessToken, forHTTPHeaderField: "Authorization")
+        for attempt in 0..<3 {
+            let (data, response) = try await session.data(for: request)
+            let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
+            // 429 means Trakt refused before writing anything, so asking again is safe.
+            if status == 429 && attempt < 2 {
+                let wait = Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 2
+                try await Task.sleep(for: .seconds(min(max(wait, 1), 30)))
+                continue
+            }
+            if status == 420 { throw APIError.message("Trakt says your account is at its limit (HTTP 420) for \(path). A Trakt VIP account lifts it.") }
+            if status == 401 || status == 403 { throw APIError.message("Trakt didn’t accept the sign-in (HTTP \(status)). Reconnect Trakt, then try again.") }
+            guard (200..<300).contains(status) else { throw APIError.message("Trakt answered HTTP \(status) for \(path).") }
+            return data
+        }
+        throw APIError.message("Trakt is busy right now. Try again in a minute.")
+    }
     func get(_ path: String, query: [String: String] = [:]) async throws -> Reply {
         var components = URLComponents(url: Self.base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
@@ -161,9 +188,54 @@ struct TraktDirectClient: Sendable {
             // The read still shows until the app closes; the next check saves it again.
         }
     }
+    // MARK: Phase 2: make Trakt match the diary
+
+    private(set) var writing = false
+    private(set) var writeProgress: String?
+    private(set) var writeResult: String?
+    /// What "Make Trakt match" would send, from the last read (nil before a read).
+    func matchPlan(store: DiaryStore) -> TraktWritePlan? {
+        library.map { TraktWritePlan.make(library: $0, workspace: store.workspace) }
+    }
+    /// Sends the plan to Trakt one request a second, marks Trakt-only favourites in the diary,
+    /// then reads Trakt again so the comparison shows the result.
+    func makeTraktMatch(store: DiaryStore) async {
+        guard !writing, !running, let plan = matchPlan(store: store), !plan.isEmpty else { return }
+        if store.isPreview { error = "Writing to Trakt needs a real Trakt connection."; return }
+        writing = true; error = nil; writeResult = nil
+        defer { writing = false; writeProgress = nil }
+        var sent = 0, notFound = 0
+        do {
+            if token?.usable != true { token = try await store.read("/api/trakt/token") }
+            let client = TraktDirectClient(token: token!)
+            let requests = plan.requests()
+            for (index, request) in requests.enumerated() {
+                writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
+                if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                let reply = try await client.post(request.path, body: request.body)
+                sent += request.count
+                notFound += Self.notFoundCount(reply)
+            }
+            for id in plan.diaryFavourites {
+                if let title = store.title(id) { _ = await store.patch(title, values: ["favorite": true]) }
+            }
+            writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + "."
+                + (notFound > 0 ? " Trakt couldn’t find \(notFound) of them by their TMDB id." : "")
+                + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
+        } catch {
+            if !Task.isCancelled { self.error = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
+        }
+        await check(store: store)
+    }
+    /// Trakt's "not_found" lists in a write reply.
+    static func notFoundCount(_ data: Data) -> Int {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let missing = root["not_found"] as? [String: Any] else { return 0 }
+        return missing.values.reduce(0) { $0 + (($1 as? [Any])?.count ?? 0) }
+    }
+
     /// Sign-out: the Trakt copy is diary data, so it goes with the diary.
     func forget() {
-        library = nil; report = nil; token = nil; error = nil
+        library = nil; report = nil; token = nil; error = nil; writeResult = nil
         try? FileManager.default.removeItem(at: file)
     }
 }

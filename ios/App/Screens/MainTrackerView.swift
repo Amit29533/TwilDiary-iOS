@@ -77,6 +77,7 @@ struct TrackerPreviewPanel: View {
     private var report: TraktDirectStore.Report? { tracker == .trakt ? trakt.report : others.reports[tracker] }
     private var error: String? { tracker == .trakt ? trakt.error : others.errors[tracker] }
     private var running: Bool { tracker == .trakt ? trakt.running : others.running == tracker }
+    @State private var confirmMatch = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -87,15 +88,42 @@ struct TrackerPreviewPanel: View {
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
                 }
+                if tracker == .trakt { matchSection }
                 Button {
                     Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
                 } label: {
                     Label(running ? "Reading \(tracker.name)…" : "Check now", systemImage: "bolt.horizontal.circle").frame(maxWidth: .infinity)
-                }.font(.subheadline).buttonStyle(.diarySecondary).disabled(running).accessibilityIdentifier(id + "-check")
+                }.font(.subheadline).buttonStyle(.diarySecondary).disabled(running || trakt.writing).accessibilityIdentifier(id + "-check")
             }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
                 .smoothChange(of: report?.comparison.matchingPlays ?? -1)
         }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
+    }
+
+    /// Phase 2: bring Trakt in line with the diary, after showing exactly what will be sent.
+    @ViewBuilder private var matchSection: some View {
+        let plan = report != nil ? trakt.matchPlan(store: store) : nil
+        if let progress = trakt.writeProgress {
+            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
+        } else if let result = trakt.writeResult {
+            Label(result, systemImage: "checkmark").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("trakt-match-result")
+        }
+        if let plan, !plan.isEmpty, !trakt.writing {
+            Button { confirmMatch = true } label: {
+                Label("Make Trakt match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+            }.font(.subheadline.weight(.semibold)).buttonStyle(.glassProminent).disabled(running).accessibilityIdentifier("trakt-make-match")
+                .confirmationDialog("Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
+                    Button("Send to Trakt") { Task { await trakt.makeTraktMatch(store: store) } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(plan.summary.map { "• " + $0 }.joined(separator: "
+")
+                         + "
+
+Nothing is removed from your Trakt history. Watches only on Trakt stay and come into the diary on their own.")
+                }
+        }
     }
 
     private var intro: String {
