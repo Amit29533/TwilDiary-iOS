@@ -330,20 +330,10 @@ struct Artwork: View {
     var contentMode: ContentMode = .fill
     /// Full-width profiles can use the original public TMDB portrait before downsampling.
     var prefersOriginal = false
-    /// With `.fit`: never draw a downloaded image larger than this many times its own pixels,
-    /// so a small source (AniList's ~230 px portraits) shows smaller but sharp, not stretched.
-    var maxUpscale: CGFloat? = nil
     @Environment(\.displayScale) private var displayScale
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var loadedArtwork: PublicArtworkBitmap?
     @State private var loadedRequest: PublicArtworkRequest?
-    /// The whole image inside `box`, no larger than `maxUpscale` times its pixel size.
-    static func fittedSize(pixels: CGSize, in box: CGSize, scale: CGFloat, maxUpscale: CGFloat) -> CGSize {
-        guard pixels.width > 0, pixels.height > 0, box.width > 0, box.height > 0 else { return box }
-        let natural = CGSize(width: pixels.width / scale * maxUpscale, height: pixels.height / scale * maxUpscale)
-        let factor = min(1, box.width / natural.width, box.height / natural.height)
-        return CGSize(width: natural.width * factor, height: natural.height * factor)
-    }
     var body: some View {
         GeometryReader { proxy in
           let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale), prefersOriginal: prefersOriginal)
@@ -365,16 +355,9 @@ struct Artwork: View {
                 let current = loadedRequest == request ? loadedArtwork : nil
                 let sameImage = loadedRequest?.url == request.url ? loadedArtwork : nil
                 if let bitmap = current ?? PublicArtworkCache.shared.cached(request) ?? sameImage {
-                    if contentMode == .fit, let maxUpscale {
-                        let fitted = Self.fittedSize(pixels: CGSize(width: bitmap.image.width, height: bitmap.image.height),
-                                                     in: proxy.size, scale: displayScale, maxUpscale: maxUpscale)
-                        Image(decorative: bitmap.image, scale: displayScale).resizable().interpolation(.high)
-                            .frame(width: fitted.width, height: fitted.height)
-                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment)
-                    } else {
-                        Image(decorative: bitmap.image, scale: displayScale).resizable().aspectRatio(contentMode: contentMode)
-                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped()
-                    }
+                    // High-quality resampling: small sources (AniList's 230 px portraits) stay smooth when enlarged.
+                    Image(decorative: bitmap.image, scale: displayScale).resizable().interpolation(.high).aspectRatio(contentMode: contentMode)
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped()
                 } else if loadedRequest == request { placeholder(size: proxy.size) }
             } else { placeholder(size: proxy.size) }
           }.frame(width: proxy.size.width, height: proxy.size.height).clipped()

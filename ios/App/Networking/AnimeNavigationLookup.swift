@@ -15,7 +15,11 @@ extension AnimeNavigationServing {
 }
 extension DiaryStore: AnimeNavigationServing {
     func knownAnimeRoute(_ id: Int) async -> CatalogRoute? { await AniListClient.shared.tmdbTitle(id) }
-    func knownPersonID(_ id: Int) async -> Int? { await AniListClient.shared.tmdbPerson(id) }
+    /// A remembered match, else Wikidata's AniList-to-TMDB link (exact, unlike matching cast names).
+    func knownPersonID(_ id: Int) async -> Int? {
+        if let saved = await AniListClient.shared.tmdbPerson(id) { return saved }
+        return await WikidataPeople.shared.tmdbID(forAniListStaff: id)
+    }
 }
 
 struct AnimeNavigationResult {

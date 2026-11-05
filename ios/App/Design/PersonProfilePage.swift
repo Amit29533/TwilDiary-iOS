@@ -87,16 +87,12 @@ struct PersonProfilePage<Content: View>: View {
         framedPortrait
         #endif
     }
-    /// The whole portrait, uncropped, at the top of a fixed-size header, never enlarged past ~2.5×
-    /// its own pixels (so a small AniList image stays sharp). A blurred, darkened copy of the same
-    /// image fills the rest, instead of black bars. Both use one request, so it downloads once.
+    /// The portrait fills the header's width. The header is shorter than a 2:3 photo, so the
+    /// bottom is trimmed (under the fade and the name); the top, where the face is, stays.
+    /// TMDB's original rendition (and a TMDB photo for AniList voice actors linked through
+    /// Wikidata) keeps it sharp at full width.
     private var framedPortrait: some View {
-        ZStack {
-            Artwork(path: image, title: name, alignment: .top, prefersOriginal: true)
-                .blur(radius: 28, opaque: true).overlay(Color.black.opacity(0.45))
-            Artwork(path: image, title: name, alignment: .top, contentMode: .fit, prefersOriginal: true, maxUpscale: 2.5)
-                .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
-        }
+        Artwork(path: image, title: name, alignment: .top, prefersOriginal: true)
     }
 }
 

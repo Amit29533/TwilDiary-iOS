@@ -253,6 +253,8 @@ struct PersonView: View {
         matching = true
         defer { matching = false }
         var id = known
+        // Wikidata's exact link first; an exact-name search only when it has none.
+        if id == nil { id = await WikidataPeople.shared.aniListStaffID(forTMDB: person.id) }
         if id == nil { id = await AniListClient.shared.staff(named: [person.name])[person.name]?.id }
         guard let id, !Task.isCancelled else { return }
         guard let found = try? await AniListClient.shared.voiceActor(id), !Task.isCancelled, !found.roles.isEmpty else { return }
