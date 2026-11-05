@@ -91,7 +91,10 @@ struct TitleDetailView: View {
                                 if title.category.hasPrefix("anime") { AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries, tmdbID: title.tmdbId) }
                                 if let tmdbId = title.tmdbId { CastAndRelated(route: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId), sourceTitle: title.name) }
                             }.padding(.horizontal, 14).padding(.bottom, 32)
-                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                                // The height only matters while the page scrolls itself to notes or files. Tracking it
+                                // always rebuilt the whole page each time a lazy episode row first
+                                // appeared, which stuttered the first scroll through a season.
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in if pendingScrollTarget != nil { contentHeight = height } }
                                 .background(alignment: .top) {
                                     TitleArtworkBackdrop(path: ["again", "night", "severance"].contains(title.id) ? "scene:" + title.id : title.backdrop ?? title.poster, name: title.name, topExtension: geometry.safeAreaInsets.top)
                                 }

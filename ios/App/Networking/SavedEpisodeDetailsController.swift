@@ -33,7 +33,10 @@ import Observation
             let rows = try await read.task.value
             guard session == generation, reads[season]?.id == read.id else { return }
             // These valid results can be reused after the caller switches away and returns.
-            for episode in rows { episodes[episode.id] = episode }
+            // One update for the whole season, not one per episode (each redrew the episode list).
+            var next = episodes
+            for episode in rows { next[episode.id] = episode }
+            episodes = next
             loaded.insert(season); reads.removeValue(forKey: season)
         } catch {
             guard session == generation, reads[season]?.id == read.id else { return }
