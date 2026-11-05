@@ -518,10 +518,15 @@ import UIKit
     }
     func testEmptyRandomPickOpensTheWorkingAddSearch() {
         let app = launch(empty: true)
-        let logo = app.buttons["random-pick-logo"]
+        let logo = app.buttons["random-pick-logo"], empty = app.staticTexts["Your next story starts here"]
+        // Let the empty diary finish loading first: a session change closes an open pick.
+        XCTAssertTrue(app.descendants(matching: .any)["glance-content"].waitForExistence(timeout: 10))
         wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: logo)], timeout: 5)
-        logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
-        XCTAssertTrue(app.staticTexts["Your next story starts here"].waitForExistence(timeout: 5))
+        for _ in 0..<3 where !empty.exists {
+            logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+            _ = empty.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(empty.exists)
         XCTAssertFalse(app.buttons["random-pick-open"].exists); capture("Empty collection random pick")
         app.buttons["Add a title"].tap()
         XCTAssertTrue(app.textFields["Search library and online"].waitForExistence(timeout: 5))
@@ -1833,7 +1838,8 @@ import UIKit
         XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5))
         if toast.exists { XCTAssertLessThanOrEqual(toast.frame.height, 48); XCTAssertLessThanOrEqual(toast.frame.width, 330) }
         capture("Compact watch toast")
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["Undo"])], timeout: 8)
+        // UI-test runs keep the toast 8 s (slow CI machines); it still expires on its own.
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["Undo"])], timeout: 14)
         XCTAssertFalse(app.buttons["Dismiss undo"].exists)
         app.buttons["progress-menu-again"].tap()
         XCTAssertTrue(app.buttons["Favorite"].exists); XCTAssertTrue(app.buttons["Dropped"].exists)

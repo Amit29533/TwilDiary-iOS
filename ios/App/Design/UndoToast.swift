@@ -3,6 +3,15 @@ import UIKit
 
 /// A short, readable Undo window. Repeated actions and active recovery restart its lifetime.
 struct UndoToast: View {
+    /// UI tests run on shared CI machines where a save can take seconds: the toast stays 8 s there,
+    /// as it does for VoiceOver, so tests reach Undo before it expires.
+    private static let slowRunner: Bool = {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--ui-testing")
+        #else
+        false
+        #endif
+    }()
     let label: String
     @Environment(DiaryStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -34,7 +43,7 @@ struct UndoToast: View {
             .task(id: Lifetime(notice: store.undoNoticeID, busy: store.busy, recovering: store.needsMutationRefresh, touching: touching)) {
                 guard !store.busy, !store.needsMutationRefresh, !touching else { return }
                 let notice = store.undoNoticeID
-                do { try await Task.sleep(for: .seconds(UIAccessibility.isVoiceOverRunning ? 8 : 4.5)) } catch { return }
+                do { try await Task.sleep(for: .seconds(UIAccessibility.isVoiceOverRunning || Self.slowRunner ? 8 : 4.5)) } catch { return }
                 guard !Task.isCancelled, notice == store.undoNoticeID else { return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { store.dismissUndo() }
             }

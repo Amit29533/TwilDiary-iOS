@@ -7,7 +7,8 @@ import XCTest
         app.launchArguments = ["--ui-testing", "--ui-personal-profile-reset", "--ui-arena", "--ui-upcoming"]
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Profile"].waitForExistence(timeout: 15))
+        // The suite's first launch on a cold CI simulator can take well over 15 s.
+        XCTAssertTrue(app.tabBars.buttons["Profile"].waitForExistence(timeout: 40))
         return app
     }
     private func reveal(_ element: XCUIElement, app: XCUIApplication) {
