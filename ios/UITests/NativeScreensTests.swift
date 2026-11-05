@@ -1711,6 +1711,23 @@ import UIKit
         XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
         capture("Native Explore returned Home")
     }
+    /// Tapping Search again (a double tap from anywhere) puts the cursor in the search field.
+    func testTappingSearchAgainFocusesTheSearchField() {
+        let app = launch(); app.tabBars.buttons["Home"].tap()
+        let tab = app.tabBars.buttons["Search"]
+        tab.tap()
+        let field = app.textFields["Search library and online"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "One tap opens Search without the keyboard")
+        tab.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "The second tap focuses the field")
+        XCTAssertEqual(field.value(forKey: "hasKeyboardFocus") as? Bool, true)
+        field.typeText("Frieren")
+        XCTAssertTrue(app.buttons["search-library-frieren"].waitForExistence(timeout: 5))
+        capture("Search focused by a second tap")
+        app.tabBars.buttons["Home"].tap(); tab.doubleTap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "A double tap from another tab focuses too")
+    }
     func testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped() {
         let app = launch(); app.tabBars.buttons["Home"].tap(); app.tabBars.buttons["Search"].tap()
         let field = app.textFields["Search library and online"]
@@ -1751,8 +1768,9 @@ import UIKit
         app.buttons["Clear search"].tap(); field.tap(); field.typeText("Clockmaker\n")
         XCTAssertTrue(app.buttons["search-movie:900001"].waitForExistence(timeout: 10), "Clearing and retyping the same query must fetch results again")
         app.tabBars.buttons["Glance"].tap(); app.tabBars.buttons["Search"].tap()
+        // Search is universal: a trip to Glance keeps the query and its results.
         let scoped = app.textFields["Search library and online"]
-        XCTAssertTrue(scoped.waitForExistence(timeout: 5)); scoped.tap(); scoped.typeText("Clockmaker\n")
+        XCTAssertTrue(scoped.waitForExistence(timeout: 5)); XCTAssertEqual(scoped.value as? String, "Clockmaker")
         XCTAssertTrue(app.buttons["search-movie:900001"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Glance"].tap()
         XCTAssertFalse(app.textFields["Find a current watch"].exists); capture("Glance uses universal Search")
@@ -1990,12 +2008,13 @@ import UIKit
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: ninthSummary)], timeout: 5)
         capture("Episode grid keeps captions and watch controls; details open in a sheet")
         episodes.tap()
-        let recommendations = app.staticTexts["You might like"], recommendationLayout = app.buttons["catalog-layout"]
-        for _ in 0..<10 { if recommendationLayout.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(recommendations.exists); XCTAssertTrue(recommendationLayout.isHittable)
-        XCTAssertEqual(recommendations.frame.midY, recommendationLayout.frame.midY, accuracy: 2)
-        XCTAssertEqual(app.buttons.matching(identifier: "catalog-layout").count, 1)
-        capture("Recommendations layout control shares the heading row")
+        let recommendations = app.staticTexts["You might like"]
+        let shelf = app.descendants(matching: .any)["related-titles-shelf"]
+        for _ in 0..<10 { if recommendations.exists && recommendations.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(recommendations.exists); XCTAssertTrue(shelf.exists)
+        XCTAssertLessThan(recommendations.frame.maxY, shelf.frame.minY + 4, "The shelf sits under its heading")
+        XCTAssertFalse(app.buttons["catalog-layout"].exists, "Recommendations are one sideways shelf, no layout toggle")
+        capture("Recommendations shelf under its heading")
         app.navigationBars.buttons.element(boundBy: 0).tap(); glance.tap()
         app.tabBars.buttons["Profile"].tap(); app.buttons["settings-files"].tap()
         let files = app.buttons["files-layout"]
@@ -2029,7 +2048,7 @@ import UIKit
         XCTAssertTrue(app.staticTexts["Continue watching"].exists)
         let start = library.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -170)))
-        XCTAssertEqual(["home", "library", "glance", "stats", "more"].filter { app.tabBars.buttons[$0.capitalized].isSelected }.count, 1)
+        XCTAssertEqual(["Home", "Library", "Glance", "Search", "Profile"].filter { app.tabBars.buttons[$0].exists && app.tabBars.buttons[$0].isSelected }.count, 1)
         XCTAssertEqual(app.tabBars.count, 1)
         app.tabBars.buttons["Library"].tap(); XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
         capture("Glass navigation cancelled and tap restored")

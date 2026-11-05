@@ -91,6 +91,8 @@ struct SavedTitleRoute: Hashable {
     var libraryDiskShortcut = ""
     var libraryRevision = 0
     var statsRevision = 0
+    /// Bumped when Search is tapped while already on Search: the field takes focus (keyboard up).
+    var searchFocusRevision = 0
     var detailTabs = Set<AppTab>()
     init() {
         #if DEBUG
@@ -123,7 +125,10 @@ struct SavedTitleRoute: Hashable {
         return true
     }
     func select(_ tab: AppTab) {
-        if selectedTab == tab { paths[tab] = NavigationPath(); detailTabs.remove(tab) }
+        if selectedTab == tab {
+            paths[tab] = NavigationPath(); detailTabs.remove(tab)
+            if tab == .search { searchFocusRevision += 1 }
+        }
         selectedTab = tab
     }
     func presentRandomPick(_ titleIDs: [String]? = nil) {

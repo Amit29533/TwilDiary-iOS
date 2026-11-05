@@ -89,7 +89,7 @@ struct CatalogSearchView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                SearchField(placeholder: universal ? "Search everything…" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, dismissRevision: dismissKeyboard)
+                SearchField(placeholder: universal ? "Search everything…" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard)
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
             if universal {

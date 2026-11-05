@@ -362,7 +362,11 @@ struct SearchField: View {
         }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 12), field: true) }
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(focused ? theme.accent.opacity(0.65) : .clear))
             .onDisappear { focused = false }
-            .onChange(of: focusRevision) { _, _ in focused = true }
+            .onChange(of: focusRevision) { _, _ in
+                focused = true
+                // A re-tap that popped back to Search: the field may only just be on screen again.
+                Task { try? await Task.sleep(for: .milliseconds(400)); if !focused { focused = true } }
+            }
             .onChange(of: dismissRevision) { _, _ in focused = false }
             .task { if autoFocus && !didAutoFocus { didAutoFocus = true; focused = true } }
     }
