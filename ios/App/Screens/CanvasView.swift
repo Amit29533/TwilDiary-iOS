@@ -77,8 +77,9 @@ private struct CanvasContent: View {
             .task(id: [tab.rawValue, listSort, listKind]) { if tab == .lists { await lists.load(sort: listSort, kind: listKind) } }
     }
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
+    /// The gap after the back button matches the gap between tabs (the bar leaves ~14 pt).
     private var tabs: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 20) {
             ForEach(CanvasTab.allCases, id: \.self) { item in
                 Button { tab = item; if item == .movies { network = nil } } label: {
                     Text(item.label).font(.system(size: 20, weight: .bold)).tracking(-0.5)
@@ -86,7 +87,7 @@ private struct CanvasContent: View {
                 }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
             Spacer(minLength: 0)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.leading, 6).frame(maxWidth: .infinity, alignment: .leading)
     }
     private var pills: some View {
         ScrollView(.horizontal) {

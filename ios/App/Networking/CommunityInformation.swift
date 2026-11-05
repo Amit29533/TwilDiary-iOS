@@ -94,9 +94,52 @@ extension DiaryStore {
             if isPreview { return CommunityInformation.fixture(unavailable: ProcessInfo.processInfo.arguments.contains("--ui-community-unavailable")) }
             #endif
             guard !needsSignIn else { throw APIError.signIn }
+            // Straight from Trakt with your own sign-in first: the server's shared reads were
+            // often refused (rate limits on your server's Trakt app), which showed as unavailable.
+            if let direct = try? await self.directCommunityInformation(identity), direct.valid, direct.statsState != .unavailable { return direct }
             do { return try await read(identity.path, timeout: 25) }
             catch APIError.rejected(404, _) { throw APIError.message("Community information is unavailable right now. Please try again later.") }
         }
+    }
+}
+
+extension DiaryStore {
+    /// Trakt's public stats and comment sentiments for a TMDB title, read from the phone.
+    func directCommunityInformation(_ identity: CommunityIdentity) async throws -> CommunityInformation {
+        let client = try await TraktDirectStore.shared.client(store: self)
+        let kind = identity.kind == .tv ? "show" : "movie"
+        let found = try JSONSerialization.jsonObject(with: try await client.get("/search/tmdb/\(identity.id)", query: ["type": kind]).data) as? [[String: Any]] ?? []
+        let match = found.first { entry in
+            (entry[kind] as? [String: Any]).flatMap { ($0["ids"] as? [String: Any])?["tmdb"] as? Int } == identity.id
+        }
+        guard let traktID = ((match?[kind] as? [String: Any])?["ids"] as? [String: Any])?["trakt"] as? Int, traktID > 0 else { return .unmatched }
+        let path = "/\(kind)s/\(traktID)"
+        async let statsRead = client.get(path + "/stats")
+        async let opinionsRead = client.get(path + "/sentiments")
+        var stats: CommunityInformation.Stats?
+        if let data = try? await statsRead.data, let item = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            func count(_ key: String) -> Int? { (item[key] as? Int).flatMap { $0 >= 0 ? $0 : nil } }
+            if let watchers = count("watchers"), let plays = count("plays"), let collectors = count("collectors") {
+                stats = .init(watchers: watchers, plays: plays, collectors: collectors, comments: count("comments") ?? 0, lists: count("lists") ?? 0)
+            }
+        }
+        var sentiments: CommunityInformation.Sentiments?
+        if let data = try? await opinionsRead.data, let item = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let analyzed = item["analyzed_at"] as? String {
+            func lines(_ key: String) -> [String] {
+                var seen = Set<String>(), result: [String] = []
+                for case let line as [String: Any] in (item[key] as? [Any]) ?? [] {
+                    guard let text = (line["sentiment"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, text.count <= 1000, seen.insert(text).inserted else { continue }
+                    result.append(text)
+                    if result.count == 12 { break }
+                }
+                return result
+            }
+            sentiments = .init(good: lines("good"), bad: lines("bad"), analyzedAt: analyzed, commentCount: max(0, item["comment_count"] as? Int ?? 0))
+        }
+        let opinionState: CommunityInformation.State = sentiments.map { $0.good.isEmpty && $0.bad.isEmpty ? .empty : .available } ?? .unavailable
+        return CommunityInformation(source: "trakt", statsState: stats == nil ? .unavailable : .available, sentimentsState: opinionState,
+                                    stats: stats, sentiments: sentiments)
     }
 }
 

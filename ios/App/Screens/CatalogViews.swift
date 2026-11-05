@@ -65,8 +65,8 @@ struct CatalogPoster: View {
 
 struct CatalogSearchView: View {
     var universal = false
-    private enum Scope: String, CaseIterable { case all = "All", library = "Library", movies = "Movies", shows = "Shows", cast = "Cast", characters = "Characters", voice = "Voice actors", history = "History", jellyfin = "Jellyfin" }
-    @State private var scope = Scope.all
+    @State private var libraryExpanded = false
+    @State private var onlineExpanded = false
     @AppStorage("recentSearches.v1") private var recentJSON = "[]"
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
@@ -92,47 +92,43 @@ struct CatalogSearchView: View {
                 SearchField(placeholder: universal ? "Search everything…" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard)
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
-            if universal {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) { ForEach(Scope.allCases, id: \.self) { value in
-                        Button { scope = value } label: { Text(value.rawValue).font(.subheadline).padding(.horizontal, 14).frame(minHeight: 38).background(scope == value ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.06), in: Capsule()) }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityAddTraits(scope == value ? .isSelected : [])
-                    } }
-                }.scrollIndicators(.hidden).accessibilityIdentifier("search-scopes")
-            }
             if !ready {
                 if universal { SearchLandingView(recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }) }
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
-            if ready && (!universal || ![.cast, .characters, .voice, .history, .jellyfin].contains(scope)) {
-                HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
-                CollectionLayout(grid: grid) { ForEach(localMatches.prefix(universal && scope == .all ? 4 : libraryLimit)) { title in
-                    Button { chooseLibrary(title.id) } label: { searchRow(title) }.buttonStyle(.plain)
-                        .accessibilityIdentifier((onLibraryChoose == nil ? "search-library-" : "match-title-") + title.id)
-                } }
-                if localMatches.count > (universal && scope == .all ? 4 : libraryLimit) { Button("More library matches") { if universal && scope == .all { scope = .library } else { libraryLimit += 20 } }.font(.system(size: 13)).frame(minHeight: 44) }
-                if localMatches.isEmpty { Text("No library matches").font(.system(size: 13)).foregroundStyle(.secondary) }
-                if !universal || scope != .library {
-                Text("Not In Library · TMDB").font(.system(size: 15, weight: .semibold))
+            if ready {
+                // In your library (only when something matches).
+                if !localMatches.isEmpty {
+                    HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
+                    CollectionLayout(grid: grid) { ForEach(localMatches.prefix(libraryShown)) { title in
+                        Button { chooseLibrary(title.id) } label: { searchRow(title) }.buttonStyle(.plain)
+                            .accessibilityIdentifier((onLibraryChoose == nil ? "search-library-" : "match-title-") + title.id)
+                    } }
+                    if localMatches.count > libraryShown { Button("More library matches") { if universal && !libraryExpanded { libraryExpanded = true } else { libraryLimit += 20 } }.font(.system(size: 13)).frame(minHeight: 44) }
+                }
+                // Online (TMDB): only while it's loading, has results, or failed.
+                if (loading && results.isEmpty) || !visibleOnline.isEmpty || failure != nil {
+                if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows · TMDB" : "Not In Library · TMDB").font(.system(size: 15, weight: .semibold)) }
                 if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
                 if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
-                CollectionLayout(grid: grid) { ForEach(Array(visibleOnline.prefix(universal && scope == .all ? 4 : 100)), id: \.key) { item in
+                CollectionLayout(grid: grid) { ForEach(Array(visibleOnline.prefix(onlineShown)), id: \.key) { item in
                     Button { chooseCatalog(item.route) } label: { onlineRow(item) }
                         .buttonStyle(.plain).accessibilityIdentifier("search-" + item.key)
                 } }
-                if !loading && results.isEmpty && failure == nil { Text("No online matches").font(.system(size: 13)).foregroundStyle(.secondary) }
-                if universal && scope == .all && visibleOnline.count > 4 {
-                    Menu("More movies and shows") { Button("Movies") { scope = .movies }; Button("Shows") { scope = .shows } }.font(.footnote).foregroundStyle(.primary)
+                if visibleOnline.count > onlineShown {
+                    Button("More movies and shows") { onlineExpanded = true }.font(.footnote).foregroundStyle(.primary).frame(minHeight: 44)
                 }
-                if totalPages > 1 && (!universal || scope != .all) {
+                }
+                if totalPages > 1 && (!universal || onlineExpanded) {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
-                }
             }
-            if universal && ready && [.all, .cast, .characters, .voice].contains(scope) {
-                SearchPeopleView(query: normalized, kind: scope == .cast ? "cast" : scope == .characters ? "character" : scope == .voice ? "voice" : nil, limit: scope == .all ? 6 : 40, onChoose: rememberQuery)
+            if universal && ready {
+                SearchPeopleView(query: normalized, kind: nil, limit: 12, onChoose: rememberQuery)
             }
-            if universal && ready && [.all, .jellyfin].contains(scope) { SearchJellyfinView(query: normalized) }
-            if universal && ready && [.all, .history].contains(scope) {
+            if universal && ready { SearchJellyfinView(query: normalized) }
+            // Watch history: when a library title matches (its watches are the ones to find).
+            if universal && ready && !localMatches.isEmpty {
                 NavigationLink(value: HistoryRoute(query: normalized)) {
                     Label("Watch history matches", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }.simultaneousGesture(TapGesture().onEnded { rememberQuery() }).foregroundStyle(.primary).accessibilityIdentifier("search-history-matches")
@@ -152,11 +148,12 @@ struct CatalogSearchView: View {
     private var normalized: String { DiarySearchTools.normalize(query) }
     private var ready: Bool { DiarySearchTools.ready(normalized) }
     private var localMatches: [SearchLibraryTitle] {
-        DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), identified).filter { title in
-            !universal || scope != .movies && scope != .shows || (scope == .movies ? ["movie", "anime-movie"].contains(title.category) : ["show", "anime"].contains(title.category))
-        }
+        DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), identified)
     }
-    private var visibleOnline: [CatalogItem] { results.filter { !universal || scope != .movies && scope != .shows || $0.mediaType == (scope == .movies ? .movie : .tv) } }
+    private var visibleOnline: [CatalogItem] { results }
+    /// The universal search starts with a few of each; "More" expands in place.
+    private var libraryShown: Int { universal && !libraryExpanded ? 4 : libraryLimit }
+    private var onlineShown: Int { universal && !onlineExpanded ? 4 : 100 }
     private var recent: [String] { recentJSON.data(using: .utf8).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
     private func rememberQuery() {
         guard universal, ready else { return }
@@ -193,7 +190,7 @@ struct CatalogSearchView: View {
     private func requestPage(_ number: Int) { pageTask?.cancel(); pageTask = Task { await search(number: number) } }
     private func search(number: Int, reset: Bool = false) async {
         let request = UUID(); generation = request
-        if reset { completedQuery = nil; results = []; identified = []; page = 1; totalPages = 0; libraryLimit = 20 }
+        if reset { completedQuery = nil; results = []; identified = []; page = 1; totalPages = 0; libraryLimit = 20; libraryExpanded = false; onlineExpanded = false }
         failure = nil
         guard ready else { loading = false; return }
         let value = normalized; loading = true
@@ -224,12 +221,14 @@ struct CatalogDetailView: View {
     @State private var showOverview = false
     @State private var showInformation = false
     @State private var headerState = CompactHeaderState()
+    @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let details {
-                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: details.details.communityScore, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
+                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, score: nil, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { EmptyView() }
+                        RatingsStrip(scores: criticScores, tmdbFallback: details.details.communityScore).padding(.top, -10)
                         if details.libraryTitle?.trashed == true {
                             NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.glassProminent).controlSize(.large)
                         } else if let saved = details.libraryTitle {
@@ -264,6 +263,15 @@ struct CatalogDetailView: View {
                     CommunityInformationSheet(name: details?.details.name ?? "Title", artwork: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") ?? CatalogTools.image($0.details.posterPath) }, identity: CommunityIdentity(kind: route.kind, id: route.id))
                 }
                 .task(id: route) { await load() }
+                .task(id: route) {
+                    // MDBList's ratings, when it's connected; otherwise TMDB's score stands alone.
+                    criticScores = []
+                    guard store.providerSettings.mdblist.isAuthenticated else { return }
+                    let config = await store.freshProviderConfig(.mdblist)
+                    if let summary = try? await store.directClient.fetchMDBListRatings(config: config, tmdbId: route.id, isSeries: route.kind == .tv) {
+                        criticScores = summary.ratings
+                    }
+                }
         }
     }
     private func accepted(_ id: String) { if let onImported { onImported(id) } else { router.replaceTitle(id, tab: router.selectedTab) } }

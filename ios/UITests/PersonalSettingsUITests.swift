@@ -90,11 +90,11 @@ import XCTest
         for (scope, query, result, heart) in [("Cast", "Reference", "cast:525", "person-favourite"), ("Characters", "Fern", "character:2", "character-favourite"), ("Voice actors", "Kana", "voice:12", "voice-actor-favourite")] {
             field.tap()
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count) + query + "\n")
-            let chip = app.buttons[scope], shelf = app.scrollViews["search-scopes"]
-            for _ in 0..<6 { if chip.isHittable { break }; shelf.swipeLeft() }
-            XCTAssertTrue(chip.isHittable); chip.tap()
+            // One results page: people show under the titles (no category chips).
             let choice = app.buttons["search-person-" + result]
-            XCTAssertTrue(choice.waitForExistence(timeout: 8)); choice.tap()
+            XCTAssertTrue(choice.waitForExistence(timeout: 8))
+            for _ in 0..<8 { if choice.isHittable { break }; app.swipeUp() }
+            choice.tap()
             XCTAssertTrue(app.buttons[heart].waitForExistence(timeout: 8)); XCTAssertEqual(app.webViews.count, 0)
             capture(scope + " search opens the native profile", app)
             app.navigationBars.buttons.element(boundBy: 0).tap()

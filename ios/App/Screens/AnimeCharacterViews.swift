@@ -231,7 +231,7 @@ struct FavouritesView: View {
     /// Three tabs scroll sideways on narrow phones rather than squeezing.
     private var tabs: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 18) {
+            HStack(spacing: 20) {
                 ForEach(Favourite.Kind.allCases, id: \.self) { kind in
                     Button { tab = kind } label: {
                         Text(kind.label).font(.system(size: 24, weight: .bold)).tracking(-0.6)

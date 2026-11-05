@@ -30,17 +30,16 @@ struct TitleHero<PersonalRating: View>: View {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {
-                    if !genres.isEmpty {
-                        Text(genres.prefix(2).joined(separator: " • ")).font(.system(size: 14.4)).foregroundStyle(.secondary)
-                            .lineLimit(1).minimumScaleFactor(0.8).shadow(color: .black.opacity(0.6), radius: 4, y: 2)
-                            .padding(.bottom, 6).accessibilityIdentifier("title-hero-genres")
-                    }
                     Text(name).font(.system(size: 24, weight: .bold)).tracking(-1.08).foregroundStyle(.white)
                         .lineLimit(3).minimumScaleFactor(0.72).allowsTightening(true)
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
                     Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per episode" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 14.4)).lineSpacing(4.3).foregroundStyle(.secondary).frame(minHeight: 21.6, alignment: .top).padding(.top, 14)
+                    if !genres.isEmpty {
+                        Text(genres.prefix(3).joined(separator: " • ")).font(.system(size: 14.4)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.8).padding(.top, 4).accessibilityIdentifier("title-hero-genres")
+                    }
                     InlineFlowLayout {
                         // No score, no gold dash: the community score only shows when TMDb has one.
                         if let score, score > 0 {

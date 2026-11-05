@@ -241,6 +241,13 @@ struct TraktDirectClient: Sendable {
         lastWrite = .now
         _ = try await TraktDirectClient(token: token!).post(path, body: try JSONSerialization.data(withJSONObject: body))
     }
+    /// A Trakt client with your server's token, for reads outside the library (community info).
+    func client(store: DiaryStore) async throws -> TraktDirectClient {
+        if store.isPreview { throw APIError.message("Trakt reads need a real Trakt connection.") }
+        if token?.usable != true { token = try await store.read("/api/trakt/token") }
+        guard let token else { throw APIError.message("Trakt isn’t connected.") }
+        return TraktDirectClient(token: token)
+    }
     /// Applies an edit to the phone's Trakt copy and redraws the Trakt diary at once.
     func update(store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
         guard var value = library else { return }

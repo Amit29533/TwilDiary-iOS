@@ -54,6 +54,8 @@ struct TitleDetailView: View {
     @State private var seasonRequest = UUID()
     @State private var seasonLoadError: String?
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
+    @State private var confirmTrash = false
+    @Environment(\.dismiss) private var dismissPage
     @State private var newTagText = ""
     var body: some View {
         Group {
@@ -63,27 +65,7 @@ struct TitleDetailView: View {
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title)
-                                if !criticScores.isEmpty {
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 6) {
-                                            ForEach(criticScores, id: \.source) { item in
-                                                HStack(spacing: 4) {
-                                                    Text(item.source.uppercased())
-                                                        .font(.system(size: 10.5, weight: .medium))
-                                                        .foregroundStyle(.secondary)
-                                                    Text(item.score.map { "\($0)%" } ?? (item.value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—"))
-                                                        .font(.system(size: 11.5, weight: .semibold))
-                                                }
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 5)
-                                                .background(.white.opacity(0.06), in: Capsule())
-                                                .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
-                                            }
-                                        }
-                                    }
-                                    .padding(.top, -18)
-                                    .accessibilityIdentifier("title-critic-breakdown")
-                                }
+                                RatingsStrip(scores: criticScores, tmdbFallback: title.communityScore).padding(.top, -10)
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -128,6 +110,9 @@ struct TitleDetailView: View {
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
+                                        Divider()
+                                        Button("Move to Trash", systemImage: "trash", role: .destructive) { confirmTrash = true }
+                                            .disabled(store.writesBlocked).accessibilityIdentifier("title-menu-trash")
                                     } label: { Image(systemName: "ellipsis") }.accessibilityLabel("More options for " + title.name).accessibilityIdentifier("title-more")
                                 }
                             }
@@ -185,6 +170,12 @@ struct TitleDetailView: View {
                 guard initializedEditor else { return }
                 notesField.observe(.init(value: title.notes, version: title.version))
                 ratingField.observe(.init(value: title.score, version: title.version))
+            }
+            .confirmationDialog("Move \(title.name) to Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
+                Button("Move to Trash", role: .destructive) { Task { if await store.trash(title) { dismissPage() } } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("It leaves your library. You can restore it from Trash.")
             }
             .confirmationDialog(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
                 Button("Reset to Planned", role: .destructive) { Task { await store.setSeasonStatus(title, season: season, status: "planned", watchedAt: watchInstant); await loadCard(title) } }
@@ -303,7 +294,7 @@ struct TitleDetailView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: title.communityScore, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
+        TitleHero(name: title.name, poster: title.poster, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, score: nil, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) { personalRating(title).frame(minHeight: 44) }
     }
     private func personalRating(_ title: MediaTitle) -> some View { Button { openRating(title) } label: { HStack(spacing: 4) { DiaryIcon(name: "star", size: 17); Text("Your rating").font(.system(size: 12)).foregroundStyle(.secondary); Text(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—") } }.font(.system(size: 13)).buttonStyle(.plain).accessibilityIdentifier("title-personal-rating").accessibilityLabel("Your rating").accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "Not rated") }
     private func progressPanel(_ title: MediaTitle) -> some View {
@@ -423,10 +414,7 @@ struct TitleDetailView: View {
         let progress = store.seasonProgress(title, season: season)
         let share = progress.total > 0 ? Int((Double(progress.watched) / Double(progress.total) * 100).rounded()) : 0
         return VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Episodes").font(.system(size: 30, weight: .bold)).tracking(-0.8)
-                Text("Your next story awaits").font(.system(size: 16)).foregroundStyle(.secondary)
-            }
+            Text("Episodes").font(.system(size: 30, weight: .bold)).tracking(-0.8)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
                     seasonMenu

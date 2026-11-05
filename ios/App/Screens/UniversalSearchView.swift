@@ -19,24 +19,11 @@ struct SearchLandingView: View {
     let clear: () -> Void
     @Environment(DiaryStore.self) private var store
     @State private var items: [CatalogItem] = []
+    @State private var shows: [CatalogItem] = []
     @State private var anime: [AniAppearance] = []
     @State private var loading = false
     @State private var failure: String?
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    /// What people are looking up this week: the most trending titles across movies, shows and
-    /// anime, as one-tap searches (TMDB and AniList publish trends, not raw search counts).
-    private var trendingSearches: [String] {
-        var seen = Set<String>(), result: [String] = []
-        let names = items.map(\.name) + anime.map(\.title)
-        let ordered = (0..<max(items.count, anime.count)).flatMap { index in
-            [items.indices.contains(index) ? items[index].name : nil, anime.indices.contains(index) ? anime[index].title : nil].compactMap { $0 }
-        }
-        for name in ordered + names where result.count < 10 {
-            let key = name.lowercased()
-            if !name.isEmpty, name.count <= 40, seen.insert(key).inserted { result.append(name) }
-        }
-        return result
-    }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !recent.isEmpty {
@@ -49,26 +36,34 @@ struct SearchLandingView: View {
                     }
                 }
             }
-            if !trendingSearches.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Trending searches").font(.title3.bold())
-                    InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                        ForEach(Array(trendingSearches.enumerated()), id: \.element) { index, query in
-                            Button { choose(query) } label: {
-                                HStack(spacing: 6) {
-                                    Text("\(index + 1)").font(.caption.weight(.bold)).foregroundStyle(theme.accent)
-                                    Text(query).font(.subheadline).lineLimit(1)
-                                }.padding(.horizontal, 12).frame(minHeight: 36)
-                                    .background(.white.opacity(0.08), in: Capsule())
-                                    .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
-                            }.buttonStyle(.springPress).foregroundStyle(.primary)
-                                .accessibilityLabel("Search " + query).accessibilityIdentifier("trending-search-\(index)")
-                        }
+            if !shows.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+                        Text("Top 10 shows this week").font(.title3.bold())
+                    }.padding(.bottom, 6)
+                    ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
+                        NavigationLink(value: item.route) {
+                            HStack(spacing: 14) {
+                                Text("\(index + 1)").font(.system(size: 20, weight: .bold)).monospacedDigit()
+                                    .foregroundStyle(index < 3 ? theme.accent : .secondary).frame(width: 28)
+                                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 46, height: 69)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.name).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                                    Text([item.year.map(String.init), "Show"].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                if let score = item.rating, score > 0 {
+                                    Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).monospacedDigit()
+                                }
+                            }.padding(.vertical, 6).contentShape(Rectangle())
+                        }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
                     }
-                }.accessibilityElement(children: .contain).accessibilityIdentifier("search-trending-searches")
+                }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
-            HStack { Text("Trending this week").font(.title3.bold()); Spacer(); Text("TMDB").font(.caption).foregroundStyle(.secondary) }
-            if loading && items.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading trending titles") }
+            if loading && items.isEmpty && shows.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading trending titles") }
+            if !items.isEmpty { HStack { Text("Trending movies").font(.title3.bold()); Spacer(); Text("TMDB").font(.caption).foregroundStyle(.secondary) } }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
@@ -95,8 +90,8 @@ struct SearchLandingView: View {
                 }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending-anime")
             }
             Text("Search your library, online titles, cast, characters and voice actors.").font(.footnote).foregroundStyle(.secondary)
-        }.smoothChange(of: [items.isEmpty, anime.isEmpty])
-            .task(id: store.sessionRevision) { items = []; await load() }
+        }.smoothChange(of: [items.isEmpty, shows.isEmpty, anime.isEmpty])
+            .task(id: store.sessionRevision) { items = []; shows = []; await load() }
             .task { await loadAnime() }
     }
     /// Best effort: AniList being down only hides its rows.
@@ -113,13 +108,12 @@ struct SearchLandingView: View {
         defer { loading = false }
         do {
             let service = LiveDiscoveryService(store: store)
-            let movies = try await service.page(["source": "tmdb", "type": "movie", "sort": "trending", "page": "1", "limit": "8"])
-            let shows = try await service.page(["source": "tmdb", "type": "tv", "sort": "trending", "page": "1", "limit": "8"])
+            let trendingShows = try await service.page(["source": "tmdb", "type": "tv", "sort": "trending", "page": "1", "limit": "10"])
             guard !Task.isCancelled, revision == store.sessionRevision else { return }
-            // Keep the provider order within each media type, interleaving the two lists.
-            items = (0..<max(movies.items.count, shows.items.count)).flatMap { index in
-                [movies.items.indices.contains(index) ? movies.items[index] : nil, shows.items.indices.contains(index) ? shows.items[index] : nil].compactMap { $0 }
-            }
+            shows = Array(trendingShows.items.prefix(10))
+            let movies = try await service.page(["source": "tmdb", "type": "movie", "sort": "trending", "page": "1", "limit": "10"])
+            guard !Task.isCancelled, revision == store.sessionRevision else { return }
+            items = movies.items
         } catch { if !Task.isCancelled && revision == store.sessionRevision { failure = error.localizedDescription } }
     }
 }
@@ -142,11 +136,11 @@ struct SearchPeopleView: View {
     @State private var results: [SearchPerson] = []
     @State private var loading = false
     @State private var failure: String?
+    @State private var shown = 0
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(kind == "cast" ? "Cast · TMDB" : kind == "character" ? "Characters · AniList" : kind == "voice" ? "Voice actors · AniList" : "People & characters").font(.headline)
-            if loading && results.isEmpty { ProgressView("Finding people") }
-            ForEach(Array(visible.prefix(limit)), id: \.key) { person in
+            if !visible.isEmpty { Text(kind == "cast" ? "Cast · TMDB" : kind == "character" ? "Characters · AniList" : kind == "voice" ? "Voice actors · AniList" : "People & characters").font(.headline) }
+            ForEach(Array(visible.prefix(limit + shown)), id: \.key) { person in
                 Button { onChoose(); open(person) } label: {
                     HStack(spacing: 12) {
                         Artwork(path: person.image, title: person.name).frame(width: 52, height: 78).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -155,9 +149,8 @@ struct SearchPeopleView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityIdentifier("search-person-" + person.key)
             }
-            if visible.count > limit { Text("Choose Cast, Characters or Voice actors above for more results.").font(.caption).foregroundStyle(.secondary) }
-            if let failure { RetryNotice(message: failure) { Task { await load() } } }
-            if !loading && visible.isEmpty && failure == nil { Text("No people found").font(.footnote).foregroundStyle(.secondary) }
+            if visible.count > limit { Button("More people") { shown += 12 }.font(.footnote).foregroundStyle(.primary).frame(minHeight: 44) }
+            if let failure, visible.isEmpty == false { Text(failure).font(.caption).foregroundStyle(.secondary) }
         }.task(id: query + (kind ?? "all") + String(describing: store.sessionRevision)) { await load() }
     }
     private var visible: [SearchPerson] { results.filter { kind == nil || $0.kind == kind } }
@@ -202,11 +195,12 @@ struct SearchJellyfinView: View {
     private var shelf: JellyfinShelf { .shared }
     var body: some View {
         let items = JellyfinShelf.matched(shelf.entries, diary: store.workspace.activeTitles).filter { $0.name.localizedCaseInsensitiveContains(query) }
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Saved Jellyfin library").font(.headline)
-            ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 12) { ForEach(items.prefix(20)) { item in JellyfinEntryCard(entry: item).frame(width: 110) } } }.scrollIndicators(.hidden)
-            if items.isEmpty { Text("No matches in the saved Jellyfin list.").font(.footnote).foregroundStyle(.secondary) }
-            NavigationLink("Open Jellyfin library", value: AppDestination.jellyfin).font(.footnote).foregroundStyle(.primary)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("On Jellyfin").font(.headline)
+                ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 12) { ForEach(items.prefix(20)) { item in JellyfinEntryCard(entry: item).frame(width: 110) } } }.scrollIndicators(.hidden)
+                NavigationLink("Open Jellyfin library", value: AppDestination.jellyfin).font(.footnote).foregroundStyle(.primary)
+            }
         }
     }
 }

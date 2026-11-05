@@ -233,12 +233,14 @@ struct PageHeader: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         HStack(spacing: 10) {
-            logo
+            // The spinning logo lives on Home only; other pages lead with a bigger title.
+            if isHome { logo }
             title
             Spacer(minLength: 0)
             if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
         }.frame(height: height).padding(.horizontal, 14)
     }
+    private var isHome: Bool { name == "TwilDiary" }
     private var logo: some View {
         Button {
             let gesture = RandomPick.tap(previous: taps, now: ProcessInfo.processInfo.systemUptime)
@@ -258,7 +260,7 @@ struct PageHeader: View {
                 Text("Twil").foregroundStyle(Color(webHex: "#f3f0f7"))
                 Text("Diary").foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
             }.font(.system(size: 26, weight: .bold)).tracking(-1.25)
-        } else { Text(name).font(.system(size: 26, weight: .bold)).tracking(-1.2).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
+        } else { Text(name).font(.system(size: 32, weight: .bold)).tracking(-1.3).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
         if let count {
             Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
                 .contentTransition(.numericText()).animation(reduceMotion ? nil : Motion.smooth, value: count)

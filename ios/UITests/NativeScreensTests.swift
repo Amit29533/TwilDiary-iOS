@@ -522,6 +522,8 @@ import UIKit
         let logo = app.buttons["random-pick-logo"], empty = app.staticTexts["Your next story starts here"]
         // Let the empty diary finish loading first: a session change closes an open pick.
         XCTAssertTrue(app.descendants(matching: .any)["glance-content"].waitForExistence(timeout: 10))
+        // The logo (and its triple-tap random pick) lives on Home only.
+        app.tabBars.buttons["Home"].tap()
         wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: logo)], timeout: 5)
         for _ in 0..<3 where !empty.exists {
             logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
@@ -1493,10 +1495,10 @@ import UIKit
         app.tabBars.buttons["Library"].tap(); app.buttons["title-frieren"].tap()
         let rating = app.buttons["title-personal-rating"]
         XCTAssertTrue(rating.waitForExistence(timeout: 5))
-        let community = app.staticTexts["TMDb"].firstMatch
-        XCTAssertTrue(community.exists)
-        XCTAssertLessThan(abs(rating.frame.midY - community.frame.midY), 10, "Your rating stays beside the community rating")
-        capture("Saved title community and personal ratings inline")
+        let ratings = app.descendants(matching: .any)["title-ratings"].firstMatch
+        XCTAssertTrue(ratings.exists, "Ratings from MDBList (or TMDB's alone) show under the synopsis")
+        XCTAssertGreaterThan(ratings.frame.minY, rating.frame.maxY)
+        capture("Saved title ratings strip and personal rating")
         let cast = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'cast-person-'")).firstMatch
         reveal(cast)
         XCTAssertEqual(cast.frame.width, 96, accuracy: 2)

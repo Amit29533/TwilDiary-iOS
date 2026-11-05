@@ -173,12 +173,9 @@ struct HomeFavouriteCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // No heart on the poster: the shelf is already "Favourites".
             Artwork(path: item.image, title: item.name).posterAspect()
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .topTrailing) {
-                    Image(systemName: "heart.fill").font(.system(size: 12)).foregroundStyle(theme.accent)
-                        .frame(width: 24, height: 24).background(.black.opacity(0.78), in: Circle()).padding(6).accessibilityHidden(true)
-                }
             Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
             Text(item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
