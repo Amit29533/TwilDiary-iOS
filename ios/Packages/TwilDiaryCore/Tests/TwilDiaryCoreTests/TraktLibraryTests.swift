@@ -316,3 +316,54 @@ private func diary() throws -> Workspace {
     let simkl = TraktDiary.build(library: library, server: server, tracker: .simkl)
     #expect(simkl.titles.first { $0.id == "spooky" }?.favorite == true)
 }
+
+
+// MARK: Simkl delta sync and MDBList per-list reads
+
+@Test func simklReadsOnlyWhatMovedAfterTheFirstPull() throws {
+    func activities(_ json: String) throws -> TraktActivities { try TraktDecode.activities(from: data(json)) }
+    let saved = try activities(#"{"all":"2026-11-01T00:00:00Z","tv_shows":{"all":"2026-11-01T00:00:00Z","watching":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","removed_from_list":"2026-09-01T00:00:00Z"}}"#)
+    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love", simklId: 1)
+    let library = TraktLibrary(activities: saved, plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 1, watchedAt: nil)], fetchedAt: "2026-11-01T00:00:00Z")
+    #expect(SimklSync.step(previous: nil, now: saved) == .full)
+    #expect(SimklSync.step(previous: library, now: saved) == .none)
+    let watched = try activities(#"{"all":"2026-11-05T00:00:00Z","tv_shows":{"all":"2026-11-05T00:00:00Z","watching":"2026-11-05T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","removed_from_list":"2026-09-01T00:00:00Z"}}"#)
+    #expect(SimklSync.step(previous: library, now: watched) == .delta(items: true, ratings: false, removals: false, since: "2026-11-01T00:00:00Z"))
+    let rated = try activities(#"{"all":"2026-11-05T00:00:00Z","tv_shows":{"all":"2026-11-05T00:00:00Z","watching":"2026-11-01T00:00:00Z","rated_at":"2026-11-05T00:00:00Z","removed_from_list":"2026-11-05T00:00:00Z"}}"#)
+    #expect(SimklSync.step(previous: library, now: rated) == .delta(items: false, ratings: true, removals: true, since: "2026-11-01T00:00:00Z"))
+    // A copy saved before Simkl ids were kept is read in full once.
+    var old = library
+    old.plays = [TraktPlay(historyId: 1, title: TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love"), watchedAt: nil)]
+    #expect(SimklSync.step(previous: old, now: watched) == .full)
+}
+
+@Test func simklDeltasReplaceTheirTitlesAndRemovalsDropTheRest() throws {
+    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love", simklId: 1)
+    let frieren = TraktTitleRef(kind: .show, traktId: nil, tmdbId: nil, name: "Frieren", simklId: 2)
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 1, watchedAt: nil)],
+                               watchlist: [TraktListed(title: frieren, listedAt: nil)])
+    let deltaData = data("""
+    {"shows":[{"status":"watching","show":{"title":"Spooky in Love","ids":{"simkl":1,"tmdb":"284172"}},
+               "seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2026-11-01T00:00:00Z"},{"number":2,"watched_at":"2026-11-02T00:00:00Z"}]}]}]}
+    """)
+    let merged = SimklSync.merge(try TrackerDecode.simklLibrary(from: deltaData), touched: try TrackerDecode.simklIDs(from: deltaData), into: library)
+    #expect(merged.plays.map(\.episode) == [1, 2], "The changed show's episodes replace the old ones, not add to them")
+    #expect(merged.watchlist.map(\.title.name) == ["Frieren"], "Titles not in the delta stay")
+    let ids = try TrackerDecode.simklIDs(from: data(#"{"shows":[{"show":{"ids":{"simkl":1,"slug":"spooky"}}}]}"#))
+    #expect(ids == [1])
+    #expect(SimklSync.removing(from: merged, keeping: ids).watchlist.isEmpty, "Frieren left Simkl, so it leaves the copy")
+    #expect(throws: (any Error).self) { try TrackerDecode.simklIDs(from: data(#"{"shows":[{"show":{"ids":{"slug":"no-id"}}}]}"#)) }
+    let ratings = try TrackerDecode.simklRatings(from: data(#"{"movies":[{"user_rating":8,"movie":{"title":"Film","ids":{"simkl":9,"tmdb":"77"}}}]}"#))
+    #expect(ratings.map(\.rating) == [8] && ratings.first?.title.simklId == 9)
+}
+
+@Test func mdblistRereadsOnlyTheListsThatMoved() throws {
+    let before = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","watchlisted_at":"2026-10-01T00:00:00Z"}"#))
+    let rated = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-01T00:00:00Z","rated_at":"2026-11-05T00:00:00Z","watchlisted_at":"2026-10-01T00:00:00Z"}"#))
+    #expect(TrackerDecode.mdblistListsToRead(previous: before, now: rated) == [.ratings])
+    let listed = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-02T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","watchlisted_at":"2026-11-05T00:00:00Z"}"#))
+    #expect(TrackerDecode.mdblistListsToRead(previous: before, now: listed) == [.history, .watchlist])
+    let unknown = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","watchlisted_at":"2026-10-01T00:00:00Z","lists_at":"2026-11-05T00:00:00Z"}"#))
+    #expect(TrackerDecode.mdblistListsToRead(previous: before, now: unknown) == nil, "Something new moved: read everything")
+    #expect(TrackerDecode.mdblistListsToRead(previous: nil, now: before) == nil)
+}

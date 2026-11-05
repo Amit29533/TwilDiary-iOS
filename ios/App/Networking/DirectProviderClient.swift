@@ -133,6 +133,14 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         do { return try await send(url: components.url!, method: "POST", headers: headers, rawBody: body) }
         catch APIError.rejected(let status, _) where status == 401 || status == 403 {
             throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
+        } catch APIError.rejected(let status, let message) where status == 429 || (config.provider == .simkl && status == 400 && message.contains("rate_limit")) {
+            // Simkl takes one write per account at a time and answers "rate_limit" while another
+            // is still running; its guide says wait and try once more (same for a plain 429).
+            try await Task.sleep(for: .seconds(3))
+            do { return try await send(url: components.url!, method: "POST", headers: headers, rawBody: body) }
+            catch APIError.rejected(let again, _) where again == 400 || again == 429 {
+                throw APIError.message("\(name) is busy with another change right now. Try again in a minute.")
+            }
         }
     }
 
@@ -189,7 +197,9 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             throw APIError.message("Unexpected provider response.")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw APIError.rejected(http.statusCode, "Provider returned HTTP \(http.statusCode).")
+            // Simkl's "one write at a time" refusal is a 400 whose body says rate_limit.
+            let busy = (String(data: data.prefix(500), encoding: .utf8) ?? "").contains("rate_limit")
+            throw APIError.rejected(http.statusCode, "Provider returned HTTP \(http.statusCode)." + (busy ? " (rate_limit)" : ""))
         }
         return data
     }

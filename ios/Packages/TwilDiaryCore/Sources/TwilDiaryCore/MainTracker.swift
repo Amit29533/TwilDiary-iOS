@@ -91,7 +91,7 @@ public enum TrackerDecode {
         let imdb = ((ids["imdb"] ?? ids["imdb_id"]) as? String).flatMap { $0.hasPrefix("tt") && $0.count <= 15 ? $0 : nil }
         guard tmdb != nil || trakt != nil || imdb != nil || int(ids["simkl"]) != nil || int(ids["mdblist"]) != nil else { return nil }
         return TraktTitleRef(kind: kind, traktId: trakt, tmdbId: tmdb, imdbId: imdb, tvdbId: int(ids["tvdb"]) ?? int(ids["tvdb_id"]),
-                             name: name, year: int(media["year"]) ?? int(media["release_year"]))
+                             name: name, year: int(media["year"]) ?? int(media["release_year"]), simklId: int(ids["simkl"]) ?? int(ids["simkl_id"]))
     }
 
     // MARK: Simkl
@@ -144,7 +144,66 @@ public enum TrackerDecode {
         return library
     }
 
+    /// Every title's Simkl id in an all-items reply (any `extended`, including `simkl_ids_only`:
+    /// `{"shows":[{"show":{"ids":{"simkl":297}}}]}`). An entry without one throws, so a reply that
+    /// can't be read in full never makes titles look removed.
+    public static func simklIDs(from data: Data) throws -> Set<Int> {
+        let parsed = try JSONSerialization.jsonObject(with: data)
+        guard let root = parsed as? [String: Any] else {
+            if parsed is NSNull || (parsed as? [Any])?.isEmpty == true { return [] }
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl returned something other than a library."))
+        }
+        var ids = Set<Int>()
+        for bucket in ["movies", "shows", "anime"] {
+            for case let item as [String: Any] in (root[bucket] as? [Any]) ?? [] {
+                let block = object(item["movie"]) ?? object(item["show"]) ?? item
+                guard let id = int(object(block["ids"])?["simkl"]) ?? int(object(item["ids"])?["simkl"]) else {
+                    throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "A Simkl item had no Simkl id."))
+                }
+                ids.insert(id)
+            }
+        }
+        return ids
+    }
+
+    /// `GET /sync/ratings/{type}`: the rated titles (buckets like all-items, or a plain list).
+    public static func simklRatings(from data: Data) throws -> [TraktRating] {
+        let parsed = try JSONSerialization.jsonObject(with: data)
+        var entries: [Any] = []
+        if let root = parsed as? [String: Any] {
+            for bucket in ["movies", "shows", "anime"] { entries += (root[bucket] as? [Any]) ?? [] }
+        } else if let list = parsed as? [Any] {
+            entries = list
+        } else if !(parsed is NSNull) {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl returned something other than ratings."))
+        }
+        var ratings: [TraktRating] = []
+        for case let item as [String: Any] in entries {
+            let movie = item["movie"] != nil || (item["anime_type"] as? String)?.lowercased() == "movie"
+            guard let block = object(item["movie"]) ?? object(item["show"]), let title = ref(block, kind: movie ? .movie : .show),
+                  let rating = int(item["user_rating"]), (1...10).contains(rating) else { continue }
+            ratings.append(TraktRating(title: title, rating: rating, ratedAt: date(item["user_rated_at"])))
+        }
+        return ratings
+    }
+
     // MARK: MDBList
+
+    /// The MDBList lists to read again, from what moved in `/sync/last_activities`; nil means all
+    /// of them (first read, or a field TwilDiary doesn't recognise moved).
+    public static func mdblistListsToRead(previous: TraktActivities?, now: TraktActivities) -> Set<TraktDomain>? {
+        guard let previous else { return nil }
+        var lists = Set<TraktDomain>()
+        for key in Set(now.stamps.keys).union(previous.stamps.keys) where now.stamps[key] != previous.stamps[key] {
+            let name = key.lowercased()
+            if name.contains("watchlist") { lists.insert(.watchlist) }
+            else if name.contains("rat") { lists.insert(.ratings) }
+            else if name.contains("drop") || name.contains("hidden") { lists.insert(.dropped) }
+            else if name.contains("watch") { lists.insert(.history) }
+            else { return nil }
+        }
+        return lists
+    }
 
     /// `GET /sync/last_activities` on MDBList is flat ("watched_at", "rated_at", …), unlike Trakt's
     /// sections; `server_time` changes on every call, so it's left out.

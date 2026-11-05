@@ -373,29 +373,74 @@ struct TraktDirectClient: Sendable {
             let activities = try (tracker == .simkl ? TraktDecode.activities(from: activitiesData) : TrackerDecode.flatActivities(from: activitiesData))
             var library = libraries[tracker] ?? TraktLibrary()
             var fetched: [TraktDomain] = []
-            if library.activities != activities || library.fetchedAt == nil {
-                if tracker == .simkl {
-                    library = try TrackerDecode.simklLibrary(from: try await client.read(config, path: "/sync/all-items/", query: [
-                        "extended": "full", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]))
+            if tracker == .simkl {
+                // Simkl's sync rules: the whole library once, then only what changed.
+                let fullQuery = ["extended": "full", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
+                func fullPull() async throws {
+                    library = try TrackerDecode.simklLibrary(from: try await client.read(config, path: "/sync/all-items/", query: fullQuery))
                     requests += 1
                     fetched = [.history, .ratings, .watchlist, .dropped, .notes]
-                } else {
-                    var fresh = TraktLibrary()
+                }
+                switch SimklSync.step(previous: libraries[tracker], now: activities) {
+                case .none:
+                    break
+                case .full:
+                    try await fullPull()
+                case .delta(let items, let ratings, let removals, let since):
+                    if items {
+                        var query = fullQuery; query["date_from"] = since
+                        let data = try await client.read(config, path: "/sync/all-items/", query: query)
+                        library = SimklSync.merge(try TrackerDecode.simklLibrary(from: data), touched: (try? TrackerDecode.simklIDs(from: data)) ?? [], into: library)
+                        requests += 1
+                        fetched += [.history, .watchlist, .dropped, .notes]
+                    }
+                    if ratings {
+                        // Ratings aren't in item deltas; the rated lists are small, so they're read whole
+                        // (that also catches a rating taken off).
+                        var all: [TraktRating] = []
+                        for type in ["movies", "shows", "anime"] {
+                            all += try TrackerDecode.simklRatings(from: try await client.read(config, path: "/sync/ratings/" + type))
+                            requests += 1
+                        }
+                        library.ratings = all
+                        fetched.append(.ratings)
+                    }
+                    if removals {
+                        requests += 1
+                        if let ids = try? TrackerDecode.simklIDs(from: try await client.read(config, path: "/sync/all-items/", query: ["extended": "simkl_ids_only"])) {
+                            library = SimklSync.removing(from: library, keeping: ids)
+                        } else {
+                            try await fullPull()
+                        }
+                    }
+                }
+                library.activities = activities
+            } else if library.activities != activities || library.fetchedAt == nil {
+                // MDBList: only the lists whose time moved (all of them on the first read).
+                let lists = TrackerDecode.mdblistListsToRead(previous: library.fetchedAt == nil ? nil : library.activities, now: activities)
+                    ?? [.history, .ratings, .dropped, .watchlist]
+                if lists.contains(.history) {
                     let watched = try await mdblistPages(client, config, "/sync/watched")
-                    fresh.plays = watched.items.map { item in
+                    library.plays = watched.items.map { item in
                         TraktPlay(historyId: TrackerDecode.playID("mdblist|\(item.title.kind.rawValue)|\(item.title.tmdbId ?? 0)|\(item.title.name)|\(item.season ?? -1)|\(item.episode ?? -1)"),
                                   title: item.title, season: item.season, episode: item.episode, watchedAt: item.date)
                     }
+                    requests += watched.calls; fetched.append(.history)
+                }
+                if lists.contains(.ratings) {
                     let ratings = try await mdblistPages(client, config, "/sync/ratings")
-                    fresh.ratings = ratings.items.compactMap { item in item.rating.map { TraktRating(title: item.title, rating: $0, ratedAt: item.date) } }
+                    library.ratings = ratings.items.compactMap { item in item.rating.map { TraktRating(title: item.title, rating: $0, ratedAt: item.date) } }
+                    requests += ratings.calls; fetched.append(.ratings)
+                }
+                if lists.contains(.dropped) {
                     let dropped = try await mdblistPages(client, config, "/sync/dropped")
-                    fresh.dropped = dropped.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
+                    library.dropped = dropped.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
+                    requests += dropped.calls; fetched.append(.dropped)
+                }
+                if lists.contains(.watchlist) {
                     let watchlist = try await mdblistPages(client, config, "/watchlist/items")
-                    fresh.watchlist = watchlist.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
-                    fresh.skipped = watched.skipped + ratings.skipped + dropped.skipped + watchlist.skipped
-                    requests += watched.calls + ratings.calls + dropped.calls + watchlist.calls
-                    library = fresh
-                    fetched = [.history, .ratings, .dropped, .watchlist]
+                    library.watchlist = watchlist.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
+                    requests += watchlist.calls; fetched.append(.watchlist)
                 }
                 library.activities = activities
             }

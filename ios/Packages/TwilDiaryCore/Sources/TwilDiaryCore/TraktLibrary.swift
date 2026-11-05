@@ -14,8 +14,11 @@ public struct TraktTitleRef: Codable, Hashable, Sendable {
     public let tvdbId: Int?
     public let name: String
     public let year: Int?
-    public init(kind: Kind, traktId: Int?, tmdbId: Int?, imdbId: String? = nil, tvdbId: Int? = nil, name: String, year: Int? = nil) {
+    /// Simkl's own id (Simkl reads only): how its "removed" check names titles.
+    public let simklId: Int?
+    public init(kind: Kind, traktId: Int?, tmdbId: Int?, imdbId: String? = nil, tvdbId: Int? = nil, name: String, year: Int? = nil, simklId: Int? = nil) {
         self.kind = kind; self.traktId = traktId; self.tmdbId = tmdbId; self.imdbId = imdbId; self.tvdbId = tvdbId; self.name = name; self.year = year
+        self.simklId = simklId
     }
     /// "movie:603" or "tv:1399", as the diary matches titles; nil without a TMDB id.
     public var diaryKey: String? { tmdbId.map { (kind == .movie ? "movie:" : "tv:") + String($0) } }
