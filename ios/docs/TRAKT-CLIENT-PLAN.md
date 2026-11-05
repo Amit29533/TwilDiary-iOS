@@ -173,8 +173,12 @@ add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
   status and favourite changes work in Trakt mode.
 - **Earlier note, phase 3 (needs production D1 migrations):** helper tables keyed by TMDB/Trakt id for file
   locations, tags, anime overrides, trash and people favourites; manual backup and restore.
-- **Phase 4 (needs explicit go-ahead):** the app builds its diary from Trakt; turn off the incoming
-  worker's cron and the review sync; keep the server diary read-only for 30 days; retire the web app.
+- **Phase 4c code done, not deployed:** one Worker variable, `DIARY_RECORD` (`server`, `trakt`,
+  `simkl`, `mdblist`) with `DIARY_RECORD_SINCE`. Once it names a service, the server's watches and
+  ratings are read-only for 30 days (extras stay writable), the Review sync and incoming toggle
+  answer 410, the web app shows a notice, and the app (`/api/diary-record`) shows the diary from that
+  service. The incoming worker's production config has no cron. Undo: `DIARY_RECORD=server`,
+  redeploy; restore the cron and redeploy the incoming worker.
 - **Phase 5 done (not yet tried on the phone):** "Make Simkl / MDBList match the diary" (the same
   plan within what each keeps: one watch per episode or movie, no favourites; Simkl moves titles
   between its lists, MDBList uses `/sync/watched`, `/watchlist/items/*`, `/sync/dropped` per its

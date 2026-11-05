@@ -9,6 +9,7 @@ import {
 import { localDevelopmentAllowed, localNetworkAllowed } from '#lib/server/local-development.ts';
 import { bumpWorkspaceRevision, changesDiary } from '#lib/server/workspace-revision.ts';
 import { withSavedKeys } from '#lib/server/api-keys.ts';
+import { diaryRecord, recordRefusal, retiredWebPage } from '#lib/server/diary-record.ts';
 
 let cached: { key: string; verify: ReturnType<typeof createAccessVerifier> } | undefined;
 
@@ -103,6 +104,35 @@ export const handle: Handle = async ({ event, resolve }) => {
     // Only authenticated owners may replace server provider keys.
     if (event.url.pathname.startsWith('/api/')) event.locals.bindings = await withSavedKeys(env);
     assertSameOriginWrite(event.request);
+    // Phase 4c: once a service holds the diary, the web app is retired and the server's own
+    // record (watches, ratings) is kept read-only; the Review sync is off.
+    const record = diaryRecord(env);
+    if (record !== 'server') {
+      const path = event.url.pathname;
+      const method = event.request.method;
+      if (!path.startsWith('/api/') && ['GET', 'HEAD'].includes(method) && event.request.headers.get('Accept')?.includes('text/html'))
+        return new Response(retiredWebPage(record), {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff'
+          }
+        });
+      const body =
+        method === 'PATCH' && /^\/api\/titles\/[^/]+$/.test(path)
+          ? await event.request.clone().json().catch(() => undefined)
+          : undefined;
+      const refusal = recordRefusal(record, method, path, body);
+      if (refusal)
+        return new Response(refusal.message, {
+          status: refusal.status,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff'
+          }
+        });
+    }
     const response = await resolve(event);
     // After the write has finished, so a resumed app re-reads a diary that already has it.
     if (changesDiary(event.request.method, event.url.pathname))

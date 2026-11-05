@@ -406,6 +406,27 @@ import TwilDiaryCore
     func reload() async throws {
         try await reloadFromServer()
         applyDiarySource()
+        if !checkedDiaryRecord { checkedDiaryRecord = true; Task { await self.checkDiaryRecord() } }
+    }
+    /// Phase 4c: the service your server says holds the diary (nil: your server), and until when
+    /// the server's own watches and ratings stay read-only.
+    private(set) var serverRecord: MainTracker?
+    private(set) var serverRecordReadOnlyUntil: Date?
+    @ObservationIgnored private var checkedDiaryRecord = false
+    private struct DiaryRecordStatus: Decodable { let record: String; let since: String?; let readOnlyUntil: String? }
+    /// Once a session: when a service holds the diary and the server's diary is on screen, the
+    /// diary is shown from that service instead (edits then go there).
+    func checkDiaryRecord() async {
+        guard !isPreview, !needsSignIn else { return }
+        // A server without this route answers 404: the diary is still the server's.
+        guard let status: DiaryRecordStatus = try? await read("/api/diary-record") else { return }
+        let record = MainTracker(rawValue: status.record)
+        serverRecord = record
+        serverRecordReadOnlyUntil = status.readOnlyUntil.flatMap { try? Date($0, strategy: .iso8601) }
+        if let record, diarySource == "server" {
+            UserDefaults.standard.set(record.rawValue, forKey: MainTrackerView.key)
+            diarySource = record.rawValue
+        }
     }
     /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
     /// with the server's extras. Reads Trakt first when there's no Trakt read yet.

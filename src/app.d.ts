@@ -33,6 +33,8 @@ declare global {
         MDBLIST_CLIENT_ID?: string;
         CF_ANALYTICS_TOKEN?: string;
         CF_ACCOUNT_ID?: string;
+        DIARY_RECORD?: string;
+        DIARY_RECORD_SINCE?: string;
       };
       context?: ExecutionContext;
       cf?: CfProperties;
