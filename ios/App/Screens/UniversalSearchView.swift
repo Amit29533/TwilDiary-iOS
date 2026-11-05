@@ -21,6 +21,9 @@ struct SearchLandingView: View {
     @State private var items: [CatalogItem] = []
     @State private var shows: [CatalogItem] = []
     @State private var anime: [AniAppearance] = []
+    /// The session the lists were loaded for: coming back to Search keeps them instead of
+    /// clearing and downloading them again.
+    @State private var loadedRevision: UUID?
     @State private var loading = false
     @State private var failure: String?
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -91,7 +94,12 @@ struct SearchLandingView: View {
             }
             Text("Search your library, online titles, cast, characters and voice actors.").font(.footnote).foregroundStyle(.secondary)
         }.smoothChange(of: [items.isEmpty, shows.isEmpty, anime.isEmpty])
-            .task(id: store.sessionRevision) { items = []; shows = []; await load() }
+            .task(id: store.sessionRevision) {
+                guard loadedRevision != store.sessionRevision || (shows.isEmpty && items.isEmpty) else { return }
+                items = []; shows = []
+                await load()
+                if failure == nil, !shows.isEmpty || !items.isEmpty { loadedRevision = store.sessionRevision }
+            }
             .task { await loadAnime() }
     }
     /// Best effort: AniList being down only hides its rows.

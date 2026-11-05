@@ -119,7 +119,7 @@ struct ConnectionsView: View {
         return stamp.flatMap { try? Date($0, strategy: .iso8601) }
     }
     private func writePlan(_ tracker: MainTracker) -> TraktWritePlan? {
-        tracker == .trakt ? traktDirect.matchPlan(store: store) : others.matchPlan(tracker, store: store)
+        tracker == .trakt ? traktDirect.plan : others.plans[tracker]
     }
     private var activity: String? {
         if traktDirect.running { return "Reading Trakt…" }

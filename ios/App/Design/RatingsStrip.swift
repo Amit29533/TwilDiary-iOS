@@ -128,3 +128,22 @@ struct RatingSourceMark: View {
         }.accessibilityHidden(true)
     }
 }
+
+/// MDBList's ratings for a title, kept for six hours: a page you come back to shows them at once
+/// instead of clearing and asking MDBList again (its free plan has a daily request limit).
+/// A failed read isn't kept, so the next visit tries again.
+@MainActor enum CriticScores {
+    private static var cache: [String: (at: Date, scores: [MDBListSyncEngine.SourceScore])] = [:]
+
+    static func load(store: DiaryStore, tmdbId: Int, isSeries: Bool) async -> [MDBListSyncEngine.SourceScore] {
+        let key = (isSeries ? "tv:" : "movie:") + String(tmdbId)
+        if let entry = cache[key], Date.now.timeIntervalSince(entry.at) < 6 * 3600 { return entry.scores }
+        guard store.providerSettings.mdblist.isAuthenticated else { return [] }
+        let config = await store.freshProviderConfig(.mdblist)
+        guard let summary = try? await store.directClient.fetchMDBListRatings(config: config, tmdbId: tmdbId, isSeries: isSeries) else { return [] }
+        let scores = summary.ratings.filter { ($0.score ?? 0) > 0 || ($0.value ?? 0) > 0 }
+        if cache.count >= 300 { cache.removeAll() }
+        cache[key] = (.now, scores)
+        return scores
+    }
+}

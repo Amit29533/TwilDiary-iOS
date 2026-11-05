@@ -153,6 +153,7 @@ struct TraktDirectClient: Sendable {
             // after it, only what that old copy has and Trakt lacks altogether.
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
                             skipped: skipped, comparison: comparison(library, store: store))
+            plan = matchPlan(store: store)
             if store.diaryFromTrakt { store.applyDiarySource() }
             autoFillIfNeeded(store: store)
         } catch {
@@ -166,7 +167,7 @@ struct TraktDirectClient: Sendable {
     /// button on the Trakt page stays for a retry.
     private func autoFillIfNeeded(store: DiaryStore) {
         guard store.traktHoldsDiary, !store.isPreview, !autoFilled, !writing,
-              let plan = matchPlan(store: store), !plan.isEmpty else { return }
+              let plan, !plan.isEmpty else { return }
         autoFilled = true
         Task { await self.makeTraktMatch(store: store) }
     }
@@ -214,6 +215,9 @@ struct TraktDirectClient: Sendable {
     @ObservationIgnored private var refresh: Task<Void, Never>?
     private(set) var writeProgress: String?
     private(set) var writeResult: String?
+    /// The plan from the last read, for the pages to show (worked out once per read, not on every
+    /// redraw; sending always works it out afresh).
+    private(set) var plan: TraktWritePlan?
     /// What "Make Trakt match" would send, from the last read (nil before a read). Once Trakt
     /// holds the diary: only what the old server copy has and Trakt lacks, each thing once.
     func matchPlan(store: DiaryStore) -> TraktWritePlan? {
@@ -334,7 +338,7 @@ struct TraktDirectClient: Sendable {
 
     /// Sign-out: the Trakt copy is diary data, so it goes with the diary.
     func forget() {
-        library = nil; report = nil; token = nil; error = nil; writeResult = nil
+        library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil
         try? FileManager.default.removeItem(at: file)
     }
 }
@@ -350,6 +354,8 @@ struct TraktDirectClient: Sendable {
     private(set) var writing: MainTracker?
     private(set) var writeProgress: String?
     private(set) var writeResults: [MainTracker: String] = [:]
+    /// Each service's plan from its last read (see `TraktDirectStore.plan`).
+    private(set) var plans: [MainTracker: TraktWritePlan] = [:]
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
@@ -450,6 +456,7 @@ struct TraktDirectClient: Sendable {
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
                                      skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.diaryToMatch, tracker: tracker))
+            plans[tracker] = matchPlan(tracker, store: store)
         } catch {
             if !Task.isCancelled { errors[tracker] = error.localizedDescription }
         }
@@ -541,7 +548,7 @@ struct TraktDirectClient: Sendable {
     }
     /// Sign-out: these copies are diary data, so they go with the diary.
     func forget() {
-        libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]
+        libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]
         try? FileManager.default.removeItem(at: folder)
     }
 }

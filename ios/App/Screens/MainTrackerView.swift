@@ -156,7 +156,7 @@ struct TrackerPreviewPanel: View {
 
     /// Phase 2: bring Trakt in line with the diary, after showing exactly what will be sent.
     @ViewBuilder private var matchSection: some View {
-        let plan = report != nil ? trakt.matchPlan(store: store) : nil
+        let plan = report != nil ? trakt.plan : nil
         let fill = store.traktHoldsDiary
         if fill {
             Text(plan?.isEmpty == false
@@ -202,7 +202,7 @@ struct TrackerPreviewPanel: View {
 
     /// Phase 5: the same for Simkl and MDBList, within what each keeps.
     @ViewBuilder private var trackerMatchSection: some View {
-        let plan = report != nil ? others.matchPlan(tracker, store: store) : nil
+        let plan = report != nil ? others.plans[tracker] : nil
         if others.writing == tracker, let progress = others.writeProgress {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
         } else if let result = others.writeResults[tracker] {

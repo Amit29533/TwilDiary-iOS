@@ -33,9 +33,12 @@ public enum SimklSync {
         return .delta(items: items, ratings: ratings, removals: removals, since: since)
     }
 
-    /// Every title in the copy carries its Simkl id (copies saved before it was kept don't).
+    /// The copy was read since Simkl ids were kept. Entries your own edits add have none (they're
+    /// matched by TMDB id and replaced by the next delta), so one id anywhere is enough; a copy
+    /// saved before ids were kept has none at all and is read in full once.
     static func hasSimklIDs(_ library: TraktLibrary) -> Bool {
-        titles(library).allSatisfy { $0.simklId != nil }
+        let all = titles(library)
+        return all.isEmpty || all.contains { $0.simklId != nil }
     }
     static func titles(_ library: TraktLibrary) -> [TraktTitleRef] {
         library.plays.map(\.title) + library.ratings.map(\.title) + library.watchlist.map(\.title)

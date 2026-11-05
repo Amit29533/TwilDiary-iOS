@@ -159,12 +159,8 @@ struct TitleDetailView: View {
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
             .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
             .task(id: title.id) {
-                criticScores = []
-                guard store.providerSettings.mdblist.isAuthenticated, let tmdbId = title.tmdbId else { return }
-                let config = await store.freshProviderConfig(.mdblist)
-                if let summary = try? await store.directClient.fetchMDBListRatings(config: config, tmdbId: tmdbId, isSeries: title.isSeries) {
-                    criticScores = summary.ratings.filter { ($0.score ?? 0) > 0 || ($0.value ?? 0) > 0 }
-                }
+                guard let tmdbId = title.tmdbId else { criticScores = []; return }
+                criticScores = await CriticScores.load(store: store, tmdbId: tmdbId, isSeries: title.isSeries)
             }
             .onChange(of: title.version) { _, _ in
                 guard initializedEditor else { return }

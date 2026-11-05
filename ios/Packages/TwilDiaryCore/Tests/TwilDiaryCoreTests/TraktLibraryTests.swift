@@ -335,6 +335,10 @@ private func diary() throws -> Workspace {
     var old = library
     old.plays = [TraktPlay(historyId: 1, title: TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love"), watchedAt: nil)]
     #expect(SimklSync.step(previous: old, now: watched) == .full)
+    // An entry added by your own edit (no Simkl id yet) doesn't force a full read.
+    var edited = library
+    edited.plays.append(TraktPlay(historyId: -5, title: TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love"), season: 1, episode: 2, watchedAt: nil))
+    #expect(SimklSync.step(previous: edited, now: watched) == .delta(items: true, ratings: false, removals: false, since: "2026-11-01T00:00:00Z"))
 }
 
 @Test func simklDeltasReplaceTheirTitlesAndRemovalsDropTheRest() throws {

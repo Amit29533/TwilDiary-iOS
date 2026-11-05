@@ -265,12 +265,7 @@ struct CatalogDetailView: View {
                 .task(id: route) { await load() }
                 .task(id: route) {
                     // MDBList's ratings, when it's connected; otherwise TMDB's score stands alone.
-                    criticScores = []
-                    guard store.providerSettings.mdblist.isAuthenticated else { return }
-                    let config = await store.freshProviderConfig(.mdblist)
-                    if let summary = try? await store.directClient.fetchMDBListRatings(config: config, tmdbId: route.id, isSeries: route.kind == .tv) {
-                        criticScores = summary.ratings
-                    }
+                    criticScores = await CriticScores.load(store: store, tmdbId: route.id, isSeries: route.kind == .tv)
                 }
         }
     }
