@@ -140,7 +140,7 @@ struct SettingsView: View {
                 }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
         }
-        .confirmationDialog(store.pendingDiaryEdits > 0 ? "Sign out? Pending edits on this device will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
+        .confirmationDialog(store.pendingDiaryEdits + TraktDirectStore.shared.pending.count > 0 ? "Sign out? Pending edits on this device, including any still waiting for Trakt, will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
         .confirmationDialog("Which provider settings should this device keep? Only your pending fields will change.", isPresented: $reviewProviderConflict, titleVisibility: .visible) {
             Button("Keep this device’s settings") { Task { await store.resolveProviderVaultConflict(keepDevice: true) } }
             Button("Use saved online settings") { Task { await store.resolveProviderVaultConflict(keepDevice: false) } }

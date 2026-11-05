@@ -43,12 +43,12 @@ struct TraktDirectClient: Sendable {
                 try await Task.sleep(for: .seconds(min(max(wait, 1), 30)))
                 continue
             }
-            if status == 420 { throw APIError.message("Trakt says your account is at its limit (HTTP 420) for \(path). A Trakt VIP account lifts it.") }
-            if status == 401 || status == 403 { throw APIError.message("Trakt didn’t accept the sign-in (HTTP \(status)). Reconnect Trakt, then try again.") }
-            guard (200..<300).contains(status) else { throw APIError.message("Trakt answered HTTP \(status) for \(path).") }
+            if status == 420 { throw TraktWriteError(status: 420, message: "Trakt says your account is at its limit (HTTP 420) for \(path). A Trakt VIP account lifts it.") }
+            if status == 401 || status == 403 { throw TraktWriteError(status: status, message: "Trakt didn’t accept the sign-in (HTTP \(status)). Reconnect Trakt, then try again.") }
+            guard (200..<300).contains(status) else { throw TraktWriteError(status: status, message: "Trakt answered HTTP \(status) for \(path).") }
             return data
         }
-        throw APIError.message("Trakt is busy right now. Try again in a minute.")
+        throw TraktWriteError(status: 429, message: "Trakt is busy right now. Try again in a minute.")
     }
     func get(_ path: String, query: [String: String] = [:]) async throws -> Reply {
         var components = URLComponents(url: Self.base.appending(path: path), resolvingAgainstBaseURL: false)!
@@ -76,6 +76,43 @@ struct TraktDirectClient: Sendable {
     }
 }
 
+/// A Trakt write that reached Trakt and was answered with this HTTP status.
+struct TraktWriteError: LocalizedError, Sendable {
+    let status: Int
+    let message: String
+    var errorDescription: String? { message }
+}
+
+/// What a failed write means for the edit.
+enum TraktDelivery: Equatable, Sendable {
+    /// Never left the phone (no network): safe to send later.
+    case notSent
+    /// Trakt may or may not have it (the answer was lost): check before sending again.
+    case uncertain
+    /// Trakt is busy or down (429 after waiting, 5xx): send later.
+    case retryLater
+    /// The sign-in needs renewing: keep it until Trakt is reconnected.
+    case authBlocked
+    /// Trakt refused this edit (other 4xx, account limit): sending it again won't help.
+    case rejected
+
+    nonisolated static func of(_ error: Error) -> TraktDelivery {
+        if let error = error as? TraktWriteError {
+            switch error.status {
+            case 401, 403: return .authBlocked
+            case 429, 500...: return .retryLater
+            default: return .rejected
+            }
+        }
+        let error = error as NSError
+        guard error.domain == NSURLErrorDomain else { return .rejected }
+        let neverSent: Set<Int> = [NSURLErrorNotConnectedToInternet, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
+                                   NSURLErrorDNSLookupFailed, NSURLErrorDataNotAllowed, NSURLErrorInternationalRoamingOff,
+                                   NSURLErrorCallIsActive, NSURLErrorAppTransportSecurityRequiresSecureConnection]
+        return neverSent.contains(error.code) ? .notSent : .uncertain
+    }
+}
+
 /// The last direct read of Trakt and how it compares with the diary (Trakt page → Direct from Trakt).
 @MainActor @Observable final class TraktDirectStore {
     static let shared = TraktDirectStore()
@@ -94,6 +131,9 @@ struct TraktDirectClient: Sendable {
     private(set) var running = false
     var error: String?
     private var token: TraktDirectToken?
+    /// Changes on sign-out. Reads and sends compare it after every wait, so work started for the
+    /// previous account can't save, show or send anything once it's gone.
+    @ObservationIgnored private var generation = UUID()
     private let file: URL
     init(file: URL = URL.applicationSupportDirectory.appending(path: "Trakt/library.json")) {
         self.file = file
@@ -105,12 +145,13 @@ struct TraktDirectClient: Sendable {
         if store.isPreview { error = "Direct Trakt reads need a real Trakt connection."; return }
         running = true; error = nil
         defer { running = false }
-        let started = Date.now
+        let started = Date.now, session = generation
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
-            let client = TraktDirectClient(token: token!)
+            guard session == generation, let token else { return }
+            let client = TraktDirectClient(token: token)
             // Edits made offline go first; still offline means there's nothing to read either.
-            guard await sendPending(client) else { return }
+            guard await sendPending(client, owner: token.username, session: session) else { return }
             var requests = 1
             let activities = try TraktDecode.activities(from: try await client.get("/sync/last_activities").data)
             var library = self.library ?? TraktLibrary()
@@ -149,6 +190,8 @@ struct TraktDirectClient: Sendable {
             library.activities = unavailable.isEmpty ? activities : library.activities
             library.skipped = skipped
             library.fetchedAt = Date.now.formatted(.iso8601)
+            // Signed out while reading: the previous account's lists are dropped, not saved.
+            guard session == generation else { return }
             self.library = library
             save(library)
             // Compare with the server's diary (the record until the switch-over), not the Trakt view;
@@ -159,7 +202,7 @@ struct TraktDirectClient: Sendable {
             if store.diaryFromTrakt { store.applyDiarySource() }
             autoFillIfNeeded(store: store)
         } catch {
-            if !Task.isCancelled { self.error = error.localizedDescription }
+            if !Task.isCancelled, session == generation { self.error = error.localizedDescription }
         }
     }
 
@@ -191,12 +234,14 @@ struct TraktDirectClient: Sendable {
         } while page <= count
         return (items, skipped, calls)
     }
-    /// A list Trakt splits into movies and shows (`…/movies`, `…/shows`), each in one call.
+    /// A list Trakt splits into movies and shows (`…/movies`, `…/shows`), every page of each
+    /// (Trakt pages watchlists, ratings and favourites for larger accounts). A page that fails
+    /// fails the whole read, so a partial list never replaces the saved one.
     private func both<Item>(_ client: TraktDirectClient, _ path: String,
                             decode: (Data) throws -> (items: [Item], skipped: Int)) async throws -> ([Item], Int, Int) {
-        let movies = try decode(try await client.get(path + "/movies").data)
-        let shows = try decode(try await client.get(path + "/shows").data)
-        return (movies.items + shows.items, movies.skipped + shows.skipped, 2)
+        let movies = try await pages(client, path + "/movies", decode: decode)
+        let shows = try await pages(client, path + "/shows", decode: decode)
+        return (movies.0 + shows.0, movies.1 + shows.1, movies.2 + shows.2)
     }
 
     private func save(_ library: TraktLibrary) {
@@ -243,18 +288,23 @@ struct TraktDirectClient: Sendable {
         if store.isPreview { error = "Writing to Trakt needs a real Trakt connection."; return }
         writing = true; error = nil; writeResult = nil
         defer { writing = false; writeProgress = nil }
-        var sent = 0, tally = ReplyTally()
+        var sent = 0, tally = ReplyTally(), notFound = Set<String>()
+        let session = generation
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
-            let client = TraktDirectClient(token: token!)
+            guard session == generation, let token else { return }
+            let client = TraktDirectClient(token: token)
             let requests = plan.requests()
             for (index, request) in requests.enumerated() {
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
                 if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                guard session == generation else { return }
                 let reply = try await client.post(request.path, body: request.body)
                 sent += request.count
                 tally.add(reply)
+                notFound.formUnion(Self.notFoundKeys(reply))
             }
+            guard session == generation else { return }
             // Straight to the server's record of each title: the usual edit path would send a
             // favourite to Trakt in the Trakt diary, and the comparison would never settle.
             for id in plan.diaryFavourites {
@@ -263,36 +313,76 @@ struct TraktDirectClient: Sendable {
                 }
             }
             if !plan.diaryFavourites.isEmpty { try? await store.reload() }
-            if store.traktHoldsDiary { copied.formUnion(plan.tokens) }
+            // Only what Trakt accepted counts as copied: a title it couldn't find stays listed.
+            if store.traktHoldsDiary {
+                copied.formUnion(plan.tokens.filter { token in
+                    let parts = token.split(separator: "|")
+                    return parts.count < 2 || !notFound.contains(String(parts[1]))
+                })
+            }
             writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
-            if !Task.isCancelled { self.error = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
+            if !Task.isCancelled, session == generation { self.error = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
         }
+        guard session == generation else { return }
         await check(store: store)
     }
     // MARK: Phase 4b: edits in the Trakt diary
 
     /// One write to Trakt with the server's token (one a second at most, waiting out 429s).
-    /// With no connection (the request never left the phone), the edit is kept and sent before the
-    /// next read instead of failing, so nothing has to be redone by hand.
+    /// An edit that may still reach Trakt is kept and sent before the next read instead of failing
+    /// (no connection, Trakt busy or down, sign-in to renew, or an answer lost on the way, which is
+    /// checked against Trakt before anything is sent twice). Only a real refusal throws, and so
+    /// does a title Trakt couldn't find: the caller then leaves the phone's copy unchanged.
     func write(_ path: String, body: [String: Any], store: DiaryStore) async throws {
         if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
         let data = try JSONSerialization.data(withJSONObject: body)
+        let session = generation
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
-            if !pending.isEmpty { pending.append(PendingWrite(path: path, body: data)); return }
-            if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
-            lastWrite = .now
-            _ = try await TraktDirectClient(token: token!).post(path, body: data)
-        } catch let error where Self.neverSent(error) {
-            pending.append(PendingWrite(path: path, body: data))
+        } catch {
+            // Nothing has left the phone yet.
+            guard session == generation else { throw CancellationError() }
+            pending.append(PendingWrite(path: path, body: data, owner: token?.username)); return
+        }
+        guard session == generation, let token else { throw CancellationError() }
+        if !pending.isEmpty { pending.append(PendingWrite(path: path, body: data, owner: token.username)); return }
+        if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
+        lastWrite = .now
+        let reply: Data
+        do {
+            reply = try await TraktDirectClient(token: token).post(path, body: data)
+        } catch {
+            guard session == generation else { throw CancellationError() }
+            switch TraktDelivery.of(error) {
+            case .rejected: throw error
+            case .authBlocked:
+                pending.append(PendingWrite(path: path, body: data, owner: token.username))
+                self.error = "Trakt needs you to reconnect. Your changes are kept and sent once it’s reconnected."
+                return
+            case .uncertain:
+                pending.append(PendingWrite(path: path, body: data, owner: token.username, uncertain: true)); return
+            case .notSent, .retryLater:
+                pending.append(PendingWrite(path: path, body: data, owner: token.username)); return
+            }
+        }
+        if Self.notFoundCount(reply) > 0 {
+            refreshSoon(store: store)
+            throw APIError.message("Trakt couldn’t find this title by its TMDB id, so it wasn’t changed there.")
         }
     }
 
     // MARK: Edits waiting for a connection
 
-    struct PendingWrite: Codable, Equatable { let path: String; let body: Data }
+    struct PendingWrite: Codable, Equatable {
+        let path: String
+        let body: Data
+        /// The Trakt account it was made for; never sent under another one.
+        var owner: String?
+        /// The answer was lost: Trakt may already have it (checked before sending again).
+        var uncertain: Bool?
+    }
     /// Kept on the phone (in order) until Trakt takes them.
     private(set) var pending: [PendingWrite] = TraktDirectStore.loadPending() {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(pending), forKey: "trakt.pendingWrites") }
@@ -300,31 +390,92 @@ struct TraktDirectClient: Sendable {
     nonisolated private static func loadPending() -> [PendingWrite] {
         (UserDefaults.standard.data(forKey: "trakt.pendingWrites")).flatMap { try? JSONDecoder().decode([PendingWrite].self, from: $0) } ?? []
     }
-    /// The request never reached Trakt (no network, no route), so sending it later can't double it.
-    nonisolated static func neverSent(_ error: Error) -> Bool {
-        let codes: Set<Int> = [NSURLErrorNotConnectedToInternet, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
-                               NSURLErrorDNSLookupFailed, NSURLErrorDataNotAllowed, NSURLErrorInternationalRoamingOff, NSURLErrorCallIsActive]
-        let error = error as NSError
-        return error.domain == NSURLErrorDomain && codes.contains(error.code)
-    }
-    /// Sends what's waiting, oldest first. False while still offline. A change Trakt refuses is
-    /// dropped (and said), since Trakt is the record: the read that follows shows what it kept.
-    private func sendPending(_ client: TraktDirectClient) async -> Bool {
+    /// Sends what's waiting, oldest first; false while Trakt can't take them yet (then nothing is
+    /// read either, so the phone keeps showing your edits). A watch whose answer was lost is first
+    /// looked up in Trakt's history at its time, and only the plays missing there are sent, so a
+    /// play is never doubled. An edit Trakt refuses, or one made for another Trakt account, is
+    /// dropped and said: Trakt is the record, and the read that follows shows what it kept.
+    private func sendPending(_ client: TraktDirectClient, owner: String, session: UUID) async -> Bool {
         while let next = pending.first {
+            guard session == generation, !Task.isCancelled else { return false }
+            if let other = next.owner, other != owner {
+                pending.removeFirst()
+                self.error = "An edit kept for another Trakt account was discarded."
+                continue
+            }
             do {
-                if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
-                lastWrite = .now
-                _ = try await client.post(next.path, body: next.body)
+                var body: Data? = next.body
+                if next.uncertain == true, next.path == "/sync/history" {
+                    body = try await missingPlays(next.body, client: client)
+                }
+                guard session == generation else { return false }
+                if let body {
+                    if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
+                    lastWrite = .now
+                    let reply = try await client.post(next.path, body: body)
+                    guard session == generation else { return false }
+                    if Self.notFoundCount(reply) > 0 { self.error = "Trakt couldn’t find a title from an edit made offline, so it wasn’t changed there." }
+                }
                 pending.removeFirst()
-            } catch let error where Self.neverSent(error) {
-                return false
             } catch {
-                if Task.isCancelled { return false }
-                pending.removeFirst()
-                self.error = "A change made offline didn’t reach Trakt: " + error.localizedDescription
+                guard session == generation, !Task.isCancelled else { return false }
+                switch TraktDelivery.of(error) {
+                case .notSent, .retryLater:
+                    return false
+                case .uncertain:
+                    pending[0].uncertain = true
+                    return false
+                case .authBlocked:
+                    self.error = "Trakt needs you to reconnect. Your changes are kept and sent once it’s reconnected."
+                    return false
+                case .rejected:
+                    pending.removeFirst()
+                    self.error = "An edit made offline was refused by Trakt: " + error.localizedDescription
+                }
             }
         }
         return true
+    }
+    /// For a history write whose answer was lost: Trakt's history at that time (a minute either
+    /// side) is read, and only the plays not there are kept; nil when all of them already are.
+    private func missingPlays(_ body: Data, client: TraktDirectClient) async throws -> Data? {
+        guard var root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return body }
+        var times: [Date] = []
+        for movie in (root["movies"] as? [[String: Any]]) ?? [] { if let when = DiaryDate.parse(movie["watched_at"] as? String) { times.append(when) } }
+        for show in (root["shows"] as? [[String: Any]]) ?? [] {
+            for season in (show["seasons"] as? [[String: Any]]) ?? [] {
+                for episode in (season["episodes"] as? [[String: Any]]) ?? [] { if let when = DiaryDate.parse(episode["watched_at"] as? String) { times.append(when) } }
+            }
+        }
+        guard let first = times.min(), let last = times.max() else { return body }
+        let format = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        let window = ["start_at": format.format(first.addingTimeInterval(-60)), "end_at": format.format(last.addingTimeInterval(60)), "limit": "1000"]
+        let found = try TraktDecode.history(from: try await client.get("/sync/history", query: window).data).items
+        func there(_ tmdb: Int?, movie: Bool, season: Int?, episode: Int?, at when: Date?) -> Bool {
+            found.contains { play in
+                play.title.tmdbId == tmdb && (play.title.kind == .movie) == movie && play.season == season && play.episode == episode
+                    && (when == nil || play.watchedAt.flatMap(DiaryDate.parse).map { abs($0.timeIntervalSince(when!)) <= 60 } == true)
+            }
+        }
+        func tmdb(_ item: [String: Any]) -> Int? { ((item["ids"] as? [String: Any])?["tmdb"] as? NSNumber)?.intValue }
+        let movies = ((root["movies"] as? [[String: Any]]) ?? []).filter {
+            !there(tmdb($0), movie: true, season: nil, episode: nil, at: DiaryDate.parse($0["watched_at"] as? String))
+        }
+        var shows: [[String: Any]] = []
+        for var show in (root["shows"] as? [[String: Any]]) ?? [] {
+            var seasons: [[String: Any]] = []
+            for var season in (show["seasons"] as? [[String: Any]]) ?? [] {
+                let number = (season["number"] as? NSNumber)?.intValue
+                let episodes = ((season["episodes"] as? [[String: Any]]) ?? []).filter {
+                    !there(tmdb(show), movie: false, season: number, episode: ($0["number"] as? NSNumber)?.intValue, at: DiaryDate.parse($0["watched_at"] as? String))
+                }
+                if !episodes.isEmpty { season["episodes"] = episodes; seasons.append(season) }
+            }
+            if !seasons.isEmpty { show["seasons"] = seasons; shows.append(show) }
+        }
+        guard !movies.isEmpty || !shows.isEmpty else { return nil }
+        root["movies"] = movies; root["shows"] = shows
+        return try JSONSerialization.data(withJSONObject: root)
     }
     /// A Trakt client with your server's token, for reads outside the library (community info).
     func client(store: DiaryStore) async throws -> TraktDirectClient {
@@ -359,9 +510,10 @@ struct TraktDirectClient: Sendable {
     /// (needed to remove exactly that play later).
     func refreshSoon(store: DiaryStore) {
         refresh?.cancel()
+        let session = generation
         refresh = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled, session == self.generation else { return }
             await self.check(store: store)
         }
     }
@@ -389,6 +541,18 @@ struct TraktDirectClient: Sendable {
         }
     }
 
+    /// The titles in a write reply's "not_found" lists, as "movie:603" / "tv:1399".
+    nonisolated static func notFoundKeys(_ data: Data) -> Set<String> {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let missing = root["not_found"] as? [String: Any] else { return [] }
+        var keys = Set<String>()
+        for (list, prefix) in [("movies", "movie:"), ("shows", "tv:")] {
+            for case let item as [String: Any] in (missing[list] as? [Any]) ?? [] {
+                if let tmdb = ((item["ids"] as? [String: Any])?["tmdb"] as? NSNumber)?.intValue { keys.insert(prefix + String(tmdb)) }
+            }
+        }
+        return keys
+    }
     /// Trakt's "not_found" lists in a write reply.
     nonisolated static func notFoundCount(_ data: Data) -> Int {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return 0 }
@@ -398,8 +562,12 @@ struct TraktDirectClient: Sendable {
     }
 
     /// Sign-out: the Trakt copy is diary data, so it goes with the diary.
+    /// Edits still waiting for Trakt go too (the sign-out warning counts them), and anything
+    /// already running for this account can no longer save, show or send.
     func forget() {
-        library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil
+        generation = UUID()
+        refresh?.cancel(); refresh = nil
+        library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil; pending = []
         try? FileManager.default.removeItem(at: file)
     }
 }
@@ -417,6 +585,8 @@ struct TraktDirectClient: Sendable {
     private(set) var writeResults: [MainTracker: String] = [:]
     /// Each service's plan from its last read (see `TraktDirectStore.plan`).
     private(set) var plans: [MainTracker: TraktWritePlan] = [:]
+    /// Changes on sign-out (see `TraktDirectStore.generation`).
+    @ObservationIgnored private var generation = UUID()
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
@@ -431,7 +601,7 @@ struct TraktDirectClient: Sendable {
         if store.isPreview { errors[tracker] = "Direct reads need a real \(tracker.name) connection."; return }
         running = tracker; errors[tracker] = nil
         defer { running = nil }
-        let started = Date.now
+        let started = Date.now, session = generation
         do {
             let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
             let client = store.directClient
@@ -512,6 +682,8 @@ struct TraktDirectClient: Sendable {
                 library.activities = activities
             }
             library.fetchedAt = Date.now.formatted(.iso8601)
+            // Signed out while reading: the previous account's lists are dropped, not saved.
+            guard session == generation else { return }
             libraries[tracker] = library
             save(library, tracker)
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
@@ -519,7 +691,7 @@ struct TraktDirectClient: Sendable {
                                      skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.diaryToMatch, tracker: tracker))
             plans[tracker] = matchPlan(tracker, store: store)
         } catch {
-            if !Task.isCancelled { errors[tracker] = error.localizedDescription }
+            if !Task.isCancelled, session == generation { errors[tracker] = error.localizedDescription }
         }
     }
 
@@ -533,7 +705,12 @@ struct TraktDirectClient: Sendable {
         if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
         lastWrite = .now
         let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
-        _ = try await store.directClient.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body))
+        let reply = try await store.directClient.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body))
+        // A title the service couldn't find wasn't changed: the caller leaves the phone's copy as is.
+        if TraktDirectStore.notFoundCount(reply) > 0 {
+            refreshSoon(tracker, store: store)
+            throw APIError.message("\(tracker.name) couldn’t find this title by its TMDB id, so it wasn’t changed there.")
+        }
     }
     /// Applies an edit to the phone's copy and redraws the diary at once.
     func update(_ tracker: MainTracker, store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
@@ -546,9 +723,10 @@ struct TraktDirectClient: Sendable {
     /// A quiet re-read a few seconds after an edit.
     func refreshSoon(_ tracker: MainTracker, store: DiaryStore) {
         refresh?.cancel()
+        let session = generation
         refresh = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled, session == self.generation else { return }
             await self.check(tracker, store: store)
         }
     }
@@ -566,12 +744,15 @@ struct TraktDirectClient: Sendable {
         if store.isPreview { errors[tracker] = "Writing to \(tracker.name) needs a real \(tracker.name) connection."; return }
         writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
         var sent = 0, tally = TraktDirectStore.ReplyTally()
+        let session = generation
+        defer { if session == generation { writing = nil; writeProgress = nil } }
         do {
             let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
             let requests = plan.requests()
             for (index, request) in requests.enumerated() {
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
                 if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                guard session == generation else { return }
                 let reply = try await store.directClient.write(config, path: request.path, body: request.body)
                 sent += request.count
                 tally.add(reply)
@@ -579,8 +760,9 @@ struct TraktDirectClient: Sendable {
             writeResults[tracker] = "Sent to \(tracker.name): " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: tracker.name)
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
-            if !Task.isCancelled { errors[tracker] = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
+            if !Task.isCancelled, session == generation { errors[tracker] = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
         }
+        guard session == generation else { return }
         writing = nil; writeProgress = nil
         await check(tracker, store: store)
     }
@@ -608,7 +790,10 @@ struct TraktDirectClient: Sendable {
         } catch { }
     }
     /// Sign-out: these copies are diary data, so they go with the diary.
+    /// Anything already running for this account can no longer save or show its results.
     func forget() {
+        generation = UUID()
+        refresh?.cancel(); refresh = nil
         libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]
         try? FileManager.default.removeItem(at: folder)
     }
