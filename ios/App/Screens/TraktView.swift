@@ -35,6 +35,11 @@ import TwilDiaryCore
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 24) {
                 connection
+                if retired {
+                    // Phase 4c: Trakt holds the diary, and the app writes to it directly. The old
+                    // scan, review, incoming watches and logging settings are retired.
+                    if controller.status?.connected == true { TrackerPreviewPanel(tracker: .trakt) }
+                } else {
                 apiAndLoggingSettings
                 if controller.restoringApproval { restoringImport }
                 if controller.status?.connected == true {
@@ -47,6 +52,7 @@ import TwilDiaryCore
                         if sync.reviewing || sync.run?.state == "complete" { transferProgress(sync) }
                         review(sync)
                     }
+                }
                 }
                 if let error = controller.error {
                     // "Start a fresh preview": Trakt changed after this preview, so retrying can't succeed.
@@ -63,11 +69,12 @@ import TwilDiaryCore
             .task(id: controller.kind.rawValue + "\n" + controller.query) {
                 do {
                     try await Task.sleep(for: .milliseconds(250)); try Task.checkCancellation()
+                    guard !retired else { return }
                     await controller.refreshReview(); await controller.resumeApprovedApply()
                 } catch { }
             }
-            .refreshable { await controller.refresh(); if controller.status?.connected == true { await incoming.refresh() } }
-            .task(id: "\(controller.status?.connected == true):\(controller.sync?.run?.state ?? "")") { if controller.status?.connected == true { await incoming.refresh() } }
+            .refreshable { await controller.refresh(); if controller.status?.connected == true && !retired { await incoming.refresh() } }
+            .task(id: "\(controller.status?.connected == true):\(controller.sync?.run?.state ?? "")") { if controller.status?.connected == true && !retired { await incoming.refresh() } }
             .task(id: controller.cooldownUntil) {
                 // One wake-up at the end of the cooldown re-enables the controls. The
                 // per-second countdown is a TimelineView, so the whole Trakt screen and
@@ -226,7 +233,11 @@ import TwilDiaryCore
             }
             if controller.status?.connected == true {
                 // Hidden while a scan runs; the scan card has its own Continue and Stop.
-                if !scanning { HStack(spacing: 10) {
+                if retired {
+                    Text("Trakt holds your diary. Your edits go straight to Trakt.").font(.caption).foregroundStyle(.secondary)
+                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity) }
+                        .buttonStyle(.diarySecondary).disabled(controller.busy)
+                } else if !scanning { HStack(spacing: 10) {
                     Button { Task { await controller.scan(start: true) } } label: {
                         Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity)
                     }.buttonStyle(.diaryPrimary).disabled(coolingDown)
@@ -235,7 +246,7 @@ import TwilDiaryCore
                 }.disabled(controller.busy) }
             } else if controller.status?.configured == true {
                 Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity) }.buttonStyle(.diaryPrimary).disabled(controller.busy)
-                Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption)
+                if !retired { Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption) }
             } else if controller.status != nil { Text("Add a Trakt Client ID on your server first.").font(.subheadline).foregroundStyle(.secondary) }
             if coolingDown && controller.sync?.reviewing != true {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -247,6 +258,8 @@ import TwilDiaryCore
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
     }
     private var scanning: Bool { controller.sync?.run?.state == "building" }
+    /// Phase 4c: a service holds the diary, so the scan and review are retired.
+    private var retired: Bool { store.serverRecord != nil }
     private var apiAndLoggingSettings: some View {
         let saved = store.providerSettings.trakt
         return VStack(alignment: .leading, spacing: 12) {

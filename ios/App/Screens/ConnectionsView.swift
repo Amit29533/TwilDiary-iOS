@@ -1,44 +1,56 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Profile → Connections: everything TwilDiary talks to, in two groups by how you connect it.
-/// Services you sign in to on their own page (web sign-in), and services that use a key.
-/// The main tracker sits on top because it decides where the diary lives.
+/// Profile → Connections. On top, where your diary lives: Trakt, Simkl and MDBList in one list.
+/// The ticked one is your main tracker (the diary comes from it; edits go to it, and also to the
+/// others you're signed in to). Each row opens that service's page; ⋯ has the quick actions.
+/// Below: how this iPhone reaches your server, and the services that use a key.
 struct ConnectionsView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @State private var showDiaryAccess = false
-    /// Trakt's real state (Not connected, Reconnect, scanning…), as Profile showed it before.
+    /// Trakt's real state (Not connected, Reconnect…), from your server.
     @State private var trakt: TraktController?
-    private var traktBadge: String {
-        TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
-    }
+    @State private var traktDirect = TraktDirectStore.shared
+    @State private var others = TrackerPreviewStore.shared
+    @State private var matching: MainTracker?
+    @State private var note: String?
+
+    private var main: MainTracker { MainTracker(rawValue: mainTracker) ?? .trakt }
 
     var body: some View {
-        let tracker = MainTracker(rawValue: mainTracker) ?? .trakt
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
-                group(nil) {
-                    row(BrandLogo(service: tracker.brand), "Main tracker", "The service that holds your diary", value: tracker.name,
-                        destination: .mainTracker, id: "settings-main-tracker")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Where your diary lives").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
+                    VStack(spacing: 0) {
+                        ForEach(Array(MainTracker.allCases.enumerated()), id: \.element) { index, tracker in
+                            if index > 0 { divider }
+                            trackerRow(tracker)
+                        }
+                    }.background(theme.field, in: RoundedRectangle(cornerRadius: 20))
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.08)))
+                    if let progress = activity {
+                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }.padding(.horizontal, 4)
+                    } else if let note = note ?? lastResult {
+                        Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 4).accessibilityIdentifier("trackers-note")
+                    }
+                    Text("The ticked one holds your diary. Your edits go to it, and to the others you’re signed in to.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4)
                 }
-                group("Sign in on the web", note: "Sign in on the service’s own page and come straight back. Simkl and MDBList also take your own key on their page.") {
-                    row(BrandLogo(service: .trakt), "Trakt", "History, ratings and watchlist",
-                        value: traktBadge, destination: .trakt, id: "settings-trakt")
-                    divider
-                    row(BrandLogo(service: .simkl), "Simkl", "Anime, shows and movie tracking",
-                        value: store.providerSettings.simkl.statusBadge, destination: .simkl, id: "settings-simkl")
-                    divider
-                    row(BrandLogo(service: .mdblist), "MDBList", "Multi-source ratings and watchlist",
-                        value: store.providerSettings.mdblist.statusBadge, destination: .mdblist, id: "settings-mdblist")
-                    divider
+                group("Your diary") {
                     Button { showDiaryAccess = true } label: {
-                        rowLabel(tile("lock.shield.fill", Color(webHex: "#3B82F6")), "Your diary", "How this iPhone signs in to your TwilDiary server", value: nil)
+                        rowLabel(tile("lock.shield.fill", Color(webHex: "#3B82F6")), "Server sign-in", "How this iPhone signs in to your TwilDiary server", value: nil)
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
+                    divider
+                    row(tile("externaldrive.fill.badge.timemachine", Color(webHex: "#22A06B")), "Backups", "Copies of your diary kept on your server",
+                        value: nil, destination: .backups, id: "connections-backups")
                 }
-                group("API keys", note: "Services TwilDiary reaches with a key or a public profile. Keys are kept on your server, not on this iPhone.") {
+                group("Keys", note: "Services TwilDiary reaches with a key or a public profile. Keys are kept on your server, not on this iPhone.") {
                     row(BrandLogo(service: .tmdb), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
                     divider
                     row(BrandLogo(service: .anilist), "AniList", "Characters and voice actors, by public profile",
@@ -55,17 +67,127 @@ struct ConnectionsView: View {
                 trakt = TraktController(service: makeTraktService(store: store))
                 await trakt?.refresh()
             }
+            .confirmationDialog(matching.map { "Make \($0.name) match the diary?" } ?? "", isPresented: Binding(get: { matching != nil }, set: { if !$0 { matching = nil } }), titleVisibility: .visible) {
+                if let tracker = matching {
+                    Button("Send to \(tracker.name)") { Task { await match(tracker) } }
+                    Button("Cancel", role: .cancel) { matching = nil }
+                }
+            } message: {
+                if let tracker = matching, let plan = writePlan(tracker) {
+                    Text(plan.summary.map { "• " + $0 }.joined(separator: "\n") + "\n\nNothing is removed from your \(tracker.name) history.")
+                }
+            }
             .sheet(isPresented: $showDiaryAccess) {
                 NavigationStack {
                     AccessSignIn { credential in
                         showDiaryAccess = false
                         Task { await store.connect(credential) }
                     }
-                    .navigationTitle("Your diary").navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle("Server sign-in").navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showDiaryAccess = false } } }
                 }
             }
     }
+
+    // MARK: Trackers
+
+    private func connected(_ tracker: MainTracker) -> Bool {
+        switch tracker {
+        case .trakt: trakt?.status?.connected == true
+        case .simkl: store.providerSettings.simkl.enabled && store.providerSettings.simkl.isAuthenticated
+        case .mdblist: store.providerSettings.mdblist.enabled && store.providerSettings.mdblist.isAuthenticated
+        }
+    }
+    /// "Connected", "Not connected", "Reconnect"… (Trakt's from your server).
+    private func badge(_ tracker: MainTracker) -> String {
+        switch tracker {
+        case .trakt:
+            TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
+        case .simkl: connected(.simkl) ? "Connected" : "Not connected"
+        case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
+        }
+    }
+    private func account(_ tracker: MainTracker) -> String? {
+        switch tracker {
+        case .trakt: trakt?.status?.username
+        case .simkl: store.providerSettings.simkl.username
+        case .mdblist: store.providerSettings.mdblist.username
+        }
+    }
+    private func checkedAt(_ tracker: MainTracker) -> Date? {
+        let stamp = tracker == .trakt ? traktDirect.library?.fetchedAt : others.libraries[tracker]?.fetchedAt
+        return stamp.flatMap { try? Date($0, strategy: .iso8601) }
+    }
+    private func writePlan(_ tracker: MainTracker) -> TraktWritePlan? {
+        tracker == .trakt ? traktDirect.matchPlan(store: store) : others.matchPlan(tracker, store: store)
+    }
+    private var activity: String? {
+        if traktDirect.running { return "Reading Trakt…" }
+        if let running = others.running { return "Reading \(running.name)…" }
+        return traktDirect.writeProgress ?? others.writeProgress
+    }
+    private var lastResult: String? {
+        if let error = traktDirect.error { return error }
+        for tracker in [MainTracker.simkl, .mdblist] { if let error = others.errors[tracker] { return "\(tracker.name): " + error } }
+        return traktDirect.writeResult ?? others.writeResults.values.first
+    }
+
+    private func trackerRow(_ tracker: MainTracker) -> some View {
+        let isMain = tracker == main, on = connected(tracker)
+        let destination: AppDestination = tracker == .trakt ? .trakt : tracker == .simkl ? .simkl : .mdblist
+        let checked = checkedAt(tracker).map { "checked " + $0.formatted(.relative(presentation: .named)) }
+        let detail = on ? [account(tracker).map { "@" + $0 }, checked].compactMap { $0 }.joined(separator: " · ") : ""
+        return HStack(spacing: 4) {
+            NavigationLink(value: destination) {
+                HStack(spacing: 14) {
+                    BrandLogo(service: tracker.brand, size: 44)
+                        .overlay(alignment: .bottomTrailing) {
+                            if isMain {
+                                Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).symbolRenderingMode(.palette)
+                                    .foregroundStyle(.white, theme.accent).background(Circle().fill(Color(webHex: "#111115")).padding(1)).offset(x: 5, y: 5)
+                            }
+                        }.opacity(on || isMain ? 1 : 0.55)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(tracker.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                            if isMain { Text("Main").font(.system(size: 11, weight: .bold)).foregroundStyle(theme.accent).padding(.horizontal, 6).padding(.vertical, 2).background(theme.accent.opacity(0.15), in: Capsule()) }
+                        }
+                        Text(detail.isEmpty ? badge(tracker) : badge(tracker) + " · " + detail)
+                            .font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                }.padding(.leading, 14).padding(.vertical, 12).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("settings-" + tracker.rawValue)
+            Menu {
+                if !isMain { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
+                Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on)
+                if let plan = writePlan(tracker), !plan.isEmpty {
+                    Button("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath") { matching = tracker }
+                }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
+        }.background(isMain ? theme.accent.opacity(0.1) : .clear)
+    }
+
+    /// The main tracker holds the diary: the diary is shown from it, and edits go to it.
+    private func makeMain(_ tracker: MainTracker) {
+        mainTracker = tracker.rawValue
+        note = "\(tracker.name) holds your diary now."
+        guard !store.isPreview else { return }
+        store.diarySource = tracker.rawValue
+    }
+    private func check(_ tracker: MainTracker) async {
+        note = nil
+        if tracker == .trakt { await traktDirect.check(store: store) } else { await others.check(tracker, store: store) }
+    }
+    private func match(_ tracker: MainTracker) async {
+        matching = nil; note = nil
+        if tracker == .trakt { await traktDirect.makeTraktMatch(store: store) } else { await others.makeMatch(tracker, store: store) }
+    }
+
+    // MARK: Rows
 
     @ViewBuilder private func group<Content: View>(_ name: String?, note: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -75,7 +197,7 @@ struct ConnectionsView: View {
             if let note { Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
         }
     }
-    private var divider: some View { Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 60) }
+    private var divider: some View { Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 72) }
     private func tile(_ symbol: String, _ color: Color) -> some View {
         Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
             .frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)

@@ -427,6 +427,9 @@ import TwilDiaryCore
             UserDefaults.standard.set(record.rawValue, forKey: MainTrackerView.key)
             diarySource = record.rawValue
         }
+        // Edits the server no longer takes are handed to Trakt through the delivery queue, which
+        // needs Trakt as a delivery target (with your server's Trakt sign-in).
+        if record == .trakt, !traktWriteThrough { try? await setTraktWriteThrough(true) }
     }
     /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
     /// with the server's extras. Reads Trakt first when there's no Trakt read yet.
@@ -1781,6 +1784,26 @@ extension DiaryStore {
                 let revision = UUID(); snapshotGeneration = revision
                 try await publish(authoritative, session: session, revision: revision)
                 outboxNotice = pendingDiaryEdits > 0 ? "Saved on this device · \(pendingDiaryEdits) pending sync" : nil
+            } catch APIError.rejected(let status, _) where status == 423 {
+                // Phase 4c: the server keeps a read-only copy now. A watch or a title change goes to
+                // the service holding the diary instead; anything else it can't take is dropped.
+                guard session == sessionGeneration else { return }
+                var target: SyncProviderKind?
+                switch entry.mutation {
+                case .markWatch, .patchTitle:
+                    switch diaryService ?? serverRecord {
+                    case .trakt: target = .trakt
+                    case .simkl: target = .simkl
+                    case .mdblist: target = .mdblist
+                    case nil: target = nil
+                    }
+                default: target = nil
+                }
+                var next = outbox
+                next.handOver(entryID: entry.id, to: target)
+                do { try outboxStore.save(next, scope: scope); outbox = next }
+                catch { outboxNotice = "Pending edits are kept on this device. Their sync status could not be saved."; return }
+                outboxNotice = target == nil ? "An edit made offline couldn’t be kept: your server’s diary is read-only now." : nil
             } catch {
                 guard session == sessionGeneration else { return }
                 var next = outbox

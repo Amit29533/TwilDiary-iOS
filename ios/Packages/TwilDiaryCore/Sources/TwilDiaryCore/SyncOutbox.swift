@@ -148,6 +148,16 @@ public struct SyncOutboxQueue: Codable, Equatable, Sendable {
         }
     }
 
+    /// Phase 4c: the server keeps a read-only copy, so it no longer takes this edit. It goes to
+    /// `provider` (the service holding the diary) instead, besides any it was already going to.
+    public mutating func handOver(entryID: String, to provider: SyncProviderKind?) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+        entries[index].pendingProviders.remove(.cloudflare)
+        if let provider, provider != .cloudflare { entries[index].pendingProviders.insert(provider) }
+        entries[index].lastError = nil
+        if entries[index].pendingProviders.isEmpty { entries.remove(at: index) }
+    }
+
     public mutating func recordFailure(entryID: String, error: String) {
         guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
         entries[index].attempts += 1

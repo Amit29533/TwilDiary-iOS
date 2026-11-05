@@ -32,8 +32,13 @@ test('once Trakt holds the diary, watches and ratings are frozen and the Review 
   assert.equal(recordRefusal('trakt', 'PUT', '/api/trakt/incoming')?.status, 410);
   assert.equal(recordRefusal('trakt', 'GET', '/api/trakt/sync'), null, 'reading the old runs still works');
   assert.equal(recordRefusal('trakt', 'POST', '/api/titles/abc/watches')?.status, 423);
+  assert.equal(recordRefusal('trakt', 'POST', '/api/titles/abc/watches')?.code, 'diary_record_moved');
   assert.equal(recordRefusal('trakt', 'PATCH', '/api/watch-events/e1')?.status, 423);
   assert.equal(recordRefusal('trakt', 'PATCH', '/api/titles/abc', { score: 8, expectedVersion: 2 })?.status, 423);
+  assert.equal(recordRefusal('trakt', 'POST', '/api/progress/status')?.status, 423, 'season progress logs watches');
+  assert.equal(recordRefusal('trakt', 'POST', '/api/providers/simkl/sync')?.status, 423, 'the old pull writes watches');
+  assert.equal(recordRefusal('trakt', 'POST', '/api/workspace/migrate')?.status, 423);
+  assert.equal(recordRefusal('trakt', 'POST', '/api/providers/vault'), null, 'saving provider keys still works');
   assert.match(recordRefusal('simkl', 'PATCH', '/api/titles/abc', { score: null })?.message ?? '', /Simkl/);
 });
 

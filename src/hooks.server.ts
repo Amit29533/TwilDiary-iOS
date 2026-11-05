@@ -124,14 +124,17 @@ export const handle: Handle = async ({ event, resolve }) => {
           : undefined;
       const refusal = recordRefusal(record, method, path, body);
       if (refusal)
-        return new Response(refusal.message, {
-          status: refusal.status,
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'no-store',
-            'X-Content-Type-Options': 'nosniff'
+        return new Response(
+          JSON.stringify({ error: { code: refusal.code, message: refusal.message } }),
+          {
+            status: refusal.status,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'private, no-store',
+              'X-Content-Type-Options': 'nosniff'
+            }
           }
-        });
+        );
     }
     const response = await resolve(event);
     // After the write has finished, so a resumed app re-reads a diary that already has it.

@@ -169,6 +169,19 @@ import TwilDiaryTestSupport
     #expect(simklBatch.watchlistPayload != nil)
 }
 
+@Test func anEditTheServerNoLongerTakesGoesToTheServiceHoldingTheDiary() {
+    var queue = SyncOutboxQueue()
+    let watch = queue.enqueue(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .markWatch(operationId: "w", titleId: "t", episodeId: nil,
+        watchedAt: "2026-11-05T00:00:00Z", recordedAt: "2026-11-05T00:00:00Z", rewatch: false), pendingProviders: [.cloudflare, .simkl]))
+    queue.handOver(entryID: watch.id, to: .trakt)
+    #expect(queue.pending(for: .cloudflare).isEmpty)
+    #expect(queue.entries.first?.pendingProviders == [.simkl, .trakt])
+    let revoke = queue.enqueue(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .revokeWatch(eventId: "e", titleId: "u", expectedVersion: 1,
+        revokedAt: "2026-11-05T00:00:00Z"), pendingProviders: [.cloudflare]))
+    queue.handOver(entryID: revoke.id, to: nil)
+    #expect(queue.count == 1, "Nothing left to send it to: it's done")
+}
+
 @Test func movieDeduplicationRevokeStatusAndFileOutboxStorePersistence() throws {
     let base = SampleWorkspace.make()
     let movie = try #require(base.titles.first { !$0.isSeries })

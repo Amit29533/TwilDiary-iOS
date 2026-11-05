@@ -54,21 +54,30 @@ export function recordRefusal(
   method: string,
   path: string,
   body?: unknown
-): { status: number; message: string } | null {
+): { status: number; code: string; message: string } | null {
   if (record === 'server' || ['GET', 'HEAD', 'OPTIONS'].includes(method)) return null;
   const name = NAMES[record];
   // The Review sync and the incoming watches: the app writes to the service itself now.
   if (path === '/api/trakt/sync' || path.startsWith('/api/trakt/sync/') || path === '/api/trakt/incoming')
     return {
       status: 410,
+      code: 'review_sync_retired',
       message: `${name} holds your diary now, so the Review sync is retired. Edits go to ${name} from the app.`
     };
   const frozen = {
     status: 423,
+    code: 'diary_record_moved',
     message: `${name} holds your diary now. Your server’s watches and ratings are kept read-only as a backup; turn on “Show my diary from ${name}” in the app to edit.`
   };
-  // Watches: logging one, and changing or removing one.
-  if (/^\/api\/titles\/[^/]+\/watches$/.test(path) || path.startsWith('/api/watch-events/'))
+  // Watches: logging one, changing or removing one, season progress (which logs or removes
+  // watches), the old pull from a service into the server, and the one-off legacy migration.
+  if (
+    /^\/api\/titles\/[^/]+\/watches$/.test(path) ||
+    path.startsWith('/api/watch-events/') ||
+    path === '/api/progress/status' ||
+    /^\/api\/providers\/[^/]+\/sync$/.test(path) ||
+    path === '/api/workspace/migrate'
+  )
     return frozen;
   // Ratings on a title. Status stays writable: the server keeps what the service can't
   // (a dropped movie on Trakt or MDBList, for instance).

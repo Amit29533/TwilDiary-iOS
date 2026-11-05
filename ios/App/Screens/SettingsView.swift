@@ -411,6 +411,8 @@ struct ExternalProviderConnectionView: View {
     /// An app ID pasted on this page, for web sign-in before the server has one.
     @State private var signInAppID = ""
     @State private var signInTask: Task<Void, Never>?
+    @State private var showOwnKey = false
+    @FocusState private var appIDFocused: Bool
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     struct ProviderApps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String? }
@@ -445,7 +447,7 @@ struct ExternalProviderConnectionView: View {
     private var includedDomainsText: String {
         switch provider {
         case .simkl: "Watch history · Ratings · Plan to watch · Dropped"
-        case .mdblist: "IMDb / RT / Metacritic / Letterboxd ratings · Watchlist"
+        case .mdblist: "Watch history · Ratings · Watchlist · Dropped shows"
         case .trakt, .cloudflare: "Watch history · Ratings · Watchlist"
         }
     }
@@ -463,11 +465,9 @@ struct ExternalProviderConnectionView: View {
             VStack(alignment: .leading, spacing: 20) {
                 headerCard
                 connectCard
-                loggingCard
-                apiSettingsCard
-                if currentConfig.hasCredentials || pendingOutboxCount > 0 {
-                    syncOutboxCard
-                }
+                if currentConfig.isAuthenticated || pendingOutboxCount > 0 { sendEditsCard }
+                if currentConfig.isAuthenticated, let tracker { TrackerPreviewPanel(tracker: tracker) }
+                ownKeySection
             }.padding(16).padding(.bottom, 60)
         }
         .diaryScreenBackground()
@@ -477,6 +477,55 @@ struct ExternalProviderConnectionView: View {
         .onAppear { loadFromStore() }
         .task { await loadApps() }
         .onDisappear { signInTask?.cancel(); signInTask = nil }
+    }
+
+    private var tracker: MainTracker? {
+        switch provider { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .cloudflare: nil }
+    }
+
+    /// One switch: whether your edits go to this service, and what's still on its way.
+    private var sendEditsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $enabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Send my edits to \(displayName)").font(.subheadline.weight(.semibold))
+                    Text("Watches, ratings, Planned and dropped, as you make them.").font(.caption).foregroundStyle(.secondary)
+                }
+            }.tint(theme.accent)
+                .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
+                .accessibilityIdentifier("\(provider.rawValue)-enable-toggle")
+            if pendingOutboxCount > 0 {
+                HStack {
+                    Text("\(pendingOutboxCount) waiting to send").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("\(provider.rawValue)-outbox-count")
+                    Spacer()
+                    Button(syncing ? "Sending…" : "Send now") {
+                        Task {
+                            syncing = true; defer { syncing = false }
+                            errorMessage = nil; statusMessage = nil
+                            await store.flushDirectProviders()
+                            let pending = store.outbox.pending(for: provider)
+                            if pending.isEmpty { statusMessage = "Everything reached \(displayName)." }
+                            else { errorMessage = "\(pending.count) still waiting. " + (pending.first?.lastError ?? "") }
+                        }
+                    }.font(.caption.weight(.semibold)).disabled(syncing || !currentConfig.isAuthenticated).accessibilityIdentifier("\(provider.rawValue)-sync-now")
+                }
+            }
+        }.diaryPanel()
+    }
+
+    /// Your own key or token, folded away: signing in is the simple way.
+    private var ownKeySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { withAnimation(Motion.smooth) { showOwnKey.toggle() } } label: {
+                HStack {
+                    Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.down").rotationEffect(.degrees(showOwnKey ? 180 : 0)).font(.caption.weight(.bold))
+                }.foregroundStyle(.secondary).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("\(provider.rawValue)-own-key")
+            if showOwnKey { apiSettingsCard }
+        }
     }
 
     /// Two ways in: sign in to the service, or (below) your own API key or token.
@@ -499,7 +548,10 @@ struct ExternalProviderConnectionView: View {
                     Text("Sign in on \(displayName)’s own page and come straight back. The sign-in renews itself.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Button {
-                        if let appId { startSignIn(appId) } else { errorMessage = "Paste your \(displayName) app ID below first (one-time setup)." }
+                        if let appId { startSignIn(appId) } else {
+                            errorMessage = "First, paste your \(displayName) app ID below (one-time setup)."
+                            appIDFocused = true
+                        }
                     } label: {
                         HStack(spacing: 8) {
                             if signingIn { ProgressView().controlSize(.small) } else { Image(systemName: "globe") }
@@ -512,7 +564,8 @@ struct ExternalProviderConnectionView: View {
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
                             TextField("\(displayName) app client ID", text: $signInAppID)
-                                .textInputAutocapitalization(.never).autocorrectionDisabled().font(.subheadline)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled().font(.subheadline).focused($appIDFocused)
+                                .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
                                 .padding(10).background(theme.field, in: RoundedRectangle(cornerRadius: 10))
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
                             Link(destination: URL(string: provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/")!) {
@@ -523,6 +576,7 @@ struct ExternalProviderConnectionView: View {
                 case .cloudflare:
                     EmptyView()
                 }
+                messages
             }.diaryPanel()
         }
     }
@@ -564,7 +618,7 @@ struct ExternalProviderConnectionView: View {
             var signedIn = currentConfig
             signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
             signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
-            signedIn.connection = .signIn; signedIn.enabled = true
+            signedIn.connection = .signIn; signedIn.enabled = true; signedIn.loggingMethod = .serverAndDirectAPI
             if provider == .mdblist { signedIn.apiKey = nil }
             guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
             loadFromStore()
@@ -573,6 +627,17 @@ struct ExternalProviderConnectionView: View {
             // Closing the sheet is not an error.
         } catch {
             if !Task.isCancelled { errorMessage = error.localizedDescription }
+        }
+    }
+
+    @ViewBuilder private var messages: some View {
+        if let statusMessage {
+            Text(statusMessage).font(.caption).foregroundStyle(.mint).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(provider.rawValue)-status-message")
+        }
+        if let errorMessage {
+            Text(errorMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(provider.rawValue)-error-message")
         }
     }
 
@@ -596,40 +661,12 @@ struct ExternalProviderConnectionView: View {
                     .accessibilityIdentifier("\(provider.rawValue)-status-badge")
             }
             if let lastSync = currentConfig.lastSyncedAt, let date = DiaryDate.parse(lastSync) {
-                Text("Last synced \(date.formatted(date: .abbreviated, time: .shortened))")
+                Text("Last sent \(date.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text("Included in sync: \(includedDomainsText)")
+            Text("Keeps: \(includedDomainsText)")
                 .font(.caption).foregroundStyle(.secondary)
         }.diaryPanel()
-    }
-
-    private var loggingCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Watch logging & sync").font(.subheadline.bold()).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("Enable \(displayName) sync", isOn: $enabled)
-                    .tint(theme.accent)
-                    .onChange(of: enabled) { _, _ in persistDraft() }
-                    .accessibilityIdentifier("\(provider.rawValue)-enable-toggle")
-                Divider()
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Logging method").font(.subheadline.weight(.semibold))
-                        Text("Keeps your diary watch logging and fans out to \(displayName)").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    Picker("Logging method", selection: $loggingMethod) {
-                        ForEach(WatchLoggingMethod.allCases) { method in
-                            Text(method.label).tag(method)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: loggingMethod) { _, _ in persistDraft() }
-                    .accessibilityIdentifier("\(provider.rawValue)-logging-method")
-                }
-            }.diaryPanel()
-        }
     }
 
     private var apiSettingsCard: some View {
@@ -680,15 +717,6 @@ struct ExternalProviderConnectionView: View {
                         .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
                         .accessibilityIdentifier("\(provider.rawValue)-username-field")
-                }
-
-                if let statusMessage {
-                    Text(statusMessage).font(.caption).foregroundStyle(.mint)
-                        .accessibilityIdentifier("\(provider.rawValue)-status-message")
-                }
-                if let errorMessage {
-                    Text(errorMessage).font(.caption).foregroundStyle(.orange)
-                        .accessibilityIdentifier("\(provider.rawValue)-error-message")
                 }
 
                 HStack(spacing: 10) {
@@ -760,54 +788,6 @@ struct ExternalProviderConnectionView: View {
                 }
             }.diaryPanel()
         }
-    }
-
-    private var syncOutboxCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Outbox & direct sync").font(.headline)
-                Spacer()
-                Text("\(pendingOutboxCount) queued").font(.caption).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("\(provider.rawValue)-outbox-count")
-            }
-            Text("Logged watches, ratings and watchlist changes queue locally first and sync with \(displayName) in the background.")
-                .font(.caption).foregroundStyle(.secondary)
-            Button(syncing ? "Syncing…" : "Sync now", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") {
-                Task {
-                    syncing = true
-                    defer { syncing = false }
-                    errorMessage = nil; statusMessage = nil
-                    guard draftConfig() == currentConfig else { errorMessage = "Save connection settings before syncing."; return }
-                    await store.flushDirectProviders()
-                    let pending = store.outbox.pending(for: provider)
-                    if !pending.isEmpty {
-                        errorMessage = "\(pending.count) edits remain pending. " + (pending.first?.lastError ?? "Waiting for diary confirmation or provider delivery.")
-                        return
-                    }
-                    do {
-                        if provider == .simkl, !store.isPreview {
-                            struct PullReceipt: Decodable {
-                                let importedPlays: Int; let updatedRatings: Int; let updatedFavorites: Int; let updatedStatuses: Int
-                                let preserved: Int?; let unmatched: Int?; let conflicts: Int?
-                            }
-                            let receipt: PullReceipt = try await store.read(
-                                "/api/providers/\(provider.rawValue)/sync", method: "POST",
-                                body: ["clientId": currentConfig.clientId ?? "", "accessToken": currentConfig.accessToken ?? ""])
-                            if receipt.importedPlays + receipt.updatedRatings + receipt.updatedFavorites + receipt.updatedStatuses > 0 { await store.refresh() }
-                            var summary = "Imported \(receipt.importedPlays) plays, \(receipt.updatedRatings) ratings, \(receipt.updatedFavorites) favourites and \(receipt.updatedStatuses) statuses from \(displayName)."
-                            if let count = receipt.preserved, count > 0 { summary += " \(count) local choices preserved." }
-                            if let count = receipt.unmatched, count > 0 { summary += " \(count) unmatched items skipped." }
-                            if let count = receipt.conflicts, count > 0 { summary += " \(count) conflicts need review." }
-                            statusMessage = summary
-                        } else { statusMessage = "No pending outbound edits for \(displayName)." }
-                    } catch { errorMessage = error.localizedDescription }
-
-                }
-            }
-            .buttonStyle(.glass)
-            .disabled(syncing || !currentConfig.isAuthenticated)
-            .accessibilityIdentifier("\(provider.rawValue)-sync-now")
-        }.diaryPanel()
     }
 
     private func loadFromStore() {

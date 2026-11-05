@@ -64,6 +64,9 @@ import XCTest
             reveal(entry, app: app); entry.tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), title)
             XCTAssertTrue(app.descendants(matching: .any)[signIn].waitForExistence(timeout: 5), "\(title) explains its sign-in")
+            // Your own key is folded away under one button.
+            let ownKey = app.buttons[row.replacingOccurrences(of: "settings-", with: "") + "-own-key"]
+            reveal(ownKey, app: app); ownKey.tap()
             let field = app.descendants(matching: .any)[key]
             reveal(field, app: app)
             XCTAssertTrue(field.exists, "\(title) still takes your own key or token")
@@ -72,25 +75,18 @@ import XCTest
             XCTAssertTrue(app.buttons[row].waitForExistence(timeout: 5))
         }
     }
-    /// Profile → Main tracker: pick Trakt, Simkl or MDBList; WeTrakr is gone from the app. Picking a
-    /// service that isn't connected offers its connection page, and the preview reads that service.
-    func testMainTrackerOffersTraktSimklAndMDBListOnly() {
+    /// Profile → Connections: Trakt, Simkl and MDBList in one list (WeTrakr is gone), the main
+    /// tracker ticked, and quick actions under ⋯.
+    func testConnectionsListTheTrackersWithTheMainOneTicked() {
         let app = launch()
         app.tabBars.buttons["Profile"].tap(); openConnections(app)
         XCTAssertFalse(app.buttons["settings-wetrakr"].exists, "WeTrakr was removed")
-        let row = app.buttons["settings-main-tracker"]
-        reveal(row, app: app); row.tap()
-        XCTAssertTrue(app.navigationBars["Main tracker"].waitForExistence(timeout: 5))
-        for id in ["main-tracker-trakt", "main-tracker-simkl", "main-tracker-mdblist"] { XCTAssertTrue(app.buttons[id].exists, id) }
-        XCTAssertFalse(app.buttons["main-tracker-wetrakr"].exists)
-        XCTAssertTrue(app.buttons["trakt-direct-check"].exists, "Trakt is the default")
-        app.buttons["main-tracker-simkl"].tap()
-        XCTAssertTrue(app.buttons["simkl-direct-check"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["main-tracker-cloudflare"].label.contains("ewatch counts"))
-        XCTAssertTrue(app.buttons["main-tracker-connect"].exists, "Simkl isn't connected in the preview")
-        capture("Main tracker set to Simkl", app: app)
-        app.buttons["main-tracker-trakt"].tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.buttons["settings-main-tracker"].waitForExistence(timeout: 5))
+        for id in ["settings-trakt", "settings-simkl", "settings-mdblist"] { XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id) }
+        XCTAssertTrue(app.buttons["settings-trakt"].label.contains("Main"), "Trakt is the default main tracker")
+        XCTAssertFalse(app.buttons["settings-simkl"].label.contains("Main"))
+        let actions = app.buttons["simkl-actions"]
+        reveal(actions, app: app); actions.tap()
+        XCTAssertTrue(app.buttons["Check now"].waitForExistence(timeout: 5))
+        capture("Trackers and their actions", app: app)
     }
 }
