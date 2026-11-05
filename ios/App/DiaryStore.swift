@@ -104,6 +104,8 @@ import TwilDiaryCore
     static let diarySourceKey = "diarySource"
     /// Titles only on Trakt already sent to the server diary this session (each tried once).
     @ObservationIgnored var adoptedTraktKeys = Set<String>()
+    /// Titles whose adoption failed: how many tries, and when the next may run.
+    @ObservationIgnored var adoptionRetry: [String: (tries: Int, after: Date)] = [:]
     @ObservationIgnored var adoptingTraktTitles = false
     /// Which diary is on screen: "server", "trakt", "simkl" or "mdblist".
     var diarySource = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) ?? "server" {
@@ -313,6 +315,7 @@ import TwilDiaryCore
         needsMutationRefresh = false
         Task { await PublicArtworkCache.shared.removeAll() }
         TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget()
+        adoptedTraktKeys = []; adoptionRetry = [:]
         api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
         showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
         do { try cache.removeAll(); cacheWarning = nil }
@@ -1265,6 +1268,11 @@ import TwilDiaryCore
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST")
         }
     }
+    /// Undo for a watch added to the service the diary comes from (see `serviceUndoPlays`).
+    func offerServiceUndo(_ title: MediaTitle, at when: String) {
+        undoLabel = "Watch marked"
+        undoAction = { try await self.serviceUndoPlays(title, at: when) }
+    }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
         if diaryFromService {
             await perform(cardID: title.id, cardAction: .mark) {
@@ -1273,9 +1281,11 @@ import TwilDiaryCore
                     guard let next = card.next, let episode = self.workspace.episodes.first(where: { $0.id == next.id }) else {
                         throw APIError.message("No aired episode is ready to mark. Load this season’s episodes or choose another season.")
                     }
-                    try await self.serviceAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
+                    let when = try await self.serviceAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
+                    self.offerServiceUndo(title, at: when)
                 } else {
-                    try await self.serviceAddPlays(title, episodes: [], at: self.now)
+                    let when = try await self.serviceAddPlays(title, episodes: [], at: self.now)
+                    self.offerServiceUndo(title, at: when)
                 }
             }
             return
@@ -1283,6 +1293,7 @@ import TwilDiaryCore
         var confirmed: WatchEvent?
         defer { if let confirmed { celebrate(confirmed, title: title) } }
         await perform(cardID: title.id, cardAction: .mark) {
+            try self.requireWatchEdits()
             let key = title.id
             if self.pendingWatches[key] == nil {
                 let card = try await self.card(title, season: season, fresh: true)
@@ -1364,6 +1375,7 @@ import TwilDiaryCore
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
         if diaryFromService { return await perform(refreshing: [title.id]) { try await self.servicePatch(title, values: values) } }
         return await perform(refreshing: [title.id]) {
+            if values["score"] != nil { try self.requireWatchEdits() }
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
             self.recordDirectProviderMutation(
@@ -1405,7 +1417,7 @@ import TwilDiaryCore
             return await perform(refreshing: [title.id]) { try await self.serviceSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
         }
         if status != "planned" && status != "completed" { return await patch(title, values: ["status": status]) }
-        return await perform(refreshing: [title.id]) { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
+        return await perform(refreshing: [title.id]) { try self.requireWatchEdits(); try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
         if diaryFromService {
@@ -1423,8 +1435,16 @@ import TwilDiaryCore
             }
         }
         // Trash, restore, delete and Queue are your server's: titles only on the service aren't there yet.
+        let selected = reviewed.count
         let reviewed = diaryFromService ? reviewed.filter { !isServiceOnly($0) } : reviewed
         guard !reviewed.isEmpty else { error = "These titles are only on \(diaryService?.name ?? "Trakt") so far. They join your server diary on their own in a moment."; return false }
+        let skipped = selected - reviewed.count
+        // Say plainly when only part of the selection changed (the rest join the server diary soon).
+        defer {
+            if skipped > 0, error == nil {
+                error = "\(reviewed.count) of \(selected) changed. \(skipped) \(skipped == 1 ? "is" : "are") only on \(diaryService?.name ?? "Trakt") so far and weren’t changed; they join your server diary on their own in a moment."
+            }
+        }
         return await perform(refreshing: Set(reviewed.map(\.id))) {
             let request = try CollectionRequest(titles: reviewed, change: change)
             if case .status(let status) = change, ["planned", "completed"].contains(status) {

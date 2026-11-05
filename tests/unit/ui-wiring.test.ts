@@ -407,5 +407,10 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
   assert.equal(iosConnections.includes('showDiaryAccess = true'), true);
   assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.connections)'), true);
   assert.equal(iosLibrary.includes('@SceneStorage("library.tag")'), true);
-  assert.equal(iosTitleDetail.includes('accessibilityIdentifier("title-critic-breakdown")'), true);
+  // Community scores moved from the critic breakdown to the ratings strip: every source is a
+  // labelled element ("IMDb 7.2") in one strip that also carries the personal rating.
+  const iosRatingsStrip = await readFile(new URL('../../ios/App/Design/RatingsStrip.swift', import.meta.url), 'utf8');
+  assert.equal(iosTitleDetail.includes('RatingsStrip(scores: criticScores'), true);
+  assert.equal(iosRatingsStrip.includes('accessibilityIdentifier("title-ratings")'), true);
+  assert.equal(iosRatingsStrip.includes('accessibilityLabel(Self.name(item.source) + " " + item.text)'), true);
 });

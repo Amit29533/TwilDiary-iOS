@@ -67,7 +67,7 @@ public enum TraktDiary {
             }
             let stamp = play.watchedAt ?? library.fetchedAt ?? "1970-01-01T00:00:00.000Z"
             events.append(WatchEvent(id: "trakt-\(play.historyId)", operationId: "trakt-\(play.historyId)", titleId: titleID, episodeId: episodeID,
-                                     watchedAt: play.watchedAt, recordedAt: stamp, origin: "trakt"))
+                                     watchedAt: play.watchedAt, recordedAt: stamp, origin: tracker.rawValue))
         }
         return Workspace(titles: titles, episodes: episodes, events: events, locations: server.locations)
     }
@@ -79,9 +79,11 @@ public enum TraktDiary {
         title.favorite = favourites.contains(key)
         if dropped.contains(key) { title.status = "dropped" }
         else if played.contains(key) {
-            // Trakt has no "completed" flag; the diary's own completion stands, a movie that was
-            // watched is complete, and anything else with watches is being watched.
-            title.status = title.status == "completed" || !title.isSeries ? "completed" : "watching"
+            // Trakt has no Completed, Paused or dropped-movie state: the server's record of the
+            // title keeps your choice (the app saves it there), a watched movie is complete, and
+            // anything else with watches is being watched.
+            if ["completed", "paused", "on_hold"].contains(title.status) || (!title.isSeries && title.status == "dropped") { }
+            else { title.status = title.isSeries ? "watching" : "completed" }
         } else if watchlist.contains(key) { title.status = "planned" }
         // A show Trakt no longer has dropped is back to Planned; a dropped movie stays dropped
         // (Trakt only drops shows, so the server keeps that).

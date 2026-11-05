@@ -436,6 +436,14 @@ enum TraktDelivery: Equatable, Sendable {
         }
         return true
     }
+    /// Takes queued history writes for plays at this time out of the queue (Undo before they
+    /// reached Trakt); true when there were any.
+    func cancelPending(watchedAt when: String) -> Bool {
+        let before = pending.count
+        // One whose answer was lost may already be on Trakt: that one is read and removed there instead.
+        pending.removeAll { $0.uncertain != true && $0.path == "/sync/history" && String(decoding: $0.body, as: UTF8.self).contains(when) }
+        return pending.count != before
+    }
     /// For a history write whose answer was lost: Trakt's history at that time (a minute either
     /// side) is read, and only the plays not there are kept; nil when all of them already are.
     private func missingPlays(_ body: Data, client: TraktDirectClient) async throws -> Data? {
@@ -802,6 +810,16 @@ enum TraktDelivery: Equatable, Sendable {
 extension DiaryStore {
     /// Trakt holds the diary (your server says so, or the diary on screen comes from it).
     var traktHoldsDiary: Bool { diaryFromTrakt || serverRecord == .trakt }
+    /// A service holds the diary but your old server copy is on screen: the server keeps it
+    /// read-only for watches, ratings and watch status (notes, tags and files still change).
+    var viewingFrozenServerCopy: Bool { serverRecord != nil && !diaryFromService }
+    var frozenCopyMessage: String {
+        "This is your old server copy, kept read-only for watches and ratings. Show your diary from \(serverRecord?.name ?? "your tracker") to change them."
+    }
+    /// Stops a watch, rating or status edit before it reaches the read-only server copy.
+    func requireWatchEdits() throws {
+        if viewingFrozenServerCopy { throw APIError.message(frozenCopyMessage) }
+    }
 
     /// Keeps the service your diary lives on current while the app is open: a read when you open or
     /// come back to the app (unless one ran in the last two minutes), then every ten minutes. Each

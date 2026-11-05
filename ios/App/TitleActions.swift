@@ -36,10 +36,11 @@ extension DiaryStore {
         return progress.watched > 0 ? "watching" : "planned"
     }
     @discardableResult func setSeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async -> Bool {
-        await perform(refreshing: [title.id]) { try await self.applySeasonProgress(title, season: season, count: count, watchedAt: watchedAt) }
+        await perform(refreshing: [title.id]) { try self.requireWatchEdits(); try await self.applySeasonProgress(title, season: season, count: count, watchedAt: watchedAt) }
     }
     @discardableResult func completeCardSeason(_ titleID: String, season: Int) async -> Bool {
         await perform(cardID: titleID) {
+            try self.requireWatchEdits()
             guard let title = self.title(titleID), title.isSeries else { throw APIError.message("Choose a show season.") }
             try await self.prepareSavedSeason(title, number: season)
             guard let refreshed = self.title(titleID) else { throw CancellationError() }
@@ -103,12 +104,14 @@ extension DiaryStore {
         if diaryFromService {
             return await perform(refreshing: [title.id]) {
                 let numbers: [(season: Int, number: Int)] = episode.map { [(season: $0.season, number: $0.number)] } ?? []
-                try await self.serviceAddPlays(title, episodes: numbers, at: watchedAt)
+                let when = try await self.serviceAddPlays(title, episodes: numbers, at: watchedAt)
+                self.offerServiceUndo(title, at: when)
             }
         }
         var confirmed: WatchEvent?
         defer { if let confirmed { celebrate(confirmed, title: title) } }
         return await perform(refreshing: [title.id]) {
+            try self.requireWatchEdits()
             guard DiaryDate.day(watchedAt) <= DiaryDate.day(self.now) else { throw APIError.message("Choose today or a past watch date") }
             if title.isSeries {
                 guard let episode, episode.titleId == title.id,

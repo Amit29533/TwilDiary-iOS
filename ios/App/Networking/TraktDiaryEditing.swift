@@ -61,8 +61,9 @@ extension DiaryStore {
 
     // MARK: Watches
 
-    /// Adds plays (movie, or episodes of one show) at the given time.
-    func serviceAddPlays(_ title: MediaTitle, episodes: [(season: Int, number: Int)], at date: Date) async throws {
+    /// Adds plays (movie, or episodes of one show) at the given time, which it returns (it names
+    /// these very plays for Undo).
+    @discardableResult func serviceAddPlays(_ title: MediaTitle, episodes: [(season: Int, number: Int)], at date: Date) async throws -> String {
         var item = try serviceRef(title)
         let when = stamp(date)
         let path = service == .mdblist ? "/sync/watched" : "/sync/history"
@@ -104,6 +105,30 @@ extension DiaryStore {
             mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: nil, watchedAt: when, recordedAt: when, rewatch: false))
         }
         refreshCopySoon()
+        return when
+    }
+
+    /// Undo for plays just added: exactly those plays (the same title at that time, so another
+    /// watch of the same episode is never touched). Still waiting to reach Trakt: taken out of the
+    /// queue. Sent but without Trakt's ids yet: Trakt is read first, then those plays removed.
+    func serviceUndoPlays(_ title: MediaTitle, at when: String) async throws {
+        if service == .trakt, TraktDirectStore.shared.cancelPending(watchedAt: when) {
+            updateCopy { library in library.plays.removeAll { $0.historyId < 0 && $0.watchedAt == when } }
+            return
+        }
+        let time = DiaryDate.parse(when)
+        func plays() -> [WatchEvent] {
+            workspace.activeEvents.filter { event in
+                event.titleId == title.id && (event.watchedAt == when
+                    || (time != nil && DiaryDate.parse(event.watchedAt).map { abs($0.timeIntervalSince(time!)) < 1 } == true))
+            }
+        }
+        if service == .trakt, plays().contains(where: { (servicePlayID($0) ?? 0) <= 0 }) {
+            await TraktDirectStore.shared.check(store: self)
+        }
+        let found = plays()
+        guard !found.isEmpty else { throw APIError.message("That watch isn’t on \(service.name) any more.") }
+        try await serviceRemoveWatches(found)
     }
 
     /// Removes exactly these watches. Trakt removes those very plays (by id, never all plays of an
@@ -183,16 +208,31 @@ extension DiaryStore {
     /// refreshes the diary, and the service diary then finds the title on the server by its TMDB id.
     func adoptServiceOnlyTitles() async {
         guard diaryFromService, !adoptingTraktTitles, !isPreview else { return }
-        let candidates = workspace.titles.filter { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }.prefix(8)
+        let now = Date.now, session = sessionRevision
+        let candidates = workspace.titles.filter { title in
+            isServiceOnly(title) && !adoptedTraktKeys.contains(title.id) && (adoptionRetry[title.id].map { $0.after <= now } ?? true)
+        }.prefix(8)
         guard !candidates.isEmpty else { return }
         adoptingTraktTitles = true
         defer { adoptingTraktTitles = false }
+        // A title counts as done only once it's in the server diary (or found there already).
+        // A failed lookup or import waits 1, 2, 4… minutes (at most 30) and gives up after five
+        // tries this session; sign-out starts over.
+        func failed(_ id: String) {
+            let tries = (adoptionRetry[id]?.tries ?? 0) + 1
+            if tries >= 5 { adoptedTraktKeys.insert(id); adoptionRetry[id] = nil; return }
+            adoptionRetry[id] = (tries, Date.now.addingTimeInterval(min(1800, 60 * pow(2, Double(tries - 1)))))
+        }
         for title in candidates {
-            adoptedTraktKeys.insert(title.id)
-            guard diaryFromService, let tmdb = title.tmdbId else { continue }
+            guard diaryFromService, session == sessionRevision else { return }
+            guard let tmdb = title.tmdbId else { adoptedTraktKeys.insert(title.id); continue }
             let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb)
-            guard let found = try? await browse(route), found.libraryTitle == nil else { continue }
-            _ = await importTitle(found.details, category: found.details.suggestedCategory)
+            guard let found = try? await browse(route) else { failed(title.id); continue }
+            guard session == sessionRevision else { return }
+            if found.libraryTitle != nil { adoptedTraktKeys.insert(title.id); adoptionRetry[title.id] = nil; continue }
+            if await importTitle(found.details, category: found.details.suggestedCategory) != nil {
+                adoptedTraktKeys.insert(title.id); adoptionRetry[title.id] = nil
+            } else if session == sessionRevision { failed(title.id) }
         }
     }
 
@@ -224,7 +264,9 @@ extension DiaryStore {
                 default:
                     if wasPlanned { try await send("/sync/watchlist/remove", [slot: [item]]) }
                     if wasDropped { try await send("/users/hidden/dropped/remove", ["shows": [item]]) }
-                    serviceHolds = status != "dropped"
+                    // Trakt has no Completed, Watching or Paused (nor dropped movies): the server's
+                    // record of the title keeps your choice, so it survives the next read.
+                    serviceHolds = false
                 }
             case .simkl:
                 // Simkl moves the title to the list for its status (that keeps its history).
@@ -242,7 +284,7 @@ extension DiaryStore {
                 default:
                     if wasPlanned { try await send("/watchlist/items/remove", [slot: [item]]) }
                     if wasDropped { try await send("/sync/dropped/remove", ["shows": [item]]) }
-                    serviceHolds = status != "dropped"
+                    serviceHolds = false
                 }
             }
         }
@@ -280,6 +322,9 @@ extension DiaryStore {
         var rest = values.filter { !["score", "favorite", "status"].contains($0.key) }
         if let status, !serviceHolds || (!title.isSeries && title.status == "dropped") { rest["status"] = status }
         if let favourite, !favouritesHere { rest["favorite"] = favourite }
+        // A title only on the service has no server record yet: its status follows the service
+        // until it joins (in a moment, on its own); notes, tags and Queue have to wait for that.
+        if isServiceOnly(title) { rest.removeValue(forKey: "status") }
         if !rest.isEmpty {
             guard !isServiceOnly(title) else { throw APIError.message("Notes, tags and Queue need this title in your server diary. It joins on its own in a moment, or add it from its page.") }
             rest["expectedVersion"] = title.version
