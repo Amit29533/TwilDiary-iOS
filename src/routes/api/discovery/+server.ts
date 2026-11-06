@@ -25,16 +25,31 @@ export const GET: RequestHandler = (event) =>
           'invalid_discovery',
           'Personal recommendations use a single bounded result set.'
         );
-      const oauth = bindings(event).TRAKT_TOKEN_KEY
-        ? await authorizedTrakt(db, bindings(event))
-        : null;
-      const recommendations = await personalTrakt(
-        bindings(event).TRAKT_CLIENT_ID,
-        oauth?.accessToken ?? bindings(event).TRAKT_PERSONAL_ACCESS_TOKEN,
-        input.type,
-        fetch,
-        Number(rawLimit)
-      );
+      // The app can read the picks from Trakt itself (its own connection; Trakt often turns away
+      // this Worker's shared addresses with 429) and send their TMDB ids: then only posters and
+      // details are added here, and Trakt isn't asked again.
+      const phonePicks = event.url.searchParams.get('tmdbIds');
+      let recommendations: { tmdbId: number; rating: number | null; votes: number }[];
+      if (phonePicks !== null) {
+        if (!/^(?:\d{1,10}(?:,\d{1,10}){0,23})?$/.test(phonePicks))
+          throw new ApiError(400, 'invalid_discovery', 'Send at most 24 TMDB ids.');
+        recommendations = phonePicks
+          ? [...new Set(phonePicks.split(',').map(Number))]
+              .slice(0, Number(rawLimit))
+              .map((tmdbId) => ({ tmdbId, rating: null, votes: 0 }))
+          : [];
+      } else {
+        const oauth = bindings(event).TRAKT_TOKEN_KEY
+          ? await authorizedTrakt(db, bindings(event))
+          : null;
+        recommendations = await personalTrakt(
+          bindings(event).TRAKT_CLIENT_ID,
+          oauth?.accessToken ?? bindings(event).TRAKT_PERSONAL_ACCESS_TOKEN,
+          input.type,
+          fetch,
+          Number(rawLimit)
+        );
+      }
       const items: DiscoveryItem[] = [];
       // Bound metadata enrichment to four concurrent requests and at most 24 titles.
       for (let start = 0; start < recommendations.length; start += 4) {

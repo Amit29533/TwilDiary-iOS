@@ -518,6 +518,9 @@ import TwilDiaryCore
         publishIndexed(projected, projectedIndex)
         hasLoadedWorkspace = true; showingCachedSnapshot = false; lastRefreshedAt = .now
         needsMutationRefresh = false
+        // A service holds the diary: show its diary (saved on the phone) again at once, in the same
+        // update, rather than the server's copy until the next service read lands.
+        if diarySource != "server" { applyDiarySource() }
         if let scope = api.credential?.cacheScope {
             var cacheFailure: Error?
             do { try await cache.saveAsynchronously(snapshot, scope: scope, at: .now) }
@@ -547,6 +550,8 @@ import TwilDiaryCore
             confirmedWorkspace = snapshot.workspace
             workspace = outbox.project(onto: snapshot.workspace); hasLoadedWorkspace = true
             showingCachedSnapshot = true; lastRefreshedAt = snapshot.savedAt
+            // Launch: the service's diary saved on the phone, not the server's older copy.
+            if diarySource != "server" { applyDiarySource() }
             return
         }
         let session = sessionGeneration, revision = snapshotGeneration, scope = credential.cacheScope
@@ -564,6 +569,7 @@ import TwilDiaryCore
                   !self.needsSignIn, !self.hasLoadedWorkspace, self.api.credential?.cacheScope == scope else { return }
             self.publishIndexed(projected, built); self.hasLoadedWorkspace = true
             self.showingCachedSnapshot = true; self.lastRefreshedAt = snapshot.savedAt
+            if self.diarySource != "server" { self.applyDiarySource() }
         }
     }
     private func indexWorkspace() { apply(WorkspaceIndex(workspace), changed: nil) }
@@ -727,6 +733,7 @@ import TwilDiaryCore
         // Apply just the new intent; a coalesced entry must not replay its old watch effects.
         workspace = outbox.project(onto: confirmedWorkspace)
         indexWorkspace()
+        if diarySource != "server" { applyDiarySource() }
         outboxNotice = "Saved on this device · \(pendingDiaryEdits) pending sync"
         return entry
     }

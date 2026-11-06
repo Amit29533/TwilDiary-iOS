@@ -32,10 +32,28 @@ extension DiscoveryServing {
             #if DEBUG
             if store.isPreview { return PreviewCatalog.discovery(query) }
             #endif
+            // Trakt picks are read on the phone; the server only adds their posters and details.
+            if let picks = await Self.phonePicks(query, store: store) {
+                return try await store.read(CatalogTools.apiPath("/api/discovery", query: picks))
+            }
             return try await store.read(key)
         }
         guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
         return reconcileLibrary(result)
+    }
+    /// Your Trakt recommendations, read from this iPhone with your own connection (Trakt often
+    /// turns away the server's shared Cloudflare addresses as "busy"), as the TMDB ids for the
+    /// server to fill in. nil when they can't be read here: the server then asks Trakt itself.
+    static func phonePicks(_ query: [String: String], store: DiaryStore) async -> [String: String]? {
+        guard query["source"] == "trakt", !store.isPreview, let type = query["type"] else { return nil }
+        guard let client = try? await TraktDirectStore.shared.client(store: store),
+              let reply = try? await client.get(type == "movie" ? "/recommendations/movies" : "/recommendations/shows",
+                                                query: ["limit": query["limit"] ?? "24"]) else { return nil }
+        struct Pick: Decodable { struct IDs: Decodable { let tmdb: Int? }; let ids: IDs }
+        guard let picks = try? JSONDecoder().decode([Pick].self, from: reply.data) else { return nil }
+        var next = query
+        next["tmdbIds"] = picks.compactMap(\.ids.tmdb).prefix(24).map(String.init).joined(separator: ",")
+        return next
     }
     func traktConnected() async throws -> Bool {
         guard !store.needsSignIn else { store.discoveryCache.reset(); throw APIError.signIn }

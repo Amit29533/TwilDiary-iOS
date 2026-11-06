@@ -41,6 +41,7 @@ import OSLog
         }
         override func viewIsAppearing(_ animated: Bool) {
             super.viewIsAppearing(animated)
+            fadeNavigationBar(appearing: true)
             // viewWillAppear runs before the page is in the hierarchy, so the old
             // containment check there often failed and title pages kept the tab bar.
             // viewIsAppearing has the attached view and still runs alongside the
@@ -57,6 +58,45 @@ import OSLog
                 // Completion runs on the main thread: restore in the same frame.
                 MainActor.assumeIsolated { tabs.setTabBarHidden(previous, animated: false) }
             }
+        }
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            fadeNavigationBar(appearing: false)
+        }
+        /// Main tabs hide the navigation bar and title pages show it, but UIKit shows it before the
+        /// zoom in and hides it only after the zoom out, so a title page's back, info, heart and
+        /// menu buttons sat over the Glance header. Between a main tab and a title page, the bar
+        /// now fades with the transition itself (and comes back if the swipe back is cancelled).
+        private func fadeNavigationBar(appearing: Bool) {
+            guard detail, let navigation = owningNavigation(), let coordinator = navigation.transitionCoordinator,
+                  let root = navigation.viewControllers.first,
+                  coordinator.viewController(forKey: appearing ? .from : .to) === root else { return }
+            let bar = navigation.navigationBar
+            if appearing { bar.alpha = 0 }
+            coordinator.animate(alongsideTransition: { _ in
+                MainActor.assumeIsolated { bar.alpha = appearing ? 1 : 0 }
+            }, completion: { context in
+                MainActor.assumeIsolated {
+                    if appearing || context.isCancelled { bar.alpha = 1; return }
+                    // Back on the main tab: keep the bar invisible until UIKit has hidden it, then
+                    // restore it for the next page (at most a second later).
+                    Task { @MainActor in
+                        for _ in 0..<20 where !navigation.isNavigationBarHidden {
+                            try? await Task.sleep(for: .milliseconds(50))
+                        }
+                        bar.alpha = 1
+                    }
+                }
+            })
+        }
+        private func owningNavigation() -> UINavigationController? {
+            if let navigationController { return navigationController }
+            var responder: UIResponder? = view
+            while let current = responder {
+                if let controller = current as? UIViewController, let navigation = controller.navigationController { return navigation }
+                responder = current.next
+            }
+            return nil
         }
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
