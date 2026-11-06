@@ -51,7 +51,8 @@ private struct WebHistoryCase: Decodable {
     let preview = history.entries(in: workspace, limit: 4)
     #expect(full.count == 12)
     #expect(preview.map(\.id) == full.prefix(4).map(\.id))
-    #expect(preview.allSatisfy(\.rewatched))
+    let previewIsAllRewatched = preview.allSatisfy { $0.rewatched }
+    #expect(previewIsAllRewatched)
 }
 @Test func historyLocalDatePickerPreservesTheDayAcrossTimeZones() throws {
     for name in ["UTC", "Asia/Kolkata", "America/New_York"] {
