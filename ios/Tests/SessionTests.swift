@@ -80,6 +80,9 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
         func recorded() -> [URLRequest] {
             lock.lock(); defer { lock.unlock() }; return requests
         }
+        /// Diary reads only: leaves out the once-a-session check of which service holds the diary
+        /// (`/api/diary-record`), which runs on its own beside the first load.
+        func diaryReads() -> Int { recorded().filter { $0.url?.path != "/api/diary-record" }.count }
     }
     static let state = State()
     private let deliveryLock = NSRecursiveLock()
@@ -299,25 +302,25 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         store.workspace = PreviewData.workspace; store.hasLoadedWorkspace = true
         await store.refreshOnForeground(at: start)
         // The revision check, then the complete four-section download.
-        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+        XCTAssertTrue(store.workspace.titles.isEmpty); XCTAssertEqual(StubProtocol.state.diaryReads(), 5)
         await store.refreshOnForeground(at: start.addingTimeInterval(1))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 5)
         await store.refreshOnForeground(at: start.addingTimeInterval(11))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 6, "An unchanged revision needs no diary download")
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 6, "An unchanged revision needs no diary download")
     }
     func testForegroundRefreshDownloadsAgainWhenTheRevisionChangesOrIsOld() async {
         let storage = MemorySessionStorage(); storage.credential = credential
         StubProtocol.state.reset(Self.revisionStub("a"))
         let store = makeStore(api: api(storage)), start = Date.now
         await store.refreshOnForeground(at: start)
-        XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+        XCTAssertTrue(store.hasLoadedWorkspace); XCTAssertEqual(StubProtocol.state.diaryReads(), 5)
         StubProtocol.state.reset(Self.revisionStub("b"))
         await store.refreshOnForeground(at: start.addingTimeInterval(20))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 5, "A changed revision downloads the diary again")
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 5, "A changed revision downloads the diary again")
         await store.refreshOnForeground(at: start.addingTimeInterval(40))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 6, "The new revision was remembered")
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 6, "The new revision was remembered")
         await store.refreshOnForeground(at: start.addingTimeInterval(20 + 6 * 3600))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 11, "A six-hour-old match still downloads in full")
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 11, "A six-hour-old match still downloads in full")
     }
     func testForegroundReadWaitsForAnInFlightWriteBeforeLoadingTheServerSnapshot() async {
         let storage = MemorySessionStorage(); storage.credential = credential
@@ -1805,7 +1808,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         let store = makeStore(api: api(storage), cache: MemoryWorkspaceCache(), outboxStore: outboxStore, providerSettingsStore: EmptyProviderSettings(), directClient: DirectProviderClient(session: URLSession(configuration: directConfiguration)))
         let start = Date.now
         await store.refreshOnForeground(at: start)
-        XCTAssertEqual(StubProtocol.state.recorded().count, 5)
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 5)
 
         StubProtocol.state.reset { request in
             if request.url?.path == "/api/workspace/revision" {
@@ -1817,7 +1820,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             return .init(500, #"{"error":"Unexpected full workspace download"}"#)
         }
         await store.refreshOnForeground(at: start.addingTimeInterval(20))
-        XCTAssertEqual(StubProtocol.state.recorded().count, 2, "Delta foreground sync needs only revision + targeted titles read")
+        XCTAssertEqual(StubProtocol.state.diaryReads(), 2, "Delta foreground sync needs only revision + targeted titles read")
         XCTAssertEqual(store.title("again")?.score, 9.5)
 
         let entry = try store.enqueueOptimistic(
