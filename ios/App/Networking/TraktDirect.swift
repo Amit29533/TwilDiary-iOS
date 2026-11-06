@@ -336,6 +336,15 @@ enum TraktDelivery: Equatable, Sendable {
 
     private(set) var writing = false
     @ObservationIgnored private var lastWrite: Date?
+    /// Trakt takes one write a second: every write (your edits, queued ones, the automatic copy,
+    /// a restore) takes the next free slot, reserved before waiting so writes started together
+    /// queue up instead of landing in the same second.
+    private func pace() async throws {
+        let slot = max(Date.now, (lastWrite ?? .distantPast).addingTimeInterval(1.1))
+        lastWrite = slot
+        let wait = slot.timeIntervalSinceNow
+        if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
+    }
     @ObservationIgnored private var refresh: Task<Void, Never>?
     private(set) var writeProgress: String?
     private(set) var writeResult: String?
@@ -374,7 +383,7 @@ enum TraktDelivery: Equatable, Sendable {
             let requests = plan.requests()
             for (index, request) in requests.enumerated() {
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
-                if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                try await pace()
                 guard session == generation else { return }
                 let reply = try await client.post(request.path, body: request.body)
                 sent += request.count
@@ -425,8 +434,7 @@ enum TraktDelivery: Equatable, Sendable {
         }
         guard session == generation, let token else { throw CancellationError() }
         if !pending.isEmpty { pending.append(PendingWrite(path: path, body: data, owner: token.username)); return }
-        if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
-        lastWrite = .now
+        try await pace()
         let reply: Data
         do {
             reply = try await TraktDirectClient(token: token).post(path, body: data)
@@ -487,8 +495,7 @@ enum TraktDelivery: Equatable, Sendable {
                 }
                 guard session == generation else { return false }
                 if let body {
-                    if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
-                    lastWrite = .now
+                    try await pace()
                     let reply = try await client.post(next.path, body: body)
                     guard session == generation else { return false }
                     if Self.notFoundCount(reply) > 0 { self.error = "Trakt couldn’t find a title from an edit made offline, so it wasn’t changed there." }
@@ -538,7 +545,7 @@ enum TraktDelivery: Equatable, Sendable {
         do {
             for (index, request) in requests.enumerated() {
                 writeProgress = "Restoring \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
-                if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                try await pace()
                 guard session == generation else { throw CancellationError() }
                 tally.add(try await client.post(request.path, body: request.body))
                 sent += request.count
@@ -828,12 +835,20 @@ enum TraktDelivery: Equatable, Sendable {
     // MARK: Phase 5: edits in the Simkl / MDBList diary
 
     @ObservationIgnored private var lastWrite: Date?
+    /// Trakt takes one write a second: every write (your edits, queued ones, the automatic copy,
+    /// a restore) takes the next free slot, reserved before waiting so writes started together
+    /// queue up instead of landing in the same second.
+    private func pace() async throws {
+        let slot = max(Date.now, (lastWrite ?? .distantPast).addingTimeInterval(1.1))
+        lastWrite = slot
+        let wait = slot.timeIntervalSinceNow
+        if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
+    }
     @ObservationIgnored private var refresh: Task<Void, Never>?
     /// One write with the service's own sign-in (one a second at most).
     func write(_ tracker: MainTracker, _ path: String, body: [String: Any], store: DiaryStore) async throws {
         if store.isPreview { throw APIError.message("Writing to \(tracker.name) needs a real \(tracker.name) connection.") }
-        if let last = lastWrite, Date.now.timeIntervalSince(last) < 1.1 { try await Task.sleep(for: .milliseconds(1100)) }
-        lastWrite = .now
+        try await pace()
         let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
         let reply = try await store.directClient.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body))
         // A title the service couldn't find wasn't changed: the caller leaves the phone's copy as is.
@@ -881,7 +896,7 @@ enum TraktDelivery: Equatable, Sendable {
             let requests = plan.requests()
             for (index, request) in requests.enumerated() {
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
-                if index > 0 { try await Task.sleep(for: .milliseconds(1100)) }
+                try await pace()
                 guard session == generation else { return }
                 let reply = try await store.directClient.write(config, path: request.path, body: request.body)
                 sent += request.count
