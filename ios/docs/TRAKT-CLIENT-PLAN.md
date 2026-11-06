@@ -179,6 +179,8 @@ add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
   read-only too; refusals use the API's JSON error shape.
   Deployed as 3f58d899 (6 Nov, from dfbbbde): titles carry `updatedAt` (newest change wins against
   Trakt), and backup import into the server copy is refused while a service holds the diary.
+  Deployed as 751c6107 (6 Nov, from 1e00274): /api/discovery takes the phone's Trakt picks
+  (`tmdbIds`) and only adds posters, since Trakt answers the Worker's shared addresses with 429.
   Details: one Worker variable, `DIARY_RECORD` (`server`, `trakt`,
   `simkl`, `mdblist`) with `DIARY_RECORD_SINCE`. Once it names a service, the server's watches and
   ratings are read-only for 30 days (extras stay writable), the Review sync and incoming toggle
