@@ -29,23 +29,20 @@ private struct FullScreenArtworkModifier: ViewModifier {
     }
 }
 
-/// The popped-up card: the title on top, then the artwork, at the largest public size.
+/// The popped-up card: just the artwork, whole, at the largest public size (no text over it).
 private struct ArtworkPeek: View {
     let path: String
     let title: String
     let aspect: CGFloat
     static func size(aspect: CGFloat) -> CGSize {
         let width: CGFloat = aspect >= 1 ? 360 : 300
-        return CGSize(width: width, height: 44 + (width / max(aspect, 0.3)).rounded())
+        return CGSize(width: width, height: (width / max(aspect, 0.3)).rounded())
     }
     var body: some View {
         let size = Self.size(aspect: aspect)
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
-                .padding(.horizontal, 14).frame(height: 44, alignment: .leading)
-            Artwork(path: path, title: title, contentMode: .fill, prefersOriginal: true)
-                .frame(width: size.width, height: size.height - 44)
-        }.frame(width: size.width, height: size.height, alignment: .top).background(Color(webHex: "#16151b"))
+        Artwork(path: path, title: title, contentMode: .fill, prefersOriginal: true)
+            .frame(width: size.width, height: size.height)
+            .background(Color(webHex: "#16151b"))
     }
 }
 
@@ -96,6 +93,7 @@ private struct ArtworkPeekInteraction: UIViewRepresentable {
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     willPerformPreviewActionForMenuWith configuration: UIContextMenuConfiguration,
                                     animator: any UIContextMenuInteractionCommitAnimating) {
+            // As soon as the peek is gone (iOS won't present over it), then a quick zoom in.
             animator.preferredCommitStyle = .dismiss
             animator.addCompletion { [weak self] in
                 MainActor.assumeIsolated { self?.parent.open() }
@@ -136,7 +134,7 @@ struct FullScreenArtwork: View {
         ZStack(alignment: .topTrailing) {
             Color.black.opacity(appeared ? (scale > 1 ? 1 : max(0.35, 1 - Double(offset.height) / 500)) : 0).ignoresSafeArea()
             Artwork(path: path, title: title, contentMode: .fit, prefersOriginal: true)
-                .scaleEffect(scale * (appeared ? 1 : 0.86))
+                .scaleEffect(scale * (appeared ? 1 : 0.94))
                 .opacity(appeared ? 1 : 0)
                 .offset(offset)
                 .ignoresSafeArea()
@@ -174,11 +172,11 @@ struct FullScreenArtwork: View {
                 .opacity(appeared ? 1 : 0)
         }.statusBarHidden()
             .accessibilityIdentifier("full-screen-artwork")
-            .onAppear { withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.34, dampingFraction: 0.86)) { appeared = true } }
+            .onAppear { withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .snappy(duration: 0.16)) { appeared = true } }
     }
     private func reset() { scale = 1; settledScale = 1; offset = .zero; settledOffset = .zero }
     private func close() {
-        withAnimation(.easeOut(duration: 0.18)) { appeared = false } completion: {
+        withAnimation(.easeOut(duration: 0.12)) { appeared = false } completion: {
             var instant = Transaction(); instant.disablesAnimations = true
             withTransaction(instant) { dismiss() }
         }
