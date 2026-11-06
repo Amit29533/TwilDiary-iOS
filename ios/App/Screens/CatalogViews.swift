@@ -252,6 +252,7 @@ struct CatalogDetailView: View {
                                 Text(store.busy ? "Adding…" : "Add to Planned").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink).frame(maxWidth: .infinity).frame(minHeight: 48)
                             }.buttonStyle(.glassProminent).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
                         }
+                        if details.libraryTitle == nil { JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie) }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
                         CastAndRelated(route: route, sourceTitle: details.details.name,
                                        anime: details.details.suggestedCategory.hasPrefix("anime") ? (details.details.year, route.kind == .movie) : nil)

@@ -110,6 +110,12 @@ extension DiaryStore {
                     self.error = "Added to your library. Open it and set it to Planned to put it on your \(name) watchlist."
                 }
             }
+            // On your Jellyfin already: a quiet Jellyfin sync saves its folders to the new title now,
+            // so they show without running Sync by hand (the title page shows Jellyfin meanwhile).
+            if sendToService, !isPreview, JellyfinSettings.configured,
+               JellyfinShelf.shared.entries.contains(where: { $0.tmdb == details.id && $0.movie == (details.mediaType == .movie) }) {
+                Task { await JellyfinSync(store: self).run() }
+            }
             return result.title.id
         } catch is CancellationError { return nil }
         catch {

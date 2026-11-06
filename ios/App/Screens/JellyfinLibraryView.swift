@@ -152,3 +152,43 @@ struct JellyfinPoster<Fallback: View>: View {
         }
     }
 }
+
+/// "In your Jellyfin" on any title page, from the Jellyfin list this iPhone keeps (read from
+/// Jellyfin, or the server's copy when Jellyfin isn't reachable), matched by TMDB id and type.
+/// Shows before the title is in your diary, and right after you add it, without a new sync;
+/// the next sync then saves the folder to the title for good.
+struct JellyfinPresenceRow: View {
+    let tmdb: Int?
+    let movie: Bool
+    @Environment(DiaryStore.self) private var store
+    private var entries: [JellyfinEntry] {
+        guard let tmdb else { return [] }
+        return JellyfinShelf.shared.entries.filter { $0.tmdb == tmdb && $0.movie == movie }
+    }
+    var body: some View {
+        Group {
+            if let entry = entries.first {
+                HStack(spacing: 12) {
+                    BrandLogo(service: .jellyfin, size: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("In your Jellyfin").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                        Text(Self.place(entry)).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                    Spacer(minLength: 0)
+                }.padding(.horizontal, 14).padding(.vertical, 12)
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.1)))
+                    .accessibilityElement(children: .combine).accessibilityIdentifier("title-jellyfin-presence")
+            }
+        }
+        // Keeps the list current (at most every ten minutes; quiet when Jellyfin is out of reach).
+        .task { await JellyfinShelf.shared.refreshQuietly(store: store) }
+    }
+    /// "E: · Shows/Frieren": the drive, then the last two folders of the path.
+    static func place(_ entry: JellyfinEntry) -> String {
+        let parts = entry.path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).map(String.init)
+        let tail = parts.suffix(2).joined(separator: "/")
+        let drive = entry.drive.trimmingCharacters(in: .whitespaces)
+        return [drive.isEmpty ? nil : drive, tail.isEmpty ? nil : tail].compactMap { $0 }.joined(separator: " · ")
+    }
+}

@@ -68,6 +68,7 @@ struct TitleDetailView: View {
                                 if store.viewingFrozenServerCopy { frozenCopyNotice }
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
+                                else { JellyfinPresenceRow(tmdb: title.tmdbId, movie: !title.isSeries) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 // Anime characters come from AniList and need no TMDB link; the cast row follows.
                                 if title.category.hasPrefix("anime") { AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries, tmdbID: title.tmdbId) }
