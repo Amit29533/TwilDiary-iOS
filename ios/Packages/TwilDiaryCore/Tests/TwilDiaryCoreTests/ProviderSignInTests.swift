@@ -94,7 +94,7 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     #expect(query["code_challenge"] == ProviderWebSignIn.challenge(for: simkl.verifier))
     #expect((43...128).contains(simkl.verifier.count))
     // RFC 7636 appendix B: the S256 challenge of the sample verifier.
-    #expect(ProviderWebSignIn.challenge(for: "dBjftJeZ4CVP-mJ92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    #expect(ProviderWebSignIn.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     let good = URL(string: "twildiary://auth/simkl?code=abc&state=\(simkl.state)&iss=https://simkl.com")!
     #expect(try ProviderWebSignIn.code(from: good, for: simkl) == "abc")
     #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=other&iss=https://simkl.com")!, for: simkl) }
