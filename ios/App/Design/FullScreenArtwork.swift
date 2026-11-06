@@ -9,11 +9,13 @@ private struct FullScreenArtworkModifier: ViewModifier {
     let title: String
     /// Width over height of this kind of artwork: 2:3 posters and portraits, 16:9 covers.
     let aspect: CGFloat
+    /// Artwork inside a link (a cast or character card): a plain tap still opens it.
+    var onTap: (() -> Void)? = nil
     @State private var shown = false
     func body(content: Content) -> some View {
         if let path, !path.isEmpty {
             content
-                .overlay { ArtworkPeekInteraction(path: path, title: title, aspect: aspect) { open() } }
+                .overlay { ArtworkPeekInteraction(path: path, title: title, aspect: aspect, tap: onTap) { open() } }
                 .accessibilityAction(named: "View full screen") { open() }
                 // No slide up from the bottom: the cover appears at once and the viewer zooms in itself.
                 .fullScreenCover(isPresented: $shown) {
@@ -52,12 +54,16 @@ private struct ArtworkPeekInteraction: UIViewRepresentable {
     let path: String
     let title: String
     let aspect: CGFloat
+    /// A plain tap (the overlay takes touches from a link under it, so it passes the tap on).
+    let tap: (() -> Void)?
     let open: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .clear
         view.addInteraction(UIContextMenuInteraction(delegate: context.coordinator))
+        if tap != nil { view.addGestureRecognizer(UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))) }
+        view.isAccessibilityElement = false
         return view
     }
     func updateUIView(_ view: UIView, context: Context) { context.coordinator.parent = self }
@@ -65,6 +71,7 @@ private struct ArtworkPeekInteraction: UIViewRepresentable {
     @MainActor final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
         var parent: ArtworkPeekInteraction
         init(_ parent: ArtworkPeekInteraction) { self.parent = parent }
+        @objc func tapped() { parent.tap?() }
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
             let path = parent.path, title = parent.title, aspect = parent.aspect
@@ -111,8 +118,8 @@ private struct ArtworkPeekInteraction: UIViewRepresentable {
 
 extension View {
     /// Press and hold for a peek of `path` (with View full screen and Share).
-    func fullScreenArtwork(_ path: String?, title: String, aspect: CGFloat = 2.0 / 3.0) -> some View {
-        modifier(FullScreenArtworkModifier(path: path, title: title, aspect: aspect))
+    func fullScreenArtwork(_ path: String?, title: String, aspect: CGFloat = 2.0 / 3.0, onTap: (() -> Void)? = nil) -> some View {
+        modifier(FullScreenArtworkModifier(path: path, title: title, aspect: aspect, onTap: onTap))
     }
 }
 

@@ -449,6 +449,7 @@ struct CastAndRelated: View {
     var sourceTitle: String? = nil
     /// Anime show their characters (AniList) above the cast.
     var anime: (year: Int?, movie: Bool)? = nil
+    @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
     @State private var cast: [CastPerson] = []
     @State private var related: [CatalogItem] = []
@@ -464,6 +465,10 @@ struct CastAndRelated: View {
                             NavigationLink(value: PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character)) {
                                 VStack(spacing: 8) {
                                     Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
+                                        // Press and hold to peek at the photo; a tap still opens the person.
+                                        .fullScreenArtwork(CatalogTools.image(person.profilePath, size: "w185"), title: person.name) {
+                                            router.paths[router.selectedTab, default: NavigationPath()].append(PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character))
+                                        }
                                     Text(person.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
                                     Text(person.character).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                 }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading).foregroundStyle(.primary)

@@ -17,6 +17,7 @@ struct AnimeCharactersRow: View {
     @Environment(DiaryStore.self) private var store
     @State private var characters: [AniCharacter] = []
     @State private var failed = false
+    @Environment(AppRouter.self) private var router
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !characters.isEmpty {
@@ -37,6 +38,10 @@ struct AnimeCharactersRow: View {
     private func card(_ character: AniCharacter) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Artwork(path: character.image, title: character.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
+                // Press and hold to peek at the picture; a tap still opens the character.
+                .fullScreenArtwork(character.image, title: character.name) {
+                    router.paths[router.selectedTab, default: NavigationPath()].append(CharacterRoute(id: character.id, sourceTitle: title))
+                }
                 .overlay(alignment: .topLeading) {
                     if character.role == "MAIN" {
                         Text("Main").font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).frame(height: 18).background(.black.opacity(0.55), in: Capsule()).padding(6)
