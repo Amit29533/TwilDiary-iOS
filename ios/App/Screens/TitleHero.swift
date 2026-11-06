@@ -106,8 +106,9 @@ struct TitleArtworkBackdrop: View {
             if let path { Artwork(path: path, title: name) }
         }.frame(height: 440 + topExtension)
             .overlay(LinearGradient(stops: [
-                .init(color: .black.opacity(0.08), location: 0),
-                .init(color: .black.opacity(0.18), location: 0.25),
+                // Preserve contrast for the status bar and tinted toolbar over light artwork.
+                .init(color: .black.opacity(0.48), location: 0),
+                .init(color: .black.opacity(0.40), location: 0.25),
                 .init(color: .black.opacity(0.62), location: 0.48),
                 .init(color: .black.opacity(0.94), location: 0.73),
                 .init(color: .black, location: 1)

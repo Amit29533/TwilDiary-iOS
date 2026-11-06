@@ -564,8 +564,8 @@ struct GlanceView: View {
                 }
                 VStack(spacing: 8) {
                     // The title you logged last (or first in the chosen order) gets the large card.
-                    if let first = ordered.first { ProgressCard(title: first, hero: true).zoomSource(ZoomID.title(first.id)) }
-                    CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid).zoomSource(ZoomID.title($0.id)) } }
+                    if let first = ordered.first { ProgressCard(title: first, hero: true) }
+                    CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid) } }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.").padding(.horizontal, 14).padding(.top, 20) }
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }

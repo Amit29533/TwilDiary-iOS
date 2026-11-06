@@ -1728,6 +1728,16 @@ import UIKit
         app.tabBars.buttons["Home"].tap()
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["Explore"])], timeout: 5)
         explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
+        let back = app.navigationBars["Explore"].buttons.firstMatch
+        XCTAssertTrue(back.isHittable)
+        let initialBackFrame = back.frame
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.3)),
+                   withVelocity: .slow, thenHoldForDuration: 0.7)
+        XCTAssertTrue(back.isHittable)
+        XCTAssertEqual(back.frame.minX, initialBackFrame.minX, accuracy: 1)
+        XCTAssertEqual(back.frame.minY, initialBackFrame.minY, accuracy: 1)
+        XCTAssertTrue(app.tabBars.buttons["Home"].isHittable)
         completeContentBack(app, beside: app.staticTexts["Recommendation of the day"], from: 0.12, velocity: .slow)
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["Explore"])], timeout: 5)
         XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
@@ -1869,7 +1879,24 @@ import UIKit
         XCTAssertTrue(cover.waitForExistence(timeout: 5))
         cover.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)).tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
-        app.navigationBars.buttons.element(boundBy: 0).tap(); app.tabBars.buttons["Home"].tap()
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        let information = app.buttons["title-information"]
+        let more = app.buttons["title-more"]
+        XCTAssertTrue(information.isHittable)
+        XCTAssertTrue(more.isHittable)
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.45))
+        start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.45)),
+                    withVelocity: .slow, thenHoldForDuration: 0.7)
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertTrue(information.isHittable)
+        XCTAssertTrue(more.isHittable)
+        start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.45)),
+                    withVelocity: .slow, thenHoldForDuration: 0)
+        XCTAssertTrue(app.tabBars.buttons["Glance"].waitForExistence(timeout: 5))
+        XCTAssertTrue(cover.isHittable)
+        XCTAssertFalse(information.exists)
+        XCTAssertFalse(more.exists)
+        app.tabBars.buttons["Home"].tap()
         let pickup = app.buttons["progress-cover-again"]
         XCTAssertTrue(pickup.waitForExistence(timeout: 5))
         pickup.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.15)).tap()

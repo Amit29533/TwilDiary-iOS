@@ -246,10 +246,12 @@ struct RootView: View {
             // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
             content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
-                .navigationDestination(for: String.self) { TitleDetailView(id: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.title($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.title($0.id)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: String.self) { savedTitlePage(TitleDetailView(id: $0), tab: tab) }
+                .navigationDestination(for: SavedTitleRoute.self) {
+                    savedTitlePage(TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes), tab: tab)
+                }
                 .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.catalog($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false, nativeFrostedBar: true).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
@@ -286,11 +288,23 @@ struct RootView: View {
                     case .backups: BackupsView()
                     case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
                     case .about: AboutView()
-                    } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
+                    } }.diaryPageChrome(detail: destination == .profile, nativeFrostedBar: destination == .explore).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })
             .environment(\.zoomNamespace, zoom).environment(\.zoomScope, tab.rawValue)
+    }
+
+    private func savedTitlePage(_ page: TitleDetailView, tab: AppTab) -> some View {
+        Group {
+            if tab == .glance {
+                // A Glance card can move between the hero and the scrolling list as
+                // activity changes. Use the standard push and pop for this route.
+                page
+            } else {
+                page.navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.title(page.id)), in: zoom))
+            }
+        }.diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router)
     }
 }
 
