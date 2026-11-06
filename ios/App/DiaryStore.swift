@@ -40,16 +40,30 @@ import TwilDiaryCore
             self?.suspendTraktForBackground()
         }
     }
-    struct HomeProjection {
+    struct HomeProjection: Sendable {
         let overview: HomeOverview
         let watching: [MediaTitle]
         let recent: [HistoryEntry]
     }
-    @ObservationIgnored private var cachedHome: (day: Date, calendar: Calendar, value: HomeProjection)?
+    struct HomeProjectionRequest: Equatable, Sendable {
+        fileprivate let session: UUID
+        fileprivate let workspaceRevision: UUID
+        fileprivate let day: Date
+        fileprivate let calendar: Calendar
+    }
+    private var homeWorkspaceRevision = UUID()
+    private(set) var homeProjection: HomeProjection?
+    @ObservationIgnored private var preparedHome: (request: HomeProjectionRequest, workspace: Workspace)?
+    @ObservationIgnored private var homeLoadID = UUID()
     @ObservationIgnored private var cachedStats: (day: String, zone: String, period: Period, year: Int?, value: StatsOverview)?
     /// Assigning a snapshot directly indexes it synchronously (tests, fixtures, sign-out).
     /// Network snapshots are indexed off the main actor first; see `publishIndexed`.
-    var workspace = Workspace() { didSet { if !publishingIndexedSnapshot { indexWorkspace() } } }
+    var workspace = Workspace() {
+        didSet {
+            homeWorkspaceRevision = UUID()
+            if !publishingIndexedSnapshot { indexWorkspace() }
+        }
+    }
     @ObservationIgnored private var publishingIndexedSnapshot = false
     @ObservationIgnored private var titleScopes: [String: Workspace] = [:]
     @ObservationIgnored private var cachedHistory: (query: HistoryQuery, zone: String, value: [HistoryEntry])?
@@ -163,7 +177,9 @@ import TwilDiaryCore
     @ObservationIgnored let directClient: DirectProviderClient
     @ObservationIgnored private var cacheRestoration: Task<Void, Never>?
     private(set) var restoringCache = false
-    private var sessionGeneration = UUID()
+    private var sessionGeneration = UUID() {
+        didSet { clearHomeProjection() }
+    }
     var sessionRevision: UUID { sessionGeneration }
     private var snapshotGeneration = UUID()
     private var lastForegroundRead: Date?
@@ -284,6 +300,7 @@ import TwilDiaryCore
             communityCache.reset()
             communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters()
             if previousScope != credential.cacheScope {
+                clearHomeProjection()
                 workspace = Workspace(); hasLoadedWorkspace = false; showingCachedSnapshot = false; lastRefreshedAt = nil; cacheWarning = nil
                 needsMutationRefresh = false
                 outbox = outboxStore.load(scope: credential.cacheScope)
@@ -592,7 +609,7 @@ import TwilDiaryCore
         apply(built.index, changed: built.changed)
     }
     private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
-        cachedHome = nil; cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; catalogLookup = nil; cachedPersonSections = nil
+        cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; catalogLookup = nil; cachedPersonSections = nil
         titleIndex = index.titles
         progressIndex = index.progress
         seasonProgressIndex = index.seasonProgress
@@ -683,15 +700,39 @@ import TwilDiaryCore
         cachedActiveEventCount = value
         return value
     }
-    func homeProjection(at date: Date, calendar: Calendar = DiaryDate.calendar()) -> HomeProjection {
-        // Reading the observed workspace keeps the view subscribed even on a
-        // cache hit. Internal cache writes do not trigger another body pass.
-        let snapshot = workspace, day = calendar.startOfDay(for: date)
-        if let saved = cachedHome, saved.day == day, saved.calendar == calendar { return saved.value }
-        let value = HomeProjection(overview: HomeOverview(workspace: snapshot, now: date, calendar: calendar),
-            watching: snapshot.activeTitles.filter { $0.status == "watching" },
-            recent: Array(HistoryQuery().entries(in: snapshot, timeZone: calendar.timeZone).prefix(4)))
-        cachedHome = (day, calendar, value); return value
+    func homeProjectionRequest(at date: Date, calendar: Calendar = DiaryDate.calendar()) -> HomeProjectionRequest {
+        HomeProjectionRequest(session: sessionGeneration, workspaceRevision: homeWorkspaceRevision,
+                              day: calendar.startOfDay(for: date), calendar: calendar)
+    }
+    func prepareHomeProjection(_ request: HomeProjectionRequest) async {
+        guard !Task.isCancelled, request.session == sessionGeneration, request.workspaceRevision == homeWorkspaceRevision else { return }
+        let loadID = UUID()
+        homeLoadID = loadID
+        let previous = preparedHome
+        guard previous?.request != request else { return }
+        let snapshot = Workspace(titles: workspace.titles, episodes: workspace.episodes, events: workspace.events)
+        let work = Task.detached(priority: .userInitiated) { () -> HomeProjection? in
+            // Comparing the rows can also be expensive. A no-op refresh keeps the
+            // already published projection, avoiding a redraw while scrolling.
+            if let previous, previous.request.day == request.day, previous.request.calendar == request.calendar,
+               previous.workspace.titles == snapshot.titles, previous.workspace.episodes == snapshot.episodes,
+               previous.workspace.events == snapshot.events { return nil }
+            guard !Task.isCancelled else { return nil }
+            let overview = HomeOverview(workspace: snapshot, now: request.day, calendar: request.calendar)
+            guard !Task.isCancelled else { return nil }
+            return HomeProjection(overview: overview, watching: snapshot.activeTitles.filter { $0.status == "watching" },
+                                  recent: HistoryQuery().entries(in: snapshot, timeZone: request.calendar.timeZone, limit: 4))
+        }
+        let result = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
+        guard !Task.isCancelled, loadID == homeLoadID, request.session == sessionGeneration,
+              request.workspaceRevision == homeWorkspaceRevision else { return }
+        preparedHome = (request, snapshot)
+        if let result { homeProjection = result }
+    }
+    private func clearHomeProjection() {
+        homeLoadID = UUID()
+        preparedHome = nil
+        homeProjection = nil
     }
     func statsProjection(period: Period, year: Int?, at date: Date, timeZone: TimeZone = .current) -> StatsOverview {
         let snapshot = workspace, day = DiaryDate.day(date, timeZone: timeZone)

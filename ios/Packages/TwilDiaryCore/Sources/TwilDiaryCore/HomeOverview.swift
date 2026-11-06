@@ -31,15 +31,19 @@ public struct HomeOverview: Sendable {
         let start = calendar.dateInterval(of: .weekOfYear, for: now)!.start
         let active = distinctRows(workspace.activeEvents)
         let titles = Dictionary(workspace.activeTitles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        unknownDates = active.filter { DiaryDate.parse($0.watchedAt) == nil }.count
-        missingRuntime = active.filter { DiaryDate.parse($0.watchedAt) != nil && (titles[$0.titleId]?.runtimeMinutes ?? 0) <= 0 }.count
+        var unknown = 0, missing = 0
         var counts: [Date: Int] = [:], runtimes: [Date: Int] = [:]
         for event in active {
-            guard let date = DiaryDate.parse(event.watchedAt), calendar.startOfDay(for: date) <= today else { continue }
+            guard let date = DiaryDate.parse(event.watchedAt) else { unknown += 1; continue }
+            let runtime = titles[event.titleId]?.runtimeMinutes ?? 0
+            if runtime <= 0 { missing += 1 }
             let day = calendar.startOfDay(for: date)
+            guard day <= today else { continue }
             counts[day, default: 0] += 1
-            runtimes[day, default: 0] += max(0, titles[event.titleId]?.runtimeMinutes ?? 0)
+            runtimes[day, default: 0] += max(0, runtime)
         }
+        unknownDates = unknown
+        missingRuntime = missing
         days = (0..<7).map { offset in
             let date = calendar.date(byAdding: .day, value: offset, to: start)!
             return Day(date: date, minutes: runtimes[date] ?? 0, count: counts[date] ?? 0, future: date > today)

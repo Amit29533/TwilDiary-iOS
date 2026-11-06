@@ -1,27 +1,49 @@
+import Observation
 import XCTest
 import TwilDiaryCore
 @testable import TwilDiary
 
 @MainActor final class DashboardProjectionTests: XCTestCase {
     private let now = DiaryDate.parse("2026-10-23T12:00:00Z")!
-    func testHomeProjectionRetainsHistoryOrderAndChangesWhenTheSnapshotChanges() {
+    func testHomeProjectionRetainsHistoryOrderAndChangesWhenTheSnapshotChanges() async throws {
         let store = DiaryStore(); store.workspace = PreviewData.workspace
-        let first = store.homeProjection(at: now)
+        let request = store.homeProjectionRequest(at: now)
+        await store.prepareHomeProjection(request)
+        let first = try XCTUnwrap(store.homeProjection)
         XCTAssertEqual(first.recent.map(\.id), Array(HistoryQuery().entries(in: store.workspace).prefix(4)).map(\.id))
         XCTAssertEqual(first.watching.map(\.id), store.workspace.activeTitles.filter { $0.status == "watching" }.map(\.id))
-        let repeated = store.homeProjection(at: now.addingTimeInterval(1))
-        XCTAssertEqual(repeated.recent.map(\.id), first.recent.map(\.id))
+        XCTAssertEqual(store.homeProjectionRequest(at: now.addingTimeInterval(1)), request)
         store.workspace = Workspace()
-        let cleared = store.homeProjection(at: now)
+        XCTAssertEqual(store.homeProjection?.recent.map(\.id), first.recent.map(\.id))
+        await store.prepareHomeProjection(store.homeProjectionRequest(at: now))
+        let cleared = try XCTUnwrap(store.homeProjection)
         XCTAssertTrue(cleared.recent.isEmpty); XCTAssertTrue(cleared.watching.isEmpty); XCTAssertEqual(cleared.overview.watches, 0)
+        await store.prepareHomeProjection(request)
+        XCTAssertEqual(store.homeProjection?.overview.watches, 0)
     }
-    func testDayRolloverAndTimeZoneInvalidateHomeAndStatsProjections() throws {
+    func testUnchangedWorkspaceDoesNotRepublishHomeProjection() async throws {
+        let store = DiaryStore()
+        let snapshot = PreviewData.workspace
+        store.workspace = snapshot
+        await store.prepareHomeProjection(store.homeProjectionRequest(at: now))
+        let first = try XCTUnwrap(store.homeProjection)
+        withObservationTracking {
+            _ = store.homeProjection
+        } onChange: {
+            XCTFail("An unchanged workspace should reuse the displayed Home projection")
+        }
+        store.workspace = snapshot
+        await store.prepareHomeProjection(store.homeProjectionRequest(at: now))
+        XCTAssertEqual(store.homeProjection?.recent.map(\.id), first.recent.map(\.id))
+    }
+    func testDayRolloverAndTimeZoneInvalidateHomeAndStatsProjections() async throws {
         let store = DiaryStore(); store.workspace = PreviewData.workspace
         let utc = try XCTUnwrap(TimeZone(secondsFromGMT: 0)), west = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
         let instant = try XCTUnwrap(DiaryDate.parse("2026-10-23T00:30:00Z"))
         for (zone, date) in [(utc, instant), (west, instant), (utc, instant.addingTimeInterval(86400))] {
             let calendar = DiaryDate.calendar(timeZone: zone)
-            let actual = store.homeProjection(at: date, calendar: calendar).overview
+            await store.prepareHomeProjection(store.homeProjectionRequest(at: date, calendar: calendar))
+            let actual = try XCTUnwrap(store.homeProjection).overview
             let expected = HomeOverview(workspace: store.workspace, now: date, calendar: calendar)
             XCTAssertEqual(actual.days.map(\.date), expected.days.map(\.date))
             XCTAssertEqual(actual.days.map(\.future), expected.days.map(\.future))
@@ -38,7 +60,7 @@ import TwilDiaryCore
         store.workspace = Workspace()
         XCTAssertEqual(store.statsProjection(period: .month, year: nil, at: now), StatsOverview(workspace: Workspace(), period: .month, now: now))
     }
-    func testWarmDashboardProjectionBenchmarkRecordsCostWithoutADeviceSpecificTimingGate() throws {
+    func testWarmDashboardProjectionBenchmarkRecordsCostWithoutADeviceSpecificTimingGate() async throws {
         var snapshot = PreviewData.workspace
         let encoder = JSONEncoder()
         let template = try XCTUnwrap(snapshot.events.first)
@@ -47,12 +69,15 @@ import TwilDiaryCore
         snapshot.events = try JSONDecoder().decode([WatchEvent].self, from: JSONSerialization.data(withJSONObject: rows))
         let store = DiaryStore(); store.workspace = snapshot
         let start = Date.timeIntervalSinceReferenceDate
-        let cold = store.homeProjection(at: now)
+        let request = store.homeProjectionRequest(at: now)
+        await store.prepareHomeProjection(request)
+        let cold = try XCTUnwrap(store.homeProjection)
         let coldStats = store.statsProjection(period: .month, year: nil, at: now)
         let coldMS = (Date.timeIntervalSinceReferenceDate - start) * 1000
         let warmStart = Date.timeIntervalSinceReferenceDate
         for _ in 0..<30 {
-            XCTAssertEqual(store.homeProjection(at: now).recent.map(\.id), cold.recent.map(\.id))
+            await store.prepareHomeProjection(request)
+            XCTAssertEqual(store.homeProjection?.recent.map(\.id), cold.recent.map(\.id))
             XCTAssertEqual(store.statsProjection(period: .month, year: nil, at: now), coldStats)
         }
         let warmMS = (Date.timeIntervalSinceReferenceDate - warmStart) * 1000 / 30
