@@ -291,7 +291,7 @@ struct TitleDetailView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
+        TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
             RatingsStrip(scores: criticScores, tmdbFallback: title.communityScore) { personalRating(title).frame(minHeight: 44) }
         }
     }

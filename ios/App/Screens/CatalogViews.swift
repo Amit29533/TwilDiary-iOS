@@ -240,7 +240,7 @@ struct CatalogDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let details {
-                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
+                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), backdrop: CatalogTools.image(details.details.backdropPath, size: "w780"), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
                             RatingsStrip(scores: criticScores, tmdbFallback: details.details.communityScore)
                         }
                         if details.libraryTitle?.trashed == true {

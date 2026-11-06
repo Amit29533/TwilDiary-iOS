@@ -15,13 +15,19 @@ struct TitleHero<Ratings: View>: View {
     @Binding var expanded: Bool
     let onNameScrolled: ((CGFloat) -> Void)?
     let ratings: Ratings
-    init(name: String, poster: String?, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
-        self.name = name; self.poster = poster; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
+    /// The cover art behind the header: press and hold its visible part to see it full screen.
+    let backdrop: String?
+    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
+        self.name = name; self.poster = poster; self.backdrop = backdrop; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
     }
     @State private var synopsisWidth: CGFloat = 0
     @State private var synopsisParts = SynopsisTextLayout.Parts(leading: "", continuation: "")
     private var synopsisText: String { summary.isEmpty ? "Add your own thoughts in Notes." : summary }
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The cover art's visible strip above the poster.
+            Color.clear.frame(maxWidth: .infinity).frame(height: 142).contentShape(Rectangle())
+                .fullScreenArtwork(backdrop, title: name)
         VStack(alignment: .leading, spacing: 18) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the
@@ -29,6 +35,7 @@ struct TitleHero<Ratings: View>: View {
             // top. Ratings scroll within the remaining column width.
             HStack(alignment: .top, spacing: 15) {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
+                    .contentShape(RoundedRectangle(cornerRadius: 12)).fullScreenArtwork(poster, title: name)
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {
                     Text(name).font(.system(size: 24, weight: .bold)).tracking(-1.08).foregroundStyle(.white)
@@ -61,7 +68,8 @@ struct TitleHero<Ratings: View>: View {
                         .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 6)))
                 }
             }
-        }.padding(.top, 142).onChange(of: synopsisText) { _, _ in measureSynopsis() }
+        }
+        }.onChange(of: synopsisText) { _, _ in measureSynopsis() }
     }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var synopsisLead: some View {

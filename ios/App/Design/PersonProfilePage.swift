@@ -66,6 +66,8 @@ struct PersonProfilePage<Content: View>: View {
             }
         }.padding(.horizontal, 14).padding(.bottom, 10)
             .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
+            // Press and hold the photo to see it whole, full screen.
+            .contentShape(Rectangle()).fullScreenArtwork(image, title: name)
             .background {
                 GeometryReader { proxy in
                     portrait.frame(width: proxy.size.width, height: proxy.size.height)
