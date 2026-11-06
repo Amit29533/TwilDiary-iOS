@@ -23,6 +23,12 @@ import TwilDiaryCore
             UserDefaults.standard.set(true, forKey: "trashGrid")
             for key in ["favouritesCastGrid", "favouritesCharactersGrid", "favouritesVoiceGrid"] { UserDefaults.standard.set(true, forKey: key) }
             FavouritesStore.shared.reset()
+            // Each UI test starts on the server's diary: a test (or the unit tests sharing this
+            // simulator) that switched to a service's diary or queued Trakt edits must not leave the
+            // next launch on an empty service diary.
+            for key in [DiaryStore.diarySourceKey, "trakt.pendingWrites", "trakt.copiedFromServer", "trakt.autoFilledFromServer"] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-launch-tab") { UserDefaults.standard.removeObject(forKey: AppTab.launchKey) }
             for key in ["favouritesTab", AniListMostWatched.userKey, "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
