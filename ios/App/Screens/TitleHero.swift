@@ -27,7 +27,7 @@ struct TitleHero<Ratings: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             // The cover art's visible strip above the poster.
             Color.clear.frame(maxWidth: .infinity).frame(height: 142).contentShape(Rectangle())
-                .fullScreenArtwork(backdrop, title: name)
+                .fullScreenArtwork(backdrop, title: name, aspect: 16.0 / 9.0)
         VStack(alignment: .leading, spacing: 18) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the

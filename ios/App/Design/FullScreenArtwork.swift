@@ -1,15 +1,25 @@
 import SwiftUI
 
-/// Press and hold artwork (a poster, a cover, a portrait) to see it full screen.
+/// Press and hold artwork (a poster, a cover, a portrait): it lifts into a large preview card with
+/// its title, the page blurs behind it and a short menu opens under it (iOS's own peek, as in
+/// Photos or Instagram). View full screen opens the zoomable viewer; Share sends the image.
 private struct FullScreenArtworkModifier: ViewModifier {
     let path: String?
     let title: String
+    /// Width over height of this kind of artwork: 2:3 posters and portraits, 16:9 covers.
+    let aspect: CGFloat
     @State private var shown = false
     func body(content: Content) -> some View {
         if let path, !path.isEmpty {
             content
-                .onLongPressGesture(minimumDuration: 0.4) { shown = true }
-                .sensoryFeedback(.impact(weight: .medium), trigger: shown) { _, now in now }
+                .contextMenu {
+                    Button("View full screen", systemImage: "arrow.up.left.and.arrow.down.right") { shown = true }
+                    if let url = URL(string: path), url.scheme == "https" {
+                        ShareLink(item: url, subject: Text(title)) { Label("Share", systemImage: "square.and.arrow.up") }
+                    }
+                } preview: {
+                    ArtworkPeek(path: path, title: title, aspect: aspect)
+                }
                 .accessibilityAction(named: "View full screen") { shown = true }
                 .fullScreenCover(isPresented: $shown) { FullScreenArtwork(path: path, title: title) }
         } else {
@@ -18,10 +28,26 @@ private struct FullScreenArtworkModifier: ViewModifier {
     }
 }
 
+/// The lifted card: the title on top, then the artwork whole, at the largest public size.
+private struct ArtworkPeek: View {
+    let path: String
+    let title: String
+    let aspect: CGFloat
+    var body: some View {
+        let width: CGFloat = aspect >= 1 ? 360 : 300
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+                .padding(.horizontal, 14).frame(height: 44, alignment: .leading)
+            Artwork(path: path, title: title, contentMode: .fill, prefersOriginal: true)
+                .frame(width: width, height: (width / max(aspect, 0.3)).rounded())
+        }.frame(width: width).background(Color(webHex: "#16151b"))
+    }
+}
+
 extension View {
-    /// Press and hold to see `path` full screen, at its largest public size.
-    func fullScreenArtwork(_ path: String?, title: String) -> some View {
-        modifier(FullScreenArtworkModifier(path: path, title: title))
+    /// Press and hold for a peek of `path` (with View full screen and Share).
+    func fullScreenArtwork(_ path: String?, title: String, aspect: CGFloat = 2.0 / 3.0) -> some View {
+        modifier(FullScreenArtworkModifier(path: path, title: title, aspect: aspect))
     }
 }
 
