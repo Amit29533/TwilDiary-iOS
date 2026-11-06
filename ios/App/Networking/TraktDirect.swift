@@ -207,15 +207,19 @@ enum TraktDelivery: Equatable, Sendable {
         }
     }
 
-    /// Once Trakt holds the diary, what the old server copy has and Trakt has never had is copied
-    /// in on its own after each read (so on every open), with nothing to tap. Something Trakt had
-    /// and you removed there is never put back (Trakt is the record), nor is anything copied
-    /// before. It runs after the read finishes (so `running` is clear); a failure waits for the
-    /// next read.
+    /// Once Trakt holds the diary, what the old server copy has and Trakt lacks is copied in on its
+    /// own after each read (so on every open), with nothing to tap; something removed on Trakt
+    /// comes back only when your diary change is newer (see `settled`). Each item is tried on its
+    /// own once per app session: one Trakt can't take (a title it can't find) stays listed for
+    /// Sync now instead of being re-sent after every read, since the send itself reads Trakt again.
     private func autoFillIfNeeded(store: DiaryStore) {
         guard store.traktHoldsDiary, !store.isPreview, !writing, let plan, !plan.isEmpty else { return }
+        let fresh = plan.tokens.subtracting(autoTried)
+        guard !fresh.isEmpty else { return }
+        autoTried.formUnion(plan.tokens)
         Task { await self.makeTraktMatch(store: store) }
     }
+    @ObservationIgnored private var autoTried = Set<String>()
     /// Everything Trakt has held (plays, ratings, watchlist, favourites, dropped), as plan tokens.
     nonisolated static func tokens(_ library: TraktLibrary) -> Set<String> {
         func key(_ ref: TraktTitleRef) -> String? { ref.tmdbId.map { (ref.kind == .movie ? "movie:" : "tv:") + String($0) } }
@@ -692,7 +696,7 @@ enum TraktDelivery: Equatable, Sendable {
         // so they're cleared here; otherwise "busy" would stay on and stop the automatic reads.
         running = false; writing = false; writeProgress = nil
         library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil; pending = []
-        seenOnTrakt = []; seenLoaded = true
+        seenOnTrakt = []; seenLoaded = true; autoTried = []
         try? FileManager.default.removeItem(at: file)
         try? FileManager.default.removeItem(at: seenFile)
     }
