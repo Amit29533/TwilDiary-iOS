@@ -89,9 +89,13 @@ extension DiaryStore {
     /// `sendToService`: also put it on the watchlist of the service that holds the diary (a title
     /// you add); false when the title came from that service (joining the server diary).
     func importTitle(_ details: CatalogDetails, category: String, sendToService: Bool = true) async -> String? {
-        guard !busy, canMutate else { return nil }
+        // A title joining from the service is background work: it never holds "busy", which would
+        // turn away your own edits made meanwhile, and its failures stay quiet (it's retried).
+        let quiet = !sendToService
+        guard quiet || !busy, canMutate else { return nil }
         let revision = sessionRevision
-        busy = true; defer { if revision == sessionRevision { busy = false } }
+        if !quiet { busy = true }
+        defer { if !quiet, revision == sessionRevision { busy = false } }
         var confirmed = false
         do {
             let result: ImportedTitle = try await read("/api/metadata/import", method: "POST", body: ["mediaType": details.mediaType.rawValue, "tmdbId": details.id, "category": category, "status": "planned", "score": NSNull()])
@@ -119,7 +123,7 @@ extension DiaryStore {
             return result.title.id
         } catch is CancellationError { return nil }
         catch {
-            guard revision == sessionRevision else { return nil }
+            guard revision == sessionRevision, !quiet else { return nil }
             if confirmed { self.error = "Added to your library, but the refresh failed. Refresh or try adding again to reopen it; a second copy will not be created." }
             else { self.error = error.localizedDescription }
             return nil

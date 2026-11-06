@@ -144,7 +144,7 @@ enum TraktDelivery: Equatable, Sendable {
         guard !running else { return }
         if store.isPreview { error = "Direct Trakt reads need a real Trakt connection."; return }
         running = true; error = nil
-        let started = Date.now, session = generation
+        let started = Date.now, session = generation, editsAtStart = edits
         defer { if session == generation { running = false } }
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
@@ -192,6 +192,9 @@ enum TraktDelivery: Equatable, Sendable {
             library.fetchedAt = Date.now.formatted(.iso8601)
             // Signed out while reading: the previous account's lists are dropped, not saved.
             guard session == generation else { return }
+            // You edited while this read was on its way: it predates the edit, so the screen keeps
+            // your edit and Trakt is read again in a moment (with the edit on it).
+            if edits != editsAtStart { refreshSoon(store: store, after: 2); return }
             self.library = library
             save(library)
             if store.traktHoldsDiary { rememberSeen(library) }
@@ -617,8 +620,11 @@ enum TraktDelivery: Equatable, Sendable {
         return TraktDirectClient(token: token)
     }
     /// Applies an edit to the phone's Trakt copy and redraws the Trakt diary at once.
+    /// Counts edits applied to the phone's copy (a read that started before one is not saved).
+    @ObservationIgnored private var edits = 0
     func update(store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
         guard var value = library else { return }
+        edits += 1
         let before = value
         change(&value)
         // Trakt is the record: every list this edit touched is read again from Trakt on the next
@@ -640,11 +646,11 @@ enum TraktDelivery: Equatable, Sendable {
     }
     /// A quiet re-read ten seconds after the last edit (a run of edits makes one read), so new plays get their real Trakt ids
     /// (needed to remove exactly that play later).
-    func refreshSoon(store: DiaryStore) {
+    func refreshSoon(store: DiaryStore, after seconds: Double = 10) {
         refresh?.cancel()
         let session = generation
         refresh = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
+            try? await Task.sleep(for: .seconds(seconds))
             guard let self, !Task.isCancelled, session == self.generation else { return }
             await self.check(store: store)
         }
@@ -737,7 +743,7 @@ enum TraktDelivery: Equatable, Sendable {
         guard tracker == .simkl || tracker == .mdblist, running == nil else { return }
         if store.isPreview { errors[tracker] = "Direct reads need a real \(tracker.name) connection."; return }
         running = tracker; errors[tracker] = nil
-        let started = Date.now, session = generation
+        let started = Date.now, session = generation, editsAtStart = edits
         defer { if session == generation { running = nil } }
         do {
             let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
@@ -821,6 +827,7 @@ enum TraktDelivery: Equatable, Sendable {
             library.fetchedAt = Date.now.formatted(.iso8601)
             // Signed out while reading: the previous account's lists are dropped, not saved.
             guard session == generation else { return }
+            if edits != editsAtStart { refreshSoon(tracker, store: store, after: 2); return }
             libraries[tracker] = library
             save(library, tracker)
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
@@ -858,19 +865,21 @@ enum TraktDelivery: Equatable, Sendable {
         }
     }
     /// Applies an edit to the phone's copy and redraws the diary at once.
+    @ObservationIgnored private var edits = 0
     func update(_ tracker: MainTracker, store: DiaryStore, _ change: (inout TraktLibrary) -> Void) {
         guard var value = libraries[tracker] else { return }
+        edits += 1
         change(&value)
         libraries[tracker] = value
         save(value, tracker)
         store.applyDiarySource()
     }
     /// A quiet re-read a few seconds after an edit.
-    func refreshSoon(_ tracker: MainTracker, store: DiaryStore) {
+    func refreshSoon(_ tracker: MainTracker, store: DiaryStore, after seconds: Double = 10) {
         refresh?.cancel()
         let session = generation
         refresh = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
+            try? await Task.sleep(for: .seconds(seconds))
             guard let self, !Task.isCancelled, session == self.generation else { return }
             await self.check(tracker, store: store)
         }
