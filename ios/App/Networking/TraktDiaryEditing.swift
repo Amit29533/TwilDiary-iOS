@@ -50,6 +50,31 @@ extension DiaryStore {
         }
     }
 
+    /// Trash takes Planned titles off the service's watchlist and Restore puts them back: the
+    /// service holds the diary, so a trashed title would otherwise stay planned there. Watch
+    /// history and ratings on the service are left alone.
+    func serviceWatchlist(_ titles: [MediaTitle], listed: Bool) async throws {
+        let planned = titles.filter { $0.status == "planned" && $0.tmdbId != nil }
+        guard !planned.isEmpty else { return }
+        let path: String
+        switch service {
+        case .trakt: path = listed ? "/sync/watchlist" : "/sync/watchlist/remove"
+        case .mdblist: path = listed ? "/watchlist/items/add" : "/watchlist/items/remove"
+        // Simkl's only removal also clears the title's history, so its list is left as it is.
+        case .simkl: return
+        }
+        var body: [String: Any] = [:]
+        let movies = planned.filter { !$0.isSeries }, shows = planned.filter(\.isSeries)
+        if !movies.isEmpty { body["movies"] = try movies.map { try serviceRef($0) } }
+        if !shows.isEmpty { body["shows"] = try shows.map { try serviceRef($0) } }
+        try await send(path, body)
+        let refs = planned.map { titleRef($0) }, keys = Set(refs.map(\.diaryKey))
+        updateCopy { library in
+            library.watchlist.removeAll { keys.contains($0.title.diaryKey) }
+            if listed { library.watchlist += refs.map { TraktListed(title: $0, listedAt: nil) } }
+        }
+    }
+
     /// Queues an edit for the connected mirrors, never the service the diary comes from.
     func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .simkl, .mdblist]) {
         var skip: Set<SyncProviderKind> = [.cloudflare]

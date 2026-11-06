@@ -1453,6 +1453,10 @@ import TwilDiaryCore
                 guard let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any] else { throw APIError.message("Invalid collection change.") }
                 let receipt: CollectionReceipt = try await self.read("/api/titles/bulk", method: "POST", body: body)
                 guard receipt.count == reviewed.count, Set(receipt.ids) == Set(reviewed.map(\.id)), receipt.action == change.action else { throw APIError.message("The selection response was incomplete. Refresh before trying again.") }
+                // A service holds the diary: Trash and Restore also update its watchlist.
+                if self.diaryFromService || self.traktHoldsDiary, change == .trash || change == .restore {
+                    try await self.serviceWatchlist(reviewed, listed: change == .restore)
+                }
             }
         }
     }
