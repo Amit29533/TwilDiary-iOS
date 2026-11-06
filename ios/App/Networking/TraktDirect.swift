@@ -858,7 +858,7 @@ extension DiaryStore {
     /// read-only for watches, ratings and watch status (notes, tags and files still change).
     var viewingFrozenServerCopy: Bool { serverRecord != nil && !diaryFromService }
     var frozenCopyMessage: String {
-        "This is your old server copy, kept read-only for watches and ratings. Show your diary from \(serverRecord?.name ?? "your tracker") to change them."
+        "This is your old server copy, kept read-only for watches, ratings, statuses and favourites. Show your diary from \(serverRecord?.name ?? "your tracker") to change them."
     }
     /// Stops a watch, rating or status edit before it reaches the read-only server copy.
     func requireWatchEdits() throws {

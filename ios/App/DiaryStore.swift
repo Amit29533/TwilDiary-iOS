@@ -1175,9 +1175,13 @@ import TwilDiaryCore
         await perform(refreshing: [title.id]) {
             guard !self.isServiceOnly(title) else { throw APIError.message("This title is only on \(self.diaryService?.name ?? "Trakt") so far. It joins your server diary on its own in a moment; then Trash works.") }
             let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
+            // A service holds the diary: a Planned title leaves its watchlist too (Undo puts it back).
+            let onService = self.diaryFromService || self.traktHoldsDiary
+            if onService { try await self.serviceWatchlist([title], listed: false) }
             self.undoLabel = "Moved to Trash"
             self.undoAction = {
                 let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": result.title.version])
+                if onService { try await self.serviceWatchlist([title], listed: true) }
             }
             self.undoTitles = [title.id]
         }
@@ -1186,6 +1190,7 @@ import TwilDiaryCore
         await perform(refreshing: [title.id]) {
             guard !self.isServiceOnly(title) else { throw APIError.message("This title is only on \(self.diaryService?.name ?? "Trakt") so far. It joins your server diary on its own in a moment; then Trash works.") }
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
+            if self.diaryFromService || self.traktHoldsDiary { try await self.serviceWatchlist([title], listed: true) }
         }
     }
     @discardableResult func refreshTitleMetadata(_ title: MediaTitle) async -> Bool {
@@ -1375,7 +1380,8 @@ import TwilDiaryCore
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
         if diaryFromService { return await perform(refreshing: [title.id]) { try await self.servicePatch(title, values: values) } }
         return await perform(refreshing: [title.id]) {
-            if values["score"] != nil { try self.requireWatchEdits() }
+            // The old server copy can't take what the service holds: it would never reach the service.
+            if values["score"] != nil || values["status"] != nil || values["favorite"] != nil { try self.requireWatchEdits() }
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
             self.recordDirectProviderMutation(
@@ -1395,6 +1401,7 @@ import TwilDiaryCore
     @discardableResult func patchCard(_ titleID: String, values: [String: Any]) async -> Bool {
         if diaryFromService, let title = self.title(titleID) { return await perform(cardID: titleID) { try await self.servicePatch(title, values: values) } }
         return await perform(cardID: titleID) {
+            if values["score"] != nil || values["status"] != nil || values["favorite"] != nil { try self.requireWatchEdits() }
             guard let title = self.title(titleID), title.deletedAt == nil else { throw APIError.message("This title is no longer in your library.") }
             var body = values; body["expectedVersion"] = title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(titleID)", method: "PATCH", body: body)
@@ -1446,6 +1453,7 @@ import TwilDiaryCore
             }
         }
         return await perform(refreshing: Set(reviewed.map(\.id))) {
+            switch change { case .status, .favorite: try self.requireWatchEdits(); default: break }
             let request = try CollectionRequest(titles: reviewed, change: change)
             if case .status(let status) = change, ["planned", "completed"].contains(status) {
                 try await self.applyProgress(reviewed, status: status, watchedAt: self.now)
