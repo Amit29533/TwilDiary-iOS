@@ -19,13 +19,34 @@ struct HomeView: View {
     var body: some View {
         let now = store.isPreview ? store.now : clock
         let request = store.homeProjectionRequest(at: now)
-        let projection = store.homeProjection
-        let overview = projection?.overview
-        let watching = projection?.watching ?? []
-        let recent = projection?.recent ?? []
-        EdgeToEdgeScroll {
+        ZStack {
+            // A missing projection is still loading. Only a loaded diary with no
+            // watching titles should show the shorter Home header.
+            if let projection = store.homeProjection {
+                dashboard(projection, now: now)
+            } else {
+                ProgressView().accessibilityLabel("Opening your diary")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: request) { await store.prepareHomeProjection(request) }
+        // Favourites are kept on the server; one small read per session brings them up to date.
+        .task(id: store.sessionRevision) { await FavouritesStore.shared.sync(store: store) }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { clock = store.now } }
+        .task {
+            clock = store.now
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                clock = store.now
+            }
+        }
+    }
+    private func dashboard(_ projection: DiaryStore.HomeProjection, now: Date) -> some View {
+        let overview = projection.overview
+        let watching = projection.watching
+        let recent = projection.recent
+        return EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 0) {
-                // While searching, the plain header keeps the field and its results at the top.
                 if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: 28) {
                     // Explore is systematic discovery; Canvas is for browsing artwork at random.
@@ -35,10 +56,9 @@ struct HomeView: View {
                     }
                     VStack(spacing: 12) {
                         heading("This week") { SectionMoreButton(label: "Stats", identifier: "home-stats") { router.statsToday() } }
-                        if let overview { weekPanel(overview, now: now) }
-                        else { DiaryLoadingPlaceholder(height: 142, label: "Loading this week") }
+                        weekPanel(overview, now: now)
                     }
-                    if let overview, !overview.planned.isEmpty { VStack(spacing: 12) {
+                    if !overview.planned.isEmpty { VStack(spacing: 12) {
                         heading("Up next") { SectionMoreButton(label: "Planned", identifier: "home-upnext-more") { router.library("planned") } }
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
@@ -71,7 +91,7 @@ struct HomeView: View {
                             }.scrollTargetLayout()
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     }.padding(.horizontal, -4) }
-                    if let overview { VStack(spacing: 12) {
+                    VStack(spacing: 12) {
                         heading("New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming", gridName: "cards"); SectionMoreLink(label: "Airing calendar", value: AppDestination.calendar, identifier: "home-calendar-more") }
                         HomeActivityLayout(cards: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
                             NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
@@ -86,7 +106,7 @@ struct HomeView: View {
                             }.padding(.vertical, 6).diaryPanel(radius: 18)
                         }
                         if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 } }
-                    }.padding(.horizontal, -4) }
+                    }.padding(.horizontal, -4)
                     if !recent.isEmpty { VStack(spacing: 12) {
                         heading("Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history", gridName: "cards"); SectionMoreLink(label: "All history", value: AppDestination.history, identifier: "home-history-more") }
                         HomeActivityLayout(cards: historyGrid) { ForEach(recent) { entry in
@@ -105,17 +125,6 @@ struct HomeView: View {
             if scrolling != active { scrolling = active }
         }
         .refreshable { clock = store.now; await store.refresh(); await FavouritesStore.shared.sync(store: store) }
-        .task(id: request) { await store.prepareHomeProjection(request) }
-        // Favourites are kept on the server; one small read per session brings them up to date.
-        .task(id: store.sessionRevision) { await FavouritesStore.shared.sync(store: store) }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { clock = store.now } }
-        .task {
-            clock = store.now
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                clock = store.now
-            }
-        }
     }
     /// True full screen: the whole header scrolls away with the artwork.
     private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork) }

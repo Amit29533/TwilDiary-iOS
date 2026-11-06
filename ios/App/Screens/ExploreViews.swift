@@ -6,12 +6,12 @@ struct ExploreView: View {
     var body: some View {
         VStack(spacing: 0) {
             // "Explore" sits in the frosted top bar; the page scrolls underneath it.
-            EdgeToEdgeScroll(drawsTopBackdrop: false) {
+            EdgeToEdgeScroll(frosted: true) {
                 VStack(alignment: .leading, spacing: 22) {
                     ExploreContent(store: store)
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
-        }.background { DiaryScreenBackground() }.navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
+        }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
     }
 }
@@ -146,13 +146,13 @@ struct ExploreSectionView: View {
     init(route: ExploreSectionRoute, store: DiaryStore) { self.route = route; self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         VStack(spacing: 0) {
-            EdgeToEdgeScroll(drawsTopBackdrop: false) {
+            EdgeToEdgeScroll(frosted: true) {
                 VStack(alignment: .leading, spacing: 16) {
 
                     DiscoveryBrowser(section: route.section, service: service, store: store, initialFilters: route.filters)
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
-        }.background { DiaryScreenBackground() }.navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
 
     }
 }

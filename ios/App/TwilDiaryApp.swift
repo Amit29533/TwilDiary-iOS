@@ -251,7 +251,7 @@ struct RootView: View {
                     savedTitlePage(TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes), tab: tab)
                 }
                 .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.catalog($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false, nativeFrostedBar: true).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
@@ -288,7 +288,7 @@ struct RootView: View {
                     case .backups: BackupsView()
                     case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
                     case .about: AboutView()
-                    } }.diaryPageChrome(detail: destination == .profile, nativeFrostedBar: destination == .explore).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
+                    } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })

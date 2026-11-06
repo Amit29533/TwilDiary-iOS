@@ -26,8 +26,6 @@ struct FeatheredHeaderBackdrop: View {
 struct EdgeToEdgeScroll<Content: View>: View {
     /// Keep the top bar frosted even at the top (for pages with a title or switcher in the bar).
     var frosted = false
-    /// Destinations with native toolbar material let the bar own its backdrop.
-    var drawsTopBackdrop = true
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     var body: some View {
@@ -41,11 +39,11 @@ struct EdgeToEdgeScroll<Content: View>: View {
                     (min(1, max(0, (value.contentOffset.y + value.contentInsets.top) / 48)) * 32).rounded() / 32
                 }) { _, progress in header.update(progress) }
                 .overlay(alignment: .top) {
-                    if drawsTopBackdrop, geometry.safeAreaInsets.top > 0 {
+                    if geometry.safeAreaInsets.top > 0 {
                         FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top, always: frosted)
                             .offset(y: -geometry.safeAreaInsets.top)
                     }
                 }
-        }.toolbarBackground(drawsTopBackdrop ? .hidden : .visible, for: .navigationBar)
+        }.toolbarBackground(.hidden, for: .navigationBar)
     }
 }

@@ -5,20 +5,10 @@ import SwiftUI
 /// onAppear flag inserts/removes a safe-area inset after the transition.
 private struct DiaryPageChrome: ViewModifier {
     let detail: Bool
-    let nativeFrostedBar: Bool
     @Environment(DiaryStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ViewBuilder func body(content: Content) -> some View {
-        if nativeFrostedBar {
-            page(content)
-                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-        } else {
-            page(content).toolbarBackground(.hidden, for: .navigationBar)
-        }
-    }
-    private func page(_ content: Content) -> some View {
-        content.scrollEdgeEffectHidden(true, for: .top).overlay(alignment: .bottom) {
+    func body(content: Content) -> some View {
+        content.scrollEdgeEffectHidden(true, for: .top).toolbarBackground(.hidden, for: .navigationBar).overlay(alignment: .bottom) {
             if let label = store.undoLabel {
                 UndoToast(label: label).padding(.horizontal, 24).padding(.bottom, 10)
                     // Pops in place (no slide), so Undo is where it looks from the first frame.
@@ -28,7 +18,5 @@ private struct DiaryPageChrome: ViewModifier {
     }
 }
 extension View {
-    func diaryPageChrome(detail: Bool, nativeFrostedBar: Bool = false) -> some View {
-        modifier(DiaryPageChrome(detail: detail, nativeFrostedBar: nativeFrostedBar))
-    }
+    func diaryPageChrome(detail: Bool) -> some View { modifier(DiaryPageChrome(detail: detail)) }
 }
