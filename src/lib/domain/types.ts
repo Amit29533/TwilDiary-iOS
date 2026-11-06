@@ -32,6 +32,8 @@ export interface MediaTitle {
   deletedAt?: string | null;
   /** When the title was added to the diary; drives Library's "Recently added". */
   createdAt?: string;
+  /** When the title last changed (status, rating, favourite…): newer change wins against Trakt. */
+  updatedAt?: string;
 }
 
 export interface Episode {

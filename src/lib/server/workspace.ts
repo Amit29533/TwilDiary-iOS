@@ -45,6 +45,8 @@ export function workspaceTitle(
     tags: [],
     deletedAt: title.deletedAt,
     createdAt: title.createdAt,
+    // When the title last changed: the app syncs with Trakt by whichever change is newer.
+    updatedAt: title.updatedAt,
     version: title.version,
     seasons: seasonList
   };

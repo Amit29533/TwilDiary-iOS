@@ -131,6 +131,54 @@ struct TrackerPreviewPanel: View {
     @State private var savingWriteThrough = false
 
     var body: some View {
+        if tracker == .trakt && store.traktHoldsDiary { traktSyncCard } else { previewCard }
+    }
+
+    /// Trakt holds the diary: just whether everything is on Trakt, and what's still going there.
+    private var traktSyncCard: some View {
+        let compared = report?.comparison
+        let waiting = [compared?.onlyInDiary, compared?.ratingDifferences, compared?.plannedDifferences,
+                       compared?.favoriteDifferences, compared?.droppedDifferences].compactMap { $0 }.flatMap { $0 }
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Trakt sync").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 10) {
+                if let progress = trakt.writeProgress {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.subheadline) }
+                } else if running {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking Trakt…").font(.subheadline) }
+                } else if report != nil, waiting.isEmpty, trakt.pending.isEmpty {
+                    Label("Everything is on Trakt", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(theme.accent).accessibilityIdentifier(id + "-match")
+                } else if !waiting.isEmpty {
+                    Text(waiting.count == 1 ? "1 change going to Trakt" : "\(waiting.count) changes going to Trakt")
+                        .font(.subheadline.weight(.semibold)).accessibilityIdentifier(id + "-differences")
+                    ForEach(Array(waiting.prefix(5).enumerated()), id: \.offset) { _, item in
+                        Text(item.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    if waiting.count > 5 { Text("and \(waiting.count - 5) more").font(.caption).foregroundStyle(.secondary) }
+                }
+                if !trakt.pending.isEmpty {
+                    Label(trakt.pending.count.counted("change", "changes") + " waiting for a connection", systemImage: "icloud.and.arrow.up")
+                        .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-pending")
+                }
+                if let error { Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error") }
+                if let fetched = library.flatMap({ DiaryDate.parse($0.fetchedAt) }) {
+                    Text("Checked " + fetched.formatted(.relative(presentation: .named))).font(.caption).foregroundStyle(.tertiary)
+                }
+                Button {
+                    Task {
+                        await trakt.check(store: store)
+                        if trakt.plan?.isEmpty == false { await trakt.makeTraktMatch(store: store) }
+                    }
+                } label: {
+                    Label(running || trakt.writing ? "Syncing…" : "Sync now", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                }.font(.subheadline).buttonStyle(.diarySecondary).disabled(running || trakt.writing).accessibilityIdentifier(id + "-check")
+            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+        }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
+    }
+
+    private var previewCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Direct from \(tracker.name) (preview)").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
             VStack(alignment: .leading, spacing: 10) {

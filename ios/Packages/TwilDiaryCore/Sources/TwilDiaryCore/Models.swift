@@ -23,6 +23,8 @@ public struct MediaTitle: Codable, Identifiable, Hashable, Sendable {
     public var seasons: [Season]?
     /// When the title was added to the diary (ISO 8601); absent in older snapshots.
     public let createdAt: String?
+    /// When the title last changed on the server (ISO 8601): against Trakt, the newer change wins.
+    public var updatedAt: String? = nil
     public var isSeries: Bool { category == "show" || category == "anime" }
     public var categoryName: String {
         switch category { case "anime-movie": "Anime movie"; default: category.capitalized }
