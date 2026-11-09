@@ -412,7 +412,10 @@ export function createTmdb(
           params.with_keywords = input.keywords.join(input.keywordMode === 'all' ? ',' : '|');
         if (input.genres?.length) {
           const ids = input.genres
-            .map((name) => discoveryGenres.find((g) => g.name === name)?.[input.type])
+            .map(
+              (name): number | null | undefined =>
+                discoveryGenres.find((g) => g.name === name)?.[input.type]
+            )
             .filter((v): v is number => typeof v === 'number');
           if (ids.length) params.with_genres = ids.join(',');
           // A show genre TMDb lacks (Romance) is its keyword.
