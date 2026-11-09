@@ -16,18 +16,57 @@ struct StatsView: View {
     @State private var expandedGenres = false
     @State private var staleLimit = 3
     @State private var clock = Date.now
+    private enum Tab: String, CaseIterable { case overview = "Overview", habits = "Habits", taste = "Taste", library = "Library" }
+    @SceneStorage("stats.tab") private var tab = Tab.overview
+    @State private var mostPlayedShows = true
+    @State private var highestRatedShows = true
+    private var tabPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(Tab.allCases, id: \.self) { item in
+                Button { tab = item } label: {
+                    Text(item.rawValue).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(tab == item ? theme.ink : Color(webHex: "#c5c0cf"))
+                        .frame(maxWidth: .infinity).frame(height: 42)
+                        .background { if tab == item { Capsule().fill(theme.accent) } }.contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("stats-tab-" + item.rawValue.lowercased())
+            }
+        }.padding(4).background(.white.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+    }
     var body: some View {
         let data = store.statsProjection(period: period, year: year, at: clock)
         let highlights = store.statsHighlights(data, period: period, year: year, at: clock)
+        let insights = StatsInsights(workspace: store.workspace, now: clock)
         VStack(spacing: 0) {
             EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 14) {
-                    journey(data.coverage, highlights: highlights)
-                    trend(data, highlights: highlights)
-                    streaks(data.streaks)
-                    backlog(data.backlog)
-                    goneQuiet(data.backlog.stale)
-                    genres(data.genres)
+                    tabPicker
+                    switch tab {
+                    case .overview:
+                        StatsJourneyCard(insights: insights, coverage: data.coverage)
+                        StatsPeriodTiles(insights: insights)
+                        trend(data, highlights: highlights)
+                        StatsOverTimeCard(years: insights.perYear)
+                        StatsSplitCard(insights: insights)
+                    case .habits:
+                        streaks(data.streaks)
+                        StatsWhenCard(insights: insights)
+                        StatsHallOfFameCard(insights: insights, longestStreak: data.streaks.longest)
+                        StatsMarathonsCard(marathons: insights.marathons)
+                    case .taste:
+                        StatsPosterRow(title: "Most played", items: (mostPlayedShows ? insights.mostPlayedShows : insights.mostPlayedMovies).map {
+                            StatsPosterItem(title: $0.title, badge: "×\($0.count)", detail: $0.minutes > 0 ? longDuration($0.minutes) : nil)
+                        }, shows: $mostPlayedShows)
+                        StatsPosterRow(title: "Highest rated", items: (highestRatedShows ? insights.topRatedShows : insights.topRatedMovies).map {
+                            StatsPosterItem(title: $0, badge: "★ " + ($0.score ?? 0).formatted(.number.precision(.fractionLength(0...1))))
+                        }, shows: $highestRatedShows)
+                        StatsRatingsCard(insights: insights)
+                        genres(data.genres)
+                        StatsDecadesCard(decades: insights.decades)
+                    case .library:
+                        StatsGlanceCard(insights: insights)
+                        backlog(data.backlog)
+                        goneQuiet(data.backlog.stale)
+                    }
                     NavigationLink(value: AppDestination.history) {
                         HStack(spacing: 12) {
                             DiaryIcon(name: "history", size: 18).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))

@@ -264,6 +264,7 @@ struct RootView: View {
                 .navigationDestination(for: HistoryRoute.self) { route in
                     HistoryView(initialDay: route.day, initialUnknown: route.unknown, initialQuery: route.query).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
+                .navigationDestination(for: MilestonesRoute.self) { _ in MilestonesView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonPhotosRoute.self) { PersonPhotosPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: ShowPageRoute.self) { ShowPageDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: CanvasListRoute.self) { CanvasListView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
