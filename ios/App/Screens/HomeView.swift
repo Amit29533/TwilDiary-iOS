@@ -72,6 +72,7 @@ struct HomeView: View {
                         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                     }.padding(.horizontal, -4)
                     }
+                    if let seed = recent.first(where: { $0.title.tmdbId != nil })?.title { HomeRecommendedShelf(seed: seed) }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                     let favourites = FavouritesStore.shared.items
                     if !favourites.isEmpty { VStack(spacing: 12) {

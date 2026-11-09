@@ -83,3 +83,12 @@ import Testing
     #expect(LibraryQuery.sortName("The") == "The")
     #expect(LibraryQuery.sortName("Theodosia") == "Theodosia")
 }
+
+@Test func recommendationMatchRewardsSharedGenresAndRating() {
+    let same = RecommendationMatch.percent(seedGenres: ["Animation", "Comedy"], genres: ["Animation", "Comedy"], rating: 8)
+    let half = RecommendationMatch.percent(seedGenres: ["Animation", "Comedy"], genres: ["Animation", "Drama"], rating: 8)
+    let none = RecommendationMatch.percent(seedGenres: ["Animation"], genres: ["Western"], rating: 8)
+    #expect(same == 97 && same > half && half > none)
+    #expect(none >= 50 && same <= 100)
+    #expect((76...77).contains(RecommendationMatch.percent(seedGenres: [], genres: nil, rating: nil)))
+}

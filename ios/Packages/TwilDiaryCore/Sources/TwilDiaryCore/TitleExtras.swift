@@ -160,3 +160,15 @@ public enum TagEmoji {
         return table.first { value.contains($0.0) }?.1 ?? "🏷️"
     }
 }
+
+/// "94% match" on Home's Recommended shelf: how much a recommendation shares the genres of
+/// the title it was recommended from (most of the score), plus its community rating.
+public enum RecommendationMatch {
+    public static func percent(seedGenres: [String], genres: [String]?, rating: Double?) -> Int {
+        let seed = Set(seedGenres), other = Set(genres ?? [])
+        let union = seed.union(other)
+        let overlap = union.isEmpty ? 0.5 : Double(seed.intersection(other).count) / Double(union.count)
+        let quality = min(1, max(0, (rating ?? 6) / 10))
+        return Int((50 + 50 * (0.7 * overlap + 0.3 * quality)).rounded())
+    }
+}
