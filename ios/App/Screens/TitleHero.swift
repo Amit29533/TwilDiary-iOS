@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import TwilDiaryCore
 
 /// Shared title header for saved titles and unimported catalog previews.
 struct TitleHero<Ratings: View>: View {
@@ -17,8 +18,12 @@ struct TitleHero<Ratings: View>: View {
     let ratings: Ratings
     /// The cover art behind the header: press and hold its visible part to see it full screen.
     let backdrop: String?
-    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
-        self.name = name; self.poster = poster; self.backdrop = backdrop; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
+    /// Age rating, status and network chips under the genres.
+    let extras: TitleExtras?
+    /// Ratings as a full-width row under the poster instead of beside it.
+    let ratingsBelow: Bool
+    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, extras: TitleExtras? = nil, ratingsBelow: Bool = false, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
+        self.name = name; self.poster = poster; self.backdrop = backdrop; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.extras = extras; self.ratingsBelow = ratingsBelow; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
     }
     @State private var synopsisWidth: CGFloat = 0
     @State private var synopsisParts = SynopsisTextLayout.Parts(leading: "", continuation: "")
@@ -44,13 +49,11 @@ struct TitleHero<Ratings: View>: View {
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
                     Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per episode" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 14.4)).lineSpacing(4.3).foregroundStyle(.secondary).frame(minHeight: 21.6, alignment: .top).padding(.top, 14)
-                    if !genres.isEmpty {
-                        Text(genres.prefix(3).joined(separator: " • ")).font(.system(size: 14.4)).foregroundStyle(.secondary)
-                            .lineLimit(1).minimumScaleFactor(0.8).padding(.top, 4).accessibilityIdentifier("title-hero-genres")
-                    }
-                    ratings.padding(.top, 14)
+                    TitleMetaChips(genres: genres, extras: extras).padding(.top, 10)
+                    if !ratingsBelow { ratings.padding(.top, 14) }
                 }.frame(maxWidth: .infinity, minHeight: 171, alignment: .bottomLeading)
             }
+            if ratingsBelow { ratings }
             VStack(alignment: .leading, spacing: 6) {
                 synopsisLead
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in

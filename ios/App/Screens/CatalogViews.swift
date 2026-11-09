@@ -449,6 +449,8 @@ struct CastAndRelated: View {
     var sourceTitle: String? = nil
     /// Anime show their characters (AniList) above the cast.
     var anime: (year: Int?, movie: Bool)? = nil
+    /// The show page's "See all" (its Cast and crew page).
+    var seeAll: ShowPageRoute? = nil
     @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
     @State private var cast: [CastPerson] = []
@@ -458,7 +460,11 @@ struct CastAndRelated: View {
         VStack(alignment: .leading, spacing: 12) {
             if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id).padding(.bottom, 8) }
             if !cast.isEmpty {
-                Text("Cast").font(.system(size: 20, weight: .semibold))
+                HStack {
+                    Text("Cast").font(.system(size: seeAll == nil ? 20 : 24, weight: seeAll == nil ? .semibold : .bold))
+                    Spacer(minLength: 8)
+                    if let seeAll { SeeAllLink(value: seeAll, identifier: "title-cast-all") }
+                }
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 18) {
                         ForEach(cast) { person in
@@ -480,7 +486,7 @@ struct CastAndRelated: View {
             if !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("You might like").font(.system(size: 20, weight: .semibold))
+                        Text("More like this").font(.system(size: seeAll == nil ? 20 : 24, weight: seeAll == nil ? .semibold : .bold))
                         Spacer(minLength: 8)
                     }
                     PersonCreditShelf(items: Array(related.prefix(12)), identifier: "related-titles-shelf")

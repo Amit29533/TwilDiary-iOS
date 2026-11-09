@@ -2058,7 +2058,7 @@ import UIKit
         wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: ninthSummary)], timeout: 5)
         capture("Episode grid keeps captions and watch controls; details open in a sheet")
         episodes.tap()
-        let recommendations = app.staticTexts["You might like"]
+        let recommendations = app.staticTexts["More like this"]
         let shelf = app.descendants(matching: .any)["related-titles-shelf"]
         for _ in 0..<10 { if recommendations.exists && recommendations.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(recommendations.exists); XCTAssertTrue(shelf.exists)

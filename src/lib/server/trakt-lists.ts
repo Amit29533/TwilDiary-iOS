@@ -20,9 +20,11 @@ export interface CanvasListItem {
   backdropPath: string | null;
 }
 export interface CanvasListQuery {
-  sort: 'trending' | 'popular';
-  kind: 'personal' | 'official';
+  sort: 'trending' | 'popular' | 'updated';
+  kind: 'personal' | 'official' | 'all';
   page: number;
+  /** Lists that contain this TMDb title (a title page's "In lists"). */
+  title?: { mediaType: 'movie' | 'tv'; tmdbId: number } | undefined;
 }
 
 /** Eight lists × (1 item request + 4 posters) + 1 stays under Workers' 50 subrequests. */
@@ -35,15 +37,23 @@ export function canvasListInput(params: URLSearchParams): CanvasListQuery {
   const sort = params.get('sort') ?? 'trending';
   const kind = params.get('kind') ?? 'personal';
   const page = params.get('page') ?? '1';
+  // "tv:123876": the lists that contain one title, by popularity or by latest update.
+  const title = /^(tv|movie):(\d{1,10})$/.exec(params.get('title') ?? '');
   if (
-    !['trending', 'popular'].includes(sort) ||
-    !['personal', 'official'].includes(kind) ||
+    (params.has('title') && (!title || +title[2]! < 1)) ||
+    !(title ? ['popular', 'updated'] : ['trending', 'popular']).includes(sort) ||
+    !(title ? ['personal', 'official', 'all'] : ['personal', 'official']).includes(kind) ||
     !/^\d{1,2}$/.test(page) ||
     +page < 1 ||
     +page > 50
   )
     throw new ApiError(400, 'invalid_lists', 'Choose valid list filters.');
-  return { sort, kind, page: +page } as CanvasListQuery;
+  return {
+    sort,
+    kind,
+    page: +page,
+    ...(title ? { title: { mediaType: title[1], tmdbId: +title[2]! } } : {})
+  } as CanvasListQuery;
 }
 
 export function canvasListId(value: string | undefined) {
@@ -140,13 +150,31 @@ export async function canvasLists(
   query: CanvasListQuery,
   transport: typeof fetch = fetch
 ) {
+  let path = `lists/${query.sort}/${query.kind}`;
+  if (query.title) {
+    // Trakt finds a title by its own ID; TMDb's is looked up first (one more subrequest).
+    const kind = query.title.mediaType === 'tv' ? 'show' : 'movie';
+    const found = await traktJson(
+      clientId,
+      `search/tmdb/${query.title.tmdbId}?type=${kind}`,
+      transport
+    );
+    const match = found.data
+      .map((value) => record(record(value)[kind]))
+      .find((media) => record(media.ids).tmdb === query.title!.tmdbId);
+    const traktId = record(match?.ids).trakt;
+    if (!Number.isSafeInteger(traktId) || Number(traktId) < 1)
+      return { lists: [], page: query.page, totalPages: 1 };
+    path = `${kind}s/${traktId}/lists/${query.kind}/${query.sort}`;
+  }
   const { data, totalPages } = await traktJson(
     clientId,
-    `lists/${query.sort}/${query.kind}?page=${query.page}&limit=${LISTS_PER_PAGE}`,
+    `${path}?page=${query.page}&limit=${LISTS_PER_PAGE}`,
     transport
   );
   const lists = data.slice(0, LISTS_PER_PAGE).flatMap((value) => {
-    const list = record(record(value).list);
+    // Trending and popular wrap each list; a title's lists are the list objects themselves.
+    const list = record(record(value).list ?? value);
     const id = record(list.ids).trakt;
     const name = text(list.name, 200);
     if (!Number.isSafeInteger(id) || Number(id) < 1 || !name || list.privacy === 'private')

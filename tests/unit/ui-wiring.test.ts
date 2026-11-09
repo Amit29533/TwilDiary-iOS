@@ -407,10 +407,13 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
   assert.equal(iosConnections.includes('showDiaryAccess = true'), true);
   assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.connections)'), true);
   assert.equal(iosLibrary.includes('@SceneStorage("library.tag")'), true);
-  // Community scores moved from the critic breakdown to the ratings strip: every source is a
-  // labelled element ("IMDb 7.2") in one strip that also carries the personal rating.
+  // Community scores: the title page shows them as rating boxes under the poster, each a
+  // labelled element ("IMDb 7.2"); the strip remains for catalog previews.
   const iosRatingsStrip = await readFile(new URL('../../ios/App/Design/RatingsStrip.swift', import.meta.url), 'utf8');
-  assert.equal(iosTitleDetail.includes('RatingsStrip(scores: criticScores'), true);
+  const iosShowSections = await readFile(new URL('../../ios/App/Screens/ShowPageSections.swift', import.meta.url), 'utf8');
+  assert.equal(iosTitleDetail.includes('RatingBoxes(scores: criticScores'), true);
+  assert.equal(iosShowSections.includes('accessibilityIdentifier("title-rating-boxes")'), true);
+  assert.equal(iosShowSections.includes('accessibilityLabel(RatingsStrip<EmptyView>.name(box.id) + " " + box.text)'), true);
   assert.equal(iosRatingsStrip.includes('accessibilityIdentifier("title-ratings")'), true);
   assert.equal(iosRatingsStrip.includes('accessibilityLabel(Self.name(item.source) + " " + item.text)'), true);
 });

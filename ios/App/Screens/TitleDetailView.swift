@@ -37,23 +37,21 @@ struct TitleDetailView: View {
     @State private var card: WatchCard?
     @State private var cardRequest = UUID()
     @State private var cardError: String?
-    @State private var showAllEpisodes = false
     @AppStorage("episodesGrid") private var episodesGrid = false
     @State private var watchDate = Date.now
-    @State private var showDate = false
     @State private var sliderDraft: Double?
     @State private var selectedEpisode: Episode?
-    @State private var episodeSheetHeight: CGFloat = 420
     @State private var sheetEpisode: Episode?
     /// Which way the last swipe in the episode sheet went, so the next episode slides in from that side.
     @State private var episodeForward = true
-    @State private var episodeLimit = 40
     @State private var episodeDetails = SavedEpisodeDetailsController()
     @State private var revealedEpisodeIDs = Set<String>()
     @State private var preparingSeason = false
     @State private var seasonRequest = UUID()
     @State private var seasonLoadError: String?
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
+    /// Companies, tags, status and age rating (TMDB), shown once loaded.
+    @State private var extras: TitleExtras?
     @State private var confirmTrash = false
     @Environment(\.dismiss) private var dismissPage
     @State private var newTagText = ""
@@ -69,10 +67,24 @@ struct TitleDetailView: View {
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
                                 else { JellyfinPresenceRow(tmdb: title.tmdbId, movie: !title.isSeries) }
+                                if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
+                                if title.isSeries, let tmdbId = title.tmdbId {
+                                    RatingTrendCard(show: tmdbId, season: season, tmdb: tmdbEpisodePoints, current: card?.next?.number)
+                                }
                                 // Anime characters come from AniList and need no TMDB link; the cast row follows.
-                                if title.category.hasPrefix("anime") { AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries, tmdbID: title.tmdbId) }
-                                if let tmdbId = title.tmdbId { CastAndRelated(route: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId), sourceTitle: title.name) }
+                                if title.category.hasPrefix("anime") {
+                                    AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries, tmdbID: title.tmdbId,
+                                                       seeAll: title.tmdbId.map { .cast(CatalogRoute(kind: title.isSeries ? .tv : .movie, id: $0), title: title.name, anime: true, year: title.year) })
+                                }
+                                if let tmdbId = title.tmdbId {
+                                    let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId)
+                                    CastAndRelated(route: route, sourceTitle: title.name,
+                                                   seeAll: .cast(route, title: title.name, anime: title.category.hasPrefix("anime"), year: title.year))
+                                    if let extras { CompaniesSection(route: route, title: title.name, extras: extras, animated: title.category.hasPrefix("anime") || title.genres.contains("Animation")) }
+                                    InListsSection(route: route, title: title.name)
+                                }
+                                RelatedCollectionsSection(title: title)
                             }.padding(.horizontal, 14).padding(.bottom, 32)
                                 // The height only matters while the page scrolls itself to notes or files. Tracking it
                                 // always rebuilt the whole page each time a lazy episode row first
@@ -119,7 +131,7 @@ struct TitleDetailView: View {
                             }
                             .task { if !initializedEditor { initializedEditor = true; watchDate = store.now; notesField = VersionedField(value: title.notes, version: title.version); ratingField = VersionedField(value: title.score, version: title.version) } }
                             .task(id: season) {
-                                if configuredSeason != season { configuredSeason = season; sliderDraft = nil; showAllEpisodes = false; episodeLimit = 40 }
+                                if configuredSeason != season { configuredSeason = season; sliderDraft = nil }
                                 await prepareSeason(title)
                                 if focusEpisodes && !didFocusEpisodes && !Task.isCancelled {
                                     await Task.yield()
@@ -160,7 +172,10 @@ struct TitleDetailView: View {
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
             .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
             .task(id: title.id) {
-                guard let tmdbId = title.tmdbId else { criticScores = []; return }
+                guard let tmdbId = title.tmdbId else { criticScores = []; extras = nil; return }
+                let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId)
+                extras = TitleExtrasCache.cached(route)
+                if let loaded = try? await TitleExtrasCache.load(store: store, route: route) { extras = loaded }
                 criticScores = await CriticScores.load(store: store, tmdbId: tmdbId, isSeries: title.isSeries)
             }
             .onChange(of: title.version) { _, _ in
@@ -291,21 +306,21 @@ struct TitleDetailView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
-            RatingsStrip(scores: criticScores, tmdbFallback: title.communityScore) { personalRating(title).frame(minHeight: 44) }
+        TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, onNameScrolled: { headerState.update($0) }) {
+            RatingBoxes(scores: criticScores, tmdbFallback: title.communityScore)
         }
     }
-    private func personalRating(_ title: MediaTitle) -> some View {
-        Button { openRating(title) } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(.yellow)
-                Text("Rating").font(.system(size: 12)).foregroundStyle(.secondary)
-                Text(title.score.map { $0.formatted(.number.precision(.fractionLength(0...1))) } ?? "—").monospacedDigit()
-            }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
-        }.font(.system(size: 13)).buttonStyle(.plain)
-            .accessibilityIdentifier("title-personal-rating").accessibilityLabel("Rating")
-            .accessibilityHint("Your personal score. Tap to rate this title.")
-            .accessibilityValue(title.score.map { $0.formatted(.number.precision(.fractionLength(0...1))) } ?? "Not rated")
+    /// The community average for the ring: Trakt's when MDBList has it, otherwise TMDB's.
+    private func communityAverage(_ title: MediaTitle) -> Double? {
+        if let trakt = criticScores.first(where: { RatingsStrip<EmptyView>.canonical($0.source) == "trakt" }), let value = trakt.value ?? trakt.score, value > 0 {
+            return value > 10 ? value / 10 : value
+        }
+        return title.communityScore.flatMap { $0 > 0 ? $0 : nil }
+    }
+    private var tmdbEpisodePoints: [EpisodeRatingPoint] {
+        episodes.compactMap { episode in
+            (episodeDetails.episodes[episode.id]?.communityScore ?? episode.communityScore).map { EpisodeRatingPoint(episode: episode.number, score: $0) }
+        }
     }
     private func progressPanel(_ title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -317,7 +332,10 @@ struct TitleDetailView: View {
                         if status == "planned" && store.seasonStatus(title, season: season) != "planned" { resetConfirmation = true }
                         else { Task { await store.setSeasonStatus(title, season: season, status: status, watchedAt: watchInstant); await loadCard(title) } }
                     }
-                } } label: {
+                    }
+                    Divider()
+                    Button("Watch date…", systemImage: "calendar") { choosingWatchDate = true }
+                } label: {
                     HStack(spacing: 8) {
                         if store.seasonStatus(title, season: season) == "watching" { Image(systemName: "play.fill").font(.system(size: 12)) }
                         else { Circle().fill(store.seasonStatus(title, season: season) == "completed" ? Color.mint : Color.secondary).frame(width: 8, height: 8) }
@@ -354,34 +372,26 @@ struct TitleDetailView: View {
                 }
                 if let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { nextPreview(title, episode: episode).padding(.top, 8).padding(.bottom, 12) }
                 else if title.isSeries { Text(seasonCanEdit(title) ? "You’re caught up with available episodes." : "Load the season to see what’s next.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 12) }
-                Button { Task {
-                    var recorded = false
-                    if title.isSeries, let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { recorded = await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
-                    else if !title.isSeries { recorded = await store.recordViewing(title, rewatch: !movieViewings.isEmpty, watchedAt: watchInstant) }
-                    if recorded { markSparks += 1 }
-                    await loadCard(title)
-                } } label: {
-                    Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Log a rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
-                        .frame(maxWidth: .infinity)
-                }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || store.viewingFrozenServerCopy || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
-                    .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
-                HStack(spacing: 8) {
-                    Button { showDate.toggle() } label: {
-                        HStack(spacing: 7) { DiaryIcon(name: "calendar-days", size: 16).foregroundStyle(theme.accent); Text(DiaryDate.day(watchDate) == DiaryDate.day(store.now) ? "Watched today" : DiaryDate.day(watchDate)) }.frame(maxWidth: .infinity, minHeight: 44)
-                    }.accessibilityIdentifier("watch-date")
-                    Button { openRating(title) } label: {
-                        HStack(spacing: 7) { DiaryIcon(name: "star", size: 16).foregroundStyle(theme.accent); Text(title.isSeries ? "Rate show" : "Rate movie") }.frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                }.font(.system(size: 14)).foregroundStyle(Color(webHex: "#c5c0cf")).buttonStyle(.plain).padding(.top, 6)
-                if showDate {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Watch date").font(.system(size: 13)).foregroundStyle(.secondary)
-                        Button { choosingWatchDate = true } label: {
-                            HStack(spacing: 8) { DiaryIcon(name: "calendar-days", size: 17); Text(watchDate.formatted(.dateTime.day().month(.abbreviated).year())).fixedSize(horizontal: false, vertical: true); Spacer(minLength: 0); DiaryIcon(name: "chevron-down", size: 13) }
-                                .font(.system(size: 15)).padding(.horizontal, 12).frame(minHeight: 44)
-                        }.buttonStyle(.plain).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 12), field: true) }.accessibilityIdentifier("title-watch-date-value").disabled(store.writesBlocked)
-                        Text("Used for your next watch or progress update.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
+                // Your rating, the community's, then the main action on one line.
+                HStack(spacing: 10) {
+                    RatingCircles(mine: title.score, community: communityAverage(title), onRate: { openRating(title) }, onCommunity: { showInformation = true })
+                    Button { Task {
+                        var recorded = false
+                        if title.isSeries, let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { recorded = await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
+                        else if !title.isSeries { recorded = await store.recordViewing(title, rewatch: !movieViewings.isEmpty, watchedAt: watchInstant) }
+                        if recorded { markSparks += 1 }
+                        await loadCard(title)
+                    } } label: {
+                        Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
+                            .frame(maxWidth: .infinity).frame(minHeight: 46)
+                    }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || store.viewingFrozenServerCopy || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
+                        .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
+                }.padding(.top, 4)
+                if DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
+                    Button { choosingWatchDate = true } label: {
+                        HStack(spacing: 6) { DiaryIcon(name: "calendar-days", size: 14).foregroundStyle(theme.accent); Text("Logging as " + watchDate.formatted(.dateTime.day().month(.abbreviated).year())) }
+                            .font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf")).frame(maxWidth: .infinity, minHeight: 36)
+                    }.buttonStyle(.plain).accessibilityIdentifier("watch-date")
                 }
                 if showRating { ratingPanel(title).padding(.top, 10) }
             } else if let cardError {
@@ -418,30 +428,24 @@ struct TitleDetailView: View {
             }.padding(.vertical, 12).padding(.horizontal, 10).background(.white.opacity(5.0 / 255), in: RoundedRectangle(cornerRadius: 17))
         }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
     }
-    /// Owner's Episodes layout: heading, a season card with its progress, All / Unwatched
-    /// chips beside a grid–list switch, then the episodes.
+    /// Episodes: heading with the count and season, All / Unwatched beside a list–grid switch,
+    /// three episodes around what's next (a sideways row of cards in grid), then the full page.
     private func episodeSection(_ title: MediaTitle) -> some View {
-        let progress = store.seasonProgress(title, season: season)
-        let share = progress.total > 0 ? Int((Double(progress.watched) / Double(progress.total) * 100).rounded()) : 0
+        let seen = watched
+        let dates = EpisodeWatchDates.latest(store, titleID: id)
+        let nextID = card?.next?.id ?? episodes.first(where: { !seen.contains($0.id) && hasAired($0) })?.id
+        let shown = inlineEpisodes(nextID: nextID, watched: seen)
         return VStack(alignment: .leading, spacing: 14) {
-            Text("Episodes").font(.system(size: 30, weight: .bold)).tracking(-0.8)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    seasonMenu
-                    Spacer(minLength: 0)
-                    Text("\(share)%").font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-                }
-                HStack {
-                    Text("\(progress.watched) of \(progress.total) watched")
-                    Spacer(minLength: 0)
-                    Text("\(max(0, progress.total - progress.watched)) remaining")
-                }.font(.system(size: 14)).foregroundStyle(.secondary)
-                Capsule().fill(.white.opacity(0.1)).frame(height: 8)
-                    .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * progress.fraction) } }
-                    .padding(.top, 6).accessibilityHidden(true)
-            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
             HStack(spacing: 10) {
+                Text("Episodes").font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                if !episodes.isEmpty {
+                    Text(episodes.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                        .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                }
+                Spacer(minLength: 0)
+                seasonMenu
+            }
+            HStack(spacing: 8) {
                 episodeFilter("All episodes", on: !unwatchedOnly) { unwatchedOnly = false }
                 episodeFilter("Unwatched", on: unwatchedOnly) { unwatchedOnly = true }
                 Spacer(minLength: 0)
@@ -456,19 +460,60 @@ struct TitleDetailView: View {
             if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.glass).disabled(store.writesBlocked) }
             if let seasonLoadError { RetryNotice(message: seasonLoadError) { Task { await prepareSeason(title, force: true) } } }
             if let episodeError = episodeDetails.error(for: season) { Text(episodeError).font(.caption).foregroundStyle(.secondary); Button("Retry episode details") { Task { await revealSeason(title) } } }
-            CollectionLayout(grid: episodesGrid, spacing: 12) {
-                let shown = visibleEpisodes
-                ForEach(shown) { episode in
-                    // The lazy grid creates the last row only as it nears the screen.
-                    episodeRow(title, episode: episode).onAppear {
-                        if showAllEpisodes, episode.id == shown.last?.id, episodeLimit < episodes.count { episodeLimit += 40 }
+            if episodesGrid {
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(shown) { episode in
+                            EpisodeGridCard(number: episode.number, name: episodeName(episode), artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode),
+                                            state: rowState(episode, watched: seen, dates: dates, nextID: nextID), airedOn: episode.airedOn, runtime: title.runtimeMinutes,
+                                            score: episodeScore(episode), onOpen: { toggleEpisode(title, episode: episode) }, onToggle: { toggleWatched(title, episode: episode) })
+                                .frame(width: 260)
+                        }
+                    }
+                }.scrollIndicators(.hidden).scrollClipDisabled()
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(shown) { episode in
+                        EpisodeCardRow(number: episode.number, name: episodeName(episode), artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode),
+                                       state: rowState(episode, watched: seen, dates: dates, nextID: nextID), score: episodeScore(episode),
+                                       canToggle: !store.writesBlocked && (seen.contains(episode.id) || hasAired(episode)),
+                                       onOpen: { toggleEpisode(title, episode: episode) }, onToggle: { toggleWatched(title, episode: episode) })
                     }
                 }
             }
             if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary) }
-            else if unwatchedOnly && episodes.allSatisfy({ watched.contains($0.id) }) { Text("Every episode in this season is watched.").font(.subheadline).foregroundStyle(.secondary) }
-            if episodes.count > 4 { Button(showAllEpisodes ? "Back to next episode" : "Show all \(episodes.count) episodes") { showAllEpisodes.toggle() }.frame(maxWidth: .infinity).frame(minHeight: 44) }
+            else if unwatchedOnly && episodes.allSatisfy({ seen.contains($0.id) }) { Text("Every episode in this season is watched.").font(.subheadline).foregroundStyle(.secondary) }
+            if !episodes.isEmpty {
+                NavigationLink(value: ShowPageRoute.episodes(titleID: id, season: season)) {
+                    HStack(spacing: 6) { Text("Show all \(episodes.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
+                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
+                        .frame(maxWidth: .infinity).frame(height: 52)
+                        .background(.white.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+                }.buttonStyle(.springPress).accessibilityIdentifier("title-all-episodes")
+            }
             if let pending = store.pendingSeasonAdjustments[title.id + ":" + String(season)] { Button("Retry progress to episode \(pending.count)") { Task { await store.setSeasonProgress(title, season: season, count: pending.count, watchedAt: watchInstant); await loadCard(title) } }.disabled(store.writesBlocked) }
+        }
+    }
+    /// Three around what's next (one before, two from it); Unwatched shows the next three.
+    /// A grid row shows more, as it scrolls sideways.
+    private func inlineEpisodes(nextID: String?, watched seen: Set<String>) -> [Episode] {
+        let pool = unwatchedOnly ? episodes.filter { !seen.contains($0.id) } : episodes
+        let focus = nextID.flatMap { id in pool.firstIndex { $0.id == id } } ?? (unwatchedOnly ? 0 : nil)
+        let window = EpisodeWindow(count: pool.count, focus: focus, leading: unwatchedOnly ? 0 : 1, trailing: episodesGrid ? 8 : unwatchedOnly ? 2 : 1)
+        return Array(pool[window.shown])
+    }
+    private func rowState(_ episode: Episode, watched seen: Set<String>, dates: [String: Date], nextID: String?) -> EpisodeRowState {
+        if seen.contains(episode.id) { return .watched(dates[episode.id]) }
+        if episode.id == nextID { return .next }
+        return hasAired(episode) ? .notWatched : .notAired
+    }
+    private func episodeArtworkPath(_ episode: Episode, title: MediaTitle) -> String? { episodeDetails.episodes[episode.id]?.artwork ?? episode.still ?? title.backdrop }
+    private func episodeScore(_ episode: Episode) -> Double? { episodeDetails.episodes[episode.id]?.communityScore ?? episode.communityScore }
+    private func toggleWatched(_ title: MediaTitle, episode: Episode) {
+        Task {
+            if watched.contains(episode.id) { await store.unwatchEpisode(episode) }
+            else { await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
+            await loadCard(title)
         }
     }
     private var seasonMenu: some View {
@@ -493,77 +538,6 @@ struct TitleDetailView: View {
                 .background(on ? theme.accent : .clear, in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? .clear : .white.opacity(0.16)))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("episodes-filter-" + (name == "Unwatched" ? "unwatched" : "all"))
-    }
-    private func episodeRow(_ title: MediaTitle, episode: Episode) -> some View {
-        let isWatched = watched.contains(episode.id), next = card?.next?.id == episode.id
-        return VStack(alignment: .leading, spacing: 10) {
-            if episodesGrid {
-                Button { toggleEpisode(title, episode: episode) } label: {
-                    Color.clear.aspectRatio(16 / 10, contentMode: .fit).overlay { episodeArtwork(episode) }
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .accessibilityIdentifier("episode-thumbnail-\(episode.number)")
-                }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) artwork")
-                    .overlay(alignment: .bottomTrailing) { episodeWatchControl(title, episode: episode, watched: isWatched) }
-                Button { toggleEpisode(title, episode: episode) } label: {
-                    episodeCaption(episode, watched: isWatched, next: next)
-                }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
-                    .accessibilityValue(episodeName(episode)).accessibilityIdentifier("title-episode-\(episode.number)")
-            } else {
-                HStack(spacing: 12) {
-                    Button { toggleEpisode(title, episode: episode) } label: {
-                        HStack(spacing: 12) {
-                            episodeArtwork(episode).frame(width: 132, height: 74).clipShape(RoundedRectangle(cornerRadius: 12))
-                            episodeCaption(episode, watched: isWatched, next: next)
-                            Spacer(minLength: 0)
-                        }
-                    }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
-                        .accessibilityValue(episodeName(episode)).accessibilityIdentifier("title-episode-\(episode.number)")
-                    episodeWatchControl(title, episode: episode, watched: isWatched)
-                }
-            }
-
-        }.padding(.vertical, episodesGrid ? 0 : 10).padding(.horizontal, episodesGrid ? 0 : 4).frame(minHeight: 92).background(next && !episodesGrid ? theme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 18))
-    }
-    private func episodeCaption(_ episode: Episode, watched: Bool, next: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            // Two lines beside the list thumbnail (one in the grid); the thumbnail sets the row height,
-            // so revealing a spoiler-hidden name never moves the rows.
-            Text(captionName(episode)).font(.system(size: 17, weight: .semibold))
-                .lineLimit(episodesGrid ? 1 : 2).foregroundStyle(.white).multilineTextAlignment(.leading)
-                .accessibilityIdentifier("episode-caption-\(episode.number)")
-            HStack(spacing: 6) {
-                Text(watched ? "Watched" : next ? "Up next" : hasAired(episode) ? "Not watched" : "Not aired yet")
-                    .foregroundStyle(next ? theme.accent : Color.secondary)
-                Spacer(minLength: 0)
-                if let score = episodeDetails.episodes[episode.id]?.communityScore ?? episode.communityScore, score > 0 {
-                    HStack(spacing: 4) { Image(systemName: "star.fill").foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                        .accessibilityElement(children: .ignore).accessibilityLabel("TMDb " + score.formatted(.number.precision(.fractionLength(1))))
-                }
-            }.font(.system(size: 14)).lineLimit(1)
-        }.frame(maxWidth: .infinity, alignment: .leading)
-    }
-    /// "Episode 4" when that's all the name says, otherwise "4. The Ghost Bride".
-    private func captionName(_ episode: Episode) -> String {
-        let name = episodeName(episode)
-        return name.hasPrefix("Episode ") || isHidden(episode) ? name : "\(episode.number). \(name)"
-    }
-    private func episodeWatchControl(_ title: MediaTitle, episode: Episode, watched: Bool) -> some View {
-        Button {
-            Task {
-                if watched { await store.unwatchEpisode(episode) }
-                else { await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
-                await loadCard(title)
-            }
-        } label: {
-            // Just a tick: blue when watched, faint when not (still clearly where to tap).
-            Image(systemName: "checkmark").font(.system(size: 20, weight: .bold))
-                .foregroundStyle(watched ? theme.accent : Color.white.opacity(episodesGrid ? 0.75 : 0.3))
-                .shadow(color: .black.opacity(episodesGrid ? 0.7 : 0), radius: 3)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 44, height: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).disabled(store.writesBlocked || (!watched && !hasAired(episode)))
-            .accessibilityLabel("Mark episode \(episode.number) \(watched ? "unwatched" : "watched")")
-            .accessibilityIdentifier("episode-watch-\(episode.number)")
     }
     @ViewBuilder private func episodeArtwork(_ episode: Episode) -> some View {
         if isHidden(episode) { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 23).foregroundStyle(.secondary) } }
@@ -590,33 +564,15 @@ struct TitleDetailView: View {
         if episodeDetails.episodes[episode.id] == nil { Task { await revealSeason(title) } }
     }
     private func episodeInformation(_ title: MediaTitle, episode: Episode) -> some View {
-        NavigationStack {
-            EdgeToEdgeScroll {
-                VStack(alignment: .leading, spacing: 16) {
-                    episodeArtwork(episode).frame(height: 200).clipShape(RoundedRectangle(cornerRadius: 18))
-                    Text(episodeName(episode)).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))
-                    Text(episodeSummary(episode)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(webHex: "#c5c0cf")).fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("episode-summary-\(episode.number)")
-                }.padding(20)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { episodeSheetHeight = $0 }
-                    .id(episode.id)
-                    .transition(.asymmetric(insertion: .move(edge: episodeForward ? .trailing : .leading).combined(with: .opacity),
-                                            removal: .move(edge: episodeForward ? .leading : .trailing).combined(with: .opacity)))
-            }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
-                // Swipe left for the next episode, right for the previous one.
-                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { value in
-                    let dx = value.translation.width
-                    guard abs(dx) > 60, abs(dx) > abs(value.translation.height) * 1.5 else { return }
-                    showNeighbour(of: episode, forward: dx < 0, title: title)
-                })
-                .accessibilityAction(named: "Next episode") { showNeighbour(of: episode, forward: true, title: title) }
-                .accessibilityAction(named: "Previous episode") { showNeighbour(of: episode, forward: false, title: title) }
-                .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
-        // Opens as tall as the synopsis needs, on glass; pull it up (or swipe up on the text) for the
-        // whole screen, like the other sheets, and then a long synopsis scrolls.
-        }.presentationDetents([SheetFit.detent(episodeSheetHeight, chrome: 96), .large])
-            .presentationContentInteraction(.resizes).presentationDragIndicator(.visible)
+        EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode, name: episodeName(episode), summary: episodeSummary(episode),
+                         artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode), tmdbScore: episodeScore(episode),
+                         traktScore: title.tmdbId.flatMap { TraktTitleReads.cachedRatings(show: $0, season: season)[episode.number] },
+                         watched: watched.contains(episode.id), forward: episodeForward,
+                         onToggleWatched: { toggleWatched(title, episode: episode) },
+                         onNeighbour: { showNeighbour(of: episode, forward: $0, title: title) },
+                         onNote: { selectedEpisode = nil; showNotes = true },
+                         onClose: { selectedEpisode = nil })
+            .presentationDetents([.large]).presentationDragIndicator(.visible)
     }
     /// The next or previous episode of this season in the open sheet. Swiping to it is a deliberate
     /// choice, so a spoiler-hidden one is revealed, as tapping it would.
@@ -741,12 +697,6 @@ struct TitleDetailView: View {
         CardRevision(season: season, events: scope.events.filter { $0.titleId == id }, episodes: episodes, seasons: title.seasons ?? [])
     }
     private var episodes: [Episode] { store.episodesForSeason(id, season: season) }
-    /// Unwatched filters before the 40-row page, so a long season never shows an empty first page.
-    private var visibleEpisodes: [Episode] {
-        let window = EpisodeSelection.window(episodes, season: season, all: showAllEpisodes, nextID: card?.next?.id ?? episodes.first(where: { !watched.contains($0.id) && hasAired($0) })?.id)
-        let seen = self.watched
-        return Array((unwatchedOnly ? window.filter { !seen.contains($0.id) } : window).prefix(episodeLimit))
-    }
     private var watched: Set<String> { store.watchedEpisodeIDs(id) }
     private var locations: [FileLocation] { scope.locations.filter { $0.titleId == id } }
     private var serverLabel: String { ServerAvailability.label(locations) }

@@ -207,3 +207,55 @@ test('Trending uses TMDb’s weekly feed and Networks filter TMDb discovery', as
   assert.equal(urls[1]!.searchParams.get('with_networks'), '213');
   assert.equal(urls[1]!.searchParams.get('with_genres'), '18');
 });
+
+test('A title page reads the Trakt lists that contain it, by popularity or latest update', async () => {
+  assert.deepEqual(canvasListInput(new URLSearchParams('title=tv:123876&sort=updated&kind=all')), {
+    sort: 'updated',
+    kind: 'all',
+    page: 1,
+    title: { mediaType: 'tv', tmdbId: 123876 }
+  });
+  for (const query of [
+    'title=person:1',
+    'title=tv:0',
+    'title=tv:abc',
+    'title=',
+    'title=tv:1&sort=trending',
+    'sort=updated',
+    'kind=all'
+  ])
+    assert.throws(() => canvasListInput(new URLSearchParams(query)), fails(400));
+  const trakt: string[] = [];
+  const transport = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    trakt.push(url.pathname + url.search);
+    if (url.pathname === '/search/tmdb/123876')
+      return reply([
+        { type: 'show', show: { ids: { trakt: 5, tmdb: 999 } } },
+        { type: 'show', show: { ids: { trakt: 185, tmdb: 123876 } } }
+      ]);
+    if (url.pathname.startsWith('/shows/185/lists/'))
+      return reply([list(11).list, list(12, { privacy: 'private' }).list]);
+    return reply([entry('show', 110)]);
+  }) as typeof fetch;
+  const result = await canvasLists(
+    'client',
+    tmdbFake([]),
+    { sort: 'updated', kind: 'all', page: 1, title: { mediaType: 'tv', tmdbId: 123876 } },
+    transport
+  );
+  assert.equal(trakt[0], '/search/tmdb/123876?type=show');
+  assert.equal(trakt[1], `/shows/185/lists/all/updated?page=1&limit=${LISTS_PER_PAGE}`);
+  assert.deepEqual(
+    result.lists.map((l) => l.name),
+    ['List 11'],
+    'Private lists stay hidden'
+  );
+  const none = await canvasLists(
+    'client',
+    tmdbFake([]),
+    { sort: 'popular', kind: 'all', page: 1, title: { mediaType: 'movie', tmdbId: 1 } },
+    (async () => reply([])) as typeof fetch
+  );
+  assert.deepEqual(none, { lists: [], page: 1, totalPages: 1 });
+});

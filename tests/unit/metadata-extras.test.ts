@@ -13,6 +13,14 @@ test('Title extras return companies, networks, tags, status and an age rating fr
         ? {
             id: 123876,
             status: 'Ended',
+            created_by: [{ id: 7, name: 'Shinichi Fukuda', profile_path: null }],
+            credits: {
+              crew: [
+                { id: 8, name: 'Keisuke Shinohara', job: 'Director', profile_path: '/k.jpg' },
+                { id: 7, name: 'Shinichi Fukuda', job: 'Writer' },
+                { id: 9, name: 'Grip', job: 'Key Grip' }
+              ]
+            },
             origin_country: ['JP'],
             production_companies: [
               { id: 10342, name: 'CloverWorks', logo_path: '/clover.png', origin_country: 'JP' },
@@ -53,7 +61,7 @@ test('Title extras return companies, networks, tags, status and an age rating fr
     );
   });
   const show = await browseExtras(new URLSearchParams('type=tv&id=123876'), client);
-  assert.equal(seen[0]!.searchParams.get('append_to_response'), 'keywords,content_ratings');
+  assert.equal(seen[0]!.searchParams.get('append_to_response'), 'keywords,content_ratings,credits');
   assert.deepEqual(show, {
     status: 'Ended',
     certification: 'TV-14',
@@ -61,10 +69,14 @@ test('Title extras return companies, networks, tags, status and an age rating fr
       { id: 10342, name: 'CloverWorks', logoPath: '/clover.png', kind: 'studio', country: 'JP' }
     ],
     networks: [{ id: 614, name: 'Tokyo MX', logoPath: null, kind: 'network', country: 'JP' }],
-    keywords: [{ id: 210024, name: 'anime' }]
+    keywords: [{ id: 210024, name: 'anime' }],
+    crew: [
+      { id: 7, name: 'Shinichi Fukuda', job: 'Creator', profilePath: null },
+      { id: 8, name: 'Keisuke Shinohara', job: 'Director', profilePath: '/k.jpg' }
+    ]
   });
   const movie = await browseExtras(new URLSearchParams('type=movie&id=77'), client);
-  assert.equal(seen[1]!.searchParams.get('append_to_response'), 'keywords,release_dates');
+  assert.equal(seen[1]!.searchParams.get('append_to_response'), 'keywords,release_dates,credits');
   assert.equal(movie.certification, '12A');
   assert.deepEqual(movie.keywords, [{ id: 5, name: 'friendship' }]);
   await assert.rejects(browseExtras(new URLSearchParams('type=person&id=1'), client));

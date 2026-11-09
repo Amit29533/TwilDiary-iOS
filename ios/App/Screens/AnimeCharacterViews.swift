@@ -14,6 +14,8 @@ struct AnimeCharactersRow: View {
     let year: Int?
     let movie: Bool
     var tmdbID: Int? = nil
+    /// The show page's "See all" (its Cast and characters page).
+    var seeAll: ShowPageRoute? = nil
     @Environment(DiaryStore.self) private var store
     @State private var characters: [AniCharacter] = []
     @State private var failed = false
@@ -21,7 +23,11 @@ struct AnimeCharactersRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !characters.isEmpty {
-                Text("Characters").font(.system(size: 20, weight: .semibold))
+                HStack {
+                    Text("Characters").font(.system(size: seeAll == nil ? 20 : 24, weight: seeAll == nil ? .semibold : .bold))
+                    Spacer(minLength: 8)
+                    if let seeAll { SeeAllLink(value: seeAll, identifier: "title-characters-all") }
+                }
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(characters) { character in

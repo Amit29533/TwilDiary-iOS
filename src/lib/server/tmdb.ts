@@ -44,6 +44,8 @@ export interface TitleExtras {
   studios: TitleCompany[];
   networks: TitleCompany[];
   keywords: { id: number; name: string }[];
+  /** Creators, directors, writers and the composer: who made it, not every credit. */
+  crew: { id: number; name: string; job: string; profilePath: string | null }[];
 }
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => {
@@ -531,7 +533,7 @@ export function createTmdb(
       providerInput(mediaType, id);
       const data = await request(`${mediaType}/${id}`, {
         append_to_response:
-          mediaType === 'tv' ? 'keywords,content_ratings' : 'keywords,release_dates'
+          mediaType === 'tv' ? 'keywords,content_ratings,credits' : 'keywords,release_dates,credits'
       });
       if (data.id !== id) throw upstream();
       const list = (value: unknown, max: number) =>
@@ -585,7 +587,42 @@ export function createTmdb(
           rated[0]
         )?.rating ?? null;
       const status = text(data.status, 40) || null;
-      return { status, certification, studios, networks, keywords };
+      // Most important jobs first; one entry per person, at their most important job.
+      const jobs = [
+        'Creator',
+        'Director',
+        'Series Director',
+        'Original Concept',
+        'Original Story',
+        'Novel',
+        'Comic Book',
+        'Series Composition',
+        'Screenplay',
+        'Writer',
+        'Character Designer',
+        'Original Music Composer',
+        'Music',
+        'Executive Producer'
+      ];
+      const people = [
+        ...list(data.created_by, 20).map((v) => ({ ...(v as RecordValue), job: 'Creator' })),
+        ...list(record(data.credits ?? {}).crew, 400)
+      ].flatMap((v) => {
+        const item = v as RecordValue;
+        const name = text(item.name, 200);
+        const job = text(item.job, 80);
+        const rank = jobs.indexOf(job);
+        return name && rank >= 0 && Number.isSafeInteger(item.id) && (item.id as number) > 0
+          ? [{ id: item.id as number, name, job, profilePath: path(item.profile_path), rank }]
+          : [];
+      });
+      const seen = new Set<number>();
+      const crew = people
+        .toSorted((a, b) => a.rank - b.rank)
+        .filter((p) => !seen.has(p.id) && seen.add(p.id))
+        .slice(0, 24)
+        .map(({ rank: _rank, ...person }) => person);
+      return { status, certification, studios, networks, keywords, crew };
     },
     async connection() {
       await request('configuration');

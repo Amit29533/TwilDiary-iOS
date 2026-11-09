@@ -183,7 +183,7 @@ private struct DiscoveryBrowser: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
-                Text(section.label).font(.system(size: promptForGenre ? 20 : 26, weight: .semibold)).tracking(-0.5)
+                Text(filters.label ?? section.label).font(.system(size: promptForGenre ? 20 : 26, weight: .semibold)).tracking(-0.5)
                 Spacer(minLength: 0)
                 if promptForGenre { SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters), identifier: "explore-more-genres") }
             }
@@ -211,8 +211,8 @@ private struct DiscoveryBrowser: View {
     private var filterForm: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                if filters != DiscoveryFilters(section: section) {
-                    Button("Reset filters") { filters = DiscoveryFilters(section: section) }.font(.system(size: 14, weight: .medium)).padding(.horizontal, 6).frame(minHeight: 44)
+                if filters != filters.resettingFilters(section: section) {
+                    Button("Reset filters") { filters = filters.resettingFilters(section: section) }.font(.system(size: 14, weight: .medium)).padding(.horizontal, 6).frame(minHeight: 44)
                 }
                 if !promptForGenre && section.fixedType == nil {
                     Menu { Picker("Content type", selection: $filters.type) { if section.source != "tmdb" { Text("All titles").tag("all") }; Text("Shows").tag("tv"); Text("Movies").tag("movie") } }

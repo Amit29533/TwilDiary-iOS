@@ -52,6 +52,11 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
     public var year = ""
     public var sort: String
     public var minimum = "0"
+    /// A title page's tag (TMDB keyword), company or network, with the name the page shows.
+    public var keyword: Int? = nil
+    public var company: Int? = nil
+    public var network: Int? = nil
+    public var label: String? = nil
     public init(section: DiscoverySection) {
         type = section.fixedType?.rawValue ?? (section.source == "tmdb" ? "tv" : "all")
         sort = section.defaultSort
@@ -64,9 +69,22 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
         return nil
     }
     public func query(section: DiscoverySection, page: Int = 1, limit: Int = 24) -> [String: String] {
-        ["source": section.source, "type": section.fixedType?.rawValue ?? (type == "movie" ? "movie" : "tv"),
-         "genre": genre, "year": year, "sort": sort == "title" ? "popular" : sort,
-         "minimum": minimum, "page": String(page), "limit": String(limit)]
+        var query = ["source": section.source, "type": section.fixedType?.rawValue ?? (type == "movie" ? "movie" : "tv"),
+                     "genre": genre, "year": year, "sort": sort == "title" ? "popular" : sort,
+                     "minimum": minimum, "page": String(page), "limit": String(limit)]
+        if section.source == "tmdb" {
+            if let keyword { query["keyword"] = String(keyword) }
+            if let company { query["company"] = String(company) }
+            if let network { query["network"] = String(network); query["type"] = "tv" }
+        }
+        return query
+    }
+    /// "Reset filters" keeps what the list is about (its tag, company or network).
+    public func resettingFilters(section: DiscoverySection = .genres) -> DiscoveryFilters {
+        var reset = DiscoveryFilters(section: section)
+        reset.keyword = keyword; reset.company = company; reset.network = network; reset.label = label
+        if network != nil { reset.type = "tv" } else if keyword != nil || company != nil { reset.type = type == "movie" ? "movie" : "tv" }
+        return reset
     }
     public func applying(_ items: [CatalogItem]) -> [CatalogItem] {
         let threshold = Double(minimum) ?? 0

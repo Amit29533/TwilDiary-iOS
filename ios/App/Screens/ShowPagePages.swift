@@ -1,0 +1,643 @@
+import SwiftUI
+import TwilDiaryCore
+
+// MARK: Episode rows and cards
+
+enum EpisodeRowState: Equatable {
+    case watched(Date?), next, notWatched, notAired
+    /// "Watched today", "Watched yesterday", "Watched 3 Nov".
+    var text: String {
+        switch self {
+        case .watched(let date):
+            guard let date else { return "Watched" }
+            let calendar = DiaryDate.calendar()
+            if calendar.isDateInToday(date) { return "Watched today" }
+            if calendar.isDateInYesterday(date) { return "Watched yesterday" }
+            return "Watched " + date.formatted(.dateTime.day().month(.abbreviated))
+        case .next: return "Up next"
+        case .notWatched: return "Not watched"
+        case .notAired: return "Not aired yet"
+        }
+    }
+}
+
+/// The newest watch of each episode of a title, for "Watched today".
+@MainActor enum EpisodeWatchDates {
+    static func latest(_ store: DiaryStore, titleID: String) -> [String: Date] {
+        var result: [String: Date] = [:]
+        for event in store.titleScope(titleID).activeEvents where event.titleId == titleID {
+            guard let id = event.episodeId, let date = DiaryDate.parse(event.watchedAt ?? event.recordedAt) else { continue }
+            if result[id].map({ date > $0 }) ?? true { result[id] = date }
+        }
+        return result
+    }
+}
+
+/// A small grey or accent label inside episode rows.
+struct EpisodeChip: View {
+    let text: String
+    var accent = false
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    var body: some View {
+        Text(text).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
+            .foregroundStyle(accent ? theme.accent : Color(webHex: "#c5c0cf"))
+            .padding(.horizontal, 9).frame(height: 24)
+            .background(accent ? theme.accent.opacity(0.16) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+struct ScoreChip: View {
+    let score: Double
+    var body: some View {
+        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Color(webHex: "#e6e1ee"))
+            .padding(.horizontal, 8).frame(height: 24).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+            .accessibilityElement(children: .ignore).accessibilityLabel("Rated " + score.formatted(.number.precision(.fractionLength(1))))
+    }
+}
+
+/// The watched tick: filled when watched, a ring (accent for what's next) when not.
+struct EpisodeTick: View {
+    let watched: Bool
+    var next = false
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    var body: some View {
+        ZStack {
+            if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : .white.opacity(0.3), lineWidth: 2) }
+            Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(watched ? theme.ink : next ? theme.accent : .white.opacity(0.35))
+        }.frame(width: 34, height: 34).frame(width: 44, height: 44).contentShape(Rectangle())
+    }
+}
+
+/// One episode as a card row: still, "12. Name", its state and score, and the tick.
+struct EpisodeCardRow: View {
+    let number: Int
+    let name: String
+    let artwork: String?
+    let hidden: Bool
+    let state: EpisodeRowState
+    let score: Double?
+    let canToggle: Bool
+    let onOpen: () -> Void
+    let onToggle: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var watched: Bool { if case .watched = state { return true } else { return false } }
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onOpen) {
+                HStack(spacing: 12) {
+                    Group {
+                        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 20).foregroundStyle(.secondary) } }
+                        else { Artwork(path: artwork, title: String(number)) }
+                    }.frame(width: 104, height: 60).clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(name.hasPrefix("Episode ") || hidden ? name : "\(number). \(name)")
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
+                        HStack(spacing: 6) {
+                            EpisodeChip(text: state.text, accent: state == .next)
+                            if let score, score > 0 { ScoreChip(score: score) }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityValue(name)
+                .accessibilityIdentifier("title-episode-\(number)")
+            Button(action: onToggle) { EpisodeTick(watched: watched, next: state == .next) }.buttonStyle(.plain)
+                .disabled(!canToggle).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
+                .accessibilityIdentifier("episode-watch-\(number)")
+        }.padding(10)
+            .background(state == .next ? theme.accent.opacity(0.1) : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(state == .next ? theme.accent.opacity(0.35) : .white.opacity(0.07)))
+    }
+}
+
+/// One episode as a wide card for the sideways grid: still with its badge, name, state, length, score.
+struct EpisodeGridCard: View {
+    let number: Int
+    let name: String
+    let artwork: String?
+    let hidden: Bool
+    let state: EpisodeRowState
+    let airedOn: String?
+    let runtime: Int?
+    let score: Double?
+    let onOpen: () -> Void
+    let onToggle: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var watched: Bool { if case .watched = state { return true } else { return false } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onOpen) {
+                Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                    .overlay {
+                        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(.secondary) } }
+                        else { Artwork(path: artwork, title: String(number)) }
+                    }.clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(alignment: .topLeading) {
+                        Text(state == .next ? "UP NEXT" : "E\(number)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 10).frame(height: 26).background(.black.opacity(0.6), in: Capsule()).padding(10)
+                    }
+            }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityIdentifier("episode-thumbnail-\(number)")
+                .overlay(alignment: .bottomTrailing) {
+                    Button(action: onToggle) {
+                        ZStack {
+                            Circle().fill(watched ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.black.opacity(0.55)))
+                            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(watched ? theme.ink : .white.opacity(0.8))
+                        }.frame(width: 34, height: 34).frame(width: 48, height: 48).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
+                        .accessibilityIdentifier("episode-watch-\(number)").padding(2)
+                }
+            Text(hidden ? name : "\(number) · \(name)").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+            Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 6) {
+                if let runtime { EpisodeChip(text: "\(runtime) min") }
+                if let score, score > 0 { ScoreChip(score: score) }
+            }
+        }
+    }
+    private var subtitle: String {
+        if case .watched = state { return state.text }
+        guard let airedOn, let date = DiaryDate.parse(airedOn + "T12:00:00Z") else { return state.text }
+        if date > .now { return "Airs " + date.formatted(.dateTime.day().month(.abbreviated).year()) }
+        return "Aired " + date.formatted(.relative(presentation: .named))
+    }
+}
+
+// MARK: Destinations
+
+struct ShowPageDestination: View {
+    let route: ShowPageRoute
+    var body: some View {
+        switch route {
+        case .episodes(let id, let season): EpisodesPage(titleID: id, initialSeason: season)
+        case .cast(let catalog, let title, let anime, let year): CastCreditsPage(route: catalog, title: title, anime: anime, year: year)
+        case .lists(let catalog, let title): InListsPage(route: catalog, title: title)
+        case .collections(let id): RelatedCollectionsPage(titleID: id)
+        case .companies(let catalog, let title): CompaniesPage(route: catalog, title: title)
+        }
+    }
+}
+
+/// A page title with the show's name under it.
+struct ShowPageTitle: ToolbarContent {
+    let title: String
+    let subtitle: String
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 1) {
+                Text(title).font(.system(size: 17, weight: .semibold))
+                Text(subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
+            }.accessibilityElement(children: .combine)
+        }
+    }
+}
+
+/// Selectable filter chips: "All 24", "Watched 12"…
+struct ShowFilterChip: View {
+    let label: String
+    let on: Bool
+    let action: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    var body: some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(webHex: "#e6e1ee"))
+                .padding(.horizontal, 16).frame(height: 40)
+                .background(on ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
+                .overlay { if !on { Capsule().strokeBorder(.white.opacity(0.1)) } }
+        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+// MARK: Episodes
+
+struct EpisodesPage: View {
+    let titleID: String
+    @State private var season: Int
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @AppStorage("episodesPageGrid") private var grid = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private enum Filter { case all, watched, toWatch }
+    @State private var filter = Filter.all
+    @State private var openGroups = Set<String>()
+    @State private var details = SavedEpisodeDetailsController()
+    @State private var revealed = Set<String>()
+    @State private var selected: Episode?
+    @State private var sheetEpisode: Episode?
+    @State private var forward = true
+    @State private var showNotes = false
+    @State private var confirmSeason = false
+    init(titleID: String, initialSeason: Int) { self.titleID = titleID; _season = State(initialValue: initialSeason) }
+
+    var body: some View {
+        Group {
+            if let title = store.title(titleID) { content(title) }
+            else { ContentUnavailableView("Title unavailable", systemImage: "film") }
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+    }
+    private func content(_ title: MediaTitle) -> some View {
+        let episodes = store.episodesForSeason(titleID, season: season)
+        let watched = store.watchedEpisodeIDs(titleID)
+        let dates = EpisodeWatchDates.latest(store, titleID: titleID)
+        let nextIndex = episodes.firstIndex { !watched.contains($0.id) && aired($0) }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                seasonCard(title)
+                HStack(spacing: 8) {
+                    let count = episodes.filter { watched.contains($0.id) }.count
+                    ShowFilterChip(label: "All \(episodes.count)", on: filter == .all) { filter = .all }
+                    ShowFilterChip(label: "Watched \(count)", on: filter == .watched) { filter = .watched }
+                    ShowFilterChip(label: "To watch \(episodes.count - count)", on: filter == .toWatch) { filter = .toWatch }
+                }
+                if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
+                else if filter == .all {
+                    let window = EpisodeWindow(count: episodes.count, focus: nextIndex)
+                    if !window.before.isEmpty { group("before", Array(episodes[window.before]), title: title, watched: watched, dates: dates, nextIndex: nextIndex) }
+                    list(Array(episodes[window.shown]), title: title, watched: watched, dates: dates, next: nextIndex.map { episodes[$0].id })
+                    if !window.after.isEmpty { group("after", Array(episodes[window.after]), title: title, watched: watched, dates: dates, nextIndex: nextIndex) }
+                } else {
+                    let shown = episodes.filter { filter == .watched ? watched.contains($0.id) : !watched.contains($0.id) }
+                    if shown.isEmpty { Text(filter == .watched ? "Nothing watched in this season yet." : "Every episode in this season is watched.").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
+                    list(shown, title: title, watched: watched, dates: dates, next: nextIndex.map { episodes[$0].id })
+                }
+                if !episodes.isEmpty {
+                    Button { confirmSeason = true } label: {
+                        Label("Mark season as watched", systemImage: "checkmark.circle").frame(maxWidth: .infinity)
+                    }.buttonStyle(.diarySecondary).padding(.top, 6)
+                        .disabled(store.writesBlocked || episodes.filter(aired).allSatisfy { watched.contains($0.id) })
+                        .accessibilityIdentifier("episodes-mark-season")
+                }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
+        }
+        .toolbar {
+            ShowPageTitle(title: "Episodes", subtitle: title.name)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19) }
+                    .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
+            }
+        }
+        .task(id: season) { if !hideSpoilers { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
+        .confirmationDialog("Mark every aired episode of season \(season) as watched?", isPresented: $confirmSeason, titleVisibility: .visible) {
+            Button("Mark season as watched") {
+                let count = episodes.filter(aired).count
+                Task { await store.setSeasonProgress(title, season: season, count: count, watchedAt: store.now) }
+            }
+        }
+        .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
+            if let episode = selected ?? sheetEpisode { sheet(title, episode: episode, episodes: episodes, watched: watched) }
+        }
+        .onChange(of: selected) { _, episode in if let episode { sheetEpisode = episode } }
+        .sheet(isPresented: $showNotes) { TitleNotesSheet(titleID: titleID) }
+    }
+
+    private func seasonCard(_ title: MediaTitle) -> some View {
+        let progress = store.seasonProgress(title, season: season)
+        let seasons = EpisodeSelection.seasons(in: store.titleScope(titleID), titleID: titleID)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Menu {
+                    Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
+                } label: {
+                    HStack(spacing: 7) {
+                        Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        if seasons.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(.secondary) }
+                    }.padding(.horizontal, 16).frame(height: 42).background(.white.opacity(0.08), in: Capsule())
+                }.disabled(seasons.count < 2).accessibilityIdentifier("episodes-page-season")
+                Spacer(minLength: 0)
+                Text("\(Int((progress.fraction * 100).rounded()))%").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
+            }
+            HStack {
+                Text("\(progress.watched) of \(progress.total) watched")
+                Spacer(minLength: 0)
+                if let minutes = progress.remainingMinutes, minutes > 0 { Text(DiaryDate.duration(minutes) + " left") }
+            }.font(.system(size: 14)).foregroundStyle(.secondary)
+            Capsule().fill(.white.opacity(0.1)).frame(height: 7)
+                .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * progress.fraction) } }
+                .accessibilityHidden(true)
+        }.padding(16).background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.08)))
+    }
+
+    @ViewBuilder private func list(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
+        if grid {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 16) {
+                ForEach(episodes) { episode in
+                    EpisodeGridCard(number: episode.number, name: name(episode, watched: watched), artwork: artwork(episode, title: title), hidden: hidden(episode, watched: watched),
+                                    state: state(episode, watched: watched, dates: dates, next: next), airedOn: episode.airedOn, runtime: title.runtimeMinutes,
+                                    score: score(episode), onOpen: { open(episode, title: title, watched: watched) }, onToggle: { toggle(episode, title: title, watched: watched) })
+                }
+            }
+        } else {
+            LazyVStack(spacing: 10) {
+                ForEach(episodes) { episode in
+                    EpisodeCardRow(number: episode.number, name: name(episode, watched: watched), artwork: artwork(episode, title: title), hidden: hidden(episode, watched: watched),
+                                   state: state(episode, watched: watched, dates: dates, next: next), score: score(episode),
+                                   canToggle: !store.writesBlocked && (watched.contains(episode.id) || aired(episode)),
+                                   onOpen: { open(episode, title: title, watched: watched) }, onToggle: { toggle(episode, title: title, watched: watched) })
+                }
+            }
+        }
+    }
+
+    /// "Episodes 1 to 11 · All watched": folded until tapped.
+    @ViewBuilder private func group(_ key: String, _ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], nextIndex: Int?) -> some View {
+        let open = openGroups.contains(key)
+        let left = episodes.filter { !watched.contains($0.id) }
+        let allWatched = left.isEmpty
+        let minutes = title.runtimeMinutes.map { $0 * left.count }
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { if open { openGroups.remove(key) } else { openGroups.insert(key) } }
+            } label: {
+                HStack(spacing: 12) {
+                    EpisodeTick(watched: allWatched)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        Text(allWatched ? "All watched" : ([left.count.formatted() + " to watch"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
+                }.padding(.horizontal, 8).padding(.vertical, 8).contentShape(Rectangle())
+                    .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07)))
+            }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
+            if open { list(episodes, title: title, watched: watched, dates: dates, next: nextIndex.map { store.episodesForSeason(titleID, season: season)[$0].id }) }
+        }
+    }
+
+    private func sheet(_ title: MediaTitle, episode: Episode, episodes: [Episode], watched: Set<String>) -> some View {
+        let isWatched = watched.contains(episode.id)
+        return EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
+                                name: name(episode, watched: watched), summary: summary(episode), artwork: artwork(episode, title: title),
+                                hidden: hidden(episode, watched: watched), tmdbScore: score(episode), traktScore: nil, watched: isWatched, forward: forward,
+                                onToggleWatched: { toggle(episode, title: title, watched: watched) },
+                                onNeighbour: { neighbour(of: episode, forward: $0, episodes: episodes, title: title) },
+                                onNote: { selected = nil; showNotes = true }, onClose: { selected = nil })
+            .presentationDetents([.large]).presentationDragIndicator(.visible)
+    }
+
+    private func aired(_ episode: Episode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day(store.now) } ?? false }
+    private func hidden(_ episode: Episode, watched: Set<String>) -> Bool { hideSpoilers && !watched.contains(episode.id) && !revealed.contains(episode.id) }
+    private func name(_ episode: Episode, watched: Set<String>) -> String {
+        if hidden(episode, watched: watched) { return "A story for later" }
+        let name = details.episodes[episode.id]?.name ?? episode.name
+        return name.isEmpty ? "Episode \(episode.number)" : name
+    }
+    private func summary(_ episode: Episode) -> String { let text = details.episodes[episode.id]?.overview ?? episode.overview; return text.isEmpty ? "No episode summary available." : text }
+    private func artwork(_ episode: Episode, title: MediaTitle) -> String? { details.episodes[episode.id]?.artwork ?? episode.still ?? title.backdrop }
+    private func score(_ episode: Episode) -> Double? { details.episodes[episode.id]?.communityScore ?? episode.communityScore }
+    private func state(_ episode: Episode, watched: Set<String>, dates: [String: Date], next: String?) -> EpisodeRowState {
+        if watched.contains(episode.id) { return .watched(dates[episode.id]) }
+        if episode.id == next { return .next }
+        return aired(episode) ? .notWatched : .notAired
+    }
+    private func open(_ episode: Episode, title: MediaTitle, watched: Set<String>) {
+        if hidden(episode, watched: watched) { revealed.insert(episode.id) }
+        else { selected = episode }
+        if details.episodes[episode.id] == nil { Task { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
+    }
+    private func toggle(_ episode: Episode, title: MediaTitle, watched: Set<String>) {
+        Task {
+            if watched.contains(episode.id) { await store.unwatchEpisode(episode) }
+            else { await store.recordViewing(title, episode: episode, watchedAt: store.now) }
+        }
+    }
+    private func neighbour(of episode: Episode, forward: Bool, episodes: [Episode], title: MediaTitle) {
+        guard let index = episodes.firstIndex(where: { $0.id == episode.id }), episodes.indices.contains(index + (forward ? 1 : -1)) else { return }
+        let next = episodes[index + (forward ? 1 : -1)]
+        revealed.insert(next.id)
+        if details.episodes[next.id] == nil { Task { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
+        self.forward = forward
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selected = next }
+    }
+}
+
+// MARK: Cast and crew
+
+struct CastCreditsPage: View {
+    let route: CatalogRoute
+    let title: String
+    let anime: Bool
+    let year: Int?
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var crewTab = false
+    @State private var characters: [AniCharacter] = []
+    @State private var cast: [CastPerson] = []
+    @State private var crew: [TitleCrewMember] = []
+    @State private var failure: String?
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 4) {
+                    segment(anime ? "Voice cast" : "Cast", on: !crewTab) { crewTab = false }
+                    segment("Crew", on: crewTab) { crewTab = true }
+                }.padding(4).background(.white.opacity(0.06), in: Capsule())
+                if crewTab { crewList } else if anime && !characters.isEmpty { characterList } else { castList }
+                if let failure { RetryNotice(message: failure) { Task { await load() } } }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ShowPageTitle(title: anime ? "Cast and characters" : "Cast and crew", subtitle: title) }
+            .task(id: route) { await load() }
+    }
+    private func segment(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(webHex: "#c5c0cf"))
+                .frame(maxWidth: .infinity).frame(height: 40)
+                .background { if on { Capsule().fill(theme.accent) } }
+        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
+    }
+    private var characterList: some View {
+        LazyVStack(spacing: 10) {
+            ForEach(characters) { character in
+                HStack(spacing: 12) {
+                    NavigationLink(value: CharacterRoute(id: character.id, sourceTitle: title)) {
+                        HStack(spacing: 12) {
+                            Artwork(path: character.image, title: character.name).frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
+                                if let actor = character.voiceActor {
+                                    Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                                    Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Color(webHex: "#e6e1ee")).lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    if let actor = character.voiceActor {
+                        NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
+                            Artwork(path: actor.image, title: actor.name).frame(width: 64, height: 78).clipShape(RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.springPress).accessibilityLabel(actor.name)
+                    }
+                }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07)))
+            }
+        }
+    }
+    private var castList: some View {
+        LazyVStack(spacing: 10) {
+            ForEach(cast) { person in
+                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.character)) {
+                    personRow(name: person.name, detail: person.character, image: CatalogTools.image(person.profilePath, size: "w185"))
+                }.buttonStyle(.plain)
+            }
+            if cast.isEmpty && failure == nil { Text("No cast listed yet.").font(.subheadline).foregroundStyle(.secondary) }
+        }
+    }
+    private var crewList: some View {
+        LazyVStack(spacing: 10) {
+            ForEach(crew) { person in
+                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.job)) {
+                    personRow(name: person.name, detail: person.job, image: CatalogTools.image(person.profilePath, size: "w185"))
+                }.buttonStyle(.plain)
+            }
+            if crew.isEmpty && failure == nil { Text("No crew listed yet.").font(.subheadline).foregroundStyle(.secondary) }
+        }
+    }
+    private func personRow(name: String, detail: String, image: String?) -> some View {
+        HStack(spacing: 12) {
+            if image == nil {
+                Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Color(webHex: "#d2c4f4"))
+                    .frame(width: 54, height: 54).background(Color(webHex: "#2a2440"), in: Circle())
+            } else {
+                Artwork(path: image, title: name).frame(width: 54, height: 54).clipShape(Circle())
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(detail).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+        }.padding(12).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07))).contentShape(Rectangle())
+    }
+    private func load() async {
+        failure = nil
+        if anime { characters = (try? await AniListClient.shared.characters(title: title, year: year, movie: route.kind == .movie, tmdbID: route.id)) ?? [] }
+        do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled && characters.isEmpty { failure = error.localizedDescription } }
+        crew = (try? await TitleExtrasCache.load(store: store, route: route).crew) ?? []
+    }
+}
+
+// MARK: In lists
+
+struct InListsPage: View {
+    let route: CatalogRoute
+    let title: String
+    @Environment(DiaryStore.self) private var store
+    private enum Tab: String, CaseIterable { case popular = "Popular", recent = "Recent", yours = "Yours" }
+    @State private var tab = Tab.popular
+    @State private var lists: [CanvasList] = []
+    @State private var loading = false
+    @State private var failure: String?
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) { ForEach(Tab.allCases, id: \.self) { item in ShowFilterChip(label: item.rawValue, on: tab == item) { tab = item } } }
+                if loading && lists.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading lists") }
+                else if lists.isEmpty {
+                    Text(failure ?? (tab == .yours ? "None of your Trakt lists has this title." : "No public Trakt lists have this title yet."))
+                        .font(.subheadline).foregroundStyle(.secondary).padding(.top, 8)
+                }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    ForEach(lists) { list in
+                        NavigationLink(value: CanvasListRoute(id: list.id, name: list.name, user: list.user)) {
+                            GeometryReader { proxy in ListCollageCard(list: list, width: proxy.size.width) }.frame(height: 280)
+                        }.buttonStyle(.springPress)
+                    }
+                }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ShowPageTitle(title: "In lists", subtitle: title) }
+            .task(id: tab) { await load() }
+    }
+    private func load() async {
+        loading = true; failure = nil; lists = []
+        defer { loading = false }
+        do {
+            switch tab {
+            case .popular: lists = try await TitleListsCache.load(store: store, route: route, sort: "popular")
+            case .recent: lists = try await TitleListsCache.load(store: store, route: route, sort: "updated")
+            case .yours: lists = try await TraktTitleReads.yourLists(store: store, route: route)
+            }
+        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+}
+
+// MARK: Related collections
+
+struct RelatedCollectionsPage: View {
+    let titleID: String
+    @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    var body: some View {
+        let title = store.title(titleID)
+        let collections = title.map { RelatedCollection.make(genres: $0.genres, workspace: store.workspace) } ?? []
+        ScrollView {
+            LazyVStack(spacing: 14) {
+                ForEach(Array(collections.enumerated()), id: \.element.id) { index, collection in
+                    Button { router.libraryGenre(collection.genre) } label: {
+                        RelatedCollectionCard(collection: collection, index: index, showCount: true).frame(height: 132)
+                    }.buttonStyle(.springPress)
+                }
+                if collections.isEmpty { Text("No related collections in your library yet.").font(.subheadline).foregroundStyle(.secondary) }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ShowPageTitle(title: "Related collections", subtitle: title?.name ?? "") }
+    }
+}
+
+// MARK: Companies
+
+struct CompaniesPage: View {
+    let route: CatalogRoute
+    let title: String
+    @Environment(DiaryStore.self) private var store
+    private enum Filter: String, CaseIterable { case all = "All", studios = "Studios", networks = "Networks" }
+    @State private var filter = Filter.all
+    @State private var extras: TitleExtras?
+    @State private var failure: String?
+    var body: some View {
+        let companies = (extras?.companies ?? []).filter { filter == .all || (filter == .networks) == $0.isNetwork }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    ForEach(Filter.allCases, id: \.self) { item in
+                        if item != .networks || extras?.networks.isEmpty == false { ShowFilterChip(label: item.rawValue, on: filter == item) { filter = item } }
+                    }
+                }
+                LazyVStack(spacing: 10) {
+                    ForEach(companies, id: \.key) { company in
+                        NavigationLink(value: CompanyRoutes.explore(company, kind: route.kind)) {
+                            HStack(spacing: 14) {
+                                CompanyLogo(company: company).frame(width: 108, height: 66)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(company.name).font(.system(size: 16.5, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                    Text(CompanyRoutes.label(company, animated: animated)).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+                            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07))).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityIdentifier("companies-page-\(company.key)")
+                    }
+                }
+                if let failure { RetryNotice(message: failure) { Task { await load() } } }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ShowPageTitle(title: "Companies", subtitle: title) }
+            .task(id: route) { await load() }
+    }
+    private var animated: Bool {
+        guard let saved = store.workspace.activeTitles.first(where: { $0.tmdbId == route.id && $0.isSeries == (route.kind == .tv) }) else { return false }
+        return saved.genres.contains("Animation") || saved.category.hasPrefix("anime")
+    }
+    private func load() async {
+        failure = nil
+        do { extras = try await TitleExtrasCache.load(store: store, route: route) }
+        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+}
