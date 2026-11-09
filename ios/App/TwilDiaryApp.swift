@@ -6,6 +6,7 @@ import TwilDiaryCore
     @State private var store: DiaryStore
     @State private var router = AppRouter()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage("use24HourTime") private var use24Hour = false
     init() {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
@@ -52,7 +53,7 @@ import TwilDiaryCore
         // No app-wide glass button style: it turned every text link, toolbar item and
         // card link into a glass capsule (glass on the system bars' own glass).
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
-        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule) }
+        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour)) }
     }
 }
 
@@ -76,7 +77,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
     }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, simkl, mdblist, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, simkl, mdblist, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -226,6 +227,7 @@ struct RootView: View {
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
+                    await LocalBackups.write(store: store)
                     await store.keepDiaryServiceCurrent()
                 }
                 else { store.suspendTraktForBackground() }
@@ -244,7 +246,7 @@ struct RootView: View {
         NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
             // Tab pages draw their own pinned header and status-bar shade. Without this, the bar of a page
             // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
-            content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
+            content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 .navigationDestination(for: String.self) { savedTitlePage(TitleDetailView(id: $0), tab: tab) }
                 .navigationDestination(for: SavedTitleRoute.self) {
@@ -289,6 +291,8 @@ struct RootView: View {
                     case .backups: BackupsView()
                     case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
                     case .about: AboutView()
+                    case .languageRegion: LanguageRegionView()
+                    case .syncBackup: SyncBackupView()
                     } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }

@@ -11,6 +11,8 @@ public struct LibraryQuery: Equatable, Sendable {
     public var jellyfin = false
     public var jellyfinTitles: Set<String> = []
     public var sort = Sort.library
+    /// Settings → Language & region: sort "The Bear" under B.
+    public var ignoreArticles = false
     public init() { }
     /// Library shortcuts already include the drive's colon (for example `drive:E:`).
     /// Accept older colon-less keys too, without ever comparing a drive against `E::`.
@@ -59,8 +61,15 @@ public struct LibraryQuery: Equatable, Sendable {
                 let a = ratingFor(left) ?? -1, b = ratingFor(right) ?? -1
                 if a != b { return a > b }
             }
-            return Self.nameBefore(left.name, right.name)
+            return ignoreArticles ? Self.nameBefore(Self.sortName(left.name), Self.sortName(right.name)) : Self.nameBefore(left.name, right.name)
         }
+    }
+    /// "The Bear" → "Bear", "A Silent Voice" → "Silent Voice", "An Education" → "Education".
+    public static func sortName(_ name: String) -> String {
+        for article in ["the ", "an ", "a "] where name.lowercased().hasPrefix(article) && name.count > article.count {
+            return String(name.dropFirst(article.count))
+        }
+        return name
     }
     /// Built once: sorting compared names with a freshly constructed Locale per comparison.
     private static let sortLocale = Locale(identifier: "en_US")

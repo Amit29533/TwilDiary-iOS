@@ -3,12 +3,12 @@ import UIKit
 import TwilDiaryCore
 
 enum DiaryTheme: String, CaseIterable, Identifiable {
-    case twilight, ocean, jade, rose, amber, glass
+    case twilight, ocean, jade, rose, amber
     var id: Self { self }
-    var name: String { self == .glass ? "Liquid Glass" : rawValue.capitalized }
-    var text: Color { Color(webHex: self == .glass ? "#f5f5f7" : "#f3f0f7") }
-    var muted: Color { Color(webHex: self == .glass ? "#a6a6af" : "#a09aa9") }
-    var field: Color { Color(webHex: self == .glass ? "#101013" : "#111115") }
+    var name: String { rawValue.capitalized }
+    var text: Color { Color(webHex: "#f3f0f7") }
+    var muted: Color { Color(webHex: "#a09aa9") }
+    var field: Color { Color(webHex: "#111115") }
     var detail: String {
         switch self {
         case .twilight: "The original violet"
@@ -16,7 +16,6 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .jade: "A quiet mint glow"
         case .rose: "Soft pink after dark"
         case .amber: "Warm cinema gold"
-        case .glass: "Liquid light on pure black"
         }
     }
     var strong: Color {
@@ -26,11 +25,10 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .jade: Color(webHex: "#36ae8c")
         case .rose: Color(webHex: "#d66d9f")
         case .amber: Color(webHex: "#ca8e36")
-        case .glass: Color(webHex: "#87bde8")
         }
     }
     var ink: Color {
-        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .glass: Color(webHex: "#132332") }
+        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010") }
     }
     var accent: Color {
         switch self {
@@ -39,7 +37,6 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .jade: Color(webHex: "#79d8bc")
         case .rose: Color(webHex: "#f4a2c6")
         case .amber: Color(webHex: "#edbe73")
-        case .glass: Color(webHex: "#c4e5ff")
         }
     }
 }

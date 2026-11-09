@@ -53,6 +53,7 @@ struct TitleDetailView: View {
     /// Companies, tags, status and age rating (TMDB), shown once loaded.
     @State private var extras: TitleExtras?
     @State private var confirmTrash = false
+    @AppStorage("confirmDeletions") private var confirmDeletions = true
     @Environment(\.dismiss) private var dismissPage
     @State private var newTagText = ""
     var body: some View {
@@ -124,7 +125,7 @@ struct TitleDetailView: View {
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
                                         Divider()
-                                        Button("Move to Trash", systemImage: "trash", role: .destructive) { confirmTrash = true }
+                                        Button("Move to Trash", systemImage: "trash", role: .destructive) { if confirmDeletions { confirmTrash = true } else { Task { if await store.trash(title) { dismissPage() } } } }
                                             .disabled(store.writesBlocked).accessibilityIdentifier("title-menu-trash")
                                     } label: { Image(systemName: "ellipsis") }.accessibilityLabel("More options for " + title.name).accessibilityIdentifier("title-more")
                                 }

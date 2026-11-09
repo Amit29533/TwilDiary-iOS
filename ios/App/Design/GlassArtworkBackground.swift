@@ -146,7 +146,7 @@ struct DiaryScreenBackground: View {
         GeometryReader { geometry in
             ZStack {
                 Color.black
-                if (theme == .glass || forceGlass) && !reduceTransparency, let bitmap = bitmap ?? artwork.flatMap({ GlassArtworkCache.shared.cached($0) }) {
+                if forceGlass && !reduceTransparency, let bitmap = bitmap ?? artwork.flatMap({ GlassArtworkCache.shared.cached($0) }) {
                     Color(red: bitmap.red, green: bitmap.green, blue: bitmap.blue).opacity(0.5)
                     Image(decorative: bitmap.image, scale: 1).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -155,8 +155,8 @@ struct DiaryScreenBackground: View {
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
-            .task(id: BackgroundKey(path: artwork, glass: theme == .glass || forceGlass, reduced: reduceTransparency)) {
-                guard (theme == .glass || forceGlass), !reduceTransparency, let artwork else { bitmap = nil; return }
+            .task(id: BackgroundKey(path: artwork, glass: forceGlass, reduced: reduceTransparency)) {
+                guard forceGlass, !reduceTransparency, let artwork else { bitmap = nil; return }
                 if let saved = GlassArtworkCache.shared.cached(artwork) { bitmap = saved; return }
                 let result: GlassArtworkBitmap?
                 if let local = localArtwork(artwork) {

@@ -654,7 +654,9 @@ import TwilDiaryCore
     /// Filtered and sorted Library titles, reused across body passes until the diary or
     /// the filters change. A Trakt-score sort depends on ratings that arrive separately,
     /// so that one combination is always recomputed.
-    func libraryTitles(_ query: LibraryQuery, source: PublicRatingSource) -> [MediaTitle] {
+    func libraryTitles(_ base: LibraryQuery, source: PublicRatingSource) -> [MediaTitle] {
+        var query = base
+        query.ignoreArticles = UserDefaults.standard.bool(forKey: "ignoreTitleArticles")
         let snapshot = workspace
         let cacheable = query.sort != .score || source == .tmdb
         if cacheable, let saved = cachedLibrary.first(where: { $0.query == query && $0.source == source }) { return saved.value }
@@ -1265,6 +1267,25 @@ import TwilDiaryCore
                 })
             }
             #endif
+            // MDBList with your own sign-in: read straight from MDBList on the phone (as the title page
+            // does). The server's MDBList read needs a server API key, which usually isn't set, so
+            // every score came back empty and the Library showed none.
+            if source == .mdblist, self.providerSettings.mdblist.isAuthenticated {
+                let config = await self.freshProviderConfig(.mdblist)
+                var result: [String: PublicRating] = [:], failures = 0
+                for id in ids {
+                    guard let title = self.title(id), let tmdb = title.tmdbId else { result[id] = PublicRating(score: nil, state: "unrated"); continue }
+                    do {
+                        let summary = try await self.directClient.fetchMDBListRatings(config: config, tmdbId: tmdb, isSeries: title.isSeries)
+                        let score = summary.aggregatedScore.map { $0 > 10 ? $0 / 10 : $0 }
+                        result[id] = score.map { $0 > 0 ? PublicRating(score: min(10, $0), state: "rated") : PublicRating(score: nil, state: "unrated") } ?? PublicRating(score: nil, state: "unrated")
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { failures += 1 }
+                }
+                guard generation == self.sessionGeneration else { throw CancellationError() }
+                if failures > 0 && result.isEmpty { throw APIError.message("MDBList ratings are unavailable right now.") }
+                return result
+            }
             do {
                 var query: [String: String] = ["ids": ids.joined(separator: ",")]
                 if source == .mdblist { query["source"] = "mdblist" }

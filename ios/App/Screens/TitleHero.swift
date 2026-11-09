@@ -116,7 +116,6 @@ struct TitleArtworkBackdrop: View {
                 .init(color: .black.opacity(0.94), location: 0.73),
                 .init(color: .black, location: 1)
             ], startPoint: .top, endPoint: .bottom))
-            .mask { if theme == .glass { LinearGradient(stops: [.init(color: .white, location: 0.55), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom) } else { Color.white } }
             .offset(y: -topExtension).allowsHitTesting(false).accessibilityHidden(true)
     }
 }

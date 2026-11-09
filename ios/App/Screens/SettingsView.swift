@@ -29,15 +29,14 @@ struct SettingsView: View {
                     NavigationLink(value: AppDestination.profile) {
                         HStack(spacing: 14) {
                             PersonalAvatar()
-                            VStack(alignment: .leading, spacing: 3) { Text(PersonalProfile.shared.name).font(.title3.bold()); Text("Profile").font(.footnote).foregroundStyle(.secondary) }
-                            Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                        }.foregroundStyle(.primary).padding(.vertical, 10).contentShape(Rectangle())
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(PersonalProfile.shared.name).font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                                Text(accountHandle).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer(); DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
+                        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 22))
+                            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.1))).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-personal-profile")
-                    NavigationLink(value: AppDestination.statistics) {
-                        settingsRow("chart.bar.fill", .purple, "Statistics", subtitle: "Watch time and trends", disclosure: true)
-                            .background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
-                    }.buttonStyle(.plain).accessibilityIdentifier("settings-statistics")
                     diaryCard
                     if let warning = store.cacheWarning {
                         Text(warning).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -89,8 +88,6 @@ struct SettingsView: View {
                         divider
                         NavigationLink(value: AppDestination.calendar) { settingsRow("calendar", .indigo, "Airing calendar", subtitle: "Upcoming and catch-up episodes", disclosure: true) }.accessibilityIdentifier("settings-calendar")
                     }
-                    Text("Weeks start on Monday. Ratings are whole numbers out of 10.").font(.caption).foregroundStyle(.secondary)
-                        .padding(.horizontal, 4).padding(.top, -14)
                     settingsSection("Appearance") {
                         NavigationLink(value: AppDestination.appearance) {
                             VStack(alignment: .leading, spacing: 8) {
@@ -116,6 +113,9 @@ struct SettingsView: View {
                         settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
                         divider
                         settingsRow("globe.asia.australia.fill", .cyan, "Time zone", value: TimeZone.current.identifier.replacingOccurrences(of: "_", with: " "))
+                        divider
+                        NavigationLink(value: AppDestination.languageRegion) { settingsRow("character.bubble.fill", .blue, "Language & region", value: languageRegionSummary, disclosure: true) }
+                            .accessibilityIdentifier("settings-language-region")
                     }
                     settingsSection("Connections and data") {
                         NavigationLink(value: AppDestination.connections) {
@@ -125,9 +125,9 @@ struct SettingsView: View {
                         divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
                         divider
-                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "TwilDiary JSON or Letterboxd, IMDb and MAL CSV", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
+                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "Letterboxd, IMDb, MAL and more", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
                         divider
-                        NavigationLink(value: AppDestination.backups) { settingsRow("externaldrive.badge.icloud", .teal, "Backups", subtitle: "Your whole diary and Trakt read, kept on your server", disclosure: true) }.accessibilityIdentifier("settings-backups")
+                        NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync, server and extra copies", disclosure: true) }.accessibilityIdentifier("settings-backups")
                     }
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
@@ -135,7 +135,11 @@ struct SettingsView: View {
                                 .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
                         }.accessibilityIdentifier("settings-about")
                         Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        Button("Sign out", role: .destructive) { confirmSignOut = true }.font(.subheadline).frame(minHeight: 44).disabled(store.busy)
+                        Button { confirmSignOut = true } label: {
+                            Text("Sign out").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#ff9ab0"))
+                                .frame(maxWidth: .infinity, minHeight: 54).background(theme.field, in: Capsule())
+                                .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                        }.disabled(store.busy).padding(.top, 6).accessibilityIdentifier("settings-sign-out")
                     }.frame(maxWidth: .infinity)
                 }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
@@ -180,32 +184,51 @@ struct SettingsView: View {
         let titles = store.workspace.activeTitles.count, watches = store.workspace.activeEvents.count
         let state = store.loading ? "Refreshing…" : store.pendingDiaryEdits > 0 ? "Pending sync" : store.busy ? "Saving…" : store.quotaBlockedUntil != nil ? "Paused" : store.showingCachedSnapshot ? "Saved copy" : "Synced"
         let tint: Color = state == "Synced" ? .mint : state == "Paused" || state == "Saved copy" ? .orange : Color(webHex: "#c5c0cf")
-        return Button { Task { await store.refresh() } } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Your diary").font(.system(size: 17, weight: .semibold))
-                    Spacer(minLength: 8)
-                    Text(state).font(.system(size: 12, weight: .semibold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 24).background(tint.opacity(0.14), in: Capsule())
-                }
-                Text("\(titles.formatted()) \(titles == 1 ? "title" : "titles") · \(watches.formatted()) \(watches == 1 ? "watch" : "watches")" + (store.lastRefreshedAt.map { " · updated " + $0.formatted(.relative(presentation: .named)) } ?? ""))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-                if let reset = store.quotaBlockedUntil {
-                    Text("Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again.").font(.caption).foregroundStyle(.secondary)
-                }
-                HStack(spacing: 6) {
-                    chip(BrandLogo(service: .trakt, size: 14), summary?.status?.connected == true ? "Trakt" : "Trakt off")
-                    chip(BrandLogo(service: .tmdb, size: 16), "TMDB")
-                    chip(DiaryIcon(name: "hard-drive", size: 13), driveCount == 1 ? "1 drive" : "\(driveCount) drives")
-                }.padding(.top, 2)
-            }.foregroundStyle(Color(webHex: "#f3f0f7")).padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(theme.field, in: RoundedRectangle(cornerRadius: 20))
-                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
-                .contentShape(Rectangle())
-        }.disabled(store.loading || store.busy).accessibilityIdentifier("settings-refresh-diary").accessibilityHint("Refresh your diary from the server")
+        return VStack(alignment: .leading, spacing: 0) {
+            Button { Task { await store.refresh() } } label: {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("Your diary").font(.system(size: 20, weight: .bold))
+                        Spacer(minLength: 8)
+                        HStack(spacing: 5) { Circle().fill(tint).frame(width: 6, height: 6); Text(state) }
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 26).background(tint.opacity(0.14), in: Capsule())
+                    }
+                    HStack(spacing: 10) {
+                        statTile(titles, "titles")
+                        statTile(watches, "watches")
+                        statTile(driveCount, driveCount == 1 ? "drive" : "drives")
+                    }
+                    if let reset = store.quotaBlockedUntil {
+                        Text("Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.foregroundStyle(Color(webHex: "#f3f0f7")).padding(16).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.disabled(store.loading || store.busy).accessibilityIdentifier("settings-refresh-diary").accessibilityHint("Refresh your diary from the server")
+            divider
+            NavigationLink(value: AppDestination.statistics) {
+                settingsRow("chart.bar.fill", .purple, "Statistics", subtitle: "Watch time and trends", disclosure: true)
+            }.accessibilityIdentifier("settings-statistics")
+        }.background(theme.field, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.1)))
     }
-    private func chip(_ icon: some View, _ text: String) -> some View {
-        HStack(spacing: 5) { icon; Text(text) }.font(.system(size: 12, weight: .medium))
-            .foregroundStyle(Color(webHex: "#CECBF6")).padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.07), in: Capsule())
+    private func statTile(_ value: Int, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value.formatted()).font(.system(size: 22, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 13)).foregroundStyle(.secondary)
+        }.padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .combine)
+    }
+    /// "@amit29533": your AniList name, else your Trakt account.
+    private var accountHandle: String {
+        if !anilistUser.isEmpty { return "@" + anilistUser }
+        if let name = store.traktController.status?.username, !name.isEmpty { return "@" + name }
+        return "Profile"
+    }
+    private var languageRegionSummary: String {
+        let code = Locale.current.language.languageCode?.identifier ?? "en"
+        let language = Locale.current.localizedString(forLanguageCode: code)?.capitalized ?? code
+        let region = UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US"
+        return language + " · " + LanguageRegionView.regionName(region)
     }
     private var trashCount: Int { store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) } }
     private var driveCount: Int { DiskSummary.make(store.workspace.locations).count }

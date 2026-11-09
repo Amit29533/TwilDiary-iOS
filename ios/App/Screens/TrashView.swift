@@ -57,7 +57,7 @@ struct TrashView: View {
                 }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
                 .categorySwipe($category, enabled: !selecting)
-        }.background(theme == .glass ? .clear : Color(webHex: "#0e0d13")).diaryScreenBackground()
+        }.background(Color(webHex: "#0e0d13")).diaryScreenBackground()
             .navigationTitle("Trash").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {

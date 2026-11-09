@@ -68,7 +68,7 @@ import XCTest
         XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 1)
         XCTAssertGreaterThan(app.buttons["theme-jade"].frame.minY, first.frame.maxY)
         capture("Appearance two-column grid", app: app)
-        for theme in ["twilight", "ocean", "jade", "rose", "amber", "glass"] {
+        for theme in ["twilight", "ocean", "jade", "rose", "amber"] {
             let item = app.buttons["theme-" + theme]
             for _ in 0..<4 { if item.isHittable { break }; app.swipeUp() }
             for _ in 0..<4 { if item.isHittable { break }; app.swipeDown() }

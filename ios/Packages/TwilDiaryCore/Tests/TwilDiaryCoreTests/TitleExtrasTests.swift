@@ -74,3 +74,12 @@ import Testing
     #expect(company.resettingFilters().company == 10342)
     #expect(DiscoveryFilters(section: .genres).query(section: .genres)["keyword"] == nil)
 }
+
+@Test func sortingCanIgnoreLeadingArticles() {
+    #expect(LibraryQuery.sortName("The Bear") == "Bear")
+    #expect(LibraryQuery.sortName("A Silent Voice") == "Silent Voice")
+    #expect(LibraryQuery.sortName("An Education") == "Education")
+    #expect(LibraryQuery.sortName("Anne with an E") == "Anne with an E")
+    #expect(LibraryQuery.sortName("The") == "The")
+    #expect(LibraryQuery.sortName("Theodosia") == "Theodosia")
+}

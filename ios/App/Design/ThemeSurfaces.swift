@@ -12,23 +12,8 @@ struct DiaryPanelModifier: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
         content.padding(padding)
-            .background {
-                if theme == .glass && !reduceTransparency {
-                    RoundedRectangle(cornerRadius: 24).fill(.ultraThinMaterial)
-                        .overlay(RoundedRectangle(cornerRadius: 24).fill(.black.opacity(0.22)))
-                } else {
-                    RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).fill(Color(webHex: "#111115"))
-                }
-            }
-            .overlay(RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).strokeBorder(!bordered ? .clear : theme == .glass ? .white.opacity(28.0 / 255) : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
-            // Glass panels float; the others are flat, with no (invisible, still rendered) shadow at all.
-            .modifier(PanelShadow(on: theme == .glass))
-    }
-}
-private struct PanelShadow: ViewModifier {
-    let on: Bool
-    func body(content: Content) -> some View {
-        if on { content.shadow(color: .black.opacity(0.3), radius: 16, y: 12) } else { content }
+            .background { RoundedRectangle(cornerRadius: radius).fill(Color(webHex: "#111115")) }
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(!bordered ? .clear : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
     }
 }
 /// Flat section and card backgrounds (Settings groups, Explore filters, Files
@@ -45,17 +30,7 @@ struct DiarySectionBackground: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius)
-        let glass = theme == .glass && !reduceTransparency
-        content
-            .background {
-                if glass {
-                    shape.fill(.ultraThinMaterial)
-                        .overlay(shape.fill(emphasized ? theme.accent.opacity(0.12) : .black.opacity(0.22)))
-                } else {
-                    shape.fill(fill)
-                }
-            }
-            .overlay(shape.strokeBorder(glass && !emphasized ? .white.opacity(28.0 / 255) : stroke))
+        content.background { shape.fill(fill) }.overlay(shape.strokeBorder(stroke))
     }
 }
 extension View {
