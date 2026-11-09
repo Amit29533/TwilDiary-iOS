@@ -85,7 +85,7 @@ struct CharacterView: View {
                 let biography = ProfileFormattedBiography(description: character.description, hideSpoilers: hideSpoilers)
                 PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
                                   kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
-                                  identifier: "character") {
+                                  identifier: "character", heroFacts: Array(characterFacts(character, biography: biography).prefix(3))) {
                     VStack(alignment: .leading, spacing: 18) {
                         if let source = route.sourceTitle {
                             Button("In " + source) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain).foregroundStyle(.primary)
@@ -106,10 +106,11 @@ struct CharacterView: View {
             }
         }.task(id: route.id) { if character == nil { await load() } }
     }
-    private func details(_ character: AniCharacterDetail, biography: ProfileFormattedBiography) -> some View {
+    /// Every fact AniList has (some characters have many, some none); the first three sit beside the picture.
+    private func characterFacts(_ character: AniCharacterDetail, biography: ProfileFormattedBiography) -> [ProfileFact] {
         let height = biography.facts.first { $0.id == "height" }?.markdown
         let blood = character.bloodType ?? biography.facts.first { $0.id == "blood-type" }?.markdown
-        let facts = [
+        return [
             ProfileFact(id: "character-birthday", icon: "calendar", label: "Birthday", value: character.birthday.map(ProfileDate.short)),
             ProfileFact(id: "character-age", icon: "person", label: "Age", value: character.age),
             ProfileFact(id: "character-gender", icon: "person.text.rectangle", label: "Gender", value: character.gender),
@@ -117,8 +118,10 @@ struct CharacterView: View {
             ProfileFact(id: "character-height", icon: "ruler", label: "Height", value: height),
             ProfileFact(id: "character-blood-type", icon: "drop", label: "Blood type", value: blood)
         ].compactMap { $0 }
-        return VStack(alignment: .leading, spacing: 12) {
-            ProfileFacts(items: facts)
+    }
+    private func details(_ character: AniCharacterDetail, biography: ProfileFormattedBiography) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ProfileFacts(items: Array(characterFacts(character, biography: biography).dropFirst(3)))
             ProfileAliases(values: character.alternative, excluding: [character.name] + [character.native].compactMap { $0 })
         }
     }

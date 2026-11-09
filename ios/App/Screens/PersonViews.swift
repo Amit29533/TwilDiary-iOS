@@ -33,7 +33,8 @@ struct PersonView: View {
                                   kind: voiceFirst ? .voice : .cast, ref: voiceFirst ? (actor?.id ?? 0) : (person?.id ?? 0),
                                   favouriteSubtitle: voiceFirst ? actor?.roles.first.map { "Voice of " + $0.character.name } : person?.department,
                                   identifier: prefix,
-                                  sameVoice: actor?.id, samePerson: person?.id) {
+                                  sameVoice: actor?.id, samePerson: person?.id,
+                                  heroFacts: Array(facts.prefix(3)), photos: person?.photos ?? []) {
                     VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 12) {
                             intro
@@ -84,6 +85,28 @@ struct PersonView: View {
 
     /// Facts from both sources in one grid (TMDB first where both know it), then one biography:
     /// AniList's formatted text (links, spoilers, details) when it says more, else TMDB's prose.
+    /// Born, age, birthplace and the rest: the first three sit beside the photo.
+    private var facts: [ProfileFact] {
+        let content = actor.map { ProfileFormattedBiography(description: $0.description, hideSpoilers: hideSpoilers) }
+        let died = ProfileText.line(person?.deathday)
+        let ageAt = died == nil ? store.now : died.flatMap { DiaryDate.parse($0 + "T00:00:00Z") }
+        let tmdbAge = ageAt.flatMap { ProfileDate.age(birthday: person?.birthday, until: $0) }
+        let age = tmdbAge.map(String.init) ?? actor?.age.flatMap { $0 >= 0 ? String($0) : nil }
+        let birthplace = ProfileText.line(person?.birthplace)
+        let born = person?.birthday.map(ProfileDate.short) ?? actor?.birthday.map(ProfileDate.short)
+        let place = birthplace ?? actor?.homeTown
+        return [
+            ProfileFact(id: prefix + "-birthday", icon: "calendar", label: "Born", value: born),
+            ProfileFact(id: prefix + "-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age),
+            ProfileFact(id: prefix + "-career", icon: "briefcase", label: ProfileText.careerLabel(actor?.yearsActive ?? []), value: actor.flatMap { ProfileText.careerValue($0.yearsActive) }),
+            ProfileFact(id: prefix + "-favourites", icon: "heart", label: "Favourites", value: actor.flatMap { ProfileText.favouritesValue($0.favourites) }),
+            ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
+            ProfileFact(id: "voice-actor-watched", icon: "eye", label: "Watched", value: watchedCount.map { $0.formatted() + " anime" }),
+            ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin",
+                        label: birthplace != nil ? "Birthplace" : "Hometown", value: place, wide: true),
+            ProfileFact(id: prefix + "-deathday", icon: "calendar", label: "Died", value: person?.deathday.map(ProfileDate.short), wide: true)
+        ].compactMap { $0 }
+    }
     private var about: some View {
         let content = actor.map { ProfileFormattedBiography(description: $0.description, hideSpoilers: hideSpoilers) }
         let died = ProfileText.line(person?.deathday)
@@ -114,7 +137,7 @@ struct PersonView: View {
         let biographyID = voiceFirst ? "voice-actor-biography" : "profile-biography"
         let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 14) {
-            ProfileFacts(items: facts)
+            ProfileFacts(items: Array(facts.dropFirst(3)))
             ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
             if let actor, let content {
                 ProfileAbout(content: content, excludingFacts: shownFacts,

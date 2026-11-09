@@ -15,6 +15,10 @@ struct PersonProfilePage<Content: View>: View {
     /// The same person's other identity on this merged page: links to it don't push another page.
     var sameVoice: Int? = nil
     var samePerson: Int? = nil
+    /// Shown beside the photo (born, age, birthplace…); a page with none keeps the full-width portrait.
+    var heroFacts: [ProfileFact] = []
+    /// The gallery under the header.
+    var photos: [PersonPhoto] = []
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -24,7 +28,12 @@ struct PersonProfilePage<Content: View>: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
+                    if heroFacts.isEmpty {
+                        hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
+                    } else {
+                        cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top)
+                    }
+                    PersonPhotoShelf(name: name, photos: photos).padding(.horizontal, 14).padding(.bottom, 6)
                     content.padding(.horizontal, 14)
                 }.padding(.bottom, 28)
             }.coordinateSpace(name: "profile-scroll")
@@ -77,6 +86,52 @@ struct PersonProfilePage<Content: View>: View {
                         .overlay(LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .leading, endPoint: .trailing))
                         .clipped().allowsHitTesting(false).accessibilityHidden(true)
                 }
+            }
+    }
+
+    /// The photo as a card, the name (second part in the accent) with the role, and the top facts
+    /// beside it, divided like a list. The photo's Photos button opens the gallery.
+    private func cardHero(width: CGFloat, topInset: CGFloat) -> some View {
+        let photoWidth = min(220, (width - 28) * 0.47)
+        let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
+        return HStack(alignment: .top, spacing: 16) {
+            Artwork(path: image, title: name, alignment: .top, prefersOriginal: true)
+                .frame(width: photoWidth, height: photoWidth * 1.45).clipShape(RoundedRectangle(cornerRadius: 24))
+                .contentShape(RoundedRectangle(cornerRadius: 24)).fullScreenArtwork(image, title: name)
+                .overlay(alignment: .bottomTrailing) {
+                    if photos.count >= 2 {
+                        NavigationLink(value: PersonPhotosRoute(name: name, photos: photos)) {
+                            HStack(spacing: 6) { Image(systemName: "square.on.square").font(.system(size: 13, weight: .semibold)); Text("Photos").font(.system(size: 14, weight: .semibold)) }
+                                .foregroundStyle(.white).padding(.horizontal, 12).frame(height: 36).background(.black.opacity(0.6), in: Capsule())
+                                .overlay(Capsule().strokeBorder(.white.opacity(0.15)))
+                        }.buttonStyle(.springPress).padding(10).accessibilityIdentifier(identifier + "-photos")
+                    }
+                }
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(parts.first ?? name).foregroundStyle(.white)
+                    if parts.count > 1 { Text(parts[1]).foregroundStyle(theme.accent) }
+                }.font(.system(size: 28, weight: .bold)).tracking(-0.8).lineLimit(3).minimumScaleFactor(0.7)
+                    .accessibilityElement(children: .combine).accessibilityIdentifier(identifier + "-name")
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
+                    } action: { header.update($0) }
+                if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
+                    Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.75)).padding(.top, 4)
+                }
+                if let role = ProfileText.line(role) { Text(role).font(.system(size: 16)).foregroundStyle(.secondary).padding(.top, 4) }
+                ForEach(Array(heroFacts.prefix(3).enumerated()), id: \.element.id) { index, fact in
+                    if index > 0 { Divider().overlay(.white.opacity(0.1)) }
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 5) { Image(systemName: fact.icon).imageScale(.small); Text(fact.label) }.font(.system(size: 13)).foregroundStyle(.secondary)
+                        Text(fact.value).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.8)
+                    }.padding(.vertical, 10).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
+                }.padding(.top, heroFacts.isEmpty ? 0 : 6)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
+            .background(alignment: .top) {
+                RadialGradient(colors: [theme.accent.opacity(0.28), .clear], center: .top, startRadius: 0, endRadius: width * 0.9)
+                    .frame(height: topInset + 320).allowsHitTesting(false).accessibilityHidden(true)
             }
     }
 

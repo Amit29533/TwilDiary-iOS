@@ -102,7 +102,21 @@ public struct PersonDetails: Decodable, Sendable {
     public let department: String
     public let profilePath: String?
     public let credits: [CatalogItem]
+    /// Portraits, and posters and stills they're tagged in (newer servers only).
+    public let photos: [PersonPhoto]?
+}
 
+/// One picture in a person's gallery.
+public struct PersonPhoto: Decodable, Hashable, Sendable, Identifiable {
+    public let path: String
+    /// "portrait", "poster" or "still".
+    public let kind: String
+    public let aspectRatio: Double
+    public let title: String?
+    public var id: String { path }
+    public init(path: String, kind: String, aspectRatio: Double, title: String?) {
+        self.path = path; self.kind = kind; self.aspectRatio = aspectRatio; self.title = title
+    }
 }
 
 public enum CatalogTools {

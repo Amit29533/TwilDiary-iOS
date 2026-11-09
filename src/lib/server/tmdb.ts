@@ -1,6 +1,6 @@
 import { ApiError } from './api.ts';
 import type { CastMember } from '../domain/types.ts';
-import type { PersonDetails, PersonCredit } from '../people.ts';
+import type { PersonDetails, PersonCredit, PersonPhoto } from '../people.ts';
 import { tmdbImage, searchQuery, type SearchMatch, type SearchPage } from '../metadata.ts';
 import {
   discoveryGenres,
@@ -201,7 +201,9 @@ export function createTmdb(
     },
     async person(id: number): Promise<PersonDetails> {
       personInput(id);
-      const data = await request(`person/${id}`, { append_to_response: 'combined_credits' });
+      const data = await request(`person/${id}`, {
+        append_to_response: 'combined_credits,images,tagged_images'
+      });
       if (int(data.id, 1, 9999999999) !== id || !text(data.name, 200)) throw upstream();
       const combined = record(data.combined_credits);
       if (
@@ -273,7 +275,40 @@ export function createTmdb(
           source: 'tmdb'
         });
       }
+      // Their own portraits first, then posters and stills they're tagged in; each image once.
+      const seenPhotos = new Set<string>();
+      const photo = (value: unknown, kind: PersonPhoto['kind'], title: string | null) => {
+        const item = (value && typeof value === 'object' ? value : {}) as RecordValue;
+        const file = path(item.file_path);
+        const ratio =
+          typeof item.aspect_ratio === 'number' && item.aspect_ratio > 0.2 && item.aspect_ratio < 5
+            ? item.aspect_ratio
+            : 0.667;
+        if (!file || seenPhotos.has(file)) return [];
+        seenPhotos.add(file);
+        return [{ path: file, kind, aspectRatio: ratio, title }];
+      };
+      const images =
+        data.images && typeof data.images === 'object' ? (data.images as RecordValue) : {};
+      const tagged =
+        data.tagged_images && typeof data.tagged_images === 'object'
+          ? (data.tagged_images as RecordValue)
+          : {};
+      const photos: PersonPhoto[] = [
+        ...(Array.isArray(images.profiles) ? images.profiles.slice(0, 30) : []).flatMap((v) =>
+          photo(v, 'portrait', null)
+        ),
+        ...(Array.isArray(tagged.results) ? tagged.results.slice(0, 40) : []).flatMap((v) => {
+          const item = (v && typeof v === 'object' ? v : {}) as RecordValue;
+          const media = (
+            item.media && typeof item.media === 'object' ? item.media : {}
+          ) as RecordValue;
+          const title = text(media.title ?? media.name, 300) || null;
+          return photo(v, item.image_type === 'poster' ? 'poster' : 'still', title);
+        })
+      ].slice(0, 60);
       return {
+        photos,
         id,
         name: text(data.name, 200),
         biography: text(data.biography, 30000),
