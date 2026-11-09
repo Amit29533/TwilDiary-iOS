@@ -29,6 +29,22 @@ export function tmdbRetryAfter(header: string | null, now = Date.now()) {
       : Number.NaN;
   return Number.isFinite(seconds) && seconds > 0 ? Math.min(86_400, Math.ceil(seconds)) : 10;
 }
+export interface TitleCompany {
+  id: number;
+  name: string;
+  logoPath: string | null;
+  /** TMDb production companies are studios; networks broadcast the show. */
+  kind: 'studio' | 'network';
+  country: string | null;
+}
+export interface TitleExtras {
+  /** TMDb's own words: "Returning Series", "Ended", "Canceled", "Released"… */
+  status: string | null;
+  certification: string | null;
+  studios: TitleCompany[];
+  networks: TitleCompany[];
+  keywords: { id: number; name: string }[];
+}
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw upstream();
@@ -320,10 +336,18 @@ export function createTmdb(
       const params: Record<string, string> = { page: String(input.page), include_adult: 'false' };
       // A show genre TMDb lacks (Romance) is its keyword instead, which only discover can filter.
       const keyword =
-        input.type === 'tv' && input.genre && !genre?.tv ? tvGenreKeywords[input.genre] : undefined;
+        input.keyword ??
+        (input.type === 'tv' && input.genre && !genre?.tv
+          ? tvGenreKeywords[input.genre]
+          : undefined);
       // TMDb's weekly trending feed takes no filters; genre and year are applied to its page below.
       // A keyword genre can't be checked on that page, so it reads discover by popularity instead.
-      const trending = input.source === 'tmdb' && input.sort === 'trending' && !keyword;
+      const trending =
+        input.source === 'tmdb' &&
+        input.sort === 'trending' &&
+        !keyword &&
+        !input.company &&
+        !input.network;
       if (input.source !== 'because' && !trending) {
         params.sort_by =
           input.sort === 'rating'
@@ -334,7 +358,9 @@ export function createTmdb(
                 : 'first_air_date.desc'
               : 'popularity.desc';
         if (keyword) params.with_keywords = String(keyword);
-        else if (genre) params.with_genres = String(genre[input.type]);
+        if (genre?.[input.type] && (input.keyword || !keyword))
+          params.with_genres = String(genre[input.type]);
+        if (input.company) params.with_companies = String(input.company);
         if (input.network && input.type === 'tv') params.with_networks = String(input.network);
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
@@ -495,6 +521,71 @@ export function createTmdb(
             : null,
         imdbId: typeof imdbId === 'string' && /^tt\d{7,10}$/.test(imdbId) ? imdbId : null
       };
+    },
+    /**
+     * What a title page shows beyond the basics: its companies and networks with their own
+     * logos, TMDb keywords (tags), airing status and age rating. One TMDb request; kept apart
+     * from `details` so imports and Trakt sync never parse the larger reply.
+     */
+    async extras(mediaType: 'movie' | 'tv', id: number): Promise<TitleExtras> {
+      providerInput(mediaType, id);
+      const data = await request(`${mediaType}/${id}`, {
+        append_to_response:
+          mediaType === 'tv' ? 'keywords,content_ratings' : 'keywords,release_dates'
+      });
+      if (data.id !== id) throw upstream();
+      const list = (value: unknown, max: number) =>
+        Array.isArray(value) ? value.slice(0, max).filter((v) => v && typeof v === 'object') : [];
+      const company = (value: unknown, kind: TitleCompany['kind']): TitleCompany[] => {
+        const item = value as RecordValue;
+        const name = text(item.name, 200);
+        if (!name || !Number.isSafeInteger(item.id) || (item.id as number) < 1) return [];
+        return [
+          {
+            id: item.id as number,
+            name,
+            logoPath: path(item.logo_path),
+            kind,
+            country: text(item.origin_country, 4) || null
+          }
+        ];
+      };
+      const studios = list(data.production_companies, 30).flatMap((v) => company(v, 'studio'));
+      const networks = list(data.networks, 20).flatMap((v) => company(v, 'network'));
+      const words = record(data.keywords ?? {});
+      const keywords = list(mediaType === 'tv' ? words.results : words.keywords, 60).flatMap(
+        (v) => {
+          const item = v as RecordValue;
+          const name = text(item.name, 100);
+          return name && Number.isSafeInteger(item.id) && (item.id as number) > 0
+            ? [{ id: item.id as number, name }]
+            : [];
+        }
+      );
+      // An age rating from the US first, then the title's own country, then any.
+      const origin = Array.isArray(data.origin_country) ? String(data.origin_country[0] ?? '') : '';
+      const ratings: { country: string; rating: string }[] =
+        mediaType === 'tv'
+          ? list(record(data.content_ratings ?? {}).results, 200).map((v) => ({
+              country: text((v as RecordValue).iso_3166_1, 4),
+              rating: text((v as RecordValue).rating, 20)
+            }))
+          : list(record(data.release_dates ?? {}).results, 200).map((v) => ({
+              country: text((v as RecordValue).iso_3166_1, 4),
+              rating:
+                list((v as RecordValue).release_dates, 30)
+                  .map((r) => text((r as RecordValue).certification, 20))
+                  .find(Boolean) ?? ''
+            }));
+      const rated = ratings.filter((r) => r.rating);
+      const certification =
+        (
+          rated.find((r) => r.country === 'US') ??
+          rated.find((r) => r.country === origin) ??
+          rated[0]
+        )?.rating ?? null;
+      const status = text(data.status, 40) || null;
+      return { status, certification, studios, networks, keywords };
     },
     async connection() {
       await request('configuration');

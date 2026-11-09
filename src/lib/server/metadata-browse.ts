@@ -19,6 +19,12 @@ export async function browseMetadata(
   };
 }
 
+/** Companies, networks, tags, status and age rating for a title page. Read-only. */
+export async function browseExtras(params: URLSearchParams, metadata: TmdbClient) {
+  const { mediaType, id } = providerInput(params.get('type'), params.get('id'));
+  return metadata.extras(mediaType, id);
+}
+
 export async function browseSeason(params: URLSearchParams, metadata: TmdbClient) {
   const { mediaType, id } = providerInput(params.get('type'), params.get('id'));
   const raw = params.get('season') ?? '';

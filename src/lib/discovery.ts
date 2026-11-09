@@ -90,6 +90,10 @@ export interface DiscoveryQuery {
   seed: string;
   /** A TMDb network ID from discoveryNetworks; shows only. */
   network?: number | undefined;
+  /** A TMDb keyword (a title page's tag). */
+  keyword?: number | undefined;
+  /** A TMDb production company. */
+  company?: number | undefined;
 }
 export interface DiscoveryItem extends SearchMatch {
   backdropPath: string | null;

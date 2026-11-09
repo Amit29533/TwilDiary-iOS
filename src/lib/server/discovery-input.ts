@@ -1,5 +1,5 @@
 import { ApiError } from './api.ts';
-import { discoveryNetworks, genreAvailable, type DiscoveryQuery } from '../discovery.ts';
+import { genreAvailable, type DiscoveryQuery } from '../discovery.ts';
 export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   const source = params.get('source') ?? 'tmdb';
   const type = params.get('type') ?? 'movie';
@@ -10,14 +10,18 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   const page = params.get('page') ?? '1';
   const seed = params.get('seed') ?? '';
   const network = params.get('network') ?? '';
+  // A tag or company from a title page: any TMDb keyword or company ID.
+  const keyword = params.get('keyword') ?? '';
+  const company = params.get('company') ?? '';
+  const id = (value: string) => /^\d{1,10}$/.test(value) && +value > 0;
   if (
     !['tmdb', 'trakt', 'because'].includes(source) ||
     !['movie', 'tv'].includes(type) ||
     !['popular', 'rating', 'newest', 'trending'].includes(sort) ||
-    (network &&
-      (type !== 'tv' ||
-        source !== 'tmdb' ||
-        !discoveryNetworks.some((n) => String(n.id) === network))) ||
+    (network && (type !== 'tv' || source !== 'tmdb' || !id(network))) ||
+    ((keyword || company) && source !== 'tmdb') ||
+    (keyword && !id(keyword)) ||
+    (company && !id(company)) ||
     (genre && !genreAvailable(genre, type as 'movie' | 'tv')) ||
     (year && (!/^\d{4}$/.test(year) || +year < 1880 || +year > 2200)) ||
     !/^(?:[0-9](?:\.\d)?|10(?:\.0)?)$/.test(minimum) ||
@@ -36,6 +40,8 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
     minimum: +minimum,
     page: +page,
     seed,
-    ...(network ? { network: +network } : {})
+    ...(network ? { network: +network } : {}),
+    ...(keyword ? { keyword: +keyword } : {}),
+    ...(company ? { company: +company } : {})
   } as DiscoveryQuery;
 }

@@ -452,3 +452,26 @@ test('Because-you-watched seeds include only active, watched, TMDb-matched title
     fixture.close();
   }
 });
+
+test('A title page tag or company reads TMDb discover by that keyword or company only', async () => {
+  for (const query of ['keyword=abc', 'company=0', 'source=trakt&keyword=12', 'network=x&type=tv'])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+  const seen: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    seen.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=tv&keyword=210024&sort=trending'))
+  );
+  assert.equal(seen[0]!.pathname, '/3/discover/tv');
+  assert.equal(seen[0]!.searchParams.get('with_keywords'), '210024');
+  assert.equal(seen[0]!.searchParams.get('with_genres'), null);
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=movie&company=10342&genre=Drama'))
+  );
+  assert.equal(seen[1]!.searchParams.get('with_companies'), '10342');
+  assert.equal(seen[1]!.searchParams.get('with_genres'), '18');
+  await client.discover(discoveryInput(new URLSearchParams('type=tv&network=4513')));
+  assert.equal(seen[2]!.searchParams.get('with_networks'), '4513');
+});

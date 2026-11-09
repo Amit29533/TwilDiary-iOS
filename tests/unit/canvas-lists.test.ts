@@ -172,7 +172,8 @@ test('Discovery accepts Trending and TMDb networks for shows only', () => {
   assert.equal(discoveryInput(new URLSearchParams('type=tv')).network, undefined);
   for (const query of [
     'type=movie&network=213',
-    'type=tv&network=1',
+    'type=tv&network=abc',
+    'type=tv&network=0',
     'type=tv&network=213&source=trakt'
   ])
     assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
