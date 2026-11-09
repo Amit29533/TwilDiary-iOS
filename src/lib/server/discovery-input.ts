@@ -13,6 +13,16 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   // A tag or company from a title page: any TMDb keyword or company ID.
   const keyword = params.get('keyword') ?? '';
   const company = params.get('company') ?? '';
+  // Search Lab filters.
+  const keywords = (params.get('keywords') ?? '').split(',').filter(Boolean);
+  const keywordMode = params.get('keywordMode') ?? 'any';
+  const genres = (params.get('genres') ?? '').split(',').filter(Boolean);
+  const certification = params.get('certification') ?? '';
+  const yearFrom = params.get('yearFrom') ?? '';
+  const yearTo = params.get('yearTo') ?? '';
+  const status = params.get('status') ?? '';
+  const language = params.get('language') ?? '';
+  const year4 = (value: string) => /^\d{4}$/.test(value) && +value >= 1880 && +value <= 2200;
   const id = (value: string) => /^\d{1,10}$/.test(value) && +value > 0;
   if (
     !['tmdb', 'trakt', 'because'].includes(source) ||
@@ -22,6 +32,26 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
     ((keyword || company) && source !== 'tmdb') ||
     (keyword && !id(keyword)) ||
     (company && !id(company)) ||
+    keywords.length > 10 ||
+    keywords.some((k) => !id(k)) ||
+    !['any', 'all'].includes(keywordMode) ||
+    genres.length > 6 ||
+    genres.some((g) => !genreAvailable(g, type as 'movie' | 'tv')) ||
+    (certification &&
+      (type !== 'movie' || !['G', 'PG', 'PG-13', 'R', 'NC-17'].includes(certification))) ||
+    (yearFrom && !year4(yearFrom)) ||
+    (yearTo && !year4(yearTo)) ||
+    (status &&
+      (type !== 'tv' || !['returning', 'ended', 'canceled', 'production'].includes(status))) ||
+    (language && !/^[a-z]{2}$/.test(language)) ||
+    ((keywords.length ||
+      genres.length ||
+      certification ||
+      yearFrom ||
+      yearTo ||
+      status ||
+      language) &&
+      source !== 'tmdb') ||
     (genre && !genreAvailable(genre, type as 'movie' | 'tv')) ||
     (year && (!/^\d{4}$/.test(year) || +year < 1880 || +year > 2200)) ||
     !/^(?:[0-9](?:\.\d)?|10(?:\.0)?)$/.test(minimum) ||
@@ -42,6 +72,13 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
     seed,
     ...(network ? { network: +network } : {}),
     ...(keyword ? { keyword: +keyword } : {}),
-    ...(company ? { company: +company } : {})
+    ...(company ? { company: +company } : {}),
+    ...(keywords.length ? { keywords: keywords.map(Number), keywordMode } : {}),
+    ...(genres.length ? { genres } : {}),
+    ...(certification ? { certification } : {}),
+    ...(yearFrom ? { yearFrom: +yearFrom } : {}),
+    ...(yearTo ? { yearTo: +yearTo } : {}),
+    ...(status ? { status } : {}),
+    ...(language ? { language } : {})
   } as DiscoveryQuery;
 }

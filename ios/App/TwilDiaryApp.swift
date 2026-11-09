@@ -72,7 +72,7 @@ enum AppTab: String, CaseIterable, Hashable {
         if saved == "stats" { UserDefaults.standard.set(AppTab.more.rawValue, forKey: launchKey); return .more }
         return saved.flatMap(AppTab.init(rawValue:)) ?? .glance
     }
-    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "eye"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
+    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
     var icon: String {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
     }
@@ -264,6 +264,8 @@ struct RootView: View {
                 .navigationDestination(for: HistoryRoute.self) { route in
                     HistoryView(initialDay: route.day, initialUnknown: route.unknown, initialQuery: route.query).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
+                .navigationDestination(for: SearchLabRoute.self) { _ in SearchLabView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: SearchLabResultsRoute.self) { SearchLabResultsView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: MilestonesRoute.self) { _ in MilestonesView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonPhotosRoute.self) { PersonPhotosPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: ShowPageRoute.self) { ShowPageDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }

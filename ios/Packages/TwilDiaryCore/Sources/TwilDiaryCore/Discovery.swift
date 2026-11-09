@@ -13,7 +13,7 @@ public enum DiscoverySection: String, Codable, CaseIterable, Identifiable, Senda
         case .ratedMovies: "Highest rated movies"
         case .popularShows: "Popular shows"
         case .popularMovies: "Popular movies"
-        case .genres: "Browse by genre"
+        case .genres: "Search Lab"
         }
     }
     public var source: String { self == .daily ? "library" : self == .recommended ? "trakt" : "tmdb" }
@@ -57,6 +57,17 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
     public var company: Int? = nil
     public var network: Int? = nil
     public var label: String? = nil
+    /// Search Lab (optional, so filters saved before it still decode).
+    public var keywords: [Int]? = nil
+    public var matchAllKeywords: Bool? = nil
+    public var genres: [String]? = nil
+    public var certification: String? = nil
+    public var yearFrom: Int? = nil
+    public var yearTo: Int? = nil
+    public var showStatus: String? = nil
+    public var language: String? = nil
+    /// "in" or "not": only titles in (or not yet in) your library. Applied on the phone.
+    public var library: String? = nil
     public init(section: DiscoverySection) {
         type = section.fixedType?.rawValue ?? (section.source == "tmdb" ? "tv" : "all")
         sort = section.defaultSort
@@ -76,6 +87,13 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
             if let keyword { query["keyword"] = String(keyword) }
             if let company { query["company"] = String(company) }
             if let network { query["network"] = String(network); query["type"] = "tv" }
+            if let keywords, !keywords.isEmpty { query["keywords"] = keywords.map(String.init).joined(separator: ","); query["keywordMode"] = matchAllKeywords == true ? "all" : "any" }
+            if let genres, !genres.isEmpty { query["genres"] = genres.joined(separator: ","); query["genre"] = "" }
+            if let certification, query["type"] == "movie" { query["certification"] = certification }
+            if let yearFrom { query["yearFrom"] = String(yearFrom) }
+            if let yearTo { query["yearTo"] = String(yearTo) }
+            if let showStatus, query["type"] == "tv" { query["status"] = showStatus }
+            if let language { query["language"] = language }
         }
         return query
     }

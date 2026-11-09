@@ -92,3 +92,15 @@ import Testing
     #expect(none >= 50 && same <= 100)
     #expect((76...77).contains(RecommendationMatch.percent(seedGenres: [], genres: nil, rating: nil)))
 }
+
+@Test func searchLabFiltersBecomeServerQueries() throws {
+    var lab = DiscoveryFilters(section: .genres)
+    lab.type = "movie"; lab.keywords = [1, 2]; lab.matchAllKeywords = true; lab.genres = ["Drama", "Comedy"]
+    lab.certification = "PG-13"; lab.yearFrom = 2015; lab.yearTo = 2026; lab.showStatus = "ended"; lab.language = "ja"
+    let query = lab.query(section: .genres)
+    #expect(query["keywords"] == "1,2" && query["keywordMode"] == "all" && query["genres"] == "Drama,Comedy")
+    #expect(query["certification"] == "PG-13" && query["status"] == nil, "Status is for shows; age rating for movies")
+    #expect(query["yearFrom"] == "2015" && query["yearTo"] == "2026" && query["language"] == "ja")
+    let older = try JSONDecoder().decode(DiscoveryFilters.self, from: Data(#"{"type":"tv","genre":"","year":"","sort":"popular","minimum":"0"}"#.utf8))
+    #expect(older.keywords == nil && older.query(section: .genres)["keywords"] == nil)
+}

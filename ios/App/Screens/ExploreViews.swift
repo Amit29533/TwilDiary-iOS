@@ -13,6 +13,12 @@ struct ExploreView: View {
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: SearchLabRoute()) { Image(systemName: "flask") }
+                        .accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
+                }
+            }
     }
 }
 
@@ -33,7 +39,6 @@ private struct ExploreContent: View {
             }
             RecommendedDiscoveryView(service: service, section: false)
             ForEach(DiscoverySection.shelves) { section in DiscoveryShelfView(section: section, service: service) }
-            DiscoveryBrowser(section: .genres, service: service, store: store, promptForGenre: true)
             Text("Discovery and artwork: TMDb · Personal recommendations: Trakt").font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
@@ -73,7 +78,6 @@ private struct DailyDiscoveryCard: View {
                         }
                     }.font(.system(size: 14))
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                DiaryIcon(name: "arrow-up-right", size: 20).foregroundStyle(theme.ink).frame(width: 44, height: 44).background(theme.accent, in: Circle()).accessibilityHidden(true)
             }.padding(18)
         }.frame(height: 225).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
     }

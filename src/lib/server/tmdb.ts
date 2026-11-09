@@ -379,12 +379,22 @@ export function createTmdb(
           : undefined);
       // TMDb's weekly trending feed takes no filters; genre and year are applied to its page below.
       // A keyword genre can't be checked on that page, so it reads discover by popularity instead.
+      const lab = !!(
+        input.keywords?.length ||
+        input.genres?.length ||
+        input.certification ||
+        input.yearFrom ||
+        input.yearTo ||
+        input.status ||
+        input.language
+      );
       const trending =
         input.source === 'tmdb' &&
         input.sort === 'trending' &&
         !keyword &&
         !input.company &&
-        !input.network;
+        !input.network &&
+        !lab;
       if (input.source !== 'because' && !trending) {
         params.sort_by =
           input.sort === 'rating'
@@ -398,14 +408,41 @@ export function createTmdb(
         if (genre?.[input.type] && (input.keyword || !keyword))
           params.with_genres = String(genre[input.type]);
         if (input.company) params.with_companies = String(input.company);
+        if (input.keywords?.length)
+          params.with_keywords = input.keywords.join(input.keywordMode === 'all' ? ',' : '|');
+        if (input.genres?.length) {
+          const ids = input.genres
+            .map((name) => discoveryGenres.find((g) => g.name === name)?.[input.type])
+            .filter((v): v is number => typeof v === 'number');
+          if (ids.length) params.with_genres = ids.join(',');
+          // A show genre TMDb lacks (Romance) is its keyword.
+          const missing = input.genres
+            .map((name) => (input.type === 'tv' ? tvGenreKeywords[name] : undefined))
+            .filter((v): v is number => typeof v === 'number');
+          if (missing.length)
+            params.with_keywords = [params.with_keywords, ...missing].filter(Boolean).join(',');
+        }
+        if (input.certification && input.type === 'movie') {
+          params.certification_country = 'US';
+          params.certification = input.certification;
+        }
+        const field = input.type === 'movie' ? 'primary_release_date' : 'first_air_date';
+        if (input.yearFrom) params[`${field}.gte`] = `${input.yearFrom}-01-01`;
+        if (input.yearTo) params[`${field}.lte`] = `${input.yearTo}-12-31`;
+        if (input.status && input.type === 'tv')
+          params.with_status = { returning: '0', production: '2', ended: '3', canceled: '4' }[
+            input.status
+          ];
+        if (input.language) params.with_original_language = input.language;
         if (input.network && input.type === 'tv') params.with_networks = String(input.network);
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
             input.year;
         params['vote_count.gte'] = input.sort === 'rating' ? '200' : '20';
         if (input.minimum) params['vote_average.gte'] = String(input.minimum);
-        params[input.type === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte'] =
-          new Date().toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
+        const upper = input.type === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte';
+        if (!params[upper] || params[upper] > today) params[upper] = today;
       }
       const data = await request(
         input.source === 'because'
@@ -658,6 +695,20 @@ export function createTmdb(
         .slice(0, 24)
         .map(({ rank: _rank, ...person }) => person);
       return { status, certification, studios, networks, keywords, crew };
+    },
+    /** Tags (TMDb keywords) whose name matches what was typed, for Search Lab. */
+    async keywords(query: string) {
+      const q = query.trim().slice(0, 60);
+      if (q.length < 2) return { items: [] as { id: number; name: string }[] };
+      const data = await request('search/keyword', { query: q, page: '1' });
+      const items = (Array.isArray(data.results) ? data.results.slice(0, 20) : []).flatMap((v) => {
+        const item = (v && typeof v === 'object' ? v : {}) as RecordValue;
+        const name = text(item.name, 100);
+        return name && Number.isSafeInteger(item.id) && (item.id as number) > 0
+          ? [{ id: item.id as number, name }]
+          : [];
+      });
+      return { items };
     },
     async connection() {
       await request('configuration');

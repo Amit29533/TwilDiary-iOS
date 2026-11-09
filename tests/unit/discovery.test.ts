@@ -475,3 +475,60 @@ test('A title page tag or company reads TMDb discover by that keyword or company
   await client.discover(discoveryInput(new URLSearchParams('type=tv&network=4513')));
   assert.equal(seen[2]!.searchParams.get('with_networks'), '4513');
 });
+
+test('Search Lab filters reach TMDb discover: tags any or all, genres, years, status, language, age rating', async () => {
+  for (const query of [
+    'keywords=1,abc',
+    'keywordMode=some',
+    'type=tv&certification=PG',
+    'type=movie&certification=XYZ',
+    'type=movie&status=ended',
+    'yearFrom=99',
+    'language=english',
+    'genres=Injected',
+    'source=trakt&genres=Drama'
+  ])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+  const seen: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    seen.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(
+    discoveryInput(
+      new URLSearchParams(
+        'type=tv&keywords=210024,10541&keywordMode=all&genres=Animation,Romance&yearFrom=2015&yearTo=2026&status=returning&language=ja&sort=trending'
+      )
+    )
+  );
+  const tv = seen[0]!.searchParams;
+  assert.equal(seen[0]!.pathname, '/3/discover/tv');
+  assert.equal(tv.get('with_keywords'), '210024,10541,9840');
+  assert.equal(tv.get('with_genres'), '16');
+  assert.equal(tv.get('first_air_date.gte'), '2015-01-01');
+  assert.ok(tv.get('first_air_date.lte')! <= '2026-12-31');
+  assert.equal(tv.get('with_status'), '0');
+  assert.equal(tv.get('with_original_language'), 'ja');
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=movie&keywords=1,2&certification=PG-13'))
+  );
+  const movie = seen[1]!.searchParams;
+  assert.equal(movie.get('with_keywords'), '1|2');
+  assert.equal(movie.get('certification'), 'PG-13');
+  assert.equal(movie.get('certification_country'), 'US');
+});
+
+test('Tag search returns matching TMDb keywords and ignores one-letter queries', async () => {
+  const client = createTmdb('test-token', async (url) => {
+    assert.equal(new URL(String(url)).searchParams.get('query'), 'isekai');
+    return reply({
+      results: [
+        { id: 237451, name: 'isekai' },
+        { id: 0, name: 'bad' },
+        { id: 3, name: '' }
+      ]
+    });
+  });
+  assert.deepEqual(await client.keywords('  isekai '), { items: [{ id: 237451, name: 'isekai' }] });
+  assert.deepEqual(await client.keywords('a'), { items: [] });
+});

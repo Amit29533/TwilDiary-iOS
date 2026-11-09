@@ -240,178 +240,155 @@ struct AiringCalendarView: View {
             mode: mode
         )
         let visibleDays = selectedDate.map { day in schedule.days.filter { DiaryDate.calendar().isDate($0.date, inSameDayAs: day) } } ?? schedule.days
-        VStack(spacing: 0) {
-            EdgeToEdgeScroll {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(alignment: .top, spacing: 14) {
-                            calendarMetric(String(schedule.totalCount), mode == .catchup ? "Catch-up" : "Upcoming", accent: true)
-                            calendarMetric(String(schedule.animeCount), "Anime")
-                            calendarMetric(String(schedule.showCount), "TV Shows")
-                            calendarMetric(String(schedule.thisWeekCount), mode == .catchup ? "Past 7d" : "Next 7d")
-                        }
-                        Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
-                            ForEach(schedule.strip) { cell in
-                                let isSelected = selectedDate.map { DiaryDate.calendar().isDate($0, inSameDayAs: cell.date) } ?? false
-                                Button {
-                                    if isSelected { selectedDate = nil } else { selectedDate = cell.date }
-                                } label: {
-                                    VStack(spacing: 3) {
-                                        Text(cell.daysAway == 0 ? "Now" : cell.date.formatted(.dateTime.weekday(.narrow)))
-                                            .font(.system(size: 10)).foregroundStyle(.secondary)
-                                        Text(cell.date, format: .dateTime.day())
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(cell.daysAway == 0 ? theme.accent : .primary)
-                                        HStack(spacing: 3) {
-                                            if cell.animeCount > 0 { Circle().fill(theme.accent).frame(width: 5, height: 5) }
-                                            if cell.showCount > 0 { Circle().fill(Color.blue.opacity(0.85)).frame(width: 5, height: 5) }
-                                            if cell.total == 0 { Circle().fill(.white.opacity(0.12)).frame(width: 4, height: 4) }
-                                        }.frame(height: 6)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        isSelected ? theme.accent.opacity(0.24) : (cell.total > 0 ? theme.accent.opacity(0.09) : .white.opacity(0.02)),
-                                        in: RoundedRectangle(cornerRadius: 9)
-                                    )
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                    }.diaryPanel()
-
-                    InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                        ForEach(UpcomingSchedule.Mode.allCases) { item in
-                            Button { mode = item; selectedDate = nil } label: {
-                                Text(item.rawValue)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 12).frame(height: 32)
-                                    .foregroundStyle(mode == item ? .primary : .secondary)
-                                    .background(mode == item ? theme.accent.opacity(0.22) : .white.opacity(0.04), in: Capsule())
-                            }.buttonStyle(.plain)
-                        }
-                        ForEach(UpcomingSchedule.CategoryFilter.allCases) { item in
-                            Button { category = item } label: {
-                                Text(item.rawValue)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 12).frame(height: 32)
-                                    .foregroundStyle(category == item ? .primary : .secondary)
-                                    .background(category == item ? theme.accent.opacity(0.22) : .white.opacity(0.04), in: Capsule())
-                            }.buttonStyle(.plain)
-                        }
+        let groups = weekGroups(visibleDays.flatMap(\.items))
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 22) {
+                    ForEach(UpcomingSchedule.Mode.allCases) { item in
+                        Button { mode = item; selectedDate = nil } label: {
+                            VStack(spacing: 8) {
+                                Text(item.rawValue).font(.system(size: 17, weight: .semibold)).foregroundStyle(mode == item ? .white : .secondary)
+                                Capsule().fill(mode == item ? theme.accent : .clear).frame(height: 3)
+                            }.fixedSize()
+                        }.buttonStyle(.plain).accessibilityAddTraits(mode == item ? .isSelected : [])
                     }
-                    HStack(spacing: 8) {
-                        ForEach([7, 30, 90], id: \.self) { days in
-                            Button { horizonDays = days; selectedDate = nil } label: {
-                                Text("\(days)d")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 10).frame(height: 32)
-                                    .foregroundStyle(horizonDays == days ? .primary : .secondary)
-                                    .background(horizonDays == days ? theme.accent.opacity(0.22) : .white.opacity(0.04), in: Capsule())
-                            }.buttonStyle(.plain)
-                        }
-                        Spacer(minLength: 0)
-                        Button { dedupeByTitle.toggle() } label: {
-                            Text(dedupeByTitle ? "Next only" : "All eps").lineLimit(1).fixedSize()
-                                .font(.system(size: 12, weight: .semibold))
-                                .padding(.horizontal, 11).frame(height: 32)
-                                .foregroundStyle(dedupeByTitle ? .primary : .secondary)
-                                .background(dedupeByTitle ? theme.accent.opacity(0.22) : .white.opacity(0.04), in: Capsule())
-                        }.buttonStyle(.plain)
-                        if !schedule.items.isEmpty {
-                            ShareLink(item: schedule.icsString(hideSpoilers: hideSpoilers), subject: Text("TwilDiary Airing Schedule")) {
-                                HStack(spacing: 4) {
-                                    DiaryIcon(name: "download", size: 12)
-                                    Text(".ics").lineLimit(1).fixedSize()
-                                }
-                                .font(.system(size: 12, weight: .semibold))
-                                .padding(.horizontal, 10).frame(height: 32)
-                                .foregroundStyle(.secondary)
-                                .background(.white.opacity(0.04), in: Capsule())
-                            }.buttonStyle(.plain)
-                        }
-                        Button {
-                            guard !syncingDates else { return }
-                            syncingDates = true
-                            Task {
-                                let activeSeries = store.workspace.activeTitles.filter { $0.isSeries && ($0.status == "watching" || $0.status == "planned") }.prefix(10)
-                                for series in activeSeries {
-                                    await store.refreshTitleMetadata(series)
-                                }
-                                syncingDates = false
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                DiaryIcon(name: "rotate-ccw", size: 12)
-                                Text(syncingDates ? "Syncing…" : "Sync").lineLimit(1).fixedSize()
-                            }
-                            .font(.system(size: 12, weight: .semibold))
-                            .padding(.horizontal, 10).frame(height: 32)
-                            .foregroundStyle(.secondary)
-                            .background(.white.opacity(0.04), in: Capsule())
-                        }.buttonStyle(.plain).disabled(syncingDates || store.writesBlocked)
+                    Spacer()
+                }.overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
+                monthCard(schedule)
+                HStack(spacing: 8) {
+                    Menu {
+                        Picker("Type", selection: $category) { ForEach(UpcomingSchedule.CategoryFilter.allCases) { Text($0.rawValue).tag($0) } }
+                    } label: { FilterPill(label: category.rawValue, active: category != .all) }
+                    Spacer(minLength: 0)
+                    Menu {
+                        Picker("Range", selection: $horizonDays) { ForEach([7, 30, 90], id: \.self) { Text((mode == .catchup ? "Past " : "Next ") + "\($0) days").tag($0) } }
+                    } label: { FilterPill(label: (mode == .catchup ? "Past " : "Next ") + "\(horizonDays) days") }
+                }
+                ForEach(groups, id: \.label) { group in
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 4) {
+                            Text(group.label).foregroundStyle(Color(webHex: "#c5c0cf"))
+                            Text("(\(group.items.count))").foregroundStyle(.white)
+                        }.font(.system(size: 20, weight: .bold))
+                        ForEach(group.items) { item in episodeRow(item) }
                     }
-
-                    ForEach(visibleDays) { day in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(day.daysAway == 0 ? "Today" : day.daysAway == 1 ? "Tomorrow" : day.daysAway == -1 ? "Yesterday" : day.daysAway < 0 ? "\(abs(day.daysAway))d ago" : "In \(day.daysAway) days")
-                                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent)
-                                Text("· " + day.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
-                                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                                Spacer()
-                                Text("\(day.items.count) \(day.items.count == 1 ? "ep" : "eps")")
-                                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                            }
-                            ForEach(day.items) { item in
-                                HStack(spacing: 10) {
-                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
-                                        HStack(spacing: 12) {
-                                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false)
-                                                .frame(width: 42, height: 62)
-                                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                HStack(spacing: 6) {
-                                                    Text(item.title.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                                                    Text(item.title.categoryName)
-                                                        .font(.system(size: 10, weight: .bold))
-                                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                                        .background(item.isAnime ? theme.accent.opacity(0.22) : Color.blue.opacity(0.2), in: Capsule())
-                                                }
-                                                Text("S\(item.episode.season) E\(item.episode.number)" + (!hideSpoilers && !item.episode.name.isEmpty ? " · \(item.episode.name)" : ""))
-                                                    .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                                            }
-                                            Spacer(minLength: 4)
-                                            VStack(alignment: .trailing, spacing: 4) {
-                                                Text(item.daysAway == 0 ? "Today" : item.daysAway == 1 ? "Tomorrow" : item.daysAway < 0 ? "\(abs(item.daysAway))d ago" : "In \(item.daysAway)d")
-                                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.tint)
-                                                Text(item.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
-                                                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                                            }
-                                        }.foregroundStyle(.primary)
-                                    }.buttonStyle(.plain)
-                                    if item.daysAway <= 0 {
-                                        Button {
-                                            Task { await store.recordViewing(item.title, episode: item.episode, watchedAt: store.now) }
-                                        } label: {
-                                            DiaryIcon(name: "check", size: 18).foregroundStyle(theme.accent)
-                                                .frame(width: 44, height: 44).contentShape(Rectangle())
-                                        }.buttonStyle(.plain).disabled(store.writesBlocked)
-                                    }
-                                }.diaryPanel()
-                            }
-                        }
-                    }
-
-                    if visibleDays.isEmpty {
-                        Text(mode == .catchup
-                             ? "No unwatched aired \(category == .all ? "anime or show" : category.rawValue.lowercased()) episodes in the past \(horizonDays) days."
-                             : "No upcoming \(category == .all ? "anime or show" : category.rawValue.lowercased()) air dates in your library for the next \(horizonDays) days.")
-                            .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
-                    }
-                }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 24)
-            }
+                }
+                if visibleDays.isEmpty {
+                    Text(mode == .catchup
+                         ? "No unwatched aired \(category == .all ? "anime or show" : category.rawValue.lowercased()) episodes in the past \(horizonDays) days."
+                         : "No upcoming \(category == .all ? "anime or show" : category.rawValue.lowercased()) air dates in your library for the next \(horizonDays) days.")
+                        .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
+                }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 24)
         }.diaryScreenBackground().navigationTitle("Airing calendar").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Toggle("Next episode only", isOn: $dedupeByTitle)
+                        if !schedule.items.isEmpty {
+                            ShareLink(item: schedule.icsString(hideSpoilers: hideSpoilers), subject: Text("TwilDiary Airing Schedule")) { Label("Export to Calendar (.ics)", systemImage: "calendar.badge.plus") }
+                        }
+                        Button(syncingDates ? "Syncing air dates…" : "Sync air dates", systemImage: "arrow.clockwise") { syncDates() }.disabled(syncingDates || store.writesBlocked)
+                    } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Calendar options")
+                }
+            }
+    }
+    private func syncDates() {
+        guard !syncingDates else { return }
+        syncingDates = true
+        Task {
+            let activeSeries = store.workspace.activeTitles.filter { $0.isSeries && ($0.status == "watching" || $0.status == "planned") }.prefix(10)
+            for series in activeSeries { await store.refreshTitleMetadata(series) }
+            syncingDates = false
+        }
+    }
+    /// The month header: counts, then the strip of days (now marked; days with episodes tinted and dotted).
+    private func monthCard(_ schedule: UpcomingSchedule) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(store.now.formatted(.dateTime.month(.wide))).font(.system(size: 20, weight: .bold))
+                Spacer()
+                HStack(spacing: 4) {
+                    Text("\(schedule.totalCount)").foregroundStyle(theme.accent).bold()
+                    Text(mode == .catchup ? "to catch up ·" : "upcoming ·").foregroundStyle(.secondary)
+                    Text("\(schedule.thisWeekCount)").foregroundStyle(theme.accent).bold()
+                    Text(mode == .catchup ? "past week" : "this week").foregroundStyle(.secondary)
+                }.font(.system(size: 14))
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
+                ForEach(["M", "T", "W", "T", "F", "S", "S"].indices, id: \.self) { index in
+                    Text(["M", "T", "W", "T", "F", "S", "S"][index]).font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                ForEach(schedule.strip) { cell in
+                    let isSelected = selectedDate.map { DiaryDate.calendar().isDate($0, inSameDayAs: cell.date) } ?? false
+                    Button { selectedDate = isSelected ? nil : cell.date } label: {
+                        VStack(spacing: 1) {
+                            Text(cell.date, format: .dateTime.day()).font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(cell.daysAway == 0 ? theme.ink : cell.total > 0 ? .white : .secondary)
+                            if cell.daysAway == 0 { Text("NOW").font(.system(size: 8, weight: .heavy)).foregroundStyle(theme.ink) }
+                            else { Circle().fill(cell.total > 0 ? theme.accent : .clear).frame(width: 5, height: 5) }
+                        }.frame(maxWidth: .infinity).frame(height: 46)
+                            .background(cell.daysAway == 0 ? AnyShapeStyle(theme.accent) : isSelected ? AnyShapeStyle(theme.accent.opacity(0.35)) : cell.total > 0 ? AnyShapeStyle(theme.accent.opacity(0.16)) : AnyShapeStyle(Color.white.opacity(0.04)), in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain).accessibilityLabel(cell.date.formatted(date: .abbreviated, time: .omitted) + ", \(cell.total) episodes")
+                }
+            }
+        }.padding(16).diaryPanel(padding: 0, radius: 22)
+    }
+    private struct WeekGroup { let label: String; let items: [UpcomingSchedule.Item] }
+    /// This week, next week, then by week, in date order (catch-up: newest first).
+    private func weekGroups(_ items: [UpcomingSchedule.Item]) -> [WeekGroup] {
+        var calendar = DiaryDate.calendar(); calendar.firstWeekday = 2
+        let thisWeek = calendar.dateInterval(of: .weekOfYear, for: store.now)?.start ?? store.now
+        var groups: [Int: [UpcomingSchedule.Item]] = [:]
+        for item in items {
+            let start = calendar.dateInterval(of: .weekOfYear, for: item.date)?.start ?? item.date
+            let offset = Int((start.timeIntervalSince(thisWeek) / (7 * 86_400)).rounded())
+            groups[offset, default: []].append(item)
+        }
+        func label(_ offset: Int) -> String {
+            switch offset {
+            case 0: "This week"
+            case 1: "Next week"
+            case -1: "Last week"
+            default: offset > 1 ? "In \(offset) weeks" : "\(-offset) weeks ago"
+            }
+        }
+        let order = groups.keys.sorted { mode == .catchup ? $0 > $1 : $0 < $1 }
+        return order.map { WeekGroup(label: label($0), items: (groups[$0] ?? []).sorted { mode == .catchup ? $0.date > $1.date : $0.date < $1.date }) }
+    }
+    private func episodeRow(_ item: UpcomingSchedule.Item) -> some View {
+        let away = item.daysAway == 0 ? "Today" : item.daysAway == 1 ? "Tomorrow" : item.daysAway < 0 ? "\(abs(item.daysAway))d ago" : "In \(item.daysAway)d"
+        let summary = hideSpoilers ? item.title.overview : (item.episode.overview.isEmpty ? item.title.overview : item.episode.overview)
+        return HStack(alignment: .top, spacing: 14) {
+            NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
+                HStack(alignment: .top, spacing: 14) {
+                    Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 80, height: 112).clipShape(RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .top) {
+                            HStack(spacing: 0) {
+                                Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) + " · ").foregroundStyle(.secondary)
+                                Text(away).foregroundStyle(theme.accent)
+                            }.lineLimit(1)
+                            Spacer(minLength: 4)
+                            if let score = item.title.communityScore, score > 0 {
+                                HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 10)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#d2c4f4"))
+                                    .padding(.horizontal, 8).frame(height: 24).background(theme.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                        }.font(.system(size: 14))
+                        Text(item.title.name).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
+                        Text(item.title.categoryName + " · S\(item.episode.season) E\(item.episode.number)").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent)
+                        if !summary.isEmpty { Text(summary).font(.system(size: 14)).foregroundStyle(Color(webHex: "#c5c0cf")).lineLimit(2).multilineTextAlignment(.leading) }
+                    }
+                    Spacer(minLength: 0)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            if item.daysAway <= 0 {
+                Button { Task { await store.recordViewing(item.title, episode: item.episode, watchedAt: store.now) } } label: {
+                    DiaryIcon(name: "check", size: 18).foregroundStyle(theme.accent).frame(width: 44, height: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).disabled(store.writesBlocked).accessibilityLabel("Mark watched")
+            }
+        }
     }
     private func calendarMetric(_ value: String, _ label: String, accent: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {

@@ -94,6 +94,19 @@ export interface DiscoveryQuery {
   keyword?: number | undefined;
   /** A TMDb production company. */
   company?: number | undefined;
+  /** Search Lab: several tags (TMDb keywords), any or all of them. */
+  keywords?: number[] | undefined;
+  keywordMode?: 'any' | 'all' | undefined;
+  /** Search Lab: several genres, all required. */
+  genres?: string[] | undefined;
+  /** Search Lab: a US age rating (movies only; TMDb can't filter shows by it). */
+  certification?: string | undefined;
+  yearFrom?: number | undefined;
+  yearTo?: number | undefined;
+  /** Search Lab: a show's status. */
+  status?: 'returning' | 'ended' | 'canceled' | 'production' | undefined;
+  /** Search Lab: original language (ISO 639-1). */
+  language?: string | undefined;
 }
 export interface DiscoveryItem extends SearchMatch {
   backdropPath: string | null;

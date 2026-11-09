@@ -18,6 +18,8 @@ struct LibraryView: View {
     @SceneStorage("library.drive") private var drive = ""
     @SceneStorage("library.favorites") private var favoritesOnly = false
     @State private var showFilters = false
+    /// The overview's "See all" shows the whole grid until the filters change.
+    @State private var expandedAll = false
     /// The status chips scroll sideways, so a drag that starts on them never changes the category.
     @State private var chipRow = CGRect.null
     /// The visible height of the scroll view, so a short category still fills it and takes the swipe.
@@ -213,10 +215,56 @@ struct LibraryView: View {
                     case .list:
                         LazyVStack(spacing: 8) { ForEach(shown) { title in poster(title, row: true).onAppear { revealMore(after: title) } } }.padding(.horizontal, 14)
                     case .grid:
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
-                            ForEach(shown) { title in poster(title).onAppear { revealMore(after: title) } }
-                        }.padding(.horizontal, 14)
+                        if showsOverview { overview }
+                        else {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
+                                ForEach(shown) { title in poster(title).onAppear { revealMore(after: title) } }
+                            }.padding(.horizontal, 14)
+                        }
                     }
+    }
+    /// With no filters, the grid opens as an overview: five titles and "+N See all", then the
+    /// genres as rows, each opening that genre.
+    private var showsOverview: Bool {
+        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && filtered.count > 6
+    }
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("All titles").font(.system(size: 22, weight: .bold)).tracking(-0.5)
+                Spacer()
+                Text(filtered.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
+                ForEach(filtered.prefix(5)) { title in poster(title) }
+                Button { expandedAll = true } label: {
+                    VStack(spacing: 4) {
+                        Text("+\((filtered.count - 5).formatted())").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
+                        Text("See all").font(.system(size: 14)).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity).aspectRatio(2 / 3, contentMode: .fit)
+                        .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
+                }.buttonStyle(.springPress).accessibilityIdentifier("library-see-all")
+            }
+            HStack {
+                Text("Browse by genre").font(.system(size: 22, weight: .bold)).tracking(-0.5)
+                Spacer()
+                Button("All genres") { genreRows = true; list = false }.font(.system(size: 15, weight: .semibold)).tint(theme.accent)
+            }.padding(.top, 12)
+            ForEach(LibraryShelf.make(filtered).filter { $0.genre != "Without a genre" }) { shelf in
+                Button { genres = [shelf.genre] } label: {
+                    HStack {
+                        Text(shelf.genre).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        Spacer()
+                        Text(shelf.titles.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                            .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                        DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+                    }.padding(.horizontal, 16).frame(minHeight: 60).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("library-genre-row-" + shelf.genre)
+            }
+        }.padding(.horizontal, 14)
     }
     private func ratingStatus(_ message: String) -> some View {
         Text(message).font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 10)
@@ -546,6 +594,16 @@ struct GlanceView: View {
     @Environment(DiaryStore.self) private var store
     /// Remembered between visits, like the layout and sort.
     @AppStorage("glanceCategory") private var category = LibraryCategory.all
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var showAll = false
+    private func glanceHeading(_ name: String, _ count: Int) -> some View {
+        HStack {
+            Text(name).font(.system(size: 24, weight: .bold)).tracking(-0.6)
+            Spacer()
+            Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+        }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 2)
+    }
     var body: some View {
         // One pass over the library per update instead of three.
         let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
@@ -562,10 +620,27 @@ struct GlanceView: View {
                         CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
                     }
                 }
-                VStack(spacing: 8) {
-                    // The title you logged last (or first in the chosen order) gets the large card.
+                // The title you logged last (or first in the chosen order) gets the large card; the rest
+                // split into Continue (started) and Not started, each with its count.
+                let started = Set(store.workspace.activeEvents.map(\.titleId))
+                let rest = Array(ordered.dropFirst())
+                let continuing = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
+                VStack(alignment: .leading, spacing: 8) {
                     if let first = ordered.first { ProgressCard(title: first, hero: true) }
-                    CollectionLayout(grid: grid, spacing: 8) { ForEach(ordered.dropFirst()) { ProgressCard(title: $0, grid: grid) } }
+                    if !continuing.isEmpty {
+                        glanceHeading("Continue", continuing.count)
+                        CollectionLayout(grid: grid, spacing: 8) { ForEach(showAll ? continuing : Array(continuing.prefix(8))) { ProgressCard(title: $0, grid: grid) } }
+                    }
+                    if !fresh.isEmpty && (showAll || continuing.count <= 8) {
+                        glanceHeading("Not started", fresh.count)
+                        CollectionLayout(grid: grid, spacing: 8) { ForEach(fresh) { ProgressCard(title: $0, grid: grid) } }
+                    }
+                    if !showAll && continuing.count > 8 {
+                        Button { showAll = true } label: {
+                            Text("Show all \(titles.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+                                .frame(maxWidth: .infinity, minHeight: 54).background(.white.opacity(0.05), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                        }.buttonStyle(.springPress).padding(.top, 6).accessibilityIdentifier("glance-show-all")
+                    }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.").padding(.horizontal, 14).padding(.top, 20) }
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }

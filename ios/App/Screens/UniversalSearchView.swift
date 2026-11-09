@@ -26,57 +26,85 @@ struct SearchLandingView: View {
     @State private var loadedRevision: UUID?
     @State private var loading = false
     @State private var failure: String?
+    @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private func sourceBadge(_ name: String) -> some View {
+        Text(name).font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(webHex: "#c5c0cf"))
+            .padding(.horizontal, 10).frame(height: 26).background(.white.opacity(0.08), in: Capsule())
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !recent.isEmpty {
-                VStack(spacing: 8) {
-                    HStack { Text("Recent searches").font(.headline); Spacer(); Button("Clear", action: clear).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("search-clear-recents") }
-                    ForEach(recent, id: \.self) { query in
-                        Button { choose(query) } label: {
-                            HStack(spacing: 12) { Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary); Text(query).lineLimit(1); Spacer(); Image(systemName: "arrow.up.left").foregroundStyle(.secondary) }.frame(minHeight: 44).contentShape(Rectangle())
-                        }.buttonStyle(.plain).foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("RECENT").font(.system(size: 13, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear", action: clear).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("search-clear-recents")
+                    }
+                    InlineFlowLayout {
+                        ForEach(recent, id: \.self) { query in
+                            Button { choose(query) } label: {
+                                HStack(spacing: 6) { Image(systemName: "clock").font(.system(size: 12)); Text(query).lineLimit(1) }
+                                    .font(.system(size: 15, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 12).frame(height: 36)
+                                    .background(.white.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                            }.buttonStyle(.plain).accessibilityLabel("Search again for " + query)
+                        }
                     }
                 }
             }
             if !shows.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
-                        Text("Top 10 shows this week").font(.title3.bold())
-                    }.padding(.bottom, 6)
-                    ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Top 10 shows this week").font(.system(size: 22, weight: .bold)).tracking(-0.5)
+                    ForEach(Array(shows.prefix(allTop ? 10 : 6).enumerated()), id: \.element.key) { index, item in
                         NavigationLink(value: item.route) {
                             HStack(spacing: 14) {
-                                Text("\(index + 1)").font(.system(size: 20, weight: .bold)).monospacedDigit()
-                                    .foregroundStyle(index < 3 ? theme.accent : .secondary).frame(width: 28)
-                                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 46, height: 69)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(item.name).font(.system(size: 16, weight: .semibold)).lineLimit(1)
-                                    Text([item.year.map(String.init), "Show"].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(.secondary)
+                                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 60, height: 76)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                    HStack(spacing: 8) {
+                                        if let score = item.rating, score > 0 {
+                                            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(webHex: "#ffc83d"))
+                                        }
+                                        if CatalogTools.libraryIdentity(item, in: store.workspace) != nil {
+                                            Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
+                                                .padding(.horizontal, 8).frame(height: 22).background(theme.accent.opacity(0.16), in: Capsule())
+                                        }
+                                    }
                                 }
                                 Spacer(minLength: 0)
-                                if let score = item.rating, score > 0 {
-                                    Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).monospacedDigit()
-                                }
-                            }.padding(.vertical, 6).contentShape(Rectangle())
+                                Text("\(index + 1)").font(.system(size: 28, weight: .bold)).monospacedDigit()
+                                    .foregroundStyle(index < 3 ? theme.accent : Color.white.opacity(0.3))
+                            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).contentShape(Rectangle())
                         }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
+                    }
+                    if !allTop && shows.count > 6 {
+                        Button { allTop = true } label: {
+                            Text("See all \(min(10, shows.count))").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
+                                .frame(maxWidth: .infinity, minHeight: 50).background(.white.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+                        }.buttonStyle(.springPress).accessibilityIdentifier("search-top-all")
                     }
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
             if loading && items.isEmpty && shows.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading trending titles") }
-            if !items.isEmpty { HStack { Text("Trending movies").font(.title3.bold()); Spacer(); Text("TMDB").font(.caption).foregroundStyle(.secondary) } }
+            if !items.isEmpty { HStack { Text("Trending movies").font(.system(size: 22, weight: .bold)).tracking(-0.5); Spacer(); sourceBadge("TMDB") } }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(items, id: \.key) { item in
-                        NavigationLink(value: item.route) { CatalogPoster(item: item).frame(width: 124) }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-" + item.key)
+                    ForEach(Array(items.enumerated()), id: \.element.key) { index, item in
+                        NavigationLink(value: item.route) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 124, height: 176).clipShape(RoundedRectangle(cornerRadius: 14))
+                                Text("No. \(index + 1) today").font(.system(size: 14)).foregroundStyle(.secondary)
+                            }.frame(width: 124, alignment: .leading)
+                        }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-" + item.key)
                     }
                 }
             }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending")
             if !anime.isEmpty {
-                HStack { Text("Trending anime").font(.title3.bold()); Spacer(); Text("AniList").font(.caption).foregroundStyle(.secondary) }
+                HStack { Text("Trending anime").font(.system(size: 22, weight: .bold)).tracking(-0.5); Spacer(); sourceBadge("ANILIST") }
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(anime) { item in
