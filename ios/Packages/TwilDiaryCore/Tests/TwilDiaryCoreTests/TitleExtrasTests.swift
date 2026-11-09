@@ -104,3 +104,27 @@ import Testing
     let older = try JSONDecoder().decode(DiscoveryFilters.self, from: Data(#"{"type":"tv","genre":"","year":"","sort":"popular","minimum":"0"}"#.utf8))
     #expect(older.keywords == nil && older.query(section: .genres)["keywords"] == nil)
 }
+
+@Test func recentlyWatchedGroupsBackToBackEpisodesOfOneSeason() throws {
+    func title(_ id: String, _ category: String) -> [String: Any] { ["id": id, "name": id, "category": category, "overview": "", "genres": [String](), "status": "watching", "favorite": false, "notes": ""] }
+    func episode(_ id: String, _ titleId: String, _ season: Int, _ number: Int) -> [String: Any] { ["id": id, "titleId": titleId, "season": season, "number": number, "name": "", "overview": ""] }
+    func play(_ id: String, _ titleId: String, _ episode: String?, _ at: String) -> [String: Any] {
+        var value: [String: Any] = ["id": id, "operationId": id, "titleId": titleId, "watchedAt": at, "recordedAt": at, "origin": "manual", "version": 1]
+        if let episode { value["episodeId"] = episode }
+        return value
+    }
+    let value: [String: Any] = [
+        "titles": [title("girls", "anime"), title("film", "movie"), title("drug", "anime")],
+        "episodes": [episode("g2", "girls", 1, 2), episode("g3", "girls", 1, 3), episode("g4", "girls", 1, 4), episode("g5", "girls", 1, 5), episode("d53", "drug", 1, 53)],
+        "events": [play("1", "girls", "g5", "2026-11-06T20:00:00.000Z"), play("2", "girls", "g4", "2026-11-06T19:30:00.000Z"),
+                   play("3", "girls", "g3", "2026-11-06T19:00:00.000Z"), play("4", "girls", "g2", "2026-11-06T18:30:00.000Z"),
+                   play("5", "film", nil, "2026-11-04T20:00:00.000Z"), play("6", "drug", "d53", "2026-11-02T20:00:00.000Z")],
+        "locations": [[String: Any]]()]
+    let workspace = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: value))
+    let entries = HistoryQuery().entries(in: workspace, timeZone: try #require(TimeZone(identifier: "UTC")), limit: 40)
+    let groups = RecentWatchGroup.make(entries, limit: 3)
+    #expect(groups.map(\.title.id) == ["girls", "film", "drug"])
+    #expect(groups[0].episodeText == "S1 · E2 to E5" && groups[0].count == 4)
+    #expect(groups[1].episodeText == "Movie" && groups[2].episodeText == "S1 · E53")
+    #expect(RecentWatchGroup.make(entries, limit: 1).count == 1)
+}

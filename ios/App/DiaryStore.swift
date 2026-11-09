@@ -723,7 +723,7 @@ import TwilDiaryCore
             let overview = HomeOverview(workspace: snapshot, now: request.day, calendar: request.calendar)
             guard !Task.isCancelled else { return nil }
             return HomeProjection(overview: overview, watching: snapshot.activeTitles.filter { $0.status == "watching" },
-                                  recent: HistoryQuery().entries(in: snapshot, timeZone: request.calendar.timeZone, limit: 3))
+                                  recent: HistoryQuery().entries(in: snapshot, timeZone: request.calendar.timeZone, limit: 40))
         }
         let result = await withTaskCancellationHandler(operation: { await work.value }, onCancel: { work.cancel() })
         guard !Task.isCancelled, loadID == homeLoadID, request.session == sessionGeneration,

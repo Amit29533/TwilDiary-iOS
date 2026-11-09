@@ -602,25 +602,24 @@ struct ProgressCard: View {
     private var compactContent: some View {
         VStack(alignment: .leading, spacing: 6) {
             Spacer(minLength: 0)
-            Text("CONTINUE WATCHING").font(.system(size: 13, weight: .medium)).tracking(1.2).foregroundStyle(.white.opacity(0.78))
+            Text("CONTINUE WATCHING").font(.system(size: 12, weight: .medium)).tracking(1.92).foregroundStyle(Color(webHex: "#d8d4e6"))
                 .shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
             Button { openTitle() } label: {
-                Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.6).foregroundStyle(.white)
+                Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(webHex: "#f5f5f7"))
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
             }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-            Text(homeLine).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.88)).lineLimit(1)
+            Text(homeLine).font(.system(size: 14)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1)
             // The − / + controls line up with the bar itself, not the bar and its labels together.
             HStack(alignment: .progressBar, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    GeometryReader { proxy in Capsule().fill(.white.opacity(0.2)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
+                    GeometryReader { proxy in RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.28)).overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(width: 186, height: 5)
                         .alignmentGuide(.progressBar) { $0[VerticalAlignment.center] }
-                    HStack(spacing: 8) {
+                    HStack(spacing: 30) {
                         // Share and episode count come from the same card, so they always agree.
                         Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete")
-                        Spacer(minLength: 0)
                         if let left = cardText?.timeLeft { Text(left).monospacedDigit() }
-                    }.font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-                }.frame(maxWidth: 240)
+                    }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1)
+                }
                 Spacer(minLength: 0)
                 controls.alignmentGuide(.progressBar) { $0[VerticalAlignment.center] }
             }.padding(.top, 6)

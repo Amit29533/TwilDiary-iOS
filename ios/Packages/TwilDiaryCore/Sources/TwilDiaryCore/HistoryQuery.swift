@@ -103,3 +103,33 @@ public struct HistoryQuery: Equatable, Codable, Sendable {
         return DiaryDate.calendar(timeZone: timeZone).date(from: DateComponents(year: fields[0], month: fields[1], day: fields[2]))
     }
 }
+
+/// Home's Recently watched: back-to-back watches of the same show and season become one row
+/// ("S1 · E2 to E5", 4 episodes). Entries come newest first.
+public struct RecentWatchGroup: Identifiable, Sendable {
+    public let entries: [HistoryEntry]
+    public var id: String { entries.first?.id ?? "" }
+    public var title: MediaTitle { entries[0].title }
+    /// The newest watch's date.
+    public var date: Date? { entries.lazy.compactMap { DiaryDate.parse($0.event.watchedAt) }.first }
+    public var count: Int { entries.count }
+    public var episodeText: String {
+        let episodes = entries.compactMap(\.episode)
+        guard let season = episodes.first?.season else { return "Movie" }
+        let numbers = episodes.map(\.number)
+        let low = numbers.min() ?? 0, high = numbers.max() ?? 0
+        return low == high ? "S\(season) · E\(low)" : "S\(season) · E\(low) to E\(high)"
+    }
+    public static func make(_ entries: [HistoryEntry], limit: Int) -> [RecentWatchGroup] {
+        var groups: [[HistoryEntry]] = []
+        for entry in entries {
+            if let last = groups.last?.last, last.title.id == entry.title.id, let a = last.episode, let b = entry.episode, a.season == b.season {
+                groups[groups.count - 1].append(entry)
+            } else {
+                if groups.count == limit { break }
+                groups.append([entry])
+            }
+        }
+        return groups.map(RecentWatchGroup.init(entries:))
+    }
+}
