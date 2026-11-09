@@ -198,9 +198,14 @@ struct FavouritesView: View {
     @AppStorage("favouritesCastGrid") private var castGrid = true
     @AppStorage("favouritesCharactersGrid") private var charactersGrid = true
     @AppStorage("favouritesVoiceGrid") private var voiceGrid = true
+    @AppStorage("favouritesSortByName") private var sortByName = false
+    @State private var query = ""
     private var favourites: FavouritesStore { .shared }
     var body: some View {
-        let items = favourites.items(tab)
+        let all = favourites.items(tab)
+        let needle = query.trimmingCharacters(in: .whitespaces)
+        let matching = needle.isEmpty ? all : all.filter { $0.name.localizedCaseInsensitiveContains(needle) }
+        let items = sortByName ? matching.sorted { $0.name.localizedCompare($1.name) == .orderedAscending } : matching
         EdgeToEdgeScroll {
             tabs.padding(.top, 4)
             Group {
@@ -212,11 +217,26 @@ struct FavouritesView: View {
             }.id(tab).padding(.horizontal, 14).padding(.top, 8)
             HStack(spacing: 9) {
                 Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
-                Text("Hearted").font(.system(size: 20, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                Text("Hearted").font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("favourites-hearted-heading")
+                if !all.isEmpty {
+                    Text(all.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent)
+                        .padding(.horizontal, 9).frame(height: 26).background(theme.accent.opacity(0.16), in: Capsule())
+                }
                 Spacer(minLength: 4)
                 CollectionLayoutToggle(grid: grid, collection: "favourites")
             }.padding(.horizontal, 14).padding(.top, 20)
+            if all.count > 1 {
+                HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search hearted", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    }.padding(.horizontal, 14).frame(height: 46).background(.white.opacity(0.07), in: Capsule())
+                    Menu {
+                        Picker("Order", selection: $sortByName) { Text("Recent").tag(false); Text("Name A–Z").tag(true) }
+                    } label: { FilterPill(label: sortByName ? "A–Z" : "Recent", icon: "arrow-down-up", active: true) }
+                }.padding(.horizontal, 14).padding(.top, 10)
+            }
             if items.isEmpty {
                 DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)
                     .padding(.horizontal, 14).padding(.top, 12)
