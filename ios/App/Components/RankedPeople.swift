@@ -40,6 +40,57 @@ struct PeopleRankingRoute: Hashable {
     let identifier: String
     let people: [RankedPerson]
     var status: String? = nil
+    /// "AniList" when the ranking comes from your AniList profile (shown as a pill).
+    var source: String? = nil
+}
+
+/// "ANILIST": a small outlined pill naming where a ranking comes from.
+struct RankingSourcePill: View {
+    let text: String
+    var body: some View {
+        Text(text.uppercased()).font(.system(size: 11, weight: .bold)).tracking(1).foregroundStyle(HomeStyle.secondary)
+            .padding(.horizontal, 11).frame(height: 28).background(HomeStyle.round, in: Capsule())
+            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
+    }
+}
+
+/// The heart on a person's card: outlined until hearted, then filled lilac. Tapping adds or removes
+/// them from Favourites at once.
+struct FavouriteHeartButton: View {
+    let kind: Favourite.Kind
+    let ref: Int
+    let name: String
+    let image: String?
+    let subtitle: String?
+    var size: CGFloat = 34
+    var tinted = false
+    @Environment(DiaryStore.self) private var store
+    @State private var feedback = 0
+    var body: some View {
+        let saved = FavouritesStore.shared.contains(kind, ref)
+        Button {
+            FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
+            feedback += 1
+        } label: {
+            Image(systemName: saved ? "heart.fill" : "heart").font(.system(size: size * 0.46, weight: .semibold))
+                .foregroundStyle(saved ? HomeStyle.chipText : .white)
+                .frame(width: size, height: size)
+                .background(tinted ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.black.opacity(0.55)), in: Circle())
+                .frame(width: max(44, size), height: max(44, size)).contentShape(Circle())
+        }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove " + name + " from favourites" : "Add " + name + " to favourites")
+            .accessibilityValue(saved ? "Saved" : "Not saved").sensoryFeedback(.selection, trigger: feedback)
+    }
+}
+
+extension RankedPerson {
+    /// What a heart on this person saves: cast by TMDB id, characters and voice actors by AniList id.
+    var favourite: (kind: Favourite.Kind, ref: Int)? {
+        switch destination {
+        case .cast(let id): (.cast, id)
+        case .character(let id): (.character, id)
+        case .voice(let route): route.id.map { (.voice, $0) }
+        }
+    }
 }
 
 struct MostWatchedSection<Content: View>: View {
@@ -48,17 +99,16 @@ struct MostWatchedSection<Content: View>: View {
     var ranking: PeopleRankingRoute? = nil
     @ViewBuilder let content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 if let heading {
-                    Text(heading).font(.system(size: 20, weight: .semibold))
-                        .accessibilityValue(ranking?.status ?? "")
+                    Text(heading).font(.system(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        .accessibilityValue(ranking?.status ?? "").accessibilityAddTraits(.isHeader)
                 }
                 Spacer(minLength: 4)
                 if let user {
-                    NavigationLink(value: AppDestination.anilist) {
-                        BrandLogo(service: .anilist, size: 24).frame(width: 36, height: 44)
-                    }.buttonStyle(.plain)
+                    NavigationLink(value: AppDestination.anilist) { RankingSourcePill(text: "AniList").frame(minHeight: 44).contentShape(Capsule()) }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("AniList profile " + user + ", change in Settings").accessibilityIdentifier("anilist-user")
                 }
                 if let ranking, !ranking.people.isEmpty {
@@ -77,21 +127,32 @@ struct MostWatchedShelf: View {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(Array(ranking.people.enumerated()), id: \.element.id) { index, person in
                     RankedPersonLink(person: person, identifier: ranking.identifier) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Artwork(path: person.row.image, title: person.row.name).posterAspect()
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(alignment: .bottomLeading) {
-                                    Text("#\(index + 1)").font(.system(size: 11, weight: .semibold)).monospacedDigit()
-                                        .foregroundStyle(.white).padding(.horizontal, 6).frame(minHeight: 22)
-                                        .background(.black.opacity(0.78), in: Capsule()).padding(6)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Color.clear.aspectRatio(0.83, contentMode: .fit)
+                                .overlay { Artwork(path: person.row.image, title: person.row.name, alignment: .top) }
+                                .clipShape(RoundedRectangle(cornerRadius: 18))
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+                                .overlay(alignment: .topLeading) {
+                                    Text("#\(index + 1)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                                        .foregroundStyle(Color(webHex: "#1a1030")).padding(.horizontal, 8).frame(height: 24)
+                                        .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                                        .padding(8)
                                 }
-                            Text(person.row.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
-                                .lineLimit(2, reservesSpace: true)
+                                .padding(.bottom, 6)
+                            Text(person.row.name).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                .lineLimit(1).truncationMode(.tail)
                             Text([person.row.count, person.row.extra].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
+                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
                         }.multilineTextAlignment(.leading).contentShape(Rectangle())
                             .accessibilityElement(children: .combine)
-                    }.containerRelativeFrame(.horizontal) { width, _ in min(144, max(96, (width - 36) / 3.2)) }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if let saved = person.favourite {
+                            FavouriteHeartButton(kind: saved.kind, ref: saved.ref, name: person.row.name, image: person.row.image, subtitle: person.row.detail)
+                                .padding(-2)
+                        }
+                    }
+                    .containerRelativeFrame(.horizontal) { width, _ in min(150, max(100, (width - 36) / 2.85)) }
                 }
             }.scrollTargetLayout()
         }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden)
@@ -117,30 +178,39 @@ private struct RankedPersonLink<Label: View>: View {
 struct PeopleRankingView: View {
     let route: PeopleRankingRoute
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll(frosted: true) {
             LazyVStack(alignment: .leading, spacing: 12) {
-                Text(route.category).font(.system(size: 24, weight: .bold)).accessibilityIdentifier("people-ranking-category")
-                if let status = route.status { Text(status).font(.caption).foregroundStyle(.secondary) }
+                HStack(spacing: 12) {
+                    Text(route.category).font(.system(size: 34, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.primary)
+                        .lineLimit(1).minimumScaleFactor(0.8).accessibilityIdentifier("people-ranking-category")
+                    if let source = route.source { RankingSourcePill(text: source) }
+                }.padding(.bottom, 4)
+                if let status = route.status { Text(status).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
                 ForEach(Array(route.people.enumerated()), id: \.element.id) { index, person in
                     RankedPersonLink(person: person, identifier: "ranking-" + route.identifier) {
-                        HStack(alignment: .center, spacing: 10) {
-                            Text(String(index + 1)).font(.subheadline.weight(.semibold)).monospacedDigit()
-                                .foregroundStyle(.secondary).frame(width: 22)
-                            Artwork(path: person.row.image, title: person.row.name).frame(width: 52, height: 72)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        HStack(alignment: .center, spacing: 14) {
+                            Text(String(index + 1)).font(.system(size: 22, weight: .bold)).monospacedDigit()
+                                .foregroundStyle(index < 3 ? HomeStyle.chipText : HomeStyle.secondary).frame(width: 30)
+                            Artwork(path: person.row.image, title: person.row.name, alignment: .top).frame(width: 52, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(person.row.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                                if let detail = person.row.detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                                Text(person.row.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                                if let detail = person.row.detail, !detail.isEmpty {
+                                    Text(detail).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                                }
                                 Text([person.row.count, person.row.extra].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
+                                    .padding(.horizontal, 10).frame(height: 26).background(HomeStyle.chip, in: Capsule())
                             }.frame(maxWidth: .infinity, alignment: .leading)
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                        }.padding(12).background(Color(webHex: "#121116"), in: RoundedRectangle(cornerRadius: 14))
+                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        }.padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+                            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                             .multilineTextAlignment(.leading).contentShape(Rectangle()).accessibilityElement(children: .combine)
                     }
                 }
-            }.padding(.horizontal, 14).padding(.top, 8)
-        }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().tint(Color(webHex: "#e6e2ec"))
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+        }.diaryScreenBackground().tint(Color(webHex: "#e6e2ec"))
             .navigationTitle("Most watched").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
     }
 }

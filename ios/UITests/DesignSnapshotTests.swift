@@ -325,6 +325,37 @@ import XCTest
         }
     }
 
+    /// Favourites: Characters (grid, then list), Cast, Voice actors, and a Most watched page.
+    func testFavouritesSnapshots() {
+        let extra = ["-anilistUser", "twilight29533", "--ui-favourites-gallery"]
+        func openFavourites(_ app: XCUIApplication) {
+            let all = app.buttons["home-favourites"]
+            for _ in 0..<12 where !(all.exists && all.isHittable) { app.swipeUp() }
+            if all.exists { all.tap() }
+            Thread.sleep(forTimeInterval: 2.5)
+            let characters = app.buttons["favourites-tab-character"]
+            if characters.exists { characters.tap(); Thread.sleep(forTimeInterval: 1.5) }
+        }
+        capture(tab: "home", name: "favchars", pages: 2, extra: extra, open: openFavourites)
+        capture(tab: "home", name: "favlist", pages: 1, extra: extra) { app in
+            openFavourites(app)
+            let list = app.buttons["Show favourites as list"]
+            if list.exists { list.tap(); Thread.sleep(forTimeInterval: 1) }
+        }
+        capture(tab: "home", name: "favcast", pages: 1, extra: extra) { app in
+            openFavourites(app); app.buttons["favourites-tab-cast"].tap(); Thread.sleep(forTimeInterval: 2)
+        }
+        capture(tab: "home", name: "favvoice", pages: 1, extra: extra) { app in
+            openFavourites(app); app.buttons["favourites-tab-voice"].tap(); Thread.sleep(forTimeInterval: 2)
+        }
+        capture(tab: "home", name: "favmore", pages: 1, extra: extra) { app in
+            openFavourites(app)
+            let more = app.buttons["top-character-more"]
+            if more.waitForExistence(timeout: 5) { more.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+    }
+
     /// Airing calendar: Upcoming top to bottom, Catch-up, All, then the Genres sheet.
     func testCalendarSnapshots() {
         func openCalendar(_ app: XCUIApplication) {

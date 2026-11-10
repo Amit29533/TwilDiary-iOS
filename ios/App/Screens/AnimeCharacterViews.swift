@@ -201,52 +201,69 @@ struct FavouritesView: View {
     @AppStorage("favouritesCastGrid") private var castGrid = true
     @AppStorage("favouritesCharactersGrid") private var charactersGrid = true
     @AppStorage("favouritesVoiceGrid") private var voiceGrid = true
-    @AppStorage("favouritesSortByName") private var sortByName = false
+    /// recent, oldest or name.
+    @AppStorage("favouritesSort") private var sort = "recent"
     @State private var query = ""
+    @Namespace private var tabSpace
     private var favourites: FavouritesStore { .shared }
     var body: some View {
         let all = favourites.items(tab)
         let needle = query.trimmingCharacters(in: .whitespaces)
         let matching = needle.isEmpty ? all : all.filter { $0.name.localizedCaseInsensitiveContains(needle) }
-        let items = sortByName ? matching.sorted { $0.name.localizedCompare($1.name) == .orderedAscending } : matching
-        EdgeToEdgeScroll {
-            tabs.padding(.top, 4)
+        let items: [Favourite] = switch sort {
+        case "name": matching.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        case "oldest": matching.sorted { $0.savedAt < $1.savedAt }
+        default: matching.sorted { $0.savedAt > $1.savedAt }
+        }
+        EdgeToEdgeScroll(frosted: true) {
+            tabs.padding(.horizontal, 16).padding(.top, 4)
             Group {
                 switch tab {
                 case .cast: MostWatchedCast(kind: .cast)
                 case .character: AniListMostWatched(kind: .characters)
                 case .voice: MostWatchedCast(kind: .voice)
                 }
-            }.id(tab).padding(.horizontal, 14).padding(.top, 8)
-            HStack(spacing: 9) {
-                Image(systemName: "heart.fill").foregroundStyle(theme.accent).accessibilityHidden(true)
-                Text("Hearted").font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
+            }.id(tab).padding(.horizontal, 16).padding(.top, 14)
+            HStack(spacing: 10) {
+                Image(systemName: "heart.fill").font(.system(size: 20)).foregroundStyle(HomeStyle.chipText).accessibilityHidden(true)
+                Text("Hearted").font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("favourites-hearted-heading")
                 if !all.isEmpty {
-                    Text(all.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent)
-                        .padding(.horizontal, 9).frame(height: 26).background(theme.accent.opacity(0.16), in: Capsule())
+                    Text(all.count.formatted()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
+                        .frame(minWidth: 26).padding(.horizontal, 4).frame(height: 26).background(HomeStyle.chip, in: Capsule())
                 }
                 Spacer(minLength: 4)
-                CollectionLayoutToggle(grid: grid, collection: "favourites")
-            }.padding(.horizontal, 14).padding(.top, 20)
-            if all.count > 1 {
+                layoutSwitch
+            }.padding(.horizontal, 16).padding(.top, 26)
+            if !all.isEmpty {
                 HStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("Search hearted", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    }.padding(.horizontal, 14).frame(height: 46).background(.white.opacity(0.07), in: Capsule())
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                        TextField("Search hearted", text: $query).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .accessibilityIdentifier("favourites-search")
+                    }.padding(.horizontal, 16).frame(height: 46).background(HomeStyle.card, in: Capsule())
+                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
                     Menu {
-                        Picker("Order", selection: $sortByName) { Text("Recent").tag(false); Text("Name A–Z").tag(true) }
-                    } label: { FilterPill(label: sortByName ? "A–Z" : "Recent", icon: "arrow-down-up", active: true) }
-                }.padding(.horizontal, 14).padding(.top, 10)
+                        Picker("Order", selection: $sort) {
+                            Text("Recently hearted").tag("recent"); Text("Oldest first").tag("oldest"); Text("A–Z").tag("name")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.arrow.down").font(.system(size: 13, weight: .bold))
+                            Text(sort == "name" ? "A–Z" : sort == "oldest" ? "Oldest" : "Recent").lineLimit(1)
+                            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
+                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).fixedSize()
+                            .padding(.horizontal, 14).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
+                    }.accessibilityLabel("Order").accessibilityIdentifier("favourites-sort")
+                }.padding(.horizontal, 16).padding(.top, 12)
             }
             if items.isEmpty {
-                DiaryEmptyState(title: "No favourite " + tab.label.lowercased() + " yet", description: emptyHint)
-                    .padding(.horizontal, 14).padding(.top, 12)
+                DiaryEmptyState(title: all.isEmpty ? "No favourite " + tab.label.lowercased() + " yet" : "No hearted " + tab.label.lowercased() + " match", description: all.isEmpty ? emptyHint : "Try another name.")
+                    .padding(.horizontal, 16).padding(.top, 12)
             } else {
-                LazyVGrid(columns: grid.wrappedValue ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], spacing: 18) {
-                    ForEach(items) { item in FavouriteLink(item: item, poster: grid.wrappedValue, row: !grid.wrappedValue) }
-                }.padding(.horizontal, 14).padding(.top, 8)
+                LazyVGrid(columns: grid.wrappedValue ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], spacing: grid.wrappedValue ? 18 : 12) {
+                    ForEach(items) { item in FavouriteLink(item: item, poster: grid.wrappedValue, row: !grid.wrappedValue, hearts: true) }
+                }.padding(.horizontal, 16).padding(.top, 12)
             }
         }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .tint(Color(webHex: "#e6e2ec"))
@@ -267,18 +284,39 @@ struct FavouritesView: View {
         case .voice: "Tap the heart on a voice actor’s page to keep them here."
         }
     }
-    /// Three tabs scroll sideways on narrow phones rather than squeezing.
+    /// Cast · Characters · Voice actors in one dark track; the chosen one is a sliding lilac pill.
     private var tabs: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 20) {
-                ForEach(Favourite.Kind.allCases, id: \.self) { kind in
-                    Button { tab = kind } label: {
-                        Text(kind.label).font(.system(size: 24, weight: .bold)).tracking(-0.6)
-                            .foregroundStyle(tab == kind ? Color(webHex: "#f3f0f7") : .white.opacity(0.4))
-                    }.buttonStyle(.plain).accessibilityAddTraits(tab == kind ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
-                }
-            }.padding(.horizontal, 14)
-        }.scrollIndicators(.hidden)
+        HStack(spacing: 4) {
+            ForEach(Favourite.Kind.allCases, id: \.self) { kind in
+                let on = tab == kind
+                Button { withAnimation(.snappy(duration: 0.28)) { tab = kind } } label: {
+                    Text(kind.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background {
+                            if on {
+                                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
+                                    .matchedGeometryEffect(id: "favourites-tab", in: tabSpace)
+                            }
+                        }.contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
+            }
+        }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
+    }
+    /// Grid · list as two icons in one small track.
+    private var layoutSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach([true, false], id: \.self) { isGrid in
+                let on = grid.wrappedValue == isGrid
+                Button { withAnimation(.smooth(duration: 0.28)) { grid.wrappedValue = isGrid } } label: {
+                    Image(systemName: isGrid ? "square.grid.2x2" : "list.bullet").font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(on ? HomeStyle.chipText : HomeStyle.secondary)
+                        .frame(width: 40, height: 34).background { if on { Capsule().fill(HomeStyle.chip) } }.contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityLabel(isGrid ? "Show favourites as grid" : "Show favourites as list")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }.padding(3).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
+            .frame(minHeight: 44)
     }
 }
 
@@ -291,6 +329,8 @@ struct FavouriteLink: View {
     var row = false
     /// Home uses portraits while retaining these same provider-specific navigation links.
     var homeCard = false
+    /// Favourites page: a filled heart on each card (tap to remove).
+    var hearts = false
     var body: some View {
         Group {
             switch item.kind {
@@ -299,26 +339,38 @@ struct FavouriteLink: View {
             case .voice: NavigationLink(value: VoiceActorRoute(id: item.ref, name: item.name)) { label }
             }
         }.buttonStyle(.springPress).accessibilityIdentifier("favourite-" + item.id)
+            .overlay(alignment: row ? .trailing : .topTrailing) {
+                if hearts && (row || poster) {
+                    FavouriteHeartButton(kind: item.kind, ref: item.ref, name: item.name, image: item.image, subtitle: item.subtitle,
+                                         size: row ? 42 : 34, tinted: row)
+                        .padding(row ? 12 : -2)
+                }
+            }
     }
     @ViewBuilder private var label: some View {
         if homeCard {
             HomeFavouriteCard(item: item)
         } else if row {
-            HStack(spacing: 12) {
-                Artwork(path: item.image, title: item.name).frame(width: 56, height: 84).clipShape(RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(item.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
-                    Text(item.subtitle ?? item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            HStack(spacing: 14) {
+                Artwork(path: item.image, title: item.name, alignment: .top).frame(width: 56, height: 64).clipShape(RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.name).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                    Text(item.subtitle ?? item.kind.singular).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-            }.padding(10).background(Color(webHex: "#121116"), in: RoundedRectangle(cornerRadius: 14))
+                if hearts { Color.clear.frame(width: 42, height: 1) }
+                else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary) }
+            }.padding(.horizontal, 14).padding(.vertical, 12)
+                .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                 .multilineTextAlignment(.leading).contentShape(Rectangle()).accessibilityElement(children: .combine)
         } else if poster {
-            VStack(alignment: .leading, spacing: 6) {
-                Artwork(path: item.image, title: item.name).posterAspect()
-                    .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
-                Text(item.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
-                Text(item.subtitle ?? item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(alignment: .leading, spacing: 4) {
+                Color.clear.aspectRatio(0.83, contentMode: .fit)
+                    .overlay { Artwork(path: item.image, title: item.name, alignment: .top) }
+                    .clipShape(RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+                    .padding(.bottom, 6)
+                Text(item.name).font(.system(size: 15, weight: .bold)).lineLimit(2).foregroundStyle(HomeStyle.primary)
+                Text(item.subtitle ?? item.kind.singular).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
             }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
         } else {
             HomeFavouriteCard(item: item).frame(width: size + 18)

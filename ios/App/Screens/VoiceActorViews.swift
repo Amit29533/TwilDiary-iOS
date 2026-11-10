@@ -118,7 +118,7 @@ struct AniListMostWatched: View {
                            identifier: kind == .voiceActors ? "top-voice-actor" : "top-character",
                            people: rows.map { row in
             RankedPerson.aniList(row, voice: kind == .voiceActors)
-        })
+        }, source: "AniList")
     }
     @ViewBuilder private var ranking: some View {
         if user.isEmpty { connectPrompt }
