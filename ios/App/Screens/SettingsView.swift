@@ -328,73 +328,55 @@ struct TMDBConnectionView: View {
 
     var body: some View {
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 12) {
-                        BrandLogo(service: .tmdb, size: 46)
-                        Text("TMDB").font(.title2.bold())
-                        Spacer()
-                        Text(verified ? "Connected" : checking ? "Checking…" : store.providerSettings.customTmdbToken != nil ? "Custom API" : "Not connected")
-                            .font(.caption.bold())
-                            .foregroundStyle(verified || store.providerSettings.customTmdbToken != nil ? Color.mint : Color.secondary)
-                    }
-                    Text("Posters, title details, seasons and episodes.").font(.subheadline).foregroundStyle(.secondary)
+            // Design (board 9): the service card with its two buttons, then one note.
+            VStack(alignment: .leading, spacing: 14) {
+                let custom = store.providerSettings.customTmdbToken != nil
+                SettingsServiceHeader(logo: .tmdb, title: "TMDB", subtitle: "Posters, title details, seasons and episodes.",
+                                      badge: verified ? ("Connected", .good) : checking ? ("Checking…", .plain) : ("Not connected", .missing)) {
                     HStack(spacing: 10) {
                         Button(checking ? "Checking…" : "Check connection") { Task { await check() } }
-                            .buttonStyle(.glass).disabled(checking)
-                        Button(editingApi ? "Hide API settings" : "Change API key") {
+                            .buttonStyle(SettingsWideButtonStyle()).disabled(checking)
+                        Button(editingApi ? "Hide" : "Change API key") {
                             tokenInput = store.providerSettings.customTmdbToken ?? ""
-                            editingApi.toggle()
+                            withAnimation(Motion.smooth) { editingApi.toggle() }
                             savedMessage = nil
-                        }
-                        .buttonStyle(.glass)
-                        .accessibilityIdentifier("tmdb-api-toggle")
+                        }.buttonStyle(SettingsWideButtonStyle(outlined: true)).accessibilityIdentifier("tmdb-api-toggle")
                     }
-                    if let error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
-                    if let savedMessage { Text(savedMessage).font(.caption).foregroundStyle(.mint).accessibilityIdentifier("tmdb-api-saved") }
-                    Text("API credentials stay on your server by default. You can also set or replace a custom TMDB Read Access Token here.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.diaryPanel()
-
-                if editingApi {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            DiaryIcon(name: "key-round", size: 16).foregroundStyle(theme.accent)
-                            Text("API settings").font(.headline)
-                        }
-                        Text("Enter a TMDB API Read Access Token (without the word Bearer) to override the default key.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        SecureField("Paste your TMDB Read Access Token", text: $tokenInput)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .padding(12)
-                            .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
-                            .accessibilityIdentifier("tmdb-api-token-field")
-                        HStack(spacing: 10) {
-                            Button("Save API key") {
-                                guard store.updateCustomTmdbToken(tokenInput) else { savedMessage = store.error; return }
-                                savedMessage = "Custom TMDB API key saved."
-                                verified = true
-                                editingApi = false
-                            }
-                            .buttonStyle(.glassProminent)
-                            .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .accessibilityIdentifier("tmdb-api-save")
-                            if store.providerSettings.customTmdbToken != nil {
-                                Button("Use server default", role: .destructive) {
-                                    tokenInput = ""
-                                    guard store.updateCustomTmdbToken(nil) else { savedMessage = store.error; return }
-                                    savedMessage = "Reverted to server TMDB token."
-                                    editingApi = false
-                                }
-                                .buttonStyle(.glass)
-                                .accessibilityIdentifier("tmdb-api-reset")
-                            }
-                        }
-                    }.diaryPanel().accessibilityIdentifier("tmdb-api-panel")
+                    if let error { Text(error).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+                    if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(webHex: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
                 }
-            }.padding(16)
+                SettingsFootnote(text: custom
+                    ? "Your own Read Access Token is stored encrypted on this iPhone and used first; your server’s key is the backup."
+                    : "TMDB is read straight from this iPhone with your server’s key. You can also set your own TMDB Read Access Token here.")
+                if editingApi {
+                    SettingsGroup(label: "Your own token") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Paste a TMDB Read Access Token (without the word Bearer). It replaces the server’s key on this iPhone.")
+                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                            SecureField("TMDB Read Access Token", text: $tokenInput).settingsField(monospaced: true)
+                                .accessibilityIdentifier("tmdb-api-token-field")
+                            HStack(spacing: 10) {
+                                Button("Save") {
+                                    guard store.updateCustomTmdbToken(tokenInput) else { savedMessage = store.error; return }
+                                    savedMessage = "Your TMDB token is saved."
+                                    verified = true
+                                    editingApi = false
+                                }.buttonStyle(SettingsWideButtonStyle())
+                                    .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                    .accessibilityIdentifier("tmdb-api-save")
+                                if custom {
+                                    Button("Use server key") {
+                                        tokenInput = ""
+                                        guard store.updateCustomTmdbToken(nil) else { savedMessage = store.error; return }
+                                        savedMessage = "Back to your server’s TMDB key."
+                                        editingApi = false
+                                    }.buttonStyle(SettingsWideButtonStyle(outlined: true)).accessibilityIdentifier("tmdb-api-reset")
+                                }
+                            }
+                        }.padding(15)
+                    }.accessibilityIdentifier("tmdb-api-panel")
+                }
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }
         .diaryScreenBackground()
         .navigationTitle("TMDB")
@@ -471,8 +453,8 @@ struct ExternalProviderConnectionView: View {
 
     private var subtitleText: String {
         switch provider {
-        case .simkl: "Anime, TV and movie watch history, ratings and lists."
-        case .mdblist: "Multi-source public ratings and watchlist sync."
+        case .simkl: "Watch history, ratings and lists."
+        case .mdblist: "Public ratings, watch history and watchlist."
         case .trakt: "Watch history, ratings and watchlist."
         case .cloudflare: "Hosted diary sync."
         }
@@ -496,13 +478,13 @@ struct ExternalProviderConnectionView: View {
 
     var body: some View {
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 16) {
                 headerCard
                 connectCard
                 if currentConfig.isAuthenticated || pendingOutboxCount > 0 { sendEditsCard }
                 if currentConfig.isAuthenticated, let tracker { TrackerPreviewPanel(tracker: tracker) }
                 ownKeySection
-            }.padding(16).padding(.bottom, 60)
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }
         .diaryScreenBackground()
         .navigationTitle(displayName)
@@ -519,18 +501,19 @@ struct ExternalProviderConnectionView: View {
 
     /// One switch: whether your edits go to this service, and what's still on its way.
     private var sendEditsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             Toggle(isOn: $enabled) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Send my edits to \(displayName)").font(.subheadline.weight(.semibold))
-                    Text("Watches, ratings, Planned and dropped, as you make them.").font(.caption).foregroundStyle(.secondary)
-                }
-            }.tint(theme.accent)
+                    Text("Send my edits to \(displayName)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text("Sent as you make them.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.toggleStyle(SettingsToggleStyle()).padding(.horizontal, 15).frame(minHeight: 64)
                 .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
                 .accessibilityIdentifier("\(provider.rawValue)-enable-toggle")
             if pendingOutboxCount > 0 {
+                SettingsDivider()
                 HStack {
-                    Text("\(pendingOutboxCount) waiting to send").font(.caption).foregroundStyle(.secondary)
+                    Text("\(pendingOutboxCount) waiting to send").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                         .accessibilityIdentifier("\(provider.rawValue)-outbox-count")
                     Spacer()
                     Button(syncing ? "Sending…" : "Send now") {
@@ -542,10 +525,10 @@ struct ExternalProviderConnectionView: View {
                             if pending.isEmpty { statusMessage = "Everything reached \(displayName)." }
                             else { errorMessage = "\(pending.count) still waiting. " + (pending.first?.lastError ?? "") }
                         }
-                    }.font(.caption.weight(.semibold)).disabled(syncing || !currentConfig.isAuthenticated).accessibilityIdentifier("\(provider.rawValue)-sync-now")
-                }
+                    }.buttonStyle(SettingsPillButtonStyle()).disabled(syncing || !currentConfig.isAuthenticated).accessibilityIdentifier("\(provider.rawValue)-sync-now")
+                }.padding(.horizontal, 15).padding(.vertical, 10)
             }
-        }.diaryPanel()
+        }.modifier(SettingsCard())
     }
 
     /// Your own key or token, folded away: signing in is the simple way.
@@ -553,10 +536,12 @@ struct ExternalProviderConnectionView: View {
         VStack(alignment: .leading, spacing: 12) {
             Button { withAnimation(Motion.smooth) { showOwnKey.toggle() } } label: {
                 HStack {
-                    Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead").font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Image(systemName: "chevron.down").rotationEffect(.degrees(showOwnKey ? 180 : 0)).font(.caption.weight(.bold))
-                }.foregroundStyle(.secondary).contentShape(Rectangle())
+                    Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78"))
+                        .rotationEffect(.degrees(showOwnKey ? 180 : 0))
+                }.padding(.horizontal, 15).frame(minHeight: 56).contentShape(Rectangle()).modifier(SettingsCard())
             }.buttonStyle(.plain).accessibilityIdentifier("\(provider.rawValue)-own-key")
             if showOwnKey { apiSettingsCard }
         }
@@ -565,7 +550,7 @@ struct ExternalProviderConnectionView: View {
     /// Two ways in: sign in to the service, or (below) your own API key or token.
     private var connectCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Connect").font(.subheadline.bold()).foregroundStyle(.secondary)
+            SettingsLabel(text: "Connect") { EmptyView() }
             VStack(alignment: .leading, spacing: 12) {
                 switch provider {
                 case .trakt:
@@ -574,13 +559,13 @@ struct ExternalProviderConnectionView: View {
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     NavigationLink(value: AppDestination.trakt) {
                         Label(connected ? "Open Trakt" : "Sign in with Trakt", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity)
-                    }.buttonStyle(.glassProminent).accessibilityIdentifier("trakt-sign-in")
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).accessibilityIdentifier("trakt-sign-in")
                 case .simkl, .mdblist:
                     // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
                     // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
                     let appId = appClientId ?? ProfileText.line(signInAppID)
-                    Text("Sign in on \(displayName)’s own page and come straight back. The sign-in renews itself.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Sign in on \(displayName) and come straight back.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     Button {
                         if let appId { startSignIn(appId) } else {
                             errorMessage = "First, paste your \(displayName) app ID below (one-time setup)."
@@ -591,7 +576,7 @@ struct ExternalProviderConnectionView: View {
                             if signingIn { ProgressView().controlSize(.small) } else { Image(systemName: "globe") }
                             Text(signingIn ? "Signing in…" : currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)")
                         }.frame(maxWidth: .infinity)
-                    }.buttonStyle(.glassProminent).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
                     if let approval {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Approve TwilDiary on \(displayName) with this code:").font(.caption).foregroundStyle(.secondary)
@@ -604,22 +589,27 @@ struct ExternalProviderConnectionView: View {
                                     .buttonStyle(.diarySecondary)
                             }.font(.subheadline)
                             Text("Waiting for approval… come back here afterwards; it finishes on its own.").font(.caption).foregroundStyle(.secondary)
-                        }.padding(12).background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+                        }.padding(12).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
                     }
                     if appClientId == nil {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : provider == .mdblist
-                                 ? "One-time setup: create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here (or under Connections → All keys)."
-                                 : "One-time setup: create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here (or under Connections → All keys).")
-                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        SettingsDivider().padding(.horizontal, -15).padding(.vertical, 4)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("One-time setup").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Spacer(minLength: 8)
+                                SettingsInfoButton(text: provider == .mdblist
+                                    ? "Create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here or under Connections → All keys."
+                                    : "Create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here or under Connections → All keys.")
+                            }
+                            Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : "Paste your \(displayName) client ID.")
+                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
-                            TextField("\(displayName) app client ID", text: $signInAppID)
-                                .textInputAutocapitalization(.never).autocorrectionDisabled().font(.subheadline).focused($appIDFocused)
+                            TextField("\(displayName) app client ID", text: $signInAppID).settingsField(monospaced: true)
+                                .focused($appIDFocused)
                                 .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
-                                .padding(10).background(theme.field, in: RoundedRectangle(cornerRadius: 10))
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
                             Link(destination: URL(string: provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/")!) {
-                                Label("Open \(displayName)’s developer page", systemImage: "arrow.up.right.square").font(.caption.weight(.semibold))
+                                SettingsLinkLabel(text: "Open \(displayName)’s developer page")
                             }
                         }
                     }
@@ -627,7 +617,7 @@ struct ExternalProviderConnectionView: View {
                     EmptyView()
                 }
                 messages
-            }.diaryPanel()
+            }.padding(15).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
         }
     }
     private var appClientId: String? {
@@ -730,84 +720,59 @@ struct ExternalProviderConnectionView: View {
 
     private var headerCard: some View {
         let badge = currentConfig.statusBadge
-        let color: Color = badge == "Connected" ? .mint : badge == "Configured" ? .yellow : .secondary
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                BrandLogo(service: brand, size: 46)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(displayName).font(.title3.bold())
-                    Text(currentConfig.username.map { "@" + $0 } ?? subtitleText)
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Text(badge)
-                    .font(.caption.bold())
-                    .foregroundStyle(color)
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(color.opacity(0.12), in: Capsule())
-                    .accessibilityIdentifier("\(provider.rawValue)-status-badge")
-            }
+        let tone: SettingsTone = badge == "Connected" ? .good : badge == "Configured" ? .configured : .plain
+        return SettingsServiceHeader(logo: brand, title: displayName, subtitle: currentConfig.username.map { "@" + $0 } ?? subtitleText,
+                                     badge: (badge, tone)) {
+            SettingsKeeps(items: includedDomainsText.components(separatedBy: " · "))
             if let lastSync = currentConfig.lastSyncedAt, let date = DiaryDate.parse(lastSync) {
-                Text("Last sent \(date.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Last sent \(date.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
             }
-            Text("Keeps: \(includedDomainsText)")
-                .font(.caption).foregroundStyle(.secondary)
-        }.diaryPanel()
+        }.accessibilityIdentifier("\(provider.rawValue)-status-badge")
     }
 
     private var apiSettingsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(provider == .trakt ? "Or use your own Trakt app" : "Or use your own API key or token").font(.subheadline.bold()).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 14) {
                 if provider == .mdblist {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("MDBList API Key (apikey)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text("MDBList API Key (apikey)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         SecureField("Paste your MDBList API key", text: $apiKey)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                            .settingsField(monospaced: true)
                             .accessibilityIdentifier("\(provider.rawValue)-api-key-field")
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Client ID (\(provider.rawValue)-api-key)")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         TextField("Your \(displayName) Client ID", text: $clientId)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                            .settingsField(monospaced: true)
                             .accessibilityIdentifier("\(provider.rawValue)-client-id-field")
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("OAuth Access Token (Bearer)")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         SecureField("Paste your access token", text: $accessToken)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                            .settingsField(monospaced: true)
                             .accessibilityIdentifier("\(provider.rawValue)-access-token-field")
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Account username (optional)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("Account username (optional)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                     TextField("username", text: $username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .padding(12)
-                        .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                        .settingsField(monospaced: true)
                         .accessibilityIdentifier("\(provider.rawValue)-username-field")
                 }
 
-                HStack(spacing: 10) {
-                    Button("Save API settings") {
+                InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                    Button("Save") {
                         errorMessage = nil
                         if !enabled && draftConfig().hasCredentials { enabled = true }
                         var saved = draftConfig()
@@ -818,13 +783,13 @@ struct ExternalProviderConnectionView: View {
                         if !store.updateProviderConfig(saved) { errorMessage = store.error; return }
                         statusMessage = "\(displayName) API settings saved."
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(SettingsPillButtonStyle())
                     .accessibilityIdentifier("\(provider.rawValue)-save-button")
 
-                    Button(testing ? "Testing…" : "Test API") {
+                    Button(testing ? "Testing…" : "Test") {
                         Task { await testConnection() }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(SettingsPillButtonStyle(outlined: true))
                     .disabled(testing || !draftConfig().hasCredentials)
                     .accessibilityIdentifier("\(provider.rawValue)-test-button")
 
@@ -834,7 +799,7 @@ struct ExternalProviderConnectionView: View {
                             deviceSession = nil; statusMessage = nil; errorMessage = nil
                             store.updateProviderConfig(ExternalProviderConfig(provider: provider))
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(SettingsPillButtonStyle(outlined: true))
                         .accessibilityIdentifier("\(provider.rawValue)-disconnect-button")
                     }
 
@@ -842,7 +807,7 @@ struct ExternalProviderConnectionView: View {
                         Button("Sign in with PIN") {
                             Task { await beginPinAuth() }
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(SettingsPillButtonStyle(outlined: true))
                         .disabled(testing || pollingPin)
                         .accessibilityIdentifier("\(provider.rawValue)-pin-auth-button")
                     }
@@ -864,16 +829,16 @@ struct ExternalProviderConnectionView: View {
                             Button(pollingPin ? "Checking…" : "I’ve authorized this PIN") {
                                 Task { await checkPinAuthorization() }
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(SettingsPillButtonStyle())
                             .disabled(pollingPin)
                             Button("Cancel") { deviceSession = nil }
-                                .buttonStyle(.glass)
+                                .buttonStyle(SettingsPillButtonStyle(outlined: true))
                         }
                     }
                     .padding(12)
-                    .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
+                    .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
                 }
-            }.diaryPanel()
+            }.padding(15).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
         }
     }
 

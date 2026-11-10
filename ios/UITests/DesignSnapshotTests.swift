@@ -48,6 +48,35 @@ import XCTest
         if open("settings-trash") || open("Trash") { shot("settings-trash") }
     }
 
+    /// The service pages under Settings → Connections, plus Watch history and Trash selection.
+    func testSettingsServiceSnapshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "-launchTab", "more"]
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 3)
+        func shot(_ name: String) {
+            let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+        func back() { app.navigationBars.buttons.element(boundBy: 0).tap(); Thread.sleep(forTimeInterval: 1.2) }
+        func open(_ id: String) -> Bool {
+            let target = app.descendants(matching: .any)[id]
+            for _ in 0..<6 where !(target.exists && target.isHittable) { app.swipeUp() }
+            guard target.exists else { return false }
+            target.tap(); Thread.sleep(forTimeInterval: 2.5); return true
+        }
+        func scrolled(_ name: String) { app.swipeUp(); Thread.sleep(forTimeInterval: 1); shot(name) }
+        if open("settings-connections") {
+            for id in ["settings-trakt", "settings-simkl", "settings-mdblist", "settings-tmdb", "settings-anilist", "settings-apis"] {
+                if open(id) { shot("svc-" + id); scrolled("svc-" + id + "-2"); back(); app.swipeDown(); app.swipeDown() }
+            }
+            if open("settings-signin-methods") { shot("svc-signin"); app.swipeDown(velocity: .fast); Thread.sleep(forTimeInterval: 1) }
+            back()
+        }
+        app.swipeDown(); app.swipeDown()
+        if open("settings-history") { shot("svc-history"); back() }
+    }
+
     /// A title that isn't in the library (Home → Recommended), top to bottom.
     func testPreviewSnapshots() {
         capture(tab: "home", name: "preview", pages: 8) { app in

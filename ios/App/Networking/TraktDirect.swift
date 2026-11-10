@@ -428,6 +428,8 @@ enum TraktDelivery: Equatable, Sendable {
         if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
         let data = try JSONSerialization.data(withJSONObject: body)
         let session = generation
+        // Instant sync off: the edit waits with the others and goes with the next sync, in order.
+        if !instantSync { pending.append(PendingWrite(path: path, body: data, owner: token?.username)); return }
         do {
             if token?.usable != true { token = try await store.read("/api/trakt/token") }
         } catch {
@@ -459,6 +461,37 @@ enum TraktDelivery: Equatable, Sendable {
             refreshSoon(store: store)
             throw APIError.message("Trakt couldn’t find this title by its TMDB id, so it wasn’t changed there.")
         }
+    }
+
+    // MARK: Trakt page options
+
+    /// Settings → Trakt → Instant sync. On, each edit goes to Trakt as you make it; off, edits
+    /// wait on this iPhone (in order) and go with the next sync: Sync now, Force sync or a refresh.
+    var instantSync: Bool = UserDefaults.standard.object(forKey: "trakt.instantSync") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(instantSync, forKey: "trakt.instantSync") }
+    }
+    /// Force sync: forget what was last read, so every list is read again from Trakt.
+    func forceCheck(store: DiaryStore) async {
+        guard !running else { return }
+        library?.activities = nil
+        await check(store: store)
+        if plan?.isEmpty == false { await makeTraktMatch(store: store) }
+    }
+    /// What Trakt allows this account (list counts, items per list, watchlist and favourites).
+    func accountLimits(store: DiaryStore) async throws -> [TraktAccountLimit] {
+        let reply = try await client(store: store).get("/users/settings")
+        let root = try JSONSerialization.jsonObject(with: reply.data) as? [String: Any]
+        let vip = ((root?["user"] as? [String: Any])?["vip"] as? Bool) == true
+        guard let limits = root?["limits"] as? [String: Any] else { return [] }
+        var rows: [TraktAccountLimit] = []
+        for (group, value) in limits.sorted(by: { $0.key < $1.key }) {
+            guard let values = value as? [String: Any] else { continue }
+            for (name, amount) in values.sorted(by: { $0.key < $1.key }) {
+                guard let number = amount as? Int else { continue }
+                rows.append(TraktAccountLimit(group: group, name: name, value: number, vip: vip))
+            }
+        }
+        return rows
     }
 
     // MARK: Edits waiting for a connection
@@ -1019,3 +1052,20 @@ extension DiaryStore {
     }
 }
 
+/// One of Trakt's caps for an account, from /users/settings ("list" · "item_count" · 100).
+struct TraktAccountLimit: Identifiable, Hashable, Sendable {
+    let group: String
+    let name: String
+    let value: Int
+    let vip: Bool
+    var id: String { group + "." + name }
+    /// "Lists", "Items per list", "Watchlist items"…
+    var label: String {
+        let thing = group.replacingOccurrences(of: "_", with: " ").capitalized
+        switch name {
+        case "count": return thing == "List" ? "Lists" : thing
+        case "item_count": return thing == "List" ? "Items per list" : thing + " items"
+        default: return thing + " · " + name.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+}

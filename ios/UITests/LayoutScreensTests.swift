@@ -82,12 +82,11 @@ import XCTest
         XCTAssertTrue(app.staticTexts["title-hero-name"].waitForExistence(timeout: 5))
         capture("Glass lowered title artwork and identity", app: app)
         let compact = app.descendants(matching: .any)["compact-title-navigation"]
-        let share = app.buttons["title-share"]
-        // The title stays mounted while transparent to avoid toolbar jitter.
-        // Its AX identity can exist before scrolling; wait for the real compact
-        // actions instead of treating that retained node as the visible state.
-        for _ in 0..<8 { if share.exists && share.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(compact.exists); XCTAssertTrue(share.isHittable)
+        // One ••• button holds every action (owner's design); it stays put as the title compacts.
+        let more = app.buttons["title-more"]
+        XCTAssertTrue(more.isHittable)
+        for _ in 0..<4 { app.swipeUp() }
+        XCTAssertTrue(compact.exists); XCTAssertTrue(more.isHittable)
         XCTAssertGreaterThanOrEqual(compact.frame.minX, 0)
         XCTAssertLessThanOrEqual(compact.frame.maxX, app.frame.width)
         capture("Glass compact scrolled title header", app: app)

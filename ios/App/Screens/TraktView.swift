@@ -33,13 +33,13 @@ import TwilDiaryCore
     var body: some View {
         @Bindable var controller = controller
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 24) {
-                connection
+            VStack(alignment: .leading, spacing: retired ? 16 : 24) {
                 if retired {
                     // Phase 4c: Trakt holds the diary, and the app writes to it directly. The old
                     // scan, review, incoming watches and logging settings are retired.
-                    if controller.status?.connected == true { TrackerPreviewPanel(tracker: .trakt) }
+                    retiredPage
                 } else {
+                connection
                 apiAndLoggingSettings
                 if controller.restoringApproval { restoringImport }
                 if controller.status?.connected == true {
@@ -64,7 +64,7 @@ import TwilDiaryCore
                             .buttonStyle(.diaryRowPrimary).disabled(controller.busy).accessibilityIdentifier(stale ? "trakt-fresh-scan" : "trakt-retry")
                     }.diaryPanel().accessibilityIdentifier("trakt-error")
                 }
-            }.padding(16).padding(.bottom, 100)
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("Trakt").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task(id: controller.kind.rawValue + "\n" + controller.query) {
                 do {
@@ -257,6 +257,65 @@ import TwilDiaryCore
         }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
     }
+    // MARK: Trakt holds the diary (design board 4)
+
+    @ViewBuilder private var retiredPage: some View {
+        let connected = controller.status?.connected == true
+        let reconnect = controller.status?.needsReconnect == true
+        let synced = DiaryDate.parse(controller.status?.lastSyncAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
+        SettingsServiceHeader(logo: .trakt, title: reconnect ? "Reconnect Trakt" : "Trakt",
+                              subtitle: synced ?? (controller.loading ? "Checking connection…" : connected ? "Connected" : "Your watches, together"),
+                              badge: reconnect ? ("Reconnect", .missing) : connected ? (controller.status?.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
+            Text(connected ? "Trakt holds your diary. Your edits go straight to Trakt." : "Connect Trakt and your diary lives there.")
+                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+            if reconnect || (!connected && controller.status?.configured == true) {
+                Button { showSignIn = true } label: { Label(reconnect ? "Reconnect Trakt" : "Connect Trakt", systemImage: "globe") }
+                    .buttonStyle(SettingsPrimaryButtonStyle()).disabled(controller.busy)
+            } else if !connected && controller.status != nil {
+                Text("Add a Trakt Client ID on your server first.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+            }
+        }
+        if connected {
+            TrackerPreviewPanel(tracker: .trakt)
+            SettingsGroup(label: "Options") {
+                Toggle(isOn: Binding(get: { traktDirect.instantSync }, set: { on in
+                    traktDirect.instantSync = on
+                    // Back on: send whatever waited.
+                    if on && !traktDirect.pending.isEmpty { Task { await traktDirect.check(store: store) } }
+                })) {
+                    optionLabel("Instant sync", traktDirect.instantSync ? "Send edits as you make them" : "Edits wait for the next sync")
+                }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("trakt-instant-sync")
+                SettingsDivider()
+                SettingsRow(title: "Pending requests", subtitle: "Waiting to be sent") {
+                    SettingsBadge(text: traktDirect.pending.isEmpty ? "None" : traktDirect.pending.count.formatted(), tone: traktDirect.pending.isEmpty ? .good : .missing)
+                }.accessibilityElement(children: .combine).accessibilityIdentifier("trakt-pending-requests")
+                SettingsDivider()
+                SettingsRow(title: "Force sync", subtitle: "Re-check everything") {
+                    Button(traktDirect.running ? "Running…" : "Run") { Task { await traktDirect.forceCheck(store: store) } }
+                        .buttonStyle(SettingsPillButtonStyle()).disabled(traktDirect.running || traktDirect.writing)
+                        .accessibilityIdentifier("trakt-force-sync")
+                }
+                SettingsDivider()
+                NavigationLink { TraktAccountLimitsView() } label: {
+                    SettingsRow(title: "Account limits", subtitle: "Trakt caps on your plan") { SettingsChevron() }
+                }.buttonStyle(.plain).accessibilityIdentifier("trakt-account-limits")
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                SettingsLabel(text: "Account") { EmptyView() }
+                Button("Disconnect Trakt", role: .destructive) { Task { await controller.disconnect() } }
+                    .buttonStyle(SettingsDestructiveButtonStyle()).disabled(controller.busy).accessibilityIdentifier("trakt-disconnect")
+                SettingsFootnote(text: "Your diary stays on Trakt. You can connect again any time.")
+            }
+        }
+    }
+    private var traktDirect: TraktDirectStore { .shared }
+    private func optionLabel(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+            Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var scanning: Bool { controller.sync?.run?.state == "building" }
     /// Phase 4c: a service holds the diary, so the scan and review are retired.
     private var retired: Bool { store.serverRecord != nil }
@@ -752,4 +811,37 @@ import TwilDiaryCore
         return DiaryDate.parse(value).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Unknown date"
     }
     private var coolingDown: Bool { controller.cooldownUntil > clock }
+}
+
+/// Settings → Trakt → Account limits: what Trakt allows this account, read from Trakt.
+struct TraktAccountLimitsView: View {
+    @Environment(DiaryStore.self) private var store
+    @State private var limits: [TraktAccountLimit]?
+    @State private var failure: String?
+    var body: some View {
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 14) {
+                if let limits {
+                    SettingsGroup(label: limits.first?.vip == true ? "Trakt VIP" : "Free plan") {
+                        if limits.isEmpty { SettingsRow(title: "No limits reported") { EmptyView() } }
+                        ForEach(Array(limits.enumerated()), id: \.element.id) { index, limit in
+                            if index > 0 { SettingsDivider() }
+                            SettingsRow(title: limit.label) {
+                                Text(limit.value.formatted()).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.chipText)
+                            }
+                        }
+                    }
+                    SettingsFootnote(text: "Trakt sets these per account. VIP raises them.")
+                } else if let failure {
+                    RetryNotice(message: failure) { Task { await load() } }
+                } else { DiaryLoadingPlaceholder(height: 200, label: "Reading Trakt") }
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+        }.diaryScreenBackground().navigationTitle("Account limits").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .task { await load() }
+    }
+    private func load() async {
+        failure = nil
+        do { limits = try await TraktDirectStore.shared.accountLimits(store: store) }
+        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
 }

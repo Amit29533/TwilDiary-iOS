@@ -188,3 +188,139 @@ struct SeasonProgressCard: View {
             .accessibilityElement(children: .contain)
     }
 }
+
+// MARK: Service pages (Trakt, Simkl, MDBList, AniList, TMDB, APIs): boards 4 and 6–13.
+
+/// What a status pill says about a service: connected (green), configured (purple),
+/// missing (amber) or plain (grey, e.g. "Server secret").
+enum SettingsTone { case good, configured, missing, plain }
+
+/// "Connected", "Configured", "Not set", "@amit29533": 12 pt bold on a 24 pt pill.
+struct SettingsBadge: View {
+    let text: String
+    var tone = SettingsTone.good
+    var body: some View {
+        let (ink, fill): (Color, Color) = switch tone {
+        case .good: (Color(webHex: "#7fe0b5"), Color(webHex: "#1b2b25"))
+        case .configured: (HomeStyle.chipText, HomeStyle.chip)
+        case .missing: (Color(webHex: "#f5c26b"), Color(webHex: "#2b2516"))
+        case .plain: (HomeStyle.secondary, Color(webHex: "#1e1e26"))
+        }
+        Text(text).font(.system(size: 12, weight: .bold)).foregroundStyle(ink).lineLimit(1).truncationMode(.middle)
+            .padding(.horizontal, 10).frame(height: 24).background(fill, in: Capsule())
+    }
+}
+
+/// A service page's first card: the logo on a dark tile, its name and one line, the status
+/// pill, then anything else the page shows there (a note, "Keeps" chips, buttons).
+struct SettingsServiceHeader<Extra: View>: View {
+    let logo: BrandLogo.Service
+    let title: String
+    let subtitle: String
+    var badge: (text: String, tone: SettingsTone)? = nil
+    @ViewBuilder var extra: Extra
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                BrandLogo(service: logo, size: 30).frame(width: 52, height: 52)
+                    .background(Color(webHex: "#1a1a21"), in: RoundedRectangle(cornerRadius: 15))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if let badge { SettingsBadge(text: badge.text, tone: badge.tone).padding(.top, 2) }
+            }
+            extra
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
+    }
+}
+extension SettingsServiceHeader where Extra == EmptyView {
+    init(logo: BrandLogo.Service, title: String, subtitle: String, badge: (text: String, tone: SettingsTone)? = nil) {
+        self.logo = logo; self.title = title; self.subtitle = subtitle; self.badge = badge; self.extra = EmptyView()
+    }
+}
+
+/// "KEEPS" over the kinds of data a service holds, as small chips.
+struct SettingsKeeps: View {
+    let items: [String]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("KEEPS").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                ForEach(items, id: \.self) { item in
+                    Text(item).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        .padding(.horizontal, 11).frame(height: 30).background(HomeStyle.round, in: Capsule())
+                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                }
+            }
+        }
+    }
+}
+
+/// A group label with something beside it ("DIRECT FROM SIMKL  Preview  ⓘ").
+struct SettingsLabel<Accessory: View>: View {
+    let text: String
+    @ViewBuilder var accessory: Accessory
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(text.uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            accessory
+            Spacer(minLength: 0)
+        }.frame(minHeight: 30).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The design's ⓘ: a 30 pt circle that shows its explanation in a small popover.
+struct SettingsInfoButton: View {
+    let text: String
+    @State private var showing = false
+    var body: some View {
+        Button { showing = true } label: {
+            Text("i").font(.system(size: 14, weight: .bold, design: .serif)).italic().foregroundStyle(HomeStyle.chipText)
+                .frame(width: 30, height: 30).background(Color(webHex: "#1e1e26"), in: Circle())
+                .frame(width: 44, height: 44).contentShape(Circle())
+        }.buttonStyle(.plain).accessibilityLabel("About this")
+            .popover(isPresented: $showing) {
+                Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).fixedSize(horizontal: false, vertical: true)
+                    .padding(16).frame(width: 280, alignment: .leading).presentationCompactAdaptation(.popover)
+            }
+    }
+}
+
+/// The design's text field: 50 pt, #17171d, 14 pt corners, a #26262e hairline.
+struct SettingsFieldStyle: ViewModifier {
+    var monospaced = false
+    func body(content: Content) -> some View {
+        content.font(.system(size: 15, design: monospaced ? .monospaced : .default)).foregroundStyle(HomeStyle.primary)
+            .textInputAutocapitalization(.never).autocorrectionDisabled()
+            .padding(.horizontal, 14).frame(height: 50)
+            .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+    }
+}
+extension View {
+    func settingsField(monospaced: Bool = false) -> some View { modifier(SettingsFieldStyle(monospaced: monospaced)) }
+}
+
+/// "Check now", "Check connection" (tinted) and "Change API key", "Save" (outlined): 50 pt wide pills.
+struct SettingsWideButtonStyle: ButtonStyle {
+    var outlined = false
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.system(size: 15, weight: .bold)).lineLimit(1)
+            .foregroundStyle(outlined ? (enabled ? HomeStyle.primary : HomeStyle.secondary) : HomeStyle.chipText)
+            .frame(maxWidth: .infinity).frame(height: 50)
+            .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
+            .overlay(Capsule().strokeBorder(outlined ? HomeStyle.dateChipBorder : .clear, lineWidth: HomeStyle.hairline))
+            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.6)
+    }
+}
+
+/// A link line in the accent: "↗ Open Simkl's developer page".
+struct SettingsLinkLabel: View {
+    let text: String
+    var body: some View {
+        HStack(spacing: 6) { Image(systemName: "arrow.up.right.square").font(.system(size: 13, weight: .semibold)); Text(text) }
+            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 36)
+    }
+}

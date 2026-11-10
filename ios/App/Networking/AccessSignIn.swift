@@ -23,7 +23,7 @@ enum SignInNavigationPolicy {
         var hint: String {
             switch self {
             case .cloudflare: "Your server’s usual sign-in page (Cloudflare Access): Google, or a one-time code by email."
-            case .passcode: "The owner email and passcode set on your server."
+            case .passcode: "Owner email and passcode."
             case .token: "A private access token made for this diary."
             case .trakt: "Your Trakt app ID and access token."
             }
@@ -43,12 +43,13 @@ enum SignInNavigationPolicy {
     @State private var formError: String?
     var body: some View {
         ScrollView {
+            // Design (board 6): the mark, the heading, Continue with Google or email, OR, Other ways.
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 10) {
-                    BrandMark().fill(Color(webHex: "#8E5CF0")).frame(width: 40, height: 40).accessibilityHidden(true)
-                    Text("Sign in to your diary").font(.title2.bold())
-                    Text("Your diary lives on your own TwilDiary server. Sign in the way you set it up.")
-                        .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
+                    Text("Sign in to your diary").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                    Text("Sign in to your own TwilDiary server.")
+                        .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 // The usual way: your server's sign-in page in Apple's sign-in sheet (Safari), so
                 // Google, email codes, passkeys and saved passwords all work.
@@ -56,29 +57,39 @@ enum SignInNavigationPolicy {
                     Button { Task { await webSignIn() } } label: {
                         HStack(spacing: 8) {
                             if webSigningIn { ProgressView().controlSize(.small) } else { Image(systemName: "globe") }
-                            Text(webSigningIn ? "Signing in…" : "Continue with Google or email").font(.system(size: 16, weight: .semibold))
-                        }.frame(maxWidth: .infinity).frame(minHeight: 30)
-                    }.buttonStyle(.glassProminent).controlSize(.large).disabled(webSigningIn || submitting)
+                            Text(webSigningIn ? "Signing in…" : "Continue with Google or email")
+                        }
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(webSigningIn || submitting)
                         .accessibilityIdentifier("sign-in-web")
-                    Text("Opens your server’s sign-in page (Cloudflare Access) and comes straight back.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Opens your server’s sign-in page.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
                     if let webError {
                         Text(webError).font(.footnote).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("sign-in-browser-error")
                     }
                 }
+                HStack(spacing: 12) {
+                    Rectangle().fill(HomeStyle.cardBorder).frame(height: HomeStyle.hairline)
+                    Text("OR").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                    Rectangle().fill(HomeStyle.cardBorder).frame(height: HomeStyle.hairline)
+                }.accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Other ways").font(.headline)
+                        Text("Other ways").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
                         Spacer(minLength: 8)
-                        Picker("Sign in with", selection: $mode) {
-                            ForEach(SignInMode.allCases.filter { $0 != .cloudflare }) { item in Text(item.rawValue).tag(item) }
-                        }.pickerStyle(.menu).accessibilityIdentifier("sign-in-method-picker")
+                        Menu {
+                            Picker("Sign in with", selection: $mode) {
+                                ForEach(SignInMode.allCases.filter { $0 != .cloudflare }) { item in Text(item.rawValue).tag(item) }
+                            }
+                        } label: {
+                            HStack(spacing: 6) { Text(mode.rawValue); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
+                                .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                                .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
+                        }.accessibilityLabel("Sign in with").accessibilityValue(mode.rawValue).accessibilityIdentifier("sign-in-method-picker")
                     }
-                    Text(mode.hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(mode.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     alternativeForm
-                }.padding(16).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+                }.padding(16).modifier(SettingsCard())
             }.padding(20)
         }.scrollDismissesKeyboard(.interactively)
             .onChange(of: mode) { _, _ in formError = nil }
@@ -94,27 +105,21 @@ enum SignInNavigationPolicy {
                         SecureField("Paste access token", text: $personalToken)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                            .settingsField()
                             .accessibilityIdentifier("sign-in-token-field")
                     }
                 } else if mode == .passcode {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Owner Email & Passcode").font(.headline)
-                        Text("Use the email and passcode set for this diary.")
-                            .font(.caption).foregroundStyle(.secondary)
                         TextField("Owner email", text: $ownerEmail)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.emailAddress)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                            .settingsField()
                             .accessibilityIdentifier("sign-in-email-field")
                         SecureField("Passcode", text: $ownerPasscode)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                            .settingsField()
                             .accessibilityIdentifier("sign-in-passcode-field")
                     }
                 } else if mode == .trakt {
@@ -125,13 +130,11 @@ enum SignInNavigationPolicy {
                         TextField("Trakt Client ID (optional if set on server)", text: $traktClientId)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                            .settingsField()
                         SecureField("Trakt OAuth Access Token", text: $traktAccessToken)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .padding(12)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                            .settingsField()
                             .accessibilityIdentifier("sign-in-trakt-token-field")
                     }
                 }
@@ -153,8 +156,7 @@ enum SignInNavigationPolicy {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
+                .buttonStyle(SettingsWideButtonStyle())
                 .disabled(submitting)
                 .accessibilityIdentifier("sign-in-submit-button")
             }

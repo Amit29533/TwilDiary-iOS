@@ -68,12 +68,6 @@ struct TrashView: View {
                         CollectionLayoutToggle(grid: $grid, collection: "trash")
                     }
                 }
-                if selecting {
-                    CollectionSelectionPanel(titles: shown, selected: $selected, archived: true) { change in
-                        let titles = shown.filter { selected.contains($0.id) }
-                        if !titles.isEmpty { review = CollectionReview(titles: titles, change: change) }
-                    }
-                }
                 CollectionLayout(grid: grid) { ForEach(shown) { title in trashCard(title) } }
                 if shown.isEmpty {
                     DiaryEmptyState(title: archived.isEmpty ? "Trash is clear" : "No removed titles in this category", description: archived.isEmpty ? "Removed titles and their history will appear here." : "Choose another category to see your removed titles.")
@@ -82,6 +76,31 @@ struct TrashView: View {
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
                 .categorySwipe($category, enabled: !selecting)
         }.diaryScreenBackground().diaryPageNavigation("Trash")
+            // Design (board 14): while selecting, one bar above the tab bar: the count, Restore, Delete forever.
+            .safeAreaInset(edge: .bottom) {
+                if selecting {
+                    let titles = shown.filter { selected.contains($0.id) }
+                    HStack(spacing: 10) {
+                        Text(titles.isEmpty ? "Select titles" : "\(titles.count) selected").font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(HomeStyle.primary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Restore") { review = CollectionReview(titles: titles, change: .restore) }
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+                            .padding(.horizontal, 18).frame(height: 40)
+                            .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                            .accessibilityIdentifier("trash-restore-selected")
+                        Button("Delete forever", role: .destructive) { review = CollectionReview(titles: titles, change: .purge) }
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
+                            .padding(.horizontal, 16).frame(height: 40).background(Color(webHex: "#3a1d26"), in: Capsule())
+                            .accessibilityIdentifier("trash-delete-selected")
+                    }.buttonStyle(.plain).disabled(titles.isEmpty || store.writesBlocked)
+                        .padding(.leading, 18).padding(.trailing, 8).frame(height: 56)
+                        .background(Color(webHex: "#1a1a20"), in: Capsule())
+                        .overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                        .padding(.horizontal, 16).padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.smooth(duration: 0.25), value: selecting)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     // Design: "Select" (dimmed when empty), "Done" in the accent pill while selecting.
@@ -116,9 +135,14 @@ struct TrashView: View {
                     if selected.contains(title.id) { selected.remove(title.id) }
                     else if selected.count < CollectionRequest.limit { selected.insert(title.id) }
                 } label: {
-                    card(title).overlay(alignment: .topTrailing) {
-                        Image(systemName: selected.contains(title.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(theme.accent).padding(8)
+                    card(title).overlay(alignment: grid ? .topTrailing : .leading) {
+                        ZStack {
+                            Circle().fill(selected.contains(title.id) ? theme.accent : HomeStyle.card.opacity(0.85))
+                            Circle().strokeBorder(selected.contains(title.id) ? .clear : Color(webHex: "#4a4a56"), lineWidth: 1.5)
+                            if selected.contains(title.id) { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030")) }
+                        }.frame(width: 26, height: 26).padding(grid ? 8 : 0).offset(x: grid ? 0 : -6)
                     }
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected.contains(title.id) ? theme.accent : .clear, lineWidth: 1.5))
                 }.buttonStyle(.plain).disabled(store.writesBlocked || (!selected.contains(title.id) && selected.count >= CollectionRequest.limit))
                     .accessibilityIdentifier("trash-title-" + title.id).accessibilityAddTraits(selected.contains(title.id) ? .isSelected : [])
             } else {

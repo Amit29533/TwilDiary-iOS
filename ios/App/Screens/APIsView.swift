@@ -15,9 +15,13 @@ struct APIsView: View {
 
     var body: some View {
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 22) {
-                Text("Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            // Design (board 10): one line with ⓘ, then each service: its name, its keys in one card.
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(spacing: 8) {
+                    Text("Keys are stored encrypted.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    Spacer(minLength: 0)
+                    SettingsInfoButton(text: "Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
+                }.padding(.leading, 4)
                 if let model, model.loaded, model.keys.isEmpty, let error = model.error {
                     // Nothing to list: one clear card instead of empty service sections.
                     VStack(alignment: .leading, spacing: 10) {
@@ -32,11 +36,12 @@ struct APIsView: View {
                 } else if let model, model.loaded {
                     if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
-                    service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out; connect again from the Trakt page.")
-                    service(nil, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
+                    service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out.")
+                    service(.cloudflare, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
                     let signIn = model.keys.filter { ["simkl", "mdblist"].contains($0.service) }
                     if !signIn.isEmpty {
-                        service(nil, "Sign-in apps", keys: signIn, note: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
+                        service(nil, "Sign-in apps", icon: "iphone", keys: signIn, note: "App IDs for Simkl and MDBList sign-in.",
+                                info: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
                 jellyfin
@@ -60,89 +65,116 @@ struct APIsView: View {
             }
     }
 
-    private func service(_ brand: BrandLogo.Service?, _ name: String, keys: [APIKeyStatus], note: String? = nil) -> some View {
-        section(brand, name, icon: "cloud.fill", tint: Color(webHex: "#F38020")) {
-            ForEach(Array(keys.enumerated()), id: \.element.id) { index, key in
-                if index > 0 { divider }
-                keyRow(key)
+    private func service(_ brand: BrandLogo.Service?, _ name: String, icon: String = "key", keys: [APIKeyStatus], note: String? = nil, info: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            section(brand, name, icon: icon) {
+                ForEach(Array(keys.enumerated()), id: \.element.id) { index, key in
+                    if index > 0 { SettingsDivider() }
+                    keyRow(key)
+                }
             }
-            if let note { Text(note).font(.system(size: 12)).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.bottom, 12) }
+            if let note {
+                HStack(spacing: 6) {
+                    Text(note).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    if let info { SettingsInfoButton(text: info) }
+                }.padding(.leading, 4)
+            }
         }
     }
     private func keyRow(_ key: APIKeyStatus) -> some View {
         let check = model?.checks[key.name], testing = model?.testing.contains(key.name) == true
-        return VStack(alignment: .leading, spacing: 10) {
+        let (name, owner) = Self.splitLabel(key.label)
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(key.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                (owner.map { Text("\(name) \(Text($0).foregroundStyle(HomeStyle.secondary).fontWeight(.regular))") } ?? Text(name))
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                 Spacer(minLength: 8)
                 sourcePill(key.source)
             }
+            if ["simkl", "mdblist"].contains(key.service) {
+                Text("Redirect: twildiary://auth/" + key.service).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            }
             HStack(spacing: 8) {
-                Text(key.hint.map { "••••" + $0 } ?? "No key").font(.system(size: 14, design: .monospaced)).foregroundStyle(.secondary)
-                if let updated = key.updatedAt.flatMap({ DiaryDate.parse($0) }) { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(.secondary) }
+                Text(key.hint.map { "●●●●" + $0 } ?? "No key").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary)
+                if let updated = key.updatedAt.flatMap({ DiaryDate.parse($0) }) { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 Spacer(minLength: 0)
                 if testing { ProgressView().controlSize(.small) }
                 else if let check { status(check.ok, check.message).accessibilityIdentifier("api-status-" + key.name) }
             }
             HStack(spacing: 8) {
-                Button("Replace") { editing = key }.buttonStyle(.diaryRowPrimary).accessibilityIdentifier("api-replace-" + key.name)
-                Button("Test") { Task { await model?.test(key.name) } }.buttonStyle(.diaryRowSecondary).disabled(testing || key.source == "missing").accessibilityIdentifier("api-test-" + key.name)
-                if key.source == "saved" { Button("Remove", role: .destructive) { removing = key }.buttonStyle(.diaryRowSecondary).accessibilityIdentifier("api-remove-" + key.name) }
+                Button("Replace") { editing = key }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("api-replace-" + key.name)
+                Button("Test") { Task { await model?.test(key.name) } }.buttonStyle(SettingsPillButtonStyle(outlined: true)).disabled(testing || key.source == "missing").accessibilityIdentifier("api-test-" + key.name)
+                if key.source == "saved" { Button("Remove", role: .destructive) { removing = key }.buttonStyle(SettingsPillButtonStyle(outlined: true)).accessibilityIdentifier("api-remove-" + key.name) }
                 Spacer(minLength: 0)
-            }
-        }.padding(14).accessibilityElement(children: .contain).accessibilityIdentifier("api-row-" + key.name)
+            }.padding(.top, 6)
+        }.padding(15).accessibilityElement(children: .contain).accessibilityIdentifier("api-row-" + key.name)
+    }
+    /// "V2 mobile app client ID (Simkl)" → the name, and "(Simkl)" shown in grey.
+    private static func splitLabel(_ label: String) -> (String, String?) {
+        guard label.hasSuffix(")"), let open = label.lastIndex(of: "(") else { return (label, nil) }
+        return (String(label[..<open]).trimmingCharacters(in: .whitespaces), String(label[open...]))
     }
     private func sourcePill(_ source: String) -> some View {
-        let (text, tint): (String, Color) = switch source { case "saved": ("Saved here", theme.accent); case "server": ("Server secret", Color(webHex: "#c5c0cf")); default: ("Not set", Color(webHex: "#e7ca90")) }
-        return Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 24).background(tint.opacity(0.14), in: Capsule())
+        switch source {
+        case "saved": SettingsBadge(text: "Saved here", tone: .configured)
+        case "server": SettingsBadge(text: "Server secret", tone: .plain)
+        default: SettingsBadge(text: "Not set", tone: .missing)
+        }
     }
     private func status(_ ok: Bool, _ message: String) -> some View {
-        HStack(spacing: 5) { Circle().fill(ok ? Color.mint : Color(webHex: "#ff6b6b")).frame(width: 6, height: 6); Text(message) }
-            .font(.system(size: 12, weight: .medium)).foregroundStyle(ok ? Color.mint : Color(webHex: "#ff8a80")).lineLimit(1)
+        HStack(spacing: 5) { Circle().fill(ok ? Color(webHex: "#7fe0b5") : Color(webHex: "#ff6b6b")).frame(width: 6, height: 6); Text(message) }
+            .font(.system(size: 12, weight: .semibold)).foregroundStyle(ok ? Color(webHex: "#7fe0b5") : Color(webHex: "#ff8a80")).lineLimit(1)
     }
 
     private var jellyfin: some View {
         let _ = jellyfinRevision
         let configured = store.isPreview || JellyfinSettings.configured
-        return section(.jellyfin, "Jellyfin", icon: "", tint: .clear) {
-            VStack(alignment: .leading, spacing: 10) {
+        return section(.jellyfin, "Jellyfin", icon: "") {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Server").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    Text("Server").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 8)
-                    Text("On this iPhone").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf")).padding(.horizontal, 10).frame(height: 24).background(Color.white.opacity(0.08), in: Capsule())
+                    SettingsBadge(text: "On this iPhone", tone: .plain)
                 }
-                Text(store.isPreview ? "http://192.168.1.20:8096 · ••••a41f" : JellyfinSettings.address.map { $0.absoluteString + (JellyfinSettings.keyHint.map { " · ••••" + $0 } ?? " · no key") } ?? "Not set up")
-                    .font(.system(size: 14, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                Text("Read over your home Wi-Fi to map Movies and Shows folders. The key stays on this iPhone.").font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button(configured ? "Edit" : "Set up") { editingJellyfin = true }.buttonStyle(.diaryRowPrimary).accessibilityIdentifier("jellyfin-setup")
-            }.padding(14)
+                Text(store.isPreview ? "http://192.168.1.20:8096 · ●●●●a41f" : JellyfinSettings.address.map { $0.absoluteString + (JellyfinSettings.keyHint.map { " · ●●●●" + $0 } ?? " · no key") } ?? "Not set up")
+                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text("Read over your home Wi-Fi.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    SettingsInfoButton(text: "Jellyfin is read over your home Wi-Fi to map Movies and Shows folders. The key stays on this iPhone.")
+                }
+                Button(configured ? "Edit" : "Set up") { editingJellyfin = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("jellyfin-setup")
+            }.padding(15)
         }
     }
     private var server: some View {
-        section(nil, "TwilDiary server", icon: "server.rack", tint: Color(webHex: "#5E5CE6")) {
+        section(nil, "TwilDiary server", icon: "server.rack") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Text(BackendEndpoint.production.host ?? "").font(.system(size: 14, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Text(BackendEndpoint.production.host ?? "").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
                     // The diary itself proves the connection; a keys error (an older server) doesn't mean it's down.
                     status(store.hasLoadedWorkspace && store.error == nil, store.hasLoadedWorkspace && store.error == nil ? "Connected" : "Not connected")
                 }
-                Text("Your sign-in is only ever sent to this address, so it can’t be changed in the app.").font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.padding(14)
+                HStack(spacing: 6) {
+                    Text("Fixed in the app.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    SettingsInfoButton(text: "Your sign-in is only ever sent to this address, so it can’t be changed in the app.")
+                }
+            }.padding(15)
         }
     }
-    private func section<Content: View>(_ brand: BrandLogo.Service?, _ name: String, icon: String, tint: Color, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if let brand { BrandLogo(service: brand, size: 20) }
-                else { Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).frame(width: 20, height: 20).background(tint.gradient, in: RoundedRectangle(cornerRadius: 5)).accessibilityHidden(true) }
-                Text(name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-            }.padding(.horizontal, 4).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 0, content: content).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+    /// A service: a 24 pt tile (its logo, or a symbol) and its name, then its card.
+    private func section<Content: View>(_ brand: BrandLogo.Service?, _ name: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                Group {
+                    if let brand { BrandLogo(service: brand, size: 18) }
+                    else { Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.chipText) }
+                }.frame(width: 24, height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true)
+                Text(name).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            }.padding(.leading, 4).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 0, content: content).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
         }
     }
-    private var divider: some View { Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 14) }
 }
 
 /// Paste a new key: a hidden field, Save checks it with its service straight after.

@@ -111,3 +111,29 @@ struct TitleHeaderAction: View {
     }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
+
+/// The title pages' one top-right button (owner's design): a 44 pt dark circle with three white
+/// dots. Its menu holds everything else (Sentiments, Favourite, Queue, Notes, Files, Share, Trash).
+struct TitleMoreButtonLabel: View {
+    var body: some View {
+        Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .background(Color(webHex: "#2b2b30").opacity(0.94), in: Circle())
+            .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67))
+            .contentShape(Circle())
+    }
+}
+
+/// "Share" in a title's menu: its TMDB page, or just its name when it has no TMDB id.
+struct TitleShareItem: View {
+    let name: String
+    let kind: MediaKind
+    let id: Int?
+    var body: some View {
+        if let id, id > 0, let url = URL(string: "https://www.themoviedb.org/\(kind == .tv ? "tv" : "movie")/\(id)") {
+            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("title-share")
+        } else {
+            ShareLink(item: name) { Label("Share", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("title-share")
+        }
+    }
+}

@@ -233,6 +233,7 @@ struct CatalogDetailView: View {
     @State private var loading = false
     @State private var showOverview = false
     @State private var showInformation = false
+    @State private var showFiles = false
     @State private var headerState = CompactHeaderState()
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
     /// Tags, companies, status and network from TMDB, as on a saved title's page.
@@ -260,7 +261,6 @@ struct CatalogDetailView: View {
                                     }.buttonStyle(.springPress).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
                                 }
                             }
-                            if details.libraryTitle == nil { JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie) }
                         }
                         if let extras, !extras.keywords.isEmpty { TitleTagsSection(keywords: extras.keywords, kind: route.kind) }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
@@ -283,10 +283,38 @@ struct CatalogDetailView: View {
                     ToolbarItem(placement: .principal) {
                         if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), state: headerState) }
                     }
+                    // The same ••• button as a saved title (owner's design), replacing ⓘ.
                     ToolbarItem(placement: .topBarTrailing) {
-                        TitleHeaderAction(name: details?.details.name ?? "Title", kind: route.kind, id: route.id,
-                            state: headerState, informationPresented: $showInformation, informationIdentifier: "catalog-information")
-                    }
+                        let saved = savedTitle
+                        Menu {
+                            Button("Sentiments", systemImage: "info.circle") { showInformation = true }.accessibilityIdentifier("catalog-information")
+                            Button(saved?.favorite == true ? "Remove from Favourites" : "Add to Favourites", systemImage: saved?.favorite == true ? "heart.slash" : "heart") {
+                                Task { await libraryAction(["favorite": saved?.favorite != true]) }
+                            }.accessibilityIdentifier("catalog-favorite")
+                            Button(saved?.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") {
+                                Task { await libraryAction(["queued": saved?.queued != true]) }
+                            }.accessibilityIdentifier("catalog-queue")
+                            Button("File location", systemImage: "folder") { showFiles = true }.accessibilityIdentifier("catalog-files")
+                            TitleShareItem(name: details?.details.name ?? "Title", kind: route.kind, id: route.id)
+                        } label: { TitleMoreButtonLabel() }
+                            .disabled(details == nil || details?.libraryTitle?.trashed == true || store.busy || !store.canMutate)
+                            .accessibilityLabel("More options for " + (details?.details.name ?? "this title")).accessibilityIdentifier("catalog-more")
+                    }.sharedBackgroundVisibility(.hidden)
+                }
+                .sheet(isPresented: $showFiles) {
+                    NavigationStack {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if JellyfinShelf.shared.entries.contains(where: { $0.tmdb == route.id && $0.movie == (route.kind == .movie) }) {
+                                JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie)
+                            } else {
+                                Text("Not in your Jellyfin library.").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary)
+                                    .task { await JellyfinShelf.shared.refreshQuietly(store: store) }
+                            }
+                            Spacer(minLength: 0)
+                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                            .navigationTitle("File location").navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showFiles = false } } }
+                    }.presentationDetents([.medium]).presentationDragIndicator(.visible)
                 }
                 .sheet(isPresented: $showInformation) {
                     CommunityInformationSheet(name: details?.details.name ?? "Title", artwork: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") ?? CatalogTools.image($0.details.posterPath) }, identity: CommunityIdentity(kind: route.kind, id: route.id))
@@ -300,6 +328,18 @@ struct CatalogDetailView: View {
         }
     }
     private func accepted(_ id: String) { if let onImported { onImported(id) } else { router.replaceTitle(id, tab: router.selectedTab) } }
+    /// This title in your library, when it's there.
+    private var savedTitle: MediaTitle? { details?.libraryTitle.flatMap { saved in store.workspace.titles.first { $0.id == saved.id } } }
+    /// Favourite and Queue belong to library titles: a title not there yet is added (as Planned)
+    /// first, then changed, and its saved page opens.
+    private func libraryAction(_ values: [String: Any]) async {
+        guard let details else { return }
+        if let saved = savedTitle { await store.patch(saved, values: values); return }
+        guard let id = await store.importTitle(details.details, category: details.details.suggestedCategory),
+              let title = store.workspace.titles.first(where: { $0.id == id }) else { return }
+        await store.patch(title, values: values)
+        accepted(id)
+    }
     /// Trakt's average when MDBList has it, otherwise TMDB's (as on a saved title's page).
     private func communityAverage(_ details: CatalogDetails) -> Double? {
         if let trakt = criticScores.first(where: { RatingsStrip<EmptyView>.canonical($0.source) == "trakt" }), let value = trakt.value ?? trakt.score, value > 0 {

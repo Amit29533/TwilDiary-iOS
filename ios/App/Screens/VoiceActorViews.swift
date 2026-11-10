@@ -175,32 +175,47 @@ struct AniListSettingsView: View {
     @State private var draft = ""
     var body: some View {
         EdgeToEdgeScroll {
+            // Design (board 8): the service card, ACCOUNT, CHANGE PROFILE, then the profile link.
             VStack(alignment: .leading, spacing: 16) {
-                Text("Favourites ranks your characters from your public AniList profile. Only the username is used: no sign-in, no password.")
-                    .font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Username or profile link").font(.system(size: 15, weight: .semibold))
-                    TextField("twilight29533 or anilist.co/user/…", text: $draft).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .submitLabel(.done).onSubmit(save).padding(.horizontal, 12).frame(minHeight: 44)
-                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("anilist-user-field")
-                    if !draft.isEmpty && AniListError.username(draft) == nil {
-                        Text("That doesn’t look like an AniList username or profile link.").font(.system(size: 12)).foregroundStyle(.orange)
+                SettingsServiceHeader(logo: .anilist, title: "AniList", subtitle: "Characters and voice actors",
+                                      badge: user.isEmpty ? ("Not set", .missing) : ("Connected", .good)) {
+                    HStack(spacing: 8) {
+                        Text("Ranks your favourite characters.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Spacer(minLength: 0)
+                        SettingsInfoButton(text: "Favourites ranks your characters from your public AniList profile. Only the username is used: no sign-in, no password.")
                     }
-                    Button("Save", action: save).buttonStyle(.glassProminent)
-                        .disabled(AniListError.username(draft) == nil || AniListError.username(draft) == user).accessibilityIdentifier("anilist-user-save")
-                }.diaryPanel(padding: 14, radius: 16)
-                if !user.isEmpty {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Connected").font(.system(size: 13)).foregroundStyle(.secondary)
-                            Text("@" + user).font(.system(size: 15, weight: .semibold))
-                        }
-                        Spacer(minLength: 8)
-                        Button("Remove", role: .destructive) { user = ""; draft = "" }.accessibilityIdentifier("anilist-user-remove")
-                    }.diaryPanel(padding: 14, radius: 16)
-                    Link("Open profile on AniList", destination: URL(string: "https://anilist.co/user/" + user)!).font(.system(size: 14))
                 }
-            }.padding(14).padding(.bottom, 40)
+                if !user.isEmpty {
+                    SettingsGroup(label: "Account") {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Connected").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                                Text("@" + user).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Remove", role: .destructive) { user = ""; draft = "" }
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
+                                .padding(.horizontal, 16).frame(height: 36).background(Color(webHex: "#3a1d26"), in: Capsule())
+                                .buttonStyle(.plain).accessibilityIdentifier("anilist-user-remove")
+                        }.padding(.horizontal, 15).frame(minHeight: 64)
+                    }
+                }
+                SettingsGroup(label: user.isEmpty ? "Profile" : "Change profile") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Username or profile link").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        TextField("twilight29533 or anilist.co/user/…", text: $draft).settingsField()
+                            .submitLabel(.done).onSubmit(save).accessibilityIdentifier("anilist-user-field")
+                        if !draft.isEmpty && AniListError.username(draft) == nil {
+                            Text("That doesn’t look like an AniList username or profile link.").font(.system(size: 12)).foregroundStyle(Color(webHex: "#f5c26b"))
+                        }
+                        Button("Save", action: save).buttonStyle(SettingsWideButtonStyle(outlined: true))
+                            .disabled(AniListError.username(draft) == nil || AniListError.username(draft) == user).accessibilityIdentifier("anilist-user-save")
+                    }.padding(15)
+                }
+                if !user.isEmpty {
+                    Link(destination: URL(string: "https://anilist.co/user/" + user)!) { SettingsLinkLabel(text: "Open profile on AniList") }
+                        .padding(.horizontal, 4)
+                }
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("AniList").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .onAppear { draft = user }
     }

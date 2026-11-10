@@ -1788,14 +1788,17 @@ import UIKit
         // A short edge gesture cancels the interactive pop; the old search keyboard stays dismissed.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.3)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.3)), withVelocity: .slow, thenHoldForDuration: 0.7)
         XCTAssertTrue(app.buttons["catalog-add"].exists); XCTAssertFalse(app.keyboards.firstMatch.exists)
-        let information = app.buttons["catalog-information"], share = app.buttons["title-share"]
-        XCTAssertTrue(information.isHittable)
-        for _ in 0..<8 { if share.exists && share.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(share.isHittable, "Catalog uses the same compact header action as saved titles")
-        XCTAssertFalse(information.exists, "An invisible information action must not remain beside compact Share")
+        // The preview has the same single ••• button as a saved title; Sentiments is in its menu.
+        let more = app.buttons["catalog-more"]
+        XCTAssertTrue(more.isHittable)
+        for _ in 0..<4 { app.swipeUp() }
+        XCTAssertTrue(more.isHittable, "The ••• button stays as the header compacts")
         capture("Catalog compact header retains one native action")
-        for _ in 0..<8 { if information.exists && information.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(information.isHittable); XCTAssertFalse(share.exists)
+        more.tap()
+        XCTAssertTrue(app.buttons["catalog-information"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["title-share"].exists)
+        app.buttons["catalog-information"].tap()
+        app.swipeDown(velocity: .fast)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(field.waitForExistence(timeout: 5)); XCTAssertEqual(field.value as? String, "Clockmaker")
         XCTAssertFalse(app.keyboards.firstMatch.exists); capture("Online search return keeps keyboard dismissed")
@@ -1952,7 +1955,7 @@ import UIKit
             XCTAssertLessThan(margin.prefix(3).max() ?? 255, 18, "The hero must scroll away, not remain pinned behind episodes/notes")
         }
         let compact = app.descendants(matching: .any)["compact-title-navigation"]
-        XCTAssertTrue(compact.exists); XCTAssertTrue(app.buttons["title-share"].exists)
+        XCTAssertTrue(compact.exists); XCTAssertTrue(app.buttons["title-more"].exists)
         XCTAssertGreaterThanOrEqual(compact.frame.minX, 0); XCTAssertLessThanOrEqual(compact.frame.maxX, app.frame.width)
         capture("Title scrolled clean Episodes and Notes")
     }
