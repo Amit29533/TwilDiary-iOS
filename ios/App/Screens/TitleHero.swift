@@ -128,30 +128,31 @@ struct TitleArtworkBackdrop: View {
     }
     private func cover(width: CGFloat) -> some View {
         let artwork = TitleCover.artworkHeight(width: width)
+        // Owner's reference: the cover stays crisp; below it a strong, very smooth wash of its own
+        // colours runs behind the poster and title and is fully dark by about 190 pt under the cover.
         return ZStack(alignment: .top) {
-            // The cover's colours carried below it: a blurred mirror of the artwork whose top row is the
-            // cover's bottom row, fading into the page — so the picture flows on with no seam.
-            art.frame(width: width, height: artwork).clipped()
+            // The wash: the cover mirrored (its top row is the cover's bottom row) and blurred so far
+            // that no shapes remain, only colour. Wider than the screen so its blurred sides don't show.
+            art.frame(width: width * 1.3, height: artwork)
                 .scaleEffect(x: 1, y: -1)
-                .blur(radius: 26).saturation(1.15)
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black.opacity(0.55), location: 0.4), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-                .opacity(0.85)
-                .offset(y: artwork - 40)
-            // The page darkens gradually under the glow: no shape, no edge.
+                .blur(radius: 60).saturation(1.2)
+                .opacity(0.95)
+                .offset(y: artwork - 50)
+                .frame(width: width)
+            // The page darkens over the wash: clear at the cover's foot, dark by ~190 pt below it.
             LinearGradient(stops: [
                 .init(color: Color(webHex: "#0a0a0e").opacity(0), location: 0),
-                .init(color: Color(red: 12 / 255, green: 11 / 255, blue: 16 / 255).opacity(0.55), location: 0.35),
-                .init(color: Color(webHex: "#0a0a0e").opacity(0.92), location: 1)
+                .init(color: Color(webHex: "#0a0a0e").opacity(0.35), location: 0.35),
+                .init(color: Color(webHex: "#0a0a0e").opacity(0.8), location: 0.7),
+                .init(color: Color(webHex: "#0a0a0e"), location: 1)
             ], startPoint: .top, endPoint: .bottom)
-                .frame(height: 420).offset(y: artwork - 30)
-            Color(webHex: "#0a0a0e").frame(height: 4000).offset(y: artwork + 390)
-            // The whole artwork, solid; only its last few points soften so the edge disappears into the glow.
+                .frame(height: 230).offset(y: artwork - 20)
+            Color(webHex: "#0a0a0e").frame(height: 4000).offset(y: artwork + 209)
+            // The cover itself, crisp; only a light shade behind the status bar and buttons, and a
+            // short soft foot so it melts into the wash instead of ending on a line.
             art.frame(width: width, height: artwork).clipped()
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-                .overlay(LinearGradient(stops: [
-                    // Only the status bar's corner gets a light shade, for its text and the buttons.
-                    .init(color: .black.opacity(0.42), location: 0), .init(color: .black.opacity(0), location: 0.34)
-                ], startPoint: .top, endPoint: .bottom))
+                .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0), location: 0.3)], startPoint: .top, endPoint: .bottom))
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.88), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
         }.frame(width: width, alignment: .top)
     }
     @ViewBuilder private var art: some View {

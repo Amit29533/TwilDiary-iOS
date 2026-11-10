@@ -296,11 +296,11 @@ struct CatalogDetailView: View {
         }
     }
     private func accepted(_ id: String) { if let onImported { onImported(id) } else { router.replaceTitle(id, tab: router.selectedTab) } }
-    /// The page's main action: a 48 pt pill in the design's #cdbbff → #a98bff gradient.
+    /// The page's main action, in the same colours as a saved title's "Watching" pill (#cdbbff on #2a2440).
     private func primaryLabel(_ text: String, icon: String) -> some View {
         HStack(spacing: 8) { Image(systemName: icon).font(.system(size: 14, weight: .bold)); Text(text).font(.system(size: 15, weight: .bold)) }
-            .foregroundStyle(Color(webHex: "#0b0b10")).frame(maxWidth: .infinity).frame(height: 48)
-            .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+            .foregroundStyle(HomeStyle.chipText).frame(maxWidth: .infinity).frame(height: 48)
+            .background(HomeStyle.chip, in: Capsule())
             .contentShape(Capsule())
     }
     private func load() async {
