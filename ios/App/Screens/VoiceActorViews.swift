@@ -124,7 +124,7 @@ struct AniListMostWatched: View {
         if user.isEmpty { connectPrompt }
         else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
         else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 220, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
-        else if rows.isEmpty { Text("Nothing to rank on AniList yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
+        else if rows.isEmpty { Text("Nothing to rank yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
         else { MostWatchedShelf(ranking: rankingRoute) }
     }
     private var connectPrompt: some View {

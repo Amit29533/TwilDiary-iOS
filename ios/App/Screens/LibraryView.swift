@@ -424,7 +424,12 @@ struct LibraryView: View {
             .safeAreaInset(edge: .bottom) {
                 Button { showFilters = false } label: { Text("Show \(filtered.count) \(filtered.count == 1 ? "title" : "titles")") }
                     .buttonStyle(SettingsPrimaryButtonStyle()).padding(.horizontal, 20).padding(.vertical, 8).accessibilityIdentifier("filter-show")
-                    .background(alignment: .bottom) { LinearGradient(colors: [.clear, Color(webHex: "#111116")], startPoint: .top, endPoint: .bottom).padding(.top, -24).allowsHitTesting(false) }
+                    // Solid under the button down to the screen edge, so chips never show beneath it.
+                    .background(alignment: .bottom) {
+                        LinearGradient(stops: [.init(color: Color(webHex: "#111116").opacity(0), location: 0), .init(color: Color(webHex: "#111116"), location: 0.4)],
+                                       startPoint: .top, endPoint: .bottom)
+                            .padding(.top, -24).ignoresSafeArea(edges: .bottom).allowsHitTesting(false)
+                    }
             }
             .navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -726,6 +731,8 @@ struct GlanceView: View {
                 .frame(width: 40, height: 40).background(grid == value ? HomeStyle.chip : .clear, in: Circle())
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(value ? "Show as grid" : "Show as list").accessibilityAddTraits(grid == value ? .isSelected : [])
+            // Both halves say which layout is showing now.
+            .accessibilityValue(grid ? "Grid" : "List")
             .accessibilityIdentifier(value ? "glance-layout" : "glance-layout-list")
     }
     private var sort: Binding<GlanceSort> {

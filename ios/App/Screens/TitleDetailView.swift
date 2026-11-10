@@ -188,14 +188,15 @@ struct TitleDetailView: View {
                 notesField.observe(.init(value: title.notes, version: title.version))
                 ratingField.observe(.init(value: title.score, version: title.version))
             }
-            .confirmationDialog("Move \(title.name) to Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
+            .alert("Move \(title.name) to Trash?", isPresented: $confirmTrash) {
                 Button("Move to Trash", role: .destructive) { Task { if await store.trash(title) { dismissPage() } } }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("It leaves your library. You can restore it from Trash.")
             }
-            .confirmationDialog(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation, titleVisibility: .visible) {
+            .alert(title.isSeries ? "Reset Season \(season) to Planned? Only this season’s watches will be removed. Earlier seasons stay saved. Undo is available." : "Reset progress to 0? Logged watches will be removed, with Undo available.", isPresented: $resetConfirmation) {
                 Button("Reset to Planned", role: .destructive) { Task { await store.setSeasonStatus(title, season: season, status: "planned", watchedAt: watchInstant); await loadCard(title) } }
+                Button("Cancel", role: .cancel) {}
             }
     }
     /// "My Note": Cancel discards the draft, Save keeps it and closes. A dirty draft can't be

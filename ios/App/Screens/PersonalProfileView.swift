@@ -80,9 +80,6 @@ struct PersonalProfileView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("profileUsername") private var username = ""
     private var profile = PersonalProfile.shared
-    @State private var characters: [ProfileAvatarChoice] = []
-    @State private var loading = false
-    @State private var error: String?
     @State private var showAvatarPicker = false
     @State private var editing = false
     @State private var trakt: TraktProfileSummary?
@@ -123,9 +120,9 @@ struct PersonalProfileView: View {
                     NavigationLink(value: AppDestination.appearance) { Image(systemName: "sun.max") }.accessibilityLabel("Appearance")
                 }
             }
-            .sheet(isPresented: $showAvatarPicker) { NavigationStack { AvatarPickerView(characters: characters) }.presentationDragIndicator(.visible) }
-            .sheet(isPresented: $editing) { NavigationStack { EditProfileView(characters: characters) }.presentationDragIndicator(.visible) }
-            .task { await loadCharacters() }
+            .sheet(isPresented: $showAvatarPicker) { NavigationStack { AvatarPickerView() }.presentationDragIndicator(.visible) }
+            .sheet(isPresented: $editing) { NavigationStack { EditProfileView() }.presentationDragIndicator(.visible) }
+            .task { await ProfileAvatarCatalog.shared.load(preview: store.isPreview) }
             .task(id: store.sessionRevision) { trakt = await TraktProfileSummary.load(store: store) }
     }
 
@@ -372,26 +369,39 @@ struct PersonalProfileView: View {
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
-    private func loadCharacters() async {
-        guard !loading else { return }; loading = true; error = nil
+}
+
+/// The characters offered as avatars, loaded once per launch and shared by the picker and Edit profile.
+@MainActor @Observable final class ProfileAvatarCatalog {
+    static let shared = ProfileAvatarCatalog()
+    private(set) var characters: [ProfileAvatarChoice] = []
+    private(set) var error: String?
+    private var loading = false
+    func load(preview: Bool) async {
+        guard characters.isEmpty, !loading else { return }
+        loading = true; error = nil
         defer { loading = false }
-        do {
-            #if DEBUG
-            if store.isPreview { characters = [ProfileAvatarChoice(id: 176754, name: "Frieren", image: "/demo/frieren.jpg"), ProfileAvatarChoice(id: 138100, name: "Anya", image: nil)]; return }
-            #endif
-            let values = try await AniListClient.shared.popularAvatars()
-            guard !Task.isCancelled else { return }; characters = values
-        } catch { if !Task.isCancelled { self.error = "Characters are unavailable. You can still choose a custom photo." } }
+        #if DEBUG
+        if preview { characters = [ProfileAvatarChoice(id: 176754, name: "Frieren", image: "/demo/frieren.jpg"), ProfileAvatarChoice(id: 138100, name: "Anya", image: nil)]; return }
+        #endif
+        do { characters = try await AniListClient.shared.popularAvatars() }
+        catch { self.error = "Characters are unavailable. You can still choose a custom photo." }
     }
 }
 
 /// Milestones: how many you've earned, every earned badge, and the next one with its progress.
 struct MilestonesView: View {
     @Environment(DiaryStore.self) private var store
+    /// Closest first, so "Next up" and the top of the Up next list agree (ties keep their order).
+    static func closestFirst(_ items: [ProfileMilestone]) -> [ProfileMilestone] {
+        func share(_ item: ProfileMilestone) -> Double { Double(item.progress) / Double(max(1, item.target)) }
+        return items.enumerated().sorted { share($0.element) != share($1.element) ? share($0.element) > share($1.element) : $0.offset < $1.offset }.map(\.element)
+    }
     var body: some View {
         let milestones = ProfileMilestone.make(store.workspace, now: store.now)
         let earned = milestones.filter(\.earned)
-        let next = milestones.filter { !$0.earned }.max { Double($0.progress) / Double(max(1, $0.target)) < Double($1.progress) / Double(max(1, $1.target)) }
+        let upcoming = Self.closestFirst(milestones.filter { !$0.earned })
+        let next = upcoming.first
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 16) {
@@ -415,7 +425,7 @@ struct MilestonesView: View {
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Up next").font(.system(size: 22, weight: .bold))
-                    ForEach(milestones.filter { !$0.earned }.prefix(6)) { item in
+                    ForEach(upcoming.prefix(6)) { item in
                         HStack(spacing: 14) {
                             MilestoneBadge(milestone: item, size: 40)
                             VStack(alignment: .leading, spacing: 6) {
@@ -434,7 +444,8 @@ struct MilestonesView: View {
 
 /// Edit profile: picture (a character or your own photo), name and username. Saved on this iPhone.
 struct EditProfileView: View {
-    let characters: [ProfileAvatarChoice]
+    @Environment(DiaryStore.self) private var store
+    private var catalog: ProfileAvatarCatalog { .shared }
     @Environment(\.dismiss) private var dismiss
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("profileUsername") private var username = ""
@@ -453,14 +464,14 @@ struct EditProfileView: View {
                     Text("Choose a character").font(.system(size: 22, weight: .bold))
                     ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 14) {
-                            ForEach(characters) { choice in ProfileCharacterAvatarButton(choice: choice, size: 72) { PersonalProfile.shared.select(choice) } }
+                            ForEach(catalog.characters) { choice in ProfileCharacterAvatarButton(choice: choice, size: 72) { PersonalProfile.shared.select(choice) } }
                         }
                     }.scrollIndicators(.hidden)
                     PhotosPicker(selection: $selection, matching: .images) {
                         Label("Upload a photo", systemImage: "camera").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity, minHeight: 50).background(.white.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.12)))
                     }.accessibilityIdentifier("profile-custom-photo")
-                    if let error { Text(error).font(.footnote).foregroundStyle(.secondary) }
+                    if let error = error ?? catalog.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Name").font(.system(size: 14)).foregroundStyle(.secondary)
@@ -470,6 +481,7 @@ struct EditProfileView: View {
                 }.padding(18).diaryPanel(padding: 0, radius: 22)
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 28)
         }.diaryScreenBackground().navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
+            .task { await catalog.load(preview: store.isPreview) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -492,7 +504,8 @@ struct EditProfileView: View {
 }
 
 private struct AvatarPickerView: View {
-    let characters: [ProfileAvatarChoice]
+    @Environment(DiaryStore.self) private var store
+    private var catalog: ProfileAvatarCatalog { .shared }
     @Environment(\.dismiss) private var dismiss
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var selection: PhotosPickerItem?
@@ -508,13 +521,21 @@ private struct AvatarPickerView: View {
                     Label("Choose custom photo", systemImage: "photo.badge.plus").frame(maxWidth: .infinity, minHeight: 48).background(fieldColour, in: RoundedRectangle(cornerRadius: 12))
                 }.disabled(loading).accessibilityIdentifier("profile-custom-photo")
                 if loading { ProgressView("Preparing photo") }
-                if let error { Text(error).font(.footnote).foregroundStyle(.secondary) }
+                if let error = error ?? catalog.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
                 Button("Use initials") { generation = UUID(); PersonalProfile.shared.useInitials(); dismiss() }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 85))], spacing: 20) {
-                    ForEach(characters) { choice in
-                        ProfileCharacterAvatarButton(choice: choice, size: 72) {
-                            generation = UUID(); PersonalProfile.shared.select(choice); dismiss()
-                        }
+                if !catalog.characters.isEmpty {
+                    // Same sideways row as Edit profile (a lazy grid here never drew in the sheet).
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Choose a character").font(.system(size: 20, weight: .bold)).frame(maxWidth: .infinity, alignment: .leading)
+                        ScrollView(.horizontal) {
+                            HStack(alignment: .top, spacing: 14) {
+                                ForEach(catalog.characters) { choice in
+                                    ProfileCharacterAvatarButton(choice: choice, size: 72) {
+                                        generation = UUID(); PersonalProfile.shared.select(choice)
+                                    }
+                                }
+                            }.padding(.horizontal, 20)
+                        }.scrollIndicators(.hidden).padding(.horizontal, -20)
                     }
                 }
             }.padding(20)
@@ -529,6 +550,7 @@ private struct AvatarPickerView: View {
                 } catch { if !Task.isCancelled && generation == request { self.error = error.localizedDescription } }
             }
             .onDisappear { generation = UUID() }
+            .task { await catalog.load(preview: store.isPreview) }
     }
 }
 

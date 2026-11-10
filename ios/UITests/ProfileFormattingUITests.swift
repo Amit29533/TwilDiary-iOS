@@ -41,15 +41,14 @@ import UIKit
         XCTAssertFalse(app.buttons["person-tmdb"].exists)
         XCTAssertFalse(app.buttons["voice-actor-tmdb"].exists)
     }
+    /// The redesigned header: the top facts stack beside the photo (Born, then Age under it), or in
+    /// the card below when they don't fit there. Either way Age follows Born, label before value.
     private func factPair(_ app: XCUIApplication, first: String, second: String) {
         let a = element(app, first), b = element(app, second)
         reveal(a, in: app)
         XCTAssertTrue(b.exists)
-        XCTAssertEqual(a.frame.width, b.frame.width, accuracy: 1)
-        XCTAssertEqual(a.frame.height, b.frame.height, accuracy: 1)
-        XCTAssertEqual(a.frame.minY, b.frame.minY, accuracy: 1)
-        XCTAssertGreaterThan(b.frame.minX, a.frame.maxX)
-        XCTAssertLessThanOrEqual(a.frame.height, 76, "Short facts should use the compact borderless layout")
+        XCTAssertGreaterThanOrEqual(b.frame.minY, a.frame.minY, "Age comes after Born")
+        XCTAssertGreaterThanOrEqual(a.frame.minX, 12); XCTAssertLessThanOrEqual(a.frame.maxX, app.frame.width - 12)
         XCTAssertTrue(a.label.hasPrefix(first.hasPrefix("character-") ? "Birthday" : "Born"), "Fact labels must precede their values")
         XCTAssertTrue(b.label.hasPrefix("Age"))
     }
@@ -139,7 +138,12 @@ import UIKit
             capture("Character \(id) freeform age and optional facts", app: app)
             let bio = element(app, "profile-biography"); reveal(bio, in: app)
             if id == 176754 { XCTAssertFalse(app.buttons["Expand biography"].exists, "Short biographies have no empty More control") }
-            if id == 138100 { XCTAssertTrue(app.staticTexts["Relatives"].exists) }
+            // Relatives sit in the "Family and relations" highlight (labels may be shown in capitals).
+            if id == 138100 {
+                let relations = app.staticTexts.matching(NSPredicate(format: "label ==[c] 'Relatives' OR label ==[c] 'Family and relations'")).firstMatch
+                for _ in 0..<6 where !relations.exists { app.swipeUp() }
+                XCTAssertTrue(relations.exists)
+            }
             XCTAssertEqual(app.tabBars.count, 0)
             app.terminate()
         }
@@ -157,7 +161,8 @@ import UIKit
             capture("Voice \(id) compact borderless facts and complete hometown", app: app)
             let links = element(app, "profile-links-section"); reveal(links, in: app)
             let bio = element(app, "voice-actor-biography"); reveal(bio, in: app)
-            XCTAssertGreaterThan(bio.frame.minY, links.frame.maxY)
+            // About opens with the prose; the Links row follows it (profile redesign).
+            XCTAssertLessThan(bio.frame.minY, links.frame.minY)
             XCTAssertFalse(bio.label.contains("Agency:"))
             XCTAssertFalse(bio.label.contains("Height:"))
             capture("Voice \(id) links separated from prose", app: app)

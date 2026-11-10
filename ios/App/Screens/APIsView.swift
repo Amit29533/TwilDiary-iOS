@@ -60,8 +60,9 @@ struct APIsView: View {
                 }
             }
             .sheet(isPresented: $editingJellyfin, onDismiss: { jellyfinRevision += 1 }) { JellyfinSetupSheet() }
-            .confirmationDialog("Go back to the server’s own key?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible, presenting: removing) { key in
+            .alert("Go back to the server’s own key?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),  presenting: removing) { key in
                 Button("Remove saved key", role: .destructive) { Task { await model?.remove(key.name) } }
+                Button("Cancel", role: .cancel) {}
             }
     }
 
@@ -95,7 +96,7 @@ struct APIsView: View {
                 Text("Redirect: twildiary://auth/" + key.service).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
             }
             HStack(spacing: 8) {
-                Text(key.hint.map { "●●●●" + $0 } ?? "No key").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary)
+                Text(key.hint.map { "••••" + $0 } ?? "No key").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary)
                 if let updated = key.updatedAt.flatMap({ DiaryDate.parse($0) }) { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 Spacer(minLength: 0)
                 if testing { ProgressView().controlSize(.small) }

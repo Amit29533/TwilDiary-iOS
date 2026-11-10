@@ -92,7 +92,8 @@ struct EpisodeCardRow: View {
                         else { Artwork(path: artwork, title: String(number)) }
                     }.frame(width: 96, height: 60).clipShape(RoundedRectangle(cornerRadius: 14))
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(name.hasPrefix("Episode ") || hidden ? name : "\(number). \(name)")
+                        // The number isn't a spoiler: hidden rows keep it ("9. A story for later").
+                        Text(name.hasPrefix("Episode ") ? name : "\(number). \(name)")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
                         HStack(spacing: 6) {
                             EpisodeChip(text: state.text, accent: state == .next)
@@ -443,7 +444,7 @@ struct RelatedTitlesPage: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if let items {
-                    if items.isEmpty { Text("TMDB has no recommendations for this title yet.").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
+                    if items.isEmpty { Text("No recommendations for this title yet.").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
                     else { CatalogGrid(items: items, showsLayoutToggle: false) }
                 } else if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
@@ -455,7 +456,7 @@ struct RelatedTitlesPage: View {
     }
     private func load() async {
         failure = nil
-        do { items = try await store.related(route).items } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do { items = try await store.related(route).items.filter { $0.route != route } } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
 

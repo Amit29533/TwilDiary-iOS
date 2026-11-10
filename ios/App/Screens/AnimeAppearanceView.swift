@@ -48,7 +48,7 @@ struct AnimeAppearanceView: View {
                             }
                             if !choices.isEmpty { CatalogGrid(items: choices, showsLayoutToggle: false) }
                         } else if !loading && failure == nil {
-                            Text("No matching title was found in TMDB.").foregroundStyle(.secondary)
+                            Text("No matching title was found.").foregroundStyle(.secondary)
                         }
                     }.padding(14).padding(.bottom, 28)
                 }.diaryScreenBackground().navigationTitle("Choose title").navigationBarTitleDisplayMode(.inline)

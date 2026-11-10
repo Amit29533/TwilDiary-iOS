@@ -39,7 +39,8 @@ import XCTest
         XCTAssertEqual(layout.frame.width, 44, accuracy: 1); XCTAssertLessThanOrEqual(layout.frame.maxX, app.frame.width - 10)
         XCTAssertLessThan(order.frame.maxX, filters.frame.minX); XCTAssertLessThan(filters.frame.maxX, layout.frame.minX)
         XCTAssertEqual(app.buttons["category-all"].frame.minX, 14, accuracy: 1)
-        let chip = app.buttons["library-status-all"]
+        // The status row starts with Watching (there is no All chip: tapping the chosen status again shows everything).
+        let chip = app.buttons["library-status-watching"]
         XCTAssertGreaterThanOrEqual(chip.frame.minX, 10); XCTAssertLessThan(chip.frame.maxY, order.frame.minY + 1)
         XCTAssertLessThan(order.frame.maxY, titles[0].frame.minY)
         capture("Library", app: app)

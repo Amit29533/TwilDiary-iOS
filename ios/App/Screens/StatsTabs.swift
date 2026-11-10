@@ -55,14 +55,36 @@ struct StatsJourneyCard: View {
             HStack(spacing: 10) {
                 tile(insights.episodes, "episodes"); tile(insights.shows, "shows"); tile(insights.movies, "movies")
             }
-            Capsule().fill(.white.opacity(0.12)).frame(height: 7)
-                .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(coverage.percent) / 100) } }
-                .accessibilityLabel("Watches with dates").accessibilityValue("\(coverage.percent)%")
-            HStack {
-                Text("\(coverage.dated.formatted()) watches dated")
-                Spacer(minLength: 6)
-                Text("\(coverage.unknown.formatted()) undated · \(coverage.missingRuntime.formatted()) no runtime")
-            }.font(.system(size: 13)).foregroundStyle(.white.opacity(0.75)).lineLimit(1).minimumScaleFactor(0.8)
+            // The dates bar only means something once there are watches.
+            if coverage.total > 0 {
+                Capsule().fill(.white.opacity(0.12)).frame(height: 7)
+                    .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(coverage.percent) / 100) } }
+                    .accessibilityLabel("Watches with dates").accessibilityValue("\(coverage.percent)%")
+                HStack {
+                    Text("\(coverage.dated.formatted()) watches dated")
+                    Spacer(minLength: 6)
+                    Text("\(coverage.unknown.formatted()) undated · \(coverage.missingRuntime.formatted()) no runtime")
+                }.font(.system(size: 13)).foregroundStyle(.white.opacity(0.75)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            if coverage.total == 0 {
+                Text("Log a movie or episode to start your stats.").font(.system(size: 14)).foregroundStyle(.white.opacity(0.85))
+            } else if coverage.unknown > 0 {
+                // Undated watches stay out of the charts; this opens them in History to give them dates.
+                NavigationLink(value: HistoryRoute(unknown: true)) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.exclamationmark").font(.system(size: 14, weight: .semibold))
+                        Text("Review dates").font(.system(size: 14, weight: .semibold))
+                        Spacer(minLength: 0)
+                        Text(coverage.unknown.counted("undated watch", "undated watches")).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+                    }.foregroundStyle(.white).padding(.horizontal, 14).frame(height: 44)
+                        .background(.white.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.14))).contentShape(Capsule())
+                }.buttonStyle(.springPress).accessibilityLabel("Review dates").accessibilityIdentifier("stats-review-dates")
+            }
+            if coverage.future > 0 {
+                Text(coverage.future.counted("future-dated watch waits for its", "future-dated watches wait for their") + " watch day")
+                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+            }
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
@@ -275,10 +297,12 @@ struct StatsHallOfFameCard: View {
         }.buttonStyle(.plain)
     }
     private func span(_ from: Date, _ to: Date) -> String {
-        let parts = DiaryDate.calendar().dateComponents([.year, .month, .day], from: from, to: to)
+        // Calendar days, both ends counted: Oct 4 to Oct 23 is 20 days (matching a 20-day streak).
+        let calendar = DiaryDate.calendar()
+        let parts = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: from), to: calendar.startOfDay(for: to))
         if let years = parts.year, years > 0 { return years.counted("year", "years") }
         if let months = parts.month, months > 0 { return months.counted("month", "months") }
-        return max(0, parts.day ?? 0).counted("day", "days")
+        return (max(0, parts.day ?? 0) + 1).counted("day", "days")
     }
 }
 

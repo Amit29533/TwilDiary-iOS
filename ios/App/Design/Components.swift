@@ -270,7 +270,7 @@ struct PageHeader: View {
             let gesture = RandomPick.tap(previous: taps, now: ProcessInfo.processInfo.systemUptime)
             taps = gesture.taps
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
-            if gesture.triggered { router.presentRandomPick() }
+            if gesture.triggered { presentPick() }
         } label: {
             // Design: a 44 pt frosted grey circle (rgba 120 122 132 / .38) with a 20 pt #cdbbff mark.
             BrandMark().fill(Color(webHex: "#cdbbff")).frame(width: 20, height: 20).rotationEffect(.degrees(angle))
@@ -278,7 +278,16 @@ struct PageHeader: View {
                 .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.38), in: Circle())
                 .background(.ultraThinMaterial, in: Circle())
                 .contentShape(Circle())
-        }.buttonStyle(.plain).sensoryFeedback(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
+        }.buttonStyle(.plain)
+            // Quick taps can reach the button as one; a real triple tap opens the pick too.
+            .simultaneousGesture(TapGesture(count: 3).onEnded { presentPick() })
+            .sensoryFeedback(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick")
+            .accessibilityAction(named: "Random pick") { presentPick() }
+            .accessibilityIdentifier("random-pick-logo")
+    }
+    private func presentPick() {
+        taps = []
+        if router.randomPick == nil { router.presentRandomPick() }
     }
     @ViewBuilder private var title: some View {
         if name == "TwilDiary" {
@@ -875,6 +884,7 @@ struct ProgressCard: View {
                     .overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: max(fraction > 0 ? 6 : 0, proxy.size.width * fraction)) }
             }.frame(height: 5)
         }.accessibilityElement(children: .ignore).accessibilityLabel(progressLine + ", \(Int((fraction * 100).rounded())) percent watched")
+            .accessibilityIdentifier("watch-progress-" + title.id)
     }
     /// "S1 · E12 of 28 · 43%"; movies: "Movie · 1h 54m".
     private var progressLine: String {
@@ -918,7 +928,9 @@ struct ProgressCard: View {
                     if starting { Capsule().fill(HomeStyle.chip) }
                     else { Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)) }
                 }
-                .fixedSize().contentShape(Capsule())
+                .fixedSize()
+                // A 40 pt pill, with the 44 pt tap target the platform asks for.
+                .frame(minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.springPress).disabled(!canMark).opacity(canMark || card == nil ? 1 : 0.5).starBurst(trigger: sparks)
             .accessibilityLabel((title.isSeries ? (starting ? "Start " : "Mark ") + label : label) + ", " + title.name)
             .accessibilityIdentifier("progress-next-" + title.id)

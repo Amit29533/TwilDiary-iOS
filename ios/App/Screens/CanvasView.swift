@@ -228,14 +228,21 @@ struct CanvasMosaic: View {
             ForEach(Array(stride(from: 0, to: items.count, by: 6)), id: \.self) { start in
                 let group = Array(items[start..<min(start + 6, items.count)])
                 tile(group[0], wide: true).frame(width: width, height: width * 0.5)
-                if group.count > 1 {
-                    HStack(spacing: gap) { ForEach(group[1..<min(4, group.count)], id: \.displayKey) { tile($0).frame(width: column, height: poster) } }
+                // A short last group still fills its rows: no lone poster beside an empty gap.
+                let posters = Array(group[1..<min(4, group.count)])
+                if posters.count == 1 {
+                    tile(posters[0], wide: true).frame(width: width, height: width * 0.5)
+                } else if !posters.isEmpty {
+                    let each = (width - gap * CGFloat(posters.count - 1)) / CGFloat(posters.count)
+                    HStack(spacing: gap) { ForEach(posters, id: \.displayKey) { tile($0).frame(width: each, height: poster) } }
                         .frame(width: width, alignment: .leading)
                 }
-                if group.count > 4 {
+                if group.count == 5 {
+                    tile(group[4], wide: true).frame(width: width, height: width * 0.5)
+                } else if group.count > 5 {
                     HStack(spacing: gap) {
                         tile(group[4], wide: true).frame(width: column * 2 + gap, height: poster)
-                        if group.count > 5 { tile(group[5]).frame(width: column, height: poster) }
+                        tile(group[5]).frame(width: column, height: poster)
                     }.frame(width: width, alignment: .leading)
                 }
             }

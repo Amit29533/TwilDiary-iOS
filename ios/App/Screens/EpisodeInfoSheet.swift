@@ -59,16 +59,17 @@ struct EpisodeInfoSheet: View {
                 .onScrollPhaseChange { _, phase in if phase == .idle { settle() } }
             Rectangle().fill(Color(webHex: "#2a2a33")).frame(height: HomeStyle.hairline)
             pager.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
+                // Anchored at the bottom, by the actions, so the choices open there rather than at the top.
+                .confirmationDialog("Rate episode \(episode.number)", isPresented: $rating, titleVisibility: .visible) {
+                    ForEach((1...10).reversed(), id: \.self) { value in Button("\(value)") { rate(value) } }
+                    if myRating != nil { Button("Remove rating", role: .destructive) { rate(nil) } }
+                } message: { Text("Saved to Trakt.") }
         }.background(HomeStyle.round.ignoresSafeArea())
             .onAppear { position = episode.id }
             .onChange(of: episode.id) { _, id in if position != id { position = id } }
             .task(id: episode.id) { ratingError = nil }
             .accessibilityAction(named: "Next episode") { go(true) }
             .accessibilityAction(named: "Previous episode") { go(false) }
-            .confirmationDialog("Rate episode \(episode.number)", isPresented: $rating, titleVisibility: .visible) {
-                ForEach((1...10).reversed(), id: \.self) { value in Button("\(value)") { rate(value) } }
-                if myRating != nil { Button("Remove rating", role: .destructive) { rate(nil) } }
-            } message: { Text("Saved to Trakt.") }
     }
 
     private func pageView(_ item: Episode, _ p: Page) -> some View {

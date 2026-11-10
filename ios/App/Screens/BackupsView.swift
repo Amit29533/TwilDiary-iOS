@@ -71,7 +71,7 @@ struct BackupsView: View {
         }.diaryScreenBackground().diaryPageNavigation("Backups")
             .task { await load() }
             .refreshable { await load() }
-            .confirmationDialog("Restore this backup?", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), titleVisibility: .visible, presenting: restoring) { backup in
+            .alert("Restore this backup?", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }),  presenting: restoring) { backup in
                 Button("Restore \(backup.label)") { Task { await restore(backup) } }
                 Button("Cancel", role: .cancel) {}
             } message: { backup in
@@ -79,7 +79,7 @@ struct BackupsView: View {
                      ? "What Trakt doesn’t have from this backup (\(backup.titles.counted("title", "titles")), \(backup.watches.counted("watch", "watches")) from \(date(backup))) is added to Trakt. Nothing on Trakt is changed or removed."
                      : "\(backup.titles.counted("title", "titles")) and \(backup.watches.counted("watch", "watches")) from \(date(backup)) are merged into your diary. Anything newer stays.")
             }
-            .confirmationDialog("Delete this backup?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { backup in
+            .alert("Delete this backup?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),  presenting: deleting) { backup in
                 Button("Delete", role: .destructive) { Task { await delete(backup) } }
                 Button("Cancel", role: .cancel) {}
             }

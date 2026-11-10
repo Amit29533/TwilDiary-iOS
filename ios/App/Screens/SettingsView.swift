@@ -144,13 +144,15 @@ struct SettingsView: View {
                 }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
         }
-        .confirmationDialog(store.pendingDiaryEdits + TraktDirectStore.shared.pending.count > 0 ? "Sign out? Pending edits on this device, including any still waiting for Trakt, will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
-        .confirmationDialog("Which provider settings should this device keep? Only your pending fields will change.", isPresented: $reviewProviderConflict, titleVisibility: .visible) {
+        .alert(store.pendingDiaryEdits + TraktDirectStore.shared.pending.count > 0 ? "Sign out? Pending edits on this device, including any still waiting for Trakt, will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
+        .alert("Which provider settings should this device keep? Only your pending fields will change.", isPresented: $reviewProviderConflict) {
             Button("Keep this device’s settings") { Task { await store.resolveProviderVaultConflict(keepDevice: true) } }
             Button("Use saved online settings") { Task { await store.resolveProviderVaultConflict(keepDevice: false) } }
+            Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog("Discard all pending edits on this device? The latest hosted diary will be loaded first.", isPresented: $confirmDiscardPending, titleVisibility: .visible) {
+        .alert("Discard all pending edits on this device? The latest hosted diary will be loaded first.", isPresented: $confirmDiscardPending) {
             Button("Discard pending edits", role: .destructive) { Task { await store.discardPendingEdits() } }
+            Button("Cancel", role: .cancel) {}
         }
             .task(id: store.sessionRevision) {
                 summary = TraktController(service: makeTraktService(store: store))
@@ -283,11 +285,12 @@ struct SettingsView: View {
         HStack(spacing: 14) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
-            }
+            }.layoutPriority(1)
             Spacer(minLength: 4)
-            if let value { Text(value).font(.system(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).multilineTextAlignment(.trailing) }
+            // The value gives way (one line, …) before the title wraps.
+            if let value { Text(value).font(.system(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).lineLimit(1).truncationMode(.tail) }
             if disclosure { chevron }
         }.padding(.horizontal, padded ? 15 : 0).frame(minHeight: padded ? 64 : 40).contentShape(Rectangle())
     }

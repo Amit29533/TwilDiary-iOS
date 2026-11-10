@@ -68,7 +68,7 @@ struct ConnectionsView: View {
                 trakt = TraktController(service: makeTraktService(store: store))
                 await trakt?.refresh()
             }
-            .confirmationDialog(matching.map { "Make \($0.name) match the diary?" } ?? "", isPresented: Binding(get: { matching != nil }, set: { if !$0 { matching = nil } }), titleVisibility: .visible) {
+            .alert(matching.map { "Make \($0.name) match the diary?" } ?? "", isPresented: Binding(get: { matching != nil }, set: { if !$0 { matching = nil } })) {
                 if let tracker = matching {
                     Button("Send to \(tracker.name)") { Task { await match(tracker) } }
                     Button("Cancel", role: .cancel) { matching = nil }
@@ -138,6 +138,8 @@ struct ConnectionsView: View {
         let destination: AppDestination = tracker == .trakt ? .trakt : tracker == .simkl ? .simkl : .mdblist
         let checked = checkedAt(tracker).map { "checked " + $0.formatted(.relative(presentation: .named)) }
         let detail = on ? [account(tracker).map { "@" + $0 }, checked].compactMap { $0 }.joined(separator: " · ") : ""
+        // A connection that needs attention says so (in amber), instead of looking healthy.
+        let status = badge(tracker), problem = ["Reconnect", "Unavailable"].contains(status)
         return HStack(spacing: 4) {
             NavigationLink(value: destination) {
                 HStack(spacing: 14) {
@@ -157,13 +159,17 @@ struct ConnectionsView: View {
                             }
                         }
                         HStack(spacing: 6) {
-                            if on { Circle().fill(Color(webHex: "#7fe0b5")).frame(width: 6, height: 6) }
-                            Text(on && !detail.isEmpty ? detail : badge(tracker)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                            if on && !problem { Circle().fill(Color(webHex: "#7fe0b5")).frame(width: 6, height: 6) }
+                            Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: 12))
+                                .foregroundStyle(problem ? Color(webHex: "#f5c26b") : HomeStyle.secondary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 0)
                 }.padding(.leading, 15).padding(.vertical, 12).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("settings-" + tracker.rawValue)
+            }.buttonStyle(.plain)
+                // VoiceOver hears the status even when the row shows the account instead.
+                .accessibilityLabel([tracker.name, isMain ? "Main" : nil, status, detail.isEmpty ? nil : detail].compactMap { $0 }.joined(separator: ", "))
+                .accessibilityIdentifier("settings-" + tracker.rawValue)
             Menu {
                 if !isMain { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
                 Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on)

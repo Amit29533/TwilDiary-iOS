@@ -306,9 +306,14 @@ struct RatingTrendCard: View {
                     }
                     chart(summary).frame(height: 170)
                     HStack(spacing: 10) {
-                        stat("Average", summary.average, "all episodes")
-                        stat("Best", summary.best.score, "Episode \(summary.best.episode)")
-                        stat("Lowest", summary.lowest.score, "Episode \(summary.lowest.episode)")
+                        if summary.best.score == summary.lowest.score {
+                            // One score throughout: no "Best: Episode 1 / Lowest: Episode 1".
+                            stat("Average", summary.average, "the same for every episode")
+                        } else {
+                            stat("Average", summary.average, "all episodes")
+                            stat("Best", summary.best.score, "Episode \(summary.best.episode)")
+                            stat("Lowest", summary.lowest.score, "Episode \(summary.lowest.episode)")
+                        }
                     }
                 }.padding(18).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 24))
                     .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.08)))

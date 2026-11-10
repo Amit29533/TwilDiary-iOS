@@ -17,21 +17,20 @@ import XCTest
         XCTAssertEqual(app.tabBars.buttons.count, 5)
         XCTAssertFalse(app.tabBars.buttons["More"].exists); XCTAssertFalse(app.tabBars.buttons["Stats"].exists)
         let personal = app.buttons["settings-personal-profile"], statistics = app.buttons["settings-statistics"], diary = app.buttons["settings-refresh-diary"]
-        XCTAssertTrue(personal.waitForExistence(timeout: 5)); XCTAssertLessThan(personal.frame.maxY, statistics.frame.minY)
-        XCTAssertLessThan(statistics.frame.maxY, diary.frame.minY)
+        // Settings design: your profile first, then Your diary, with Statistics as that card's last row.
+        XCTAssertTrue(personal.waitForExistence(timeout: 5)); XCTAssertLessThan(personal.frame.minY, diary.frame.minY)
+        XCTAssertLessThan(diary.frame.minY, statistics.frame.minY)
         XCTAssertFalse(app.buttons["search-profile"].exists); XCTAssertFalse(app.staticTexts["Milestones"].exists)
         capture("Profile menu identity then Statistics then Your diary", app)
         personal.tap()
         let avatar = app.buttons["profile-avatar"]
         XCTAssertTrue(avatar.waitForExistence(timeout: 5)); XCTAssertEqual(app.tabBars.count, 0)
-        let characters = app.staticTexts["Popular Characters"], milestones = app.staticTexts["Milestones"]
-        XCTAssertTrue(characters.waitForExistence(timeout: 5)); XCTAssertLessThan(characters.frame.minY, milestones.frame.minY)
+        // Profile redesign: characters and your own photo are chosen from the avatar picker (tap the picture).
         XCTAssertFalse(app.buttons["profile-custom-photo"].exists, "Custom photo is reached by tapping the picture")
         capture("Personal profile before avatar selection", app)
+        avatar.tap(); XCTAssertTrue(app.buttons["profile-custom-photo"].waitForExistence(timeout: 5))
         let frieren = app.buttons["profile-character-176754"]
         XCTAssertTrue(frieren.waitForExistence(timeout: 5)); frieren.tap(); XCTAssertEqual(frieren.value as? String, "Selected")
-        capture("Personal profile popular character avatars above minimal milestones", app)
-        avatar.tap(); XCTAssertTrue(app.buttons["profile-custom-photo"].waitForExistence(timeout: 5))
         capture("Avatar tap presents custom photo and character picker", app)
         app.buttons["Done"].tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -39,17 +38,22 @@ import XCTest
     }
     func testNameAndCharacterPersistAcrossRelaunch() {
         var app = launch(); app.tabBars.buttons["Profile"].tap(); app.buttons["settings-personal-profile"].tap()
+        // Edit profile: pick a character and change the name, then Save.
+        let edit = app.buttons["profile-edit-name"]; XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
         let choice = app.buttons["profile-character-176754"]
         XCTAssertTrue(choice.waitForExistence(timeout: 5)); choice.tap()
-        app.buttons["profile-edit-name"].tap()
-        let field = app.alerts.textFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
+        let field = app.textFields["Name"]; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
         let old = field.value as? String ?? ""
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + "Amit Test")
-        app.alerts.buttons["Save"].tap(); app.terminate()
+        app.buttons["profile-save"].tap(); app.terminate()
         app = launch(reset: false); app.tabBars.buttons["Profile"].tap()
-        XCTAssertTrue(app.staticTexts["Amit Test"].waitForExistence(timeout: 5))
+        // The name is part of the profile row's combined label.
+        let row = app.buttons["settings-personal-profile"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); XCTAssertTrue(row.label.contains("Amit Test"), row.label)
         app.buttons["settings-personal-profile"].tap()
-        XCTAssertEqual(app.buttons["profile-character-176754"].value as? String, "Selected")
+        let avatar = app.buttons["profile-avatar"]; XCTAssertTrue(avatar.waitForExistence(timeout: 5)); avatar.tap()
+        let chosen = app.buttons["profile-character-176754"]; XCTAssertTrue(chosen.waitForExistence(timeout: 5))
+        XCTAssertEqual(chosen.value as? String, "Selected")
         capture("Personal name and character avatar survive relaunch", app)
     }
     func testStatisticsIsNestedAndFunFactsAreRemoved() {
@@ -69,7 +73,7 @@ import XCTest
     }
     func testUniversalSearchTrendingLocalMatchAndReturnToSearch() {
         let app = launch(); app.tabBars.buttons["Search"].tap()
-        XCTAssertTrue(app.staticTexts["Trending this week"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Top 10 shows this week"].waitForExistence(timeout: 5))
         capture("Universal Search with weekly TMDB trends", app)
         let field = app.textFields["Search library and online"]
         XCTAssertTrue(field.exists); field.tap(); field.typeText("Frieren\n")

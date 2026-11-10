@@ -413,16 +413,18 @@ struct CatalogDetailView: View {
                         let saved = savedTitle
                         Menu {
                             Button("Sentiments", systemImage: "info.circle") { showInformation = true }.accessibilityIdentifier("catalog-information")
+                            // Sentiments, File location and Share only read; the library edits need write access.
+                            let canEdit = store.canMutate && !store.busy && details?.libraryTitle?.trashed != true
                             Button(saved?.favorite == true ? "Remove from Favourites" : "Add to Favourites", systemImage: saved?.favorite == true ? "heart.slash" : "heart") {
                                 Task { await libraryAction(["favorite": saved?.favorite != true]) }
-                            }.accessibilityIdentifier("catalog-favorite")
+                            }.disabled(!canEdit).accessibilityIdentifier("catalog-favorite")
                             Button(saved?.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") {
                                 Task { await libraryAction(["queued": saved?.queued != true]) }
-                            }.accessibilityIdentifier("catalog-queue")
+                            }.disabled(!canEdit).accessibilityIdentifier("catalog-queue")
                             Button("File location", systemImage: "folder") { showFiles = true }.accessibilityIdentifier("catalog-files")
                             TitleShareItem(name: details?.details.name ?? "Title", kind: route.kind, id: route.id)
                         } label: { TitleMoreButtonLabel() }
-                            .disabled(details == nil || details?.libraryTitle?.trashed == true || store.busy || !store.canMutate)
+                            .disabled(details == nil)
                             .accessibilityLabel("More options for " + (details?.details.name ?? "this title")).accessibilityIdentifier("catalog-more")
                     }
                 }
@@ -735,7 +737,8 @@ struct CastAndRelated: View {
     private func load() async {
         failure = nil
         do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled { failure = error.localizedDescription } }
-        do { related = try await store.related(route).items } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        // Never suggest the title you're looking at.
+        do { related = try await store.related(route).items.filter { $0.route != route } } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
 

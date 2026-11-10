@@ -80,6 +80,18 @@ private struct ScannerMatchView: View {
                 .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0, onImported: choose) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0) }
+                // Everything a title preview links to (cast, characters, See all pages, companies), so no
+                // link inside the match sheet is a dead tap.
+                .navigationDestination(for: CharacterRoute.self) { CharacterView(route: $0) }
+                .navigationDestination(for: VoiceActorRoute.self) { PersonView(voice: $0) }
+                .navigationDestination(for: VoiceActorCharactersRoute.self) { VoiceActorCharactersView(route: $0) }
+                .navigationDestination(for: AniAppearance.self) { AnimeAppearanceView(appearance: $0) }
+                .navigationDestination(for: ShowPageRoute.self) { ShowPageDestination(route: $0) }
+                .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store) }
+                .navigationDestination(for: PersonPhotosRoute.self) { PersonPhotosPage(route: $0) }
+                .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0) }
+                .navigationDestination(for: SearchLabRoute.self) { _ in SearchLabView() }
+                .navigationDestination(for: SearchLabResultsRoute.self) { SearchLabResultsView(route: $0) }
         }.environment(\.diaryBack, DiaryBackAction {
             guard !path.isEmpty else { return false }; path.removeLast(); return true
         }).interactiveDismissDisabled(store.busy)

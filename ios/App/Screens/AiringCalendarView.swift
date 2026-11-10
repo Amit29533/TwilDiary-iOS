@@ -146,7 +146,9 @@ struct AiringCalendarView: View {
         let days = (0..<14).compactMap { calendar.date(byAdding: .day, value: $0, to: monday) }
         var counts: [Date: Int] = [:]
         for item in items { counts[calendar.startOfDay(for: item.date), default: 0] += 1 }
-        let thisWeek = items.filter { (0..<7).contains($0.daysAway) }.count
+        // The same Monday-to-Sunday week as the grid and the "This week" group (not the next seven days).
+        let nextMonday = calendar.date(byAdding: .day, value: 7, to: monday) ?? monday
+        let thisWeek = items.filter { $0.date >= monday && $0.date < nextMonday }.count
         let months = Set(days.map { calendar.component(.month, from: $0) })
         let monthName = months.count > 1
             ? (days.first?.formatted(.dateTime.month(.wide)) ?? "") + " – " + (days.last?.formatted(.dateTime.month(.wide)) ?? "")
@@ -441,6 +443,8 @@ private struct CalendarGenreSheet: View {
     let names: [String]
     @Binding var chosen: Set<String>
     @State private var pending: Set<String> = []
+    /// The chips' height, so a short list opens a short sheet (no empty half screen).
+    @State private var chipsHeight: CGFloat = 120
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -473,6 +477,7 @@ private struct CalendarGenreSheet: View {
                     }
                 }
             }.padding(.horizontal, 20).padding(.top, 14)
+                .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.height }) { _, height in chipsHeight = height }
             HStack(spacing: 10) {
                 Button("Clear") { withAnimation(.snappy) { pending = [] } }
                     .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
@@ -483,7 +488,7 @@ private struct CalendarGenreSheet: View {
                     Text(pending.isEmpty ? "Show all genres" : "Apply · " + pending.count.counted("genre", "genres")).lineLimit(1)
                 }.buttonStyle(SettingsPrimaryButtonStyle()).accessibilityIdentifier("calendar-genres-apply")
             }.padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 16)
-        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).presentationBackground(Color(webHex: "#111116"))
+        }.presentationDetents([.height(min(640, chipsHeight + 180)), .large]).presentationDragIndicator(.visible).presentationBackground(Color(webHex: "#111116"))
             .onAppear { pending = chosen }
     }
 }

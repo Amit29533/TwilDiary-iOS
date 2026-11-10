@@ -163,7 +163,17 @@ private struct RecommendedDiscoveryView: View {
             DiscoveryTrack(items: results.items)
             if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading recommendations") }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await results.load(refresh: true) } } }
-            else if !results.loading && !results.connected { DiscoveryNotice(text: "Trakt not connected.") }
+            else if !results.loading && !results.connected {
+                // A way in, not a dead end: Trakt's settings page connects it.
+                NavigationLink(value: AppDestination.trakt) {
+                    HStack(spacing: 10) {
+                        BrandLogo(service: .trakt, size: 22)
+                        Text("Connect Trakt for picks made for you").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
+                }.buttonStyle(.springPress).accessibilityIdentifier("explore-connect-trakt")
+            }
             else if !results.loading && results.items.isEmpty { DiscoveryNotice(text: "No recommendations yet.") }
         }.smoothChange(of: results.items.isEmpty).task(id: store.discoveryRevision) { await results.load(limit: section ? 24 : 8) }
     }

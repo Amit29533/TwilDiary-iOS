@@ -87,7 +87,8 @@ struct StatsMonth {
         // The twelve months ending with this one; for a year, its own January to December.
         let firstMonth = wholeYear ? begin : (calendar.date(byAdding: .month, value: -11, to: begin) ?? begin)
         months = (0..<12).compactMap { step in
-            guard let monthStart = calendar.date(byAdding: .month, value: step, to: firstMonth),
+            // Months still to come aren't plotted as zero.
+            guard let monthStart = calendar.date(byAdding: .month, value: step, to: firstMonth), monthStart <= now,
                   let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) else { return nil }
             return (monthStart, all.filter { $0.date >= monthStart && $0.date < monthEnd }.reduce(0) { $0 + minutes($1) })
         }
@@ -184,9 +185,9 @@ struct StatsMonthOverTimeCard: View {
             let points = Array(month.months.enumerated())
             let peak = month.months.max { $0.minutes < $1.minutes }
             Chart(points, id: \.offset) { index, item in
-                AreaMark(x: .value("Month", index), y: .value("Minutes", item.minutes)).interpolationMethod(.catmullRom)
+                AreaMark(x: .value("Month", index), y: .value("Minutes", item.minutes)).interpolationMethod(.monotone)
                     .foregroundStyle(LinearGradient(colors: [theme.accent.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom))
-                LineMark(x: .value("Month", index), y: .value("Minutes", item.minutes)).interpolationMethod(.catmullRom)
+                LineMark(x: .value("Month", index), y: .value("Minutes", item.minutes)).interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: 2.5)).foregroundStyle(theme.accent)
                 if item.minutes > 0, item.start == peak?.start || index == points.count - 1 {
                     PointMark(x: .value("Month", index), y: .value("Minutes", item.minutes)).symbolSize(60).foregroundStyle(theme.accent)

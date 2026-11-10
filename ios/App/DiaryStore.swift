@@ -230,7 +230,13 @@ import TwilDiaryCore
         if let outboxStore { self.outboxStore = outboxStore }
         else if api == nil { self.outboxStore = FileSyncOutboxStore() }
         else { self.outboxStore = MemorySyncOutboxStore() }
+        #if DEBUG
+        // UI tests run unsigned in the simulator, where the Keychain refuses writes; keep provider
+        // settings in memory there instead of showing "could not be saved securely" on every screen.
+        self.providerSettingsStore = providerSettingsStore ?? (isPreview ? MemoryProviderSettingsStore() : UserDefaultsProviderSettingsStore())
+        #else
         self.providerSettingsStore = providerSettingsStore ?? UserDefaultsProviderSettingsStore()
+        #endif
         do { self.providerSettings = try self.providerSettingsStore.load() }
         catch { self.providerSettings = ProviderConnectionSettings(); self.error = error.localizedDescription }
         self.api.customTmdbToken = self.providerSettings.customTmdbToken
@@ -488,6 +494,9 @@ import TwilDiaryCore
                 failNextFixtureRefresh = false
                 throw APIError.message("Synthetic refresh outage")
             }
+            // The fixture is the "server": keep it as the confirmed copy too, or applyDiarySource()
+            // (which shows pending edits on top of the confirmed copy) would show an empty diary.
+            confirmedWorkspace = fixture.workspace
             workspace = fixture.workspace; hasLoadedWorkspace = true; needsMutationRefresh = false
             return
         }
@@ -2001,3 +2010,12 @@ private struct WorkspaceTitleRefresh: Decodable, Sendable {
                              locations: merge(base.locations, locations, owner: \.titleId)).validatingIdentities()
     }
 }
+
+#if DEBUG
+/// UI tests: provider settings kept in memory (unsigned simulator test builds have no Keychain access).
+final class MemoryProviderSettingsStore: ProviderSettingsStoring, @unchecked Sendable {
+    private var settings = ProviderConnectionSettings()
+    func load() throws -> ProviderConnectionSettings { settings }
+    func save(_ settings: ProviderConnectionSettings) throws { self.settings = settings }
+}
+#endif

@@ -768,8 +768,8 @@ import TwilDiaryCore
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
-            .confirmationDialog(groupAction.map { groupTitle($0) } ?? "", isPresented: Binding(get: { groupAction != nil }, set: { if !$0 { groupAction = nil } }),
-                                titleVisibility: .visible, presenting: groupAction) { action in
+            .alert(groupAction.map { groupTitle($0) } ?? "", isPresented: Binding(get: { groupAction != nil }, set: { if !$0 { groupAction = nil } }),
+ presenting: groupAction) { action in
                 Button(groupTitle(action), role: groupRemoves(action) ? .destructive : nil) {
                     Task { await controller.resolveAll(direction: action.direction, choice: action.choice) }
                 }.accessibilityIdentifier("trakt-group-confirm")

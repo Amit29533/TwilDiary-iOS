@@ -10,7 +10,8 @@ import TwilDiaryCore
         let request = store.homeProjectionRequest(at: now)
         await store.prepareHomeProjection(request)
         let first = try XCTUnwrap(store.homeProjection)
-        XCTAssertEqual(first.recent.map(\.id), Array(HistoryQuery().entries(in: store.workspace).prefix(4)).map(\.id))
+        // Home groups recent watches into rows (RecentWatchGroup), so the projection keeps up to 40.
+        XCTAssertEqual(first.recent.map(\.id), Array(HistoryQuery().entries(in: store.workspace).prefix(40)).map(\.id))
         XCTAssertEqual(first.watching.map(\.id), store.workspace.activeTitles.filter { $0.status == "watching" }.map(\.id))
         XCTAssertEqual(store.homeProjectionRequest(at: now.addingTimeInterval(1)), request)
         store.workspace = Workspace()

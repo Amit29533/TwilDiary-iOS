@@ -139,78 +139,6 @@ struct StatsView: View {
         appliedShortcutRevision = router.statsRevision; period = .today; selectedBucket = nil
     }
 
-    // MARK: Journey
-
-    /// "Your journey" (owner's design): the dated count large, its share as a glowing bar, and
-    /// what is left out (undated, no runtime) as two chips with the way to review dates.
-    private func journey(_ value: StatsOverview.Coverage, highlights: StatsHighlights) -> some View {
-        // Over the backdrop of the period's most-watched title, as in the owner's design.
-        let art = highlights.topTitleIDs.lazy.compactMap { store.title($0) }.first { $0.backdrop != nil }
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                BrandMark().fill(theme.accent).frame(width: 16, height: 16).accessibilityHidden(true)
-                Text("YOUR JOURNEY").font(.system(size: 12, weight: .semibold)).tracking(2.4).foregroundStyle(theme.accent)
-            }
-            HStack(alignment: .center, spacing: 12) {
-                Text(value.dated.formatted()).font(.system(size: 52, weight: .heavy)).tracking(-1.5).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
-                    .foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
-                HStack(spacing: 6) { Image(systemName: "calendar").accessibilityHidden(true); Text("Dated") }
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 12).frame(height: 34)
-                    .background(.ultraThinMaterial, in: Capsule()).background(theme.accent.opacity(0.14), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.4)))
-            }.padding(.top, 12)
-            Text("of \(value.total.formatted())").font(.system(size: 18, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.75))
-            Text("\(value.percent)%").font(.system(size: 13, weight: .bold)).monospacedDigit().foregroundStyle(theme.accent)
-                .frame(maxWidth: .infinity, alignment: .trailing).padding(.top, 4).accessibilityHidden(true)
-            // A glowing bar, so the share reads at a glance.
-            Capsule().fill(.white.opacity(0.1)).frame(height: 8)
-                .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(value.percent) / 100).shadow(color: theme.accent.opacity(0.8), radius: 7) } }
-                .padding(.top, 6).accessibilityLabel("Watches with dates").accessibilityValue("\(value.percent)%")
-            if value.total == 0 {
-                Text("Log a movie or episode to start your stats.").font(.system(size: 14)).foregroundStyle(.white.opacity(0.82)).padding(.top, 14)
-            } else {
-                HStack(spacing: 10) {
-                    journeyChip("calendar.badge.minus", value.unknown, "Undated")
-                    Rectangle().fill(.white.opacity(0.14)).frame(width: 1, height: 28).accessibilityHidden(true)
-                    journeyChip("clock.badge.xmark", value.missingRuntime, "No runtime")
-                    if value.unknown > 0 {
-                        NavigationLink(value: HistoryRoute(unknown: true)) {
-                            Image(systemName: "arrow.right").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                                .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle()).overlay(Circle().strokeBorder(.white.opacity(0.5))).contentShape(Circle())
-                        }.buttonStyle(.springPress).accessibilityLabel("Review dates")
-                    }
-                }.padding(.top, 18)
-                if value.future > 0 {
-                    Text(value.future.counted("future-dated watch waits for its", "future-dated watches wait for their") + " watch day").font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 10)
-                }
-            }
-        }.foregroundStyle(.white).padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                ZStack {
-                    Color(webHex: "#16141f")
-                    if let art { Artwork(path: art.backdrop, title: art.name) }
-                    else { RadialGradient(colors: [theme.accent.opacity(0.25), .clear], center: .topLeading, startRadius: 0, endRadius: 280) }
-                    // Dimmed evenly so every line reads over the artwork, the left a touch darker.
-                    Color.black.opacity(art == nil ? 0 : 0.5)
-                    LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .leading, endPoint: .trailing)
-                }.allowsHitTesting(false).accessibilityHidden(true)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.2)))
-            .accessibilityElement(children: .contain).accessibilityIdentifier("stats-journey")
-    }
-    private func journeyChip(_ symbol: String, _ count: Int, _ label: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol).font(.system(size: 17, weight: .medium)).foregroundStyle(theme.accent)
-                .frame(width: 36, height: 36).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 11)).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(count.formatted()).font(.system(size: 18, weight: .bold)).monospacedDigit()
-                Text(label).font(.system(size: 11, weight: .medium)).tracking(0.6).foregroundStyle(.white.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.8)
-            }
-        }.padding(6).frame(maxWidth: .infinity, alignment: .leading)
-            // Frosted glass over the artwork.
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.16)))
-            .accessibilityElement(children: .combine)
-    }
-
     // MARK: Watch time
 
     private func trend(_ data: StatsOverview, highlights: StatsHighlights) -> some View {
@@ -254,11 +182,13 @@ struct StatsView: View {
             Text("avg \(DiaryDate.duration(Int(highlights.averageMinutes.rounded()))) / day").font(.system(size: 16)).foregroundStyle(.secondary)
             // Always one line (invisible when there is nothing to compare), so the card keeps its height.
             let difference = value.difference ?? 0
+            // Nothing watched in either period: no "— 0m" line.
+            let comparable = value.difference != nil && (value.minutes > 0 || difference != 0)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(difference > 0 ? "↑" : difference < 0 ? "↓" : "—") \(DiaryDate.duration(abs(difference)))").font(.system(size: 15, weight: .bold))
                     .foregroundStyle(difference > 0 ? Color(webHex: "#5fe0b0") : difference < 0 ? Color(webHex: "#ff6b6b") : Color(webHex: "#c5c0cf"))
-                Text(value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
-            }.padding(.top, 4).opacity(value.difference == nil ? 0 : 1).accessibilityHidden(value.difference == nil)
+                Text(value.period == .today ? "vs yesterday" : value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+            }.padding(.top, 4).opacity(comparable ? 1 : 0).accessibilityHidden(!comparable)
         }
     }
     /// "0", "45m", "2h", "1h 30m".

@@ -37,7 +37,8 @@ struct PersonProfilePage<Content: View>: View {
                     if heroFacts.isEmpty {
                         hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
                     } else {
-                        let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts)
+                        let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
+                                                 largeText: dynamicType.isAccessibilitySize)
                         cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
                         if fit.besidePhoto < heroFacts.count {
                             ProfileFacts(items: Array(heroFacts.dropFirst(fit.besidePhoto))).padding(.horizontal, 14).padding(.bottom, 6)
@@ -145,7 +146,12 @@ struct PersonProfilePage<Content: View>: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
             .background(alignment: .top) {
-                if let backdrop {
+                if ProfileHeaderDebug.showsPattern {
+                    // UI tests: stripes under the toolbar prove the header stays sharp there.
+                    #if DEBUG
+                    ProfileHeaderTestPattern().frame(height: topInset + 320).allowsHitTesting(false).accessibilityHidden(true)
+                    #endif
+                } else if let backdrop {
                     // The cover stays clear around the buttons; below that it darkens behind the name so
                     // a white first name never sits on bright artwork (owner's fix).
                     TitleArtworkBackdrop(path: backdrop, name: name)
@@ -296,7 +302,8 @@ struct ProfileHeroFit {
     let photoWidth: CGFloat
     let nameSize: CGFloat
     let besidePhoto: Int
-    init(width: CGFloat, name: String, nativeName: String?, role: String?, facts: [ProfileFact]) {
+    /// With accessibility text sizes every fact goes to the full-width card below, not the narrow column.
+    init(width: CGFloat, name: String, nativeName: String?, role: String?, facts: [ProfileFact], largeText: Bool = false) {
         photoWidth = min(220, (width - 28) * 0.47)
         let column = max(120, width - 28 - photoWidth - 16)
         let photoHeight = photoWidth * 1.45
@@ -315,7 +322,7 @@ struct ProfileHeroFit {
         if ProfileText.line(role) != nil { used += 26 }
         used += 8
         var count = 0
-        for fact in facts.prefix(4) {
+        for fact in facts.prefix(largeText ? 0 : 4) {
             let valueLines = CGFloat(min(2, lines(fact.value, size: 19)))
             let height = 18 + 4 + valueLines * 24 + 22
             // A little past the photo's bottom is fine; a fact that would sit far below it isn't.
@@ -323,5 +330,16 @@ struct ProfileHeroFit {
             used += height; count += 1
         }
         besidePhoto = count
+    }
+}
+
+/// UI tests can swap the header artwork for stripes (`--ui-profile-header-pattern`); never in Release.
+enum ProfileHeaderDebug {
+    static var showsPattern: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--ui-profile-header-pattern")
+        #else
+        false
+        #endif
     }
 }
