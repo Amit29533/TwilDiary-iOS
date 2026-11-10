@@ -135,6 +135,35 @@ import XCTest
         app.buttons["Previous episode"].firstMatch.tap(); Thread.sleep(forTimeInterval: 1.5); shot("sheet-3")
     }
 
+    /// Both full Episodes pages (saved title, then preview) in grid mode.
+    func testEpisodesPageGridSnapshots() {
+        capture(tab: "home", name: "gridsaved", pages: 1) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let all = app.buttons["title-all-episodes"]
+            for _ in 0..<8 where !(all.exists && all.isHittable) { app.swipeUp() }
+            if all.exists { all.tap() }
+            Thread.sleep(forTimeInterval: 2)
+            let layout = app.buttons["episodes-page-layout"]
+            if layout.waitForExistence(timeout: 5), layout.value as? String != "grid", layout.label.hasSuffix("grid") { layout.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        capture(tab: "home", name: "gridpreview", pages: 1) { app in
+            let card = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-recommended-' AND identifier != 'home-recommended-more'")).firstMatch
+            for _ in 0..<6 where !(card.exists && card.isHittable) { app.swipeUp() }
+            if card.exists { card.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let all = app.descendants(matching: .any)["catalog-all-episodes"]
+            for _ in 0..<8 where !(all.exists && all.isHittable) { app.swipeUp() }
+            if all.exists { all.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let layout = app.buttons["episodes-page-layout"]
+            if layout.waitForExistence(timeout: 5), layout.label.hasSuffix("grid") { layout.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+    }
+
     private func capture(tab: String, name: String, pages: Int, open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab]

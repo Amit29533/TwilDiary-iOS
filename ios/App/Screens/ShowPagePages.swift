@@ -128,6 +128,8 @@ struct EpisodeGridCard: View {
     let onToggle: () -> Void
     /// False on a preview page: the title isn't in your diary, so there is nothing to tick.
     var showsTick = true
+    /// In a grid (the Episodes page) the card takes its column's width; on a shelf it is 232 pt.
+    var fills = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     private var watched: Bool { if case .watched = state { return true } else { return false } }
     var body: some View {
@@ -135,10 +137,12 @@ struct EpisodeGridCard: View {
         // badge 10 pt in, the 34 pt tick 11 pt from the corner; then 16 pt name, 13 pt state, 24 pt chips.
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onOpen) {
-                Group {
-                    if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(HomeStyle.secondary) } }
-                    else { Artwork(path: artwork, title: String(number)) }
-                }.frame(width: 230, height: 128).clipShape(RoundedRectangle(cornerRadius: 21))
+                // The still keeps the shelf card's 230 x 128 shape at any width.
+                Color.clear.aspectRatio(230.0 / 128.0, contentMode: .fit).frame(width: fills ? nil : 230)
+                    .overlay {
+                        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(HomeStyle.secondary) } }
+                        else { Artwork(path: artwork, title: String(number)) }
+                    }.clipShape(RoundedRectangle(cornerRadius: 21))
                     .padding(1).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 22))
                     .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     .overlay(alignment: .topLeading) {
@@ -161,20 +165,27 @@ struct EpisodeGridCard: View {
                     }
                 }
             Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
-            // When it aired (or that you watched it), then its length and rating, on one line.
-            HStack(spacing: 6) {
-                Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
-                if let runtime {
-                    Text("\(runtime) min").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
+            // When it aired (or that you watched it), then its length and rating, on one line;
+            // a narrow card drops the date rather than squeezing it under the chips.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    chips
                 }
-                if let score, score > 0 {
-                    HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
-                }
-            }.padding(.top, 7)
-        }.frame(width: 232, alignment: .leading)
+                HStack(spacing: 6) { chips }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 7)
+        }.frame(width: fills ? nil : 232, alignment: .leading).frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
+    }
+    @ViewBuilder private var chips: some View {
+        if let runtime {
+            Text("\(runtime) min").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
+        }
+        if let score, score > 0 {
+            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
+        }
     }
     private var subtitle: String {
         if case .watched = state { return state.text }
@@ -322,11 +333,12 @@ struct EpisodesPage: View {
 
     @ViewBuilder private func list(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
         if grid {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
                 ForEach(episodes) { episode in
                     EpisodeGridCard(number: episode.number, name: name(episode, watched: watched), artwork: artwork(episode, title: title), hidden: hidden(episode, watched: watched),
                                     state: state(episode, watched: watched, dates: dates, next: next), airedOn: episode.airedOn, runtime: title.runtimeMinutes,
-                                    score: score(episode), onOpen: { open(episode, title: title, watched: watched) }, onToggle: { toggle(episode, title: title, watched: watched) })
+                                    score: score(episode), onOpen: { open(episode, title: title, watched: watched) }, onToggle: { toggle(episode, title: title, watched: watched) },
+                                    fills: true)
                 }
             }
         } else {
@@ -551,11 +563,11 @@ struct PreviewEpisodesPage: View {
 
     @ViewBuilder private func list(_ episodes: [CatalogEpisode]) -> some View {
         if grid {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
                 ForEach(episodes) { episode in
                     EpisodeGridCard(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode), state: state(episode),
                                     airedOn: episode.airedOn, runtime: details?.runtimeMinutes, score: episode.communityScore,
-                                    onOpen: { open(episode) }, onToggle: {}, showsTick: false)
+                                    onOpen: { open(episode) }, onToggle: {}, showsTick: false, fills: true)
                 }
             }
         } else {
