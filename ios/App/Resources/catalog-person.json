@@ -516,6 +516,20 @@
         "popularity": 77,
         "episodeCount": 12
       }
+    ],
+    "photos": [
+      {
+        "path": "/reference_poster.jpg",
+        "kind": "portrait",
+        "aspectRatio": 0.667,
+        "title": null
+      },
+      {
+        "path": "/reference_backdrop.jpg",
+        "kind": "still",
+        "aspectRatio": 1.778,
+        "title": "The Clockmaker"
+      }
     ]
   },
   "stale": false

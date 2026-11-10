@@ -34,12 +34,14 @@ struct PersonView: View {
                                   favouriteSubtitle: voiceFirst ? actor?.roles.first.map { "Voice of " + $0.character.name } : person?.department,
                                   identifier: prefix,
                                   sameVoice: actor?.id, samePerson: person?.id,
-                                  heroFacts: Array(facts.prefix(3)), photos: person?.photos ?? []) {
+                                  heroFacts: Array(facts.prefix(3)), photos: person?.photos ?? [], showsPhotoShelf: false) {
+                    // Design (Actor Profile, page 1): About under the header, then Photos, then the credits.
                     VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 12) {
                             intro
                             about
                         }
+                        PersonPhotoShelf(name: person?.name ?? actor?.name ?? "", photos: person?.photos ?? [])
                         watched
                         if let person {
                             let sections = store.personSections(person)
@@ -137,6 +139,8 @@ struct PersonView: View {
         let biographyID = voiceFirst ? "voice-actor-biography" : "profile-biography"
         let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 14) {
+            Text("About").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                .accessibilityAddTraits(.isHeader).padding(.top, 6)
             ProfileFacts(items: Array(facts.dropFirst(3)))
             ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
             if let actor, let content {
@@ -146,7 +150,8 @@ struct PersonView: View {
                              sourceOverride: useTMDB ? tmdb.source : nil)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    ProfileBiography(text: AttributedString(tmdbProse), expanded: $expanded, identifier: biographyID)
+                    ProfileBiography(text: AttributedString(tmdbProse), expanded: $expanded, identifier: biographyID, collapsedLines: 3,
+                                     style: .system(size: 17))
                     if !tmdbProse.isEmpty, let source = tmdb.source { ProfileSourceNote(source: source) }
                 }
             }
@@ -178,7 +183,7 @@ struct PersonView: View {
     }
     private func sectionHeading(_ label: String, route: PersonFilmographyRoute) -> some View {
         HStack {
-            Text(label).font(.title3.weight(.semibold))
+            Text(label).font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).lineLimit(1)
             Spacer(minLength: 4)
             SectionMoreLink(label: "View more " + label, value: route,
                             identifier: "person-more-" + route.section.rawValue + (route.onServer ? "-server" : ""))
@@ -188,7 +193,7 @@ struct PersonView: View {
     private func roles(_ actor: AniVoiceActorDetail) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Characters \(actor.roles.count)").font(.title3.weight(.semibold))
+                Text("Characters \(actor.roles.count)").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 Spacer(minLength: 4)
                 if actor.roles.count > 3 {
                     SectionMoreLink(label: "All characters", value: VoiceActorCharactersRoute(id: actor.id, name: actor.name),

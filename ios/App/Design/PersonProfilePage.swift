@@ -19,6 +19,8 @@ struct PersonProfilePage<Content: View>: View {
     var heroFacts: [ProfileFact] = []
     /// The gallery under the header.
     var photos: [PersonPhoto] = []
+    /// False when the page places the Photos shelf itself (a person: after About, as designed).
+    var showsPhotoShelf = true
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -33,7 +35,7 @@ struct PersonProfilePage<Content: View>: View {
                     } else {
                         cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top)
                     }
-                    PersonPhotoShelf(name: name, photos: photos).padding(.horizontal, 14).padding(.bottom, 6)
+                    if showsPhotoShelf { PersonPhotoShelf(name: name, photos: photos).padding(.horizontal, 14).padding(.bottom, 6) }
                     content.padding(.horizontal, 14)
                 }.padding(.bottom, 28)
             }.coordinateSpace(name: "profile-scroll")
@@ -51,7 +53,7 @@ struct PersonProfilePage<Content: View>: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         ProfileFavourite(name: name, image: image, kind: kind, ref: ref,
                                          subtitle: favouriteSubtitle, identifier: identifier + "-favourite")
-                    }
+                    }.sharedBackgroundVisibility(.hidden)
                 }
         }.toolbarBackground(.hidden, for: .navigationBar)
             .modifier(ProfileNativeLinks(kind: kind, ref: ref, sameVoice: sameVoice, samePerson: samePerson))
@@ -111,7 +113,7 @@ struct PersonProfilePage<Content: View>: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(parts.first ?? name).foregroundStyle(.white)
                     if parts.count > 1 { Text(parts[1]).foregroundStyle(theme.accent) }
-                }.font(.system(size: 28, weight: .bold)).tracking(-0.8).lineLimit(3).minimumScaleFactor(0.7)
+                }.font(.system(size: 32, weight: .bold)).tracking(-0.9).lineLimit(3).minimumScaleFactor(0.6)
                     .accessibilityElement(children: .combine).accessibilityIdentifier(identifier + "-name")
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
@@ -119,14 +121,14 @@ struct PersonProfilePage<Content: View>: View {
                 if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
                     Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.75)).padding(.top, 4)
                 }
-                if let role = ProfileText.line(role) { Text(role).font(.system(size: 16)).foregroundStyle(.secondary).padding(.top, 4) }
+                if let role = ProfileText.line(role) { Text(role).font(.system(size: 17)).foregroundStyle(HomeStyle.secondary).padding(.top, 4) }
                 ForEach(Array(heroFacts.prefix(3).enumerated()), id: \.element.id) { index, fact in
-                    if index > 0 { Divider().overlay(.white.opacity(0.1)) }
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 5) { Image(systemName: fact.icon).imageScale(.small); Text(fact.label) }.font(.system(size: 13)).foregroundStyle(.secondary)
-                        Text(fact.value).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.8)
-                    }.padding(.vertical, 10).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
-                }.padding(.top, heroFacts.isEmpty ? 0 : 6)
+                    if index > 0 { Rectangle().fill(.white.opacity(0.1)).frame(height: HomeStyle.hairline) }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) { Image(systemName: fact.icon).font(.system(size: 12)); Text(fact.label) }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                        Text(fact.value).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.75)
+                    }.padding(.vertical, 11).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
+                }.padding(.top, heroFacts.isEmpty ? 0 : 8)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
             .background(alignment: .top) {
@@ -185,8 +187,10 @@ private struct ProfileFavourite: View {
             FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
             feedback += 1
         } label: {
-            Image(systemName: saved ? "heart.fill" : "heart").foregroundStyle(theme.accent)
-        }.accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
+            Image(systemName: saved ? "heart.fill" : "heart").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+                .frame(width: 44, height: 44).background(Color(webHex: "#1c1c22").opacity(0.92), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 0.67)).contentShape(Circle())
+        }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
             .sensoryFeedback(.selection, trigger: feedback)
     }
@@ -221,7 +225,7 @@ struct ProfileBiography: View {
                     Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { expanded.toggle() } } label: {
                         HStack(spacing: 5) { Text(expanded ? lessLabel : moreLabel); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption) }
                             .font(.subheadline).frame(minHeight: 44)
-                    }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#e6e2ec"))
+                    }.buttonStyle(.plain).foregroundStyle(HomeStyle.chipText).fontWeight(.semibold)
                         .accessibilityLabel(expanded ? "Collapse " + (identifier == "profile-aliases" ? "names" : "biography") : "Expand " + (identifier == "profile-aliases" ? "names" : "biography"))
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)

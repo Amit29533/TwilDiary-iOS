@@ -77,6 +77,35 @@ import XCTest
         if open("settings-history") { shot("svc-history"); back() }
     }
 
+    /// A person (Home → title → first cast member), top to bottom, then their Photos page and viewer.
+    func testPersonSnapshots() {
+        capture(tab: "home", name: "person", pages: 5) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let cast = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'cast-person-'")).firstMatch
+            for _ in 0..<10 where !(cast.exists && cast.isHittable) { app.swipeUp() }
+            if cast.exists { cast.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+    }
+    /// The person's photo viewer, opened from the Photos shelf.
+    func testPhotoViewerSnapshots() {
+        capture(tab: "home", name: "viewer", pages: 1) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let cast = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'cast-person-'")).firstMatch
+            for _ in 0..<10 where !(cast.exists && cast.isHittable) { app.swipeUp() }
+            if cast.exists { cast.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let photo = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Photo of' OR label BEGINSWITH 'Photo from'")).firstMatch
+            for _ in 0..<4 where !(photo.exists && photo.isHittable) { app.swipeUp() }
+            if photo.exists { photo.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+    }
+
     /// A title that isn't in the library (Home → Recommended), top to bottom.
     func testPreviewSnapshots() {
         capture(tab: "home", name: "preview", pages: 8) { app in
