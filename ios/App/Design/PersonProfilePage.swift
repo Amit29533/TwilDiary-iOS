@@ -122,14 +122,19 @@ struct PersonProfilePage<Content: View>: View {
                     Text(parts.first ?? name).foregroundStyle(.white)
                     if parts.count > 1 { Text(parts[1]).foregroundStyle(theme.accent) }
                 }.font(.system(size: fit.nameSize, weight: .bold)).tracking(-0.9).lineLimit(3).truncationMode(.tail).minimumScaleFactor(0.8)
+                    .shadow(color: .black.opacity(0.55), radius: 10, y: 2)
                     .accessibilityElement(children: .combine).accessibilityIdentifier(identifier + "-name")
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
                     } action: { header.update($0) }
                 if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
-                    Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.75)).lineLimit(2).truncationMode(.tail).padding(.top, 4)
+                    Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).lineLimit(2).truncationMode(.tail).padding(.top, 4)
+                        .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 }
-                if let role = ProfileText.line(role) { Text(role).font(.system(size: 17)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4) }
+                if let role = ProfileText.line(role) {
+                    Text(role).font(.system(size: 17)).foregroundStyle(.white.opacity(0.62)).lineLimit(1).padding(.top, 4)
+                        .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
+                }
                 ForEach(Array(heroFacts.prefix(fit.besidePhoto).enumerated()), id: \.element.id) { index, fact in
                     if index > 0 { Rectangle().fill(.white.opacity(0.1)).frame(height: HomeStyle.hairline) }
                     VStack(alignment: .leading, spacing: 4) {
@@ -141,7 +146,19 @@ struct PersonProfilePage<Content: View>: View {
         }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
             .background(alignment: .top) {
                 if let backdrop {
+                    // The cover stays clear around the buttons; below that it darkens behind the name so
+                    // a white first name never sits on bright artwork (owner's fix).
                     TitleArtworkBackdrop(path: backdrop, name: name)
+                        .overlay(alignment: .top) {
+                            LinearGradient(stops: [
+                                .init(color: Color(webHex: "#0a0a0e").opacity(0), location: 0),
+                                .init(color: Color(webHex: "#0a0a0e").opacity(0.08), location: 0.28),
+                                .init(color: Color(webHex: "#0a0a0e").opacity(0.55), location: 0.45),
+                                .init(color: Color(webHex: "#0a0a0e").opacity(0.78), location: 0.65),
+                                .init(color: Color(webHex: "#0a0a0e").opacity(0.88), location: 1)
+                            ], startPoint: .top, endPoint: .bottom)
+                            .frame(height: topInset + 64 + photoWidth * 1.45).allowsHitTesting(false).accessibilityHidden(true)
+                        }
                 } else {
                     RadialGradient(colors: [theme.accent.opacity(0.28), .clear], center: .top, startRadius: 0, endRadius: width * 0.9)
                         .frame(height: topInset + 320).allowsHitTesting(false).accessibilityHidden(true)

@@ -734,8 +734,8 @@ struct ProgressCard: View {
                     Button { openTitle() } label: {
                         Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white)
                             .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading)
-                    }.buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    if let glanceTime { Text(glanceTime).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                    }.buttonStyle(.plain).padding(.trailing, 34).padding(.top, 6).accessibilityIdentifier("progress-title-" + title.id)
+                    if let glanceTime { timePill(glanceTime).padding(.top, 4) }
                     Spacer(minLength: 8)
                     HStack(alignment: .center, spacing: 14) {
                         barWithLine(color: Color(webHex: "#c5c0cf"))
@@ -757,8 +757,8 @@ struct ProgressCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     // One line each, ending in … when long, so every card in a row is the same height.
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading) }
-                        .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    Text(glanceTime ?? " ").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        .buttonStyle(.plain).padding(.trailing, 34).padding(.top, 4).accessibilityIdentifier("progress-title-" + title.id)
+                    if let glanceTime { timePill(glanceTime) } else { Color.clear.frame(height: 22) }
                     Spacer(minLength: 0)
                 }.frame(maxWidth: .infinity, alignment: .topLeading)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
@@ -782,7 +782,7 @@ struct ProgressCard: View {
                     Text(title.name).font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(.white)
                         .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
                 }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-                if let glanceTime { Text(glanceTime).font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).modifier(TextShadow(on: true)) }
+                if let glanceTime { timePill(glanceTime, onArtwork: true).padding(.top, 2) }
                 HStack(alignment: .center, spacing: 14) { barWithLine(color: Color(webHex: "#e6e2ef"), shadow: true); nextButton }.padding(.top, 8)
             }
         }.padding(16).frame(height: 178)
@@ -883,6 +883,17 @@ struct ProgressCard: View {
         let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
         let percent = fraction > 0 ? "\(Int((fraction * 100).rounded()))%" : nil
         return [season, "E\(card.progress.watched) of \(card.progress.total)", percent].compactMap { $0 }.joined(separator: " · ")
+    }
+    /// The time left as a small pill with a clock: lilac on the cards, a dark wash over artwork.
+    private func timePill(_ text: String, onArtwork: Bool = false) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
+            Text(text).lineLimit(1)
+        }.font(.system(size: 12, weight: .semibold)).monospacedDigit()
+            .foregroundStyle(onArtwork ? Color(webHex: "#ece8f6") : HomeStyle.chipText)
+            .padding(.horizontal, 8).frame(height: 22)
+            .background(onArtwork ? AnyShapeStyle(Color.black.opacity(0.45)) : AnyShapeStyle(HomeStyle.chip), in: Capsule())
+            .fixedSize()
     }
     /// "6h 24m left" under the title ("24m" before the first episode); nil when unknown.
     private var glanceTime: String? {
