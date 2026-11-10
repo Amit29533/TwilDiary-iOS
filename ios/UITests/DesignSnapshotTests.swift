@@ -198,6 +198,24 @@ import XCTest
         }
     }
 
+    /// Statistics' Over time (per year) with a long, sparse history (a 1970 watch, then 2008 on).
+    func testOverTimeSnapshots() {
+        capture(tab: "more", name: "overtime", pages: 3, extra: ["--ui-old-watches"]) { app in
+            let profile = app.descendants(matching: .any)["settings-personal-profile"]
+            for _ in 0..<6 where !(profile.exists && profile.isHittable) { app.swipeUp() }
+            if profile.exists { profile.tap(); Thread.sleep(forTimeInterval: 2.5) }
+            let stats = app.buttons["profile-statistics"].firstMatch
+            for _ in 0..<6 where !(stats.exists && stats.isHittable) { app.swipeUp() }
+            if stats.exists { stats.tap() }
+            Thread.sleep(forTimeInterval: 2.5)
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+
     /// Library as a real (bigger) library opens: five posters, "+N See all", genres.
     func testLibraryOverviewSnapshots() {
         capture(tab: "library", name: "liboverview", pages: 3, extra: ["--ui-many-titles"])

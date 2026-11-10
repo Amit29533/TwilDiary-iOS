@@ -108,14 +108,34 @@ struct StatsPeriodTiles: View {
 struct StatsOverTimeCard: View {
     let years: [StatsInsights.YearMinutes]
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    /// From the first year with real watching: a few watches dated decades back (old imports) left
+    /// the chart spanning 1970 to now with every year labelled. Years before the first one holding
+    /// at least 2% of the busiest year's time are left out.
+    private var shown: [StatsInsights.YearMinutes] {
+        let busiest = years.map(\.minutes).max() ?? 0
+        return Array(years.drop { $0.minutes < max(1, busiest / 50) })
+    }
+    /// About six labels, evenly spaced, always the last year (dropping a near neighbour of it).
+    private var labelled: [Int] {
+        let all = shown.map(\.year)
+        guard all.count > 6 else { return all }
+        let step = Int((Double(all.count) / 6).rounded(.up))
+        var indices = Array(stride(from: 0, to: all.count, by: step))
+        if let lastPicked = indices.last, lastPicked != all.count - 1 {
+            if all.count - 1 - lastPicked < max(1, step / 2) { indices.removeLast() }
+            indices.append(all.count - 1)
+        }
+        return indices.map { all[$0] }
+    }
     var body: some View {
+        let years = shown
         if years.count >= 2 {
             StatsCard(title: "Over time", subtitle: "Watch time per year") {
                 let peak = years.max { $0.minutes < $1.minutes }
                 Chart(years) { item in
-                    AreaMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).interpolationMethod(.catmullRom)
+                    AreaMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).interpolationMethod(.monotone)
                         .foregroundStyle(LinearGradient(colors: [theme.accent.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom))
-                    LineMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).interpolationMethod(.catmullRom)
+                    LineMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).interpolationMethod(.monotone)
                         .lineStyle(StrokeStyle(lineWidth: 2.5)).foregroundStyle(theme.accent)
                     if item.year == peak?.year || item.year == years.last?.year {
                         PointMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).symbolSize(60).foregroundStyle(theme.accent)
@@ -124,8 +144,8 @@ struct StatsOverTimeCard: View {
                 }.chartYAxis(.hidden)
                     // Quantitative years start the axis at 0 by default, which squeezed every year into the
                     // right edge; the axis now spans the first to the last year with a little room.
-                    .chartXScale(domain: Double(years.first?.year ?? 0) - 0.3 ... Double(years.last?.year ?? 0) + 0.3)
-                    .chartXAxis { AxisMarks(values: years.map(\.year)) { value in AxisValueLabel { Text("'" + String((value.as(Int.self) ?? 0) % 100).leftPadded(2)).font(.system(size: 11)) } } }
+                    .chartXScale(domain: Double(years.first?.year ?? 0) - 0.6 ... Double(years.last?.year ?? 0) + 0.6)
+                    .chartXAxis { AxisMarks(values: labelled) { value in AxisValueLabel(collisionResolution: .disabled) { Text("'" + String((value.as(Int.self) ?? 0) % 100).leftPadded(2)).font(.system(size: 11)).fixedSize() } } }
                     .frame(height: 170).accessibilityLabel("Watch time per year")
             }
         }

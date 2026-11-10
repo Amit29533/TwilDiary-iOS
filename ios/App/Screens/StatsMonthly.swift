@@ -201,11 +201,15 @@ struct StatsMonthOverTimeCard: View {
                         }
                     }
                 }
+            // "Oct", "Dec", "Feb"… on every other month (single letters like O N D J read as code), always
+            // the last month, which is highlighted.
             HStack(spacing: 0) {
                 ForEach(points, id: \.offset) { index, item in
-                    Text(String(item.start.formatted(.dateTime.month(.narrow))))
-                        .font(.system(size: 12, weight: index == points.count - 1 ? .bold : .regular))
-                        .foregroundStyle(index == points.count - 1 ? theme.accent : .secondary).frame(maxWidth: .infinity)
+                    let last = index == points.count - 1
+                    let labelled = last || (points.count - 1 - index).isMultiple(of: 2)
+                    Text(labelled ? item.start.formatted(.dateTime.month(.abbreviated)) : "")
+                        .font(.system(size: 11, weight: last ? .bold : .regular)).lineLimit(1).fixedSize()
+                        .foregroundStyle(last ? theme.accent : .secondary).frame(maxWidth: .infinity)
                 }
             }.accessibilityHidden(true)
         }

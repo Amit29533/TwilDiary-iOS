@@ -81,6 +81,25 @@ enum PreviewData {
         object["titles"] = titles
         return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
+    /// `--ui-old-watches`: a watch dated 1970 and others across many years (like an old import),
+    /// so Statistics' per-year chart can be checked with a long, sparse history.
+    static func withOldWatches(_ workspace: Workspace) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var events = object["events"] as! [[String: Any]]
+        guard let template = events.first else { return workspace }
+        let dated: [(String, Int)] = [("1970-01-01", 1), ("2008-06-01", 2), ("2018-03-01", 30), ("2019-05-01", 60), ("2020-07-01", 25),
+                                      ("2021-02-01", 90), ("2022-09-01", 40), ("2023-04-01", 120), ("2024-08-01", 70), ("2025-01-01", 55)]
+        for (day, count) in dated {
+            for index in 0..<count {
+                var copy = template
+                copy["id"] = "old-\(day)-\(index)"; copy["watchedAt"] = day + String(format: "T%02d:%02d:00.000Z", index % 24, index / 24); copy["recordedAt"] = day + "T00:00:00Z"
+                copy["operationId"] = copy["id"]; copy["revokedAt"] = NSNull()
+                events.append(copy)
+            }
+        }
+        object["events"] = events
+        return (try? JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))) ?? workspace
+    }
     /// Explicit identities/scores for profile repair UI checks; never loaded in Release.
     static var profileRepairWorkspace: Workspace {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]

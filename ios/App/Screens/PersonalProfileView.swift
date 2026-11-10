@@ -161,11 +161,12 @@ struct PersonalProfileView: View {
         }.padding(.top, 70)
             .background(alignment: .top) {
                 Artwork(path: art?.backdrop ?? art?.poster, title: art?.name ?? "")
-                    .frame(height: 230).clipped()
+                    // Reaches up under the status bar (owner's request): 80 pt taller, starting 80 pt higher.
+                    .frame(height: 310).clipped()
                     .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0.05), location: 0.3),
                                                     .init(color: .black.opacity(0.55), location: 0.7), .init(color: .black, location: 1)],
                                             startPoint: .top, endPoint: .bottom))
-                    .padding(.horizontal, -16).offset(y: -60).allowsHitTesting(false).accessibilityHidden(true)
+                    .padding(.horizontal, -16).offset(y: -140).allowsHitTesting(false).accessibilityHidden(true)
             }
     }
     private func count(_ value: Int, _ label: String) -> some View {
