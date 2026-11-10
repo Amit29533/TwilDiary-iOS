@@ -22,47 +22,48 @@ struct ConnectionsView: View {
 
     var body: some View {
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Where your diary lives").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
-                    VStack(spacing: 0) {
+            // Design (board 3): WHERE YOUR DIARY LIVES, YOUR DIARY and KEYS, each a card of rows.
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    SettingsGroup(label: "Where your diary lives") {
                         ForEach(Array(MainTracker.allCases.enumerated()), id: \.element) { index, tracker in
                             if index > 0 { divider }
                             trackerRow(tracker)
                         }
-                    }.background(theme.field, in: RoundedRectangle(cornerRadius: 20))
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.08)))
-                    if let progress = activity {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }.padding(.horizontal, 4)
-                    } else if let note = note ?? lastResult {
-                        Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 4).accessibilityIdentifier("trackers-note")
                     }
-                    Text("The ticked one holds your diary. Your edits go to it, and to the others you’re signed in to.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4)
+                    if let progress = activity {
+                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }.padding(.horizontal, 4)
+                    } else if let note = note ?? lastResult {
+                        SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
+                    }
+                    SettingsFootnote(text: "The Main one holds your diary. Your edits go to it, and to the others you’re signed in to.")
                 }
-                group("Your diary") {
+                SettingsGroup(label: "Your diary") {
                     Button { showDiaryAccess = true } label: {
-                        rowLabel(tile("lock.shield.fill", Color(webHex: "#3B82F6")), "Server sign-in", "How this iPhone signs in to your TwilDiary server", value: nil)
+                        rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in", "How this iPhone signs in to your TwilDiary server", value: nil)
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
                     divider
-                    row(tile("externaldrive.fill.badge.timemachine", Color(webHex: "#22A06B")), "Backups", "Copies of your diary kept on your server",
+                    row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "Copies of your diary kept on your server",
                         value: nil, destination: .backups, id: "connections-backups")
                 }
-                group("Keys", note: "Services TwilDiary reaches with a key or a public profile. Keys are kept on your server, not on this iPhone.") {
-                    row(BrandLogo(service: .tmdb), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
-                    divider
-                    row(BrandLogo(service: .anilist), "AniList", "Characters and voice actors, by public profile",
-                        value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, destination: .anilist, id: "settings-anilist")
-                    divider
-                    row(BrandLogo(service: .cloudflare), "Cloudflare", "Usage against the free plan", value: nil, destination: .cloudflare, id: "settings-cloudflare")
-                    divider
-                    row(tile("key.fill", Color(webHex: "#F5B400")), "All keys", "TMDB, Trakt, Cloudflare, Jellyfin and sign-in app IDs",
-                        value: nil, destination: .apis, id: "settings-apis")
+                VStack(alignment: .leading, spacing: 12) {
+                    SettingsGroup(label: "Keys") {
+                        row(BrandLogo(service: .tmdb, size: 38), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
+                        divider
+                        row(BrandLogo(service: .anilist, size: 38), "AniList", "Characters and voice actors",
+                            value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, destination: .anilist, id: "settings-anilist")
+                        divider
+                        row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare", "Usage against the free plan", value: nil, destination: .cloudflare, id: "settings-cloudflare")
+                        divider
+                        NavigationLink(value: AppDestination.apis) {
+                            Text("All keys").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityIdentifier("settings-apis")
+                    }
+                    SettingsFootnote(text: "Keys are kept encrypted on this iPhone, and TwilDiary reads each service with them directly.")
                 }
-            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
-        }.diaryScreenBackground().navigationTitle("Connections").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().diaryPageNavigation("Connections")
             .task(id: store.sessionRevision) {
                 trakt = TraktController(service: makeTraktService(store: store))
                 await trakt?.refresh()
@@ -148,15 +149,20 @@ struct ConnectionsView: View {
                             }
                         }.opacity(on || isMain ? 1 : 0.55)
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(tracker.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
-                            if isMain { Text("Main").font(.system(size: 11, weight: .bold)).foregroundStyle(theme.accent).padding(.horizontal, 6).padding(.vertical, 2).background(theme.accent.opacity(0.15), in: Capsule()) }
+                        HStack(spacing: 7) {
+                            Text(tracker.name).font(.system(size: isMain ? 16 : 15, weight: isMain ? .bold : .semibold)).foregroundStyle(HomeStyle.primary)
+                            if isMain {
+                                Text("Main").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                                    .padding(.horizontal, 8).frame(height: 17).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                            }
                         }
-                        Text(detail.isEmpty ? badge(tracker) : badge(tracker) + " · " + detail)
-                            .font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(2)
+                        HStack(spacing: 6) {
+                            if on { Circle().fill(Color(webHex: "#7fe0b5")).frame(width: 6, height: 6) }
+                            Text(on && !detail.isEmpty ? detail : badge(tracker)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        }
                     }
                     Spacer(minLength: 0)
-                }.padding(.leading, 14).padding(.vertical, 12).contentShape(Rectangle())
+                }.padding(.leading, 15).padding(.vertical, 12).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("settings-" + tracker.rawValue)
             Menu {
                 if !isMain { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
@@ -168,7 +174,7 @@ struct ConnectionsView: View {
                 Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
-        }.background(isMain ? theme.accent.opacity(0.1) : .clear)
+        }.background(isMain ? Color(webHex: "#1a1730") : .clear)
     }
 
     /// The main tracker holds the diary: the diary is shown from it, and edits go to it.
@@ -197,7 +203,7 @@ struct ConnectionsView: View {
             if let note { Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
         }
     }
-    private var divider: some View { Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 72) }
+    private var divider: some View { SettingsDivider() }
     private func tile(_ symbol: String, _ color: Color) -> some View {
         Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
             .frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
@@ -206,15 +212,15 @@ struct ConnectionsView: View {
         NavigationLink(value: destination) { rowLabel(leading, title, subtitle, value: value) }.buttonStyle(.plain).accessibilityIdentifier(id)
     }
     private func rowLabel<Leading: View>(_ leading: Leading, _ title: String, _ subtitle: String, value: String?) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
             }
             Spacer(minLength: 4)
-            if let value { Text(value).font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.trailing) }
-            DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
-        }.padding(.horizontal, 14).frame(minHeight: 58).contentShape(Rectangle())
+            if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+            SettingsChevron()
+        }.padding(.horizontal, 15).frame(minHeight: 64).contentShape(Rectangle())
     }
 }

@@ -253,9 +253,12 @@ struct CatalogDetailView: View {
                             } else if let saved = details.libraryTitle {
                                 Button { accepted(saved.id) } label: { primaryLabel("Open in Library", icon: "books.vertical") }.buttonStyle(.springPress)
                             } else {
-                                Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { accepted(id) } } } label: {
-                                    primaryLabel(store.busy ? "Adding…" : "Add to Planned", icon: "plus")
-                                }.buttonStyle(.springPress).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
+                                HStack(spacing: 10) {
+                                    RatingCircles(mine: nil, community: communityAverage(details.details), onRate: {}, onCommunity: { showInformation = true }, showsMine: false)
+                                    Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { accepted(id) } } } label: {
+                                        primaryLabel(store.busy ? "Adding…" : "Add to Planned", icon: "plus")
+                                    }.buttonStyle(.springPress).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
+                                }
                             }
                             if details.libraryTitle == nil { JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie) }
                         }
@@ -265,7 +268,7 @@ struct CatalogDetailView: View {
                                        anime: anime ? (details.details.year, route.kind == .movie) : nil)
                         if let extras { CompaniesSection(route: route, title: details.details.name, extras: extras, animated: anime || details.details.genres.contains("Animation")) }
                         InListsSection(route: route, title: details.details.name)
-                        RelatedCollectionsSection(route: route, title: details.details.name, anime: anime)
+                        RelatedCollectionsSection(route: route, title: details.details.name, anime: anime, genres: details.details.genres)
                     } else if loading { DiaryLoadingPlaceholder(height: 320, label: "Loading title").padding(16) }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 }.padding(.horizontal, 16).padding(.bottom, 32)
@@ -296,6 +299,13 @@ struct CatalogDetailView: View {
         }
     }
     private func accepted(_ id: String) { if let onImported { onImported(id) } else { router.replaceTitle(id, tab: router.selectedTab) } }
+    /// Trakt's average when MDBList has it, otherwise TMDB's (as on a saved title's page).
+    private func communityAverage(_ details: CatalogDetails) -> Double? {
+        if let trakt = criticScores.first(where: { RatingsStrip<EmptyView>.canonical($0.source) == "trakt" }), let value = trakt.value ?? trakt.score, value > 0 {
+            return value > 10 ? value / 10 : value
+        }
+        return details.communityScore.flatMap { $0 > 0 ? $0 : nil }
+    }
     /// The page's main action, in the same colours as a saved title's "Watching" pill (#cdbbff on #2a2440).
     private func primaryLabel(_ text: String, icon: String) -> some View {
         HStack(spacing: 8) { Image(systemName: icon).font(.system(size: 14, weight: .bold)); Text(text).font(.system(size: 15, weight: .bold)) }
@@ -343,16 +353,8 @@ private struct CatalogSeasonPreview: View {
     private var visible: [CatalogEpisode] { showAll ? controller.items : Array(controller.items.prefix(4)) }
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("Episode 0").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                    Text("of \(total)").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-                    Spacer(); Text("0%").font(.system(size: 22, weight: .bold)).foregroundStyle(.tint)
-                }
-                EpisodeProgressTrack(segments: Array(repeating: .unwatched, count: total), season: selected)
-            }.padding(19)
-                .background(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58), in: RoundedRectangle(cornerRadius: 28))
-                .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
+            // No "Episode 0 of N" card: there's no progress before the title is in your diary (parity
+            // with the saved page, owner's request).
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
@@ -393,6 +395,8 @@ private struct CatalogSeasonPreview: View {
                     }.buttonStyle(.springPress)
                 }
             }
+            let points = controller.items.compactMap { episode in episode.communityScore.map { EpisodeRatingPoint(episode: episode.number, score: $0) } }
+            if route.kind == .tv { RatingTrendCard(show: route.id, season: selected, tmdb: points, current: nil) }
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
             .onChange(of: selected) { _, _ in showAll = false; revealed = []; selectedEpisode = nil }
             .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {

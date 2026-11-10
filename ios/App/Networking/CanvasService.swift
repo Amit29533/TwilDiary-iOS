@@ -75,6 +75,22 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
     /// The last lists opened, so going back and forth shows them at once instead of reloading
     /// (a public list changes rarely; after 15 minutes it is read again).
     private static var recent: [Int: CanvasListItemsLoader] = [:]
+    /// Trakt's community rating for every title on one page of a list ("movie:603" → 7.9), straight
+    /// from Trakt with extended info. The page size matches the server's (24), so the pages line up.
+    private static func traktRatings(store: DiaryStore, list: Int, page: Int) async -> [String: Double] {
+        guard !store.isPreview, let client = try? await TraktDirectStore.shared.client(store: store),
+              let reply = try? await client.get("lists/\(list)/items/movie,show", query: ["page": String(page), "limit": "24", "extended": "full"]),
+              let rows = try? JSONSerialization.jsonObject(with: reply.data) as? [[String: Any]] else { return [:] }
+        var result: [String: Double] = [:]
+        for row in rows {
+            for (kind, field) in [("movie", "movie"), ("tv", "show")] {
+                guard let item = row[field] as? [String: Any], let tmdb = (item["ids"] as? [String: Any])?["tmdb"] as? Int,
+                      let rating = item["rating"] as? Double, rating > 0 else { continue }
+                result[kind + ":" + String(tmdb)] = min(10, rating)
+            }
+        }
+        return result
+    }
     static func shared(store: DiaryStore, id: Int) -> CanvasListItemsLoader {
         if let kept = recent[id], Date.now.timeIntervalSince(kept.created) < 900, kept.error == nil { return kept }
         if recent.count >= 12, let oldest = recent.min(by: { $0.value.created < $1.value.created })?.key { recent[oldest] = nil }
@@ -96,9 +112,12 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
             next = try await store.read("/api/canvas/lists/\(id)?page=\(number)")
             #endif
             let library = Dictionary(store.workspace.activeTitles.compactMap { title in title.tmdbId.map { ((title.isSeries ? "tv:" : "movie:") + String($0), title.id) } }, uniquingKeysWith: { first, _ in first })
+            // Each title's community rating, read from Trakt on the phone for the same page.
+            let ratings = await Self.traktRatings(store: store, list: id, page: number)
             let converted = next.items.map { item in
-                CatalogItem(id: item.tmdbId, mediaType: item.mediaType, name: item.name, year: item.year, posterPath: item.posterPath, backdropPath: item.backdropPath,
-                            inLibraryId: library[item.mediaType.rawValue + ":" + String(item.tmdbId)])
+                let key = item.mediaType.rawValue + ":" + String(item.tmdbId)
+                return CatalogItem(id: item.tmdbId, mediaType: item.mediaType, name: item.name, year: item.year, posterPath: item.posterPath, backdropPath: item.backdropPath,
+                                   rating: ratings[key], inLibraryId: library[key])
             }
             items = CatalogTools.merging(items, converted)
             page = next.page; totalPages = next.totalPages

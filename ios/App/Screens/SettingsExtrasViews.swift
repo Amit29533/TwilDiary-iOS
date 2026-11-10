@@ -4,20 +4,7 @@ import TwilDiaryCore
 
 // MARK: Shared settings pieces
 
-/// A titled group of rows on a dark card, as every Settings page shows them.
-struct SettingsGroup<Content: View>: View {
-    let title: String?
-    @ViewBuilder let content: Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if let title { Text(title.uppercased()).font(.system(size: 13, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary).padding(.horizontal, 4) }
-            VStack(spacing: 0) { content }.diarySectionBackground(radius: 20, stroke: .white.opacity(0.08))
-        }
-    }
-}
-struct SettingsDivider: View {
-    var body: some View { Divider().overlay(.white.opacity(0.06)).padding(.leading, 16) }
-}
+// SettingsGroup and SettingsDivider live in Design/SettingsDesign.swift (the design's cards).
 /// Title and subtitle on the left, anything on the right.
 struct SettingsLine<Trailing: View>: View {
     let title: String
@@ -25,13 +12,13 @@ struct SettingsLine<Trailing: View>: View {
     @ViewBuilder let trailing: Trailing
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
             }
             Spacer(minLength: 8)
             trailing
-        }.padding(.horizontal, 16).frame(minHeight: 64).contentShape(Rectangle())
+        }.padding(.horizontal, 15).frame(minHeight: 64).contentShape(Rectangle())
     }
 }
 
@@ -48,7 +35,7 @@ struct LanguageRegionView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
-                SettingsGroup(title: "General") {
+                SettingsGroup(label: "General") {
                     Button { if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) } } label: {
                         row("character.bubble", "Language") {
                             HStack(spacing: 6) { Text(languageName).foregroundStyle(.secondary); DiaryIcon(name: "arrow-up-right", size: 14).foregroundStyle(.secondary) }
@@ -65,7 +52,7 @@ struct LanguageRegionView: View {
                     SettingsDivider()
                     row("clock", "24-hour time", subtitle: "Instead of AM/PM") { Toggle("", isOn: $use24Hour).labelsHidden().tint(theme.accent) }
                 }
-                SettingsGroup(title: "Titles") {
+                SettingsGroup(label: "Titles") {
                     SettingsLine(title: "Anime titles in English", subtitle: "Instead of romaji") { Toggle("", isOn: $animeEnglish).labelsHidden().tint(theme.accent) }
                     SettingsDivider()
                     SettingsLine(title: "Ignore \u{201C}A\u{201D}, \u{201C}An\u{201D}, \u{201C}The\u{201D}", subtitle: "When sorting titles") { Toggle("", isOn: $ignoreArticles).labelsHidden().tint(theme.accent) }
@@ -118,7 +105,7 @@ struct SyncBackupView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
-                SettingsGroup(title: "Sync") {
+                SettingsGroup(label: "Sync") {
                     SettingsLine(title: "Background sync", subtitle: refresh == .available ? "Syncs now and then while the app is closed" : "Otherwise it syncs when you open the app") {
                         Text(refresh == .available ? "On" : "Off").font(.system(size: 15)).foregroundStyle(.secondary)
                     }
@@ -129,14 +116,14 @@ struct SyncBackupView: View {
                     SettingsDivider()
                     SettingsLine(title: "Confirm deletions", subtitle: "Ask before removing titles") { Toggle("", isOn: $confirmDeletions).labelsHidden().tint(theme.accent) }
                 }
-                SettingsGroup(title: "Backup") {
+                SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
                         SettingsLine(title: "Server backups", subtitle: lastServerBackup.map { "Last: " + $0.formatted(.dateTime.day().month(.abbreviated).hour().minute()) } ?? "Copies of your diary kept on your server") {
                             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                         }
                     }.buttonStyle(.plain).accessibilityIdentifier("sync-backup-server")
                 }
-                SettingsGroup(title: "Extra backup") {
+                SettingsGroup(label: "Extra backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in Files → On My iPhone → TwilDiary") {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-backup-files")

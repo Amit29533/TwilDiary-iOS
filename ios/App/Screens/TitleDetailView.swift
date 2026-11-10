@@ -86,7 +86,7 @@ struct TitleDetailView: View {
                                                    seeAll: .cast(route, title: title.name, anime: title.category.hasPrefix("anime"), year: title.year))
                                     if let extras { CompaniesSection(route: route, title: title.name, extras: extras, animated: title.category.hasPrefix("anime") || title.genres.contains("Animation")) }
                                     InListsSection(route: route, title: title.name)
-                                    RelatedCollectionsSection(route: route, title: title.name, anime: title.category.hasPrefix("anime"))
+                                    RelatedCollectionsSection(route: route, title: title.name, anime: title.category.hasPrefix("anime"), genres: title.genres)
                                 }
                             }.padding(.horizontal, 16).padding(.bottom, 32)
                                 // The height only matters while the page scrolls itself to notes or files. Tracking it

@@ -8,10 +8,7 @@ struct AppearanceView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("MAKE IT YOURS").font(.system(size: 12, weight: .heavy)).tracking(1.2).foregroundStyle(theme.accent)
-                    Text("A different mood. The same diary.").font(.system(size: 15)).foregroundStyle(theme.muted)
-                }.padding(.horizontal, 4)
+                SettingsIntro(eyebrow: "Make it yours", text: "A different mood. The same diary.")
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ForEach(DiaryTheme.allCases) { item in
                         Button { theme = item } label: { ThemeCard(item: item, selected: item == theme) }
@@ -21,7 +18,7 @@ struct AppearanceView: View {
                             .accessibilityAddTraits(item == theme ? .isSelected : [])
                     }
                 }
-                Text("Changes instantly · saved on this iPhone").font(.system(size: 12)).foregroundStyle(theme.muted).padding(.horizontal, 4)
+                SettingsFootnote(text: "Changes instantly · saved on this iPhone")
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
         }.diaryScreenBackground().diaryPageNavigation("Appearance")
     }
@@ -31,34 +28,36 @@ private struct ThemeCard: View {
     let item: DiaryTheme
     let selected: Bool
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        // Design (board 2): a 104 pt #08080c preview (radius 14) with the accent tile and bars, a 22 pt
+        // selection ring, then the name (15 pt bold, 8 pt dot) and the line under it (12 pt).
+        VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 10) {
-                        RoundedRectangle(cornerRadius: 7).fill(item.accent).frame(width: 30, height: 30)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top, spacing: 8) {
+                        RoundedRectangle(cornerRadius: 9).fill(item.accent).frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 6) {
-                            Capsule().fill(.white.opacity(0.22)).frame(width: 56, height: 6)
-                            Capsule().fill(item.accent).frame(width: 40, height: 5)
-                        }
+                            Capsule().fill(Color(webHex: "#3a3a46")).frame(width: 71, height: 5)
+                            Capsule().fill(item.accent).frame(width: 45, height: 5)
+                        }.padding(.top, 6)
                     }
-                    Capsule().fill(.white.opacity(0.1)).frame(height: 6)
-                }.padding(14).frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                    .background(Color(webHex: "#16151b"), in: RoundedRectangle(cornerRadius: 14))
+                    Capsule().fill(HomeStyle.cardBorder).frame(height: 5).padding(.top, 10)
+                }.padding(.horizontal, 12).padding(.top, 34).frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+                    .background(Color(webHex: "#08080c"), in: RoundedRectangle(cornerRadius: 14))
                 ZStack {
                     if selected {
                         Circle().fill(item.accent)
-                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(item.ink)
-                    } else { Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1.5) }
-                }.frame(width: 24, height: 24).padding(8)
+                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+                    } else { Circle().strokeBorder(Color(webHex: "#3a3a46"), lineWidth: 1.5) }
+                }.frame(width: 22, height: 22).padding(8)
             }
             HStack(spacing: 7) {
                 Circle().fill(item.accent).frame(width: 8, height: 8)
-                Text(item.name).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
-            }.padding(.horizontal, 4)
-            Text(item.detail).font(.system(size: 13)).foregroundStyle(item.muted).lineLimit(1).minimumScaleFactor(0.85).padding(.horizontal, 4)
-        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(webHex: "#0f0e13"), in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(selected ? item.accent : .white.opacity(0.1), lineWidth: selected ? 2 : 1))
+                Text(item.name).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            }.padding(.top, 10)
+            Text(item.detail).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 2)
+        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(selected ? item.accent : HomeStyle.cardBorder, lineWidth: selected ? 1.5 : HomeStyle.hairline))
             .accessibilityElement(children: .ignore)
     }
 }

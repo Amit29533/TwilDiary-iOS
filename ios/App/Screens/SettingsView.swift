@@ -138,7 +138,7 @@ struct SettingsView: View {
                                 .frame(maxWidth: .infinity, minHeight: 52).background(HomeStyle.round, in: Capsule())
                         }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
                     }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
-                }.buttonStyle(.plain).padding(.horizontal, 16).padding(.bottom, 24)
+                }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
         }
         .confirmationDialog(store.pendingDiaryEdits + TraktDirectStore.shared.pending.count > 0 ? "Sign out? Pending edits on this device, including any still waiting for Trakt, will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }

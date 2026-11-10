@@ -27,35 +27,48 @@ struct BackupsView: View {
 
     var body: some View {
         EdgeToEdgeScroll {
+            // Design (board 5): the Last backup card with its button, then RECENT BACKUPS.
             VStack(alignment: .leading, spacing: 16) {
-                Text("A copy of your whole diary (titles, watches, ratings, notes, tags and file mappings) plus your last Trakt read, kept on your server. Restoring merges it back, so nothing newer is lost.")
-                    .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button { Task { await backUp() } } label: {
-                    HStack(spacing: 8) {
-                        if working != nil { ProgressView().controlSize(.small) } else { Image(systemName: "externaldrive.badge.icloud") }
-                        Text(working ?? "Back up now").font(.system(size: 16, weight: .semibold))
-                    }.frame(maxWidth: .infinity).frame(minHeight: 30)
-                }.buttonStyle(.glassProminent).controlSize(.large).disabled(working != nil || store.isPreview).accessibilityIdentifier("backup-now")
-                if let message { Label(message, systemImage: "checkmark").font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                if let failure { Text(failure).font(.footnote).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 14) {
+                        SettingsTile(symbol: "externaldrive.badge.timemachine", size: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Last backup").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                            Text(backups?.first.map(date) ?? (backups == nil ? "Checking…" : "None yet")).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        }
+                    }
+                    Text("A copy of your whole diary (titles, watches, ratings, notes, tags and file mappings) plus your last Trakt read, kept on your server. Restoring merges it back, so nothing newer is lost.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button { Task { await backUp() } } label: {
+                        HStack(spacing: 8) {
+                            if working != nil { ProgressView().controlSize(.small).tint(Color(webHex: "#1a1030")) }
+                            Text(working ?? "Back up now")
+                        }
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(working != nil || store.isPreview).accessibilityIdentifier("backup-now")
+                }.padding(17).modifier(SettingsCard())
+                if let message { SettingsFootnote(text: message) }
+                if let failure { Text(failure).font(.system(size: 12)).foregroundStyle(Color(webHex: "#ff8a8a")).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
                 if let backups {
                     if backups.isEmpty {
                         DiaryEmptyState(title: "No backups yet", description: "Back up before big changes, like switching to Trakt as your diary.")
                     } else {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("RECENT BACKUPS").font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                            Spacer(minLength: 8)
+                            Text("The newest 20 are kept").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                        }.padding(.horizontal, 4).padding(.top, 4)
                         VStack(spacing: 0) {
                             ForEach(Array(backups.enumerated()), id: \.element.id) { index, backup in
-                                if index > 0 { Divider().padding(.leading, 14) }
+                                if index > 0 { SettingsDivider() }
                                 row(backup)
                             }
-                        }.background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
-                        Text("The newest 20 are kept.").font(.caption).foregroundStyle(.secondary)
+                        }.modifier(SettingsCard())
                     }
                 } else if failure == nil {
                     DiaryLoadingPlaceholder(height: 160, label: "Loading backups")
                 }
-            }.padding(14).padding(.bottom, 40).smoothChange(of: backups?.count ?? -1)
-        }.diaryScreenBackground().navigationTitle("Backups").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40).smoothChange(of: backups?.count ?? -1)
+        }.diaryScreenBackground().diaryPageNavigation("Backups")
             .task { await load() }
             .refreshable { await load() }
             .confirmationDialog("Restore this backup?", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), titleVisibility: .visible, presenting: restoring) { backup in
@@ -75,18 +88,21 @@ struct BackupsView: View {
     private func row(_ backup: Summary) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(date(backup)).font(.system(size: 15, weight: .semibold))
+                Text(date(backup)).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 Text([backup.label, backup.titles.counted("title", "titles"), backup.watches.counted("watch", "watches"),
                       ByteCountFormatter.string(fromByteCount: Int64(backup.sizeBytes), countStyle: .file)].joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
             }
             Spacer(minLength: 8)
             Menu {
                 Button("Restore", systemImage: "arrow.counterclockwise") { restoring = backup }
                 Button("Delete", systemImage: "trash", role: .destructive) { deleting = backup }
-            } label: { RoundTool(icon: "ellipsis", size: 36) }.disabled(working != nil)
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                    .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
+            }.disabled(working != nil)
                 .accessibilityLabel("Backup actions").accessibilityIdentifier("backup-actions-\(backup.id)")
-        }.padding(.horizontal, 14).frame(minHeight: 64)
+        }.padding(.horizontal, 15).padding(.vertical, 14).frame(minHeight: 84)
     }
     private func date(_ backup: Summary) -> String {
         DiaryDate.parse(backup.createdAt)?.formatted(date: .abbreviated, time: .shortened) ?? backup.createdAt

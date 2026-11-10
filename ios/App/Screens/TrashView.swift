@@ -21,28 +21,52 @@ struct TrashView: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 16) {
 
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Label("Removed titles", systemImage: "trash").font(.headline)
-                        Text("Kept with their history; disk files stay untouched.").font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                // Design (boards 11 and 14): a 44 pt tile, "Removed titles", and the count or Empty on the right.
+                HStack(spacing: 14) {
+                    SettingsTile(symbol: "trash", size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Removed titles").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                        Text("Kept with their history; disk files stay untouched.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
                     }
                     Spacer(minLength: 0)
-                    Button("Empty", role: .destructive) { confirmEmpty = true }
-                        .buttonStyle(.diarySecondary).disabled(store.writesBlocked || archived.isEmpty).accessibilityLabel("Empty Trash").accessibilityIdentifier("empty-trash")
-                }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
+                    if archived.isEmpty {
+                        Text("Empty").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                            .padding(.horizontal, 12).frame(height: 25).background(HomeStyle.round, in: Capsule())
+                            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    } else {
+                        Menu {
+                            Button("Empty Trash", systemImage: "trash", role: .destructive) { confirmEmpty = true }.disabled(store.writesBlocked)
+                        } label: {
+                            Text(archived.count.counted("title", "titles")).font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                                .padding(.horizontal, 12).frame(height: 24).background(HomeStyle.chip, in: Capsule())
+                        }.accessibilityLabel("Empty Trash").accessibilityIdentifier("empty-trash")
+                    }
+                }.padding(17).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
                 CategoryPicker(selection: $category).padding(.horizontal, -14)
                 HStack(spacing: 8) {
-                    Text("In Trash").font(.headline)
-                    Text("\(shown.count)").font(.subheadline).foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text("In Trash").foregroundStyle(HomeStyle.secondary)
+                        Text("(\(shown.count))").foregroundStyle(HomeStyle.primary)
+                    }.font(.system(size: 18, weight: .bold))
                     Spacer(minLength: 0)
-                    Menu {
-                        Picker("Trash order", selection: $sort) {
-                            Text("Library order").tag("library")
-                            Text("Title A–Z").tag("name")
-                            Text("Newest year").tag("year")
-                        }
-                    } label: { RoundTool(icon: "arrow-down-up") }.accessibilityLabel("Sort Trash")
-                    CollectionLayoutToggle(grid: $grid, collection: "trash")
+                    if selecting {
+                        Button(selected.count == min(shown.count, CollectionRequest.limit) ? "Select none" : "Select all") {
+                            selected = selected.count == min(shown.count, CollectionRequest.limit) ? [] : Set(shown.prefix(CollectionRequest.limit).map(\.id))
+                        }.buttonStyle(SettingsPillButtonStyle(outlined: true)).disabled(shown.isEmpty)
+                    } else {
+                        Menu {
+                            Picker("Trash order", selection: $sort) {
+                                Text("Library order").tag("library")
+                                Text("Title A–Z").tag("name")
+                                Text("Newest year").tag("year")
+                            }
+                        } label: {
+                            DiaryIcon(name: "arrow-down-up", size: 17).foregroundStyle(HomeStyle.dateChipText)
+                                .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
+                                .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                        }.accessibilityLabel("Sort Trash")
+                        CollectionLayoutToggle(grid: $grid, collection: "trash")
+                    }
                 }
                 if selecting {
                     CollectionSelectionPanel(titles: shown, selected: $selected, archived: true) { change in
@@ -55,14 +79,16 @@ struct TrashView: View {
                     DiaryEmptyState(title: archived.isEmpty ? "Trash is clear" : "No removed titles in this category", description: archived.isEmpty ? "Removed titles and their history will appear here." : "Choose another category to see your removed titles.")
                         .padding(.top, 16)
                 }
-            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
                 .categorySwipe($category, enabled: !selecting)
-        }.background(Color(webHex: "#0e0d13")).diaryScreenBackground()
-            .navigationTitle("Trash").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }.diaryScreenBackground().diaryPageNavigation("Trash")
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-
-                    Button(selecting ? "Done selecting" : "Select") { selecting.toggle(); selected = [] }.disabled(archived.isEmpty).accessibilityIdentifier("trash-select")
+                ToolbarItem(placement: .topBarTrailing) {
+                    // Design: "Select" (dimmed when empty), "Done" in the accent pill while selecting.
+                    Button(selecting ? "Done" : "Select") { selecting.toggle(); selected = [] }
+                        .font(.system(size: 15, weight: selecting ? .bold : .semibold))
+                        .foregroundStyle(selecting ? HomeStyle.chipText : archived.isEmpty ? Color(webHex: "#7a7a88") : HomeStyle.primary)
+                        .disabled(archived.isEmpty).accessibilityIdentifier("trash-select")
                 }
             }
             .refreshable { await store.refresh(); await store.loadPublicRatings(archived, source: ratingSource) }

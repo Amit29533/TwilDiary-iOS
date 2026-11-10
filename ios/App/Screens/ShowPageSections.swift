@@ -179,11 +179,14 @@ struct RatingCircles: View {
     let community: Double?
     let onRate: () -> Void
     var onCommunity: (() -> Void)? = nil
+    /// False on a preview page: the title isn't in your diary, so there is no rating of yours.
+    var showsMine = true
     static func color(_ score: Double) -> Color {
         switch RatingTone(score: score) { case .low: Color(webHex: "#ef5350"); case .mid: Color(webHex: "#ffa726"); case .high: Color(webHex: "#43c66b") }
     }
     var body: some View {
         HStack(spacing: 10) {
+            if showsMine {
             Button(action: onRate) {
                 ZStack {
                     Circle().fill(mine.map { Self.color($0).opacity(0.22) } ?? Color.white.opacity(0.07))
@@ -193,6 +196,7 @@ struct RatingCircles: View {
                 }.frame(width: 50, height: 50)
             }.buttonStyle(.springPress).accessibilityLabel("Your rating").accessibilityValue(mine.map { $0.formatted() } ?? "Not rated")
                 .accessibilityHint("Tap to rate").accessibilityIdentifier("title-personal-rating")
+            }
             // The community average is always shown beside your rating ("–" until a score is known),
             // so the row never changes shape.
             Button { onCommunity?() } label: {
@@ -507,7 +511,7 @@ struct RelatedCollection: Identifiable, Hashable {
     private static var cache: [String: [RelatedCollection]] = [:]
     /// True when there was no TMDB key on the phone and the diary server had nothing either.
     private(set) var needsKey = false
-    func load(store: DiaryStore, route: CatalogRoute, anime: Bool) async {
+    func load(store: DiaryStore, route: CatalogRoute, anime: Bool, genres fallback: [String] = []) async {
         let key = "\(route.kind.rawValue):\(route.id)"
         if let saved = Self.cache[key] { items = saved; loaded = true; return }
         var result: [RelatedCollection] = []
@@ -515,21 +519,24 @@ struct RelatedCollection: Identifiable, Hashable {
             RelatedCollection(kind: .series(series.id), name: series.name, count: nil,
                               posters: [series.backdropPath, series.posterPath].compactMap { CatalogTools.image($0, size: "w780") })
         }
-        if let token = TMDBDirect.token(store) {
+        // Animation says nothing for an anime; its other genres are the interesting ones.
+        func wanted(_ name: String) -> Bool { !(anime && name == "Animation") }
+        if let token = TMDBDirect.token(store), let overview = try? await TMDBDirect.overview(route, token: token), !overview.genres.isEmpty || overview.collection != nil {
             // The phone reads TMDB itself with your key; the diary server is only a backup.
-            guard let overview = try? await TMDBDirect.overview(route, token: token) else { loaded = true; return }
             if let series = overview.collection { result.append(collectionCard(series)) }
             items = result
-            // Animation says nothing for an anime; its other genres are the interesting ones.
-            for genre in overview.genres.filter({ !(anime && $0.name == "Animation") }).prefix(6) {
+            for genre in overview.genres.filter({ wanted($0.name) }).prefix(6) {
                 guard let page = try? await TMDBDirect.genre(genre.id, kind: route.kind, anime: anime, token: token), (page.total ?? 0) > 0 else { continue }
                 result.append(RelatedCollection(kind: .genre(genre.name), name: genre.name, count: page.total, posters: page.artwork))
                 items = result
             }
-        } else if let extras = try? await TitleExtrasCache.load(store: store, route: route) {
-            if let series = extras.collection { result.append(collectionCard(series)) }
+        }
+        if result.isEmpty {
+            let extras = try? await TitleExtrasCache.load(store: store, route: route)
+            if let series = extras?.collection { result.append(collectionCard(series)) }
             items = result
-            for genre in extras.genres.map(\.name).filter({ !(anime && $0 == "Animation") }).prefix(6) {
+            let names = (extras?.genres.map(\.name)).flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+            for genre in names.filter(wanted).prefix(6) {
                 let query = RelatedCollection.filters(genre: genre, route: route, anime: anime).query(section: .genres, page: 1)
                 guard let page = try? await LiveDiscoveryService(store: store).page(query), !page.items.isEmpty else { continue }
                 let art = page.items.compactMap { CatalogTools.image($0.backdropPath, size: "w780") ?? $0.artwork }.prefix(2)
@@ -541,6 +548,7 @@ struct RelatedCollection: Identifiable, Hashable {
         if !result.isEmpty { Self.cache[key] = result }
         loaded = true
     }
+
 }
 
 struct RelatedCollectionCard: View {
@@ -586,6 +594,8 @@ struct RelatedCollectionsSection: View {
     let route: CatalogRoute
     let title: String
     let anime: Bool
+    /// The page's own genres, used when TMDB's aren't available.
+    var genres: [String] = []
     @Environment(DiaryStore.self) private var store
     @State private var model = RelatedCollectionsModel()
     var body: some View {
@@ -607,6 +617,6 @@ struct RelatedCollectionsSection: View {
                 // A real view keeps the task alive; on an empty Group it never ran.
                 Color.clear.frame(height: 0).accessibilityHidden(true)
             }
-        }.task(id: route) { await model.load(store: store, route: route, anime: anime) }
+        }.task(id: route) { await model.load(store: store, route: route, anime: anime, genres: genres) }
     }
 }
