@@ -15,6 +15,16 @@ import XCTest
         }
     }
 
+    /// A title that isn't in the library (Home → Recommended), top to bottom.
+    func testPreviewSnapshots() {
+        capture(tab: "home", name: "preview", pages: 8) { app in
+            let card = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-recommended-' AND identifier != 'home-recommended-more'")).firstMatch
+            for _ in 0..<6 where !(card.exists && card.isHittable) { app.swipeUp() }
+            if card.exists { card.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+    }
+
     private func capture(tab: String, name: String, pages: Int, open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab]

@@ -46,6 +46,24 @@ export interface TitleExtras {
   keywords: { id: number; name: string }[];
   /** Creators, directors, writers and the composer: who made it, not every credit. */
   crew: { id: number; name: string; job: string; profilePath: string | null }[];
+  /** TMDb's own genres with ids, so a title page can open TMDb's catalogue for each. */
+  genres: { id: number; name: string }[];
+  /** The TMDb collection a movie belongs to ("The Lord of the Rings Collection"); null for shows. */
+  collection: {
+    id: number;
+    name: string;
+    posterPath: string | null;
+    backdropPath: string | null;
+  } | null;
+}
+/** A TMDb collection and its films, oldest first. */
+export interface TitleCollection {
+  id: number;
+  name: string;
+  overview: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  parts: (SearchMatch & { backdropPath: string | null; rating: number | null })[];
 }
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => {
@@ -487,6 +505,9 @@ export function createTmdb(
         items: trending ? filterDiscovery(items, input) : items,
         page: int(data.page, 1, 500),
         totalPages: Math.min(int(data.total_pages, 0, 1000000), 500),
+        ...(Number.isSafeInteger(data.total_results)
+          ? { totalResults: Math.max(0, data.total_results as number) }
+          : {}),
         source: input.source
       };
     },
@@ -697,7 +718,61 @@ export function createTmdb(
         .filter((p) => !seen.has(p.id) && seen.add(p.id))
         .slice(0, 24)
         .map(({ rank: _rank, ...person }) => person);
-      return { status, certification, studios, networks, keywords, crew };
+      const genres = list(data.genres, 20).flatMap((v) => {
+        const item = v as RecordValue;
+        const name = text(item.name, 60);
+        return name && Number.isSafeInteger(item.id) && (item.id as number) > 0
+          ? [{ id: item.id as number, name }]
+          : [];
+      });
+      const owner =
+        mediaType === 'movie' &&
+        data.belongs_to_collection &&
+        typeof data.belongs_to_collection === 'object'
+          ? (data.belongs_to_collection as RecordValue)
+          : null;
+      const collection =
+        owner && Number.isSafeInteger(owner.id) && (owner.id as number) > 0 && text(owner.name, 200)
+          ? {
+              id: owner.id as number,
+              name: text(owner.name, 200),
+              posterPath: path(owner.poster_path),
+              backdropPath: path(owner.backdrop_path)
+            }
+          : null;
+      return { status, certification, studios, networks, keywords, crew, genres, collection };
+    },
+    /** A TMDb collection (a film series) with its films in release order. */
+    async collection(id: number): Promise<TitleCollection> {
+      providerInput('movie', id);
+      const data = await request(`collection/${id}`);
+      if (data.id !== id) throw upstream();
+      const parts = (Array.isArray(data.parts) ? data.parts.slice(0, 80) : []).flatMap((value) => {
+        const base = match(value, 'movie');
+        const item = record(value);
+        if (!base || item.adult === true) return [];
+        return [
+          {
+            ...base,
+            backdropPath: path(item.backdrop_path),
+            rating:
+              typeof item.vote_average === 'number' &&
+              item.vote_average > 0 &&
+              item.vote_average <= 10
+                ? item.vote_average
+                : null
+          }
+        ];
+      });
+      parts.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+      return {
+        id,
+        name: text(data.name, 200),
+        overview: text(data.overview, 20000),
+        posterPath: path(data.poster_path),
+        backdropPath: path(data.backdrop_path),
+        parts
+      };
     },
     /** Tags (TMDb keywords) whose name matches what was typed, for Search Lab. */
     async keywords(query: string) {

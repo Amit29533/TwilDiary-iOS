@@ -122,6 +122,8 @@ export interface DiscoveryPage {
   items: DiscoveryItem[];
   page: number;
   totalPages: number;
+  /** TMDb's count of every match, when it gives one ("48 titles"). */
+  totalResults?: number;
   source: DiscoveryQuery['source'];
   seedName?: string;
 }

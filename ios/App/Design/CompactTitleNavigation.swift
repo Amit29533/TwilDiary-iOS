@@ -63,20 +63,39 @@ struct TitleHeaderAction: View {
     let state: CompactHeaderState
     @Binding var informationPresented: Bool
     var informationIdentifier = "title-information"
+    /// False on saved titles: they open Sentiments from the ··· menu, so only share shows (once scrolled).
+    var showsInformation = true
+    /// Saved titles: the heart, which share replaces in the same slot once the page scrolls.
+    var favorite: Bool? = nil
+    var onFavorite: (() -> Void)? = nil
     @State private var sharing = false
     private var progress: CGFloat { state.progress }
     private var compact: Bool { progress >= 0.5 }
     var body: some View {
-        Button {
-            if compact { sharing = true } else { informationPresented = true }
-        } label: {
-            ZStack {
-                Image(systemName: "square.and.arrow.up").opacity(Double(progress))
-                Image(systemName: "info.circle").opacity(Double(1 - progress))
-            }.frame(width: 32, height: 32)
-        }.accessibilityLabel(compact ? "Share " + name : "Community information")
-            .accessibilityIdentifier(compact ? "title-share" : informationIdentifier)
-            .sheet(isPresented: $sharing) { TitleActivitySheet(name: name, kind: kind, id: id) }
+        if let favorite, let onFavorite {
+            // One slot: the heart at the top of the page, share once the title moves into the bar.
+            Button {
+                if compact { sharing = true } else { onFavorite() }
+            } label: {
+                ZStack {
+                    Image(systemName: "square.and.arrow.up").opacity(Double(progress))
+                    Image(systemName: favorite ? "heart.fill" : "heart").opacity(Double(1 - progress))
+                }.frame(width: 32, height: 32)
+            }.accessibilityLabel(compact ? "Share " + name : favorite ? "Remove favorite" : "Favorite")
+                .accessibilityIdentifier(compact ? "title-share" : "title-favorite")
+                .sheet(isPresented: $sharing) { TitleActivitySheet(name: name, kind: kind, id: id) }
+        } else if showsInformation || compact {
+            Button {
+                if compact || !showsInformation { sharing = true } else { informationPresented = true }
+            } label: {
+                ZStack {
+                    Image(systemName: "square.and.arrow.up").opacity(showsInformation ? Double(progress) : 1)
+                    if showsInformation { Image(systemName: "info.circle").opacity(Double(1 - progress)) }
+                }.frame(width: 32, height: 32)
+            }.accessibilityLabel(compact || !showsInformation ? "Share " + name : "Sentiments")
+                .accessibilityIdentifier(compact || !showsInformation ? "title-share" : informationIdentifier)
+                .sheet(isPresented: $sharing) { TitleActivitySheet(name: name, kind: kind, id: id) }
+        }
     }
 }
 

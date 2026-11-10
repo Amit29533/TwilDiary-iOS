@@ -12,13 +12,22 @@ struct ShowSectionHeading<Value: Hashable>: View {
     var identifier = ""
     var body: some View {
         HStack(spacing: 10) {
-            Text(title).font(.system(size: 24, weight: .bold)).tracking(-0.6).foregroundStyle(.white)
+            Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             if let count {
-                Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
-                    .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                // Design: 13 pt semibold #d8d4e6 on #17171d, 28 pt tall, #26262e hairline.
+                Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+                    .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+                    .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             }
             Spacer(minLength: 0)
-            if let value { SectionMoreLink(label: "See all " + title, value: value, identifier: identifier) }
+            if let value {
+                NavigationLink(value: value) {
+                    Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                        .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
+                        .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                }.buttonStyle(.plain)
+                    .accessibilityLabel("See all " + title).accessibilityIdentifier(identifier)
+            }
         }
     }
 }
@@ -34,7 +43,7 @@ struct SeeAllLink<Value: Hashable>: View {
     var body: some View {
         NavigationLink(value: value) {
             HStack(spacing: 3) { Text("See all"); DiaryIcon(name: "chevron-right", size: 13) }
-                .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 44)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 44)
         }.buttonStyle(.plain).accessibilityIdentifier(identifier)
     }
 }
@@ -43,11 +52,17 @@ struct SeeAllLink<Value: Hashable>: View {
 struct MetaChip: View {
     let text: String
     var warning = false
+    /// Age rating, status and network: bolder and brighter than genres (design).
+    var fact = false
     var body: some View {
-        Text(text).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
-            .foregroundStyle(warning ? Color(webHex: "#ff8a6a") : Color(webHex: "#e6e1ee"))
-            .padding(.horizontal, 9).frame(height: 26)
-            .background(warning ? Color(webHex: "#ff6a4a").opacity(0.14) : Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+        // Design: genres 11 pt semibold #d8d4e6 on #17171d (radius 9, #26262e hairline); facts 11 pt
+        // bold #f5f5f7 on #26262e (radius 8, #34343e); a cancelled/ended status #ff5a36 on #3a1a12.
+        let radius: CGFloat = fact ? 8 : 9
+        Text(text).font(.system(size: 11, weight: fact ? .bold : .semibold)).lineLimit(1)
+            .foregroundStyle(warning ? Color(webHex: "#ff5a36") : fact ? HomeStyle.primary : HomeStyle.soft)
+            .padding(.horizontal, 9).frame(height: 24)
+            .background(warning ? Color(webHex: "#3a1a12") : fact ? Color(webHex: "#26262e") : HomeStyle.round, in: RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(warning ? Color(webHex: "#6b2b1c") : fact ? Color(webHex: "#34343e") : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
     }
 }
 
@@ -56,7 +71,7 @@ struct TitleMetaChips: View {
     let genres: [String]
     let extras: TitleExtras?
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 6) {
             if !genres.isEmpty {
                 ViewThatFits(in: .horizontal) {
                     chips(Array(genres.prefix(3)))
@@ -81,7 +96,7 @@ struct TitleMetaChips: View {
     }
     private func factRow(_ values: [String], extras: TitleExtras) -> some View {
         HStack(spacing: 6) {
-            ForEach(values, id: \.self) { value in MetaChip(text: value, warning: extras.statusIsWarning && value == extras.statusLabel) }
+            ForEach(values, id: \.self) { value in MetaChip(text: value, warning: extras.statusIsWarning && value == extras.statusLabel, fact: true) }
         }.fixedSize()
     }
 }
@@ -107,14 +122,19 @@ struct RatingBoxes: View {
     var body: some View {
         let boxes = boxes
         if !boxes.isEmpty {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(boxes) { box in
-                    VStack(spacing: 3) {
-                        Text(box.label).font(.system(size: 10.5, weight: .heavy)).tracking(0.6).foregroundStyle(box.color)
-                        Text(box.text).font(.system(size: 17, weight: .bold)).monospacedDigit().foregroundStyle(.white)
-                    }.frame(maxWidth: .infinity).frame(height: 56)
-                        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.09)))
+                    // The source's own logo above its score; a source without one keeps its name.
+                    HStack(spacing: 6) {
+                        if let service = BrandLogo.service(forRatingSource: box.id) {
+                            BrandLogo(service: service, size: 20)
+                        } else {
+                            Text(box.label).font(.system(size: 9, weight: .bold)).foregroundStyle(box.color)
+                        }
+                        Text(box.text).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
+                    }.frame(maxWidth: .infinity).frame(height: 46)
+                        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         .accessibilityElement(children: .ignore).accessibilityLabel(RatingsStrip<EmptyView>.name(box.id) + " " + box.text)
                 }
             }.accessibilityIdentifier("title-rating-boxes")
@@ -125,8 +145,8 @@ struct RatingBoxes: View {
     }
     static func color(_ key: String) -> Color {
         switch key {
-        case "tmdb": Color(webHex: "#4fd1c5"); case "myanimelist": Color(webHex: "#6d8ff0"); case "imdb": Color(webHex: "#f5c518")
-        case "trakt": Color(webHex: "#ff5a5f"); case "metacritic": Color(webHex: "#ffcc34"); case "letterboxd": Color(webHex: "#00e054")
+        case "tmdb": Color(webHex: "#01b4e4"); case "myanimelist": Color(webHex: "#6c9bff"); case "imdb": Color(webHex: "#f5c518")
+        case "trakt": Color(webHex: "#ff4d5e"); case "metacritic": Color(webHex: "#ffcc34"); case "letterboxd": Color(webHex: "#00e054")
         default: Color(webHex: "#c5c0cf")
         }
     }
@@ -197,23 +217,30 @@ struct TitleTagsSection: View {
     let kind: MediaKind
     var body: some View {
         if !keywords.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
+            // Design: three rows of 52 pt pills (#17171d, #2a2a33 hairline) scrolling sideways together,
+            // a 20 pt emoji and a 16 pt medium label, 8 pt apart.
+            // Each row scrolls on its own and its pills sit 8 pt apart (no grid columns, so no gaps).
+            // Rows follow the count: up to 4 tags one row, up to 8 two, more three.
+            VStack(alignment: .leading, spacing: 16) {
                 ShowSectionHeading(title: "Tags", count: keywords.count)
-                ScrollView(.horizontal) {
-                    LazyHGrid(rows: Array(repeating: GridItem(.fixed(48), spacing: 10), count: min(3, keywords.count)), alignment: .top, spacing: 10) {
-                        ForEach(keywords) { keyword in
-                            NavigationLink(value: route(keyword)) {
-                                HStack(spacing: 8) {
-                                    Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 18))
-                                    Text(keyword.name.capitalizedTag).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-                                }.padding(.horizontal, 14).frame(height: 48)
-                                    .background(.white.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.1)))
-                            }.buttonStyle(.springPress).accessibilityIdentifier("title-tag-\(keyword.id)")
-                        }
-                    }.padding(.vertical, 1)
-                }.scrollIndicators(.hidden).scrollClipDisabled()
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(TagRows.split(keywords).enumerated()), id: \.offset) { _, row in
+                        ScrollView(.horizontal) {
+                            HStack(spacing: 8) { ForEach(row) { keyword in pill(keyword) } }.padding(.vertical, 1)
+                        }.scrollIndicators(.hidden).scrollClipDisabled()
+                    }
+                }
             }
         }
+    }
+    private func pill(_ keyword: TitleKeyword) -> some View {
+        NavigationLink(value: route(keyword)) {
+            HStack(spacing: 10) {
+                Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 20))
+                Text(keyword.name.capitalizedTag).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            }.padding(.horizontal, 17).frame(height: 52).fixedSize()
+                .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(Color(webHex: "#2a2a33"), lineWidth: HomeStyle.hairline))
+        }.buttonStyle(.springPress).accessibilityIdentifier("title-tag-\(keyword.id)")
     }
     private func route(_ keyword: TitleKeyword) -> ExploreSectionRoute {
         var filters = DiscoveryFilters(section: .genres)
@@ -283,6 +310,9 @@ struct RatingTrendCard: View {
                 }.padding(18).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 24))
                     .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.08)))
                     .accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-trend")
+            } else {
+                // A real view keeps the task alive; on an empty Group it never ran.
+                Color.clear.frame(height: 0).accessibilityHidden(true)
             }
         }.task(id: "\(show):\(season)") {
             trakt = []
@@ -434,6 +464,8 @@ struct InListsSection: View {
                         }
                     }.scrollIndicators(.hidden).scrollClipDisabled()
                 }
+            } else {
+                Color.clear.frame(height: 0).accessibilityHidden(true)
             }
         }.task(id: route) { lists = (try? await TitleListsCache.load(store: store, route: route, sort: "popular")) ?? [] }
     }
@@ -441,22 +473,55 @@ struct InListsSection: View {
 
 // MARK: Related collections
 
-/// The title's genres as collections of your library: how many titles each has, opening
-/// Library filtered to it.
+/// Related collections come from TMDb, never your library: the movie's own TMDb collection (a film
+/// series), then TMDb's catalogue for each of the title's genres with TMDb's count of titles.
 struct RelatedCollection: Identifiable, Hashable {
-    let genre: String
-    let count: Int
-    let posters: [String]
-    var id: String { genre }
-    @MainActor static func make(genres: [String], workspace: Workspace) -> [RelatedCollection] {
-        genres.prefix(8).compactMap { genre in
-            let titles = workspace.activeTitles.filter { $0.genres.contains(genre) }
-            guard !titles.isEmpty else { return nil }
-            return RelatedCollection(genre: genre, count: titles.count, posters: Array(titles.compactMap { $0.backdrop ?? $0.poster }.prefix(2)))
-        }
-    }
+    enum Kind: Hashable { case series(Int), genre(String) }
+    let kind: Kind
+    let name: String
+    var count: Int?
+    var posters: [String]
+    var id: String { switch kind { case .series(let id): "series:\(id)"; case .genre(let name): "genre:" + name } }
     static func tint(_ index: Int) -> Color {
         [Color(webHex: "#f0805a"), Color(webHex: "#3fb3b0"), Color(webHex: "#8e7cf0"), Color(webHex: "#e0607e"), Color(webHex: "#5d8ff0"), Color(webHex: "#d9a441")][index % 6]
+    }
+    /// The TMDb catalogue a genre card opens: same media type, anime limited to Japanese titles.
+    static func filters(genre: String, route: CatalogRoute, anime: Bool) -> DiscoveryFilters {
+        var value = DiscoveryFilters(section: .genres)
+        value.type = route.kind == .movie ? "movie" : "tv"
+        value.genres = [genre]; value.label = genre
+        if anime { value.language = "ja" }
+        return value
+    }
+}
+
+/// Loads the cards: TMDb extras for the collection and genres, then one discover page per genre
+/// for its count and artwork. Kept per title so the section and its page agree.
+@MainActor @Observable final class RelatedCollectionsModel {
+    private(set) var items: [RelatedCollection] = []
+    private(set) var loaded = false
+    private static var cache: [String: [RelatedCollection]] = [:]
+    func load(store: DiaryStore, route: CatalogRoute, anime: Bool) async {
+        let key = "\(route.kind.rawValue):\(route.id)"
+        if let saved = Self.cache[key] { items = saved; loaded = true; return }
+        guard let extras = try? await TitleExtrasCache.load(store: store, route: route) else { loaded = true; return }
+        var result: [RelatedCollection] = []
+        if let series = extras.collection {
+            result.append(RelatedCollection(kind: .series(series.id), name: series.name, count: nil,
+                                            posters: [series.backdropPath, series.posterPath].compactMap { CatalogTools.image($0, size: "w780") }))
+        }
+        // Animation says nothing for an anime; its other genres are the interesting ones.
+        let genres = extras.genres.map(\.name).filter { !(anime && $0 == "Animation") }.prefix(6)
+        items = result
+        for genre in genres {
+            let query = RelatedCollection.filters(genre: genre, route: route, anime: anime).query(section: .genres, page: 1)
+            guard let page = try? await LiveDiscoveryService(store: store).page(query), !page.items.isEmpty else { continue }
+            let art = page.items.compactMap { CatalogTools.image($0.backdropPath, size: "w780") ?? $0.artwork }.prefix(2)
+            result.append(RelatedCollection(kind: .genre(genre), name: genre, count: page.totalResults, posters: Array(art)))
+            items = result
+        }
+        Self.cache[key] = result
+        loaded = true
     }
 }
 
@@ -467,37 +532,63 @@ struct RelatedCollectionCard: View {
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
-                ForEach(collection.posters, id: \.self) { path in Artwork(path: path, title: collection.genre, initialsOnly: false) }
+                ForEach(collection.posters, id: \.self) { path in Artwork(path: path, title: collection.name, initialsOnly: false) }
             }
             RelatedCollection.tint(index).opacity(0.72)
             VStack(spacing: 3) {
-                Text(collection.genre).font(.system(size: showCount ? 24 : 19, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
-                if showCount { Text(collection.count.counted("title", "titles")).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85)) }
+                Text(collection.name).font(.system(size: showCount ? 24 : 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.7)
+                if showCount, let subtitle { Text(subtitle).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85)) }
             }.shadow(color: .black.opacity(0.35), radius: 4).padding(.horizontal, 10)
         }.clipShape(RoundedRectangle(cornerRadius: 22))
-            .accessibilityElement(children: .ignore).accessibilityLabel(collection.genre + ", " + collection.count.counted("title", "titles"))
+            .accessibilityElement(children: .ignore).accessibilityLabel(collection.name + (subtitle.map { ", " + $0 } ?? ""))
+    }
+    private var subtitle: String? {
+        if case .series = collection.kind { return "TMDb collection" }
+        return collection.count.map { $0.counted("title", "titles") }
+    }
+}
+
+/// Opens a card: a film series' own page, or TMDb's catalogue for a genre.
+struct RelatedCollectionLink<Label: View>: View {
+    let collection: RelatedCollection
+    let route: CatalogRoute
+    let anime: Bool
+    @ViewBuilder let label: Label
+    var body: some View {
+        switch collection.kind {
+        case .series(let id):
+            NavigationLink(value: ShowPageRoute.tmdbCollection(id: id, name: collection.name)) { label }.buttonStyle(.springPress)
+        case .genre(let genre):
+            NavigationLink(value: SearchLabResultsRoute(filters: RelatedCollection.filters(genre: genre, route: route, anime: anime))) { label }.buttonStyle(.springPress)
+        }
     }
 }
 
 struct RelatedCollectionsSection: View {
-    let title: MediaTitle
+    let route: CatalogRoute
+    let title: String
+    let anime: Bool
     @Environment(DiaryStore.self) private var store
-    @Environment(AppRouter.self) private var router
+    @State private var model = RelatedCollectionsModel()
     var body: some View {
-        let collections = RelatedCollection.make(genres: title.genres, workspace: store.workspace)
-        if !collections.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                ShowSectionHeading(title: "Related collections", value: ShowPageRoute.collections(titleID: title.id), identifier: "title-collections-all")
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(Array(collections.enumerated()), id: \.element.id) { index, collection in
-                            Button { router.libraryGenre(collection.genre) } label: {
-                                RelatedCollectionCard(collection: collection, index: index).frame(width: 180, height: 116)
-                            }.buttonStyle(.springPress).accessibilityIdentifier("title-collection-\(index)")
+        Group {
+            if !model.items.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    ShowSectionHeading(title: "Related collections", value: ShowPageRoute.collections(route, title: title, anime: anime), identifier: "title-collections-all")
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 12) {
+                            ForEach(Array(model.items.enumerated()), id: \.element.id) { index, collection in
+                                RelatedCollectionLink(collection: collection, route: route, anime: anime) {
+                                    RelatedCollectionCard(collection: collection, index: index).frame(width: 180, height: 116)
+                                }.accessibilityIdentifier("title-collection-\(index)")
+                            }
                         }
-                    }
-                }.scrollIndicators(.hidden).scrollClipDisabled()
+                    }.scrollIndicators(.hidden).scrollClipDisabled()
+                }
+            } else {
+                // A real view keeps the task alive; on an empty Group it never ran.
+                Color.clear.frame(height: 0).accessibilityHidden(true)
             }
-        }
+        }.task(id: route) { await model.load(store: store, route: route, anime: anime) }
     }
 }

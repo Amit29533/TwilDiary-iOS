@@ -22,7 +22,10 @@ struct TitleHero<Ratings: View>: View {
     let extras: TitleExtras?
     /// Ratings as a full-width row under the poster instead of beside it.
     let ratingsBelow: Bool
-    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, extras: TitleExtras? = nil, ratingsBelow: Bool = false, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
+    /// The clear space above the poster (TitleCover.strip for this phone).
+    var coverStrip: CGFloat = 167
+    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, extras: TitleExtras? = nil, ratingsBelow: Bool = false, coverStrip: CGFloat = 167, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
+        self.coverStrip = coverStrip
         self.name = name; self.poster = poster; self.backdrop = backdrop; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.extras = extras; self.ratingsBelow = ratingsBelow; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
     }
     @State private var synopsisWidth: CGFloat = 0
@@ -30,28 +33,33 @@ struct TitleHero<Ratings: View>: View {
     private var synopsisText: String { summary.isEmpty ? "Add your own thoughts in Notes." : summary }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // The cover art's visible strip above the poster.
-            Color.clear.frame(maxWidth: .infinity).frame(height: 142).contentShape(Rectangle())
+            // The cover art's visible strip, down to 18 pt into the panel where the poster starts
+            // (TitleCover.panelTop + 18, measured from the safe area).
+            Color.clear.frame(maxWidth: .infinity).frame(height: coverStrip).contentShape(Rectangle())
                 .fullScreenArtwork(backdrop, title: name, aspect: 16.0 / 9.0)
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the
             // poster; a long name makes the column taller downwards, never up past the poster's
             // top. Ratings scroll within the remaining column width.
-            HStack(alignment: .top, spacing: 15) {
-                Artwork(path: poster, title: name, initialsOnly: false).frame(width: 114, height: 171).clipShape(RoundedRectangle(cornerRadius: 12))
-                    .contentShape(RoundedRectangle(cornerRadius: 12)).fullScreenArtwork(poster, title: name)
+            // Design: a 112 × 168 poster (radius 16, white 12 % hairline), the text column 14 pt to its
+            // right starting 8 pt below the poster's top.
+            HStack(alignment: .top, spacing: 14) {
+                Artwork(path: poster, title: name, initialsOnly: false).frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.12), lineWidth: HomeStyle.hairline))
+                    .shadow(color: .black.opacity(0.6), radius: 14, y: 10)
+                    .contentShape(RoundedRectangle(cornerRadius: 16)).fullScreenArtwork(poster, title: name)
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(name).font(.system(size: 24, weight: .bold)).tracking(-1.08).foregroundStyle(.white)
-                        .lineLimit(3).minimumScaleFactor(0.72).allowsTightening(true)
+                    Text(name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
+                        .lineLimit(2).truncationMode(.tail).allowsTightening(true)
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
-                    Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per episode" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 14.4)).lineSpacing(4.3).foregroundStyle(.secondary).frame(minHeight: 21.6, alignment: .top).padding(.top, 14)
-                    TitleMetaChips(genres: genres, extras: extras).padding(.top, 10)
+                    Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per ep" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).padding(.top, 6)
+                    TitleMetaChips(genres: genres, extras: extras).padding(.top, 6)
                     if !ratingsBelow { ratings.padding(.top, 14) }
-                }.frame(maxWidth: .infinity, minHeight: 171, alignment: .bottomLeading)
+                }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
             }
             if ratingsBelow { ratings }
             VStack(alignment: .leading, spacing: 6) {
@@ -62,7 +70,7 @@ struct TitleHero<Ratings: View>: View {
                 if expanded && !synopsisParts.continuation.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(synopsisParts.continuation.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.system(size: 15.04)).lineSpacing(6).foregroundStyle(Color(webHex: "#c5c0cf"))
+                            .font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
                             .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("title-synopsis-continuation")
                         Button("Less") { setExpanded(false) }.font(.system(size: 14, weight: .semibold)).frame(minHeight: 44)
@@ -78,8 +86,8 @@ struct TitleHero<Ratings: View>: View {
     private var synopsisLead: some View {
         let hasOverflow = !synopsisParts.continuation.isEmpty
         return Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
-            .font(.system(size: 15.04)).lineSpacing(6).foregroundStyle(Color(webHex: "#c5c0cf"))
-            .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            .font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
+            .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, 36)
             .accessibilityIdentifier("title-synopsis-text")
             .overlay(alignment: .bottomTrailing) {
@@ -98,24 +106,53 @@ struct TitleHero<Ratings: View>: View {
     }
 
 }
+/// The title page's cover (owner's design): the artwork from the top of the screen with only a
+/// light fade at each end, and a panel with 28 pt top corners over its bottom 16 pt, on a blurred
+/// glow of the same artwork. The artwork is 16:9 of the screen width, the shape of TMDB's
+/// backdrops, so the whole picture shows on every phone instead of a crop.
+enum TitleCover {
+    static func artworkHeight(width: CGFloat) -> CGFloat { (width * 9 / 16).rounded() }
+    /// From the top of the screen.
+    static func panelTop(width: CGFloat) -> CGFloat { artworkHeight(width: width) - 16 }
+    /// The clear strip above the poster, measured from the safe area: the poster starts 18 pt into the panel.
+    static func strip(width: CGFloat, safeTop: CGFloat) -> CGFloat { max(60, panelTop(width: width) - safeTop + 18) }
+}
+
 struct TitleArtworkBackdrop: View {
     let path: String?
     let name: String
     var topExtension: CGFloat = 0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
+        GeometryReader { proxy in cover(width: proxy.size.width) }
+            .offset(y: -topExtension).allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private func cover(width: CGFloat) -> some View {
+        let artwork = TitleCover.artworkHeight(width: width), panel = TitleCover.panelTop(width: width)
+        return ZStack(alignment: .top) {
+            // A soft glow of the artwork just under the panel's top edge.
+            art.frame(width: 470, height: 256).blur(radius: 34).saturation(1.3).opacity(0.55)
+                .offset(y: panel - 40).frame(maxWidth: .infinity)
+            art.frame(height: artwork).frame(maxWidth: .infinity).clipped()
+                .overlay(LinearGradient(stops: [
+                    .init(color: .black.opacity(0.42), location: 0), .init(color: .black.opacity(0), location: 0.34),
+                    .init(color: .black.opacity(0), location: 0.78), .init(color: .black.opacity(0.55), location: 1)
+                ], startPoint: .top, endPoint: .bottom))
+            // The panel: rgba(22 18 32 / .62) → rgba(12 11 16 / .9) at 360 pt → #0a0a0e at 600 pt.
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
+                .fill(LinearGradient(stops: [
+                    .init(color: Color(red: 22 / 255, green: 18 / 255, blue: 32 / 255).opacity(0.62), location: 0),
+                    .init(color: Color(red: 12 / 255, green: 11 / 255, blue: 16 / 255).opacity(0.9), location: 360 / 4000),
+                    .init(color: Color(webHex: "#0a0a0e"), location: 600 / 4000), .init(color: Color(webHex: "#0a0a0e"), location: 1)
+                ], startPoint: .top, endPoint: .bottom))
+                .overlay(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28).strokeBorder(.white.opacity(0.14), lineWidth: HomeStyle.hairline))
+                .frame(height: 4000).offset(y: panel)
+        }.frame(width: width, alignment: .top)
+    }
+    @ViewBuilder private var art: some View {
         ZStack {
             LinearGradient(stops: [.init(color: theme.heroFallbackLead, location: 0), .init(color: Color(webHex: "#473c37"), location: 0.45), .init(color: Color(webHex: "#253b3b"), location: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
             if let path { Artwork(path: path, title: name) }
-        }.frame(height: 440 + topExtension)
-            .overlay(LinearGradient(stops: [
-                // Preserve contrast for the status bar and tinted toolbar over light artwork.
-                .init(color: .black.opacity(0.48), location: 0),
-                .init(color: .black.opacity(0.40), location: 0.25),
-                .init(color: .black.opacity(0.62), location: 0.48),
-                .init(color: .black.opacity(0.94), location: 0.73),
-                .init(color: .black, location: 1)
-            ], startPoint: .top, endPoint: .bottom))
-            .offset(y: -topExtension).allowsHitTesting(false).accessibilityHidden(true)
+        }
     }
 }

@@ -36,6 +36,27 @@ public struct TitleCrewMember: Codable, Hashable, Sendable, Identifiable {
 
 /// What a title page shows beyond its basics. Every field is optional on the wire so an older
 /// server (without this endpoint's newer fields) still decodes.
+/// The TMDb collection (film series) a movie belongs to.
+public struct TitleCollectionRef: Codable, Hashable, Sendable {
+    public let id: Int
+    public let name: String
+    public let posterPath: String?
+    public let backdropPath: String?
+    public init(id: Int, name: String, posterPath: String? = nil, backdropPath: String? = nil) {
+        self.id = id; self.name = name; self.posterPath = posterPath; self.backdropPath = backdropPath
+    }
+}
+
+/// A TMDb collection with its films, oldest first (`/api/metadata/collection`).
+public struct TitleCollection: Decodable, Sendable {
+    public let id: Int
+    public let name: String
+    public let overview: String
+    public let posterPath: String?
+    public let backdropPath: String?
+    public let parts: [CatalogItem]
+}
+
 public struct TitleExtras: Codable, Hashable, Sendable {
     public let status: String?
     public let certification: String?
@@ -43,9 +64,13 @@ public struct TitleExtras: Codable, Hashable, Sendable {
     public let networks: [TitleCompany]
     public let keywords: [TitleKeyword]
     public let crew: [TitleCrewMember]
-    public init(status: String?, certification: String?, studios: [TitleCompany], networks: [TitleCompany], keywords: [TitleKeyword], crew: [TitleCrewMember] = []) {
+    /// TMDb's genres with their ids, for Related collections.
+    public let genres: [TitleKeyword]
+    public let collection: TitleCollectionRef?
+    public init(status: String?, certification: String?, studios: [TitleCompany], networks: [TitleCompany], keywords: [TitleKeyword], crew: [TitleCrewMember] = [], genres: [TitleKeyword] = [], collection: TitleCollectionRef? = nil) {
         self.status = status; self.certification = certification; self.studios = studios
         self.networks = networks; self.keywords = keywords; self.crew = crew
+        self.genres = genres; self.collection = collection
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -55,6 +80,8 @@ public struct TitleExtras: Codable, Hashable, Sendable {
         networks = try c.decodeIfPresent([TitleCompany].self, forKey: .networks) ?? []
         keywords = try c.decodeIfPresent([TitleKeyword].self, forKey: .keywords) ?? []
         crew = try c.decodeIfPresent([TitleCrewMember].self, forKey: .crew) ?? []
+        genres = try c.decodeIfPresent([TitleKeyword].self, forKey: .genres) ?? []
+        collection = try c.decodeIfPresent(TitleCollectionRef.self, forKey: .collection)
     }
     /// Studios first, then networks, each once.
     public var companies: [TitleCompany] {
@@ -153,7 +180,143 @@ public enum TagEmoji {
         ("superhero", "🦸"), ("revenge", "😤"), ("survival", "🏕️"), ("game", "🎮"), ("work", "💼"), ("office", "💼"),
         ("travel", "🧳"), ("animal", "🐾"), ("cat", "🐈"), ("dog", "🐕"), ("ocean", "🌊"), ("sea", "🌊"), ("christmas", "🎄"),
         ("wedding", "💍"), ("lgbt", "🏳️‍🌈"), ("gay", "🏳️‍🌈"), ("lesbian", "🏳️‍🌈"), ("historical", "🏯"), ("history", "🏯"),
-        ("politics", "🏛️"), ("money", "💰"), ("drama", "🎭"), ("teen", "🧑"), ("woman director", "🎬"), ("biography", "👤")
+        ("politics", "🏛️"), ("money", "💰"), ("drama", "🎭"), ("teen", "🧑"), ("woman director", "🎬"), ("biography", "👤"),
+        // Checked after the list above, so earlier, more specific matches still win.
+        ("female protagonist", "👩"),
+        ("male protagonist", "👨"),
+        ("maid", "🧹"),
+        ("butler", "🤵"),
+        ("palace", "🏰"),
+        ("castle", "🏰"),
+        ("royal", "👑"),
+        ("king", "👑"),
+        ("queen", "👑"),
+        ("emperor", "👑"),
+        ("prince", "🤴"),
+        ("princess", "👸"),
+        ("court", "⚖️"),
+        ("lawyer", "⚖️"),
+        ("medicine", "💊"),
+        ("doctor", "🩺"),
+        ("hospital", "🏥"),
+        ("nurse", "🩺"),
+        ("poison", "☠️"),
+        ("pharmac", "💊"),
+        ("apothecary", "⚗️"),
+        ("herb", "🌿"),
+        ("chemistry", "⚗️"),
+        ("science", "🔬"),
+        ("military", "🎖️"),
+        ("soldier", "🎖️"),
+        ("assassin", "🗡️"),
+        ("spy", "🕶️"),
+        ("thief", "🦹"),
+        ("heist", "💰"),
+        ("pirate", "🏴‍☠️"),
+        ("yakuza", "🐉"),
+        ("delinquent", "👊"),
+        ("fight", "👊"),
+        ("tournament", "🏆"),
+        ("competition", "🏆"),
+        ("racing", "🏎️"),
+        ("train", "🚆"),
+        ("village", "🏘️"),
+        ("countryside", "🌾"),
+        ("farm", "🚜"),
+        ("tokyo", "🗼"),
+        ("japan", "🗾"),
+        ("china", "🏮"),
+        ("chinese", "🏮"),
+        ("korea", "🇰🇷"),
+        ("ancient", "🏺"),
+        ("mythology", "⚡"),
+        ("angel", "😇"),
+        ("reincarnat", "🔁"),
+        ("time loop", "🔁"),
+        ("amnesia", "❓"),
+        ("harem", "💞"),
+        ("ecchi", "🍑"),
+        ("parody", "🤪"),
+        ("satire", "🤪"),
+        ("gag", "🤪"),
+        ("slapstick", "🍌"),
+        ("tragedy", "😢"),
+        ("death", "💀"),
+        ("depression", "🌧️"),
+        ("cute", "🥰"),
+        ("teacher", "🧑‍🏫"),
+        ("student", "🎒"),
+        ("painting", "🎨"),
+        ("artist", "🎨"),
+        ("photograph", "📷"),
+        ("filmmak", "🎬"),
+        ("writer", "✍️"),
+        ("novelist", "✍️"),
+        ("library", "📚"),
+        ("dance", "💃"),
+        ("piano", "🎹"),
+        ("guitar", "🎸"),
+        ("singer", "🎤"),
+        ("swim", "🏊"),
+        ("tennis", "🎾"),
+        ("boxing", "🥊"),
+        ("chess", "♟️"),
+        ("shogi", "♟️"),
+        ("gambling", "🎲"),
+        ("virtual reality", "🥽"),
+        ("cyberpunk", "🌃"),
+        ("artificial intelligence", "🤖"),
+        ("hacker", "💻"),
+        ("computer", "💻"),
+        ("internet", "🌐"),
+        ("social media", "📱"),
+        ("summer", "☀️"),
+        ("winter", "❄️"),
+        ("snow", "❄️"),
+        ("moon", "🌙"),
+        ("flower", "🌸"),
+        ("forest", "🌲"),
+        ("mountain", "⛰️"),
+        ("island", "🏝️"),
+        ("beach", "🏖️"),
+        ("cafe", "☕"),
+        ("café", "☕"),
+        ("restaurant", "🍽️"),
+        ("alcohol", "🍶"),
+        ("investigation", "🔎"),
+        ("conspiracy", "🕸️"),
+        ("secret", "🤫"),
+        ("disguise", "🥸"),
+        ("cross-dressing", "👗"),
+        ("fashion", "👗"),
+        ("marriage", "💍"),
+        ("couple", "💑"),
+        ("sibling", "👫"),
+        ("sister", "👭"),
+        ("brother", "👬"),
+        ("mother", "👩‍👧"),
+        ("father", "👨‍👧"),
+        ("parent", "👪"),
+        ("orphan", "🧸"),
+        ("rival", "⚡"),
+        ("hero", "🦸"),
+        ("villain", "🦹"),
+        ("monster", "👾"),
+        ("kaiju", "🦖"),
+        ("dinosaur", "🦖"),
+        ("fairy", "🧚"),
+        ("knight", "🛡️"),
+        ("sword", "⚔️"),
+        ("adventure", "🗺️"),
+        ("quest", "🗺️"),
+        ("exploration", "🧭"),
+        ("dungeon", "🕳️"),
+        ("overpowered", "💪"),
+        ("girl", "👧"),
+        ("boy", "👦"),
+        ("child", "🧒"),
+        ("baby", "👶"),
+        ("teenager", "🧑")
     ]
     public static func symbol(for name: String) -> String {
         let value = name.lowercased()
@@ -170,5 +333,23 @@ public enum RecommendationMatch {
         let overlap = union.isEmpty ? 0.5 : Double(seed.intersection(other).count) / Double(union.count)
         let quality = min(1, max(0, (rating ?? 6) / 10))
         return Int((50 + 50 * (0.7 * overlap + 0.3 * quality)).rounded())
+    }
+}
+
+/// Splits a title's tags into rows that each scroll on their own: one row for up to 4 tags, two
+/// for up to 8, three beyond. Each tag goes to the row that is currently shortest (by its label's
+/// length plus the pill's padding), so rows end up about the same width and no row is left short.
+public enum TagRows {
+    public static func split(_ keywords: [TitleKeyword]) -> [[TitleKeyword]] {
+        let count = keywords.count <= 4 ? 1 : keywords.count <= 8 ? 2 : 3
+        guard !keywords.isEmpty else { return [] }
+        var rows = Array(repeating: [TitleKeyword](), count: count)
+        var widths = Array(repeating: 0, count: count)
+        for keyword in keywords {
+            let index = widths.indices.min { widths[$0] < widths[$1] } ?? 0
+            rows[index].append(keyword)
+            widths[index] += keyword.name.count + 6
+        }
+        return rows.filter { !$0.isEmpty }
     }
 }

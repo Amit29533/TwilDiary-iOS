@@ -39,18 +39,18 @@ struct EpisodeChip: View {
     var accent = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        Text(text).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
-            .foregroundStyle(accent ? theme.accent : Color(webHex: "#c5c0cf"))
-            .padding(.horizontal, 9).frame(height: 24)
-            .background(accent ? theme.accent.opacity(0.16) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        Text(text).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+            .foregroundStyle(accent ? HomeStyle.chipText : text.hasPrefix("Watched") ? HomeStyle.dateChipText : HomeStyle.secondary)
+            .padding(.horizontal, 9).frame(height: 22)
+            .background(accent ? HomeStyle.chip : Color(webHex: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
     }
 }
 struct ScoreChip: View {
     let score: Double
     var body: some View {
-        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Color(webHex: "#e6e1ee"))
-            .padding(.horizontal, 8).frame(height: 24).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+            .font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+            .padding(.horizontal, 9).frame(height: 22).background(Color(webHex: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
             .accessibilityElement(children: .ignore).accessibilityLabel("Rated " + score.formatted(.number.precision(.fractionLength(1))))
     }
 }
@@ -62,9 +62,9 @@ struct EpisodeTick: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         ZStack {
-            if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : .white.opacity(0.3), lineWidth: 2) }
-            Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(watched ? theme.ink : next ? theme.accent : .white.opacity(0.35))
-        }.frame(width: 34, height: 34).frame(width: 44, height: 44).contentShape(Rectangle())
+            if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : Color(webHex: "#3a3a46"), lineWidth: 2) }
+            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(watched ? Color(webHex: "#0b0b10") : next ? theme.accent : Color(webHex: "#3a3a46"))
+        }.frame(width: 32, height: 32).frame(width: 44, height: 44).contentShape(Rectangle())
     }
 }
 
@@ -88,10 +88,10 @@ struct EpisodeCardRow: View {
                     Group {
                         if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 20).foregroundStyle(.secondary) } }
                         else { Artwork(path: artwork, title: String(number)) }
-                    }.frame(width: 104, height: 60).clipShape(RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 7) {
+                    }.frame(width: 96, height: 60).clipShape(RoundedRectangle(cornerRadius: 14))
+                    VStack(alignment: .leading, spacing: 5) {
                         Text(name.hasPrefix("Episode ") || hidden ? name : "\(number). \(name)")
-                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
                         HStack(spacing: 6) {
                             EpisodeChip(text: state.text, accent: state == .next)
                             if let score, score > 0 { ScoreChip(score: score) }
@@ -104,9 +104,9 @@ struct EpisodeCardRow: View {
             Button(action: onToggle) { EpisodeTick(watched: watched, next: state == .next) }.buttonStyle(.plain)
                 .disabled(!canToggle).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
                 .accessibilityIdentifier("episode-watch-\(number)")
-        }.padding(10)
-            .background(state == .next ? theme.accent.opacity(0.1) : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(state == .next ? theme.accent.opacity(0.35) : .white.opacity(0.07)))
+        }.padding(.leading, 9).padding(.trailing, 6).padding(.vertical, 8)
+            .background(state == .next ? Color(webHex: "#17142a") : HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(state == .next ? Color(webHex: "#34294f") : HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
 }
 
@@ -125,34 +125,47 @@ struct EpisodeGridCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     private var watched: Bool { if case .watched = state { return true } else { return false } }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Design (board 2): a 232 x 130 still in a #17171d card (radius 22, #26262e hairline), a 24 pt
+        // badge 10 pt in, the 34 pt tick 11 pt from the corner; then 16 pt name, 13 pt state, 24 pt chips.
+        VStack(alignment: .leading, spacing: 0) {
             Button(action: onOpen) {
-                Color.clear.aspectRatio(16 / 9, contentMode: .fit)
-                    .overlay {
-                        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(.secondary) } }
-                        else { Artwork(path: artwork, title: String(number)) }
-                    }.clipShape(RoundedRectangle(cornerRadius: 16))
+                Group {
+                    if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(HomeStyle.secondary) } }
+                    else { Artwork(path: artwork, title: String(number)) }
+                }.frame(width: 230, height: 128).clipShape(RoundedRectangle(cornerRadius: 21))
+                    .padding(1).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 22))
+                    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     .overlay(alignment: .topLeading) {
-                        Text(state == .next ? "UP NEXT" : "E\(number)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 10).frame(height: 26).background(.black.opacity(0.6), in: Capsule()).padding(10)
+                        Text(state == .next ? "UP NEXT" : "E\(number)").font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(state == .next ? HomeStyle.chipText : HomeStyle.primary)
+                            .padding(.horizontal, 10).frame(height: 24).background(HomeStyle.card.opacity(0.8), in: Capsule()).padding(10)
                     }
             }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityIdentifier("episode-thumbnail-\(number)")
                 .overlay(alignment: .bottomTrailing) {
                     Button(action: onToggle) {
                         ZStack {
-                            Circle().fill(watched ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.black.opacity(0.55)))
-                            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(watched ? theme.ink : .white.opacity(0.8))
+                            Circle().fill(watched ? AnyShapeStyle(theme.accent) : AnyShapeStyle(HomeStyle.card.opacity(0.8)))
+                            Circle().strokeBorder(state == .next || watched ? theme.accent : Color(webHex: "#3a3a46"), lineWidth: 2)
+                            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(watched ? Color(webHex: "#0b0b10") : state == .next ? theme.accent : HomeStyle.secondary)
                         }.frame(width: 34, height: 34).frame(width: 48, height: 48).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
-                        .accessibilityIdentifier("episode-watch-\(number)").padding(2)
+                        .accessibilityIdentifier("episode-watch-\(number)").padding(4)
                 }
-            Text(hidden ? name : "\(number) · \(name)").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+            Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
+            Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 5)
             HStack(spacing: 6) {
-                if let runtime { EpisodeChip(text: "\(runtime) min") }
-                if let score, score > 0 { ScoreChip(score: score) }
-            }
-        }
+                if let runtime {
+                    Text("\(runtime) min").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule())
+                }
+                if let score, score > 0 {
+                    HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule())
+                }
+            }.padding(.top, 7)
+        }.frame(width: 232, alignment: .leading)
     }
     private var subtitle: String {
         if case .watched = state { return state.text }
@@ -171,7 +184,8 @@ struct ShowPageDestination: View {
         case .episodes(let id, let season): EpisodesPage(titleID: id, initialSeason: season)
         case .cast(let catalog, let title, let anime, let year): CastCreditsPage(route: catalog, title: title, anime: anime, year: year)
         case .lists(let catalog, let title): InListsPage(route: catalog, title: title)
-        case .collections(let id): RelatedCollectionsPage(titleID: id)
+        case .collections(let route, let title, let anime): RelatedCollectionsPage(route: route, title: title, anime: anime)
+        case .tmdbCollection(let id, let name): TMDbCollectionPage(id: id, name: name)
         case .companies(let catalog, let title): CompaniesPage(route: catalog, title: title)
         }
     }
@@ -570,23 +584,73 @@ struct InListsPage: View {
 // MARK: Related collections
 
 struct RelatedCollectionsPage: View {
-    let titleID: String
+    let route: CatalogRoute
+    let title: String
+    let anime: Bool
     @Environment(DiaryStore.self) private var store
-    @Environment(AppRouter.self) private var router
+    @State private var model = RelatedCollectionsModel()
     var body: some View {
-        let title = store.title(titleID)
-        let collections = title.map { RelatedCollection.make(genres: $0.genres, workspace: store.workspace) } ?? []
         ScrollView {
             LazyVStack(spacing: 14) {
-                ForEach(Array(collections.enumerated()), id: \.element.id) { index, collection in
-                    Button { router.libraryGenre(collection.genre) } label: {
+                ForEach(Array(model.items.enumerated()), id: \.element.id) { index, collection in
+                    RelatedCollectionLink(collection: collection, route: route, anime: anime) {
                         RelatedCollectionCard(collection: collection, index: index, showCount: true).frame(height: 132)
-                    }.buttonStyle(.springPress)
+                    }
                 }
-                if collections.isEmpty { Text("No related collections in your library yet.").font(.subheadline).foregroundStyle(.secondary) }
+                if model.loaded && model.items.isEmpty { Text("TMDb has no related collections for this title.").font(.subheadline).foregroundStyle(.secondary) }
+                if !model.loaded { ProgressView().padding(.top, 40) }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ShowPageTitle(title: "Related collections", subtitle: title?.name ?? "") }
+            .toolbar { ShowPageTitle(title: "Related collections", subtitle: title) }
+            .task(id: route) { await model.load(store: store, route: route, anime: anime) }
+    }
+}
+
+/// One TMDb collection (a film series): its films oldest first, each opening its page.
+struct TMDbCollectionPage: View {
+    let id: Int
+    let name: String
+    @Environment(DiaryStore.self) private var store
+    @State private var collection: TitleCollection?
+    @State private var failure: String?
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if let collection {
+                    if !collection.overview.isEmpty {
+                        Text(collection.overview).font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], alignment: .leading, spacing: 18) {
+                        ForEach(collection.parts, id: \.key) { item in link(item) }
+                    }
+                } else if let failure {
+                    RetryNotice(message: failure) { Task { await load() } }
+                } else { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ShowPageTitle(title: name, subtitle: collection.map { $0.parts.count.counted("film", "films") } ?? "TMDb collection") }
+            .task(id: id) { await load() }
+    }
+    @ViewBuilder private func link(_ item: CatalogItem) -> some View {
+        if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {
+            NavigationLink(value: saved) { poster(item) }.buttonStyle(.springPress)
+        } else {
+            NavigationLink(value: item.route) { poster(item) }.buttonStyle(.springPress)
+        }
+    }
+    private func poster(_ item: CatalogItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: item.artwork, title: item.name, initialsOnly: false).aspectRatio(2 / 3, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
+            Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 9)
+            Text(item.year.map(String.init) ?? "Movie").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
+        }
+    }
+    private func load() async {
+        failure = nil
+        do { collection = try await store.read(CatalogTools.apiPath("/api/metadata/collection", query: ["id": String(id)])) }
+        catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
 

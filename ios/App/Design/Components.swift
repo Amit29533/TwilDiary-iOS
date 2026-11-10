@@ -172,10 +172,10 @@ struct FilterPill: View {
     }
 }
 
-/// The official Trakt mark and TMDB logo, used wherever the app names those services.
-/// Each service's own logo, in its own colours, on a tile the size of a settings icon.
+/// Each service's own current logo, in its own colours (from the service's site), sized like a
+/// settings icon. Nothing is redrawn or reduced to a name.
 struct BrandLogo: View {
-    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, cloudflare, anilist }
+    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, cloudflare, anilist, imdb, myanimelist, metacritic, rottenTomatoes, letterboxd }
     let service: Service
     var size: CGFloat = 34
     var body: some View {
@@ -184,18 +184,36 @@ struct BrandLogo: View {
             switch service {
             case .trakt: Image("trakt-mark").resizable().scaledToFit()
             case .jellyfin: Image("jellyfin-mark").resizable().scaledToFit().padding(size * 0.06)
-            case .tmdb: Image("tmdb-logo").resizable().scaledToFit().padding(size * 0.16)
-                .background(Color(webHex: "#0d253f"), in: corner)
-            // Simkl's mark is a black tile with the S cut out: drawn over white, the S shows white.
-            case .simkl: Image("brand-simkl").resizable().scaledToFit().foregroundStyle(.black)
-                .background(.white, in: corner.inset(by: size * 0.08))
+            // TMDB's current green speech-bubble mark.
+            case .tmdb: Image("tmdb-logo").resizable().scaledToFit().padding(size * 0.04)
+            case .simkl: Image("brand-simkl").resizable().scaledToFit().clipShape(corner)
             case .mdblist: Image("brand-mdblist").resizable().scaledToFit().clipShape(corner)
-            case .cloudflare: Image("brand-cloudflare").resizable().scaledToFit().foregroundStyle(Color(webHex: "#f38020"))
-                .padding(size * 0.14).background(.white, in: corner)
-            case .anilist: Image("site-anilist").resizable().scaledToFit().foregroundStyle(Color(webHex: "#02a9ff"))
-                .padding(size * 0.18).background(Color(webHex: "#2b2d42"), in: corner)
+            case .cloudflare: Image("brand-cloudflare").resizable().scaledToFit()
+                .padding(size * 0.12).background(.white, in: corner)
+            case .anilist: Image("brand-anilist").resizable().scaledToFit()
+                .padding(size * 0.08).background(Color(webHex: "#2b2d42"), in: corner)
+            case .imdb: Image("brand-imdb").resizable().scaledToFit()
+            case .myanimelist: Image("brand-myanimelist").resizable().scaledToFit().clipShape(corner)
+            case .metacritic: Image("brand-metacritic").resizable().scaledToFit()
+            case .rottenTomatoes: Image("brand-rottentomatoes").resizable().scaledToFit().clipShape(corner)
+            case .letterboxd: Image("brand-letterboxd").resizable().scaledToFit().clipShape(corner)
             }
         }.frame(width: size, height: size).accessibilityHidden(true)
+    }
+    /// The logo for a rating source key ("imdb", "myanimelist", "tomatoes"…), if there is one.
+    static func service(forRatingSource key: String) -> Service? {
+        switch key {
+        case "tmdb": .tmdb
+        case "trakt": .trakt
+        case "imdb": .imdb
+        case "myanimelist", "mal": .myanimelist
+        case "metacritic": .metacritic
+        case "tomatoes", "popcorn": .rottenTomatoes
+        case "letterboxd": .letterboxd
+        case "simkl": .simkl
+        case "anilist": .anilist
+        default: nil
+        }
     }
 }
 

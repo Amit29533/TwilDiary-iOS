@@ -60,6 +60,8 @@ import Testing
     #expect(TagEmoji.symbol(for: "Coming-of-Age") == "🌱")
     #expect(TagEmoji.symbol(for: "anime") == "🌸")
     #expect(TagEmoji.symbol(for: "zzz unknown") == "🏷️")
+    #expect(TagEmoji.symbol(for: "female protagonist") == "👩")
+    #expect(TagEmoji.symbol(for: "maid") == "🧹")
 }
 
 @Test func discoveryFiltersCarryATagCompanyOrNetwork() {
@@ -127,4 +129,17 @@ import Testing
     #expect(groups[0].episodeText == "S1 · E2 to E5" && groups[0].count == 4)
     #expect(groups[1].episodeText == "Movie" && groups[2].episodeText == "S1 · E53")
     #expect(RecentWatchGroup.make(entries, limit: 1).count == 1)
+}
+
+@Test func tagRowsGrowWithTheTagCountAndStayBalanced() {
+    func tags(_ names: [String]) -> [TitleKeyword] { names.enumerated().map { TitleKeyword(id: $0.offset + 1, name: $0.element) } }
+    #expect(TagRows.split([]).isEmpty)
+    #expect(TagRows.split(tags(["a", "b", "c", "d"])).count == 1)
+    #expect(TagRows.split(tags(["a", "b", "c", "d", "e"])).count == 2)
+    let twelve = tags(["detective", "female protagonist", "work", "maid", "politics", "historical", "mystery", "palace", "medicine", "court", "poison", "apothecary"])
+    let rows = TagRows.split(twelve)
+    #expect(rows.count == 3)
+    #expect(rows.flatMap { $0 }.count == 12)
+    let widths = rows.map { $0.reduce(0) { $0 + $1.name.count + 6 } }
+    #expect((widths.max() ?? 0) - (widths.min() ?? 0) <= 24)
 }

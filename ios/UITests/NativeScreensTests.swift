@@ -223,9 +223,11 @@ import UIKit
     }
     func testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle() {
         let app = launch(titleMetadata: true); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].tap()
-        let information = app.buttons["title-information"]
-        XCTAssertTrue(information.waitForExistence(timeout: 5)); information.tap()
-        XCTAssertTrue(app.staticTexts["Community stats"].waitForExistence(timeout: 5))
+        // Sentiments opens from the ··· menu; saved titles have no ⓘ button.
+        let more = app.buttons["title-more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5)); more.tap()
+        app.buttons["title-information"].tap()
+        XCTAssertTrue(app.staticTexts["Sentiments"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["What people are saying"].exists)
         let positive = app.descendants(matching: .any)["community-positive-0"]
         let negative = app.descendants(matching: .any)["community-negative-0"]
@@ -243,17 +245,17 @@ import UIKit
             .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.96)), withVelocity: .slow, thenHoldForDuration: 0.1)
         let dismissed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: sheetBar)
         wait(for: [dismissed], timeout: 5)
-        XCTAssertTrue(information.waitForExistence(timeout: 5)); XCTAssertTrue(information.isHittable)
+        XCTAssertTrue(more.waitForExistence(timeout: 5)); XCTAssertTrue(more.isHittable)
         XCTAssertEqual(app.sliders["episode-progress"].value as? String, "8 of 16 episodes watched")
         app.navigationBars.buttons.element(boundBy: 0).tap(); app.buttons["title-quiet-orbit"].tap()
-        app.buttons["title-information"].tap()
+        app.buttons["title-more"].tap(); app.buttons["title-information"].tap()
         XCTAssertTrue(app.staticTexts["Match this title to TMDB to see its community information."].waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["community-positive-0"].exists)
         capture("Community information unmatched title")
     }
     func testCommunityUnavailableOffersRetryWithoutInventingCountsOrSentiments() {
         let app = launch(titleMetadata: true, communityUnavailable: true); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].tap()
-        app.buttons["title-information"].tap()
+        app.buttons["title-more"].tap(); app.buttons["title-information"].tap()
         XCTAssertTrue(app.staticTexts["Trakt’s community stats are temporarily unavailable."].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Trakt’s community sentiment summary is temporarily unavailable."].exists)
         XCTAssertFalse(app.descendants(matching: .any)["community-positive-0"].exists)
@@ -1880,21 +1882,17 @@ import UIKit
         cover.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)).tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.tabBars.firstMatch.exists)
-        let information = app.buttons["title-information"]
         let more = app.buttons["title-more"]
-        XCTAssertTrue(information.isHittable)
         XCTAssertTrue(more.isHittable)
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.45))
         start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.45)),
                     withVelocity: .slow, thenHoldForDuration: 0.7)
         XCTAssertFalse(app.tabBars.firstMatch.exists)
-        XCTAssertTrue(information.isHittable)
         XCTAssertTrue(more.isHittable)
         start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.45)),
                     withVelocity: .slow, thenHoldForDuration: 0)
         XCTAssertTrue(app.tabBars.buttons["Glance"].waitForExistence(timeout: 5))
         XCTAssertTrue(cover.isHittable)
-        XCTAssertFalse(information.exists)
         XCTAssertFalse(more.exists)
         app.tabBars.buttons["Home"].tap()
         let pickup = app.buttons["progress-cover-again"]

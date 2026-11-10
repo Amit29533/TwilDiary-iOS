@@ -21,7 +21,7 @@ struct CommunityInformationSheet: View {
                     // 300 pt loading placeholder that is replaced a moment later.
                     if let value = controller.value ?? identity.flatMap({ store.cachedCommunityInformation($0) }) {
                         VStack(alignment: .leading, spacing: 18) {
-                            Text("Community stats").font(.title2.bold())
+                            Text("Sentiments").font(.title2.bold())
                             if let stats = value.stats {
                                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 24) {
                                     GridRow { metric("Watchers", stats.watchers); metric("Plays", stats.plays); metric("Collectors", stats.collectors) }

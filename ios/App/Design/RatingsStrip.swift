@@ -119,25 +119,16 @@ struct RatingSourceMark: View {
                 switch source {
                 case "tmdb": BrandLogo(service: .tmdb, size: size)
                 case "trakt": BrandLogo(service: .trakt, size: size)
+                // Each source's own logo (downloaded from its site), not a redrawn stand-in.
                 case "imdb":
-                    Text("IMDb").font(.system(size: size * 0.55, weight: .black)).foregroundStyle(.black)
-                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                        .frame(width: proxy.size.width, height: size)
-                        .background(Color(webHex: "#F5C518"), in: RoundedRectangle(cornerRadius: size * 0.14))
-                case "myanimelist":
-                    Text("MAL").font(.system(size: size * 0.32, weight: .heavy)).foregroundStyle(.white)
-                        .frame(width: size, height: size).background(Color(webHex: "#2E51A2"), in: Circle())
-                case "letterboxd":
-                    HStack(spacing: -size * 0.06) {
-                        Circle().fill(Color(webHex: "#FF8000")); Circle().fill(Color(webHex: "#00E054")); Circle().fill(Color(webHex: "#40BCF4"))
-                    }.frame(width: size * 0.78, height: size * 0.3)
-                        .frame(width: size, height: size).background(Color(webHex: "#202830"), in: Circle())
-                case "tomatoes", "popcorn":
-                    Text(source == "tomatoes" ? "🍅" : "🍿").font(.system(size: size * 0.62)).frame(width: size, height: size)
-                case "metacritic":
-                    Text("M").font(.system(size: size * 0.55, weight: .black)).foregroundStyle(.white)
-                        .frame(width: size, height: size).background(Color(webHex: "#000000"), in: Circle())
-                        .overlay(Circle().strokeBorder(Color(webHex: "#FFCC34"), lineWidth: size * 0.08))
+                    Image("brand-imdb").resizable().scaledToFit().frame(width: proxy.size.width, height: size)
+                case "myanimelist": BrandLogo(service: .myanimelist, size: size)
+                case "letterboxd": BrandLogo(service: .letterboxd, size: size)
+                case "tomatoes": BrandLogo(service: .rottenTomatoes, size: size)
+                case "popcorn":
+                    // Rotten Tomatoes' audience score: its logo with a popcorn badge.
+                    BrandLogo(service: .rottenTomatoes, size: size).overlay(alignment: .bottomTrailing) { Text("🍿").font(.system(size: size * 0.42)).offset(x: size * 0.15, y: size * 0.12) }
+                case "metacritic": BrandLogo(service: .metacritic, size: size)
                 default:
                     Text(String(source.prefix(2)).uppercased()).font(.system(size: size * 0.38, weight: .bold)).foregroundStyle(.white)
                         .frame(width: size, height: size).background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: size * 0.22))

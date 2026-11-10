@@ -1,6 +1,6 @@
 import UIKit
 
-/// Keep the same two leading lines in place when only the overflow expands.
+/// Keep the same four leading lines (the design's overview) in place when only the overflow expands.
 /// TextKit measures actual glyphs, including scripts and composed characters.
 @MainActor enum SynopsisTextLayout {
     struct Parts: Equatable {
@@ -10,13 +10,13 @@ import UIKit
     static func split(_ text: String, width: CGFloat) -> Parts {
         guard !text.isEmpty, width > 0 else { return Parts(leading: text, continuation: "") }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 6
+        paragraph.lineSpacing = 3
         paragraph.lineBreakMode = .byWordWrapping
-        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: 15.04), .paragraphStyle: paragraph])
+        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: 14), .paragraphStyle: paragraph])
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
-        container.maximumNumberOfLines = 2
+        container.maximumNumberOfLines = 4
         container.lineBreakMode = .byWordWrapping
         manager.addTextContainer(container); storage.addLayoutManager(manager)
         let characters = manager.characterRange(forGlyphRange: manager.glyphRange(for: container), actualGlyphRange: nil)

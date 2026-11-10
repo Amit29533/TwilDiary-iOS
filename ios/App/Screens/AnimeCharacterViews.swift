@@ -21,15 +21,15 @@ struct AnimeCharactersRow: View {
     @State private var failed = false
     @Environment(AppRouter.self) private var router
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             if !characters.isEmpty {
                 HStack {
-                    Text("Characters").font(.system(size: seeAll == nil ? 20 : 24, weight: seeAll == nil ? .semibold : .bold))
+                    Text("Characters").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 8)
                     if let seeAll { SeeAllLink(value: seeAll, identifier: "title-characters-all") }
-                }
+                }.frame(minHeight: 44)
                 ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 14) {
+                    LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(characters) { character in
                             NavigationLink(value: CharacterRoute(id: character.id, sourceTitle: title)) { card(character) }
                                 .buttonStyle(.springPress).accessibilityIdentifier("anime-character-\(character.id)")
@@ -42,22 +42,24 @@ struct AnimeCharactersRow: View {
         }.task(id: title) { await load() }
     }
     private func card(_ character: AniCharacter) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Artwork(path: character.image, title: character.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
+        // Design: 111 x 148 (radius 18); "Main" 11 pt bold #cdbbff on a dark 22 pt pill, 8 pt in.
+        VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: character.image, title: character.name).frame(width: 111, height: 148).clipShape(RoundedRectangle(cornerRadius: 18))
                 // Press and hold to peek at the picture; a tap still opens the character.
                 .fullScreenArtwork(character.image, title: character.name) {
                     router.paths[router.selectedTab, default: NavigationPath()].append(CharacterRoute(id: character.id, sourceTitle: title))
                 }
                 .overlay(alignment: .topLeading) {
                     if character.role == "MAIN" {
-                        Text("Main").font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).frame(height: 18).background(.black.opacity(0.55), in: Capsule()).padding(6)
+                        Text("Main").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 8).frame(height: 22)
+                            .background(HomeStyle.card.opacity(0.82), in: Capsule()).padding(8)
                     }
                 }
-            Text(character.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+            Text(character.name).font(.system(size: 14, weight: .semibold)).lineLimit(2).foregroundStyle(HomeStyle.primary).padding(.top, 11)
             if let actor = character.voiceActor {
-                Text(actor.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(actor.name).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 3)
             }
-        }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading)
+        }.frame(width: 111, alignment: .leading).multilineTextAlignment(.leading)
             .accessibilityElement(children: .combine)
     }
     private func load() async {

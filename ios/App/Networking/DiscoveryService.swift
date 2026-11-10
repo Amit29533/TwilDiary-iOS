@@ -90,7 +90,7 @@ extension DiscoveryServing {
         let items = page.items.map { item in
             CatalogItem(id: item.id, mediaType: item.mediaType, name: item.name, year: item.year, overview: item.overview, posterPath: item.posterPath, backdropPath: item.backdropPath, rating: item.rating, votes: item.votes, genres: item.genres ?? [], inLibraryId: ids[item.key], poster: item.poster, backdrop: item.backdrop, character: item.character, job: item.job, popularity: item.popularity, episodeCount: item.episodeCount)
         }
-        return CatalogPage(items: items, page: page.page, totalPages: page.totalPages)
+        return CatalogPage(items: items, page: page.page, totalPages: page.totalPages, totalResults: page.totalResults)
     }
 }
 

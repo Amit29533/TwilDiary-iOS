@@ -24,18 +24,17 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             EdgeToEdgeScroll {
-                VStack(alignment: .leading, spacing: 22) {
-                    PageHeader(name: "Profile").padding(.horizontal, -14).padding(.bottom, -14)
+                VStack(alignment: .leading, spacing: 16) {
+                    PageHeader(name: "Profile").padding(.horizontal, -16).padding(.bottom, -14)
                     NavigationLink(value: AppDestination.profile) {
                         HStack(spacing: 14) {
-                            PersonalAvatar()
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(PersonalProfile.shared.name).font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
-                                Text(accountHandle).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+                            PersonalAvatar().frame(width: 56, height: 56)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(PersonalProfile.shared.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                Text(accountHandle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                             }
-                            Spacer(); DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
-                        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 22))
-                            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.1))).contentShape(Rectangle())
+                            Spacer(); chevron
+                        }.padding(15).modifier(SettingsCard()).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-personal-profile")
                     diaryCard
                     if let warning = store.cacheWarning {
@@ -50,7 +49,7 @@ struct SettingsView: View {
                         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
                     }
                     if store.pendingDiaryEdits > 0 {
-                        settingsSection("Pending sync") {
+                        settingsSection("PENDING SYNC") {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(store.outboxNotice ?? "Saved on this device · \(store.pendingDiaryEdits) pending sync")
                                     .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -65,41 +64,41 @@ struct SettingsView: View {
                             }.padding(14)
                         }.accessibilityIdentifier("settings-pending-sync")
                     }
-                    settingsSection("Library") {
+                    settingsSection("LIBRARY") {
                         HStack(spacing: 12) {
                             tile("star.fill", .purple)
                             VStack(alignment: .leading, spacing: 2) { Text("Public ratings").font(.system(size: 15, weight: .semibold)); Text("Community scores, not your rating").font(.system(size: 12)).foregroundStyle(.secondary) }
                             Spacer(minLength: 0)
                             Menu { Picker("Library ratings", selection: $ratingSource) { ForEach(PublicRatingSource.allCases) { Text($0.label).tag($0) } } }
                                 label: { FilterPill(label: ratingSource.label) }.fixedSize().accessibilityLabel("Library ratings").accessibilityValue(ratingSource.label).accessibilityIdentifier("settings-rating-source")
-                        }.padding(.horizontal, 14).frame(minHeight: 60)
+                        }.padding(.horizontal, 15).frame(minHeight: 64)
                         divider
                         NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
                         divider
                         NavigationLink(value: AppDestination.trash) { settingsRow("trash.fill", .red, "Trash", value: trashCount == 0 ? "Empty" : String(trashCount), disclosure: true) }
                     }
-                    settingsSection("Tracking") {
+                    settingsSection("TRACKING") {
                         HStack(spacing: 12) {
                             tile("eye.slash.fill", .indigo)
                             Toggle(isOn: $hideSpoilers) { VStack(alignment: .leading, spacing: 2) { Text("Hide spoilers").font(.system(size: 15, weight: .semibold)); Text("Names and stills until watched").font(.system(size: 12)).foregroundStyle(.secondary) } }.tint(theme.accent)
-                        }.padding(.horizontal, 14).frame(minHeight: 60)
+                        }.padding(.horizontal, 15).frame(minHeight: 64)
                         divider
                         NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
                         divider
                         NavigationLink(value: AppDestination.calendar) { settingsRow("calendar", .indigo, "Airing calendar", subtitle: "Upcoming and catch-up episodes", disclosure: true) }.accessibilityIdentifier("settings-calendar")
                     }
-                    settingsSection("Appearance") {
+                    settingsSection("APPEARANCE") {
                         NavigationLink(value: AppDestination.appearance) {
                             VStack(alignment: .leading, spacing: 8) {
                                 settingsRow("paintpalette.fill", .pink, "Theme", value: theme.name, disclosure: true, padded: false)
                                 // A glance at every theme; choosing one happens on the Theme page.
-                                HStack(spacing: 8) {
+                                HStack(spacing: 12) {
                                     ForEach(DiaryTheme.allCases) { item in
-                                        Circle().fill(item.accent).frame(width: 18, height: 18)
-                                            .overlay { if item == theme { Circle().strokeBorder(.white, lineWidth: 2).padding(-4) } }
+                                        Circle().fill(item.accent).frame(width: 26, height: 26)
+                                            .overlay { if item == theme { Circle().strokeBorder(HomeStyle.primary, lineWidth: 2).padding(-3) } }
                                     }
-                                }.padding(.leading, 46).padding(.bottom, 4).accessibilityHidden(true)
-                            }.padding(.horizontal, 14).padding(.vertical, 10)
+                                }.padding(.leading, 52).padding(.bottom, 6).accessibilityHidden(true)
+                            }.padding(.horizontal, 15).padding(.vertical, 12)
                         }.accessibilityIdentifier("settings-theme")
                         divider
                         HStack(spacing: 12) {
@@ -108,7 +107,7 @@ struct SettingsView: View {
                             Spacer(minLength: 0)
                             Menu { Picker("Opens on", selection: $launchTab) { ForEach(AppTab.allCases, id: \.self) { Text($0.label).tag($0) } } }
                                 label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
-                        }.padding(.horizontal, 14).frame(minHeight: 60)
+                        }.padding(.horizontal, 15).frame(minHeight: 64)
                         divider
                         settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
                         divider
@@ -117,10 +116,9 @@ struct SettingsView: View {
                         NavigationLink(value: AppDestination.languageRegion) { settingsRow("character.bubble.fill", .blue, "Language & region", value: languageRegionSummary, disclosure: true) }
                             .accessibilityIdentifier("settings-language-region")
                     }
-                    settingsSection("Connections and data") {
+                    settingsSection("CONNECTIONS AND DATA") {
                         NavigationLink(value: AppDestination.connections) {
-                            settingsRow(leading: BrandLogo(service: (MainTracker(rawValue: mainTracker) ?? .trakt).brand), "Connections",
-                                        subtitle: "Trakt, Simkl, MDBList, TMDB, AniList and keys", value: connectionsSummary, disclosure: true, padded: true)
+                            settingsRow("link", .purple, "Connections", subtitle: "Trakt, Simkl, AniList and more", value: connectionsSummary, disclosure: true)
                         }.accessibilityIdentifier("settings-connections")
                         divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
@@ -131,17 +129,16 @@ struct SettingsView: View {
                     }
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
-                            Text("TwilDiary \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · About and licenses")
-                                .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
+                            Text("\(Text("TwilDiary \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · ").foregroundStyle(HomeStyle.secondary))\(Text("About and licenses").fontWeight(.semibold).foregroundStyle(HomeStyle.chipText))")
+                                .font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 44)
                         }.accessibilityIdentifier("settings-about")
-                        Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                         Button { confirmSignOut = true } label: {
-                            Text("Sign out").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#ff9ab0"))
-                                .frame(maxWidth: .infinity, minHeight: 54).background(theme.field, in: Capsule())
-                                .overlay(Capsule().strokeBorder(.white.opacity(0.1)))
-                        }.disabled(store.busy).padding(.top, 6).accessibilityIdentifier("settings-sign-out")
-                    }.frame(maxWidth: .infinity)
-                }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
+                            Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
+                                .frame(maxWidth: .infinity, minHeight: 52).background(HomeStyle.round, in: Capsule())
+                        }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
+                    }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
+                }.buttonStyle(.plain).padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
         }
         .confirmationDialog(store.pendingDiaryEdits + TraktDirectStore.shared.pending.count > 0 ? "Sign out? Pending edits on this device, including any still waiting for Trakt, will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
@@ -183,17 +180,18 @@ struct SettingsView: View {
     private var diaryCard: some View {
         let titles = store.workspace.activeTitles.count, watches = store.workspace.activeEvents.count
         let state = store.loading ? "Refreshing…" : store.pendingDiaryEdits > 0 ? "Pending sync" : store.busy ? "Saving…" : store.quotaBlockedUntil != nil ? "Paused" : store.showingCachedSnapshot ? "Saved copy" : "Synced"
-        let tint: Color = state == "Synced" ? .mint : state == "Paused" || state == "Saved copy" ? .orange : Color(webHex: "#c5c0cf")
+        let tint: Color = state == "Synced" ? Color(webHex: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
         return VStack(alignment: .leading, spacing: 0) {
             Button { Task { await store.refresh() } } label: {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Text("Your diary").font(.system(size: 20, weight: .bold))
+                        Text("Your diary").font(.system(size: 18, weight: .bold))
                         Spacer(minLength: 8)
                         HStack(spacing: 5) { Circle().fill(tint).frame(width: 6, height: 6); Text(state) }
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 26).background(tint.opacity(0.14), in: Capsule())
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 22)
+                            .background(state == "Synced" ? Color(webHex: "#1b2b25") : tint.opacity(0.14), in: Capsule())
                     }
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         statTile(titles, "titles")
                         statTile(watches, "watches")
                         statTile(driveCount, driveCount == 1 ? "drive" : "drives")
@@ -201,21 +199,20 @@ struct SettingsView: View {
                     if let reset = store.quotaBlockedUntil {
                         Text("Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again.").font(.caption).foregroundStyle(.secondary)
                     }
-                }.foregroundStyle(Color(webHex: "#f3f0f7")).padding(16).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                }.foregroundStyle(HomeStyle.primary).padding(17).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }.disabled(store.loading || store.busy).accessibilityIdentifier("settings-refresh-diary").accessibilityHint("Refresh your diary from the server")
             divider
             NavigationLink(value: AppDestination.statistics) {
                 settingsRow("chart.bar.fill", .purple, "Statistics", subtitle: "Watch time and trends", disclosure: true)
             }.accessibilityIdentifier("settings-statistics")
-        }.background(theme.field, in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.1)))
+        }.modifier(SettingsCard())
     }
     private func statTile(_ value: Int, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value.formatted()).font(.system(size: 22, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.system(size: 13)).foregroundStyle(.secondary)
-        }.padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            Text(value.formatted()).font(.system(size: 20, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+        }.padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 59, alignment: .leading)
+            .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
             .accessibilityElement(children: .combine)
     }
     /// "@amit29533": your AniList name, else your Trakt account.
@@ -236,16 +233,18 @@ struct SettingsView: View {
     /// "Trakt · 2 connected": the main tracker and how many services are signed in.
     private var connectionsSummary: String {
         let count = [store.traktController.status?.connected == true, store.providerSettings.simkl.isAuthenticated, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
-        return (MainTracker(rawValue: mainTracker) ?? .trakt).name + (count > 0 ? " · \(count) on" : "")
+        return count > 0 ? "\(count) on" : "Off"
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
-            VStack(spacing: 0, content: content).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+        // Design: a 13 pt bold #9a9aa8 label, 16 pt above a #0e0e12 card (radius 22).
+        VStack(alignment: .leading, spacing: 16) {
+            Text(name).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20).padding(.top, 8)
+            VStack(spacing: 0, content: content).modifier(SettingsCard())
         }
     }
-    private var divider: some View { Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 60) }
+    /// A full-width #1c1c23 hairline between rows.
+    private var divider: some View { Rectangle().fill(Color(webHex: "#1c1c23")).frame(height: HomeStyle.hairline) }
+    private var chevron: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78")) }
     /// iOS Settings-style tiles: a white SF Symbol on a solid colour, fixed across themes.
     enum TileTint {
         case purple, indigo, blue, cyan, teal, mint, green, yellow, orange, red, pink, cloudflare
@@ -267,8 +266,9 @@ struct SettingsView: View {
         }
     }
     private func tile(_ symbol: String, _ tint: TileTint) -> some View {
-        Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-            .frame(width: 34, height: 34).background(tint.color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
+        // Design: one style for every row, a #cdbbff icon on a 38 pt #2a2440 tile.
+        Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+            .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
     }
     private func settingsRow(_ icon: String, _ tint: TileTint, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false, padded: Bool = true) -> some View {
         settingsRow(leading: tile(icon, tint), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: padded)
@@ -277,16 +277,16 @@ struct SettingsView: View {
         settingsRow(leading: BrandLogo(service: brand), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: true)
     }
     private func settingsRow<Leading: View>(leading: Leading, _ title: String, subtitle: String?, value: String?, disclosure: Bool, padded: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
-                if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: 4)
-            if let value { Text(value).font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.trailing) }
-            if disclosure { DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary) }
-        }.padding(.horizontal, padded ? 14 : 0).frame(minHeight: padded ? 58 : 40).contentShape(Rectangle())
+            if let value { Text(value).font(.system(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).multilineTextAlignment(.trailing) }
+            if disclosure { chevron }
+        }.padding(.horizontal, padded ? 15 : 0).frame(minHeight: padded ? 64 : 40).contentShape(Rectangle())
     }
     private func exportDiary() {
         // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.
@@ -297,6 +297,14 @@ struct SettingsView: View {
                 exportDocument = DiaryJSONDocument(data: data); showExport = true
             } catch { store.error = error.localizedDescription }
         }
+    }
+}
+
+/// Settings' card: #0e0e12, radius 22, a #23232b hairline (design).
+struct SettingsCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
 }
 

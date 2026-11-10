@@ -235,30 +235,40 @@ struct CatalogDetailView: View {
     @State private var showInformation = false
     @State private var headerState = CompactHeaderState()
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
+    /// Tags, companies, status and network from TMDB, as on a saved title's page.
+    @State private var extras: TitleExtras?
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                // The same page as a saved title (owner's Show page design), minus your own progress.
+                VStack(alignment: .leading, spacing: 32) {
                     if let details {
-                        TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), backdrop: CatalogTools.image(details.details.backdropPath, size: "w780"), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, onNameScrolled: { headerState.update($0) }) {
-                            RatingsStrip(scores: criticScores, tmdbFallback: details.details.communityScore)
+                        let anime = details.details.suggestedCategory.hasPrefix("anime")
+                        VStack(alignment: .leading, spacing: 22) {
+                            TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), backdrop: CatalogTools.image(details.details.backdropPath, size: "w780"), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top), onNameScrolled: { headerState.update($0) }) {
+                                RatingBoxes(scores: criticScores, tmdbFallback: details.details.communityScore)
+                            }
+                            if details.libraryTitle?.trashed == true {
+                                NavigationLink(value: AppDestination.trash) { primaryLabel("Restore from Trash", icon: "arrow.uturn.backward") }.buttonStyle(.springPress)
+                            } else if let saved = details.libraryTitle {
+                                Button { accepted(saved.id) } label: { primaryLabel("Open in Library", icon: "books.vertical") }.buttonStyle(.springPress)
+                            } else {
+                                Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { accepted(id) } } } label: {
+                                    primaryLabel(store.busy ? "Adding…" : "Add to Planned", icon: "plus")
+                                }.buttonStyle(.springPress).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
+                            }
+                            if details.libraryTitle == nil { JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie) }
                         }
-                        if details.libraryTitle?.trashed == true {
-                            NavigationLink(value: AppDestination.trash) { Text("Restore from Trash") }.buttonStyle(.glassProminent).controlSize(.large)
-                        } else if let saved = details.libraryTitle {
-                            Button("Open in Library") { accepted(saved.id) }.buttonStyle(.glassProminent).controlSize(.large)
-                        } else {
-                            Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { accepted(id) } } } label: {
-                                Text(store.busy ? "Adding…" : "Add to Planned").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink).frame(maxWidth: .infinity).frame(minHeight: 48)
-                            }.buttonStyle(.glassProminent).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
-                        }
-                        if details.libraryTitle == nil { JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie) }
+                        if let extras, !extras.keywords.isEmpty { TitleTagsSection(keywords: extras.keywords, kind: route.kind) }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
                         CastAndRelated(route: route, sourceTitle: details.details.name,
-                                       anime: details.details.suggestedCategory.hasPrefix("anime") ? (details.details.year, route.kind == .movie) : nil)
+                                       anime: anime ? (details.details.year, route.kind == .movie) : nil)
+                        if let extras { CompaniesSection(route: route, title: details.details.name, extras: extras, animated: anime || details.details.genres.contains("Animation")) }
+                        InListsSection(route: route, title: details.details.name)
+                        RelatedCollectionsSection(route: route, title: details.details.name, anime: anime)
                     } else if loading { DiaryLoadingPlaceholder(height: 320, label: "Loading title").padding(16) }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                }.padding(.horizontal, 14).padding(.bottom, 32)
+                }.padding(.horizontal, 16).padding(.bottom, 32)
                     .background(alignment: .top) {
                         if let details { TitleArtworkBackdrop(path: CatalogTools.image(details.details.backdropPath, size: "w780"), name: details.details.name, topExtension: geometry.safeAreaInsets.top) }
                     }
@@ -278,6 +288,7 @@ struct CatalogDetailView: View {
                     CommunityInformationSheet(name: details?.details.name ?? "Title", artwork: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") ?? CatalogTools.image($0.details.posterPath) }, identity: CommunityIdentity(kind: route.kind, id: route.id))
                 }
                 .task(id: route) { await load() }
+                .task(id: route) { extras = try? await TitleExtrasCache.load(store: store, route: route) }
                 .task(id: route) {
                     // MDBList's ratings, when it's connected; otherwise TMDB's score stands alone.
                     criticScores = await CriticScores.load(store: store, tmdbId: route.id, isSeries: route.kind == .tv)
@@ -285,6 +296,13 @@ struct CatalogDetailView: View {
         }
     }
     private func accepted(_ id: String) { if let onImported { onImported(id) } else { router.replaceTitle(id, tab: router.selectedTab) } }
+    /// The page's main action: a 48 pt pill in the design's #cdbbff → #a98bff gradient.
+    private func primaryLabel(_ text: String, icon: String) -> some View {
+        HStack(spacing: 8) { Image(systemName: icon).font(.system(size: 14, weight: .bold)); Text(text).font(.system(size: 15, weight: .bold)) }
+            .foregroundStyle(Color(webHex: "#0b0b10")).frame(maxWidth: .infinity).frame(height: 48)
+            .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+            .contentShape(Capsule())
+    }
     private func load() async {
         guard details == nil else { return }
         loading = true; failure = nil; defer { loading = false }
@@ -324,35 +342,55 @@ private struct CatalogSeasonPreview: View {
     private var total: Int { max(controller.items.count, details.seasons?.first(where: { $0.number == selected })?.expectedEpisodes ?? 0) }
     private var visible: [CatalogEpisode] { showAll ? controller.items : Array(controller.items.prefix(4)) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 32) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Episode 0").font(.system(size: 20, weight: .bold)); Text("of \(total)").font(.system(size: 15)).foregroundStyle(.secondary)
-                    Spacer(); Text("0%").font(.system(size: 20, weight: .bold)).foregroundStyle(.tint)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("Episode 0").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    Text("of \(total)").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                    Spacer(); Text("0%").font(.system(size: 22, weight: .bold)).foregroundStyle(.tint)
                 }
                 EpisodeProgressTrack(segments: Array(repeating: .unwatched, count: total), season: selected)
-            }.padding(.top, 20).padding(.bottom, 8).diaryPanel(padding: 15, radius: 24, accentBorder: true)
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Episodes").font(.system(size: 22, weight: .bold))
-                        Text(controller.items.count.counted("episode", "episodes")).font(.system(size: 12)).foregroundStyle(.secondary)
+            }.padding(19)
+                .background(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58), in: RoundedRectangle(cornerRadius: 28))
+                .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    if !controller.items.isEmpty {
+                        Text(controller.items.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+                            .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+                            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     }
                     Spacer(minLength: 0)
                     Menu {
                         Picker("Season", selection: $selected) {
                             ForEach(details.seasons ?? [], id: \.number) { season in Text(season.number == 0 ? "Specials" : "Season \(season.number)").tag(season.number) }
                         }
-                    } label: { FilterPill(label: selected == 0 ? "Specials" : "Season \(selected)") }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(selected == 0 ? "Specials" : "Season \(selected)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            if (details.seasons ?? []).count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(HomeStyle.secondary) }
+                        }.padding(.horizontal, 18).frame(height: 44)
+                            .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    }
                         .disabled((details.seasons ?? []).count < 2).accessibilityLabel("Season").accessibilityValue(selected == 0 ? "Specials" : "Season \(selected)").accessibilityIdentifier("catalog-season")
                     CollectionLayoutToggle(grid: $episodesGrid, collection: "catalog-episodes")
                 }
                 if controller.loading && controller.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
                 if let error = controller.error { RetryNotice(message: error) { Task { await controller.load(selected, reveal: !hideSpoilers || controller.revealed, force: true) } } }
                 if controller.items.isEmpty && !controller.loading && controller.error == nil { ContentUnavailableView("No episode metadata yet", systemImage: "film", description: Text("No episodes are available for this season yet.")) }
-                CollectionLayout(grid: episodesGrid) { ForEach(visible) { episode in episodeRow(episode) } }
+                if episodesGrid {
+                    CollectionLayout(grid: true) { ForEach(visible) { episode in episodeRow(episode) } }
+                } else {
+                    VStack(spacing: 9) { ForEach(visible) { episode in episodeRow(episode) } }
+                }
                 if controller.items.count > 4 {
-                    Button(showAll ? "Show fewer episodes" : "Show all \(controller.items.count) episodes") { showAll.toggle() }.font(.system(size: 14)).frame(maxWidth: .infinity).frame(minHeight: 44)
+                    Button { showAll.toggle() } label: {
+                        HStack(spacing: 6) { Text(showAll ? "Show fewer episodes" : "Show all \(controller.items.count) episodes"); DiaryIcon(name: showAll ? "chevron-down" : "chevron-right", size: 14) }
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            .frame(maxWidth: .infinity).frame(height: 48)
+                            .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
+                    }.buttonStyle(.springPress)
                 }
             }
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
@@ -376,9 +414,20 @@ private struct CatalogSeasonPreview: View {
                 }.contentShape(Rectangle())
             } else {
                 HStack(spacing: 12) {
-                    episodeArtwork(episode, hidden: hidden).frame(width: 132, height: 74).clipShape(RoundedRectangle(cornerRadius: 12))
-                    episodeCaption(episode, hidden: hidden)
-                }.padding(.vertical, 10).padding(.horizontal, 4).frame(minHeight: 92).contentShape(Rectangle())
+                    episodeArtwork(episode, hidden: hidden).frame(width: 96, height: 60).clipShape(RoundedRectangle(cornerRadius: 14))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : "\(episode.number). \(episode.name)")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
+                        HStack(spacing: 6) {
+                            EpisodeChip(text: episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true ? "Not watched" : "Not aired yet")
+                            if let score = episode.communityScore, score > 0 { ScoreChip(score: score) }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }.padding(9).frame(minHeight: 77)
+                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+                    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                    .contentShape(Rectangle())
             }
         }.buttonStyle(.springPress).accessibilityLabel("Episode \(episode.number) details").accessibilityIdentifier("catalog-episode-\(episode.number)")
     }
@@ -457,43 +506,62 @@ struct CastAndRelated: View {
     @State private var related: [CatalogItem] = []
     @State private var failure: String?
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id).padding(.bottom, 8) }
+        // Design: sections 42 pt apart, 22 pt headings, 111 pt tiles (radius 18) 12 pt apart.
+        VStack(alignment: .leading, spacing: 42) {
+            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id) }
             if !cast.isEmpty {
+              VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Cast").font(.system(size: seeAll == nil ? 20 : 24, weight: seeAll == nil ? .semibold : .bold))
+                    Text("Cast").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 8)
                     if let seeAll { SeeAllLink(value: seeAll, identifier: "title-cast-all") }
-                }
+                }.frame(minHeight: 44)
                 ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 18) {
+                    HStack(alignment: .top, spacing: 12) {
                         ForEach(cast) { person in
                             NavigationLink(value: PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character)) {
-                                VStack(spacing: 8) {
-                                    Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 111, height: 148).clipShape(RoundedRectangle(cornerRadius: 18))
                                         // Press and hold to peek at the photo; a tap still opens the person.
                                         .fullScreenArtwork(CatalogTools.image(person.profilePath, size: "w185"), title: person.name) {
                                             router.paths[router.selectedTab, default: NavigationPath()].append(PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character))
                                         }
-                                    Text(person.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                                    Text(person.character).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                                }.frame(width: 96, alignment: .leading).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                                    Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).padding(.top, 11)
+                                    Text(person.character).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2).padding(.top, 3)
+                                }.frame(width: 111, alignment: .leading).multilineTextAlignment(.leading)
                             }.buttonStyle(.plain).accessibilityIdentifier("cast-person-" + String(person.id))
                         }
                     }
-                }.scrollIndicators(.hidden)
+                }.scrollIndicators(.hidden).scrollClipDisabled()
+              }
             }
             if !related.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("More like this").font(.system(size: seeAll == nil ? 20 : 24, weight: seeAll == nil ? .semibold : .bold))
-                        Spacer(minLength: 8)
-                    }
-                    PersonCreditShelf(items: Array(related.prefix(12)), identifier: "related-titles-shelf")
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("More like this").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    ScrollView(.horizontal) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(related.prefix(12), id: \.key) { item in relatedLink(item) }
+                        }
+                    }.scrollIndicators(.hidden).scrollClipDisabled().accessibilityIdentifier("related-titles-shelf")
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
         }.task(id: route) { await load() }
+    }
+    @ViewBuilder private func relatedLink(_ item: CatalogItem) -> some View {
+        if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {
+            NavigationLink(value: saved) { relatedPoster(item) }.buttonStyle(.springPress)
+        } else {
+            NavigationLink(value: item.route) { relatedPoster(item) }.buttonStyle(.springPress)
+        }
+    }
+    /// Design: a 111 x 167 poster (radius 18), the name in 14 pt semibold and the year under it.
+    private func relatedPoster(_ item: CatalogItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 111, height: 167).clipShape(RoundedRectangle(cornerRadius: 18))
+            Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
+            Text(item.year.map(String.init) ?? "").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
+        }.frame(width: 111, alignment: .leading).accessibilityElement(children: .combine)
     }
     private func load() async {
         failure = nil

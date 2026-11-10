@@ -25,6 +25,11 @@ export async function browseExtras(params: URLSearchParams, metadata: TmdbClient
   return metadata.extras(mediaType, id);
 }
 
+export async function browseCollection(params: URLSearchParams, metadata: TmdbClient) {
+  const { id } = providerInput('movie', params.get('id'));
+  return metadata.collection(id);
+}
+
 export async function browseSeason(params: URLSearchParams, metadata: TmdbClient) {
   const { mediaType, id } = providerInput(params.get('type'), params.get('id'));
   const raw = params.get('season') ?? '';

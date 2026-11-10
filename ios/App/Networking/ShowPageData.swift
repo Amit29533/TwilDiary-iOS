@@ -6,7 +6,10 @@ enum ShowPageRoute: Hashable {
     case episodes(titleID: String, season: Int)
     case cast(CatalogRoute, title: String, anime: Bool, year: Int?)
     case lists(CatalogRoute, title: String)
-    case collections(titleID: String)
+    /// Related collections: the movie's TMDb collection, then TMDb's catalogue for each genre.
+    case collections(CatalogRoute, title: String, anime: Bool)
+    /// One TMDb collection's films.
+    case tmdbCollection(id: Int, name: String)
     case companies(CatalogRoute, title: String)
 }
 
@@ -17,7 +20,19 @@ enum ShowPageRoute: Hashable {
     static func cached(_ route: CatalogRoute) -> TitleExtras? { cache[route]?.value }
     static func load(store: DiaryStore, route: CatalogRoute) async throws -> TitleExtras {
         if let entry = cache[route], Date.now.timeIntervalSince(entry.at) < 86_400 { return entry.value }
-        if store.isPreview { return TitleExtras(status: nil, certification: nil, studios: [], networks: [], keywords: []) }
+        if store.isPreview {
+            #if DEBUG
+            // Design screenshots: a realistic set, so Tags, chips and Related collections draw.
+            if ProcessInfo.processInfo.arguments.contains("--ui-design-data") {
+                let tags = ["detective", "female protagonist", "work", "maid", "politics", "historical", "mystery", "palace", "medicine", "court", "poison", "apothecary"]
+                return TitleExtras(status: "Ended", certification: "TV-14", studios: [],
+                                   networks: [TitleCompany(id: 614, name: "KBS2", logoPath: nil, kind: "network", country: "KR")],
+                                   keywords: tags.enumerated().map { TitleKeyword(id: 9000 + $0.offset, name: $0.element) },
+                                   genres: [TitleKeyword(id: 18, name: "Drama"), TitleKeyword(id: 10749, name: "Romance"), TitleKeyword(id: 35, name: "Comedy")])
+            }
+            #endif
+            return TitleExtras(status: nil, certification: nil, studios: [], networks: [], keywords: [])
+        }
         let value: TitleExtras = try await store.read(CatalogTools.apiPath("/api/metadata/extras", query: ["type": route.kind.rawValue, "id": String(route.id)]))
         if cache.count >= 200 { cache.removeAll() }
         cache[route] = (.now, value)

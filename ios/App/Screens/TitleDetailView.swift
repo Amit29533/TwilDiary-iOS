@@ -63,7 +63,7 @@ struct TitleDetailView: View {
                     ScrollViewReader { proxy in
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
-                                header(title)
+                                header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
                                 if store.viewingFrozenServerCopy { frozenCopyNotice }
                                 progressPanel(title).padding(.top, -8)
                                 if !locations.isEmpty { driveRow(title) }
@@ -84,9 +84,9 @@ struct TitleDetailView: View {
                                                    seeAll: .cast(route, title: title.name, anime: title.category.hasPrefix("anime"), year: title.year))
                                     if let extras { CompaniesSection(route: route, title: title.name, extras: extras, animated: title.category.hasPrefix("anime") || title.genres.contains("Animation")) }
                                     InListsSection(route: route, title: title.name)
+                                    RelatedCollectionsSection(route: route, title: title.name, anime: title.category.hasPrefix("anime"))
                                 }
-                                RelatedCollectionsSection(title: title)
-                            }.padding(.horizontal, 14).padding(.bottom, 32)
+                            }.padding(.horizontal, 16).padding(.bottom, 32)
                                 // The height only matters while the page scrolls itself to notes or files. Tracking it
                                 // always rebuilt the whole page each time a lazy episode row first
                                 // appeared, which stuttered the first scroll through a season.
@@ -113,14 +113,12 @@ struct TitleDetailView: View {
                                     CompactTitleNavigation(name: title.name, poster: title.poster, state: headerState)
                                 }
                                 ToolbarItemGroup(placement: .topBarTrailing) {
-                                    TitleHeaderAction(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId, state: headerState, informationPresented: $showInformation)
-                                    Button { Task { await store.patch(title, values: ["favorite": !title.favorite]) } } label: { Image(systemName: title.favorite ? "heart.fill" : "heart") }.accessibilityLabel("Favorite").disabled(store.writesBlocked)
+                                    // No ⓘ here (owner's request): Sentiments lives in the ··· menu; share appears once scrolled.
+                                    TitleHeaderAction(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId, state: headerState, informationPresented: $showInformation,
+                                                      showsInformation: false, favorite: title.favorite,
+                                                      onFavorite: { guard !store.writesBlocked else { return }; Task { await store.patch(title, values: ["favorite": !title.favorite]) } })
                                     Menu {
-                                            Button("Community information", systemImage: "info.circle") { showInformation = true }
-                                            if title.tmdbId != nil {
-                                                Button("Refresh metadata", systemImage: "arrow.clockwise") { Task { await store.refreshTitleMetadata(title) } }.disabled(store.writesBlocked)
-                                            }
-                                            Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { Task { await store.patch(title, values: ["favorite": !title.favorite]) } }.disabled(store.writesBlocked)
+                                        Button("Sentiments", systemImage: "info.circle") { showInformation = true }.accessibilityIdentifier("title-information")
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
@@ -306,8 +304,8 @@ struct TitleDetailView: View {
             .background(theme.field, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
     }
-    private func header(_ title: MediaTitle) -> some View {
-        TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, onNameScrolled: { headerState.update($0) }) {
+    private func header(_ title: MediaTitle, coverStrip: CGFloat) -> some View {
+        TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: coverStrip, onNameScrolled: { headerState.update($0) }) {
             RatingBoxes(scores: criticScores, tmdbFallback: title.communityScore)
         }
     }
@@ -340,20 +338,21 @@ struct TitleDetailView: View {
                     HStack(spacing: 8) {
                         if store.seasonStatus(title, season: season) == "watching" { Image(systemName: "play.fill").font(.system(size: 12)) }
                         else { Circle().fill(store.seasonStatus(title, season: season) == "completed" ? Color.mint : Color.secondary).frame(width: 8, height: 8) }
-                        Text(store.seasonStatus(title, season: season).capitalized).font(.system(size: 14.4, weight: .semibold))
+                        Text(store.seasonStatus(title, season: season).capitalized).font(.system(size: 15, weight: .bold))
                         DiaryIcon(name: "chevron-down", size: 15)
-                    }.padding(.horizontal, 14).frame(minHeight: 46).background { DiaryControlSurface(shape: Capsule(), selected: true) }
+                    }.foregroundStyle(HomeStyle.chipText).padding(.horizontal, 18).frame(minWidth: 156, minHeight: 44)
+                        .background(HomeStyle.chip, in: Capsule())
                 }.buttonStyle(.plain).disabled(store.writesBlocked).accessibilityIdentifier("title-watch-status")
                 Spacer(minLength: 0)
                 Text(title.isSeries ? remaining(title).map { "\(DiaryDate.duration($0)) left" } ?? "Time unknown" : movieViewings.isEmpty ? title.runtimeMinutes.map { "\(DiaryDate.duration($0)) left" } ?? "Movie" : "Movie")
-                    .font(.system(size: 12.8)).foregroundStyle(Color(white: 0.75)).multilineTextAlignment(.trailing).shadow(color: .black, radius: 3)
+                    .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.trailing)
             }.padding(.bottom, 22)
             // A cached card paints on the first frame instead of a 290 pt placeholder swap.
             if let card = card ?? store.cachedCard(title, season: title.isSeries ? season : nil) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(title.isSeries ? "Episode \(displayedWatched)" : "\(movieViewings.count)").font(.system(size: 20, weight: .bold))
-                    Text(title.isSeries ? "of \(card.progress.total)" : movieViewings.count == 1 ? "view logged" : "views logged").font(.system(size: 15)).foregroundStyle(.secondary)
-                    Spacer(minLength: 0); Text("\(displayedPercent)%").foregroundStyle(.tint).font(.system(size: 20, weight: .bold))
+                    Text(title.isSeries ? "Episode \(displayedWatched)" : "\(movieViewings.count)").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    Text(title.isSeries ? "of \(card.progress.total)" : movieViewings.count == 1 ? "view logged" : "views logged").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                    Spacer(minLength: 0); Text("\(displayedPercent)%").foregroundStyle(.tint).font(.system(size: 22, weight: .bold))
                 }.frame(minHeight: 29).padding(.bottom, 14)
                 if title.isSeries {
                     episodeSlider(title, card: card)
@@ -384,7 +383,7 @@ struct TitleDetailView: View {
                         await loadCard(title)
                     } } label: {
                         Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
-                            .frame(maxWidth: .infinity).frame(minHeight: 46)
+                            .font(.system(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
                     }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || store.viewingFrozenServerCopy || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
                         .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)
@@ -405,7 +404,10 @@ struct TitleDetailView: View {
                     RetryNotice(message: cardError) { Task { await loadCard(title) } }
                 }.padding(.vertical, 12)
             } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
-        }.diaryPanel(padding: 15, radius: 24, bordered: false)
+        }.padding(19)
+            // Design: a 28 pt card in rgba(18 16 26 / .58) with a white 8 % hairline.
+            .background(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58), in: RoundedRectangle(cornerRadius: 28))
+            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
     private func episodeSlider(_ title: MediaTitle, card: WatchCard) -> some View {
@@ -423,10 +425,12 @@ struct TitleDetailView: View {
     private func nextPreview(_ title: MediaTitle, episode: Episode) -> some View {
         Button { toggleEpisode(title, episode: episode) } label: {
             HStack(spacing: 12) {
-                episodeArtwork(episode).frame(width: 104, height: 58).clipShape(RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 4) { Text("UP NEXT").font(.system(size: 10, weight: .bold)).foregroundStyle(theme.accent); Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).multilineTextAlignment(.leading) }
-                Spacer(minLength: 0); if let runtime = title.runtimeMinutes { Text("\(runtime) min").font(.caption).foregroundStyle(.secondary) }
-            }.padding(.vertical, 12).padding(.horizontal, 10).background(.white.opacity(5.0 / 255), in: RoundedRectangle(cornerRadius: 17))
+                // Design: 100 × 66 still (radius 12), "UP NEXT" 12 pt bold, the name 15 pt semibold, runtime top right.
+                episodeArtwork(episode).frame(width: 100, height: 66).clipShape(RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 3) { Text("UP NEXT").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.accent); Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(3).multilineTextAlignment(.leading) }
+                Spacer(minLength: 0)
+            }.overlay(alignment: .topTrailing) { if let runtime = title.runtimeMinutes { Text("\(runtime) min").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) } }
+                .padding(.vertical, 16).padding(.horizontal, 10).frame(minHeight: 98).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
     }
     /// Episodes: heading with the count and season, All / Unwatched beside a list–grid switch,
@@ -436,12 +440,13 @@ struct TitleDetailView: View {
         let dates = EpisodeWatchDates.latest(store, titleID: id)
         let nextID = card?.next?.id ?? episodes.first(where: { !seen.contains($0.id) && hasAired($0) })?.id
         let shown = inlineEpisodes(nextID: nextID, watched: seen)
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Text("Episodes").font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                 if !episodes.isEmpty {
-                    Text(episodes.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
-                        .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                    Text(episodes.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+                        .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                 }
                 Spacer(minLength: 0)
                 seasonMenu
@@ -451,11 +456,14 @@ struct TitleDetailView: View {
                 episodeFilter("Unwatched", on: unwatchedOnly) { unwatchedOnly = true }
                 Spacer(minLength: 0)
                 Button { episodesGrid.toggle() } label: {
-                    HStack(spacing: 2) {
-                        DiaryIcon(name: "layout-grid", size: 18).frame(width: 40, height: 34).background(episodesGrid ? .white.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                        DiaryIcon(name: "list", size: 18).frame(width: 40, height: 34).background(episodesGrid ? .clear : .white.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                    }.foregroundStyle(Color(webHex: "#c5c0cf")).padding(4).background(theme.field, in: RoundedRectangle(cornerRadius: 13))
-                        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(.white.opacity(0.1))).contentShape(Rectangle())
+                    // Design: an 87 x 43 pill (#17171d, #26262e hairline) with a 40 x 36 #2a2440 knob.
+                    HStack(spacing: 0) {
+                        DiaryIcon(name: "layout-grid", size: 17).foregroundStyle(episodesGrid ? HomeStyle.chipText : HomeStyle.secondary)
+                            .frame(width: 40, height: 36).background(episodesGrid ? HomeStyle.chip : .clear, in: Capsule())
+                        DiaryIcon(name: "list", size: 17).foregroundStyle(episodesGrid ? HomeStyle.secondary : HomeStyle.chipText)
+                            .frame(width: 40, height: 36).background(episodesGrid ? .clear : HomeStyle.chip, in: Capsule())
+                    }.padding(3).background(HomeStyle.round, in: Capsule())
+                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Show episodes as " + (episodesGrid ? "list" : "grid")).accessibilityValue(episodesGrid ? "Grid" : "List").accessibilityIdentifier("episodes-layout")
             }
             if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.glass).disabled(store.writesBlocked) }
@@ -473,7 +481,7 @@ struct TitleDetailView: View {
                     }
                 }.scrollIndicators(.hidden).scrollClipDisabled()
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 9) {
                     ForEach(shown) { episode in
                         EpisodeCardRow(number: episode.number, name: episodeName(episode), artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode),
                                        state: rowState(episode, watched: seen, dates: dates, nextID: nextID), score: episodeScore(episode),
@@ -487,9 +495,9 @@ struct TitleDetailView: View {
             if !episodes.isEmpty {
                 NavigationLink(value: ShowPageRoute.episodes(titleID: id, season: season)) {
                     HStack(spacing: 6) { Text("Show all \(episodes.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
-                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
-                        .frame(maxWidth: .infinity).frame(height: 52)
-                        .background(.white.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        .frame(maxWidth: .infinity).frame(height: 48)
+                        .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
                 }.buttonStyle(.springPress).accessibilityIdentifier("title-all-episodes")
             }
             if let pending = store.pendingSeasonAdjustments[title.id + ":" + String(season)] { Button("Retry progress to episode \(pending.count)") { Task { await store.setSeasonProgress(title, season: season, count: pending.count, watchedAt: watchInstant); await loadCard(title) } }.disabled(store.writesBlocked) }
@@ -525,19 +533,20 @@ struct TitleDetailView: View {
         } label: {
             // A pill like the filters; the chevron only shows when there is another season to pick.
             HStack(spacing: 8) {
-                Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
-                if seasonNumbers.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(theme.accent) }
-            }.padding(.horizontal, 16).frame(height: 40)
-                .background(.white.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.14)))
+                Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                if seasonNumbers.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(HomeStyle.secondary) }
+            }.padding(.horizontal, 18).frame(height: 44)
+                .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                 .frame(minHeight: 44).contentShape(Capsule())
         }.disabled(seasonNumbers.count < 2).accessibilityLabel("Season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)").accessibilityIdentifier("title-season")
     }
     private func episodeFilter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(name).font(.system(size: 15, weight: .medium)).foregroundStyle(on ? theme.ink : Color(webHex: "#c5c0cf"))
-                .padding(.horizontal, 16).frame(height: 40)
-                .background(on ? theme.accent : .clear, in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? .clear : .white.opacity(0.16)))
+            // Design: 44 pt pills, 14 pt semibold; the chosen one #0b0b10 on the accent.
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#0b0b10") : HomeStyle.soft)
+                .padding(.horizontal, 20).frame(height: 44)
+                .background(on ? theme.accent : HomeStyle.round, in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("episodes-filter-" + (name == "Unwatched" ? "unwatched" : "all"))
     }
     @ViewBuilder private func episodeArtwork(_ episode: Episode) -> some View {

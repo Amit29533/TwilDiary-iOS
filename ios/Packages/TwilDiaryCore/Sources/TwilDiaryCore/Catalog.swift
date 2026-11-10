@@ -54,7 +54,9 @@ public struct CatalogPage: Decodable, Sendable {
     public let items: [CatalogItem]
     public let page: Int
     public let totalPages: Int
-    public init(items: [CatalogItem], page: Int, totalPages: Int) { self.items = items; self.page = page; self.totalPages = totalPages }
+    /// Every match TMDb counts ("48 titles"), when the reply says.
+    public let totalResults: Int?
+    public init(items: [CatalogItem], page: Int, totalPages: Int, totalResults: Int? = nil) { self.items = items; self.page = page; self.totalPages = totalPages; self.totalResults = totalResults }
 }
 
 public struct CatalogDetails: Decodable, Sendable {

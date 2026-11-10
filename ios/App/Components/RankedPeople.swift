@@ -54,9 +54,8 @@ struct MostWatchedSection<Content: View>: View {
                 Spacer(minLength: 4)
                 if let user {
                     NavigationLink(value: AppDestination.anilist) {
-                        Image("site-anilist").renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 18, height: 18).frame(width: 36, height: 44)
-                    }.buttonStyle(.plain).foregroundStyle(.secondary)
+                        BrandLogo(service: .anilist, size: 24).frame(width: 36, height: 44)
+                    }.buttonStyle(.plain)
                         .accessibilityLabel("AniList profile " + user + ", change in Settings").accessibilityIdentifier("anilist-user")
                 }
                 if let ranking, !ranking.people.isEmpty {
