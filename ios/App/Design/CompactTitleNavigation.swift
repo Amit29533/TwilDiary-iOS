@@ -115,12 +115,18 @@ struct TitleHeaderAction: View {
 /// The title pages' one top-right button (owner's design): a 44 pt dark circle with three white
 /// dots. Its menu holds everything else (Sentiments, Favourite, Queue, Notes, Files, Share, Trash).
 struct TitleMoreButtonLabel: View {
+    /// Title pages: clear Liquid Glass over the artwork (the owner's choice for this button).
+    /// Elsewhere (glass: false): the dark round button.
+    var glass = true
     var body: some View {
-        Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
-            .frame(width: 44, height: 44)
-            .background(Color(webHex: "#2b2b30").opacity(0.94), in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67))
-            .contentShape(Circle())
+        let icon = Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+            .frame(width: 44, height: 44).contentShape(Circle())
+        if glass {
+            icon.glassEffect(.clear.interactive(), in: Circle())
+        } else {
+            icon.background(Color(webHex: "#2b2b30").opacity(0.94), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67))
+        }
     }
 }
 

@@ -298,9 +298,17 @@ struct EpisodesPage: View {
                 if !episodes.isEmpty {
                     Button { confirmSeason = true } label: {
                         Label("Mark season as watched", systemImage: "checkmark.circle").frame(maxWidth: .infinity)
-                    }.buttonStyle(.diarySecondary).padding(.top, 6)
+                    }.buttonStyle(.diarySecondary)
                         .disabled(store.writesBlocked || episodes.filter(aired).allSatisfy { watched.contains($0.id) })
                         .accessibilityIdentifier("episodes-mark-season")
+                        // Attached to the button so iOS opens it from the button, not the top of the page.
+                        .confirmationDialog("Mark every aired episode of season \(season) as watched?", isPresented: $confirmSeason, titleVisibility: .visible) {
+                            Button("Mark season as watched") {
+                                let count = episodes.filter(aired).count
+                                Task { await store.setSeasonProgress(title, season: season, count: count, watchedAt: store.now) }
+                            }
+                        }
+                        .padding(.top, 6)
                 }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }
@@ -312,12 +320,6 @@ struct EpisodesPage: View {
             }
         }
         .task(id: season) { if !hideSpoilers { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
-        .confirmationDialog("Mark every aired episode of season \(season) as watched?", isPresented: $confirmSeason, titleVisibility: .visible) {
-            Button("Mark season as watched") {
-                let count = episodes.filter(aired).count
-                Task { await store.setSeasonProgress(title, season: season, count: count, watchedAt: store.now) }
-            }
-        }
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             if let episode = selected ?? sheetEpisode { sheet(title, episode: episode, episodes: episodes, watched: watched) }
         }

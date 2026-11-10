@@ -303,6 +303,51 @@ import XCTest
         }
     }
 
+    /// The title page's ••• (clear glass), then Mark season as watched opening from its button.
+    func testMarkSeasonSnapshots() {
+        capture(tab: "home", name: "titlemore", pages: 1) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+        capture(tab: "home", name: "markseason", pages: 1) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let all = app.buttons["title-all-episodes"]
+            for _ in 0..<8 where !(all.exists && all.isHittable) { app.swipeUp() }
+            if all.exists { all.tap() }
+            Thread.sleep(forTimeInterval: 2)
+            let mark = app.buttons["episodes-mark-season"]
+            for _ in 0..<10 where !(mark.exists && mark.isHittable) { app.swipeUp() }
+            if mark.exists && mark.isHittable { mark.tap() }
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+    }
+
+    /// Airing calendar: Upcoming top to bottom, Catch-up, All, then the Genres sheet.
+    func testCalendarSnapshots() {
+        func openCalendar(_ app: XCUIApplication) {
+            let calendar = app.buttons["home-calendar-more"]
+            for _ in 0..<6 where !(calendar.exists && calendar.isHittable) { app.swipeUp() }
+            if calendar.exists { calendar.tap() }
+            Thread.sleep(forTimeInterval: 2.5)
+        }
+        capture(tab: "home", name: "calendar", pages: 2, open: openCalendar)
+        capture(tab: "home", name: "calcatchup", pages: 1) { app in
+            openCalendar(app); app.buttons["calendar-tab-Catch-up"].tap(); Thread.sleep(forTimeInterval: 1.5)
+        }
+        capture(tab: "home", name: "calall", pages: 1) { app in
+            openCalendar(app); app.buttons["calendar-tab-All"].tap(); Thread.sleep(forTimeInterval: 1.5)
+        }
+        capture(tab: "home", name: "calgenres", pages: 1) { app in
+            openCalendar(app); app.buttons["calendar-genres"].tap(); Thread.sleep(forTimeInterval: 1.5)
+            let chip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'calendar-genre-'")).firstMatch
+            if chip.exists { chip.tap() }
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+    }
+
     /// A preview title's "Show all N episodes" page.
     func testPreviewEpisodesSnapshots() {
         capture(tab: "home", name: "previewepisodes", pages: 2) { app in
