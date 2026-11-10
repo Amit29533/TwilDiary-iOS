@@ -332,6 +332,7 @@ struct CatalogDetailView: View {
 private struct CatalogSeasonPreview: View {
     let route: CatalogRoute
     let details: CatalogDetails
+    @Environment(AppRouter.self) private var router
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @State private var controller: CatalogEpisodeController
     @State private var selected: Int
@@ -414,7 +415,7 @@ private struct CatalogSeasonPreview: View {
                 }
                 if !controller.items.isEmpty {
                     // As on the title page: the season's own Episodes page.
-                    NavigationLink(value: ShowPageRoute.catalogEpisodes(route, season: selected)) {
+                    Button { router.paths[router.selectedTab, default: NavigationPath()].append(ShowPageRoute.catalogEpisodes(route, season: selected)) } label: {
                         HStack(spacing: 6) { Text("Show all \(controller.items.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(maxWidth: .infinity).frame(height: 48)

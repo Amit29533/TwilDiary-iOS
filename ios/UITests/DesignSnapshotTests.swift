@@ -58,6 +58,19 @@ import XCTest
         }
     }
 
+    /// The title page's episodes as sideways cards.
+    func testEpisodeGridSnapshots() {
+        capture(tab: "home", name: "episodegrid", pages: 1) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let layout = app.buttons["episodes-layout"]
+            for _ in 0..<6 where !(layout.exists && layout.isHittable) { app.swipeUp() }
+            if layout.exists { layout.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+    }
+
     /// A preview title's "Show all N episodes" page.
     func testPreviewEpisodesSnapshots() {
         capture(tab: "home", name: "previewepisodes", pages: 2) { app in

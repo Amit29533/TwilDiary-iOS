@@ -161,16 +161,17 @@ struct EpisodeGridCard: View {
                     }
                 }
             Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
-            Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 5)
+            // When it aired (or that you watched it), then its length and rating, on one line.
             HStack(spacing: 6) {
+                Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
                 if let runtime {
                     Text("\(runtime) min").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule())
+                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
                 }
                 if let score, score > 0 {
                     HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule())
+                        .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
                 }
             }.padding(.top, 7)
         }.frame(width: 232, alignment: .leading)
@@ -178,8 +179,8 @@ struct EpisodeGridCard: View {
     private var subtitle: String {
         if case .watched = state { return state.text }
         guard let airedOn, let date = DiaryDate.parse(airedOn + "T12:00:00Z") else { return state.text }
-        if date > .now { return "Airs " + date.formatted(.dateTime.day().month(.abbreviated).year()) }
-        return "Aired " + date.formatted(.relative(presentation: .named))
+        if date > .now { return date.formatted(.dateTime.day().month(.abbreviated).year()) }
+        return date.formatted(.relative(presentation: .named))
     }
 }
 
@@ -481,6 +482,12 @@ struct PreviewEpisodesPage: View {
     @State private var sheetEpisode: Int?
     @State private var forward = true
     init(route: CatalogRoute, initialSeason: Int) { self.route = route; _season = State(initialValue: initialSeason) }
+    private func makeController() -> CatalogEpisodeController {
+        if let controller { return controller }
+        let made = CatalogEpisodeController { [store, route] number, reveal in try await store.catalogEpisodes(route, season: number, reveal: reveal) }
+        controller = made
+        return made
+    }
 
     var body: some View {
         let items = controller?.items ?? []
@@ -506,14 +513,8 @@ struct PreviewEpisodesPage: View {
                     .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
             }
         }
-        .task(id: route) {
-            if details == nil { details = try? await store.browse(route).details }
-            if controller == nil { controller = CatalogEpisodeController { [store, route] number, reveal in try await store.catalogEpisodes(route, season: number, reveal: reveal) } }
-        }
-        .task(id: season) {
-            while controller == nil { try? await Task.sleep(for: .milliseconds(50)); if Task.isCancelled { return } }
-            await controller?.load(season, reveal: !hideSpoilers)
-        }
+        .task(id: route) { if details == nil { details = try? await store.browse(route).details } }
+        .task(id: season) { await makeController().load(season, reveal: !hideSpoilers) }
         .onChange(of: season) { _, _ in revealed = []; selected = nil; openGroups = [] }
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             if let number = selected ?? sheetEpisode { sheet(number) }
