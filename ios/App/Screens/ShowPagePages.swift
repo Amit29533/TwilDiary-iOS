@@ -597,7 +597,10 @@ struct RelatedCollectionsPage: View {
                         RelatedCollectionCard(collection: collection, index: index, showCount: true).frame(height: 132)
                     }
                 }
-                if model.loaded && model.items.isEmpty { Text("TMDb has no related collections for this title.").font(.subheadline).foregroundStyle(.secondary) }
+                if model.loaded && model.items.isEmpty {
+                    Text(model.needsKey ? "Add your TMDB key in Settings → Connections → TMDB to see related collections." : "TMDB has no related collections for this title.")
+                        .font(.subheadline).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
+                }
                 if !model.loaded { ProgressView().padding(.top, 40) }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
@@ -649,8 +652,10 @@ struct TMDbCollectionPage: View {
     }
     private func load() async {
         failure = nil
-        do { collection = try await store.read(CatalogTools.apiPath("/api/metadata/collection", query: ["id": String(id)])) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do {
+            if let token = TMDBDirect.token(store) { collection = try await TMDBDirect.collection(id, token: token) }
+            else { collection = try await store.read(CatalogTools.apiPath("/api/metadata/collection", query: ["id": String(id)])) }
+        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
 

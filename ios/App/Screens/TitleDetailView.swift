@@ -50,6 +50,8 @@ struct TitleDetailView: View {
     @State private var seasonRequest = UUID()
     @State private var seasonLoadError: String?
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
+    /// TMDB's score read for this page when the diary copy has none (Trakt-only titles).
+    @State private var fetchedCommunity: Double?
     /// Companies, tags, status and age rating (TMDB), shown once loaded.
     @State private var extras: TitleExtras?
     @State private var confirmTrash = false
@@ -176,6 +178,11 @@ struct TitleDetailView: View {
                 extras = TitleExtrasCache.cached(route)
                 if let loaded = try? await TitleExtrasCache.load(store: store, route: route) { extras = loaded }
                 criticScores = await CriticScores.load(store: store, tmdbId: tmdbId, isSeries: title.isSeries)
+                // No score in the diary or from MDBList: ask TMDB, so the community circle and box still show.
+                if communityAverage(title) == nil, fetchedCommunity == nil {
+                    if let token = TMDBDirect.token(store) { fetchedCommunity = await TMDBDirect.community(route, token: token) }
+                    else if let browse = try? await store.browse(route), let score = browse.details.communityScore, score > 0 { fetchedCommunity = score }
+                }
             }
             .onChange(of: title.version) { _, _ in
                 guard initializedEditor else { return }
@@ -306,7 +313,7 @@ struct TitleDetailView: View {
     }
     private func header(_ title: MediaTitle, coverStrip: CGFloat) -> some View {
         TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: coverStrip, onNameScrolled: { headerState.update($0) }) {
-            RatingBoxes(scores: criticScores, tmdbFallback: title.communityScore)
+            RatingBoxes(scores: criticScores, tmdbFallback: title.communityScore ?? fetchedCommunity)
         }
     }
     /// The community average for the ring: Trakt's when MDBList has it, otherwise TMDB's.
@@ -314,7 +321,7 @@ struct TitleDetailView: View {
         if let trakt = criticScores.first(where: { RatingsStrip<EmptyView>.canonical($0.source) == "trakt" }), let value = trakt.value ?? trakt.score, value > 0 {
             return value > 10 ? value / 10 : value
         }
-        return title.communityScore.flatMap { $0 > 0 ? $0 : nil }
+        return title.communityScore.flatMap { $0 > 0 ? $0 : nil } ?? fetchedCommunity
     }
     private var tmdbEpisodePoints: [EpisodeRatingPoint] {
         episodes.compactMap { episode in

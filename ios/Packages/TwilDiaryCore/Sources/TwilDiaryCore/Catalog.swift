@@ -91,7 +91,10 @@ public struct CastPerson: Decodable, Identifiable, Sendable {
     public let profilePath: String?
 }
 public struct CastResponse: Decodable, Sendable { public let cast: [CastPerson]; public let stale: Bool }
-public struct RelatedResponse: Decodable, Sendable { public let items: [CatalogItem]; public let stale: Bool }
+public struct RelatedResponse: Decodable, Sendable {
+    public let items: [CatalogItem]; public let stale: Bool
+    public init(items: [CatalogItem], stale: Bool) { self.items = items; self.stale = stale }
+}
 public struct PersonResponse: Decodable, Sendable { public let person: PersonDetails; public let stale: Bool }
 public struct PersonDetails: Decodable, Sendable {
     public let id: Int

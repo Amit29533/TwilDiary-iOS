@@ -134,11 +134,11 @@ import Testing
 @Test func tagRowsGrowWithTheTagCountAndStayBalanced() {
     func tags(_ names: [String]) -> [TitleKeyword] { names.enumerated().map { TitleKeyword(id: $0.offset + 1, name: $0.element) } }
     #expect(TagRows.split([]).isEmpty)
-    #expect(TagRows.split(tags(["a", "b", "c", "d"])).count == 1)
-    #expect(TagRows.split(tags(["a", "b", "c", "d", "e"])).count == 2)
+    #expect(TagRows.split(tags(["a", "b", "c", "d", "e", "f"])).count == 1)
+    #expect(TagRows.split(tags(["a", "b", "c", "d", "e", "f", "g"])).count == 2)
     let twelve = tags(["detective", "female protagonist", "work", "maid", "politics", "historical", "mystery", "palace", "medicine", "court", "poison", "apothecary"])
     let rows = TagRows.split(twelve)
-    #expect(rows.count == 3)
+    #expect(rows.count == 2)
     #expect(rows.flatMap { $0 }.count == 12)
     let widths = rows.map { $0.reduce(0) { $0 + $1.name.count + 6 } }
     #expect((widths.max() ?? 0) - (widths.min() ?? 0) <= 24)

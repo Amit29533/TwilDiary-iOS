@@ -134,18 +134,23 @@ struct TitleArtworkBackdrop: View {
             art.frame(width: 470, height: 256).blur(radius: 34).saturation(1.3).opacity(0.55)
                 .offset(y: panel - 40).frame(maxWidth: .infinity)
             art.frame(height: artwork).frame(maxWidth: .infinity).clipped()
+                // The artwork itself fades out over its last third, so no edge shows through the panel.
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.66), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 .overlay(LinearGradient(stops: [
                     .init(color: .black.opacity(0.42), location: 0), .init(color: .black.opacity(0), location: 0.34),
-                    .init(color: .black.opacity(0), location: 0.78), .init(color: .black.opacity(0.55), location: 1)
+                    .init(color: .black.opacity(0), location: 1)
                 ], startPoint: .top, endPoint: .bottom))
             // The panel: rgba(22 18 32 / .62) → rgba(12 11 16 / .9) at 360 pt → #0a0a0e at 600 pt.
+            // Its top edge fades in over the first ~70 pt, so the cover melts into it instead of meeting a line.
             UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
                 .fill(LinearGradient(stops: [
-                    .init(color: Color(red: 22 / 255, green: 18 / 255, blue: 32 / 255).opacity(0.62), location: 0),
+                    .init(color: Color(red: 22 / 255, green: 18 / 255, blue: 32 / 255).opacity(0.18), location: 0),
+                    .init(color: Color(red: 22 / 255, green: 18 / 255, blue: 32 / 255).opacity(0.62), location: 70 / 4000),
                     .init(color: Color(red: 12 / 255, green: 11 / 255, blue: 16 / 255).opacity(0.9), location: 360 / 4000),
                     .init(color: Color(webHex: "#0a0a0e"), location: 600 / 4000), .init(color: Color(webHex: "#0a0a0e"), location: 1)
                 ], startPoint: .top, endPoint: .bottom))
-                .overlay(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28).strokeBorder(.white.opacity(0.14), lineWidth: HomeStyle.hairline))
+                .overlay(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28).strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.1), .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.02)), lineWidth: HomeStyle.hairline))
                 .frame(height: 4000).offset(y: panel)
         }.frame(width: width, alignment: .top)
     }

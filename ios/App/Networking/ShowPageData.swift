@@ -33,7 +33,10 @@ enum ShowPageRoute: Hashable {
             #endif
             return TitleExtras(status: nil, certification: nil, studios: [], networks: [], keywords: [])
         }
-        let value: TitleExtras = try await store.read(CatalogTools.apiPath("/api/metadata/extras", query: ["type": route.kind.rawValue, "id": String(route.id)]))
+        // Straight from TMDB with your key; the diary server is only the backup.
+        let value: TitleExtras
+        if let token = TMDBDirect.token(store), let direct = try? await TMDBDirect.extras(route, token: token) { value = direct.0 }
+        else { value = try await store.read(CatalogTools.apiPath("/api/metadata/extras", query: ["type": route.kind.rawValue, "id": String(route.id)])) }
         if cache.count >= 200 { cache.removeAll() }
         cache[route] = (.now, value)
         return value

@@ -55,6 +55,9 @@ public struct TitleCollection: Decodable, Sendable {
     public let posterPath: String?
     public let backdropPath: String?
     public let parts: [CatalogItem]
+    public init(id: Int, name: String, overview: String = "", posterPath: String? = nil, backdropPath: String? = nil, parts: [CatalogItem]) {
+        self.id = id; self.name = name; self.overview = overview; self.posterPath = posterPath; self.backdropPath = backdropPath; self.parts = parts
+    }
 }
 
 public struct TitleExtras: Codable, Hashable, Sendable {
@@ -336,12 +339,12 @@ public enum RecommendationMatch {
     }
 }
 
-/// Splits a title's tags into rows that each scroll on their own: one row for up to 4 tags, two
-/// for up to 8, three beyond. Each tag goes to the row that is currently shortest (by its label's
+/// Splits a title's tags into rows that each scroll on their own: one row for up to 6 tags, two
+/// beyond (never more, owner's request). Every tag is kept; the rows just get longer. Each tag goes to the row that is currently shortest (by its label's
 /// length plus the pill's padding), so rows end up about the same width and no row is left short.
 public enum TagRows {
     public static func split(_ keywords: [TitleKeyword]) -> [[TitleKeyword]] {
-        let count = keywords.count <= 4 ? 1 : keywords.count <= 8 ? 2 : 3
+        let count = keywords.count <= 6 ? 1 : 2
         guard !keywords.isEmpty else { return [] }
         var rows = Array(repeating: [TitleKeyword](), count: count)
         var widths = Array(repeating: 0, count: count)

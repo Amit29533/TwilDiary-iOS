@@ -28,6 +28,11 @@ extension DiaryStore {
             return CatalogBrowse(details: value.details, libraryTitle: saved.map { CatalogBrowse.Saved(id: $0.id, trashed: $0.deletedAt != nil) })
         }
         #endif
+        // TMDB from the phone with your key; whether it's already in your diary comes from the diary on the phone.
+        if let token = TMDBDirect.token(self), let details = try? await TMDBDirect.details(route, token: token) {
+            let saved = workspace.titles.first { $0.tmdbId == route.id && $0.isSeries == (route.kind == .tv) }
+            return CatalogBrowse(details: details, libraryTitle: saved.map { CatalogBrowse.Saved(id: $0.id, trashed: $0.deletedAt != nil) })
+        }
         return try await read(CatalogTools.apiPath("/api/metadata/browse", query: ["type": route.kind.rawValue, "id": String(route.id)]))
     }
     func cast(_ route: CatalogRoute) async throws -> CastResponse {
@@ -40,6 +45,8 @@ extension DiaryStore {
             return PreviewCatalog.cast
         }
         #endif
+        // TMDB from the phone with your key; the diary server is the backup.
+        if let token = TMDBDirect.token(self), let direct = try? await TMDBDirect.cast(route, token: token) { return direct }
         return try await read(CatalogTools.apiPath("/api/metadata/cast", query: ["type": route.kind.rawValue, "id": String(route.id)]))
     }
     func related(_ route: CatalogRoute) async throws -> RelatedResponse {
@@ -49,6 +56,7 @@ extension DiaryStore {
             return PreviewCatalog.related
         }
         #endif
+        if let token = TMDBDirect.token(self), let direct = try? await TMDBDirect.related(route, token: token), !direct.items.isEmpty { return direct }
         return try await read(CatalogTools.apiPath("/api/metadata/related", query: ["type": route.kind.rawValue, "id": String(route.id)]))
     }
     func person(_ id: Int) async throws -> PersonResponse {
@@ -84,6 +92,7 @@ extension DiaryStore {
         if isPreview {
             return CatalogEpisodesPage(items: (1...12).map { CatalogEpisode(number: $0, name: reveal ? "Chapter \($0)" : "", overview: reveal ? "Reference episode summary." : "", airedOn: "2024-01-01", stillPath: reveal ? "/reference_backdrop.jpg" : nil, communityScore: 8.1) })
         }
+        if let token = TMDBDirect.token(self), let direct = try? await TMDBDirect.season(route.id, number: season, reveal: reveal, token: token) { return direct }
         return try await read(CatalogTools.apiPath("/api/metadata/season", query: ["type": route.kind.rawValue, "id": String(route.id), "season": String(season), "reveal": reveal ? "1" : "0"]))
     }
     /// `sendToService`: also put it on the watchlist of the service that holds the diary (a title

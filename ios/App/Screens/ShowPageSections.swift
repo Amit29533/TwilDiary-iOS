@@ -193,18 +193,22 @@ struct RatingCircles: View {
                 }.frame(width: 50, height: 50)
             }.buttonStyle(.springPress).accessibilityLabel("Your rating").accessibilityValue(mine.map { $0.formatted() } ?? "Not rated")
                 .accessibilityHint("Tap to rate").accessibilityIdentifier("title-personal-rating")
-            if let community {
-                Button { onCommunity?() } label: {
-                    ZStack {
-                        Circle().stroke(.white.opacity(0.1), lineWidth: 4)
+            // The community average is always shown beside your rating ("–" until a score is known),
+            // so the row never changes shape.
+            Button { onCommunity?() } label: {
+                ZStack {
+                    Circle().stroke(.white.opacity(0.1), lineWidth: 4)
+                    if let community {
                         Circle().trim(from: 0, to: min(1, max(0, community / 10))).stroke(Self.color(community), style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                         Text(community.formatted(.number.precision(.fractionLength(0...1)))).font(.system(size: 15, weight: .bold)).foregroundStyle(Self.color(community))
-                    }.frame(width: 46, height: 46).padding(2)
-                }.buttonStyle(.springPress).disabled(onCommunity == nil)
-                    .accessibilityLabel("Average rating").accessibilityValue(community.formatted(.number.precision(.fractionLength(1))) + " out of 10")
-                    .accessibilityIdentifier("title-community-rating")
-            }
+                    } else {
+                        Text("–").font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                    }
+                }.frame(width: 46, height: 46).padding(2)
+            }.buttonStyle(.springPress).disabled(onCommunity == nil)
+                .accessibilityLabel("Average rating").accessibilityValue(community.map { $0.formatted(.number.precision(.fractionLength(1))) + " out of 10" } ?? "Not known yet")
+                .accessibilityIdentifier("title-community-rating")
         }
     }
 }
@@ -220,7 +224,7 @@ struct TitleTagsSection: View {
             // Design: three rows of 52 pt pills (#17171d, #2a2a33 hairline) scrolling sideways together,
             // a 20 pt emoji and a 16 pt medium label, 8 pt apart.
             // Each row scrolls on its own and its pills sit 8 pt apart (no grid columns, so no gaps).
-            // Rows follow the count: up to 4 tags one row, up to 8 two, more three.
+            // Rows follow the count: up to 6 tags one row, more two (never three); every tag is shown.
             VStack(alignment: .leading, spacing: 16) {
                 ShowSectionHeading(title: "Tags", count: keywords.count)
                 VStack(alignment: .leading, spacing: 8) {
@@ -501,26 +505,40 @@ struct RelatedCollection: Identifiable, Hashable {
     private(set) var items: [RelatedCollection] = []
     private(set) var loaded = false
     private static var cache: [String: [RelatedCollection]] = [:]
+    /// True when there was no TMDB key on the phone and the diary server had nothing either.
+    private(set) var needsKey = false
     func load(store: DiaryStore, route: CatalogRoute, anime: Bool) async {
         let key = "\(route.kind.rawValue):\(route.id)"
         if let saved = Self.cache[key] { items = saved; loaded = true; return }
-        guard let extras = try? await TitleExtrasCache.load(store: store, route: route) else { loaded = true; return }
         var result: [RelatedCollection] = []
-        if let series = extras.collection {
-            result.append(RelatedCollection(kind: .series(series.id), name: series.name, count: nil,
-                                            posters: [series.backdropPath, series.posterPath].compactMap { CatalogTools.image($0, size: "w780") }))
+        func collectionCard(_ series: TitleCollectionRef) -> RelatedCollection {
+            RelatedCollection(kind: .series(series.id), name: series.name, count: nil,
+                              posters: [series.backdropPath, series.posterPath].compactMap { CatalogTools.image($0, size: "w780") })
         }
-        // Animation says nothing for an anime; its other genres are the interesting ones.
-        let genres = extras.genres.map(\.name).filter { !(anime && $0 == "Animation") }.prefix(6)
-        items = result
-        for genre in genres {
-            let query = RelatedCollection.filters(genre: genre, route: route, anime: anime).query(section: .genres, page: 1)
-            guard let page = try? await LiveDiscoveryService(store: store).page(query), !page.items.isEmpty else { continue }
-            let art = page.items.compactMap { CatalogTools.image($0.backdropPath, size: "w780") ?? $0.artwork }.prefix(2)
-            result.append(RelatedCollection(kind: .genre(genre), name: genre, count: page.totalResults, posters: Array(art)))
+        if let token = TMDBDirect.token(store) {
+            // The phone reads TMDB itself with your key; the diary server is only a backup.
+            guard let overview = try? await TMDBDirect.overview(route, token: token) else { loaded = true; return }
+            if let series = overview.collection { result.append(collectionCard(series)) }
             items = result
+            // Animation says nothing for an anime; its other genres are the interesting ones.
+            for genre in overview.genres.filter({ !(anime && $0.name == "Animation") }).prefix(6) {
+                guard let page = try? await TMDBDirect.genre(genre.id, kind: route.kind, anime: anime, token: token), (page.total ?? 0) > 0 else { continue }
+                result.append(RelatedCollection(kind: .genre(genre.name), name: genre.name, count: page.total, posters: page.artwork))
+                items = result
+            }
+        } else if let extras = try? await TitleExtrasCache.load(store: store, route: route) {
+            if let series = extras.collection { result.append(collectionCard(series)) }
+            items = result
+            for genre in extras.genres.map(\.name).filter({ !(anime && $0 == "Animation") }).prefix(6) {
+                let query = RelatedCollection.filters(genre: genre, route: route, anime: anime).query(section: .genres, page: 1)
+                guard let page = try? await LiveDiscoveryService(store: store).page(query), !page.items.isEmpty else { continue }
+                let art = page.items.compactMap { CatalogTools.image($0.backdropPath, size: "w780") ?? $0.artwork }.prefix(2)
+                result.append(RelatedCollection(kind: .genre(genre), name: genre, count: page.totalResults, posters: Array(art)))
+                items = result
+            }
         }
-        Self.cache[key] = result
+        needsKey = result.isEmpty && TMDBDirect.token(store) == nil
+        if !result.isEmpty { Self.cache[key] = result }
         loaded = true
     }
 }
