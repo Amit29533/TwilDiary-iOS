@@ -21,7 +21,7 @@ struct PersonProfilePage<Content: View>: View {
     /// The gallery under the header.
     var photos: [PersonPhoto] = []
     /// False when the page places the Photos shelf itself (a person: after About, as designed).
-    var showsPhotoShelf = true
+    var showsPhotoShelf = false
     /// Cover art of their best-known title behind the header (owner's request), with the title
     /// page's soft wash under it; nil keeps the plain accent glow.
     var backdrop: String? = nil
@@ -199,9 +199,10 @@ private struct ProfileFavourite: View {
             FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
             feedback += 1
         } label: {
+            // Clear Liquid Glass over the artwork, like the title page's ••• (owner's request).
             Image(systemName: saved ? "heart.fill" : "heart").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
-                .frame(width: 44, height: 44).background(Color(webHex: "#1c1c22").opacity(0.92), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 0.67)).contentShape(Circle())
+                .frame(width: 44, height: 44).contentShape(Circle())
+                .glassEffect(.clear.interactive(), in: Circle())
         }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
             .sensoryFeedback(.selection, trigger: feedback)

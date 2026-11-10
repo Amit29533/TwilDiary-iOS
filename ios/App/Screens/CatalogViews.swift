@@ -115,7 +115,7 @@ struct CatalogSearchView: View {
                 }
                 // Online (TMDB): only while it's loading, has results, or failed.
                 if (loading && results.isEmpty) || !visibleOnline.isEmpty || failure != nil {
-                if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows · TMDB" : "Not In Library · TMDB").font(.system(size: 15, weight: .semibold)) }
+                if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows" : "Not in library").font(.system(size: 15, weight: .semibold)) }
                 if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
                 if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
                 CollectionLayout(grid: grid, columns: 3) { ForEach(Array(visibleOnline.prefix(onlineShown)), id: \.key) { item in

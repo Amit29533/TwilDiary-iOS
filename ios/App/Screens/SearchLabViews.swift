@@ -54,7 +54,7 @@ struct SearchLabView: View {
                         }
                     }
                 }
-                section("Minimum rating", badge: "TMDB") {
+                section("Minimum rating") {
                     HStack(spacing: 8) {
                         ForEach(["0", "6", "7", "8", "9"], id: \.self) { value in
                             LabChip(label: value == "0" ? "Any" : value + "+", on: filters.minimum == value, wide: true) { filters.minimum = value }
@@ -102,7 +102,7 @@ struct SearchLabView: View {
             .diaryScreenBackground().navigationTitle("Search Lab").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Reset") { filters = Self.blank; tagQuery = ""; foundTags = []; allGenres = false }
+                    Button { filters = Self.blank; tagQuery = ""; foundTags = []; allGenres = false } label: { Text("Reset").lineLimit(1).fixedSize() }
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 16).frame(height: 40).background(HomeStyle.chip, in: Capsule())
                         .buttonStyle(.plain).disabled(filters == Self.blank).opacity(filters == Self.blank ? 0.55 : 1)

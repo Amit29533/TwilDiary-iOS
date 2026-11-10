@@ -24,10 +24,7 @@ struct TrashView: View {
                 // Design (boards 11 and 14): a 44 pt tile, "Removed titles", and the count or Empty on the right.
                 HStack(spacing: 14) {
                     SettingsTile(symbol: "trash", size: 44)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Removed titles").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                        Text("Kept with their history; disk files stay untouched.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
-                    }
+                    Text("Removed titles").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 0)
                     if archived.isEmpty {
                         Text("Empty").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
@@ -42,7 +39,7 @@ struct TrashView: View {
                         }.accessibilityLabel("Empty Trash").accessibilityIdentifier("empty-trash")
                     }
                 }.padding(17).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
-                CategoryPicker(selection: $category).padding(.horizontal, -14)
+                CategoryPicker(selection: $category, pills: true).padding(.horizontal, -14)
                 HStack(spacing: 8) {
                     HStack(spacing: 4) {
                         Text("In Trash").foregroundStyle(HomeStyle.secondary)

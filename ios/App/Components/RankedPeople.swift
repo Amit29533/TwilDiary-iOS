@@ -106,11 +106,6 @@ struct MostWatchedSection<Content: View>: View {
                         .accessibilityValue(ranking?.status ?? "").accessibilityAddTraits(.isHeader)
                 }
                 Spacer(minLength: 4)
-                if let user {
-                    NavigationLink(value: AppDestination.anilist) { RankingSourcePill(text: "AniList").frame(minHeight: 44).contentShape(Capsule()) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("AniList profile " + user + ", change in Settings").accessibilityIdentifier("anilist-user")
-                }
                 if let ranking, !ranking.people.isEmpty {
                     SectionMoreLink(label: "View all \(ranking.people.count)", value: ranking, identifier: ranking.identifier + "-more")
                 }
@@ -183,7 +178,6 @@ struct PeopleRankingView: View {
                 HStack(spacing: 12) {
                     Text(route.category).font(.system(size: 34, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.primary)
                         .lineLimit(1).minimumScaleFactor(0.8).accessibilityIdentifier("people-ranking-category")
-                    if let source = route.source { RankingSourcePill(text: source) }
                 }.padding(.bottom, 4)
                 if let status = route.status { Text(status).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
                 ForEach(Array(route.people.enumerated()), id: \.element.id) { index, person in

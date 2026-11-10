@@ -116,7 +116,7 @@ struct LibraryView: View {
                 Picker("Order", selection: $sort) {
                     Text("Recently added").tag(LibraryQuery.Sort.added); Text("Library order").tag(LibraryQuery.Sort.library)
                     Text("Title A–Z").tag(LibraryQuery.Sort.title); Text("Newest year").tag(LibraryQuery.Sort.year)
-                    Text("Highest " + ratingSource.label + " rating").tag(LibraryQuery.Sort.score)
+                    Text("Highest rating").tag(LibraryQuery.Sort.score)
                 }
             } label: {
                 FilterPill(label: sortLabel, icon: "arrow-down-up")
@@ -146,7 +146,7 @@ struct LibraryView: View {
         switch layout { case .grid: list = true; genreRows = false; case .list: list = false; genreRows = true; case .shelves: list = false; genreRows = false }
     }
     private var sortLabel: String {
-        switch sort { case .added: "Recently added"; case .title: "Title A–Z"; case .year: "Newest year"; case .score: "Highest " + ratingSource.label + " rating"; case .library: "Library order" }
+        switch sort { case .added: "Recently added"; case .title: "Title A–Z"; case .year: "Newest year"; case .score: "Highest rating"; case .library: "Library order" }
     }
 
     // MARK: Content
@@ -404,17 +404,6 @@ struct LibraryView: View {
                         ForEach(HomeDiskShortcut.all) { disk in sheetChip(disk.label, icon: "internaldrive", on: drive == disk.key) { drive = disk.key } }
                         ForEach(extraDisks) { disk in sheetChip(disk.deviceName + " · " + disk.letters.joined(separator: " / "), icon: "internaldrive", on: drive == disk.key) { drive = disk.key } }
                     }
-                    sheetLabel("Public rating from")
-                    HStack(spacing: 4) {
-                        ForEach(PublicRatingSource.allCases, id: \.self) { source in
-                            let on = ratingSource == source
-                            Button { ratingSource = source } label: {
-                                Text(source.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.primary)
-                                    .frame(maxWidth: .infinity).frame(height: 44).background(on ? theme.accent : .clear, in: Capsule()).contentShape(Capsule())
-                            }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
-                        }
-                    }.padding(4).background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-                        .accessibilityElement(children: .contain).accessibilityIdentifier("filter-rating-source")
                     sheetLabel("Show")
                     VStack(spacing: 0) {
                         Toggle(isOn: $favoritesOnly) { Text("Favorites only").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(maxWidth: .infinity, alignment: .leading) }
@@ -447,7 +436,7 @@ struct LibraryView: View {
                     }.buttonStyle(.plain).accessibilityLabel("Close")
                 }.sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Clear all") { genres = []; tag = ""; drive = ""; favoritesOnly = false }
+                    Button("Clear") { genres = []; tag = ""; drive = ""; favoritesOnly = false }
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 16).frame(height: 40).background(HomeStyle.chip, in: Capsule())
                         .buttonStyle(.plain).disabled(activeFilterCount == 0).opacity(activeFilterCount == 0 ? 0.5 : 1)

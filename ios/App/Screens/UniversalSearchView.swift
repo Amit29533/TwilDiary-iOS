@@ -28,10 +28,6 @@ struct SearchLandingView: View {
     @State private var failure: String?
     @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    private func sourceBadge(_ name: String) -> some View {
-        Text(name).font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(webHex: "#c5c0cf"))
-            .padding(.horizontal, 10).frame(height: 26).background(.white.opacity(0.08), in: Capsule())
-    }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !recent.isEmpty {
@@ -89,7 +85,7 @@ struct SearchLandingView: View {
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
             if loading && items.isEmpty && shows.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading trending titles") }
-            if !items.isEmpty { HStack { Text("Trending movies").font(.system(size: 22, weight: .bold)).tracking(-0.5); Spacer(); sourceBadge("TMDB") } }
+            if !items.isEmpty { Text("Trending movies").font(.system(size: 22, weight: .bold)).tracking(-0.5) }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
@@ -104,7 +100,7 @@ struct SearchLandingView: View {
                 }
             }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending")
             if !anime.isEmpty {
-                HStack { Text("Trending anime").font(.system(size: 22, weight: .bold)).tracking(-0.5); Spacer(); sourceBadge("ANILIST") }
+                Text("Trending anime").font(.system(size: 22, weight: .bold)).tracking(-0.5)
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(anime) { item in
@@ -188,7 +184,7 @@ struct SearchPeopleView: View {
                         Artwork(path: person.image, title: person.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
                         VStack(alignment: .leading, spacing: 3) {
                             Text(person.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
-                            Text(person.kind == "cast" ? "Cast · TMDB" : person.kind == "character" ? "Character · AniList" : "Voice actor · AniList")
+                            Text(person.kind == "cast" ? "Cast" : person.kind == "character" ? "Character" : "Voice actor")
                                 .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 4); Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78"))

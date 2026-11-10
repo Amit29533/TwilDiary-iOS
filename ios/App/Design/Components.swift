@@ -498,6 +498,8 @@ struct CategoryPicker: View {
     @Binding var selection: LibraryCategory
     /// Glance's design shows each category's count ("All 55", "Movies 8") on dark pills.
     var counts: [LibraryCategory: Int]? = nil
+    /// Trash: every category on its own dark pill (the reference design).
+    var pills = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The accent pill glides from one category to the next instead of jumping.
@@ -517,11 +519,11 @@ struct CategoryPicker: View {
                             Text(count.formatted()).foregroundStyle(selected ? theme.ink.opacity(0.75) : HomeStyle.secondary).monospacedDigit()
                         }
                     }.font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(selected ? theme.ink : counts == nil ? Color(webHex: "#c5c0cf") : HomeStyle.primary)
+                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(webHex: "#c5c0cf") : HomeStyle.primary)
                         .padding(.horizontal, counts == nil ? 16 : 14).frame(minHeight: 40)
                         .background {
                             if selected { Capsule().fill(theme.accent).matchedGeometryEffect(id: "category-pill", in: pill) }
-                            else if counts != nil { Capsule().fill(HomeStyle.round).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)) }
+                            else if counts != nil || pills { Capsule().fill(HomeStyle.round).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)) }
                         }
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selected ? .isSelected : [])
@@ -728,12 +730,15 @@ struct ProgressCard: View {
             HStack(alignment: .top, spacing: 14) {
                 Color.clear.frame(width: 66, height: 99)
                 VStack(alignment: .leading, spacing: 4) {
-                    Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(1).truncationMode(.tail) }
-                        .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    Text(glanceLine).font(.system(size: 13)).foregroundStyle(Color(webHex: "#b4b3c2")).lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 10)
-                    HStack(alignment: .center, spacing: 12) {
-                        glanceBar
+                    // The name gets two lines; the episode line sits centred just above the bar.
+                    Button { openTitle() } label: {
+                        Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white)
+                            .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading)
+                    }.buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
+                    if let glanceTime { Text(glanceTime).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                    Spacer(minLength: 8)
+                    HStack(alignment: .center, spacing: 14) {
+                        barWithLine(color: Color(webHex: "#c5c0cf"))
                         nextButton
                     }
                 }.frame(maxWidth: .infinity, minHeight: 105, alignment: .topLeading)
@@ -753,13 +758,13 @@ struct ProgressCard: View {
                     // One line each, ending in … when long, so every card in a row is the same height.
                     Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).accessibilityIdentifier("progress-title-" + title.id)
-                    Text(glanceLine).font(.system(size: 13)).foregroundStyle(Color(webHex: "#b4b3c2")).lineLimit(1).truncationMode(.tail)
+                    Text(glanceTime ?? " ").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                 }.frame(maxWidth: .infinity, alignment: .topLeading)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }
             VStack(alignment: .leading, spacing: 10) {
-                glanceBar
+                barWithLine(color: Color(webHex: "#c5c0cf"))
                 HStack { Spacer(minLength: 0); nextButton }
             }
         }.padding(10)
@@ -777,8 +782,8 @@ struct ProgressCard: View {
                     Text(title.name).font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(.white)
                         .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
                 }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-                Text(glanceLine).font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).modifier(TextShadow(on: true))
-                HStack(alignment: .center, spacing: 12) { glanceBar; nextButton }.padding(.top, 10)
+                if let glanceTime { Text(glanceTime).font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).modifier(TextShadow(on: true)) }
+                HStack(alignment: .center, spacing: 14) { barWithLine(color: Color(webHex: "#e6e2ef"), shadow: true); nextButton }.padding(.top, 8)
             }
         }.padding(16).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
@@ -858,25 +863,31 @@ struct ProgressCard: View {
     }
     // MARK: Glance (owner's design): "S1 · E1 of 12 · 4h 24m left", a bar with its percent, "+ E2".
 
-    /// "S1 · E1 of 12 · 4h 24m left"; not started: "S2 · E0 of 1 · 24m"; movies: "Movie · 1h 54m".
-    private var glanceLine: String {
-        guard title.isSeries else { return (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · ") }
-        guard let card else { return title.categoryName }
-        let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
-        let time = remaining.flatMap { $0 > 0 ? DiaryDate.duration($0) + (card.progress.watched > 0 ? " left" : "") : nil }
-        return [season, "E\(card.progress.watched) of \(card.progress.total)", time].compactMap { $0 }.joined(separator: " · ")
-    }
-    private var glanceBar: some View {
-        HStack(spacing: 10) {
+    /// "S1 · E12 of 28 · 43%" centred just above a plain bar (the owner's fix: the line used to sit
+    /// under the title and the percent beside the bar, which crowded the card).
+    private func barWithLine(color: Color, shadow: Bool = false) -> some View {
+        VStack(spacing: 6) {
+            Text(progressLine).font(.system(size: 12, weight: .semibold)).foregroundStyle(color).monospacedDigit()
+                .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .center)
+                .modifier(TextShadow(on: shadow))
             GeometryReader { proxy in
                 Capsule().fill(.white.opacity(0.14))
                     .overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: max(fraction > 0 ? 6 : 0, proxy.size.width * fraction)) }
             }.frame(height: 5)
-            if fraction > 0 || card == nil {
-                Text(card == nil ? "–" : "\(Int((fraction * 100).rounded()))%").font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(Color(webHex: "#b4b3c2")).fixedSize()
-            }
-        }.accessibilityElement(children: .ignore).accessibilityLabel("\(Int((fraction * 100).rounded())) percent watched")
+        }.accessibilityElement(children: .ignore).accessibilityLabel(progressLine + ", \(Int((fraction * 100).rounded())) percent watched")
+    }
+    /// "S1 · E12 of 28 · 43%"; movies: "Movie · 1h 54m".
+    private var progressLine: String {
+        guard title.isSeries else { return (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · ") }
+        guard let card else { return title.categoryName }
+        let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
+        let percent = fraction > 0 ? "\(Int((fraction * 100).rounded()))%" : nil
+        return [season, "E\(card.progress.watched) of \(card.progress.total)", percent].compactMap { $0 }.joined(separator: " · ")
+    }
+    /// "6h 24m left" under the title ("24m" before the first episode); nil when unknown.
+    private var glanceTime: String? {
+        guard title.isSeries, let card else { return nil }
+        return remaining.flatMap { $0 > 0 ? DiaryDate.duration($0) + (card.progress.watched > 0 ? " left" : "") : nil }
     }
     /// "+ E2" in the accent gradient; "▶ Start" (dark) before the first episode; "Log watch" for movies.
     private var nextButton: some View {

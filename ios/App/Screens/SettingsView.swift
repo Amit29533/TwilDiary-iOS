@@ -80,8 +80,11 @@ struct SettingsView: View {
                     settingsSection("TRACKING") {
                         HStack(spacing: 12) {
                             tile("eye.slash.fill", .indigo)
-                            Toggle(isOn: $hideSpoilers) { VStack(alignment: .leading, spacing: 2) { Text("Hide spoilers").font(.system(size: 15, weight: .semibold)); Text("Names and stills until watched").font(.system(size: 12)).foregroundStyle(.secondary) } }.tint(theme.accent)
-                        }.padding(.horizontal, 15).frame(minHeight: 64)
+                            Toggle(isOn: $hideSpoilers) {
+                                VStack(alignment: .leading, spacing: 2) { Text("Hide spoilers").font(.system(size: 15, weight: .semibold)); Text("Names and stills until watched").font(.system(size: 12)).foregroundStyle(.secondary) }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }.tint(theme.accent)
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).frame(minHeight: 64)
                         divider
                         NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
                         divider

@@ -858,16 +858,16 @@ import UIKit
         XCTAssertTrue(minimum.waitForExistence(timeout: 5)); minimum.tap(); app.buttons["9+"].tap()
         XCTAssertTrue(app.staticTexts["No titles in this mix"].waitForExistence(timeout: 5)); capture("Explore filtered empty")
         app.buttons["Reset filters"].tap()
-        XCTAssertTrue(app.staticTexts["12 titles"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'catalog-'")).firstMatch.waitForExistence(timeout: 5))
         // No "Load more" button: reaching the end loads the second page by itself.
         XCTAssertFalse(app.buttons["Load more"].exists)
         let lastResult = app.buttons["catalog-tv:900002"]
         for _ in 0..<14 { if lastResult.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(lastResult.isHittable, "The second page must publish its final unique result")
         capture("Explore second page")
-        let count = app.staticTexts["16 titles"]
-        for _ in 0..<12 { if count.isHittable { break }; app.swipeDown() }
-        XCTAssertTrue(count.isHittable)
+        // Scrolled past the heading, the bar names the list instead of "Explore".
+        XCTAssertTrue(app.navigationBars.staticTexts["Highest rated shows"].exists || app.navigationBars.staticTexts["Highest rated"].exists)
+        for _ in 0..<12 { if app.buttons["explore-minimum"].isHittable { break }; app.swipeDown() }
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["explore-daily-pick"].waitForExistence(timeout: 5))
     }

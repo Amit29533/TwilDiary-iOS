@@ -41,7 +41,6 @@ struct PersonView: View {
                             intro
                             about
                         }
-                        PersonPhotoShelf(name: person?.name ?? actor?.name ?? "", photos: person?.photos ?? [])
                         watched
                         if let person {
                             let sections = store.personSections(person)
@@ -183,21 +182,23 @@ struct PersonView: View {
                             identifier: "person-more-" + route.section.rawValue + (route.onServer ? "-server" : ""))
         }
     }
-    /// Three characters, like every other section, then the round > to all of them.
+    /// Characters as a sideways row (the first 20), then the round > to all of them.
     private func roles(_ actor: AniVoiceActorDetail) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Characters \(actor.roles.count)").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 Spacer(minLength: 4)
-                if actor.roles.count > 3 {
+                if actor.roles.count > 1 {
                     SectionMoreLink(label: "All characters", value: VoiceActorCharactersRoute(id: actor.id, name: actor.name),
                                     identifier: "voice-actor-characters-more")
                 }
             }
-            LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3),
-                      alignment: .leading, spacing: 16) {
-                ForEach(actor.roles.prefix(3)) { role in VoiceActorRoleCard(role: role, grid: !typeSize.isAccessibilitySize) }
-            }
+            ProfileShelf {
+                ForEach(actor.roles.prefix(20)) { role in
+                    VoiceActorRoleCard(role: role, grid: !typeSize.isAccessibilitySize)
+                        .containerRelativeFrame(.horizontal) { width, _ in typeSize.isAccessibilitySize ? width : min(150, max(104, (width - 24) / 2.85)) }
+                }
+            }.scrollClipDisabled()
         }
     }
 
