@@ -1,4 +1,5 @@
 import SwiftUI
+import TwilDiaryCore
 
 // The owner's Settings design (Settings Redesign.html): every settings page is built from these.
 // Cards are #0e0e12 with a #23232b hairline and 22 pt corners; rows are 64 pt with 15 pt padding,
@@ -142,4 +143,48 @@ struct SettingsToggleStyle: ToggleStyle {
 struct SettingsFootnote: View {
     let text: String
     var body: some View { Text(text).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
+}
+
+/// The Episodes page's season card (owner's design "Season — line in the middle"): the season
+/// pill, "N of T watched" over a 6 pt bar over the time left, and the percentage. The same card on
+/// a saved title and a preview (where it reads 0 of T and the season's full running time).
+struct SeasonProgressCard: View {
+    @Binding var season: Int
+    let seasons: [Int]
+    let watched: Int
+    let total: Int
+    let remainingMinutes: Int?
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var percent: Int { total > 0 ? Int((Double(min(watched, total)) / Double(total) * 100).rounded()) : 0 }
+    private var remaining: String {
+        if total > 0 && watched >= total { return "Finished" }
+        guard let minutes = remainingMinutes, minutes > 0 else { return "" }
+        return DiaryDate.duration(minutes) + " left"
+    }
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Menu {
+                Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(.white).lineLimit(1)
+                    if seasons.count > 1 { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(webHex: "#A78BDB")) }
+                }.padding(.leading, 16).padding(.trailing, 14).frame(minHeight: 44)
+                    .background(Color(webHex: "#1E1E22"), in: Capsule()).fixedSize()
+            }.disabled(seasons.count < 2).accessibilityLabel("Choose season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)")
+                .accessibilityIdentifier("episodes-page-season")
+            VStack(spacing: 5) {
+                Text("\(watched) of \(total) watched").font(.system(size: 13, weight: .medium)).foregroundStyle(Color(webHex: "#C4C4CC")).lineLimit(1).monospacedDigit()
+                Capsule().fill(Color(webHex: "#26262B")).frame(height: 6)
+                    .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * CGFloat(percent) / 100) } }
+                    .accessibilityHidden(true)
+                Text(remaining).font(.system(size: 13)).foregroundStyle(Color(webHex: "#9A9AA3")).lineLimit(1).monospacedDigit()
+            }.frame(maxWidth: .infinity)
+            Text("\(percent)%").font(.system(size: 28, weight: .bold)).tracking(-0.56).monospacedDigit().foregroundStyle(theme.accent)
+                .frame(minWidth: 58, alignment: .trailing)
+        }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
+            .background(Color(webHex: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.07), lineWidth: 1))
+            .accessibilityElement(children: .contain)
+    }
 }

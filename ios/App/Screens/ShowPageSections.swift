@@ -243,10 +243,10 @@ struct TitleTagsSection: View {
     }
     private func pill(_ keyword: TitleKeyword) -> some View {
         NavigationLink(value: route(keyword)) {
-            HStack(spacing: 10) {
-                Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 20))
-                Text(keyword.name.capitalizedTag).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-            }.padding(.horizontal, 17).frame(height: 52).fixedSize()
+            HStack(spacing: 8) {
+                Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 17))
+                Text(keyword.name.capitalizedTag).font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            }.padding(.horizontal, 14).frame(height: 44).fixedSize()
                 .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(Color(webHex: "#2a2a33"), lineWidth: HomeStyle.hairline))
         }.buttonStyle(.springPress).accessibilityIdentifier("title-tag-\(keyword.id)")
     }

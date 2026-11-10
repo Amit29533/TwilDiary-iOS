@@ -316,30 +316,8 @@ struct EpisodesPage: View {
 
     private func seasonCard(_ title: MediaTitle) -> some View {
         let progress = store.seasonProgress(title, season: season)
-        let seasons = EpisodeSelection.seasons(in: store.titleScope(titleID), titleID: titleID)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Menu {
-                    Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
-                } label: {
-                    HStack(spacing: 7) {
-                        Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                        if seasons.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(.secondary) }
-                    }.padding(.horizontal, 16).frame(height: 42).background(.white.opacity(0.08), in: Capsule())
-                }.disabled(seasons.count < 2).accessibilityIdentifier("episodes-page-season")
-                Spacer(minLength: 0)
-                Text("\(Int((progress.fraction * 100).rounded()))%").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
-            }
-            HStack {
-                Text("\(progress.watched) of \(progress.total) watched")
-                Spacer(minLength: 0)
-                if let minutes = progress.remainingMinutes, minutes > 0 { Text(DiaryDate.duration(minutes) + " left") }
-            }.font(.system(size: 14)).foregroundStyle(.secondary)
-            Capsule().fill(.white.opacity(0.1)).frame(height: 7)
-                .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * progress.fraction) } }
-                .accessibilityHidden(true)
-        }.padding(16).background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.08)))
+        return SeasonProgressCard(season: $season, seasons: EpisodeSelection.seasons(in: store.titleScope(titleID), titleID: titleID),
+                                  watched: progress.watched, total: progress.total, remainingMinutes: progress.remainingMinutes)
     }
 
     @ViewBuilder private func list(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
@@ -481,6 +459,8 @@ struct PreviewEpisodesPage: View {
     @State private var selected: Int?
     @State private var sheetEpisode: Int?
     @State private var forward = true
+    private enum Filter { case all, watched, toWatch }
+    @State private var filter = Filter.all
     init(route: CatalogRoute, initialSeason: Int) { self.route = route; _season = State(initialValue: initialSeason) }
     private func makeController() -> CatalogEpisodeController {
         if let controller { return controller }
@@ -494,15 +474,25 @@ struct PreviewEpisodesPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 if let details { seasonCard(details, count: items.count) }
-                if !items.isEmpty { HStack { ShowFilterChip(label: "All \(items.count)", on: true) {} ; Spacer(minLength: 0) } }
+                if !items.isEmpty {
+                    HStack(spacing: 8) {
+                        ShowFilterChip(label: "All \(items.count)", on: filter == .all) { filter = .all }
+                        ShowFilterChip(label: "Watched 0", on: filter == .watched) { filter = .watched }
+                        ShowFilterChip(label: "To watch \(items.count)", on: filter == .toWatch) { filter = .toWatch }
+                    }
+                }
                 if controller?.loading == true && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
                 if let error = controller?.error { RetryNotice(message: error) { Task { await controller?.load(season, reveal: !hideSpoilers, force: true) } } }
                 if items.isEmpty && controller?.loading == false { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
                 if !items.isEmpty {
-                    // As on the title page: the first episodes, then the rest folded until tapped.
-                    let window = EpisodeWindow(count: items.count, focus: 0)
-                    list(Array(items[window.shown]))
-                    if !window.after.isEmpty { group("after", Array(items[window.after])) }
+                    if filter == .all {
+                        // As on the title page: the first episodes, then the rest folded until tapped.
+                        let window = EpisodeWindow(count: items.count, focus: 0)
+                        list(Array(items[window.shown]))
+                        if !window.after.isEmpty { group("after", Array(items[window.after])) }
+                    } else if filter == .watched {
+                        Text("Nothing watched in this season yet.").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8)
+                    } else { list(items) }
                 }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
@@ -523,23 +513,10 @@ struct PreviewEpisodesPage: View {
     }
 
     private func seasonCard(_ details: CatalogDetails, count: Int) -> some View {
-        let seasons = (details.seasons ?? []).map(\.number)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Menu {
-                    Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
-                } label: {
-                    HStack(spacing: 7) {
-                        Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                        if seasons.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(.secondary) }
-                    }.padding(.horizontal, 16).frame(height: 42).background(.white.opacity(0.08), in: Capsule())
-                }.disabled(seasons.count < 2).accessibilityIdentifier("episodes-page-season")
-                Spacer(minLength: 0)
-            }
-            Text([count.counted("episode", "episodes"), details.runtimeMinutes.map { DiaryDate.duration($0 * count) }].compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 14)).foregroundStyle(.secondary)
-        }.padding(16).background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.08)))
+        let expected = details.seasons?.first(where: { $0.number == season })?.expectedEpisodes ?? 0
+        let total = max(count, expected)
+        return SeasonProgressCard(season: $season, seasons: (details.seasons ?? []).map(\.number), watched: 0, total: total,
+                                  remainingMinutes: details.runtimeMinutes.map { $0 * total })
     }
 
     @ViewBuilder private func list(_ episodes: [CatalogEpisode]) -> some View {

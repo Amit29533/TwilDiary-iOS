@@ -62,7 +62,7 @@ struct TitleHero<Ratings: View>: View {
                 }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
             }
             if ratingsBelow { ratings }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 synopsisLead
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
                     synopsisWidth = width; measureSynopsis()
@@ -70,10 +70,10 @@ struct TitleHero<Ratings: View>: View {
                 if expanded && !synopsisParts.continuation.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(synopsisParts.continuation.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
+                            .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
                             .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("title-synopsis-continuation")
-                        Button("Less") { setExpanded(false) }.font(.system(size: 14, weight: .semibold)).frame(minHeight: 44)
+                        Button("Less") { setExpanded(false) }.font(.system(size: 17, weight: .semibold)).frame(minHeight: 44)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityElement(children: .contain).accessibilityIdentifier("title-synopsis-expanded")
                         .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 6)))
@@ -86,14 +86,14 @@ struct TitleHero<Ratings: View>: View {
     private var synopsisLead: some View {
         let hasOverflow = !synopsisParts.continuation.isEmpty
         return Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
-            .font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
+            .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
             .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, 36)
+            .padding(.trailing, 48)
             .accessibilityIdentifier("title-synopsis-text")
             .overlay(alignment: .bottomTrailing) {
                 if !expanded && hasOverflow {
-                    Button("More") { setExpanded(true) }.font(.system(size: 14, weight: .semibold))
-                        .frame(width: 44, height: 44).offset(y: 8)
+                    Button("More") { setExpanded(true) }.font(.system(size: 17, weight: .semibold))
+                        .frame(width: 52, height: 44).offset(y: 10)
                 }
             }
     }
@@ -102,7 +102,7 @@ struct TitleHero<Ratings: View>: View {
     }
     private func measureSynopsis() {
         guard synopsisWidth > 36 else { return }
-        synopsisParts = SynopsisTextLayout.split(synopsisText, width: synopsisWidth - 36)
+        synopsisParts = SynopsisTextLayout.split(synopsisText, width: synopsisWidth - 48)
     }
 
 }

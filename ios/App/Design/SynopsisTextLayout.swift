@@ -12,7 +12,7 @@ import UIKit
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 3
         paragraph.lineBreakMode = .byWordWrapping
-        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: 14), .paragraphStyle: paragraph])
+        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph])
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0

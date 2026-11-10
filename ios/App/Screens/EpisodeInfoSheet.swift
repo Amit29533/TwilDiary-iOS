@@ -134,12 +134,12 @@ struct EpisodeInfoSheet: View {
     @ViewBuilder private var summaryText: some View {
         let text = hidden ? "Watch it or tap Reveal on the show page to read this summary." : summary
         VStack(alignment: .leading, spacing: 2) {
-            Text(text).font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.dateChipText)
+            Text(text).font(.system(size: 16)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
                 .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("episode-summary-\(episode.number)")
             if !expanded && text.count > 150 {
                 Button("More") { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { expanded = true } }
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 32)
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 32)
             }
         }
     }

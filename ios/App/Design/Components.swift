@@ -642,11 +642,14 @@ struct ProgressCard: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     GeometryReader { proxy in RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.28)).overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(width: 186, height: 5)
-                    HStack(spacing: 30) {
+                    // Held to the bar's width: a long label ("Time unknown") shortens with … instead of
+                    // pushing the − / count / + over, which wrapped the count onto two lines.
+                    HStack(spacing: 12) {
                         // Share and episode count come from the same card, so they always agree.
-                        Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete")
+                        Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete").layoutPriority(1)
+                        Spacer(minLength: 0)
                         if let left = cardText?.timeLeft { Text(left).monospacedDigit() }
-                    }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).fixedSize()
+                    }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).frame(width: 186)
                 }
                 Spacer(minLength: 0)
                 controls
@@ -788,7 +791,7 @@ struct ProgressCard: View {
                     .contentShape(Rectangle().inset(by: -5))
             }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
             Text(card.map { "\($0.progress.watched) / \($0.progress.total)" } ?? "–").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
-                .monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
+                .monospacedDigit().lineLimit(1).fixedSize().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
                 .accessibilityIdentifier("watch-count-" + title.id)
             Button { Task { await markWatch() } } label: {
                 actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(Color(webHex: "#0b0b10"))
