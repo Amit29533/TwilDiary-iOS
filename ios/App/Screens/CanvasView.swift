@@ -1,8 +1,8 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Canvas (owner's design): Movies · Shows · Lists as large text tabs, a row of filter pills,
-/// then an artwork mosaic for titles or poster-collage cards for Trakt lists.
+/// Canvas (owner's design): Movies · Shows · Lists as a lilac segmented pill in the top bar, a
+/// row of filter pills, then an artwork mosaic for titles or poster-collage cards for Trakt lists.
 struct CanvasView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("canvasTab") private var tab = CanvasTab.movies.rawValue
@@ -29,7 +29,13 @@ private struct CanvasContent: View {
     @State private var lists: CanvasListsLoader
     /// Sort and list choices are remembered between visits; one-off filters (genre, year, rating) start fresh.
     @AppStorage("canvasSort") private var sort = CanvasSort.popular
-    @State private var genre = ""
+    /// Genres picked in the Genres sheet (any number up to six; all must match). "Anime" is
+    /// Animation made in Japanese.
+    @State private var genres: [String] = []
+    @State private var anime = false
+    @State private var showGenres = false
+    @Namespace private var tabSpace
+    @State private var pageWidth: CGFloat = 390
     @State private var network: Int?
     @State private var year = ""
     @State private var minimum = "0"
@@ -46,15 +52,30 @@ private struct CanvasContent: View {
     private var query: [String: String] {
         // An unfinished year is left out rather than sent and refused.
         let validYear = Int(year).map { year.count == 4 && (1880...2200).contains($0) } ?? false
-        var value = ["source": "tmdb", "type": kind.rawValue, "sort": sort.rawValue, "genre": genre, "year": validYear ? year : "", "minimum": minimum, "page": "1"]
+        var value = ["source": "tmdb", "type": kind.rawValue, "sort": sort.rawValue, "genre": "", "year": validYear ? year : "", "minimum": minimum, "page": "1"]
         if let network, kind == .tv { value["network"] = String(network) }
+        if !chosenGenres.isEmpty { value["genres"] = chosenGenres.joined(separator: ",") }
+        if anime { value["language"] = "ja" }
         return value
+    }
+    /// The genres the list is narrowed to (Anime adds Animation).
+    private var chosenGenres: [String] {
+        let available = Set(DiscoveryGenre.names(type: kind.rawValue))
+        var value = genres.filter { available.contains($0) }
+        if anime && !value.contains("Animation") { value.append("Animation") }
+        return Array(value.prefix(6))
+    }
+    private var genreLabel: String {
+        let names = (anime ? ["Anime"] : []) + genres
+        guard let first = names.first else { return "Genres" }
+        return names.count == 1 ? first : first + " +\(names.count - 1)"
     }
     private var titles: [CatalogItem] {
         guard sort == .recommended else { return results.items }
         var filters = DiscoveryFilters(section: .recommended)
-        filters.type = kind.rawValue; filters.genre = genre; filters.year = year; filters.minimum = minimum
-        return filters.applying(recommendations.items)
+        filters.type = kind.rawValue; filters.year = year; filters.minimum = minimum
+        let wanted = chosenGenres
+        return filters.applying(recommendations.items).filter { item in wanted.allSatisfy { item.genres?.contains($0) == true } }
     }
     var body: some View {
         // Movies · Shows · Lists sit in the frosted top bar; the pills and art scroll underneath.
@@ -65,7 +86,12 @@ private struct CanvasContent: View {
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .principal) { tabs } }
+            // Centred, as wide as the bar allows without touching the back button.
+            .toolbar { ToolbarItem(placement: .principal) { tabs.frame(width: max(220, pageWidth - 128)) }.sharedBackgroundVisibility(.hidden) }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
+            .sheet(isPresented: $showGenres) {
+                CanvasGenreSheet(names: DiscoveryGenre.names(type: kind.rawValue), genres: $genres, anime: $anime)
+            }
             .task(id: query) {
                 guard tab != .lists, sort != .recommended else { return }
                 do { try await Task.sleep(for: .milliseconds(150)); try Task.checkCancellation() } catch { return }
@@ -77,31 +103,39 @@ private struct CanvasContent: View {
             .task(id: [tab.rawValue, listSort, listKind]) { if tab == .lists { await lists.load(sort: listSort, kind: listKind) } }
     }
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
-    /// The gap after the back button matches the gap between tabs (the bar leaves ~14 pt).
+    /// Movies · Shows · Lists in one dark track; the chosen one is a lilac pill that slides across.
     private var tabs: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 4) {
             ForEach(CanvasTab.allCases, id: \.self) { item in
-                Button { tab = item; if item == .movies { network = nil } } label: {
-                    Text(item.label).font(.system(size: 20, weight: .bold)).tracking(-0.5)
-                        .foregroundStyle(tab == item ? Color(webHex: "#f3f0f7") : .white.opacity(0.4))
-                }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
+                let on = tab == item
+                Button { withAnimation(.snappy(duration: 0.28)) { tab = item }; if item == .movies { network = nil } } label: {
+                    Text(item.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
+                        .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
+                        .frame(maxWidth: .infinity).frame(height: 36)
+                        .background {
+                            if on {
+                                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
+                                    .matchedGeometryEffect(id: "canvas-tab", in: tabSpace)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
-            Spacer(minLength: 0)
-        }.padding(.leading, 6).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
     }
     private var pills: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 10) {
                 if tab == .lists {
                     Menu { Picker("Sort lists", selection: $listSort) { Text("Trending").tag("trending"); Text("Popular").tag("popular") } }
-                        label: { pill(listSort.capitalized, icon: "sliders-horizontal") }.accessibilityIdentifier("canvas-list-sort")
+                        label: { pill(listSort.capitalized, icon: "arrow.up.arrow.down", accent: true) }.accessibilityIdentifier("canvas-list-sort")
                     Menu { Picker("List type", selection: $listKind) { Text("Personal").tag("personal"); Text("Official").tag("official") } }
                         label: { pill(listKind.capitalized) }.accessibilityIdentifier("canvas-list-kind")
                 } else {
                     Menu { Picker("Sort", selection: $sort) { ForEach(CanvasSort.allCases) { Text($0.label).tag($0) } } }
-                        label: { pill(sort.label, icon: "sliders-horizontal") }.accessibilityIdentifier("canvas-sort")
-                    Menu { Picker("Genre", selection: $genre) { Text("All genres").tag(""); ForEach(DiscoveryGenre.names(type: kind.rawValue), id: \.self) { Text($0).tag($0) } } }
-                        label: { pill(genre.isEmpty ? "Genres" : genre, active: !genre.isEmpty) }.accessibilityIdentifier("canvas-genre")
+                        label: { pill(sort.label, icon: "arrow.up.arrow.down", accent: true) }.accessibilityIdentifier("canvas-sort")
+                    Button { showGenres = true } label: { pill(genreLabel, active: !genres.isEmpty || anime) }
+                        .buttonStyle(.plain).accessibilityLabel("Genres, " + genreLabel).accessibilityIdentifier("canvas-genre")
                     if tab == .shows {
                         Menu { Picker("Network", selection: $network) { Text("All networks").tag(Int?.none); ForEach(CanvasNetwork.all, id: \.id) { Text($0.name).tag(Optional($0.id)) } } }
                             label: { pill(CanvasNetwork.all.first { $0.id == network }?.name ?? "Networks", active: network != nil) }
@@ -114,15 +148,24 @@ private struct CanvasContent: View {
                 }
             }.padding(.horizontal, 2)
         }.scrollIndicators(.hidden).scrollClipDisabled()
-            .onChange(of: tab) { _, _ in genre = "" }
+            .onChange(of: tab) { _, _ in
+                // Keep only the genres the other type has.
+                let available = Set(DiscoveryGenre.names(type: kind.rawValue)); genres = genres.filter { available.contains($0) }
+            }
     }
-    private func pill(_ label: String?, icon: String? = nil, active: Bool = false) -> some View {
-        HStack(spacing: 8) {
-            if let icon { DiaryIcon(name: icon, size: 18) }
-            if let label { Text(label).font(.system(size: 17, weight: .medium)).lineLimit(1); DiaryIcon(name: "chevron-down", size: 14) }
-        }.foregroundStyle(active ? theme.accent : Color(webHex: "#f3f0f7"))
-            .padding(.horizontal, label == nil ? 18 : 16).frame(height: 44)
-            .background(.white.opacity(0.09), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.14)))
+    /// A filter pill: the order pill is lilac-tinted with ⇅; a filter that's set turns lilac too.
+    private func pill(_ label: String, icon: String? = nil, active: Bool = false, accent: Bool = false) -> some View {
+        let tinted = active || accent
+        return HStack(spacing: 6) {
+            if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
+            Text(label).lineLimit(1).truncationMode(.tail).frame(maxWidth: 170)
+            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
+        }.font(.system(size: 15, weight: .semibold)).fixedSize()
+            .foregroundStyle(tinted ? HomeStyle.chipText : Color(webHex: "#e6e1ee"))
+            .padding(.horizontal, 14).frame(height: 40)
+            .background(tinted ? HomeStyle.chip : HomeStyle.card, in: Capsule())
+            .overlay(Capsule().strokeBorder(tinted ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
+            .frame(minHeight: 44).contentShape(Capsule())
     }
     @ViewBuilder private var titlesContent: some View {
         let items = titles
@@ -205,7 +248,7 @@ struct CanvasMosaic: View {
             .overlay(alignment: .bottomLeading) {
                 if wide {
                     Text(item.name).font(.system(size: width * 0.5 > 150 && item == items.first ? 26 : 18, weight: .bold)).tracking(-0.4)
-                        .foregroundStyle(.white).lineLimit(2).shadow(color: .black.opacity(0.6), radius: 6, y: 1).padding(16)
+                        .foregroundStyle(.white).lineLimit(1).truncationMode(.tail).shadow(color: .black.opacity(0.6), radius: 6, y: 1).padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
                 }
@@ -231,12 +274,66 @@ struct CanvasListCard: View {
                             .aspectRatio(1, contentMode: .fill).frame(minWidth: 0, maxWidth: .infinity).clipped()
                     } }
                 }
-            }.aspectRatio(1, contentMode: .fit).clipped()
-            VStack(alignment: .leading, spacing: 4) {
-                Text(list.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1)
-                Text("by " + list.user).font(.system(size: 14)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
-            }.padding(.horizontal, 12).padding(.vertical, 10)
-        }.background(.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityElement(children: .combine)
+            }.aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+                .padding([.horizontal, .top], 10)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(list.name).font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
+                Text("by " + list.user).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+            }.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 14)
+        }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+            .contentShape(RoundedRectangle(cornerRadius: 18)).accessibilityElement(children: .combine)
+    }
+}
+
+/// Genres: every genre as a chip, any number picked (up to six), with Reset and ✕.
+private struct CanvasGenreSheet: View {
+    let names: [String]
+    @Binding var genres: [String]
+    @Binding var anime: Bool
+    @Environment(\.dismiss) private var dismiss
+    private var options: [String] { (names + ["Anime"]).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending } }
+    private var count: Int { genres.count + (anime ? 1 : 0) }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Text("Genres").font(.system(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+                    Spacer()
+                    Button("Reset") { withAnimation(.snappy) { genres = []; anime = false } }
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain)
+                        .disabled(count == 0).opacity(count == 0 ? 0.45 : 1).frame(minHeight: 44).accessibilityIdentifier("canvas-genres-reset")
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                            .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
+                            .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    }.buttonStyle(.plain).accessibilityLabel("Close")
+                }
+                Text(count >= 6 ? "Up to six genres; remove one to pick another." : "Pick one or more genres.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                InlineFlowLayout {
+                    ForEach(options, id: \.self) { name in
+                        let on = name == "Anime" ? anime : genres.contains(name)
+                        Button { withAnimation(.snappy(duration: 0.2)) { toggle(name) } } label: {
+                            HStack(spacing: 6) {
+                                if on { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)) }
+                                Text(name).lineLimit(1)
+                            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#e6e1ee"))
+                                .padding(.horizontal, 15).frame(height: 40)
+                                .background(on ? AnyShapeStyle(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
+                                .overlay(Capsule().strokeBorder(on ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
+                                .contentShape(Capsule())
+                        }.buttonStyle(.plain).disabled(!on && count >= 6).opacity(!on && count >= 6 ? 0.45 : 1)
+                            .accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-genre-" + name)
+                    }
+                }
+            }.padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 30)
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).presentationBackground(Color(webHex: "#111116"))
+            .sensoryFeedback(.selection, trigger: count)
+    }
+    private func toggle(_ name: String) {
+        if name == "Anime" { anime.toggle(); return }
+        if let index = genres.firstIndex(of: name) { genres.remove(at: index) } else if count < 6 { genres.append(name) }
     }
 }
 

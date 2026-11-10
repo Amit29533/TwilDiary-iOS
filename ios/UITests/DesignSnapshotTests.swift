@@ -236,6 +236,27 @@ import XCTest
         }
     }
 
+    /// Canvas: Movies top to bottom, Shows, the Genres sheet with two picked, then Lists.
+    func testCanvasSnapshots() {
+        func openCanvas(_ app: XCUIApplication) {
+            let canvas = app.buttons["canvas-shortcut"]
+            for _ in 0..<4 where !(canvas.exists && canvas.isHittable) { app.swipeUp() }
+            if canvas.exists { canvas.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+        capture(tab: "home", name: "canvas", pages: 3, open: openCanvas)
+        capture(tab: "home", name: "canvasshows", pages: 1) { app in
+            openCanvas(app); app.buttons["canvas-tab-shows"].tap(); Thread.sleep(forTimeInterval: 3)
+        }
+        capture(tab: "home", name: "canvasgenres", pages: 1) { app in
+            openCanvas(app); app.buttons["canvas-genre"].tap(); Thread.sleep(forTimeInterval: 1.5)
+            app.buttons["canvas-genre-Animation"].tap(); app.buttons["canvas-genre-Anime"].tap(); Thread.sleep(forTimeInterval: 1)
+        }
+        capture(tab: "home", name: "canvaslists", pages: 2) { app in
+            openCanvas(app); app.buttons["canvas-tab-lists"].tap(); Thread.sleep(forTimeInterval: 3)
+        }
+    }
+
     /// Search: the start page top to bottom, then results for a query.
     func testSearchSnapshots() {
         capture(tab: "search", name: "search", pages: 3)
