@@ -342,19 +342,25 @@ private struct CatalogSeasonPreview: View {
     @State private var selectedEpisode: Int?
     @State private var swipeForward = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var sheetHeight: CGFloat = 360
     @State private var sheetEpisode: Int?
     init(route: CatalogRoute, details: CatalogDetails, store: DiaryStore) {
         self.route = route; self.details = details
         _selected = State(initialValue: details.seasons?.first(where: { $0.number > 0 })?.number ?? details.seasons?.first?.number ?? 1)
         _controller = State(initialValue: CatalogEpisodeController { season, reveal in try await store.catalogEpisodes(route, season: season, reveal: reveal) })
     }
-    private var total: Int { max(controller.items.count, details.seasons?.first(where: { $0.number == selected })?.expectedEpisodes ?? 0) }
-    private var visible: [CatalogEpisode] { showAll ? controller.items : Array(controller.items.prefix(4)) }
+    @State private var unwatchedOnly = false
+    private func aired(_ episode: CatalogEpisode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true }
+    /// As on the title page: three rows (a sideways row of nine cards in grid), all of them on "Show all".
+    private var shown: [CatalogEpisode] {
+        let pool = unwatchedOnly ? controller.items.filter(aired) : controller.items
+        return showAll ? pool : Array(pool.prefix(episodesGrid ? 9 : 3))
+    }
+    private func hidden(_ episode: CatalogEpisode) -> Bool { hideSpoilers && !revealed.contains(episode.number) }
+    private func state(_ episode: CatalogEpisode) -> EpisodeRowState { aired(episode) ? .notWatched : .notAired }
+    private func artwork(_ episode: CatalogEpisode) -> String? { CatalogTools.image(episode.stillPath) ?? CatalogTools.image(details.backdropPath, size: "w780") }
+    private func name(_ episode: CatalogEpisode) -> String { hidden(episode) ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name }
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
-            // No "Episode 0 of N" card: there's no progress before the title is in your diary (parity
-            // with the saved page, owner's request).
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
@@ -374,25 +380,45 @@ private struct CatalogSeasonPreview: View {
                             if (details.seasons ?? []).count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(HomeStyle.secondary) }
                         }.padding(.horizontal, 18).frame(height: 44)
                             .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-                    }
-                        .disabled((details.seasons ?? []).count < 2).accessibilityLabel("Season").accessibilityValue(selected == 0 ? "Specials" : "Season \(selected)").accessibilityIdentifier("catalog-season")
-                    CollectionLayoutToggle(grid: $episodesGrid, collection: "catalog-episodes")
+                    }.disabled((details.seasons ?? []).count < 2).accessibilityLabel("Season").accessibilityValue(selected == 0 ? "Specials" : "Season \(selected)").accessibilityIdentifier("catalog-season")
+                }
+                HStack(spacing: 8) {
+                    filter("All episodes", on: !unwatchedOnly) { unwatchedOnly = false }
+                    filter("Unwatched", on: unwatchedOnly) { unwatchedOnly = true }
+                    Spacer(minLength: 0)
+                    layoutSwitch
                 }
                 if controller.loading && controller.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
                 if let error = controller.error { RetryNotice(message: error) { Task { await controller.load(selected, reveal: !hideSpoilers || controller.revealed, force: true) } } }
-                if controller.items.isEmpty && !controller.loading && controller.error == nil { ContentUnavailableView("No episode metadata yet", systemImage: "film", description: Text("No episodes are available for this season yet.")) }
+                if controller.items.isEmpty && !controller.loading && controller.error == nil { Text("No episode metadata yet").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
                 if episodesGrid {
-                    CollectionLayout(grid: true) { ForEach(visible) { episode in episodeRow(episode) } }
+                    ScrollView(.horizontal) {
+                        LazyHStack(alignment: .top, spacing: 12) {
+                            ForEach(shown) { episode in
+                                EpisodeGridCard(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode),
+                                                state: state(episode), airedOn: episode.airedOn, runtime: details.runtimeMinutes,
+                                                score: episode.communityScore, onOpen: { open(episode) }, onToggle: {}, showsTick: false)
+                                    .accessibilityIdentifier("catalog-episode-\(episode.number)")
+                            }
+                        }
+                    }.scrollIndicators(.hidden).scrollClipDisabled()
                 } else {
-                    VStack(spacing: 9) { ForEach(visible) { episode in episodeRow(episode) } }
+                    VStack(spacing: 9) {
+                        ForEach(shown) { episode in
+                            EpisodeCardRow(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode),
+                                           state: state(episode), score: episode.communityScore, canToggle: false,
+                                           onOpen: { open(episode) }, onToggle: {}, showsTick: false)
+                                .accessibilityIdentifier("catalog-episode-\(episode.number)")
+                        }
+                    }
                 }
-                if controller.items.count > 4 {
+                if controller.items.count > shown.count || showAll {
                     Button { showAll.toggle() } label: {
                         HStack(spacing: 6) { Text(showAll ? "Show fewer episodes" : "Show all \(controller.items.count) episodes"); DiaryIcon(name: showAll ? "chevron-down" : "chevron-right", size: 14) }
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(maxWidth: .infinity).frame(height: 48)
                             .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
-                    }.buttonStyle(.springPress)
+                    }.buttonStyle(.springPress).accessibilityIdentifier("catalog-all-episodes")
                 }
             }
             let points = controller.items.compactMap { episode in episode.communityScore.map { EpisodeRatingPoint(episode: episode.number, score: $0) } }
@@ -400,99 +426,83 @@ private struct CatalogSeasonPreview: View {
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
             .onChange(of: selected) { _, _ in showAll = false; revealed = []; selectedEpisode = nil }
             .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
-                // The last episode stays while the sheet slides away, instead of an empty sheet.
-                if let number = selectedEpisode ?? sheetEpisode, let episode = controller.items.first(where: { $0.number == number }) { episodeSheet(episode) }
+                // The title page's episode sheet; the last episode stays while it slides away.
+                if let number = selectedEpisode ?? sheetEpisode { episodeSheet(number) }
             }
             .onChange(of: selectedEpisode) { _, number in if let number { sheetEpisode = number } }
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await controller.load(selected, reveal: true) } } }
     }
-    /// The same tiles as a saved title's episodes: a 16:10 thumbnail with a one-line caption in the
-    /// grid, a 132 × 74 thumbnail with two lines in the list. Details open in a sheet, never inline.
-    private func episodeRow(_ episode: CatalogEpisode) -> some View {
-        let hidden = hideSpoilers && !revealed.contains(episode.number)
-        return Button { open(episode) } label: {
-            if episodesGrid {
-                VStack(alignment: .leading, spacing: 10) {
-                    Color.clear.aspectRatio(16 / 10, contentMode: .fit).overlay { episodeArtwork(episode, hidden: hidden) }.clipShape(RoundedRectangle(cornerRadius: 14))
-                    episodeCaption(episode, hidden: hidden)
-                }.contentShape(Rectangle())
-            } else {
-                HStack(spacing: 12) {
-                    episodeArtwork(episode, hidden: hidden).frame(width: 96, height: 60).clipShape(RoundedRectangle(cornerRadius: 14))
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : "\(episode.number). \(episode.name)")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
-                        HStack(spacing: 6) {
-                            EpisodeChip(text: episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true ? "Not watched" : "Not aired yet")
-                            if let score = episode.communityScore, score > 0 { ScoreChip(score: score) }
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }.padding(9).frame(minHeight: 77)
-                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
-                    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-                    .contentShape(Rectangle())
-            }
-        }.buttonStyle(.springPress).accessibilityLabel("Episode \(episode.number) details").accessibilityIdentifier("catalog-episode-\(episode.number)")
-    }
+    /// As on the title page: a spoiler-hidden episode is revealed by the first tap, then opens.
     private func open(_ episode: CatalogEpisode) {
-        revealed.insert(episode.number); selectedEpisode = episode.number
-        Task { await controller.load(selected, reveal: true) }
+        if hidden(episode) {
+            revealed.insert(episode.number)
+            Task { await controller.load(selected, reveal: true) }
+        } else { selectedEpisode = episode.number }
     }
-    @ViewBuilder private func episodeArtwork(_ episode: CatalogEpisode, hidden: Bool) -> some View {
-        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 23).foregroundStyle(.secondary) } }
-        else { Artwork(path: CatalogTools.image(episode.stillPath) ?? CatalogTools.image(details.backdropPath), title: details.name) }
+    private func filter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#0b0b10") : HomeStyle.soft)
+                .padding(.horizontal, 20).frame(height: 44)
+                .background(on ? AnyShapeStyle(.tint) : AnyShapeStyle(HomeStyle.round), in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
-    private func episodeCaption(_ episode: CatalogEpisode, hidden: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(hidden ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : "\(episode.number). \(episode.name)")
-                .font(.system(size: 17, weight: .semibold)).lineLimit(episodesGrid ? 1 : 2).foregroundStyle(.white).multilineTextAlignment(.leading)
-            HStack(spacing: 6) {
-                Text(episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true ? "Not watched" : "Not aired yet").foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                if let score = episode.communityScore, score > 0 {
-                    HStack(spacing: 4) { Image(systemName: "star.fill").foregroundStyle(.yellow); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                        .accessibilityElement(children: .ignore).accessibilityLabel("TMDb " + score.formatted(.number.precision(.fractionLength(1))))
-                }
-            }.font(.system(size: 14)).lineLimit(1)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+    private var layoutSwitch: some View {
+        Button { episodesGrid.toggle() } label: {
+            HStack(spacing: 0) {
+                DiaryIcon(name: "layout-grid", size: 17).foregroundStyle(episodesGrid ? HomeStyle.chipText : HomeStyle.secondary)
+                    .frame(width: 40, height: 36).background(episodesGrid ? HomeStyle.chip : .clear, in: Capsule())
+                DiaryIcon(name: "list", size: 17).foregroundStyle(episodesGrid ? HomeStyle.secondary : HomeStyle.chipText)
+                    .frame(width: 40, height: 36).background(episodesGrid ? .clear : HomeStyle.chip, in: Capsule())
+            }.padding(3).background(HomeStyle.round, in: Capsule())
+                .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel("Show episodes as " + (episodesGrid ? "list" : "grid")).accessibilityIdentifier("catalog-episodes-layout")
     }
-    private func episodeSheet(_ episode: CatalogEpisode) -> some View {
-        NavigationStack {
-            EdgeToEdgeScroll {
-                VStack(alignment: .leading, spacing: 16) {
-                    episodeArtwork(episode, hidden: false).frame(height: 200).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 18))
-                    Text(episode.name.isEmpty ? "Episode \(episode.number)" : episode.name).font(.title2.bold()).foregroundStyle(Color(webHex: "#f3f0f7"))
-                    Text(episode.overview.isEmpty ? (controller.loading ? "Loading episode…" : "No synopsis available yet.") : episode.overview)
-                        .font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(webHex: "#c5c0cf")).fixedSize(horizontal: false, vertical: true)
-                }.padding(20)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sheetHeight = $0 }
-                    .id(episode.number)
-                    .transition(.asymmetric(insertion: .move(edge: swipeForward ? .trailing : .leading).combined(with: .opacity),
-                                            removal: .move(edge: swipeForward ? .leading : .trailing).combined(with: .opacity)))
-            }.scrollContentBackground(.hidden).containerBackground(Color.clear, for: .navigation)
-                // Swipe left for the next episode, right for the previous one, as on a saved title.
-                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { value in
-                    let dx = value.translation.width
-                    guard abs(dx) > 60, abs(dx) > abs(value.translation.height) * 1.5 else { return }
-                    showNeighbour(of: episode, forward: dx < 0)
-                })
-                .accessibilityAction(named: "Next episode") { showNeighbour(of: episode, forward: true) }
-                .accessibilityAction(named: "Previous episode") { showNeighbour(of: episode, forward: false) }
-                .navigationTitle("Episode \(episode.number)").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedEpisode = nil } } }
-        // As tall as the synopsis needs, on glass, like a saved title's episode sheet; pull up for more.
-        }.presentationDetents([SheetFit.detent(sheetHeight, chrome: 96), .large])
-            .presentationContentInteraction(.resizes).presentationDragIndicator(.visible)
+
+    // MARK: The title page's episode sheet
+
+    /// The show as a diary title would carry it, so the very same sheet can show this episode.
+    private var sheetTitle: MediaTitle? {
+        let object: [String: Any] = [
+            "id": "preview-\(route.id)", "name": details.name, "category": details.suggestedCategory, "year": details.year as Any? ?? NSNull(),
+            "overview": details.overview, "poster": CatalogTools.image(details.posterPath) as Any? ?? NSNull(),
+            "backdrop": CatalogTools.image(details.backdropPath, size: "w780") as Any? ?? NSNull(), "communityScore": details.communityScore as Any? ?? NSNull(),
+            "tmdbId": route.id, "genres": details.genres, "tags": [], "runtimeMinutes": details.runtimeMinutes as Any? ?? NSNull(),
+            "status": "planned", "favorite": false, "queued": false, "score": NSNull(), "notes": "", "deletedAt": NSNull(), "version": 1, "seasons": []
+        ]
+        return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(MediaTitle.self, from: $0) }
     }
-    /// The next or previous episode of this season in the open sheet (a deliberate choice, so a
-    /// spoiler-hidden one is revealed, as tapping it would).
-    private func showNeighbour(of episode: CatalogEpisode, forward: Bool) {
+    private var sheetEpisodes: [Episode] {
+        controller.items.compactMap { episode in
+            let object: [String: Any] = [
+                "id": "preview-\(route.id)-s\(selected)e\(episode.number)", "titleId": "preview-\(route.id)", "season": selected, "number": episode.number,
+                "name": episode.name, "overview": episode.overview, "airedOn": episode.airedOn as Any? ?? NSNull(),
+                "still": artwork(episode) as Any? ?? NSNull(), "hidden": false, "communityScore": episode.communityScore as Any? ?? NSNull()
+            ]
+            return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(Episode.self, from: $0) }
+        }
+    }
+    @ViewBuilder private func episodeSheet(_ number: Int) -> some View {
+        if let title = sheetTitle, let source = controller.items.first(where: { $0.number == number }),
+           let episode = sheetEpisodes.first(where: { $0.number == number }) {
+            EpisodeInfoSheet(title: title, season: selected, episodes: sheetEpisodes, episode: episode,
+                             name: source.name.isEmpty ? "Episode \(number)" : source.name, summary: source.overview,
+                             artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
+                             traktScore: TraktTitleReads.cachedRatings(show: route.id, season: selected)[number],
+                             watched: false, forward: swipeForward,
+                             onToggleWatched: {}, onNeighbour: { showNeighbour(of: number, forward: $0) },
+                             onNote: {}, onClose: { selectedEpisode = nil }, inDiary: false)
+                .presentationDetents([.large]).presentationDragIndicator(.visible)
+        }
+    }
+    /// The next or previous episode in the open sheet (a deliberate choice, so a hidden one is revealed).
+    private func showNeighbour(of number: Int, forward: Bool) {
         let items = controller.items
-        guard let index = items.firstIndex(where: { $0.number == episode.number }), items.indices.contains(index + (forward ? 1 : -1)) else { return }
+        guard let index = items.firstIndex(where: { $0.number == number }), items.indices.contains(index + (forward ? 1 : -1)) else { return }
         let next = items[index + (forward ? 1 : -1)]
         revealed.insert(next.number)
         swipeForward = forward
+        Task { await controller.load(selected, reveal: true) }
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { selectedEpisode = next.number }
     }
 }

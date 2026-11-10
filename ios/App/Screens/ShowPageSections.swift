@@ -295,7 +295,6 @@ struct RatingTrendCard: View {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Rating trend").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                        Text("Average rating per episode · " + summary.points.count.counted("episode", "episodes")).font(.system(size: 14)).foregroundStyle(.secondary)
                     }
                     if sources.count > 1 {
                         HStack(spacing: 8) {

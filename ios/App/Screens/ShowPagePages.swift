@@ -79,6 +79,8 @@ struct EpisodeCardRow: View {
     let canToggle: Bool
     let onOpen: () -> Void
     let onToggle: () -> Void
+    /// False on a preview page: the title isn't in your diary, so there is nothing to tick.
+    var showsTick = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     private var watched: Bool { if case .watched = state { return true } else { return false } }
     var body: some View {
@@ -101,9 +103,11 @@ struct EpisodeCardRow: View {
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityValue(name)
                 .accessibilityIdentifier("title-episode-\(number)")
+            if showsTick {
             Button(action: onToggle) { EpisodeTick(watched: watched, next: state == .next) }.buttonStyle(.plain)
                 .disabled(!canToggle).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
                 .accessibilityIdentifier("episode-watch-\(number)")
+            }
         }.padding(.leading, 9).padding(.trailing, 6).padding(.vertical, 8)
             .background(state == .next ? Color(webHex: "#17142a") : HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(state == .next ? Color(webHex: "#34294f") : HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
@@ -122,6 +126,8 @@ struct EpisodeGridCard: View {
     let score: Double?
     let onOpen: () -> Void
     let onToggle: () -> Void
+    /// False on a preview page: the title isn't in your diary, so there is nothing to tick.
+    var showsTick = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     private var watched: Bool { if case .watched = state { return true } else { return false } }
     var body: some View {
@@ -142,6 +148,7 @@ struct EpisodeGridCard: View {
                     }
             }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityIdentifier("episode-thumbnail-\(number)")
                 .overlay(alignment: .bottomTrailing) {
+                    if showsTick {
                     Button(action: onToggle) {
                         ZStack {
                             Circle().fill(watched ? AnyShapeStyle(theme.accent) : AnyShapeStyle(HomeStyle.card.opacity(0.8)))
@@ -151,6 +158,7 @@ struct EpisodeGridCard: View {
                         }.frame(width: 34, height: 34).frame(width: 48, height: 48).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
                         .accessibilityIdentifier("episode-watch-\(number)").padding(4)
+                    }
                 }
             Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
             Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 5)

@@ -21,6 +21,8 @@ struct EpisodeInfoSheet: View {
     let onNeighbour: (_ forward: Bool) -> Void
     let onNote: () -> Void
     let onClose: () -> Void
+    /// False on a preview page (the title isn't in your diary): no Mark watched, Rate, Note or history.
+    var inDiary = true
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -43,8 +45,8 @@ struct EpisodeInfoSheet: View {
                         .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("episode-sheet-name").padding(.top, 4)
                     facts.padding(.top, 8)
                     summaryText.padding(.top, 12)
-                    if let history { historyRow(history).padding(.top, 2) }
-                    actions.padding(.top, 6)
+                    if inDiary, let history { historyRow(history).padding(.top, 2) }
+                    if inDiary { actions.padding(.top, 6) }
                     if let ratingError { Text(ratingError).font(.footnote).foregroundStyle(HomeStyle.secondary).padding(.top, 8) }
                 }.padding(.horizontal, 16).padding(.bottom, 16)
                     .id(episode.id)
