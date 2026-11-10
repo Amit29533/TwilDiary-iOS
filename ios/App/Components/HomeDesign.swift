@@ -32,7 +32,7 @@ struct HomeSectionHeader<Trailing: View>: View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    if let icon { Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent).accessibilityHidden(true) }
+                    if let icon { Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.accent).frame(width: 20, height: 20).accessibilityHidden(true) }
                     Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 }
                 if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
@@ -48,7 +48,7 @@ struct HomeRoundIcon: View {
     var system: String = "chevron.right"
     var selected = false
     var body: some View {
-        Image(systemName: system).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+        Image(systemName: system).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
             .frame(width: 36, height: 36).background(selected ? HomeStyle.chip : HomeStyle.round, in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
     }
@@ -80,20 +80,25 @@ struct HomeWeekCard: View {
     var body: some View {
         let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
         VStack(alignment: .leading, spacing: 0) {
+            // Three equal columns; the second and third start with a hairline and 15 pt of space.
             HStack(alignment: .top, spacing: 0) {
-                metric(DiaryDate.duration(overview.minutes), "Watch time", accent: true).frame(width: 123, alignment: .leading)
-                metric(String(overview.watches), "Watches").frame(width: 108, alignment: .leading)
-                metric("\(overview.streak) \(overview.streak == 1 ? "day" : "days")", "Streak").frame(maxWidth: .infinity, alignment: .leading)
+                metric(DiaryDate.duration(overview.minutes), "Watch time", accent: true).frame(maxWidth: .infinity, alignment: .leading)
+                metric(String(overview.watches), "Watches").padding(.leading, 15).frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
+                    .overlay(alignment: .leading) { Rectangle().fill(HomeStyle.cardBorder).frame(width: HomeStyle.hairline) }
+                metric("\(overview.streak) \(overview.streak == 1 ? "day" : "days")", "Streak").padding(.leading, 15).frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
+                    .overlay(alignment: .leading) { Rectangle().fill(HomeStyle.cardBorder).frame(width: HomeStyle.hairline) }
             }
+            Rectangle().fill(HomeStyle.cardBorder).frame(height: 1).padding(.top, 14)
             HStack(spacing: 0) {
                 ForEach(overview.days) { day in
                     let today = DiaryDate.calendar().isDate(day.date, inSameDayAs: now)
                     NavigationLink(value: HistoryRoute(day: day.date)) {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 0) {
                             Text(day.date, format: .dateTime.weekday(.narrow)).font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.muted)
                             Text(day.date, format: .dateTime.day()).font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(today ? HomeStyle.chipText : day.future ? HomeStyle.muted : HomeStyle.soft)
                                 .frame(width: 32, height: 32).background(today ? HomeStyle.chip : .clear, in: Circle())
+                                .padding(.top, 7).padding(.bottom, 6)
                             RoundedRectangle(cornerRadius: 5).fill(HomeStyle.round).frame(width: 14, height: 22)
                                 .overlay(alignment: .bottom) {
                                     if day.minutes > 0 {
@@ -104,7 +109,19 @@ struct HomeWeekCard: View {
                     }.buttonStyle(.plain).disabled(day.future)
                         .accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)), \(day.count) watches")
                 }
-            }.padding(.top, 29)
+            }.padding(.top, 15)
+            if overview.watches == 0 {
+                // Design: nothing this week yet, with last week's total as a chip.
+                HStack(spacing: 8) {
+                    Text("Nothing logged yet. Mark an episode to start a streak.").font(.system(size: 13)).foregroundStyle(HomeStyle.dateChipText)
+                        .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                    if overview.lastWeekMinutes > 0 {
+                        Text("Last week " + DiaryDate.duration(overview.lastWeekMinutes)).font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                            .lineLimit(1).fixedSize().padding(.horizontal, 9).frame(height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                    }
+                }.padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color(webHex: "#17142a"), in: RoundedRectangle(cornerRadius: 16)).padding(.top, 14)
+            }
         }.padding(.horizontal, 17).padding(.top, 17).padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 24))

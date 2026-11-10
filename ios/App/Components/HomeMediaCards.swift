@@ -168,17 +168,12 @@ struct HomePlannedCard: View {
     }
 }
 
+/// A favourite on Home: the same 128 × 192 poster, name and kind as the other shelves (design).
 struct HomeFavouriteCard: View {
     let item: Favourite
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // No heart on the poster: the shelf is already "Favourites".
-            Artwork(path: item.image, title: item.name).posterAspect()
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
-            Text(item.kind.singular).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
+        // No heart on the poster: the shelf is already "Favourites".
+        HomePoster(artwork: item.image, name: item.name, subtitle: item.kind.singular, initialsOnly: true)
     }
 }
 

@@ -242,6 +242,7 @@ import TwilDiaryCore
             if ProcessInfo.processInfo.arguments.contains("--ui-title-metadata") { workspace = PreviewData.metadataWorkspace }
             if ProcessInfo.processInfo.arguments.contains("--ui-long-synopsis") { workspace = PreviewData.longSynopsisWorkspace }
             if ProcessInfo.processInfo.arguments.contains("--ui-upcoming") { workspace = PreviewData.upcomingWorkspace }
+            if ProcessInfo.processInfo.arguments.contains("--ui-design-data") { workspace = PreviewData.designWorkspace; FavouritesStore.shared.seedForDesign(); error = nil }
             if ProcessInfo.processInfo.arguments.contains("--ui-profile-repairs") { workspace = PreviewData.profileRepairWorkspace }
             if ProcessInfo.processInfo.arguments.contains("--ui-arena"), let index = workspace.titles.firstIndex(where: { $0.deletedAt == nil }) { workspace.titles[index].tags = ["Weekend"] }
             if ProcessInfo.processInfo.arguments.contains("--ui-long-episodes") { workspace = PreviewData.withLongEpisodeSummaries(workspace) }

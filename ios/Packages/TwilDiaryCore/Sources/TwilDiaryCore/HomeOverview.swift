@@ -19,6 +19,8 @@ public struct HomeOverview: Sendable {
     public let minutes: Int
     public let watches: Int
     public let streak: Int
+    /// Watch time in the seven days before this week, for the empty-week note ("Last week 6h 20m").
+    public let lastWeekMinutes: Int
     public let unknownDates: Int
     public let missingRuntime: Int
     public let planned: [MediaTitle]
@@ -54,6 +56,8 @@ public struct HomeOverview: Sendable {
         var current = 0
         while counts[cursor] != nil { current += 1; cursor = calendar.date(byAdding: .day, value: -1, to: cursor)! }
         streak = current
+        let lastWeekStart = calendar.date(byAdding: .day, value: -7, to: start)!
+        lastWeekMinutes = runtimes.filter { $0.key >= lastWeekStart && $0.key < start }.reduce(0) { $0 + $1.value }
         planned = DiscoveryTools.unwatched(workspace)
         let watchedEpisodes = Set(active.compactMap(\.episodeId))
         let formatter = DateFormatter()

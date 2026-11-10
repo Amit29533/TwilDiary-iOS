@@ -42,6 +42,27 @@ enum PreviewData {
         object["titles"] = titles; object["episodes"] = episodes
         return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
+    /// Design screenshots (`--ui-design-data`): TMDB ids so Recommended has a seed, and new
+    /// episodes airing in the next days so every Home section has something to draw.
+    static var designWorkspace: Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(upcomingWorkspace)) as! [String: Any]
+        var titles = object["titles"] as! [[String: Any]], episodes = object["episodes"] as! [[String: Any]]
+        for index in titles.indices {
+            switch titles[index]["id"] as? String {
+            case "again": titles[index]["tmdbId"] = 900002
+            case "frieren": titles[index]["tmdbId"] = 209867
+            case "night": titles[index]["tmdbId"] = 129818
+            case "severance": titles[index]["tmdbId"] = 95396
+            default: break
+            }
+        }
+        for index in episodes.indices where (episodes[index]["id"] as? String)?.hasPrefix("again-upcoming-") == true {
+            let number = episodes[index]["number"] as? Int ?? 1
+            episodes[index]["airedOn"] = "2026-10-2\(6 + number)"
+        }
+        object["titles"] = titles; object["episodes"] = episodes
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
     /// Explicit identities/scores for profile repair UI checks; never loaded in Release.
     static var profileRepairWorkspace: Workspace {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]

@@ -6,13 +6,22 @@ import XCTest
     override func setUp() async throws { continueAfterFailure = true }
 
     func testHomeSnapshots() { capture(tab: "home", name: "home", pages: 7) }
+    /// The title page of the show in Continue watching, top to bottom.
+    func testShowSnapshots() {
+        capture(tab: "home", name: "show", pages: 9) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+    }
 
-    private func capture(tab: String, name: String, pages: Int) {
+    private func capture(tab: String, name: String, pages: Int, open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab]
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab]
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 4)
+        open?(app)
         for page in 0..<pages {
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "\(name)-\(page)"

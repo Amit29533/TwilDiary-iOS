@@ -235,7 +235,7 @@ struct PageHeader: View {
             title
             Spacer(minLength: 0)
             if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
-        }.frame(height: height).padding(.horizontal, 14)
+        }.frame(height: height).padding(.horizontal, isHome ? 16 : 14)
     }
     private var isHome: Bool { name == "TwilDiary" }
     private var logo: some View {
@@ -245,18 +245,19 @@ struct PageHeader: View {
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
             if gesture.triggered { router.presentRandomPick() }
         } label: {
-            BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
-                .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
-                // The tap shape sits outside the glass, as on Glance's − / +; otherwise the interactive glass takes the tap.
-                .frame(width: 44, height: 44).contentShape(Circle())
+            // Design: a 44 pt frosted grey circle (rgba 120 122 132 / .38) with a 20 pt #cdbbff mark.
+            BrandMark().fill(Color(webHex: "#cdbbff")).frame(width: 20, height: 20).rotationEffect(.degrees(angle))
+                .frame(width: 44, height: 44)
+                .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.38), in: Circle())
+                .background(.ultraThinMaterial, in: Circle())
+                .contentShape(Circle())
         }.buttonStyle(.plain).sensoryFeedback(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick").accessibilityIdentifier("random-pick-logo")
     }
     @ViewBuilder private var title: some View {
         if name == "TwilDiary" {
-            HStack(spacing: 0) {
-                Text("Twil").foregroundStyle(Color(webHex: "#f3f0f7"))
-                Text("Diary").foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
-            }.font(.system(size: 26, weight: .bold)).tracking(-1.25)
+            // Design: one 24 pt bold word with a left-to-right #f5f0ff → #b79cff gradient.
+            Text("TwilDiary").font(.system(size: 24, weight: .bold)).tracking(-0.48)
+                .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f5f0ff"), Color(webHex: "#b79cff")], startPoint: .leading, endPoint: .trailing))
         } else { Text(name).font(.system(size: 32, weight: .bold)).tracking(-1.3).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
         if let count {
             Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
@@ -528,11 +529,6 @@ private struct CardCircle: ViewModifier {
     }
 }
 
-private extension VerticalAlignment {
-    /// The centre line of Home's progress bar, so the − / + controls sit on it.
-    enum ProgressBarCenter: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] } }
-    static let progressBar = VerticalAlignment(ProgressBarCenter.self)
-}
 
 /// "Recently updated ▾" on the left, screen tools (layout toggle, filters) on the right.
 struct SortMenuRow<Option: Hashable & Identifiable, Trailing: View>: View {
@@ -599,31 +595,83 @@ struct ProgressCard: View {
     }
     /// Home's Continue watching text over the page backdrop (owner's design): title, "S2 · E3 of 8",
     /// the bar with "38% complete" and the time left, then the same − / + controls as Glance.
+    /// A show with nothing watched in its current season: the design's "Start S2 · E1" state.
+    private var notStarted: Bool { title.isSeries && (card.map { $0.progress.watched == 0 && $0.next != nil } ?? false) }
     private var compactContent: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // Design spacing: label, 8, title, 6, "S2 · E4 of 12", then the bar row; the − / + sit on
+        // the middle of the bar and its labels together.
+        VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
-            Text("CONTINUE WATCHING").font(.system(size: 12, weight: .medium)).tracking(1.92).foregroundStyle(Color(webHex: "#d8d4e6"))
-                .shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
+            Group {
+                if notStarted {
+                    Text("CONTINUE WATCHING").font(.system(size: 11, weight: .bold)).tracking(1.54).foregroundStyle(Color(webHex: "#cdbbff"))
+                        .frame(height: 14).padding(.bottom, 6)
+                } else {
+                    Text("CONTINUE WATCHING").font(.system(size: 12, weight: .medium)).tracking(1.92).foregroundStyle(Color(webHex: "#d8d4e6"))
+                        .frame(height: 16).padding(.bottom, 8)
+                }
+            }.shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
             Button { openTitle() } label: {
                 Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(webHex: "#f5f5f7"))
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
             }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-            Text(homeLine).font(.system(size: 14)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1)
-            // The − / + controls line up with the bar itself, not the bar and its labels together.
-            HStack(alignment: .progressBar, spacing: 12) {
+            if notStarted { startRow } else { progressRow }
+        }.padding(.horizontal, 8).frame(height: 196)
+    }
+    private var progressRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(homeLine).font(.system(size: 14)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).frame(height: 20).padding(.top, 6)
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     GeometryReader { proxy in RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.28)).overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(width: 186, height: 5)
-                        .alignmentGuide(.progressBar) { $0[VerticalAlignment.center] }
                     HStack(spacing: 30) {
                         // Share and episode count come from the same card, so they always agree.
                         Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete")
                         if let left = cardText?.timeLeft { Text(left).monospacedDigit() }
-                    }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1)
+                    }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).fixedSize()
                 }
                 Spacer(minLength: 0)
-                controls.alignmentGuide(.progressBar) { $0[VerticalAlignment.center] }
-            }.padding(.top, 6)
-        }.padding(.horizontal, 12).padding(.bottom, 4).frame(height: 196)
+                controls
+            }.padding(.top, 10)
+        }
+    }
+    /// Nothing watched yet: "Season 2 · 12 episodes · about 4h 48m", then a 48 pt gradient
+    /// "Start S2 · E1" button and a 48 pt frosted + that adds the show to the Queue (design).
+    private var startRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(startLine).font(.system(size: 13)).foregroundStyle(Color(webHex: "#b4b3c2")).lineLimit(1).frame(height: 18).padding(.top, 6)
+            HStack(spacing: 10) {
+                Button { Task { await markWatch() } } label: {
+                    HStack(spacing: 8) {
+                        actionIcon(.mark, symbol: "play.fill", size: 13)
+                        Text(startLabel).font(.system(size: 15, weight: .bold))
+                    }.foregroundStyle(Color(webHex: "#0b0b10")).frame(maxWidth: .infinity).frame(height: 48)
+                        .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                        .contentShape(Capsule())
+                }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel(startLabel + ", " + title.name)
+                Button { Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } } label: {
+                    Image(systemName: title.queued == true ? "checkmark" : "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
+                        .frame(width: 48, height: 48)
+                        .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.32), in: Circle())
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+                }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh)
+                    .accessibilityLabel(title.queued == true ? "Remove from Queue" : "Add to Queue")
+            }.padding(.top, 14)
+        }
+    }
+    private var startLabel: String {
+        guard let card, let next = card.next else { return "Start" }
+        let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
+        return "Start " + ([season, "E\(next.number)"].compactMap { $0 }.joined(separator: " · "))
+    }
+    /// "Season 2 · 12 episodes · about 4h 48m".
+    private var startLine: String {
+        guard let card else { return title.categoryName }
+        let season = card.season.map { $0.number == 0 ? "Specials" : "Season \($0.number)" }
+        let count = card.progress.total.counted("episode", "episodes")
+        let time = remaining.flatMap { $0 > 0 ? "about " + DiaryDate.duration($0) : nil }
+        return [season, count, time].compactMap { $0 }.joined(separator: " · ")
     }
     /// "S2 · E3 of 8" for shows, "Movie · 1h 54m" for movies.
     private var homeLine: String {
@@ -709,7 +757,29 @@ struct ProgressCard: View {
     @ViewBuilder private var timeLeftText: some View { if let left = cardText?.timeLeft { Text(left).monospacedDigit().fixedSize() } }
     /// − last watched episode + for shows; one Log watch button for movies. The circles are
     /// 36 pt, as in the owner's design, inside 44 pt tap targets.
-    private var controls: some View {
+    @ViewBuilder private var controls: some View {
+        if compact && title.isSeries { homeStepper } else { cardControls }
+    }
+    /// Home's stepper, to the design: a 35 pt solid #3a3a40 −, "4 / 12" in 16 pt semibold, and a
+    /// 36 pt accent +, 10 pt apart. Tap areas reach 44 pt without moving the circles.
+    private var homeStepper: some View {
+        HStack(spacing: 10) {
+            Button { Task { await removeWatch() } } label: {
+                actionIcon(.remove, symbol: "minus", size: 15).fontWeight(.bold).foregroundStyle(Color(webHex: "#f5f5f7"))
+                    .frame(width: 35, height: 35).background(Color(webHex: "#3a3a40"), in: Circle())
+                    .contentShape(Rectangle().inset(by: -5))
+            }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+            Text(card.map { "\($0.progress.watched) / \($0.progress.total)" } ?? "–").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
+                .monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
+                .accessibilityIdentifier("watch-count-" + title.id)
+            Button { Task { await markWatch() } } label: {
+                actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(Color(webHex: "#0b0b10"))
+                    .frame(width: 36, height: 36).background(theme.accent, in: Circle())
+                    .contentShape(Rectangle().inset(by: -4))
+            }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
+        }.frame(height: 44)
+    }
+    private var cardControls: some View {
                 // One container lets the card's glass controls render and morph together.
                 GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {

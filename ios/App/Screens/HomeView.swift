@@ -78,7 +78,8 @@ struct HomeView: View {
                             }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                         }
                     }
-                    if let seed = recent.first(where: { $0.title.tmdbId != nil })?.title { HomeRecommendedShelf(seed: seed) }
+                    let seeds = Self.recommendationSeeds(recent)
+                    if !seeds.isEmpty { HomeRecommendedShelf(seeds: seeds) }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                     let favourites = FavouritesStore.shared.items
                     if !favourites.isEmpty {
@@ -152,7 +153,7 @@ struct HomeView: View {
                             }
                         }
                     }
-                }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 22).padding(.bottom, 24)
+                }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 30).padding(.bottom, 24)
             }
         }
         .contentMargins(.bottom, 90, for: .scrollContent)
@@ -182,13 +183,19 @@ struct HomeView: View {
             Artwork(path: current.backdrop ?? current.poster, title: current.name)
                 .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
                 .overlay {
-                    LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .black.opacity(0.05), location: 0.28),
-                                           .init(color: .black.opacity(0.35), location: 0.62), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                    // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
+                    LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
+                                           .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
                 }
-                .overlay { LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .leading, endPoint: .center) }
                 .offset(y: -Self.artLift).modifier(StretchOnPull()).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
             }.allowsHitTesting(false).accessibilityHidden(true)
         }
+    }
+    /// Recently watched titles that TMDB knows, newest first, each once.
+    private static func recommendationSeeds(_ recent: [HistoryEntry]) -> [MediaTitle] {
+        var seen = Set<String>(), seeds: [MediaTitle] = []
+        for entry in recent where entry.title.tmdbId != nil && seen.insert(entry.title.id).inserted { seeds.append(entry.title) }
+        return seeds
     }
     /// Just enough to reach under the status bar; pulling down stretches the art instead of revealing a gap.
     private static let artLift: CGFloat = 64

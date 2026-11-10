@@ -32,6 +32,15 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
         self.defaults = defaults
         items = defaults.data(forKey: Self.storageKey).flatMap { try? JSONDecoder().decode([Favourite].self, from: $0) } ?? []
     }
+    #if DEBUG
+    /// Design screenshots only: three hearted characters, as in the Home design.
+    func seedForDesign() {
+        let names = ["Kurumi Tokisaki", "Mai Sakurajima", "Sakuta Azusagawa"]
+        items = names.enumerated().map { index, name in
+            Favourite(kind: .character, ref: 800_001 + index, name: name, image: nil, subtitle: nil, savedAt: Date(timeIntervalSince1970: 1_790_000_000 - Double(index)))
+        }
+    }
+    #endif
     func contains(_ kind: Favourite.Kind, _ ref: Int) -> Bool { items.contains { $0.kind == kind && $0.ref == ref } }
     func items(_ kind: Favourite.Kind) -> [Favourite] { items.filter { $0.kind == kind } }
     func toggle(_ kind: Favourite.Kind, ref: Int, name: String, image: String?, subtitle: String?, store: DiaryStore) {
