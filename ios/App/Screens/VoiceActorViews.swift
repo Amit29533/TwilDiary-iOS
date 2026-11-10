@@ -233,6 +233,8 @@ struct AniListSettingsView: View {
 struct MostWatchedCast: View {
     enum Kind: Hashable { case cast, voice }
     let kind: Kind
+    /// The section's title; nil when the card around it has its own (Statistics → Faces of all time).
+    var heading: String? = "Most watched"
     @Environment(DiaryStore.self) private var store
     @State private var rows: [RankedRow] = []
     @State private var aniList: [Int: AniPerson] = [:]
@@ -240,7 +242,7 @@ struct MostWatchedCast: View {
     @State private var failure: String?
     @State private var loading = false
     var body: some View {
-        MostWatchedSection(ranking: rankingRoute) { ranking }
+        MostWatchedSection(heading: heading, ranking: rankingRoute) { ranking }
             .task { await load() }
     }
     private var rankingRoute: PeopleRankingRoute {

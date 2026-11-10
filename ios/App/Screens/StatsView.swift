@@ -16,8 +16,13 @@ struct StatsView: View {
     @State private var expandedGenres = false
     @State private var staleLimit = 3
     @State private var clock = Date.now
-    private enum Tab: String, CaseIterable { case overview = "Overview", habits = "Habits", taste = "Taste", library = "Library" }
-    @SceneStorage("stats.tab") private var tab = Tab.overview
+    enum Tab: String, CaseIterable { case overview = "Overview", habits = "Habits", taste = "Taste", library = "Library" }
+    /// Shared with Profile, whose cards open the tab they summarise.
+    @AppStorage("stats.tab") private var tab = Tab.overview
+    /// Owner's design: All time, or one month at a time (‹ November 2026 ›).
+    @State private var monthly = false
+    @State private var month = Date.now
+    @State private var genreKind = 0
     @State private var mostPlayedShows = true
     @State private var highestRatedShows = true
     private var tabPicker: some View {
@@ -41,9 +46,19 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     tabPicker
                     switch tab {
+                    case .overview where monthly:
+                        let summary = StatsMonth(workspace: store.workspace, month: month, now: clock)
+                        StatsMonthNavigator(month: $month, earliest: earliestMonth, now: clock)
+                        StatsMonthCard(month: summary)
+                        StatsMonthOverTimeCard(month: summary, selected: $month)
+                        StatsYourDaysCard(month: summary, now: clock)
+                        StatsMonthHallOfFame(month: summary)
+                        StatsPosterRow(title: "Most played", items: (mostPlayedShows ? summary.mostPlayedShows : summary.mostPlayedMovies).map {
+                            StatsPosterItem(title: $0.title, badge: "×\($0.count)", detail: $0.minutes > 0 ? longDuration($0.minutes) : nil)
+                        }, shows: $mostPlayedShows)
                     case .overview:
                         StatsJourneyCard(insights: insights, coverage: data.coverage)
-                        StatsPeriodTiles(insights: insights)
+                        StatsPeriodTiles(insights: insights, onMonth: { monthly = true; month = clock }, onYear: { period = .year; year = nil })
                         trend(data, highlights: highlights)
                         StatsOverTimeCard(years: insights.perYear)
                         StatsSplitCard(insights: insights)
@@ -63,6 +78,8 @@ struct StatsView: View {
                         genres(data.genres)
                         StatsDecadesCard(decades: insights.decades)
                     case .library:
+                        StatsFacesCard()
+                        StatsStudiosCard()
                         StatsGlanceCard(insights: insights)
                         backlog(data.backlog)
                         goneQuiet(data.backlog.stale)
@@ -77,6 +94,18 @@ struct StatsView: View {
                 }.padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); clock = store.now }
         }.navigationTitle("Statistics").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Show", selection: $monthly) { Text("All time").tag(false); Text("Monthly").tag(true) }
+                    } label: {
+                        HStack(spacing: 5) { Text(monthly ? "Monthly" : "All time"); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            .padding(.horizontal, 14).frame(height: 38).background(HomeStyle.chip, in: Capsule())
+                    }.accessibilityLabel("Statistics period").accessibilityValue(monthly ? "Monthly" : "All time").accessibilityIdentifier("stats-scope")
+                }.sharedBackgroundVisibility(.hidden)
+            }
+            .onChange(of: monthly) { _, on in if on { tab = .overview; month = clock } }
         .onChange(of: router.statsRevision) { _, _ in applyShortcut() }
             .onAppear { clock = store.now; applyShortcut() }
             .onChange(of: period) { _, _ in selectedBucket = nil }
@@ -188,7 +217,7 @@ struct StatsView: View {
             trendFigures(value, highlights: highlights)
             chart(value.buckets)
             StatsRangeSelector(selection: $period)
-            HStack(spacing: 12) {
+            NavigationLink(value: HistoryRoute(day: highlights.busiest.map { localDay($0.date) })) { HStack(spacing: 12) {
                 DiaryIcon(name: "calendar-days", size: 18).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     caption("Busiest day", size: 12)
@@ -196,7 +225,10 @@ struct StatsView: View {
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(highlights.busiest == nil ? Color.secondary : theme.accent)
                 }
                 Spacer(minLength: 0)
-            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16)).accessibilityElement(children: .combine).accessibilityIdentifier("stats-busiest")
+                if highlights.busiest != nil { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
+            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()) }
+                .buttonStyle(.plain).disabled(highlights.busiest == nil)
+                .accessibilityElement(children: .combine).accessibilityIdentifier("stats-busiest")
             if let index = selectedBucket, let active = value.buckets.first(where: { $0.key == index }) { bucketDetails(active) }
             caption(highlights.bulkDays > 0
                 ? "Dated watches only, estimated from runtimes. \(highlights.bulkDays) bulk-imported \(highlights.bulkDays == 1 ? "day" : "days") with over 24 hours stay out of the average and busiest day."
@@ -279,12 +311,21 @@ struct StatsView: View {
 
     private func streaks(_ value: StatsOverview.Streaks) -> some View {
         let maxCount = max(1, value.heatmap.map(\.count).max() ?? 1)
+        let days = activeDays
         return VStack(alignment: .leading, spacing: 14) {
-            NavigationLink(value: AppDestination.history) { HStack { heading("Streaks"); Spacer(); DiaryIcon(name: "chevron-right", size: 16).foregroundStyle(theme.accent) }.contentShape(Rectangle()) }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    heading("Your days"); Spacer()
+                    NavigationLink(value: AppDestination.history) {
+                        HStack(spacing: 3) { Text("Calendar"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 36)
+                    }.buttonStyle(.plain).accessibilityIdentifier("stats-calendar")
+                }
+                caption("\(days.all.formatted()) of \(days.elapsed.formatted()) days watched", size: 13)
+            }
             HStack(spacing: 10) {
-                streakTile("flame", "\(value.current) \(value.current == 1 ? "day" : "days")", "Current")
+                NavigationLink(value: HistoryRoute(day: clock)) { streakTile("flame", "\(value.current) \(value.current == 1 ? "day" : "days")", "Current") }.buttonStyle(.plain)
                 streakTile("rosette", "\(value.longest) \(value.longest == 1 ? "day" : "days")", "Longest")
-                streakTile("calendar", "\(value.activeDays) of \(value.elapsedDays)", "Active days")
+                streakTile("calendar", days.year.formatted(), "Active in " + String(DiaryDate.calendar().component(.year, from: clock)))
             }
             HStack(alignment: .top, spacing: 6) {
                 VStack(alignment: .leading, spacing: 4) { ForEach(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], id: \.self) { Text($0).font(.system(size: 11)).frame(height: 14) } }.foregroundStyle(.secondary)
@@ -306,6 +347,22 @@ struct StatsView: View {
             Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity).padding(.vertical, 14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08))).accessibilityElement(children: .combine)
+    }
+
+    /// Days with a dated watch: all of them, since the first, and this year.
+    private var activeDays: (all: Int, elapsed: Int, year: Int) {
+        let calendar = DiaryDate.calendar()
+        let days = Set(store.workspace.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { calendar.startOfDay(for: $0) } })
+        guard let first = days.min() else { return (0, 0, 0) }
+        let elapsed = (calendar.dateComponents([.day], from: first, to: calendar.startOfDay(for: clock)).day ?? 0) + 1
+        let year = calendar.component(.year, from: clock)
+        return (days.count, max(days.count, elapsed), days.filter { calendar.component(.year, from: $0) == year }.count)
+    }
+    /// The first month with a dated watch (where Monthly can go back to).
+    private var earliestMonth: Date {
+        let calendar = DiaryDate.calendar()
+        let first = store.workspace.activeEvents.compactMap { DiaryDate.parse($0.watchedAt) }.min() ?? clock
+        return calendar.date(from: calendar.dateComponents([.year, .month], from: first)) ?? first
     }
 
     // MARK: Backlog and Gone quiet
@@ -375,16 +432,30 @@ struct StatsView: View {
     // MARK: Genre mix
 
     private func genres(_ value: StatsOverview.Genres) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "chart.bar.xaxis").font(.system(size: 20)).foregroundStyle(theme.accent)
-                VStack(alignment: .leading, spacing: 2) { heading("Genre mix"); caption("Share of your \(value.total) watched movies & shows", size: 12) }
+        let mix = genreMix(value)
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) { heading("Genre mix"); caption("Share of your \(mix.total) watched " + (genreKind == 1 ? "movies" : genreKind == 2 ? "shows" : "titles"), size: 13) }
+            Picker("Genre mix", selection: $genreKind) { Text("All").tag(0); Text("Movies").tag(1); Text("Shows").tag(2) }
+                .pickerStyle(.segmented).accessibilityIdentifier("stats-genre-kind")
+            ForEach(Array(mix.items.prefix(expandedGenres ? mix.items.count : 5).enumerated()), id: \.offset) { _, item in
+                Button { router.libraryGenre(item.genre) } label: { genreRow(item.genre, count: item.count, share: item.share) }.buttonStyle(.plain)
             }
-            ForEach(Array(value.items.prefix(expandedGenres ? value.items.count : 5))) { item in Button { router.libraryGenre(item.genre) } label: { genreRow(item.genre, count: item.count, share: item.share) }.buttonStyle(.plain) }
-            if value.items.count > 5 { Button { expandedGenres.toggle() } label: { genreRow(expandedGenres ? "Show top 5" : "All other genres", count: value.otherCount, share: value.otherShare) }.buttonStyle(.plain).accessibilityValue(expandedGenres ? "Expanded" : "Collapsed") }
+            if mix.items.count > 5 { Button { expandedGenres.toggle() } label: { genreRow(expandedGenres ? "Show top 5" : "All other genres", count: mix.otherCount, share: mix.otherShare) }.buttonStyle(.plain).accessibilityValue(expandedGenres ? "Expanded" : "Collapsed") }
             caption("Titles can have several genres, so these shares can add up to more than 100%.", size: 12)
             if value.items.isEmpty { caption("No watched genres yet.") }
         }.statsPanel()
+    }
+    /// The genre shares for All (from the stats) or for movies or shows only (counted here).
+    private func genreMix(_ value: StatsOverview.Genres) -> (total: Int, items: [(genre: String, count: Int, share: Double)], otherCount: Int, otherShare: Double) {
+        if genreKind == 0 { return (value.total, value.items.map { ($0.genre, $0.count, $0.share) }, value.otherCount, value.otherShare) }
+        let watched = Set(store.workspace.activeEvents.map(\.titleId))
+        let titles = store.workspace.activeTitles.filter { watched.contains($0.id) && $0.isSeries == (genreKind == 2) }
+        var counts: [String: Int] = [:]
+        for title in titles { for genre in Set(title.genres) { counts[genre, default: 0] += 1 } }
+        let total = max(1, titles.count)
+        let items = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map { ($0.key, $0.value, Double($0.value) * 100 / Double(total)) }
+        let others = Set(titles.filter { title in !title.genres.contains { genre in items.prefix(5).contains { $0.0 == genre } } }.map(\.id)).count
+        return (titles.count, items, others, Double(others) * 100 / Double(total))
     }
     private func genreRow(_ name: String, count: Int, share: Double) -> some View {
         HStack(spacing: 10) {

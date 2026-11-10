@@ -137,6 +137,15 @@ import XCTest
                     if button.exists { button.tap(); Thread.sleep(forTimeInterval: 2) }
                     pages("stats-" + tab, 3)
                 }
+                // Monthly (owner's board 3).
+                for _ in 0..<6 { app.swipeDown() }
+                let scope = app.buttons["stats-scope"]
+                if scope.waitForExistence(timeout: 3) {
+                    scope.tap(); Thread.sleep(forTimeInterval: 1)
+                    let monthly = app.buttons["Monthly"].firstMatch
+                    if monthly.waitForExistence(timeout: 3) { monthly.tap(); Thread.sleep(forTimeInterval: 2) }
+                    pages("stats-monthly", 4)
+                }
                 back()
             }
             for _ in 0..<6 { app.swipeDown() }

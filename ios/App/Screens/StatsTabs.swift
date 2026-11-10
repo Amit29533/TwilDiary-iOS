@@ -86,10 +86,13 @@ struct StatsJourneyCard: View {
 
 struct StatsPeriodTiles: View {
     let insights: StatsInsights
+    /// This month opens the Monthly view; this year sets Watch time to the year.
+    var onMonth: () -> Void = {}
+    var onYear: () -> Void = {}
     var body: some View {
         HStack(spacing: 12) {
-            tile("This month", insights.monthMinutes, insights.monthPlays)
-            tile("This year", insights.yearMinutes, insights.yearPlays)
+            Button(action: onMonth) { tile("This month", insights.monthMinutes, insights.monthPlays) }.buttonStyle(.plain).accessibilityIdentifier("stats-this-month")
+            Button(action: onYear) { tile("This year", insights.yearMinutes, insights.yearPlays) }.buttonStyle(.plain).accessibilityIdentifier("stats-this-year")
         }
     }
     private func tile(_ label: String, _ minutes: Int, _ plays: Int) -> some View {
@@ -97,7 +100,7 @@ struct StatsPeriodTiles: View {
             Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
             Text(longDuration(minutes)).font(.system(size: 24, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
             Text(plays.counted("play", "plays")).font(.system(size: 13)).foregroundStyle(.secondary)
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20)
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
 }
@@ -210,9 +213,11 @@ struct StatsHallOfFameCard: View {
         if insights.biggestDay != nil || insights.first != nil {
             StatsCard(title: "Hall of fame") {
                 if let day = insights.biggestDay {
-                    row("calendar-days", "Biggest day", day.day.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
+                    NavigationLink(value: HistoryRoute(day: day.day)) {
+                        row("calendar-days", "Biggest day", day.day.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
+                    }.buttonStyle(.plain)
                 }
-                if longestStreak > 0 { row("activity", "Best streak", nil, longestStreak.counted("day", "days")) }
+                if longestStreak > 0 { StatsStreakRow(days: longestStreak) }
                 if let first = insights.first, let latest = insights.latest {
                     HStack(spacing: 10) {
                         moment(first)
@@ -236,7 +241,7 @@ struct StatsHallOfFameCard: View {
             }
             Spacer()
             Text(value).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).accessibilityElement(children: .combine)
+        }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsInsights.Moment) -> some View {
         NavigationLink(value: value.title.id) {
@@ -381,25 +386,32 @@ struct StatsGlanceCard: View {
         StatsCard(title: "At a glance") {
             VStack(spacing: 0) {
                 if let runtime = insights.averageRuntime { row("Avg runtime", "\(runtime) min") }
-                if let movie = insights.longestMovie, let runtime = movie.runtimeMinutes { row("Longest movie", "\(runtime) min", detail: movie.name) }
+                if let movie = insights.longestMovie, let runtime = movie.runtimeMinutes {
+                    NavigationLink(value: movie.id) { row("Longest movie", "\(runtime) min", detail: movie.name, link: true) }.buttonStyle(.plain)
+                }
                 if let value = insights.movieAverage { row("Movies avg", value.formatted(.number.precision(.fractionLength(1)))) }
                 if let value = insights.showAverage { row("Shows avg", value.formatted(.number.precision(.fractionLength(1)))) }
                 row("Rewatches", insights.rewatches.formatted())
-                if let first = insights.first { row("First watch", first.date.formatted(.dateTime.month(.abbreviated).year())) }
-                if let latest = insights.latest { row("Latest watch", latest.date.formatted(.dateTime.month(.abbreviated).year()), last: true) }
+                if let first = insights.first {
+                    NavigationLink(value: first.title.id) { row("First watch", first.date.formatted(.dateTime.month(.abbreviated).year()), detail: first.title.name, link: true) }.buttonStyle(.plain)
+                }
+                if let latest = insights.latest {
+                    NavigationLink(value: latest.title.id) { row("Latest watch", latest.date.formatted(.dateTime.month(.abbreviated).year()), detail: latest.title.name, last: true, link: true) }.buttonStyle(.plain)
+                }
             }
         }
     }
-    private func row(_ label: String, _ value: String, detail: String? = nil, last: Bool = false) -> some View {
+    private func row(_ label: String, _ value: String, detail: String? = nil, last: Bool = false, link: Bool = false) -> some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label).font(.system(size: 16)).foregroundStyle(Color(webHex: "#c5c0cf"))
                     if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer()
-                Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-            }.padding(.vertical, 12)
+                Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                if link { DiaryIcon(name: "chevron-right", size: 12).foregroundStyle(.secondary) }
+            }.padding(.vertical, 12).contentShape(Rectangle())
             if !last { Divider().overlay(.white.opacity(0.07)) }
         }.accessibilityElement(children: .combine)
     }

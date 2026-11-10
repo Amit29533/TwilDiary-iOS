@@ -86,6 +86,8 @@ struct PersonalProfileView: View {
     @State private var showAvatarPicker = false
     @State private var editing = false
     @State private var trakt: TraktProfileSummary?
+    /// The Statistics tab a card opens (Statistics reads the same key).
+    @AppStorage("stats.tab") private var statsTab = StatsView.Tab.overview
     var body: some View {
         let milestones = ProfileMilestone.make(store.workspace, now: store.now)
         let insights = StatsInsights(workspace: store.workspace, now: store.now)
@@ -94,7 +96,7 @@ struct PersonalProfileView: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 statTiles(insights)
-                HStack(alignment: .top, spacing: 12) { streakTile(overview.streaks); weekTile(overview.trend) }
+                HStack(alignment: .top, spacing: 12) { streakTile(overview.streaks); weekTile }
                 NavigationLink(value: AppDestination.statistics) {
                     HStack(spacing: 14) {
                         Image(systemName: "chart.bar.fill").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 48, height: 48).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
@@ -173,21 +175,26 @@ struct PersonalProfileView: View {
     }
     private func statTiles(_ insights: StatsInsights) -> some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            tile("play.rectangle", "Episodes", insights.episodes.formatted())
-            tile("clock", "Show time", longDuration(insights.showMinutes))
-            tile("film", "Movies", insights.movies.formatted())
-            tile("clock", "Movie time", longDuration(insights.movieMinutes))
+            Button { openStats(.overview) } label: { tile("play.rectangle", "Episodes", insights.episodes.formatted()) }.buttonStyle(.plain)
+            Button { openStats(.overview) } label: { tile("clock", "Show time", longDuration(insights.showMinutes)) }.buttonStyle(.plain)
+            Button { openStats(.taste) } label: { tile("film", "Movies", insights.movies.formatted()) }.buttonStyle(.plain)
+            Button { openStats(.overview) } label: { tile("clock", "Movie time", longDuration(insights.movieMinutes)) }.buttonStyle(.plain)
         }
     }
     private func tile(_ icon: String, _ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(theme.accent); Text(label).font(.system(size: 14)).foregroundStyle(.secondary) }
             Text(value).font(.system(size: 26, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).accessibilityElement(children: .combine)
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle()).accessibilityElement(children: .combine)
+    }
+    /// Opens Statistics on a tab.
+    private func openStats(_ tab: StatsView.Tab) {
+        statsTab = tab
+        router.paths[router.selectedTab, default: NavigationPath()].append(AppDestination.statistics)
     }
     private func streakTile(_ streaks: StatsOverview.Streaks) -> some View {
         let week = Array(streaks.heatmap.suffix(7))
-        return NavigationLink(value: AppDestination.history) {
+        return Button { openStats(.habits) } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Image(systemName: "flame").font(.system(size: 16)).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.16), in: Circle())
@@ -198,33 +205,55 @@ struct PersonalProfileView: View {
                     Text("day streak").font(.system(size: 14)).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 4) {
-                    ForEach(Array(week.enumerated()), id: \.offset) { index, day in
+                    ForEach(Array(week.enumerated()), id: \.offset) { _, day in
                         VStack(spacing: 3) {
                             Circle().fill(day.count > 0 ? theme.accent : .white.opacity(0.12)).frame(width: 14, height: 14)
                                 .overlay { if day.date == DiaryDate.day(store.now) { Circle().strokeBorder(theme.accent, lineWidth: 1.5).padding(-2) } }
-                            Text(["M", "T", "W", "T", "F", "S", "S"][index % 7]).font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text(Self.weekdayLetter(day.date)).font(.system(size: 10)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity)
                     }
                 }
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20)
         }.buttonStyle(.plain).accessibilityElement(children: .combine).accessibilityLabel("\(streaks.current) day streak")
     }
-    private func weekTile(_ trend: StatsOverview.Trend) -> some View {
-        let most = max(1, trend.buckets.map(\.minutes).max() ?? 1)
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("This week").font(.system(size: 14)).foregroundStyle(.secondary)
-            Text(DiaryDate.duration(trend.minutes)).font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent).lineLimit(1).minimumScaleFactor(0.7)
-            HStack(alignment: .bottom, spacing: 4) {
-                ForEach(trend.buckets) { bucket in
-                    VStack(spacing: 3) {
-                        RoundedRectangle(cornerRadius: 3).fill(bucket.minutes > 0 ? theme.accent : .white.opacity(0.12))
-                            .frame(height: bucket.minutes > 0 ? max(6, 48 * CGFloat(bucket.minutes) / CGFloat(most)) : 3)
-                        Text(String(bucket.label.prefix(1))).font(.system(size: 10)).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity)
-                }
-            }.frame(height: 66, alignment: .bottom)
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20)
-            .accessibilityElement(children: .combine)
+    /// "M" for a "2026-11-09" day key: the dots are the last seven days, so each says its own weekday.
+    static func weekdayLetter(_ day: String) -> String {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        let calendar = DiaryDate.calendar()
+        guard parts.count == 3, let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12)) else { return "" }
+        return ["S", "M", "T", "W", "T", "F", "S"][calendar.component(.weekday, from: date) - 1]
+    }
+    /// This week (Monday to Sunday): each day's watch time from its titles' runtimes.
+    private var week: [(day: Date, minutes: Int)] {
+        let calendar = DiaryDate.calendar()
+        let today = calendar.startOfDay(for: store.now)
+        let monday = calendar.date(byAdding: .day, value: -((calendar.component(.weekday, from: today) + 5) % 7), to: today) ?? today
+        var minutes: [Date: Int] = [:]
+        for event in store.workspace.activeEvents {
+            guard let date = DiaryDate.parse(event.watchedAt), date >= monday, let title = store.title(event.titleId) else { continue }
+            minutes[calendar.startOfDay(for: date), default: 0] += max(0, title.runtimeMinutes ?? 0)
+        }
+        return (0..<7).compactMap { offset in calendar.date(byAdding: .day, value: offset, to: monday).map { ($0, minutes[$0] ?? 0) } }
+    }
+    private var weekTile: some View {
+        let days = week, today = DiaryDate.calendar().startOfDay(for: store.now)
+        let most = max(1, days.map(\.minutes).max() ?? 1)
+        return Button { openStats(.overview) } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("This week").font(.system(size: 14)).foregroundStyle(.secondary)
+                Text(DiaryDate.duration(days.reduce(0) { $0 + $1.minutes })).font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent).lineLimit(1).minimumScaleFactor(0.7)
+                HStack(alignment: .bottom, spacing: 4) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { index, item in
+                        VStack(spacing: 3) {
+                            RoundedRectangle(cornerRadius: 3).fill(item.minutes > 0 ? theme.accent : .white.opacity(0.12))
+                                .frame(height: item.minutes > 0 ? max(6, 48 * CGFloat(item.minutes) / CGFloat(most)) : 3)
+                            Text(["M", "T", "W", "T", "F", "S", "S"][index]).font(.system(size: 10, weight: item.day == today ? .bold : .regular))
+                                .foregroundStyle(item.day == today ? theme.accent : .secondary)
+                        }.frame(maxWidth: .infinity)
+                    }
+                }.frame(height: 66, alignment: .bottom)
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityElement(children: .combine).accessibilityIdentifier("profile-this-week")
     }
     private func milestonesCard(_ milestones: [ProfileMilestone]) -> some View {
         let earned = milestones.filter(\.earned)
@@ -250,7 +279,7 @@ struct PersonalProfileView: View {
             let parts = calendar.dateComponents([.month, .day, .year], from: date)
             return parts.month == today.month && parts.day == today.day && parts.year != today.year ? (date, title) : nil
         }.sorted { $0.0 > $1.0 }
-        return HStack(alignment: .top, spacing: 14) {
+        return NavigationLink(value: HistoryRoute(day: past.first?.0)) { HStack(alignment: .top, spacing: 14) {
             VStack(spacing: 0) {
                 Text(store.now.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(theme.accent)
                 Text(store.now.formatted(.dateTime.day())).font(.system(size: 24, weight: .bold)).foregroundStyle(.white)
@@ -266,12 +295,14 @@ struct PersonalProfileView: View {
                 }
             }
             Spacer(minLength: 0)
-        }.padding(16).diaryPanel(padding: 0, radius: 22).accessibilityElement(children: .combine)
+            if !past.isEmpty { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
+        }.padding(16).diaryPanel(padding: 0, radius: 22).contentShape(Rectangle()) }
+            .buttonStyle(.plain).allowsHitTesting(!past.isEmpty).accessibilityElement(children: .combine).accessibilityIdentifier("profile-on-this-day")
     }
     private func ratingsCard(_ insights: StatsInsights) -> some View {
         let most = max(1, insights.ratingCounts.max() ?? 1)
         let top = insights.ratingCounts.firstIndex(of: most)
-        return NavigationLink(value: AppDestination.statistics) {
+        return Button { openStats(.taste) } label: {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text("Ratings").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
@@ -288,7 +319,7 @@ struct PersonalProfileView: View {
                         }.frame(maxWidth: .infinity)
                     }
                 }.frame(height: 116, alignment: .bottom)
-            }.padding(18).diaryPanel(padding: 0, radius: 22)
+            }.padding(18).diaryPanel(padding: 0, radius: 22).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("Ratings, \(insights.ratedCount) total")
     }
     private var historyCard: some View {
@@ -329,8 +360,8 @@ struct PersonalProfileView: View {
         HStack(spacing: 12) {
             Image(systemName: icon).font(.system(size: 16)).foregroundStyle(theme.accent).frame(width: 44, height: 44).background(theme.accent.opacity(0.14), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
-                Text(detail).font(.system(size: 13)).foregroundStyle(.secondary)
+                Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.75)
+                Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())

@@ -43,14 +43,17 @@ struct PeopleRankingRoute: Hashable {
 }
 
 struct MostWatchedSection<Content: View>: View {
+    var heading: String? = "Most watched"
     var user: String? = nil
     var ranking: PeopleRankingRoute? = nil
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Text("Most watched").font(.system(size: 20, weight: .semibold))
-                    .accessibilityValue(ranking?.status ?? "")
+                if let heading {
+                    Text(heading).font(.system(size: 20, weight: .semibold))
+                        .accessibilityValue(ranking?.status ?? "")
+                }
                 Spacer(minLength: 4)
                 if let user {
                     NavigationLink(value: AppDestination.anilist) {
