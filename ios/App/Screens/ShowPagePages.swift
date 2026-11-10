@@ -194,6 +194,7 @@ struct ShowPageDestination: View {
         case .lists(let catalog, let title): InListsPage(route: catalog, title: title)
         case .collections(let route, let title, let anime): RelatedCollectionsPage(route: route, title: title, anime: anime)
         case .tmdbCollection(let id, let name): TMDbCollectionPage(id: id, name: name)
+        case .catalogEpisodes(let route, let season): PreviewEpisodesPage(route: route, initialSeason: season)
         case .companies(let catalog, let title): CompaniesPage(route: catalog, title: title)
         }
     }
@@ -432,6 +433,188 @@ struct EpisodesPage: View {
         if details.episodes[next.id] == nil { Task { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
         self.forward = forward
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selected = next }
+    }
+}
+
+// MARK: A preview title's Episodes page
+
+/// The diary models of a title that isn't in your diary, so the title page's own episode sheet can
+/// show its episodes (the preview page and its Episodes page use these).
+@MainActor enum PreviewDiaryModels {
+    static func title(_ route: CatalogRoute, details: CatalogDetails) -> MediaTitle? {
+        let object: [String: Any] = [
+            "id": "preview-\(route.id)", "name": details.name, "category": details.suggestedCategory, "year": details.year as Any? ?? NSNull(),
+            "overview": details.overview, "poster": CatalogTools.image(details.posterPath) as Any? ?? NSNull(),
+            "backdrop": CatalogTools.image(details.backdropPath, size: "w780") as Any? ?? NSNull(), "communityScore": details.communityScore as Any? ?? NSNull(),
+            "tmdbId": route.id, "genres": details.genres, "tags": [], "runtimeMinutes": details.runtimeMinutes as Any? ?? NSNull(),
+            "status": "planned", "favorite": false, "queued": false, "score": NSNull(), "notes": "", "deletedAt": NSNull(), "version": 1, "seasons": []
+        ]
+        return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(MediaTitle.self, from: $0) }
+    }
+    static func episodes(_ items: [CatalogEpisode], route: CatalogRoute, season: Int, artwork: (CatalogEpisode) -> String?) -> [Episode] {
+        items.compactMap { episode in
+            let object: [String: Any] = [
+                "id": "preview-\(route.id)-s\(season)e\(episode.number)", "titleId": "preview-\(route.id)", "season": season, "number": episode.number,
+                "name": episode.name, "overview": episode.overview, "airedOn": episode.airedOn as Any? ?? NSNull(),
+                "still": artwork(episode) as Any? ?? NSNull(), "hidden": false, "communityScore": episode.communityScore as Any? ?? NSNull()
+            ]
+            return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(Episode.self, from: $0) }
+        }
+    }
+}
+
+/// The title page's Episodes page for a title that isn't in your diary: the same season picker,
+/// rows or cards, folded "Episodes 1 to N" groups and episode sheet. Progress, Watched / To watch
+/// and Mark season as watched need the title in your diary, so they aren't here.
+struct PreviewEpisodesPage: View {
+    let route: CatalogRoute
+    @State private var season: Int
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @AppStorage("episodesPageGrid") private var grid = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var details: CatalogDetails?
+    @State private var controller: CatalogEpisodeController?
+    @State private var openGroups = Set<String>()
+    @State private var revealed = Set<Int>()
+    @State private var selected: Int?
+    @State private var sheetEpisode: Int?
+    @State private var forward = true
+    init(route: CatalogRoute, initialSeason: Int) { self.route = route; _season = State(initialValue: initialSeason) }
+
+    var body: some View {
+        let items = controller?.items ?? []
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let details { seasonCard(details, count: items.count) }
+                if !items.isEmpty { HStack { ShowFilterChip(label: "All \(items.count)", on: true) {} ; Spacer(minLength: 0) } }
+                if controller?.loading == true && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
+                if let error = controller?.error { RetryNotice(message: error) { Task { await controller?.load(season, reveal: !hideSpoilers, force: true) } } }
+                if items.isEmpty && controller?.loading == false { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
+                if !items.isEmpty {
+                    // As on the title page: the first episodes, then the rest folded until tapped.
+                    let window = EpisodeWindow(count: items.count, focus: 0)
+                    list(Array(items[window.shown]))
+                    if !window.after.isEmpty { group("after", Array(items[window.after])) }
+                }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ShowPageTitle(title: "Episodes", subtitle: details?.name ?? "")
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19) }
+                    .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
+            }
+        }
+        .task(id: route) {
+            if details == nil { details = try? await store.browse(route).details }
+            if controller == nil { controller = CatalogEpisodeController { [store, route] number, reveal in try await store.catalogEpisodes(route, season: number, reveal: reveal) } }
+        }
+        .task(id: season) {
+            while controller == nil { try? await Task.sleep(for: .milliseconds(50)); if Task.isCancelled { return } }
+            await controller?.load(season, reveal: !hideSpoilers)
+        }
+        .onChange(of: season) { _, _ in revealed = []; selected = nil; openGroups = [] }
+        .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
+            if let number = selected ?? sheetEpisode { sheet(number) }
+        }
+        .onChange(of: selected) { _, number in if let number { sheetEpisode = number } }
+    }
+
+    private func seasonCard(_ details: CatalogDetails, count: Int) -> some View {
+        let seasons = (details.seasons ?? []).map(\.number)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Menu {
+                    Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
+                } label: {
+                    HStack(spacing: 7) {
+                        Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        if seasons.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(.secondary) }
+                    }.padding(.horizontal, 16).frame(height: 42).background(.white.opacity(0.08), in: Capsule())
+                }.disabled(seasons.count < 2).accessibilityIdentifier("episodes-page-season")
+                Spacer(minLength: 0)
+            }
+            Text([count.counted("episode", "episodes"), details.runtimeMinutes.map { DiaryDate.duration($0 * count) }].compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 14)).foregroundStyle(.secondary)
+        }.padding(16).background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.08)))
+    }
+
+    @ViewBuilder private func list(_ episodes: [CatalogEpisode]) -> some View {
+        if grid {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 16) {
+                ForEach(episodes) { episode in
+                    EpisodeGridCard(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode), state: state(episode),
+                                    airedOn: episode.airedOn, runtime: details?.runtimeMinutes, score: episode.communityScore,
+                                    onOpen: { open(episode) }, onToggle: {}, showsTick: false)
+                }
+            }
+        } else {
+            LazyVStack(spacing: 10) {
+                ForEach(episodes) { episode in
+                    EpisodeCardRow(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode), state: state(episode),
+                                   score: episode.communityScore, canToggle: false, onOpen: { open(episode) }, onToggle: {}, showsTick: false)
+                }
+            }
+        }
+    }
+    /// "Episodes 4 to 12 · 9 to watch": folded until tapped, as on the title page.
+    @ViewBuilder private func group(_ key: String, _ episodes: [CatalogEpisode]) -> some View {
+        let open = openGroups.contains(key)
+        let minutes = details?.runtimeMinutes.map { $0 * episodes.count }
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { if open { openGroups.remove(key) } else { openGroups.insert(key) } }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        Text(([episodes.count.formatted() + " episodes"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
+                }.padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
+                    .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07)))
+            }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
+            if open { list(episodes) }
+        }
+    }
+    private func sheet(_ number: Int) -> some View {
+        let items = controller?.items ?? []
+        let episodes = PreviewDiaryModels.episodes(items, route: route, season: season, artwork: artwork)
+        return Group {
+            if let details, let title = PreviewDiaryModels.title(route, details: details), let source = items.first(where: { $0.number == number }),
+               let episode = episodes.first(where: { $0.number == number }) {
+                EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
+                                 name: source.name.isEmpty ? "Episode \(number)" : source.name, summary: source.overview,
+                                 artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
+                                 traktScore: TraktTitleReads.cachedRatings(show: route.id, season: season)[number],
+                                 watched: false, forward: forward, onToggleWatched: {}, onNeighbour: { neighbour(of: number, forward: $0) },
+                                 onNote: {}, onClose: { selected = nil }, inDiary: false)
+                    .presentationDetents([.large]).presentationDragIndicator(.visible)
+            }
+        }
+    }
+    private func aired(_ episode: CatalogEpisode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true }
+    private func hidden(_ episode: CatalogEpisode) -> Bool { hideSpoilers && !revealed.contains(episode.number) }
+    private func state(_ episode: CatalogEpisode) -> EpisodeRowState { aired(episode) ? .notWatched : .notAired }
+    private func artwork(_ episode: CatalogEpisode) -> String? { CatalogTools.image(episode.stillPath) ?? details.flatMap { CatalogTools.image($0.backdropPath, size: "w780") } }
+    private func name(_ episode: CatalogEpisode) -> String { hidden(episode) ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name }
+    private func open(_ episode: CatalogEpisode) {
+        if hidden(episode) { revealed.insert(episode.number); Task { await controller?.load(season, reveal: true) } }
+        else { selected = episode.number }
+    }
+    private func neighbour(of number: Int, forward: Bool) {
+        let items = controller?.items ?? []
+        guard let index = items.firstIndex(where: { $0.number == number }), items.indices.contains(index + (forward ? 1 : -1)) else { return }
+        let next = items[index + (forward ? 1 : -1)]
+        revealed.insert(next.number)
+        Task { await controller?.load(season, reveal: true) }
+        self.forward = forward
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selected = next.number }
     }
 }
 

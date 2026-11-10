@@ -10,6 +10,8 @@ enum ShowPageRoute: Hashable {
     case collections(CatalogRoute, title: String, anime: Bool)
     /// One TMDb collection's films.
     case tmdbCollection(id: Int, name: String)
+    /// "Show all N episodes" on a preview page (a title not in the diary).
+    case catalogEpisodes(CatalogRoute, season: Int)
     case companies(CatalogRoute, title: String)
 }
 

@@ -353,7 +353,7 @@ private struct CatalogSeasonPreview: View {
     /// As on the title page: three rows (a sideways row of nine cards in grid), all of them on "Show all".
     private var shown: [CatalogEpisode] {
         let pool = unwatchedOnly ? controller.items.filter(aired) : controller.items
-        return showAll ? pool : Array(pool.prefix(episodesGrid ? 9 : 3))
+        return Array(pool.prefix(episodesGrid ? 9 : 3))
     }
     private func hidden(_ episode: CatalogEpisode) -> Bool { hideSpoilers && !revealed.contains(episode.number) }
     private func state(_ episode: CatalogEpisode) -> EpisodeRowState { aired(episode) ? .notWatched : .notAired }
@@ -412,9 +412,10 @@ private struct CatalogSeasonPreview: View {
                         }
                     }
                 }
-                if controller.items.count > shown.count || showAll {
-                    Button { showAll.toggle() } label: {
-                        HStack(spacing: 6) { Text(showAll ? "Show fewer episodes" : "Show all \(controller.items.count) episodes"); DiaryIcon(name: showAll ? "chevron-down" : "chevron-right", size: 14) }
+                if !controller.items.isEmpty {
+                    // As on the title page: the season's own Episodes page.
+                    NavigationLink(value: ShowPageRoute.catalogEpisodes(route, season: selected)) {
+                        HStack(spacing: 6) { Text("Show all \(controller.items.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(maxWidth: .infinity).frame(height: 48)
                             .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
@@ -461,27 +462,8 @@ private struct CatalogSeasonPreview: View {
 
     // MARK: The title page's episode sheet
 
-    /// The show as a diary title would carry it, so the very same sheet can show this episode.
-    private var sheetTitle: MediaTitle? {
-        let object: [String: Any] = [
-            "id": "preview-\(route.id)", "name": details.name, "category": details.suggestedCategory, "year": details.year as Any? ?? NSNull(),
-            "overview": details.overview, "poster": CatalogTools.image(details.posterPath) as Any? ?? NSNull(),
-            "backdrop": CatalogTools.image(details.backdropPath, size: "w780") as Any? ?? NSNull(), "communityScore": details.communityScore as Any? ?? NSNull(),
-            "tmdbId": route.id, "genres": details.genres, "tags": [], "runtimeMinutes": details.runtimeMinutes as Any? ?? NSNull(),
-            "status": "planned", "favorite": false, "queued": false, "score": NSNull(), "notes": "", "deletedAt": NSNull(), "version": 1, "seasons": []
-        ]
-        return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(MediaTitle.self, from: $0) }
-    }
-    private var sheetEpisodes: [Episode] {
-        controller.items.compactMap { episode in
-            let object: [String: Any] = [
-                "id": "preview-\(route.id)-s\(selected)e\(episode.number)", "titleId": "preview-\(route.id)", "season": selected, "number": episode.number,
-                "name": episode.name, "overview": episode.overview, "airedOn": episode.airedOn as Any? ?? NSNull(),
-                "still": artwork(episode) as Any? ?? NSNull(), "hidden": false, "communityScore": episode.communityScore as Any? ?? NSNull()
-            ]
-            return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(Episode.self, from: $0) }
-        }
-    }
+    private var sheetTitle: MediaTitle? { PreviewDiaryModels.title(route, details: details) }
+    private var sheetEpisodes: [Episode] { PreviewDiaryModels.episodes(controller.items, route: route, season: selected, artwork: artwork) }
     @ViewBuilder private func episodeSheet(_ number: Int) -> some View {
         if let title = sheetTitle, let source = controller.items.first(where: { $0.number == number }),
            let episode = sheetEpisodes.first(where: { $0.number == number }) {
