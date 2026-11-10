@@ -15,12 +15,16 @@ struct PersonProfilePage<Content: View>: View {
     /// The same person's other identity on this merged page: links to it don't push another page.
     var sameVoice: Int? = nil
     var samePerson: Int? = nil
-    /// Shown beside the photo (born, age, birthplace…); a page with none keeps the full-width portrait.
+    /// Born, age, birthplace, favourites, blood type…: as many as fit sit beside the photo (with
+    /// the name); the rest follow in a card under it. A page with none keeps the full-width portrait.
     var heroFacts: [ProfileFact] = []
     /// The gallery under the header.
     var photos: [PersonPhoto] = []
     /// False when the page places the Photos shelf itself (a person: after About, as designed).
     var showsPhotoShelf = true
+    /// Cover art of their best-known title behind the header (owner's request), with the title
+    /// page's soft wash under it; nil keeps the plain accent glow.
+    var backdrop: String? = nil
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -33,7 +37,11 @@ struct PersonProfilePage<Content: View>: View {
                     if heroFacts.isEmpty {
                         hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
                     } else {
-                        cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top)
+                        let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts)
+                        cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
+                        if fit.besidePhoto < heroFacts.count {
+                            ProfileFacts(items: Array(heroFacts.dropFirst(fit.besidePhoto))).padding(.horizontal, 14).padding(.bottom, 6)
+                        }
                     }
                     if showsPhotoShelf { PersonPhotoShelf(name: name, photos: photos).padding(.horizontal, 14).padding(.bottom, 6) }
                     content.padding(.horizontal, 14)
@@ -93,8 +101,8 @@ struct PersonProfilePage<Content: View>: View {
 
     /// The photo as a card, the name (second part in the accent) with the role, and the top facts
     /// beside it, divided like a list. The photo's Photos button opens the gallery.
-    private func cardHero(width: CGFloat, topInset: CGFloat) -> some View {
-        let photoWidth = min(220, (width - 28) * 0.47)
+    private func cardHero(width: CGFloat, topInset: CGFloat, fit: ProfileHeroFit) -> some View {
+        let photoWidth = fit.photoWidth
         let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
         return HStack(alignment: .top, spacing: 16) {
             Artwork(path: image, title: name, alignment: .top, prefersOriginal: true)
@@ -113,27 +121,31 @@ struct PersonProfilePage<Content: View>: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(parts.first ?? name).foregroundStyle(.white)
                     if parts.count > 1 { Text(parts[1]).foregroundStyle(theme.accent) }
-                }.font(.system(size: 32, weight: .bold)).tracking(-0.9).lineLimit(3).minimumScaleFactor(0.6)
+                }.font(.system(size: fit.nameSize, weight: .bold)).tracking(-0.9).lineLimit(3).truncationMode(.tail).minimumScaleFactor(0.8)
                     .accessibilityElement(children: .combine).accessibilityIdentifier(identifier + "-name")
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
                     } action: { header.update($0) }
                 if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
-                    Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.75)).padding(.top, 4)
+                    Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.75)).lineLimit(2).truncationMode(.tail).padding(.top, 4)
                 }
-                if let role = ProfileText.line(role) { Text(role).font(.system(size: 17)).foregroundStyle(HomeStyle.secondary).padding(.top, 4) }
-                ForEach(Array(heroFacts.prefix(3).enumerated()), id: \.element.id) { index, fact in
+                if let role = ProfileText.line(role) { Text(role).font(.system(size: 17)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4) }
+                ForEach(Array(heroFacts.prefix(fit.besidePhoto).enumerated()), id: \.element.id) { index, fact in
                     if index > 0 { Rectangle().fill(.white.opacity(0.1)).frame(height: HomeStyle.hairline) }
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) { Image(systemName: fact.icon).font(.system(size: 12)); Text(fact.label) }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
-                        Text(fact.value).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.75)
+                        Text(fact.value).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
                     }.padding(.vertical, 11).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
                 }.padding(.top, heroFacts.isEmpty ? 0 : 8)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
             .background(alignment: .top) {
-                RadialGradient(colors: [theme.accent.opacity(0.28), .clear], center: .top, startRadius: 0, endRadius: width * 0.9)
-                    .frame(height: topInset + 320).allowsHitTesting(false).accessibilityHidden(true)
+                if let backdrop {
+                    TitleArtworkBackdrop(path: backdrop, name: name)
+                } else {
+                    RadialGradient(colors: [theme.accent.opacity(0.28), .clear], center: .top, startRadius: 0, endRadius: width * 0.9)
+                        .frame(height: topInset + 320).allowsHitTesting(false).accessibilityHidden(true)
+                }
             }
     }
 
@@ -233,7 +245,7 @@ struct ProfileBiography: View {
         }
     }
     private var prose: some View {
-        Text(text).font(style).lineSpacing(5).foregroundStyle(.secondary)
+        Text(text).font(style).lineSpacing(5).foregroundStyle(Color(webHex: "#cfccda"))
             .tint(Color(webHex: "#d1cdd8")).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -260,3 +272,40 @@ struct ProfileWebsiteButtons: View {
     }
 }
 
+
+/// How a profile header lays out at this width: the photo's size, the name's size, and how many
+/// facts fit beside the photo without running past it. Long names step down a size, and long
+/// values (a birthplace, "Favourites 12,345") take two lines; facts that don't fit go below.
+struct ProfileHeroFit {
+    let photoWidth: CGFloat
+    let nameSize: CGFloat
+    let besidePhoto: Int
+    init(width: CGFloat, name: String, nativeName: String?, role: String?, facts: [ProfileFact]) {
+        photoWidth = min(220, (width - 28) * 0.47)
+        let column = max(120, width - 28 - photoWidth - 16)
+        let photoHeight = photoWidth * 1.45
+        // The name: the first word on its own line, the rest in the accent (as drawn).
+        let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
+        func lines(_ text: String, size: CGFloat) -> Int {
+            let perLine = max(4, Int(column / (size * 0.56)))
+            return max(1, Int(ceil(Double(text.count) / Double(perLine))))
+        }
+        func nameLines(_ size: CGFloat) -> Int { parts.reduce(0) { $0 + lines($1, size: size) } }
+        var size: CGFloat = 32
+        for candidate in [32.0, 28, 24] as [CGFloat] { size = candidate; if nameLines(candidate) <= 3 { break } }
+        nameSize = size
+        var used = CGFloat(min(3, nameLines(size))) * size * 1.18
+        if let native = ProfileText.line(nativeName), native != ProfileText.line(name) { used += CGFloat(min(2, lines(native, size: 14))) * 18 + 4 }
+        if ProfileText.line(role) != nil { used += 26 }
+        used += 8
+        var count = 0
+        for fact in facts.prefix(4) {
+            let valueLines = CGFloat(min(2, lines(fact.value, size: 19)))
+            let height = 18 + 4 + valueLines * 24 + 22
+            // A little past the photo's bottom is fine; a fact that would sit far below it isn't.
+            guard used + height <= photoHeight + 18 else { break }
+            used += height; count += 1
+        }
+        besidePhoto = count
+    }
+}

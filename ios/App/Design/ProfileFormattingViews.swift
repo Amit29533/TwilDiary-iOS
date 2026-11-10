@@ -44,7 +44,7 @@ struct ProfileFacts: View {
         HStack(spacing: 5) {
             Image(systemName: fact.icon).imageScale(.small).accessibilityHidden(true)
             Text(fact.label).fixedSize(horizontal: false, vertical: true)
-        }.font(.caption).foregroundStyle(.secondary)
+        }.font(.caption).foregroundStyle(Color(webHex: "#a9a7b6"))
     }
     private func value(_ fact: ProfileFact) -> Text {
         Text(AniListText.formatted(fact.value, hideSpoilers: false)).font(.subheadline.weight(.semibold))
@@ -203,39 +203,29 @@ struct ProfileAbout: View {
     /// Shown under the bio as "Source: …" (the credit line is cut from the prose).
     var sourceOverride: String? = nil
     @State private var expanded = false
-    @State private var detailsExpanded = false
     var body: some View {
         let facts = content.facts.filter { !excludingFacts.contains($0.id) }
         let sites = (content.links + additionalLinks).reduce(into: [ProfileWebsiteLink]()) { values, link in
             if !values.contains(where: { $0.id == link.id }) { values.append(link) }
         }
         VStack(alignment: .leading, spacing: 18) {
-            if !facts.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(detailsExpanded ? facts : Array(facts.prefix(3))) { fact in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(fact.label).font(.caption).foregroundStyle(.secondary)
-                            Text(AniListText.formatted(fact.markdown, hideSpoilers: false)).font(.subheadline)
-                                .foregroundStyle(Color(webHex: "#e6e2ec")).tint(Color(webHex: "#d1cdd8"))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityElement(children: .contain).accessibilityIdentifier("profile-detail-" + fact.id)
-                    }
-                    if facts.count > 3 {
-                        Button(detailsExpanded ? "Fewer details" : "More details") { detailsExpanded.toggle() }
-                            .font(.subheadline).buttonStyle(.plain).foregroundStyle(.primary).frame(minHeight: 44)
-                    }
-                }.accessibilityIdentifier("profile-additional-details")
+            // The prose first, then what the description lists, each kind in its own card.
+            VStack(alignment: .leading, spacing: 4) {
+                ProfileBiography(text: biographyOverride ?? AniListText.formatted(content.markdown, hideSpoilers: false), expanded: $expanded,
+                                 identifier: biographyID)
+                if let source = biographyOverride == nil ? content.source : sourceOverride { ProfileSourceNote(source: source) }
             }
+            if !facts.isEmpty { ProfileHighlights(facts: facts).accessibilityIdentifier("profile-additional-details") }
+            ForEach(content.sections) { section in ProfileSectionCard(section: section) }
             if !sites.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Links").font(.caption).foregroundStyle(.secondary)
+                    Text("LINKS").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(webHex: "#a9a7b6"))
                     ProfileWebsiteButtons(links: sites)
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("profile-links-section")
             }
             if !content.references.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Related profiles and titles").font(.caption).foregroundStyle(.secondary)
+                    Text("RELATED PROFILES AND TITLES").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(webHex: "#a9a7b6"))
                     InlineFlowLayout(spacing: 12, rowSpacing: 4) {
                         ForEach(content.references) { link in
                             Link(destination: link.url) { Text(link.title).underline().font(.subheadline).frame(minHeight: 44) }
@@ -245,11 +235,157 @@ struct ProfileAbout: View {
                     }
                 }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                ProfileBiography(text: biographyOverride ?? AniListText.formatted(content.markdown, hideSpoilers: false), expanded: $expanded,
-                                 identifier: biographyID)
-                if let source = biographyOverride == nil ? content.source : sourceOverride { ProfileSourceNote(source: source) }
+        }
+    }
+}
+
+// MARK: Highlights (owner's request): the description's common fields, picked out by kind
+
+/// One card per kind of field (Profile, Affiliations, Role and rank, Powers and abilities, Family
+/// and relations, Likes and hobbies, More details), in that order.
+struct ProfileHighlights: View {
+    let facts: [ProfileFormattedBiography.Fact]
+    var body: some View {
+        let groups = Dictionary(grouping: facts, by: \.kind).sorted { $0.key < $1.key }
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(groups, id: \.key) { kind, facts in
+                ProfileHighlightCard(title: kind.title, icon: kind.icon) {
+                    ForEach(facts) { fact in
+                        VStack(alignment: .leading, spacing: 8) {
+                            // A card with one field named like the card needs no second label.
+                            if facts.count > 1 || !(kind == .affiliation || kind == .relations || fact.label.lowercased() == kind.title.lowercased()) {
+                                Text(fact.label.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.4).foregroundStyle(Color(webHex: "#a9a7b6"))
+                            }
+                            if kind == .relations { ProfileRelations(items: fact.items) } else { ProfileValue(fact: fact) }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityElement(children: .contain).accessibilityIdentifier("profile-detail-" + fact.id)
+                    }
+                }
             }
+        }
+    }
+}
+
+/// The highlight container: a small tinted tile with the kind's symbol, its title, then its content.
+struct ProfileHighlightCard<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                    .frame(width: 30, height: 30).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
+                Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            content
+        }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+    }
+}
+
+/// A field's value: short items as chips, longer ones as a dotted list, prose as text.
+private struct ProfileValue: View {
+    let fact: ProfileFormattedBiography.Fact
+    var body: some View {
+        let items = fact.items
+        if items.allSatisfy({ ProfileFormattedBiography.Fact.visible($0).count <= 34 }) {
+            InlineFlowLayout(spacing: 6, rowSpacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in ProfileChip(markdown: item) }
+            }
+        } else if items.count > 1 {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Circle().fill(HomeStyle.chipText).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
+                        ProfileRichText(markdown: item)
+                    }
+                }
+            }
+        } else {
+            ProfileRichText(markdown: fact.markdown)
+        }
+    }
+}
+
+/// "[Loid Forger](…) (Adoptive Father)": the name (still a link) with the relation under it.
+private struct ProfileRelations: View {
+    let items: [String]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                if index > 0 { Rectangle().fill(Color(webHex: "#1c1c23")).frame(height: HomeStyle.hairline) }
+                let (name, relation) = Self.split(item)
+                HStack(spacing: 12) {
+                    Image(systemName: "person.fill").font(.system(size: 13)).foregroundStyle(HomeStyle.chipText)
+                        .frame(width: 32, height: 32).background(HomeStyle.round, in: Circle()).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(AniListText.formatted(name, hideSpoilers: false)).font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(HomeStyle.primary).tint(HomeStyle.primary).lineLimit(2)
+                        if let relation { Text(relation).font(.system(size: 12)).foregroundStyle(Color(webHex: "#a9a7b6")).lineLimit(2) }
+                    }
+                    Spacer(minLength: 0)
+                }.padding(.vertical, 8)
+            }
+        }
+    }
+    static func split(_ item: String) -> (String, String?) {
+        guard let match = item.firstMatch(of: /^(.*\S)\s*\(([^()]{1,60})\)\s*$/), !String(match.1).hasSuffix("](") else { return (item, nil) }
+        return (String(match.1), String(match.2).prefix(1).uppercased() + String(match.2).dropFirst())
+    }
+}
+
+private struct ProfileChip: View {
+    let markdown: String
+    var body: some View {
+        Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(HomeStyle.primary).tint(HomeStyle.chipText).lineLimit(1)
+            .padding(.horizontal, 12).frame(minHeight: 32)
+            .background(HomeStyle.round, in: Capsule())
+            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+    }
+}
+
+private struct ProfileRichText: View {
+    let markdown: String
+    var body: some View {
+        Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.system(size: 15)).lineSpacing(2)
+            .foregroundStyle(HomeStyle.primary).tint(HomeStyle.chipText).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A bulleted part of a description ("Awards", "Trivia", "Non-anime roles") as its own card:
+/// the first four items, then the rest on request.
+struct ProfileSectionCard: View {
+    let section: ProfileFormattedBiography.Section
+    @State private var all = false
+    var body: some View {
+        ProfileHighlightCard(title: section.title, icon: section.icon) {
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(Array((all ? section.items : Array(section.items.prefix(4))).enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 9) {
+                        Circle().fill(HomeStyle.chipText).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
+                        ProfileRichText(markdown: item)
+                    }
+                }
+                if section.items.count > 4 {
+                    Button(all ? "Show less" : "Show all \(section.items.count)") { withAnimation(.smooth(duration: 0.25)) { all.toggle() } }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain).frame(minHeight: 36)
+                }
+            }
+        }.accessibilityIdentifier("profile-section-" + section.id)
+    }
+}
+
+/// Awards a TMDB biography mentions, as chips.
+struct ProfileAwards: View {
+    let awards: [String]
+    var body: some View {
+        if !awards.isEmpty {
+            ProfileHighlightCard(title: "Awards and honours", icon: "trophy") {
+                InlineFlowLayout(spacing: 6, rowSpacing: 6) { ForEach(awards, id: \.self) { ProfileChip(markdown: $0) } }
+            }.accessibilityIdentifier("profile-awards")
         }
     }
 }

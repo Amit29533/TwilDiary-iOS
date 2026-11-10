@@ -34,7 +34,7 @@ struct PersonView: View {
                                   favouriteSubtitle: voiceFirst ? actor?.roles.first.map { "Voice of " + $0.character.name } : person?.department,
                                   identifier: prefix,
                                   sameVoice: actor?.id, samePerson: person?.id,
-                                  heroFacts: Array(facts.prefix(3)), photos: person?.photos ?? [], showsPhotoShelf: false) {
+                                  heroFacts: facts, photos: person?.photos ?? [], showsPhotoShelf: false, backdrop: backdrop) {
                     // Design (Actor Profile, page 1): About under the header, then Photos, then the credits.
                     VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -67,6 +67,15 @@ struct PersonView: View {
         }.task(id: start) { if person == nil && actor == nil { await load() } }
     }
 
+    /// Their best-known title's cover: for a voice actor, the cover of their most popular anime (AniList
+    /// lists roles by popularity); for cast, TMDB's backdrop of what they're known for.
+    private var backdrop: String? {
+        if voiceFirst || person == nil, let cover = actor?.roles.first(where: { $0.cover != nil })?.cover { return cover }
+        if let person, let item = (store.personSections(person).knownFor + person.credits).first(where: { $0.backdrop != nil || $0.backdropPath != nil }) {
+            return item.backdrop ?? CatalogTools.image(item.backdropPath, size: "w780")
+        }
+        return actor?.roles.first(where: { $0.cover != nil })?.cover
+    }
     private var routeName: String? { if case .voice(let route) = start { return route.name }; return nil }
     /// "15 anime" you've watched with them (from a ranking), when the page was opened from one.
     private var watchedCount: Int? { if case .voice(let route) = start, let count = route.watchedCount, count >= 0 { return count }; return nil }
@@ -111,24 +120,8 @@ struct PersonView: View {
     }
     private var about: some View {
         let content = actor.map { ProfileFormattedBiography(description: $0.description, hideSpoilers: hideSpoilers) }
-        let died = ProfileText.line(person?.deathday)
-        let ageAt = died == nil ? store.now : died.flatMap { DiaryDate.parse($0 + "T00:00:00Z") }
-        let tmdbAge = ageAt.flatMap { ProfileDate.age(birthday: person?.birthday, until: $0) }
-        let age = tmdbAge.map(String.init) ?? actor?.age.flatMap { $0 >= 0 ? String($0) : nil }
-        let birthplace = ProfileText.line(person?.birthplace)
-        let born = person?.birthday.map(ProfileDate.short) ?? actor?.birthday.map(ProfileDate.short)
-        let place = birthplace ?? actor?.homeTown
-        let facts = [
-            ProfileFact(id: prefix + "-birthday", icon: "calendar", label: "Born", value: born),
-            ProfileFact(id: prefix + "-age", icon: "person", label: died == nil ? "Age" : "Age at death", value: age),
-            ProfileFact(id: prefix + "-career", icon: "briefcase", label: ProfileText.careerLabel(actor?.yearsActive ?? []), value: actor.flatMap { ProfileText.careerValue($0.yearsActive) }),
-            ProfileFact(id: prefix + "-favourites", icon: "heart", label: "Favourites", value: actor.flatMap { ProfileText.favouritesValue($0.favourites) }),
-            ProfileFact(id: prefix + "-height", icon: "ruler", label: "Height", value: content?.facts.first { $0.id == "height" }?.markdown),
-            ProfileFact(id: "voice-actor-watched", icon: "eye", label: "Watched", value: watchedCount.map { $0.formatted() + " anime" }),
-            ProfileFact(id: prefix + (birthplace != nil ? "-birthplace" : "-hometown"), icon: "mappin",
-                        label: birthplace != nil ? "Birthplace" : "Hometown", value: place, wide: true),
-            ProfileFact(id: prefix + "-deathday", icon: "calendar", label: "Died", value: person?.deathday.map(ProfileDate.short), wide: true)
-        ].compactMap { $0 }
+        // The facts sit in the header (or the card under it); About keeps the prose.
+        let place = ProfileText.line(person?.birthplace) ?? actor?.homeTown
         let tmdb = ProfileText.withoutSourceCredit(person?.biography ?? "")
         let tmdbProse = tmdb.text
         let aniProse = content?.markdown.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -141,7 +134,6 @@ struct PersonView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text("About").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 .accessibilityAddTraits(.isHeader).padding(.top, 6)
-            ProfileFacts(items: Array(facts.dropFirst(3)))
             ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
             if let actor, let content {
                 ProfileAbout(content: content, excludingFacts: shownFacts,
@@ -155,6 +147,8 @@ struct PersonView: View {
                     if !tmdbProse.isEmpty, let source = tmdb.source { ProfileSourceNote(source: source) }
                 }
             }
+            // Awards the TMDB biography mentions, picked out of the prose.
+            ProfileAwards(awards: ProfileFormattedBiography.awards(in: tmdbProse))
         }
     }
 

@@ -87,11 +87,13 @@ struct CharacterView: View {
                 let biography = ProfileFormattedBiography(description: character.description, hideSpoilers: hideSpoilers)
                 PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
                                   kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
-                                  identifier: "character", heroFacts: Array(characterFacts(character, biography: biography).prefix(3))) {
+                                  identifier: "character", heroFacts: characterFacts(character, biography: biography),
+                                  backdrop: character.appearances.first(where: { $0.cover != nil })?.cover) {
                     VStack(alignment: .leading, spacing: 18) {
                         if let source = route.sourceTitle {
                             Button("In " + source) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain).foregroundStyle(.primary)
                         }
+                        Text("About").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                         details(character, biography: biography)
                         ProfileAbout(content: biography, excludingFacts: ["height", "blood-type"],
                                      additionalLinks: [ProfileWebsiteLink(url: URL(string: "https://anilist.co/character/\(character.id)")!, title: "AniList")].compactMap { $0 })
@@ -123,13 +125,12 @@ struct CharacterView: View {
     }
     private func details(_ character: AniCharacterDetail, biography: ProfileFormattedBiography) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            ProfileFacts(items: Array(characterFacts(character, biography: biography).dropFirst(3)))
             ProfileAliases(values: character.alternative, excluding: [character.name] + [character.native].compactMap { $0 })
         }
     }
     private func voicedBy(_ actors: [AniPerson]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Voiced by").font(.title3.weight(.semibold))
+            Text("Voiced by").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
             ProfileShelf {
                 ForEach(actors, id: \.id) { actor in
                     NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
@@ -149,7 +150,7 @@ struct CharacterView: View {
     }
     private func appearsIn(_ items: [AniAppearance]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Appears in").font(.title3.weight(.semibold))
+            Text("Appears in").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
             ProfileShelf {
                 ForEach(items) { item in
                     AnimeAppearanceButton(appearance: item) {

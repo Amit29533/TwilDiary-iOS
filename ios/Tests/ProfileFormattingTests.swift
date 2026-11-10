@@ -109,24 +109,57 @@ final class ProfileFormattingTests: XCTestCase {
         let value = ProfileFormattedBiography(description: source, hideSpoilers: true)
         XCTAssertEqual(value.facts.map(\.id), ["height"])
         XCTAssertTrue(value.links.isEmpty)
-        XCTAssertTrue(value.markdown.contains("- Game role\n- Drama role"))
+        // A bulleted list under its own heading becomes a section of its own, out of the prose.
+        XCTAssertEqual(value.sections.map(\.title), ["Non-Anime Roles"])
+        XCTAssertEqual(value.sections.first?.items, ["Game role", "Drama role"])
+        XCTAssertFalse(value.markdown.contains("Game role"))
         XCTAssertTrue(value.markdown.contains("Text.\nNext paragraph."))
         XCTAssertFalse(value.markdown.contains("Hidden"))
+    }
+    func testAnyLabelledFieldIsPickedOutAndGroupedByKind() {
+        let source = "__Height:__ 99.5 cm\n__Occupation:__ First-Grade Student, Test Subject (Formerly)\n__Affiliation:__ Eden Academy, Unknown Organization (Formerly)\n__Relatives:__ [Loid Forger](https://anilist.co/character/138101) (Adoptive Father), [Yor Forger](https://anilist.co/character/138102) (Adoptive Mother)\n__Cursed Technique:__ Six Eyes, Limitless\n__Devil Fruit:__ Gomu Gomu no Mi\n__Bounty:__ 3,000,000,000 Berries\n__Hobbies:__ Traveling alone, sky watching\n__Favorite Food:__ Peanuts\n__Note:__ not a field\n\nProse."
+        let value = ProfileFormattedBiography(description: source, hideSpoilers: true)
+        let kinds = Dictionary(uniqueKeysWithValues: value.facts.map { ($0.id, $0.kind) })
+        XCTAssertEqual(kinds["occupation"], .role)
+        XCTAssertEqual(kinds["affiliation"], .affiliation)
+        XCTAssertEqual(kinds["relatives"], .relations)
+        XCTAssertEqual(kinds["cursed-technique"], .powers)
+        XCTAssertEqual(kinds["devil-fruit"], .powers)
+        XCTAssertEqual(kinds["bounty"], .role)
+        XCTAssertEqual(kinds["hobbies"], .interests)
+        XCTAssertEqual(kinds["favorite-food"], .interests)
+        XCTAssertNil(kinds["note"])
+        // Lists split on commas outside brackets and links; a number with commas stays whole.
+        XCTAssertEqual(value.facts.first { $0.id == "affiliation" }?.items, ["Eden Academy", "Unknown Organization (Formerly)"])
+        XCTAssertEqual(value.facts.first { $0.id == "relatives" }?.items.count, 2)
+        XCTAssertEqual(value.facts.first { $0.id == "bounty" }?.items.count, 1)
+        // AniList's HTML links count only their visible names.
+        let html = ProfileFormattedBiography(description: "__Relatives:__ <a href=\"https://anilist.co/character/138101/Loid-Forger\">Loid Forger</a> (Adoptive Father), <a href=\"https://anilist.co/character/138102/Yor-Forger\">Yor Forger</a> (Adoptive Mother)", hideSpoilers: true)
+        XCTAssertEqual(html.facts.first?.items.count, 2)
+    }
+    func testAwardsAreFoundInTMDBBiographies() {
+        let text = "He won an Academy Award and two Golden Globe Awards, and was nominated for a Primetime Emmy."
+        XCTAssertEqual(ProfileFormattedBiography.awards(in: text), ["Academy Award", "Golden Globe", "Emmy"])
+        XCTAssertTrue(ProfileFormattedBiography.awards(in: "An actor from Seoul.").isEmpty)
     }
     func testSpoilerOnlyRoleListsDoNotLeaveAnEmptyHeading() {
         let value = ProfileFormattedBiography(description: "Public.\n\n**Non-Anime Roles:**\n~!- Hidden role.!~", hideSpoilers: true)
         XCTAssertEqual(value.markdown, "Public.")
         let visible = ProfileFormattedBiography(description: "Public.\n\n**Non-Anime Roles:**\n- Visible role.", hideSpoilers: true)
-        XCTAssertTrue(visible.markdown.contains("**Non-Anime Roles:**"))
+        // A visible list becomes its own section (heading and items), not prose.
+        XCTAssertEqual(visible.sections.first?.title, "Non-Anime Roles")
+        XCTAssertEqual(visible.sections.first?.items, ["Visible role."])
         let ending = ProfileFormattedBiography(description: "Public.\n\n**Important words**", hideSpoilers: true)
         XCTAssertTrue(ending.markdown.contains("Important words"))
     }
     func testUnknownAndDuplicateFieldsArePreservedInProse() {
         let source = "__Height:__ 152 cm\n__Height:__ Conflicting supplied value\n__Unrecognised detail:__ Keep this.\nAgency appears in a sentence."
         let value = ProfileFormattedBiography(description: source, hideSpoilers: true)
-        XCTAssertEqual(value.facts.count, 1)
+        // Any labelled field is picked out (an unknown one goes under More details); a duplicate
+        // label stays in the prose so nothing supplied is lost.
+        XCTAssertEqual(value.facts.map(\.id), ["height", "unrecognised-detail"])
+        XCTAssertEqual(value.facts.last?.kind, .other)
         XCTAssertTrue(value.markdown.contains("Conflicting supplied value"))
-        XCTAssertTrue(value.markdown.contains("Unrecognised detail"))
         XCTAssertTrue(value.markdown.contains("Agency appears"))
     }
     func testAliasesCountsAndCareerUseConsistentTextWithoutGuessing() {

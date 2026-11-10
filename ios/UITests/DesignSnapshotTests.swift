@@ -106,6 +106,63 @@ import XCTest
         }
     }
 
+    /// Profile, then Statistics (each tab, scrolled), Milestones and Edit profile.
+    func testProfileStatsSnapshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "-launchTab", "more"]
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 3)
+        func shot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+        func step() {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3); Thread.sleep(forTimeInterval: 1)
+        }
+        func pages(_ name: String, _ count: Int) { for page in 0..<count { shot("\(name)-\(page)"); if page < count - 1 { step() } } }
+        func open(_ id: String) -> Bool {
+            let target = app.descendants(matching: .any)[id]
+            for _ in 0..<8 where !(target.exists && target.isHittable) { step() }
+            guard target.exists else { return false }
+            target.tap(); Thread.sleep(forTimeInterval: 2.5); return true
+        }
+        func back() { app.navigationBars.buttons.element(boundBy: 0).tap(); Thread.sleep(forTimeInterval: 1.5) }
+        if open("settings-personal-profile") {
+            pages("prof", 4)
+            for _ in 0..<6 { app.swipeDown() }
+            if open("profile-statistics") {
+                for tab in ["overview", "habits", "taste", "library"] {
+                    let button = app.buttons["stats-tab-" + tab]
+                    for _ in 0..<6 where !(button.exists && button.isHittable) { app.swipeDown() }
+                    if button.exists { button.tap(); Thread.sleep(forTimeInterval: 2) }
+                    pages("stats-" + tab, 3)
+                }
+                back()
+            }
+            for _ in 0..<6 { app.swipeDown() }
+            if open("profile-milestones") { shot("milestones"); back() }
+            for _ in 0..<6 { app.swipeDown() }
+            if open("profile-edit-name") || open("profile-avatar") { shot("editprofile") }
+        }
+    }
+
+    /// Profile headers with long names, long hometowns and extra facts (favourites, blood type, died).
+    func testProfileHeaderSnapshots() {
+        for (kind, id) in [("character", 138100), ("character", 417), ("voice", 124390), ("cast", 172069), ("voice", 95065)] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--ui-testing", "--ui-profile-repairs", "--ui-profile-format=\(kind):\(id)"]
+            app.launch()
+            Thread.sleep(forTimeInterval: 4)
+            for page in 0..<3 {
+                let a = XCTAttachment(screenshot: app.screenshot()); a.name = "hdr-\(kind)\(id)-\(page)"; a.lifetime = .keepAlways; add(a)
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+                start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)), withVelocity: .slow, thenHoldForDuration: 0.3)
+                Thread.sleep(forTimeInterval: 1)
+            }
+            app.terminate()
+        }
+    }
+
     /// A title that isn't in the library (Home → Recommended), top to bottom.
     func testPreviewSnapshots() {
         capture(tab: "home", name: "preview", pages: 8) { app in

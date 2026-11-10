@@ -120,7 +120,7 @@ struct ProfileWatchedShelf: View {
     var body: some View {
         let titles = ProfileWatchMatching.titles(appearances, workspace: store.workspace, confirmed: confirmed)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Watched").font(.system(size: 20, weight: .semibold))
+            Text("Watched").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
             if titles.isEmpty { Text("No watches from these matched titles yet.").font(.subheadline).foregroundStyle(.secondary) }
             else {
                 ProfileShelf {
