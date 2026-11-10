@@ -581,11 +581,14 @@ struct TitleDetailView: View {
         if episodeDetails.episodes[episode.id] == nil { Task { await revealSeason(title) } }
     }
     private func episodeInformation(_ title: MediaTitle, episode: Episode) -> some View {
-        EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode, name: episodeName(episode), summary: episodeSummary(episode),
-                         artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode), tmdbScore: episodeScore(episode),
-                         traktScore: title.tmdbId.flatMap { TraktTitleReads.cachedRatings(show: $0, season: season)[episode.number] },
-                         watched: watched.contains(episode.id), forward: episodeForward,
-                         onToggleWatched: { toggleWatched(title, episode: episode) },
+        EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
+                         page: { item in
+                             .init(name: episodeName(item), summary: episodeSummary(item), artwork: episodeArtworkPath(item, title: title),
+                                   hidden: isHidden(item), tmdbScore: episodeScore(item),
+                                   traktScore: title.tmdbId.flatMap { TraktTitleReads.cachedRatings(show: $0, season: season)[item.number] },
+                                   watched: watched.contains(item.id))
+                         },
+                         onToggleWatched: { toggleWatched(title, episode: $0) },
                          onNeighbour: { showNeighbour(of: episode, forward: $0, title: title) },
                          onNote: { selectedEpisode = nil; showNotes = true },
                          onClose: { selectedEpisode = nil })

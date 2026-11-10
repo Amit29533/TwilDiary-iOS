@@ -207,11 +207,10 @@ struct ShowPageTitle: ToolbarContent {
     let title: String
     let subtitle: String
     var body: some ToolbarContent {
+        // One centred title, as on Favourites; the content scrolls under a feathered, frosted band.
         ToolbarItem(placement: .principal) {
-            VStack(spacing: 1) {
-                Text(title).font(.system(size: 17, weight: .semibold))
-                Text(subtitle).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
-            }.accessibilityElement(children: .combine)
+            Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                .accessibilityLabel(subtitle.isEmpty ? title : "\(title), \(subtitle)").accessibilityAddTraits(.isHeader)
         }
     }
 }
@@ -265,7 +264,7 @@ struct EpisodesPage: View {
         let watched = store.watchedEpisodeIDs(titleID)
         let dates = EpisodeWatchDates.latest(store, titleID: titleID)
         let nextIndex = episodes.firstIndex { !watched.contains($0.id) && aired($0) }
-        return ScrollView {
+        return EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 seasonCard(title)
                 HStack(spacing: 8) {
@@ -370,11 +369,12 @@ struct EpisodesPage: View {
     }
 
     private func sheet(_ title: MediaTitle, episode: Episode, episodes: [Episode], watched: Set<String>) -> some View {
-        let isWatched = watched.contains(episode.id)
-        return EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
-                                name: name(episode, watched: watched), summary: summary(episode), artwork: artwork(episode, title: title),
-                                hidden: hidden(episode, watched: watched), tmdbScore: score(episode), traktScore: nil, watched: isWatched, forward: forward,
-                                onToggleWatched: { toggle(episode, title: title, watched: watched) },
+        EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
+                                page: { item in
+                                    .init(name: name(item, watched: watched), summary: summary(item), artwork: artwork(item, title: title),
+                                          hidden: hidden(item, watched: watched), tmdbScore: score(item), traktScore: nil, watched: watched.contains(item.id))
+                                },
+                                onToggleWatched: { toggle($0, title: title, watched: watched) },
                                 onNeighbour: { neighbour(of: episode, forward: $0, episodes: episodes, title: title) },
                                 onNote: { selected = nil; showNotes = true }, onClose: { selected = nil })
             .presentationDetents([.large]).presentationDragIndicator(.visible)
@@ -426,7 +426,7 @@ struct RelatedTitlesPage: View {
     @State private var items: [CatalogItem]?
     @State private var failure: String?
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if let items {
                     if items.isEmpty { Text("TMDB has no recommendations for this title yet.").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
@@ -501,7 +501,7 @@ struct PreviewEpisodesPage: View {
 
     var body: some View {
         let items = controller?.items ?? []
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 if let details { seasonCard(details, count: items.count) }
                 if !items.isEmpty {
@@ -597,10 +597,13 @@ struct PreviewEpisodesPage: View {
             if let details, let title = PreviewDiaryModels.title(route, details: details), let source = items.first(where: { $0.number == number }),
                let episode = episodes.first(where: { $0.number == number }) {
                 EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
-                                 name: source.name.isEmpty ? "Episode \(number)" : source.name, summary: source.overview,
-                                 artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
-                                 traktScore: TraktTitleReads.cachedRatings(show: route.id, season: season)[number],
-                                 watched: false, forward: forward, onToggleWatched: {}, onNeighbour: { neighbour(of: number, forward: $0) },
+                                 page: { item in
+                                     let source = items.first { $0.number == item.number } ?? source
+                                     return .init(name: source.name.isEmpty ? "Episode \(item.number)" : source.name, summary: source.overview,
+                                                  artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
+                                                  traktScore: TraktTitleReads.cachedRatings(show: route.id, season: season)[item.number], watched: false)
+                                 },
+                                 onToggleWatched: { _ in }, onNeighbour: { neighbour(of: number, forward: $0) },
                                  onNote: {}, onClose: { selected = nil }, inDiary: false)
                     .presentationDetents([.large]).presentationDragIndicator(.visible)
             }
@@ -641,7 +644,7 @@ struct CastCreditsPage: View {
     @State private var crew: [TitleCrewMember] = []
     @State private var failure: String?
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 4) {
                     segment(anime ? "Voice cast" : "Cast", on: !crewTab) { crewTab = false }
@@ -747,7 +750,7 @@ struct InListsPage: View {
     @State private var loading = false
     @State private var failure: String?
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) { ForEach(Tab.allCases, id: \.self) { item in ShowFilterChip(label: item.rawValue, on: tab == item) { tab = item } } }
                 if loading && lists.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading lists") }
@@ -789,7 +792,7 @@ struct RelatedCollectionsPage: View {
     @Environment(DiaryStore.self) private var store
     @State private var model = RelatedCollectionsModel()
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             LazyVStack(spacing: 14) {
                 ForEach(Array(model.items.enumerated()), id: \.element.id) { index, collection in
                     RelatedCollectionLink(collection: collection, route: route, anime: anime) {
@@ -816,7 +819,7 @@ struct TMDbCollectionPage: View {
     @State private var collection: TitleCollection?
     @State private var failure: String?
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 18) {
                 if let collection {
                     if !collection.overview.isEmpty {
@@ -870,7 +873,7 @@ struct CompaniesPage: View {
     @State private var failure: String?
     var body: some View {
         let companies = (extras?.companies ?? []).filter { filter == .all || (filter == .networks) == $0.isNetwork }
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
                     ForEach(Filter.allCases, id: \.self) { item in

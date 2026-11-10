@@ -103,6 +103,7 @@ import XCTest
         XCTAssertTrue(app.buttons["More"].waitForExistence(timeout: 5))
         let leadingFrame = summary.frame
         let leadingText = summary.label.hasSuffix("…") ? String(summary.label.dropLast()) : summary.label
+        capture("Collapsed synopsis with More on its last line", app: app)
         app.buttons["More"].tap()
         XCTAssertTrue(app.buttons["Less"].waitForExistence(timeout: 5))
         // Expanded, the synopsis is one paragraph at full width: same start, taller, the whole text.

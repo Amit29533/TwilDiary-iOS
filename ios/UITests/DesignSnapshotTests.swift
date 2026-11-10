@@ -98,6 +98,43 @@ import XCTest
         }
     }
 
+    /// A › page (More like this) from the title page, scrolled under its header.
+    func testSeeAllPageSnapshots() {
+        capture(tab: "home", name: "seeall", pages: 3) { app in
+            let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+            if title.waitForExistence(timeout: 10) { title.tap() }
+            Thread.sleep(forTimeInterval: 3)
+            let more = app.descendants(matching: .any)["title-related-all"]
+            for _ in 0..<12 where !(more.exists && more.isHittable) { app.swipeUp() }
+            if more.exists { more.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+    }
+
+    /// The episode sheet: at rest, half-way through a swipe to the next episode, then settled.
+    func testEpisodeSheetSnapshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", "home"]
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 4)
+        func shot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+        let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+        if title.waitForExistence(timeout: 10) { title.tap() }
+        Thread.sleep(forTimeInterval: 3)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'title-episode-'")).firstMatch
+        for _ in 0..<8 where !(row.exists && row.isHittable) { app.swipeUp() }
+        guard row.exists else { return }
+        row.tap(); Thread.sleep(forTimeInterval: 2); shot("sheet-0")
+        // Hold half-way through a swipe.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.45))
+        let middle = app.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.45))
+        start.press(forDuration: 0.05, thenDragTo: middle, withVelocity: .slow, thenHoldForDuration: 0.1)
+        Thread.sleep(forTimeInterval: 1.5); shot("sheet-1")
+        app.swipeLeft(); Thread.sleep(forTimeInterval: 1.5); shot("sheet-2")
+        app.buttons["Previous episode"].firstMatch.tap(); Thread.sleep(forTimeInterval: 1.5); shot("sheet-3")
+    }
+
     private func capture(tab: String, name: String, pages: Int, open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab]

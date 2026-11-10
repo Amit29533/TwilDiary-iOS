@@ -86,7 +86,6 @@ struct TitleHero<Ratings: View>: View {
         return Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
             .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
             .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, 48)
             .accessibilityIdentifier("title-synopsis-text")
             .overlay(alignment: .bottomTrailing) {
                 if !expanded && hasOverflow {
@@ -100,7 +99,8 @@ struct TitleHero<Ratings: View>: View {
     }
     private func measureSynopsis() {
         guard synopsisWidth > 36 else { return }
-        synopsisParts = SynopsisTextLayout.split(synopsisText, width: synopsisWidth - 48)
+        // Full-width lines; only the last one leaves room for "… More".
+        synopsisParts = SynopsisTextLayout.split(synopsisText, width: synopsisWidth, lastLineReserve: 76)
     }
 
 }

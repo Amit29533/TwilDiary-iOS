@@ -470,11 +470,13 @@ private struct CatalogSeasonPreview: View {
         if let title = sheetTitle, let source = controller.items.first(where: { $0.number == number }),
            let episode = sheetEpisodes.first(where: { $0.number == number }) {
             EpisodeInfoSheet(title: title, season: selected, episodes: sheetEpisodes, episode: episode,
-                             name: source.name.isEmpty ? "Episode \(number)" : source.name, summary: source.overview,
-                             artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
-                             traktScore: TraktTitleReads.cachedRatings(show: route.id, season: selected)[number],
-                             watched: false, forward: swipeForward,
-                             onToggleWatched: {}, onNeighbour: { showNeighbour(of: number, forward: $0) },
+                             page: { item in
+                                 let source = controller.items.first { $0.number == item.number } ?? source
+                                 return .init(name: source.name.isEmpty ? "Episode \(item.number)" : source.name, summary: source.overview,
+                                              artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
+                                              traktScore: TraktTitleReads.cachedRatings(show: route.id, season: selected)[item.number], watched: false)
+                             },
+                             onToggleWatched: { _ in }, onNeighbour: { showNeighbour(of: number, forward: $0) },
                              onNote: {}, onClose: { selectedEpisode = nil }, inDiary: false)
                 .presentationDetents([.large]).presentationDragIndicator(.visible)
         }

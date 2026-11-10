@@ -54,7 +54,7 @@ struct PersonPhotosPage: View {
     }
     var body: some View {
         let shown = shown
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {

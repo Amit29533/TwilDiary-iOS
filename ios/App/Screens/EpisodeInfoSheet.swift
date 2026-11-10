@@ -4,20 +4,26 @@ import TwilDiaryCore
 
 /// One episode, opened from a show page or its Episodes page: still, season and number, name,
 /// rating, summary, when you watched it, four actions, and previous / next along the season.
+/// The season's episodes are pages side by side: swipe (or tap ‹ ›) and the next one slides in
+/// beside the current one while the header and the pager stay put.
 struct EpisodeInfoSheet: View {
+    /// What one page shows for an episode (the parent knows names, art, spoilers and plays).
+    struct Page {
+        var name: String
+        var summary: String
+        var artwork: String?
+        var hidden: Bool
+        var tmdbScore: Double?
+        var traktScore: Double?
+        var watched: Bool
+    }
     let title: MediaTitle
     let season: Int
     let episodes: [Episode]
+    /// The episode on screen; the parent updates it as you page.
     let episode: Episode
-    let name: String
-    let summary: String
-    let artwork: String?
-    let hidden: Bool
-    let tmdbScore: Double?
-    let traktScore: Double?
-    let watched: Bool
-    var forward = true
-    let onToggleWatched: () -> Void
+    let page: (Episode) -> Page
+    let onToggleWatched: (Episode) -> Void
     let onNeighbour: (_ forward: Bool) -> Void
     let onNote: () -> Void
     let onClose: () -> Void
@@ -27,48 +33,71 @@ struct EpisodeInfoSheet: View {
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var expanded = false
-    @State private var myRating: Int?
+    @State private var position: String?
+    @State private var expanded = Set<String>()
+    @State private var myRatings: [String: Int?] = [:]
     @State private var ratingError: String?
     @State private var rating = false
+
+    private var myRating: Int? { myRating(episode) }
+    private func myRating(_ item: Episode) -> Int? { myRatings[item.id] ?? EpisodeRatings.all[item.id] }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                // Design (board 3): still, 16, label, 4, name, 8, facts, 12, summary, history, actions.
-                VStack(alignment: .leading, spacing: 0) {
-                    still
-                    Text("SEASON \(season) · EPISODE \(episode.number)").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.accent)
-                        .padding(.top, 16)
-                    Text(name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
-                        .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("episode-sheet-name").padding(.top, 4)
-                    facts.padding(.top, 8)
-                    summaryText.padding(.top, 12)
-                    if inDiary, let history { historyRow(history).padding(.top, 2) }
-                    if inDiary { actions.padding(.top, 6) }
-                    if let ratingError { Text(ratingError).font(.footnote).foregroundStyle(HomeStyle.secondary).padding(.top, 8) }
-                }.padding(.horizontal, 16).padding(.bottom, 16)
-                    .id(episode.id)
-                    .transition(.asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
-                                            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)))
-            }.scrollIndicators(.hidden)
-                // Swipe left for the next episode, right for the previous one.
-                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { value in
-                    let dx = value.translation.width
-                    guard abs(dx) > 60, abs(dx) > abs(value.translation.height) * 1.5 else { return }
-                    onNeighbour(dx < 0)
-                })
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 0) {
+                    ForEach(episodes, id: \.id) { item in
+                        ScrollView { pageView(item, page(item)) }.scrollIndicators(.hidden)
+                            .containerRelativeFrame(.horizontal)
+                            .id(item.id)
+                    }
+                }.scrollTargetLayout()
+            }.scrollIndicators(.hidden).scrollTargetBehavior(.paging)
+                .scrollPosition(id: $position)
+                // A swipe counts once it has come to rest on a page.
+                .onScrollPhaseChange { _, phase in if phase == .idle { settle() } }
             Rectangle().fill(Color(webHex: "#2a2a33")).frame(height: HomeStyle.hairline)
             pager.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
         }.background(HomeStyle.round.ignoresSafeArea())
-            .task(id: episode.id) { myRating = EpisodeRatings.all[episode.id]; expanded = false; ratingError = nil }
-            .accessibilityAction(named: "Next episode") { onNeighbour(true) }
-            .accessibilityAction(named: "Previous episode") { onNeighbour(false) }
+            .onAppear { position = episode.id }
+            .onChange(of: episode.id) { _, id in if position != id { position = id } }
+            .task(id: episode.id) { ratingError = nil }
+            .accessibilityAction(named: "Next episode") { go(true) }
+            .accessibilityAction(named: "Previous episode") { go(false) }
             .confirmationDialog("Rate episode \(episode.number)", isPresented: $rating, titleVisibility: .visible) {
                 ForEach((1...10).reversed(), id: \.self) { value in Button("\(value)") { rate(value) } }
                 if myRating != nil { Button("Remove rating", role: .destructive) { rate(nil) } }
             } message: { Text("Saved to Trakt.") }
+    }
+
+    private func pageView(_ item: Episode, _ p: Page) -> some View {
+        // Design (board 3): still, 16, label, 4, name, 8, facts, 12, summary, history, actions.
+        VStack(alignment: .leading, spacing: 0) {
+            still(item, p)
+            Text("SEASON \(season) · EPISODE \(item.number)").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.accent)
+                .padding(.top, 16)
+            Text(p.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
+                .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("episode-sheet-name").padding(.top, 4)
+            facts(item, p).padding(.top, 8)
+            summaryText(item, p).padding(.top, 12)
+            if inDiary, let history = history(item) { historyRow(history).padding(.top, 2) }
+            if inDiary { actions(item, p).padding(.top, 6) }
+            if item.id == episode.id, let ratingError { Text(ratingError).font(.footnote).foregroundStyle(HomeStyle.secondary).padding(.top, 8) }
+        }.padding(.horizontal, 16).padding(.bottom, 16)
+    }
+    private func index(_ id: String?) -> Int? { episodes.firstIndex { $0.id == id } }
+    /// ‹ › and the accessibility actions: slide to the neighbour and tell the parent at once.
+    private func go(_ forward: Bool) {
+        guard let from = index(episode.id), episodes.indices.contains(from + (forward ? 1 : -1)) else { return }
+        let target = episodes[from + (forward ? 1 : -1)].id
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.38)) { position = target }
+        onNeighbour(forward)
+    }
+    /// After a swipe comes to rest: the page it rests on becomes the current episode.
+    private func settle() {
+        guard let to = index(position), let from = index(episode.id), to != from else { return }
+        onNeighbour(to > from)
     }
 
     private var header: some View {
@@ -85,32 +114,33 @@ struct EpisodeInfoSheet: View {
         }.padding(.horizontal, 16).padding(.top, 26).padding(.bottom, 14)
     }
 
-    private var still: some View {
+    private func still(_ item: Episode, _ p: Page) -> some View {
         Color.clear.frame(height: 200).frame(maxWidth: .infinity)
             .overlay {
-                if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 28).foregroundStyle(HomeStyle.secondary) } }
-                else { Artwork(path: artwork, title: String(episode.number)) }
+                if p.hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 28).foregroundStyle(HomeStyle.secondary) } }
+                else { Artwork(path: p.artwork, title: String(item.number)) }
             }
             .background(HomeStyle.card)
             .clipShape(RoundedRectangle(cornerRadius: 24))
             .overlay(alignment: .topLeading) {
-                if watched {
+                if p.watched {
                     Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(theme.ink)
                         .frame(width: 34, height: 34).background(theme.accent, in: Circle()).padding(12)
                         .accessibilityLabel("Watched")
                 }
             }
             .overlay(alignment: .topTrailing) {
-                ShareLink(item: shareText) {
+                ShareLink(item: shareText(item, p)) {
                     Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(width: 44, height: 44)
                         .background(HomeStyle.card.opacity(0.6), in: Circle())
                 }.padding(8).accessibilityLabel("Share episode")
             }
     }
 
-    private var facts: some View {
+    private func facts(_ item: Episode, _ p: Page) -> some View {
         // Design: the source's logo and score (14 pt bold), then "· 24 min · 2022" in 14 pt #b4b3c2.
-        HStack(spacing: 10) {
+        let traktScore = p.traktScore, tmdbScore = p.tmdbScore, myRating = myRating(item)
+        return HStack(spacing: 10) {
             if let traktScore {
                 HStack(spacing: 6) { BrandLogo(service: .trakt, size: 22); Text(traktScore.formatted(.number.precision(.fractionLength(1)))) }
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
@@ -118,7 +148,7 @@ struct EpisodeInfoSheet: View {
                 HStack(spacing: 6) { BrandLogo(service: .tmdb, size: 22); Text(tmdbScore.formatted(.number.precision(.fractionLength(1)))) }
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
             }
-            let rest = [title.runtimeMinutes.map { "\($0) min" }, episode.airedOn.map { String($0.prefix(4)) }].compactMap { $0 }
+            let rest = [title.runtimeMinutes.map { "\($0) min" }, item.airedOn.map { String($0.prefix(4)) }].compactMap { $0 }
             ForEach(Array(rest.enumerated()), id: \.offset) { index, part in
                 if index > 0 || (traktScore ?? tmdbScore) != nil { Text("·").font(.system(size: 14)).foregroundStyle(Color(webHex: "#5a5a66")) }
                 Text(part).font(.system(size: 14)).foregroundStyle(HomeStyle.dateChipText)
@@ -131,22 +161,23 @@ struct EpisodeInfoSheet: View {
         }.lineLimit(1)
     }
 
-    @ViewBuilder private var summaryText: some View {
-        let text = hidden ? "Watch it or tap Reveal on the show page to read this summary." : summary
+    @ViewBuilder private func summaryText(_ item: Episode, _ p: Page) -> some View {
+        let text = p.hidden ? "Watch it or tap Reveal on the show page to read this summary." : p.summary
+        let expanded = expanded.contains(item.id)
         VStack(alignment: .leading, spacing: 2) {
             Text(text).font(.system(size: 16)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
                 .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("episode-summary-\(episode.number)")
+                .accessibilityIdentifier("episode-summary-\(item.number)")
             if !expanded && text.count > 150 {
-                Button("More") { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { expanded = true } }
+                Button("More") { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { _ = self.expanded.insert(item.id) } }
                     .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 32)
             }
         }
     }
 
     private struct History { let latest: Date?; let plays: Int }
-    private var history: History? {
-        let plays = store.titleScope(title.id).activeEvents.filter { $0.episodeId == episode.id }
+    private func history(_ item: Episode) -> History? {
+        let plays = store.titleScope(title.id).activeEvents.filter { $0.episodeId == item.id }
         guard !plays.isEmpty else { return nil }
         let latest = plays.compactMap { DiaryDate.parse($0.watchedAt ?? $0.recordedAt) }.max()
         return History(latest: latest, plays: plays.count)
@@ -164,16 +195,17 @@ struct EpisodeInfoSheet: View {
         }.buttonStyle(.plain).accessibilityIdentifier("episode-sheet-history")
     }
 
-    private var actions: some View {
-        HStack(alignment: .top, spacing: 0) {
-            action(watched ? "Watched" : "Mark watched", icon: "check", on: watched, enabled: !store.writesBlocked) { onToggleWatched() }
+    private func actions(_ item: Episode, _ p: Page) -> some View {
+        let watched = p.watched, myRating = myRating(item)
+        return HStack(alignment: .top, spacing: 0) {
+            action(watched ? "Watched" : "Mark watched", icon: "check", on: watched, enabled: !store.writesBlocked) { onToggleWatched(item) }
                 .accessibilityIdentifier("episode-sheet-watched")
             action(myRating.map { "Rated \($0)" } ?? "Rate", icon: "star", on: myRating != nil, enabled: title.tmdbId != nil && title.isSeries) { rating = true }
             action("Note", icon: "notebook-pen", on: !title.notes.isEmpty) { onNote() }
             Menu {
-                Button(watched ? "Mark unwatched" : "Mark watched", systemImage: watched ? "xmark.circle" : "checkmark.circle") { onToggleWatched() }
+                Button(watched ? "Mark unwatched" : "Mark watched", systemImage: watched ? "xmark.circle" : "checkmark.circle") { onToggleWatched(item) }
                     .disabled(store.writesBlocked)
-                ShareLink(item: shareText) { Label("Share", systemImage: "square.and.arrow.up") }
+                ShareLink(item: shareText(item, p)) { Label("Share", systemImage: "square.and.arrow.up") }
                 Button("Watch history", systemImage: "clock.arrow.circlepath") {
                     onClose()
                     router.paths[router.selectedTab, default: NavigationPath()].append(HistoryRoute(query: title.name))
@@ -200,7 +232,7 @@ struct EpisodeInfoSheet: View {
         let index = episodes.firstIndex { $0.id == episode.id } ?? 0
         // Design: 56 pt #26262e circles and pill (#2e2e38 hairline); 6 pt dots, the current one 16 wide.
         return HStack(spacing: 10) {
-            Button { onNeighbour(false) } label: { pagerCircle("chevron.left") }
+            Button { go(false) } label: { pagerCircle("chevron.left") }
                 .buttonStyle(.springPress).disabled(index == 0).opacity(index == 0 ? 0.4 : 1).accessibilityLabel("Previous episode")
             VStack(spacing: 6) {
                 Text("Episode \(episode.number) of \(episodes.count)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.soft)
@@ -211,7 +243,7 @@ struct EpisodeInfoSheet: View {
                 }.accessibilityHidden(true)
             }.frame(maxWidth: .infinity, minHeight: 56).background(Color(webHex: "#26262e"), in: Capsule())
                 .overlay(Capsule().strokeBorder(Color(webHex: "#2e2e38"), lineWidth: HomeStyle.hairline))
-            Button { onNeighbour(true) } label: { pagerCircle("chevron.right") }
+            Button { go(true) } label: { pagerCircle("chevron.right") }
                 .buttonStyle(.springPress).disabled(index >= episodes.count - 1).opacity(index >= episodes.count - 1 ? 0.4 : 1).accessibilityLabel("Next episode")
         }
     }
@@ -226,7 +258,7 @@ struct EpisodeInfoSheet: View {
         let start = min(max(0, index - 2), max(0, episodes.count - 5))
         return Array(start..<min(episodes.count, start + 5))
     }
-    private var shareText: String { "\(title.name) · S\(season)E\(episode.number)" + (hidden ? "" : " · " + name) }
+    private func shareText(_ item: Episode, _ p: Page) -> String { "\(title.name) · S\(season)E\(item.number)" + (p.hidden ? "" : " · " + p.name) }
 
     private func rate(_ value: Int?) {
         guard let show = title.tmdbId else { return }
@@ -235,7 +267,7 @@ struct EpisodeInfoSheet: View {
         Task {
             do {
                 try await TraktTitleReads.rateEpisode(store: store, show: show, season: season, episode: target.number, episodeID: target.id, rating: value)
-                if target.id == episode.id { myRating = value }
+                myRatings[target.id] = .some(value)
             } catch { if target.id == episode.id { ratingError = error.localizedDescription } }
         }
     }

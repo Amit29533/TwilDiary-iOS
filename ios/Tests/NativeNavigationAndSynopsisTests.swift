@@ -106,6 +106,14 @@ import SwiftUI
             XCTAssertFalse(parts.continuation.isEmpty)
         }
     }
+    func testSynopsisReservesRoomForMoreOnlyOnTheLastLine() {
+        let text = String(repeating: "A married couple who received a divorce settlement lose their memories. ", count: 6)
+        let full = SynopsisTextLayout.split(text, width: 340), reserved = SynopsisTextLayout.split(text, width: 340, lastLineReserve: 76)
+        XCTAssertEqual(reserved.leading + reserved.continuation, text)
+        XCTAssertLessThan(reserved.leading.count, full.leading.count)
+        // Only the last line gives way: three full-width lines' worth is still there.
+        XCTAssertGreaterThan(reserved.leading.count, full.leading.count * 3 / 4)
+    }
     func testEmptyAndUnmeasuredSynopsisRemainLossless() {
         XCTAssertEqual(SynopsisTextLayout.split("", width: 100), .init(leading: "", continuation: ""))
         XCTAssertEqual(SynopsisTextLayout.split("Not measured", width: 0), .init(leading: "Not measured", continuation: ""))
