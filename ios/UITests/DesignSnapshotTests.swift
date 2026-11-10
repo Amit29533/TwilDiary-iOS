@@ -182,6 +182,16 @@ import XCTest
         }
     }
 
+    /// Library top to bottom, then its Filters sheet.
+    func testLibrarySnapshots() {
+        capture(tab: "library", name: "library", pages: 3)
+        capture(tab: "library", name: "libfilters", pages: 1) { app in
+            let filters = app.buttons["library-filters"]
+            if filters.waitForExistence(timeout: 5) { filters.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+    }
+
     /// A title that isn't in the library (Home → Recommended), top to bottom.
     func testPreviewSnapshots() {
         capture(tab: "home", name: "preview", pages: 8) { app in

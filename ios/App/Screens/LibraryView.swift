@@ -18,6 +18,7 @@ struct LibraryView: View {
     @SceneStorage("library.drive") private var drive = ""
     @SceneStorage("library.favorites") private var favoritesOnly = false
     @State private var showFilters = false
+    @State private var showAllGenres = false
     /// The overview's "See all" shows the whole grid until the filters change.
     @State private var expandedAll = false
     /// The status chips scroll sideways, so a drag that starts on them never changes the category.
@@ -79,15 +80,17 @@ struct LibraryView: View {
         let counts = statusCounts
         return ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(Self.statuses, id: \.0) { key, name in
+                ForEach(Self.statuses.filter { $0.0 != "all" }, id: \.0) { key, name in
                     let on = status == key
-                    Button { status = key } label: {
-                        HStack(spacing: 5) {
-                            Text(name).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
-                            Text("\(counts[key] ?? 0)").fontWeight(.semibold).foregroundStyle(on ? theme.accent : Color(webHex: "#f3f0f7"))
-                        }.font(.system(size: 14)).padding(.horizontal, 12).frame(height: 34)
-                            .background(on ? theme.accent.opacity(0.12) : .clear, in: Capsule())
-                            .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.7) : .white.opacity(0.14)))
+                    Button { status = on ? "all" : key } label: {
+                        HStack(spacing: 7) {
+                            Circle().fill(Self.statusDot(key)).frame(width: 8, height: 8)
+                            Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? HomeStyle.chipText : HomeStyle.primary)
+                            Text("\(counts[key] ?? 0)").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                                .foregroundStyle(on ? HomeStyle.chipText.opacity(0.8) : HomeStyle.secondary)
+                        }.padding(.horizontal, 14).frame(height: 40)
+                            .background(on ? HomeStyle.chip : HomeStyle.round, in: Capsule())
+                            .overlay(Capsule().strokeBorder(on ? HomeStyle.chipText.opacity(0.5) : HomeStyle.dateChipBorder, lineWidth: on ? 1 : HomeStyle.hairline))
                             .contentShape(Capsule())
                     }.buttonStyle(.plain).accessibilityLabel(name).accessibilityValue("\(counts[key] ?? 0) titles")
                         .accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("library-status-" + key)
@@ -95,6 +98,17 @@ struct LibraryView: View {
             }.padding(.horizontal, 14)
         }.scrollIndicators(.hidden).padding(.vertical, 6)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Motion.swipeSpace)) } action: { chipRow = $0 }
+    }
+    /// Watching in the accent, Planned grey, Completed green (design), Dropped red.
+    static func statusDot(_ key: String) -> Color {
+        switch key {
+        case "watching": HomeStyle.chipText
+        case "planned": Color(webHex: "#8e8e9c")
+        case "completed": Color(webHex: "#5fd48a")
+        case "dropped": Color(webHex: "#ff8a80")
+        case "jellyfin": Color(webHex: "#00a4dc")
+        default: Color(webHex: "#f5c26b")
+        }
     }
     private var sortRow: some View {
         HStack(spacing: 10) {
@@ -345,14 +359,27 @@ struct LibraryView: View {
 
     private var filterSheet: some View {
         NavigationStack {
-            EdgeToEdgeScroll {
+            ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    sheetLabel("Genre")
+                    sheetLabel("Genre", detail: genres.isEmpty ? nil : "\(genres.count) selected")
+                    let allGenres = genreCounts
+                    // The six most common, then "N more" for the rest (any chosen one always shows).
+                    let visible = showAllGenres ? allGenres : allGenres.enumerated().filter { $0.offset < 6 || genres.contains($0.element.0) }.map(\.element)
                     InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                        ForEach(genreCounts, id: \.0) { name, count in
+                        ForEach(visible, id: \.0) { name, count in
                             let on = genres.contains(name)
-                            sheetChip("\(name) \(count)", on: on) { var value = genres; if on { value.remove(name) } else { value.insert(name) }; genres = value }
+                            sheetChip(name, count: count, on: on) { var value = genres; if on { value.remove(name) } else { value.insert(name) }; genres = value }
                                 .accessibilityLabel(name).accessibilityValue("\(count) titles").accessibilityIdentifier("filter-genre-" + name)
+                        }
+                        if allGenres.count > visible.count || showAllGenres && allGenres.count > 6 {
+                            Button { withAnimation(.smooth(duration: 0.25)) { showAllGenres.toggle() } } label: {
+                                HStack(spacing: 6) {
+                                    Text(showAllGenres ? "Fewer" : "\(allGenres.count - visible.count) more")
+                                    Image(systemName: showAllGenres ? "chevron.up" : "chevron.down").font(.system(size: 11, weight: .bold))
+                                }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                    .padding(.horizontal, 16).frame(height: 42)
+                                    .overlay(Capsule().strokeBorder(HomeStyle.chipText.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                            }.buttonStyle(.plain).accessibilityIdentifier("filter-genre-more")
                         }
                     }
                     if !collectionTags.isEmpty || !tag.isEmpty {
@@ -369,41 +396,78 @@ struct LibraryView: View {
                         sheetChip("Any", on: drive.isEmpty) { drive = "" }.accessibilityIdentifier("filter-disk-any")
                         sheetChip("On disk", on: drive == "mapped") { drive = "mapped" }.accessibilityIdentifier("filter-disk-mapped")
                         sheetChip("Not on disk", on: drive == "unmapped") { drive = "unmapped" }.accessibilityIdentifier("filter-disk-unmapped")
-                        ForEach(HomeDiskShortcut.all) { disk in sheetChip(disk.label, on: drive == disk.key) { drive = disk.key } }
-                        ForEach(extraDisks) { disk in sheetChip(disk.deviceName + " · " + disk.letters.joined(separator: " / "), on: drive == disk.key) { drive = disk.key } }
+                        ForEach(HomeDiskShortcut.all) { disk in sheetChip(disk.label, icon: "internaldrive", on: drive == disk.key) { drive = disk.key } }
+                        ForEach(extraDisks) { disk in sheetChip(disk.deviceName + " · " + disk.letters.joined(separator: " / "), icon: "internaldrive", on: drive == disk.key) { drive = disk.key } }
                     }
                     sheetLabel("Public rating from")
-                    Picker("Public rating from", selection: $ratingSource) { ForEach(PublicRatingSource.allCases, id: \.self) { Text($0.label).tag($0) } }
-                        .pickerStyle(.segmented).accessibilityIdentifier("filter-rating-source")
+                    HStack(spacing: 4) {
+                        ForEach(PublicRatingSource.allCases, id: \.self) { source in
+                            let on = ratingSource == source
+                            Button { ratingSource = source } label: {
+                                Text(source.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.primary)
+                                    .frame(maxWidth: .infinity).frame(height: 44).background(on ? theme.accent : .clear, in: Capsule()).contentShape(Capsule())
+                            }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
+                        }
+                    }.padding(4).background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                        .accessibilityElement(children: .contain).accessibilityIdentifier("filter-rating-source")
                     sheetLabel("Show")
-                    Toggle("Favorites only", isOn: $favoritesOnly).tint(theme.accent).accessibilityIdentifier("filter-favorites")
-                    Button { showFilters = false; openTrash() } label: {
-                        HStack(spacing: 6) { DiaryIcon(name: "trash-2", size: 15); Text("Trash · \(trashCount) \(trashCount == 1 ? "title" : "titles")") }
-                            .font(.system(size: 14)).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
-                    }.buttonStyle(.plain).accessibilityLabel("Open Trash").padding(.top, 6)
+                    VStack(spacing: 0) {
+                        Toggle(isOn: $favoritesOnly) { Text("Favorites only").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(maxWidth: .infinity, alignment: .leading) }
+                            .toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).frame(minHeight: 58).accessibilityIdentifier("filter-favorites")
+                        SettingsDivider()
+                        Button { showFilters = false; openTrash() } label: {
+                            HStack(spacing: 12) {
+                                DiaryIcon(name: "trash-2", size: 17).foregroundStyle(HomeStyle.secondary)
+                                Text("Trash").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Spacer()
+                                Text(trashCount.counted("title", "titles")).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                            }.padding(.horizontal, 16).frame(minHeight: 58).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel("Open Trash")
+                    }.modifier(SettingsCard())
                 }.padding(.horizontal, 20).padding(.bottom, 20)
-            }.scrollContentBackground(.hidden)
-            // A half-height glass sheet: the result button stays pinned while the filters scroll.
-            .safeAreaInset(edge: .bottom) {
-                Button { showFilters = false } label: { Text("Show \(filtered.count) \(filtered.count == 1 ? "title" : "titles")").frame(maxWidth: .infinity) }
-                    .buttonStyle(.diaryPrimary).padding(.horizontal, 20).padding(.vertical, 8).accessibilityIdentifier("filter-show")
-                    // A soft fade behind it, so chips scrolling underneath never clutter the button.
-                    .background(alignment: .bottom) { LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom).padding(.top, -24).allowsHitTesting(false) }
             }
-            .containerBackground(Color.clear, for: .navigation)
+            // The result button stays pinned while the filters scroll.
+            .safeAreaInset(edge: .bottom) {
+                Button { showFilters = false } label: { Text("Show \(filtered.count) \(filtered.count == 1 ? "title" : "titles")") }
+                    .buttonStyle(SettingsPrimaryButtonStyle()).padding(.horizontal, 20).padding(.vertical, 8).accessibilityIdentifier("filter-show")
+                    .background(alignment: .bottom) { LinearGradient(colors: [.clear, Color(webHex: "#111116")], startPoint: .top, endPoint: .bottom).padding(.top, -24).allowsHitTesting(false) }
+            }
             .navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Clear all") { genres = []; tag = ""; drive = ""; favoritesOnly = false }.tint(theme.accent).disabled(activeFilterCount == 0) } }
-        }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showFilters = false } label: {
+                        Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
+                            .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    }.buttonStyle(.plain).accessibilityLabel("Close")
+                }.sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Clear all") { genres = []; tag = ""; drive = ""; favoritesOnly = false }
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        .padding(.horizontal, 16).frame(height: 40).background(HomeStyle.chip, in: Capsule())
+                        .buttonStyle(.plain).disabled(activeFilterCount == 0).opacity(activeFilterCount == 0 ? 0.5 : 1)
+                }.sharedBackgroundVisibility(.hidden)
+            }
+        }.presentationBackground(Color(webHex: "#111116"))
     }
-    private func sheetLabel(_ text: String) -> some View {
-        Text(text).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary).padding(.top, 18).padding(.bottom, 8)
+    private func sheetLabel(_ text: String, detail: String? = nil) -> some View {
+        HStack {
+            Text(text.uppercased()).font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary)
+            Spacer()
+            if let detail { Text(detail).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText) }
+        }.padding(.top, 22).padding(.bottom, 10)
     }
-    private func sheetChip(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
+    /// A filter chip (design): name and count on a dark pill; chosen, the accent with dark text.
+    private func sheetChip(_ label: String, count: Int? = nil, icon: String? = nil, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.system(size: 14)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
-                .padding(.horizontal, 12).frame(height: 34)
-                .background(on ? theme.accent.opacity(0.14) : .clear, in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.7) : .white.opacity(0.16)))
+            HStack(spacing: 7) {
+                if let icon { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.secondary) }
+                Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.primary).lineLimit(1)
+                if let count { Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(on ? Color(webHex: "#1a1030").opacity(0.7) : HomeStyle.secondary) }
+            }.padding(.horizontal, 16).frame(height: 42)
+                .background(on ? theme.accent : HomeStyle.round, in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .contentShape(Capsule())
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
     /// The sheet sits outside the navigation stack, so Trash is pushed onto Library's path.
@@ -511,8 +575,11 @@ struct LibraryPosterCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
                 .overlay(alignment: .topLeading) {
-                    if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 6)).padding(6) }
+                    if let score {
+                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 7).frame(height: 22).background(.black.opacity(0.72), in: Capsule()).padding(6)
+                    }
                 }
                 .overlay(alignment: .topTrailing) {
                     if !selecting, let icon = stateIcon { DiaryIcon(name: icon, size: 14).foregroundStyle(.white).frame(width: 24, height: 24).background(.black.opacity(0.6), in: Circle()).padding(6) }
