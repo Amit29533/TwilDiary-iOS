@@ -34,11 +34,14 @@ struct StatsMonth {
     /// Days so far this month (every day for a past month).
     let elapsed: Int
 
-    init(workspace: Workspace, month: Date, now: Date) {
+    /// The whole year (Statistics → Yearly) rather than one month.
+    let wholeYear: Bool
+    init(workspace: Workspace, month: Date, now: Date, wholeYear: Bool = false) {
         let calendar = DiaryDate.calendar()
-        let begin = calendar.date(from: calendar.dateComponents([.year, .month], from: month)) ?? month
+        let begin = calendar.date(from: calendar.dateComponents(wholeYear ? [.year] : [.year, .month], from: month)) ?? month
         start = begin
-        let end = calendar.date(byAdding: .month, value: 1, to: begin) ?? begin
+        self.wholeYear = wholeYear
+        let end = calendar.date(byAdding: wholeYear ? .year : .month, value: 1, to: begin) ?? begin
         let titles = Dictionary(workspace.activeTitles.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         struct Dated { let title: MediaTitle; let date: Date; let episode: Bool }
         let all = workspace.activeEvents.compactMap { event -> Dated? in
@@ -62,7 +65,7 @@ struct StatsMonth {
             plays[item.title.id] = (played.count + 1, played.minutes + minutes(item))
         }
         tvMinutes = tv; movieMinutes = film; self.episodes = episodes; shows = showIDs.count; movies = movieIDs.count
-        let count = calendar.range(of: .day, in: .month, for: begin)?.count ?? 30
+        let count = calendar.dateComponents([.day], from: begin, to: end).day ?? 30
         let monthDays: [Day] = (0..<count).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: begin) else { return nil }
             let entry = byDay[date]
@@ -81,9 +84,10 @@ struct StatsMonth {
             .sorted { $0.count != $1.count ? $0.count > $1.count : $0.minutes > $1.minutes }
         mostPlayedShows = played.filter { $0.title.isSeries }
         mostPlayedMovies = played.filter { !$0.title.isSeries }
-        // The twelve months ending with this one.
-        months = (0..<12).reversed().compactMap { back in
-            guard let monthStart = calendar.date(byAdding: .month, value: -back, to: begin),
+        // The twelve months ending with this one; for a year, its own January to December.
+        let firstMonth = wholeYear ? begin : (calendar.date(byAdding: .month, value: -11, to: begin) ?? begin)
+        months = (0..<12).compactMap { step in
+            guard let monthStart = calendar.date(byAdding: .month, value: step, to: firstMonth),
                   let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) else { return nil }
             return (monthStart, all.filter { $0.date >= monthStart && $0.date < monthEnd }.reduce(0) { $0 + minutes($1) })
         }
@@ -97,19 +101,26 @@ struct StatsMonthNavigator: View {
     @Binding var month: Date
     let earliest: Date
     let now: Date
+    /// "‹ 2026 ›": steps a year at a time.
+    var byYear = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         let calendar = DiaryDate.calendar()
-        let current = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+        let parts: Set<Calendar.Component> = byYear ? [.year] : [.year, .month]
+        let unit: Calendar.Component = byYear ? .year : .month
+        let shown = calendar.date(from: calendar.dateComponents(parts, from: month)) ?? month
+        let current = calendar.date(from: calendar.dateComponents(parts, from: now)) ?? now
+        let first = calendar.date(from: calendar.dateComponents(parts, from: earliest)) ?? earliest
         HStack {
-            step("chevron.left", enabled: month > earliest) { month = calendar.date(byAdding: .month, value: -1, to: month) ?? month }
-                .accessibilityLabel("Previous month")
+            step("chevron.left", enabled: shown > first) { month = calendar.date(byAdding: unit, value: -1, to: month) ?? month }
+                .accessibilityLabel(byYear ? "Previous year" : "Previous month")
             Spacer()
-            Text(month.formatted(.dateTime.month(.wide).year())).font(.system(size: 19, weight: .bold)).foregroundStyle(theme.accent)
+            Text(byYear ? String(calendar.component(.year, from: month)) : month.formatted(.dateTime.month(.wide).year()))
+                .font(.system(size: 19, weight: .bold)).foregroundStyle(theme.accent).contentTransition(.numericText())
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            step("chevron.right", enabled: month < current) { month = calendar.date(byAdding: .month, value: 1, to: month) ?? month }
-                .accessibilityLabel("Next month")
+            step("chevron.right", enabled: shown < current) { month = calendar.date(byAdding: unit, value: 1, to: month) ?? month }
+                .accessibilityLabel(byYear ? "Next year" : "Next month")
         }
     }
     private func step(_ symbol: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -128,10 +139,10 @@ struct StatsMonthCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("THIS MONTH").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(theme.accent.opacity(0.9))
+            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text(month.wholeYear ? "THIS YEAR" : "THIS MONTH").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(theme.accent.opacity(0.9))
             VStack(alignment: .leading, spacing: 2) {
                 Text(longDuration(month.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
-                Text("of watch time in " + month.start.formatted(.dateTime.month(.wide))).font(.system(size: 16)).foregroundStyle(.white.opacity(0.75))
+                Text("of watch time in " + (month.wholeYear ? String(DiaryDate.calendar().component(.year, from: month.start)) : month.start.formatted(.dateTime.month(.wide)))).font(.system(size: 16)).foregroundStyle(.white.opacity(0.75))
             }
             HStack(spacing: 10) {
                 Button { router.library("all") } label: {
@@ -169,7 +180,7 @@ struct StatsMonthOverTimeCard: View {
     @Binding var selected: Date
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        StatsCard(title: "Over time", subtitle: "Watch time per month") {
+        StatsCard(title: "Over time", subtitle: month.wholeYear ? "Watch time per month · tap one to open it" : "Watch time per month") {
             let points = Array(month.months.enumerated())
             let peak = month.months.max { $0.minutes < $1.minutes }
             Chart(points, id: \.offset) { index, item in
@@ -219,11 +230,12 @@ struct StatsYourDaysCard: View {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: 40) }
                 ForEach(month.days) { day in cell(day, calendar: calendar) }
             }
-            InlineFlowLayout(spacing: 12, rowSpacing: 6) {
+            // One line (owner's request); it shrinks a little on narrow phones rather than wrapping.
+            HStack(spacing: 10) {
                 legend(Circle().fill(theme.accent), "Shows"); legend(Circle().fill(movie), "Movies")
-                legend(Circle().fill(.white), "Both"); legend(Circle().fill(.white.opacity(0.1)), "No watch")
-                legend(Circle().strokeBorder(.white, lineWidth: 1.5), "Biggest day")
-            }
+                legend(Circle().fill(.white), "Both"); legend(Circle().fill(.white.opacity(0.1)), "None")
+                legend(Circle().strokeBorder(.white, lineWidth: 1.5), "Binge day")
+            }.lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(month.watchedDays) of \(month.elapsed)").font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
                 Text("Days you watched").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -245,7 +257,7 @@ struct StatsYourDaysCard: View {
             .accessibilityLabel(day.date.formatted(date: .abbreviated, time: .omitted) + (day.watched ? ", " + DiaryDate.duration(day.minutes) : ", no watch"))
     }
     private func legend<S: View>(_ swatch: S, _ label: String) -> some View {
-        HStack(spacing: 5) { swatch.frame(width: 10, height: 10); Text(label).font(.system(size: 12)).foregroundStyle(.secondary) }
+        HStack(spacing: 4) { swatch.frame(width: 9, height: 9); Text(label).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize() }
     }
 }
 
@@ -258,7 +270,7 @@ struct StatsMonthHallOfFame: View {
             StatsCard(title: "Hall of fame") {
                 if let day = month.biggest {
                     NavigationLink(value: HistoryRoute(day: day.date)) {
-                        row("calendar-days", "Biggest day", day.date.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
+                        row("calendar-days", "Binge day", day.date.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
                     }.buttonStyle(.plain)
                 }
                 if month.bestStreak > 0 { StatsStreakRow(days: month.bestStreak) }
@@ -331,7 +343,7 @@ struct StatsFacesCard: View {
                     Button("Voice") { voice = true }.foregroundStyle(voice ? theme.accent : Color.secondary)
                 }.font(.system(size: 15, weight: .semibold)).buttonStyle(.plain)
             }
-            MostWatchedCast(kind: voice ? .voice : .cast, heading: nil).id(voice)
+            MostWatchedCast(kind: voice ? .voice : .cast, heading: nil, round: true).id(voice)
         }
     }
 }

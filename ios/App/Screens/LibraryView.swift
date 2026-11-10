@@ -436,7 +436,7 @@ struct LibraryView: View {
                     }.buttonStyle(.plain).accessibilityLabel("Close")
                 }.sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Clear") { genres = []; tag = ""; drive = ""; favoritesOnly = false }
+                    Button { genres = []; tag = ""; drive = ""; favoritesOnly = false } label: { Text("Clear").lineLimit(1).fixedSize() }
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 16).frame(height: 40).background(HomeStyle.chip, in: Capsule())
                         .buttonStyle(.plain).disabled(activeFilterCount == 0).opacity(activeFilterCount == 0 ? 0.5 : 1)

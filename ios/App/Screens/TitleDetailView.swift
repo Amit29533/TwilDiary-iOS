@@ -127,7 +127,7 @@ struct TitleDetailView: View {
                                         Button("Move to Trash", systemImage: "trash", role: .destructive) { if confirmDeletions { confirmTrash = true } else { Task { if await store.trash(title) { dismissPage() } } } }
                                             .disabled(store.writesBlocked).accessibilityIdentifier("title-menu-trash")
                                     } label: { TitleMoreButtonLabel() }.accessibilityLabel("More options for " + title.name).accessibilityIdentifier("title-more")
-                                }.sharedBackgroundVisibility(.hidden)
+                                }
                             }
                             .task { if !initializedEditor { initializedEditor = true; watchDate = store.now; notesField = VersionedField(value: title.notes, version: title.version); ratingField = VersionedField(value: title.score, version: title.version) } }
                             .task(id: season) {

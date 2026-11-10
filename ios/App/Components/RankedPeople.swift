@@ -100,6 +100,7 @@ struct MostWatchedSection<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if heading != nil || !(ranking?.people.isEmpty ?? true) {
             HStack(spacing: 8) {
                 if let heading {
                     Text(heading).font(.system(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).lineLimit(1)
@@ -110,6 +111,7 @@ struct MostWatchedSection<Content: View>: View {
                     SectionMoreLink(label: "View all \(ranking.people.count)", value: ranking, identifier: ranking.identifier + "-more")
                 }
             }
+            }
             content
         }
     }
@@ -117,7 +119,35 @@ struct MostWatchedSection<Content: View>: View {
 
 struct MostWatchedShelf: View {
     let ranking: PeopleRankingRoute
+    /// Three round photos with name and count, then a round See all (Statistics' reference design).
+    var round = false
     var body: some View {
+        if round { roundRow } else { shelf }
+    }
+    private var roundRow: some View {
+        HStack(alignment: .top, spacing: 6) {
+            ForEach(Array(ranking.people.prefix(3))) { person in
+                RankedPersonLink(person: person, identifier: ranking.identifier) {
+                    VStack(spacing: 6) {
+                        Artwork(path: person.row.image, title: person.row.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
+                            .overlay(Circle().strokeBorder(.white.opacity(0.1)))
+                        Text(person.row.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .multilineTextAlignment(.center).lineLimit(2).truncationMode(.tail)
+                        Text(person.row.count).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    }.frame(maxWidth: .infinity).contentShape(Rectangle()).accessibilityElement(children: .combine)
+                }
+            }
+            NavigationLink(value: ranking) {
+                VStack(spacing: 6) {
+                    Image(systemName: "arrow.right").font(.system(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        .frame(width: 64, height: 64).background(HomeStyle.round, in: Circle())
+                        .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    Text("See all").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                }.frame(maxWidth: .infinity).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("See all \(ranking.people.count)").accessibilityIdentifier(ranking.identifier + "-more")
+        }
+    }
+    private var shelf: some View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(Array(ranking.people.enumerated()), id: \.element.id) { index, person in

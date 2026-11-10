@@ -122,6 +122,9 @@ struct StatsOverTimeCard: View {
                             .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.system(size: 12, weight: .bold)).foregroundStyle(.white) }
                     }
                 }.chartYAxis(.hidden)
+                    // Quantitative years start the axis at 0 by default, which squeezed every year into the
+                    // right edge; the axis now spans the first to the last year with a little room.
+                    .chartXScale(domain: Double(years.first?.year ?? 0) - 0.3 ... Double(years.last?.year ?? 0) + 0.3)
                     .chartXAxis { AxisMarks(values: years.map(\.year)) { value in AxisValueLabel { Text("'" + String((value.as(Int.self) ?? 0) % 100).leftPadded(2)).font(.system(size: 11)) } } }
                     .frame(height: 170).accessibilityLabel("Watch time per year")
             }
@@ -214,7 +217,7 @@ struct StatsHallOfFameCard: View {
             StatsCard(title: "Hall of fame") {
                 if let day = insights.biggestDay {
                     NavigationLink(value: HistoryRoute(day: day.day)) {
-                        row("calendar-days", "Biggest day", day.day.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
+                        row("calendar-days", "Binge day", day.day.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
                     }.buttonStyle(.plain)
                 }
                 if longestStreak > 0 { StatsStreakRow(days: longestStreak) }

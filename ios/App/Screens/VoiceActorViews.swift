@@ -235,6 +235,8 @@ struct MostWatchedCast: View {
     let kind: Kind
     /// The section's title; nil when the card around it has its own (Statistics → Faces of all time).
     var heading: String? = "Most watched"
+    /// Statistics → Faces of all time: three round photos and a See all tile.
+    var round = false
     @Environment(DiaryStore.self) private var store
     @State private var rows: [RankedRow] = []
     @State private var aniList: [Int: AniPerson] = [:]
@@ -242,7 +244,7 @@ struct MostWatchedCast: View {
     @State private var failure: String?
     @State private var loading = false
     var body: some View {
-        MostWatchedSection(heading: heading, ranking: rankingRoute) { ranking }
+        MostWatchedSection(heading: heading, ranking: round ? nil : rankingRoute) { ranking }
             .task { await load() }
     }
     private var rankingRoute: PeopleRankingRoute {
@@ -262,7 +264,7 @@ struct MostWatchedCast: View {
             Text(kind == .voice ? "Watch some anime and the voice actors you hear most show up here." : "Watch a few live-action titles and the cast you see most shows up here.")
                 .font(.system(size: 13)).foregroundStyle(.secondary)
         } else {
-            MostWatchedShelf(ranking: rankingRoute)
+            MostWatchedShelf(ranking: rankingRoute, round: round)
         }
     }
     private struct Page: Decodable {

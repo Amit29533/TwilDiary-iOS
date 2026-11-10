@@ -22,6 +22,9 @@ struct StatsView: View {
     /// Owner's design: All time, or one month at a time (‹ November 2026 ›).
     @State private var monthly = false
     @State private var month = Date.now
+    /// Owner's request: a Yearly view next to All time and Monthly (‹ 2026 ›).
+    @State private var yearly = false
+    @State private var yearDate = Date.now
     @State private var genreKind = 0
     @State private var mostPlayedShows = true
     @State private var highestRatedShows = true
@@ -46,6 +49,15 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     tabPicker
                     switch tab {
+                    case .overview where yearly:
+                        let summary = StatsMonth(workspace: store.workspace, month: yearDate, now: clock, wholeYear: true)
+                        StatsMonthNavigator(month: $yearDate, earliest: earliestMonth, now: clock, byYear: true)
+                        StatsMonthCard(month: summary)
+                        StatsMonthOverTimeCard(month: summary, selected: Binding(get: { yearDate }, set: { chosen in month = chosen; yearly = false; monthly = true }))
+                        StatsMonthHallOfFame(month: summary)
+                        StatsPosterRow(title: "Most played", items: (mostPlayedShows ? summary.mostPlayedShows : summary.mostPlayedMovies).map {
+                            StatsPosterItem(title: $0.title, badge: "×\($0.count)", detail: $0.minutes > 0 ? longDuration($0.minutes) : nil)
+                        }, shows: $mostPlayedShows)
                     case .overview where monthly:
                         let summary = StatsMonth(workspace: store.workspace, month: month, now: clock)
                         StatsMonthNavigator(month: $month, earliest: earliestMonth, now: clock)
@@ -97,15 +109,18 @@ struct StatsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Picker("Show", selection: $monthly) { Text("All time").tag(false); Text("Monthly").tag(true) }
+                        Picker("Show", selection: Binding(get: { yearly ? 2 : monthly ? 1 : 0 }, set: { value in monthly = value == 1; yearly = value == 2 })) {
+                            Text("All time").tag(0); Text("Monthly").tag(1); Text("Yearly").tag(2)
+                        }
                     } label: {
-                        HStack(spacing: 5) { Text(monthly ? "Monthly" : "All time"); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
+                        HStack(spacing: 5) { Text(scopeLabel); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
                             .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .padding(.horizontal, 14).frame(height: 38).background(HomeStyle.chip, in: Capsule())
-                    }.accessibilityLabel("Statistics period").accessibilityValue(monthly ? "Monthly" : "All time").accessibilityIdentifier("stats-scope")
+                    }.accessibilityLabel("Statistics period").accessibilityValue(scopeLabel).accessibilityIdentifier("stats-scope")
                 }.sharedBackgroundVisibility(.hidden)
             }
-            .onChange(of: monthly) { _, on in if on { tab = .overview; month = clock } }
+            .onChange(of: monthly) { _, on in if on && !yearly && month > clock { month = clock } ; if on { tab = .overview } }
+            .onChange(of: yearly) { _, on in if on { tab = .overview; yearDate = clock } }
         .onChange(of: router.statsRevision) { _, _ in applyShortcut() }
             .onAppear { clock = store.now; applyShortcut() }
             .onChange(of: period) { _, _ in selectedBucket = nil }
@@ -118,6 +133,7 @@ struct StatsView: View {
                 }
             }
     }
+    private var scopeLabel: String { yearly ? "Yearly" : monthly ? "Monthly" : "All time" }
     private func applyShortcut() {
         guard router.statsRevision > appliedShortcutRevision else { return }
         appliedShortcutRevision = router.statsRevision; period = .today; selectedBucket = nil
@@ -230,9 +246,6 @@ struct StatsView: View {
                 .buttonStyle(.plain).disabled(highlights.busiest == nil)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("stats-busiest")
             if let index = selectedBucket, let active = value.buckets.first(where: { $0.key == index }) { bucketDetails(active) }
-            caption(highlights.bulkDays > 0
-                ? "Dated watches only, estimated from runtimes. \(highlights.bulkDays) bulk-imported \(highlights.bulkDays == 1 ? "day" : "days") with over 24 hours stay out of the average and busiest day."
-                : "Dated watches only. Estimated from title runtimes. Includes rewatches.", size: 12)
         }.statsPanel()
     }
     private func trendFigures(_ value: StatsOverview.Trend, highlights: StatsHighlights) -> some View {
@@ -246,7 +259,6 @@ struct StatsView: View {
                     .foregroundStyle(difference > 0 ? Color(webHex: "#5fe0b0") : difference < 0 ? Color(webHex: "#ff6b6b") : Color(webHex: "#c5c0cf"))
                 Text(value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }.padding(.top, 4).opacity(value.difference == nil ? 0 : 1).accessibilityHidden(value.difference == nil)
-            caption(value.watches.counted("watch", "watches") + " · " + value.titles.counted("title", "movies & shows"), size: 12).padding(.top, 2)
         }
     }
     /// "0", "45m", "2h", "1h 30m".
@@ -260,18 +272,33 @@ struct StatsView: View {
         // labels read exactly ("1h 30m") instead of rounding a 1h 14m peak down to "1h".
         let busiest = max(1, buckets.map(\.minutes).max() ?? 1), step = busiest <= 60 ? 15 : 30
         let peak = Int((Double(busiest) / Double(step)).rounded(.up)) * step
-        let shown = buckets.count <= 12 ? buckets.map(\.key) : stride(from: 0, to: buckets.count, by: max(1, buckets.count / 6)).map { $0 }
+        // Every label for a week; otherwise about five, evenly spaced and always the last, so dates never crowd.
+        let shown: [Int] = {
+            guard buckets.count > 7 else { return buckets.map(\.key) }
+            let step = Int((Double(buckets.count) / 5).rounded(.up))
+            var indices = Array(stride(from: 0, to: buckets.count, by: step))
+            if let last = indices.last, last != buckets.count - 1 {
+                if buckets.count - 1 - last < max(1, step / 2) { indices.removeLast() }
+                indices.append(buckets.count - 1)
+            }
+            return indices.map { buckets[$0].key }
+        }()
+        // Watch time on top of the bars: every bar in a week, the tallest otherwise.
+        let labelled: (StatsOverview.Bucket) -> Bool = { bucket in bucket.minutes > 0 && (buckets.count <= 7 || bucket.minutes == busiest) }
         return VStack(spacing: 6) {
             GeometryReader { geometry in
                 Chart(buckets) { bucket in
                     BarMark(x: .value("Period", Double(bucket.key)), y: .value("Minutes", bucket.minutes), width: .fixed(min(20, max(2, geometry.size.width / CGFloat(max(1, buckets.count)) - 3))))
                         .foregroundStyle(theme.accent.opacity(selectedBucket == nil || selectedBucket == bucket.key ? 1 : 0.45)).cornerRadius(3)
+                        .annotation(position: .top, spacing: 3) {
+                            if labelled(bucket) { Text(DiaryDate.duration(bucket.minutes)).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white).fixedSize() }
+                        }
                 }.chartXAxis(.hidden).chartYAxis {
                     AxisMarks(position: .trailing, values: [0, Double(peak) / 2, Double(peak)]) { mark in
                         AxisGridLine().foregroundStyle(.white.opacity(0.08))
                         AxisValueLabel { if let minutes = mark.as(Double.self) { Text(axisLabel(Int(minutes.rounded()))).font(.system(size: 10)).foregroundStyle(.secondary) } }
                     }
-                }.chartXScale(domain: -0.5...(Double(max(1, buckets.count)) - 0.5), range: .plotDimension(padding: 0)).chartYScale(domain: 0...Double(peak)).accessibilityHidden(true)
+                }.chartXScale(domain: -0.5...(Double(max(1, buckets.count)) - 0.5), range: .plotDimension(padding: 0)).chartYScale(domain: 0...Double(peak) * 1.18).accessibilityHidden(true)
                     .chartOverlay { _ in
                         HStack(spacing: 0) { ForEach(buckets) { bucket in
                             Button { selectedBucket = selectedBucket == bucket.key ? nil : bucket.key } label: { Color.clear.contentShape(Rectangle()) }.buttonStyle(.plain)
@@ -374,30 +401,33 @@ struct StatsView: View {
             }.buttonStyle(.plain)
             GeometryReader { geometry in HStack(spacing: 0) { ForEach(statuses, id: \.self) { status in statusColor(status).frame(width: geometry.size.width * CGFloat(value.counts[status] ?? 0) / CGFloat(max(1, value.total))) } } }
                 .frame(height: 10).clipShape(Capsule()).accessibilityLabel(statuses.map { "\($0.capitalized): \(value.counts[$0] ?? 0)" }.joined(separator: ", "))
-            HStack(alignment: .top, spacing: 6) {
+            // Two by two: dot, count, then its name on the same line (owner's reference).
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], alignment: .leading, spacing: 12) {
                 ForEach(statuses, id: \.self) { status in
                     Button { router.library(status) } label: {
-                        HStack(alignment: .top, spacing: 7) {
-                            Circle().fill(statusColor(status)).frame(width: 10, height: 10).padding(.top, 4)
-                            VStack(alignment: .leading, spacing: 1) { Text("\(value.counts[status] ?? 0)").font(.system(size: 16, weight: .semibold)); Text(status.capitalized).font(.system(size: 12)).foregroundStyle(.secondary) }
+                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                            Circle().fill(statusColor(status)).frame(width: 9, height: 9).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                            Text("\(value.counts[status] ?? 0)").font(.system(size: 18, weight: .bold)).monospacedDigit()
+                            Text(status.capitalized).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
             }.foregroundStyle(.white)
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
-            HStack(spacing: 12) {
-                Image(systemName: "clock").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.12), in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    caption("Planned runtime", size: 12)
-                    Text(DiaryDate.duration(value.plannedMinutes)).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-                    if value.unknownPlanned > 0 { caption(value.unknownPlanned.counted("title lacks", "titles lack") + " runtime or complete episode data", size: 11) }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "clock").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
+                    VStack(alignment: .leading, spacing: 1) {
+                        caption("Planned runtime", size: 12)
+                        Text(DiaryDate.duration(value.plannedMinutes)).font(.system(size: 24, weight: .bold)).foregroundStyle(theme.accent).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 4)
+                if value.unknownPlanned > 0 { caption(value.unknownPlanned.counted("title lacks", "titles lack") + " runtime or complete episode data", size: 12) }
                 Button { router.library("planned") } label: {
-                    HStack(spacing: 5) { Text("Open planned"); Image(systemName: "arrow.right") }.font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent)
-                        .padding(.horizontal, 12).frame(height: 36).background(theme.accent.opacity(0.12), in: Capsule())
-                }.buttonStyle(.plain)
-            }
+                    HStack(spacing: 6) { Text("Open planned"); Image(systemName: "arrow.right") }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        .frame(maxWidth: .infinity).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
+                }.buttonStyle(.springPress).accessibilityIdentifier("stats-open-planned")
+            }.padding(14).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
         }.statsPanel()
     }
     /// Shows you were watching that have had no progress for 30+ days.

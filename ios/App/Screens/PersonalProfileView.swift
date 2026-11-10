@@ -153,9 +153,6 @@ struct PersonalProfileView: View {
             Text(profile.name).font(.system(size: 30, weight: .bold)).tracking(-0.8).foregroundStyle(.white).padding(.top, 6)
             if !handle.isEmpty { Text(handle).font(.system(size: 16)).foregroundStyle(.secondary) }
             if let trakt {
-                HStack(spacing: 14) {
-                    count(trakt.followers, "followers"); count(trakt.following, "following"); count(trakt.friends, "friends")
-                }.padding(.top, 4)
                 if let joined = trakt.joined {
                     HStack(spacing: 6) { Image(systemName: "calendar"); Text("Joined " + joined.formatted(.dateTime.month(.wide).year())) }
                         .font(.system(size: 14)).foregroundStyle(.secondary)
@@ -164,8 +161,10 @@ struct PersonalProfileView: View {
         }.padding(.top, 70)
             .background(alignment: .top) {
                 Artwork(path: art?.backdrop ?? art?.poster, title: art?.name ?? "")
-                    .frame(height: 210).blur(radius: 18).opacity(0.55)
-                    .overlay(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
+                    .frame(height: 230).clipped()
+                    .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0.05), location: 0.3),
+                                                    .init(color: .black.opacity(0.55), location: 0.7), .init(color: .black, location: 1)],
+                                            startPoint: .top, endPoint: .bottom))
                     .padding(.horizontal, -16).offset(y: -60).allowsHitTesting(false).accessibilityHidden(true)
             }
     }
@@ -257,18 +256,23 @@ struct PersonalProfileView: View {
     }
     private func milestonesCard(_ milestones: [ProfileMilestone]) -> some View {
         let earned = milestones.filter(\.earned)
-        return NavigationLink(value: MilestonesRoute()) {
-            VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 14) {
+            NavigationLink(value: MilestonesRoute()) {
                 HStack {
                     Text("Milestones").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
                     Spacer()
                     HStack(spacing: 3) { Text("\(earned.count) earned"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#ff8a6a"))
-                }
-                ScrollView(.horizontal) {
-                    HStack(spacing: 14) { ForEach((earned.isEmpty ? Array(milestones.prefix(6)) : earned)) { MilestoneBadge(milestone: $0, size: 46) } }.padding(.vertical, 4)
-                }.scrollIndicators(.hidden).allowsHitTesting(false)
-            }.padding(18).diaryPanel(padding: 0, radius: 22)
-        }.buttonStyle(.plain).accessibilityIdentifier("profile-milestones").accessibilityLabel("Milestones, \(earned.count) earned")
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("profile-milestones").accessibilityLabel("Milestones, \(earned.count) earned")
+            // Every badge, sideways; a tap opens Milestones.
+            ScrollView(.horizontal) {
+                HStack(spacing: 14) {
+                    ForEach((earned.isEmpty ? Array(milestones.prefix(12)) : earned)) { milestone in
+                        NavigationLink(value: MilestonesRoute()) { MilestoneBadge(milestone: milestone, size: 46) }.buttonStyle(.springPress)
+                    }
+                }.padding(.vertical, 4).padding(.horizontal, 18)
+            }.scrollIndicators(.hidden).padding(.horizontal, -18)
+        }.padding(18).diaryPanel(padding: 0, radius: 22)
     }
     /// What you watched on this day in earlier years.
     private var onThisDay: some View {
@@ -291,7 +295,7 @@ struct PersonalProfileView: View {
                     Text("\(years.counted("year", "years")) ago you watched \(first.1.name)" + (past.count > 1 ? " and \(past.count - 1) more." : "."))
                         .font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Nothing from your watch history happened on this day. Check back tomorrow.").font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Nothing happened today.").font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)

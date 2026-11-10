@@ -112,7 +112,12 @@ struct SearchLabView: View {
             .safeAreaInset(edge: .bottom) {
                 NavigationLink(value: SearchLabResultsRoute(filters: filters)) {
                     Text(showLabel).lineLimit(1).contentTransition(.numericText())
-                }.buttonStyle(LabShowButtonStyle()).padding(.horizontal, 16).padding(.bottom, 8).accessibilityIdentifier("search-lab-show")
+                }.buttonStyle(LabShowButtonStyle()).padding(.horizontal, 16).padding(.top, 22).padding(.bottom, 8).accessibilityIdentifier("search-lab-show")
+                    .background {
+                        LinearGradient(stops: [.init(color: .black.opacity(0), location: 0), .init(color: .black.opacity(0.9), location: 0.4),
+                                               .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                            .ignoresSafeArea(edges: .bottom).allowsHitTesting(false)
+                    }
             }
             .task(id: tagQuery) {
                 let query = tagQuery.trimmingCharacters(in: .whitespaces)

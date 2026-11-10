@@ -61,7 +61,7 @@ struct PersonProfilePage<Content: View>: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         ProfileFavourite(name: name, image: image, kind: kind, ref: ref,
                                          subtitle: favouriteSubtitle, identifier: identifier + "-favourite")
-                    }.sharedBackgroundVisibility(.hidden)
+                    }
                 }
         }.toolbarBackground(.hidden, for: .navigationBar)
             .modifier(ProfileNativeLinks(kind: kind, ref: ref, sameVoice: sameVoice, samePerson: samePerson))
@@ -216,10 +216,8 @@ private struct ProfileFavourite: View {
             FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
             feedback += 1
         } label: {
-            // Clear Liquid Glass over the artwork, like the title page's ••• (owner's request).
+            // The bar's own Liquid Glass (same as the back button beside it).
             Image(systemName: saved ? "heart.fill" : "heart").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
-                .frame(width: 44, height: 44).contentShape(Circle())
-                .glassEffect(.clear.interactive(), in: Circle())
         }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
             .sensoryFeedback(.selection, trigger: feedback)

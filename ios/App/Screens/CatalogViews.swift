@@ -424,7 +424,7 @@ struct CatalogDetailView: View {
                         } label: { TitleMoreButtonLabel() }
                             .disabled(details == nil || details?.libraryTitle?.trashed == true || store.busy || !store.canMutate)
                             .accessibilityLabel("More options for " + (details?.details.name ?? "this title")).accessibilityIdentifier("catalog-more")
-                    }.sharedBackgroundVisibility(.hidden)
+                    }
                 }
                 .sheet(isPresented: $showFiles) {
                     NavigationStack {

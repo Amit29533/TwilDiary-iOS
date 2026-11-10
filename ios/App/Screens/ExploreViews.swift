@@ -240,9 +240,7 @@ private struct DiscoveryBrowser: View {
             HStack(spacing: 10) {
                 Text(filters.label ?? section.label).font(.system(size: promptForGenre ? 22 : 30, weight: .bold)).tracking(-0.6)
                     .foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.8)
-                    .onGeometryChange(for: Bool.self) { $0.frame(in: .global).maxY < 100 } action: { hidden in
-                        withAnimation(.easeInOut(duration: 0.2)) { headingHidden = hidden }
-                    }
+                    .onGeometryChange(for: Bool.self) { $0.frame(in: .global).maxY < 100 } action: { hidden in headingHidden = hidden }
                 Spacer(minLength: 0)
                 if promptForGenre { SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters), identifier: "explore-more-genres") }
             }
@@ -254,14 +252,15 @@ private struct DiscoveryBrowser: View {
         .navigationTitle(headingHidden ? (filters.label ?? section.label) : "Explore")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Group {
+                ZStack {
                     if headingHidden {
                         ViewThatFits(in: .horizontal) {
                             Text(filters.label ?? section.label)
                             Text(filters.label ?? section.shortLabel)
-                        }.transition(.opacity)
-                    } else { Text("Explore").transition(.opacity) }
+                        }.transition(.blurReplace(.downUp))
+                    } else { Text("Explore").transition(.blurReplace(.upUp)) }
                 }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    .animation(.smooth(duration: 0.35), value: headingHidden)
                     .accessibilityAddTraits(.isHeader)
             }
         }
