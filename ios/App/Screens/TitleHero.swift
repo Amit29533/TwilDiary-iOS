@@ -140,14 +140,17 @@ struct TitleArtworkBackdrop: View {
                 .offset(y: artwork - 50)
                 .frame(width: width)
             // The page darkens over the wash: clear at the cover's foot, dark by ~190 pt below it.
+            // An even ramp (owner's light-cover reference): a pale cover stays pale behind the poster and
+            // title, and every cover reaches the page's dark at about the rating boxes.
             LinearGradient(stops: [
                 .init(color: Color(webHex: "#0a0a0e").opacity(0), location: 0),
-                .init(color: Color(webHex: "#0a0a0e").opacity(0.35), location: 0.35),
-                .init(color: Color(webHex: "#0a0a0e").opacity(0.8), location: 0.7),
+                .init(color: Color(webHex: "#0a0a0e").opacity(0.18), location: 0.25),
+                .init(color: Color(webHex: "#0a0a0e").opacity(0.45), location: 0.5),
+                .init(color: Color(webHex: "#0a0a0e").opacity(0.78), location: 0.75),
                 .init(color: Color(webHex: "#0a0a0e"), location: 1)
             ], startPoint: .top, endPoint: .bottom)
-                .frame(height: 230).offset(y: artwork - 20)
-            Color(webHex: "#0a0a0e").frame(height: 4000).offset(y: artwork + 209)
+                .frame(height: 250).offset(y: artwork - 20)
+            Color(webHex: "#0a0a0e").frame(height: 4000).offset(y: artwork + 229)
             // The cover itself, crisp; only a light shade behind the status bar and buttons, and a
             // short soft foot so it melts into the wash instead of ending on a line.
             art.frame(width: width, height: artwork).clipped()
