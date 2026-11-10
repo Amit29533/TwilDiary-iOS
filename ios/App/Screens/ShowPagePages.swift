@@ -196,6 +196,7 @@ struct ShowPageDestination: View {
         case .collections(let route, let title, let anime): RelatedCollectionsPage(route: route, title: title, anime: anime)
         case .tmdbCollection(let id, let name): TMDbCollectionPage(id: id, name: name)
         case .catalogEpisodes(let route, let season): PreviewEpisodesPage(route: route, initialSeason: season)
+        case .related(let route, let title): RelatedTitlesPage(route: route, title: title)
         case .companies(let catalog, let title): CompaniesPage(route: catalog, title: title)
         }
     }
@@ -412,6 +413,35 @@ struct EpisodesPage: View {
         if details.episodes[next.id] == nil { Task { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
         self.forward = forward
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selected = next }
+    }
+}
+
+// MARK: More like this
+
+/// Every title TMDB recommends for this one, as the app's poster grid.
+struct RelatedTitlesPage: View {
+    let route: CatalogRoute
+    let title: String
+    @Environment(DiaryStore.self) private var store
+    @State private var items: [CatalogItem]?
+    @State private var failure: String?
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let items {
+                    if items.isEmpty { Text("TMDB has no recommendations for this title yet.").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
+                    else { CatalogGrid(items: items, showsLayoutToggle: false) }
+                } else if let failure {
+                    RetryNotice(message: failure) { Task { await load() } }
+                } else { DiaryLoadingPlaceholder(height: 320, label: "Loading titles") }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
+        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ShowPageTitle(title: "More like this", subtitle: title) }
+            .task(id: route) { await load() }
+    }
+    private func load() async {
+        failure = nil
+        do { items = try await store.related(route).items } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
 

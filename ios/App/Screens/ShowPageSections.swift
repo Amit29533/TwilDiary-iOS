@@ -21,11 +21,7 @@ struct ShowSectionHeading<Value: Hashable>: View {
             }
             Spacer(minLength: 0)
             if let value {
-                NavigationLink(value: value) {
-                    Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                        .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
-                        .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-                }.buttonStyle(.plain)
+                NavigationLink(value: value) { RoundChevron() }.buttonStyle(.plain)
                     .accessibilityLabel("See all " + title).accessibilityIdentifier(identifier)
             }
         }
@@ -41,10 +37,8 @@ struct SeeAllLink<Value: Hashable>: View {
     let identifier: String
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        NavigationLink(value: value) {
-            HStack(spacing: 3) { Text("See all"); DiaryIcon(name: "chevron-right", size: 13) }
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 44)
-        }.buttonStyle(.plain).accessibilityIdentifier(identifier)
+        NavigationLink(value: value) { RoundChevron() }
+            .buttonStyle(.springPress).accessibilityLabel("See all").accessibilityIdentifier(identifier)
     }
 }
 
@@ -283,9 +277,9 @@ struct RatingTrendCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var trakt: [EpisodeRatingPoint] = []
     @State private var source = "Trakt"
-    private struct Source { let name: String; let points: [EpisodeRatingPoint] }
+    private struct Source { let name: String; let logo: BrandLogo.Service; let points: [EpisodeRatingPoint] }
     private var sources: [Source] {
-        [Source(name: "Trakt", points: trakt), Source(name: "TMDB", points: tmdb)].filter { EpisodeRatingSummary($0.points) != nil }
+        [Source(name: "Trakt", logo: .trakt, points: trakt), Source(name: "TMDB", logo: .tmdb, points: tmdb)].filter { EpisodeRatingSummary($0.points) != nil }
     }
     var body: some View {
         let sources = sources
@@ -293,19 +287,21 @@ struct RatingTrendCard: View {
         Group {
             if let chosen, let summary = EpisodeRatingSummary(chosen.points), summary.points.count >= 2 {
                 VStack(alignment: .leading, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
                         Text("Rating trend").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                    }
-                    if sources.count > 1 {
-                        HStack(spacing: 8) {
-                            ForEach(sources, id: \.name) { item in
-                                let on = item.name == chosen.name
-                                Button { source = item.name } label: {
-                                    Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? .white : Color(webHex: "#c5c0cf"))
-                                        .padding(.horizontal, 16).frame(height: 36)
-                                        .background(on ? theme.accent.opacity(0.28) : Color.white.opacity(0.06), in: Capsule())
-                                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
-                            }
+                            .lineLimit(1).truncationMode(.tail).layoutPriority(1)
+                        Spacer(minLength: 8)
+                        // Whose ratings: the service's own logo; with both, tap one to switch.
+                        ForEach(sources, id: \.name) { item in
+                            let on = item.name == chosen.name
+                            Button { source = item.name } label: {
+                                BrandLogo(service: item.logo, size: 22)
+                                    .opacity(on ? 1 : 0.45)
+                                    .frame(width: 44, height: 40)
+                                    .background(on ? theme.accent.opacity(0.22) : Color.white.opacity(0.05), in: Capsule())
+                                    .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.6) : .white.opacity(0.08), lineWidth: 1))
+                            }.buttonStyle(.plain).disabled(sources.count < 2)
+                                .accessibilityLabel(item.name).accessibilityAddTraits(on ? .isSelected : [])
                         }
                     }
                     chart(summary).frame(height: 170)

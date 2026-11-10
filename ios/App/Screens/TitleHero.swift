@@ -62,22 +62,20 @@ struct TitleHero<Ratings: View>: View {
                 }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
             }
             if ratingsBelow { ratings }
-            VStack(alignment: .leading, spacing: 8) {
-                synopsisLead
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-                    synopsisWidth = width; measureSynopsis()
-                }
+            VStack(alignment: .leading, spacing: 4) {
                 if expanded && !synopsisParts.continuation.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(synopsisParts.continuation.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("title-synopsis-continuation")
-                        Button("Less") { setExpanded(false) }.font(.system(size: 17, weight: .semibold)).frame(minHeight: 44)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityElement(children: .contain).accessibilityIdentifier("title-synopsis-expanded")
-                        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 6)))
+                    Text(synopsisText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("title-synopsis-text")
+                    Button("Less") { setExpanded(false) }.font(.system(size: 17, weight: .semibold)).frame(minHeight: 44)
+                        .accessibilityIdentifier("title-synopsis-expanded")
+                } else {
+                    synopsisLead
                 }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                synopsisWidth = width; measureSynopsis()
             }
         }
         }.onChange(of: synopsisText) { _, _ in measureSynopsis() }

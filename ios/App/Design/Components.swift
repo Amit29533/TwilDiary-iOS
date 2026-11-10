@@ -101,12 +101,21 @@ extension View {
 
 /// A section heading's "see all": the same round chevron everywhere (Home, Explore, profiles,
 /// rankings), instead of a mix of "Stats →" text links and buttons. The label is for VoiceOver.
+/// The round › that opens a section's full page: the same button everywhere in the app.
+struct RoundChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+            .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
+            .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+            .contentShape(Circle())
+    }
+}
 struct SectionMoreLink<Value: Hashable>: View {
     let label: String
     let value: Value
     let identifier: String
     var body: some View {
-        NavigationLink(value: value) { RoundTool(icon: "chevron-right", size: 36) }
+        NavigationLink(value: value) { RoundChevron() }
             .buttonStyle(.springPress).accessibilityLabel(label).accessibilityIdentifier(identifier)
     }
 }
@@ -115,7 +124,7 @@ struct SectionMoreButton: View {
     let identifier: String
     let action: () -> Void
     var body: some View {
-        Button(action: action) { RoundTool(icon: "chevron-right", size: 36) }
+        Button(action: action) { RoundChevron() }
             .buttonStyle(.springPress).accessibilityLabel(label).accessibilityIdentifier(identifier)
     }
 }

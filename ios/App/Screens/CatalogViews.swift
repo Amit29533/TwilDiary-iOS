@@ -265,7 +265,8 @@ struct CatalogDetailView: View {
                         if let extras, !extras.keywords.isEmpty { TitleTagsSection(keywords: extras.keywords, kind: route.kind) }
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
                         CastAndRelated(route: route, sourceTitle: details.details.name,
-                                       anime: anime ? (details.details.year, route.kind == .movie) : nil)
+                                       anime: anime ? (details.details.year, route.kind == .movie) : nil,
+                                       seeAll: .cast(route, title: details.details.name, anime: anime, year: details.details.year))
                         if let extras { CompaniesSection(route: route, title: details.details.name, extras: extras, animated: anime || details.details.genres.contains("Animation")) }
                         InListsSection(route: route, title: details.details.name)
                         RelatedCollectionsSection(route: route, title: details.details.name, anime: anime, genres: details.details.genres)
@@ -505,7 +506,7 @@ struct CastAndRelated: View {
     var body: some View {
         // Design: sections 42 pt apart, 22 pt headings, 111 pt tiles (radius 18) 12 pt apart.
         VStack(alignment: .leading, spacing: 42) {
-            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id) }
+            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id, seeAll: seeAll) }
             if !cast.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -533,8 +534,12 @@ struct CastAndRelated: View {
               }
             }
             if !related.isEmpty {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("More like this").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("More like this").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                        Spacer(minLength: 8)
+                        SeeAllLink(value: ShowPageRoute.related(route, title: sourceTitle ?? ""), identifier: "title-related-all")
+                    }.frame(minHeight: 44)
                     ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 12) {
                             ForEach(related.prefix(12), id: \.key) { item in relatedLink(item) }

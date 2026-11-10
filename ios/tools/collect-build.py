@@ -100,7 +100,7 @@ if layout_config.exists():
         expected_cases = {
             'testPhoneChromeGridSearchAndEpisodeTrackStayInsideTheViewport',
             'testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField',
-            'testExpandedSummaryAndWatchDateRemainInsideEveryPhone',
+            'testExpandedSummaryRemainsInsideEveryPhone',
         }
         observed_cases = {name for _, name in cases}
         if observed_cases != expected_cases:
