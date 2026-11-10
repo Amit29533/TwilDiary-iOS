@@ -615,10 +615,22 @@ struct GlanceView: View {
                 VStack(spacing: 0) {
                     header
 
-                    CategoryPicker(selection: $category)
-                    SortMenuRow(options: GlanceSort.allCases, selection: sort, label: \.label, identifier: "glance-sort") {
-                        CollectionLayoutToggle(grid: $grid, collection: "glance", small: true)
-                    }
+                    ScrollView(.horizontal) {
+                        CategoryPicker(selection: $category, counts: Dictionary(uniqueKeysWithValues: LibraryCategory.allCases.map { item in (item, watching.filter { item.includes($0) }.count) }))
+                    }.scrollIndicators(.hidden)
+                    HStack(spacing: 10) {
+                        Menu {
+                            Picker("Order", selection: sort) { ForEach(GlanceSort.allCases, id: \.self) { Text($0.label).tag($0) } }
+                        } label: {
+                            HStack(spacing: 6) { Text(sort.wrappedValue.label); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
+                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                .padding(.horizontal, 14).frame(height: 40).background(HomeStyle.round, in: Capsule())
+                                .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                        }.accessibilityLabel("Order").accessibilityValue(sort.wrappedValue.label).accessibilityIdentifier("glance-sort")
+                        Spacer(minLength: 0)
+                        layoutButton(grid: false, icon: "list.bullet")
+                        layoutButton(grid: true, icon: "square.grid.2x2")
+                    }.padding(.horizontal, 14).padding(.top, 6)
                 }
                 // The title you logged last (or first in the chosen order) gets the large card; the rest
                 // split into Continue (started) and Not started, each with its count.
@@ -637,13 +649,23 @@ struct GlanceView: View {
                     }
                     if !showAll && continuing.count > 8 {
                         Button { showAll = true } label: {
-                            Text("Show all \(titles.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
-                                .frame(maxWidth: .infinity, minHeight: 54).background(.white.opacity(0.05), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                            Text("Show all \(titles.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                .frame(maxWidth: .infinity, minHeight: 54).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         }.buttonStyle(.springPress).padding(.top, 6).accessibilityIdentifier("glance-show-all")
                     }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
                 if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.").padding(.horizontal, 14).padding(.top, 20) }
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
+    }
+    /// One side of the list | grid switch: the chosen one sits on the accent tint.
+    private func layoutButton(grid value: Bool, icon: String) -> some View {
+        Button { withAnimation(.smooth(duration: 0.28)) { grid = value } } label: {
+            Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(grid == value ? HomeStyle.chipText : HomeStyle.secondary)
+                .frame(width: 40, height: 40).background(grid == value ? HomeStyle.chip : .clear, in: Circle())
+                .frame(width: 44, height: 44).contentShape(Circle())
+        }.buttonStyle(.plain).accessibilityLabel(value ? "Show as grid" : "Show as list").accessibilityAddTraits(grid == value ? .isSelected : [])
+            .accessibilityIdentifier(value ? "glance-layout" : "glance-layout-list")
     }
     private var sort: Binding<GlanceSort> {
         Binding(get: { GlanceSort(rawValue: sortRaw) ?? .recentlyUpdated }, set: { sortRaw = $0.rawValue })

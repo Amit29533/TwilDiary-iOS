@@ -172,6 +172,16 @@ import XCTest
         }
     }
 
+    /// Glance (list, then grid), top to bottom.
+    func testGlanceSnapshots() {
+        capture(tab: "glance", name: "glance", pages: 4)
+        capture(tab: "glance", name: "glancegrid", pages: 2) { app in
+            let layout = app.buttons["glance-layout"]
+            if layout.waitForExistence(timeout: 5) { layout.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+    }
+
     /// A title that isn't in the library (Home → Recommended), top to bottom.
     func testPreviewSnapshots() {
         capture(tab: "home", name: "preview", pages: 8) { app in
