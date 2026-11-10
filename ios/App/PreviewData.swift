@@ -63,6 +63,24 @@ enum PreviewData {
         object["titles"] = titles; object["episodes"] = episodes
         return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
+    /// `--ui-many-titles`: a dozen more planned titles, so Library opens as its overview
+    /// (five posters, "+N See all", genres) the way a real library does.
+    static func withManyTitles(_ workspace: Workspace) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var titles = object["titles"] as! [[String: Any]]
+        guard let template = titles.first else { return workspace }
+        let names = ["Pseudo Harem", "Oh My Ghost", "Filing for Love", "Following", "Witch Hat Atelier", "Made in Abyss",
+                     "The Mentalist", "Doctor Who", "Modern Family", "Obsession", "Dutton Ranch", "A Deliberately Very Long Title That Must Truncate"]
+        for (index, name) in names.enumerated() {
+            var copy = template
+            copy["id"] = "many-\(index)"; copy["name"] = name; copy["status"] = "planned"; copy["year"] = 2015 + index % 12
+            copy["communityScore"] = 7.0 + Double(index % 20) / 10; copy["seasons"] = []; copy["poster"] = NSNull(); copy["backdrop"] = NSNull()
+            copy.removeValue(forKey: "tmdbId")
+            titles.append(copy)
+        }
+        object["titles"] = titles
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
     /// Explicit identities/scores for profile repair UI checks; never loaded in Release.
     static var profileRepairWorkspace: Workspace {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]

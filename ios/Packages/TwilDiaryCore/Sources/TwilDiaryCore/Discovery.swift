@@ -68,6 +68,10 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
     public var language: String? = nil
     /// "in" or "not": only titles in (or not yet in) your library. Applied on the phone.
     public var library: String? = nil
+    /// Search Lab's "Keyword or title": a title search the other filters then narrow.
+    public var text: String? = nil
+    /// The chosen tags' names, in the order of `keywords`, for the results page's chips.
+    public var keywordNames: [String]? = nil
     public init(section: DiscoverySection) {
         type = section.fixedType?.rawValue ?? (section.source == "tmdb" ? "tv" : "all")
         sort = section.defaultSort

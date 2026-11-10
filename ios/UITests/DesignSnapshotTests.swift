@@ -192,6 +192,50 @@ import XCTest
         }
     }
 
+    /// Library as a real (bigger) library opens: five posters, "+N See all", genres.
+    func testLibraryOverviewSnapshots() {
+        capture(tab: "library", name: "liboverview", pages: 3, extra: ["--ui-many-titles"])
+    }
+
+    /// Explore top to bottom, a › page, Search Lab top to bottom, then its results.
+    func testExploreSnapshots() {
+        func openExplore(_ app: XCUIApplication) {
+            let explore = app.buttons["explore-shortcut"]
+            for _ in 0..<4 where !(explore.exists && explore.isHittable) { app.swipeUp() }
+            if explore.exists { explore.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+        capture(tab: "home", name: "explore", pages: 4, open: openExplore)
+        capture(tab: "home", name: "exploremore", pages: 2) { app in
+            openExplore(app)
+            let more = app.buttons["explore-more-rated-shows"]
+            for _ in 0..<4 where !(more.exists && more.isHittable) { app.swipeUp() }
+            if more.exists { more.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+        capture(tab: "home", name: "lab", pages: 4) { app in
+            openExplore(app)
+            app.buttons["explore-search-lab"].firstMatch.tap(); Thread.sleep(forTimeInterval: 2)
+            for label in ["Animation", "TV-14", "7+", "2020s", "Returning", "Japanese", "Not yet"] {
+                let chip = app.buttons[label].firstMatch
+                for _ in 0..<4 where !(chip.exists && chip.isHittable) { app.swipeUp() }
+                if chip.exists && chip.isHittable { chip.tap() }
+            }
+            for _ in 0..<6 { app.swipeDown() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        capture(tab: "home", name: "labresults", pages: 2) { app in
+            openExplore(app)
+            app.buttons["explore-search-lab"].firstMatch.tap(); Thread.sleep(forTimeInterval: 2)
+            for label in ["Animation", "7+"] {
+                let chip = app.buttons[label].firstMatch
+                for _ in 0..<4 where !(chip.exists && chip.isHittable) { app.swipeUp() }
+                if chip.exists && chip.isHittable { chip.tap() }
+            }
+            app.buttons["search-lab-show"].firstMatch.tap(); Thread.sleep(forTimeInterval: 3)
+        }
+    }
+
     /// Search: the start page top to bottom, then results for a query.
     func testSearchSnapshots() {
         capture(tab: "search", name: "search", pages: 3)
@@ -318,9 +362,9 @@ import XCTest
         }
     }
 
-    private func capture(tab: String, name: String, pages: Int, open: ((XCUIApplication) -> Void)? = nil) {
+    private func capture(tab: String, name: String, pages: Int, extra: [String] = [], open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab]
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab] + extra
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 4)

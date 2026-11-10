@@ -202,7 +202,7 @@ import TwilDiaryCore
 
     /// One TMDB v3 read. A v4 read access token goes in the Authorization header; a 32-character
     /// v3 API key goes in `api_key`.
-    private static func object(_ path: String, query: [String: String], token: String) async throws -> [String: Any] {
+    static func object(_ path: String, query: [String: String], token: String) async throws -> [String: Any] {
         var components = URLComponents(string: "https://api.themoviedb.org/3/" + path)!
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         let apiKey = token.count == 32 && token.allSatisfy(\.isHexDigit)

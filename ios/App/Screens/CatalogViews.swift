@@ -27,7 +27,7 @@ struct CatalogGrid: View {
                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 68, height: 102).clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
-                    Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In your library")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.system(size: 12)).foregroundStyle(.secondary)
                     if let score = item.rating, score > 0 { Label(score.formatted(.number.precision(.fractionLength(1))), systemImage: "star.fill").font(.system(size: 12)).foregroundStyle(.yellow) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 DiaryIcon(name: "chevron-right", size: 16).foregroundStyle(.secondary)
@@ -57,7 +57,7 @@ struct CatalogPoster: View {
                 if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
             } else {
                 Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-                Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In your library")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
+                Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
             }
         }.accessibilityElement(children: .combine)
     }

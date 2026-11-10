@@ -213,12 +213,11 @@ struct LibraryView: View {
                             ForEach(LibraryShelf.make(filtered)) { shelf in
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack(spacing: 8) {
-                                        Text(shelf.genre).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                                        Text(shelf.genre).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
                                         Text("\(shelf.titles.count)").font(.system(size: 14)).foregroundStyle(.secondary)
                                         Spacer()
                                         if shelf.genre != "Without a genre" {
-                                            Button("See all") { genres = [shelf.genre]; genreRows = false; list = false }
-                                                .font(.system(size: 14, weight: .semibold)).tint(theme.accent).accessibilityLabel("See all \(shelf.genre) titles")
+                                            SectionMoreButton(label: "See all \(shelf.genre) titles", identifier: "library-genre-" + shelf.genre) { genres = [shelf.genre]; genreRows = false; list = false }
                                         }
                                     }
                                     ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 10) { ForEach(shelf.titles) { title in poster(title).frame(width: 112) } } }
@@ -252,19 +251,25 @@ struct LibraryView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
                 ForEach(filtered.prefix(5)) { title in poster(title) }
+                // Exactly a poster's size (same 2:3 box and corners as the cards beside it).
                 Button { expandedAll = true } label: {
-                    VStack(spacing: 4) {
-                        Text("+\((filtered.count - 5).formatted())").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
-                        Text("See all").font(.system(size: 14)).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity).aspectRatio(2 / 3, contentMode: .fit)
-                        .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
-                }.buttonStyle(.springPress).accessibilityIdentifier("library-see-all")
+                    Color.clear.posterAspect()
+                        .overlay {
+                            VStack(spacing: 4) {
+                                Text("+\((filtered.count - 5).formatted())").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
+                                    .lineLimit(1).minimumScaleFactor(0.6)
+                                Text("See all").font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+                            }.padding(.horizontal, 6)
+                        }
+                        .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.springPress).accessibilityLabel("See all \(filtered.count) titles").accessibilityIdentifier("library-see-all")
             }
             HStack {
-                Text("Browse by genre").font(.system(size: 22, weight: .bold)).tracking(-0.5)
+                Text("Browse by genre").font(.system(size: 22, weight: .bold)).tracking(-0.5).lineLimit(1)
                 Spacer()
-                Button("All genres") { genreRows = true; list = false }.font(.system(size: 15, weight: .semibold)).tint(theme.accent)
+                SectionMoreButton(label: "All genres", identifier: "library-all-genres") { genreRows = true; list = false }
             }.padding(.top, 12)
             ForEach(LibraryShelf.make(filtered).filter { $0.genre != "Without a genre" }) { shelf in
                 Button { genres = [shelf.genre] } label: {

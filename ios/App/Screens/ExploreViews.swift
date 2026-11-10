@@ -13,12 +13,19 @@ struct ExploreView: View {
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(value: SearchLabRoute()) { Image(systemName: "flask") }
-                        .accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
-                }
-            }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() }.sharedBackgroundVisibility(.hidden) }
+    }
+}
+
+/// Search Lab's way in: a 44 pt lilac circle with a flask, top right on every Explore page.
+struct ExploreLabButton: View {
+    var body: some View {
+        NavigationLink(value: SearchLabRoute()) {
+            Image(systemName: "flask").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#1a1030"))
+                .frame(width: 44, height: 44)
+                .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Circle())
+                .contentShape(Circle())
+        }.buttonStyle(.springPress).accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
     }
 }
 
@@ -39,7 +46,6 @@ private struct ExploreContent: View {
             }
             RecommendedDiscoveryView(service: service, section: false)
             ForEach(DiscoverySection.shelves) { section in DiscoveryShelfView(section: section, service: service) }
-            Text("Discovery and artwork: TMDb · Personal recommendations: Trakt").font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
     @Environment(AppRouter.self) private var router
@@ -50,8 +56,8 @@ private struct ExploreHeading: View {
     let section: DiscoverySection
     var filters: DiscoveryFilters? = nil
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(section.label).font(.system(size: 20, weight: .semibold)).tracking(-0.5)
+        HStack(alignment: .center, spacing: 10) {
+            Text(section.label).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 0)
             SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters),
                             identifier: "explore-more-" + section.id)
@@ -70,16 +76,17 @@ private struct DailyDiscoveryCard: View {
             LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0), .init(color: .black.opacity(0.2), location: 0.45), .init(color: .black.opacity(0.88), location: 1)], startPoint: .top, endPoint: .bottom)
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.8).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.8)
-                    HStack(spacing: 8) {
-                        Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).foregroundStyle(Color(webHex: "#d8d3e0"))
+                    Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.6).foregroundStyle(.white).lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.85)
+                    HStack(spacing: 6) {
+                        Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).lineLimit(1)
                         if let score = title.communityScore, score > 0 {
-                            HStack(spacing: 4) { DiaryIcon(name: "star", size: 13); Text(String(format: "%.1f", score)); Text("TMDb").foregroundStyle(.white.opacity(0.6)) }.foregroundStyle(Color(webHex: "#e7ca90"))
+                            Text("·")
+                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 12)).foregroundStyle(Color(webHex: "#f5c451")); Text(String(format: "%.1f", score)) }
                         }
-                    }.font(.system(size: 14))
+                    }.font(.system(size: 15, weight: .medium)).foregroundStyle(Color(webHex: "#d8d3e0"))
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(18)
-        }.frame(height: 225).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
+            }.padding(.horizontal, 20).padding(.bottom, 18)
+        }.aspectRatio(1.89, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())
     }
 }
 
@@ -157,12 +164,25 @@ struct ExploreSectionView: View {
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() }.sharedBackgroundVisibility(.hidden) }
+    }
+}
 
+private extension DiscoverySection {
+    /// The same list for the other type ("Highest rated shows" and "Highest rated movies").
+    var swapped: DiscoverySection? {
+        switch self {
+        case .ratedShows: .ratedMovies
+        case .ratedMovies: .ratedShows
+        case .popularShows: .popularMovies
+        case .popularMovies: .popularShows
+        default: nil
+        }
     }
 }
 
 private struct DiscoveryBrowser: View {
-    let section: DiscoverySection
+    @State private var section: DiscoverySection
     let service: any DiscoveryServing
     let store: DiaryStore
     var promptForGenre: Bool
@@ -173,7 +193,7 @@ private struct DiscoveryBrowser: View {
     @State private var results: DiscoveryResults
     @State private var recommendations: DiscoveryRecommendations
     init(section: DiscoverySection, service: any DiscoveryServing, store: DiaryStore, initialFilters: DiscoveryFilters? = nil, promptForGenre: Bool = false) {
-        self.section = section; self.service = service; self.store = store; self.promptForGenre = promptForGenre
+        _section = State(initialValue: section); self.service = service; self.store = store; self.promptForGenre = promptForGenre
         _filters = State(initialValue: initialFilters ?? DiscoveryFilters(section: section))
         _results = State(initialValue: DiscoveryResults(service: service)); _recommendations = State(initialValue: DiscoveryRecommendations(service: service))
     }
@@ -187,7 +207,8 @@ private struct DiscoveryBrowser: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
-                Text(filters.label ?? section.label).font(.system(size: promptForGenre ? 20 : 26, weight: .semibold)).tracking(-0.5)
+                Text(filters.label ?? section.label).font(.system(size: promptForGenre ? 22 : 30, weight: .bold)).tracking(-0.6)
+                    .foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 if promptForGenre { SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters), identifier: "explore-more-genres") }
             }
@@ -213,6 +234,7 @@ private struct DiscoveryBrowser: View {
     }
     /// Filters as pill menus in one scrolling row, like Canvas.
     private var filterForm: some View {
+        HStack(spacing: 8) {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 if filters != filters.resettingFilters(section: section) {
@@ -221,6 +243,13 @@ private struct DiscoveryBrowser: View {
                 if !promptForGenre && section.fixedType == nil {
                     Menu { Picker("Content type", selection: $filters.type) { if section.source != "tmdb" { Text("All titles").tag("all") }; Text("Shows").tag("tv"); Text("Movies").tag("movie") } }
                         label: { FilterPill(label: filters.type == "tv" ? "Shows" : filters.type == "movie" ? "Movies" : "All titles") }
+                } else if !promptForGenre, let kind = section.fixedType, section.swapped != nil {
+                    // A shows-only list switches to its movies twin (and back).
+                    Menu {
+                        Picker("Content type", selection: Binding(get: { kind == .movie ? "movie" : "tv" }, set: { value in if value != (kind == .movie ? "movie" : "tv") { swapType() } })) {
+                            Text("Shows").tag("tv"); Text("Movies").tag("movie")
+                        }
+                    } label: { FilterPill(label: kind == .movie ? "Movies" : "Shows") }.accessibilityIdentifier("explore-type")
                 }
                 if !promptForGenre {
                     Menu { Picker("Section genre", selection: $filters.genre) { Text("All genres").tag(""); ForEach(genres, id: \.self) { Text($0).tag($0) } } }
@@ -228,14 +257,34 @@ private struct DiscoveryBrowser: View {
                 }
                 Menu { Picker("Explore minimum rating", selection: $filters.minimum) { Text("Any rating").tag("0"); ForEach([6, 7, 8, 9], id: \.self) { Text("\($0)+").tag(String($0)) } } }
                     label: { FilterPill(label: filters.minimum == "0" ? "Any rating" : filters.minimum + "+", active: filters.minimum != "0") }.accessibilityIdentifier("explore-minimum")
-                Menu { Picker("Released year", selection: $filters.year) { Text("Any year").tag(""); ForEach(Self.years, id: \.self) { Text(String($0)).tag(String($0)) } } }
-                    label: { FilterPill(label: filters.year.isEmpty ? "Any year" : filters.year, active: !filters.year.isEmpty) }.accessibilityLabel("Explore release year")
-                Menu { Picker("Sort discoveries", selection: $filters.sort) { Text(section.source == "library" ? "Library order" : "Recommended order").tag("popular"); Text("Highest rated").tag("rating"); Text("Newest releases").tag("newest"); if section.source != "tmdb" { Text("Title A–Z").tag("title") } } }
-                    label: { FilterPill(label: sortLabel, icon: "arrow-down-up") }
+                if !filters.year.isEmpty {
+                    Menu { yearPicker } label: { FilterPill(label: filters.year, active: true) }.accessibilityLabel("Explore release year")
+                }
             }.padding(.vertical, 2)
         }.scrollIndicators(.hidden).onChange(of: filters.type) { _, _ in if !promptForGenre { filters.genre = "" } }
+                // Order (and release year) behind one round button, pinned at the end of the row.
+                Menu {
+                    Picker("Sort discoveries", selection: $filters.sort) { Text(section.source == "library" ? "Library order" : "Recommended order").tag("popular"); Text("Highest rated").tag("rating"); Text("Newest releases").tag("newest"); if section.source != "tmdb" { Text("Title A–Z").tag("title") } }
+                    Menu("Released year") { yearPicker }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        .frame(width: 40, height: 40).background(HomeStyle.chip, in: Circle()).frame(minHeight: 44).contentShape(Circle())
+                }.accessibilityLabel("Order, " + sortLabel).accessibilityIdentifier("explore-sort")
+        }
+    }
+    private var yearPicker: some View {
+        Picker("Released year", selection: $filters.year) { Text("Any year").tag(""); ForEach(Self.years, id: \.self) { Text(String($0)).tag(String($0)) } }
+    }
+    private func swapType() {
+        guard let next = section.swapped else { return }
+        var value = DiscoveryFilters(section: next)
+        value.minimum = filters.minimum; value.year = filters.year; value.sort = filters.sort
+        section = next; filters = value
     }
     private static let years = Array((1950...Calendar.current.component(.year, from: .now)).reversed())
+    private var sortCaption: String? {
+        switch filters.sort { case "rating": "Highest rated first"; case "newest": "Newest first"; case "title": "A to Z"; default: nil }
+    }
     private var sortLabel: String {
         switch filters.sort { case "rating": "Highest rated"; case "newest": "Newest"; case "title": "Title A–Z"; default: section.source == "library" ? "Library order" : "Recommended" }
     }
@@ -244,7 +293,10 @@ private struct DiscoveryBrowser: View {
         else if promptForGenre && filters.genre.isEmpty { Text("Choose a genre to explore shows and movies.").font(.system(size: 13)).foregroundStyle(.secondary) }
         else {
             if !displayed.isEmpty {
-                Text((section.source == "tmdb" ? displayed.count : local.count).counted("title", "titles")).font(.system(size: 12)).foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Text((section.source == "tmdb" ? displayed.count : local.count).counted("title", "titles"))
+                    if let order = sortCaption { Text("· " + order) }
+                }.font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                 CatalogGrid(items: displayed, showsLayoutToggle: false)
             }
             if busy && displayed.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading titles") }
