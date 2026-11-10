@@ -192,6 +192,16 @@ import XCTest
         }
     }
 
+    /// Search: the start page top to bottom, then results for a query.
+    func testSearchSnapshots() {
+        capture(tab: "search", name: "search", pages: 3)
+        capture(tab: "search", name: "searchresults", pages: 2) { app in
+            let field = app.textFields.firstMatch
+            if field.waitForExistence(timeout: 5) { field.tap(); field.typeText("Frieren"); app.keyboards.buttons["search"].firstMatch.tap() }
+            Thread.sleep(forTimeInterval: 3)
+        }
+    }
+
     /// A title that isn't in the library (Home → Recommended), top to bottom.
     func testPreviewSnapshots() {
         capture(tab: "home", name: "preview", pages: 8) { app in

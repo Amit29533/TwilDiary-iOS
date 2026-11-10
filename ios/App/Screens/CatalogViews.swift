@@ -86,17 +86,24 @@ struct CatalogSearchView: View {
     @State private var generation = UUID()
     @State private var completedQuery: String?
     @State private var pageTask: Task<Void, Never>?
+    /// Search's kind chips (design): All, Movies, Shows, Anime, People.
+    enum Kind: String, CaseIterable { case all = "All", movies = "Movies", shows = "Shows", anime = "Anime", people = "People" }
+    @State private var kind = Kind.all
+    @State private var peopleCount = 0
+    @State private var adding = Set<String>()
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                SearchField(placeholder: universal ? "Search everything…" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard)
+                SearchField(placeholder: universal ? "Movies, shows, anime, people" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard)
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
+            if universal { kindChips }
             if !ready {
                 if universal { SearchLandingView(recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }) }
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
-            if ready {
+            if universal && ready { universalResults }
+            if ready && !universal {
                 // In your library (only when something matches).
                 if !localMatches.isEmpty {
                     HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
@@ -123,10 +130,10 @@ struct CatalogSearchView: View {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
             }
-            if universal && ready {
-                SearchPeopleView(query: normalized, kind: nil, limit: 12, onChoose: rememberQuery)
+            if universal && ready && (kind == .all || kind == .people) {
+                SearchPeopleView(query: normalized, kind: nil, limit: kind == .people ? 40 : 6, onChoose: rememberQuery, onCount: { peopleCount = $0 })
             }
-            if universal && ready { SearchJellyfinView(query: normalized) }
+            if universal && ready && kind != .people { SearchJellyfinView(query: normalized) }
             // Watch history: when a library title matches (its watches are the ones to find).
             if universal && ready && !localMatches.isEmpty {
                 NavigationLink(value: HistoryRoute(query: normalized)) {
@@ -137,6 +144,124 @@ struct CatalogSearchView: View {
             .task(id: normalized) { if completedQuery != normalized || failure != nil { await search(number: 1, reset: true) } }
             .onDisappear { pageTask?.cancel(); generation = UUID(); loading = false }
     }
+    // MARK: Universal results (owner's design): kind chips, SHOWS & MOVIES as cards, PEOPLE
+
+    private var kindChips: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(Kind.allCases, id: \.self) { item in
+                    let on = kind == item
+                    Button { kind = item } label: {
+                        HStack(spacing: 6) {
+                            Text(item.rawValue)
+                            if ready, let count = count(item) {
+                                Text(count.formatted()).foregroundStyle(on ? Color(webHex: "#1a1030").opacity(0.7) : HomeStyle.secondary).monospacedDigit()
+                            }
+                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.primary)
+                            .padding(.horizontal, 15).frame(height: 40)
+                            .background(on ? HomeStyle.chipText : HomeStyle.round, in: Capsule())
+                            .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                            .contentShape(Capsule())
+                    }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("search-kind-" + item.rawValue.lowercased())
+                }
+            }
+        }.scrollIndicators(.hidden)
+    }
+    /// One result: a library match or an online title, with its kind.
+    private struct Result: Identifiable {
+        let id: String
+        let name: String
+        let poster: String?
+        let detail: String
+        let kind: Kind
+        let libraryID: String?
+        let route: CatalogRoute?
+    }
+    private static func key(_ route: CatalogRoute) -> String { route.kind.rawValue + ":" + String(route.id) }
+    private var allResults: [Result] {
+        let library = localMatches.map { title in
+            Result(id: "library:" + title.id, name: title.name, poster: title.artwork,
+                   detail: [title.category == "movie" ? "Movie" : title.category == "anime-movie" ? "Anime · Movie" : title.category == "anime" ? "Anime · Series" : "Show",
+                            title.year.map(String.init)].compactMap { $0 }.joined(separator: " · "),
+                   kind: title.category.hasPrefix("anime") ? .anime : title.category == "movie" ? .movies : .shows, libraryID: title.id, route: nil)
+        }
+        let saved = Set(localMatches.map(\.id))
+        let online = visibleOnline.compactMap { item -> Result? in
+            let owned = CatalogTools.libraryIdentity(item, in: store.workspace)
+            if let owned, saved.contains(owned) { return nil }
+            let anime = (item.genres ?? []).contains { $0 == "Animation" || $0 == "16" } && item.mediaType == .tv
+            return Result(id: "online:" + item.key, name: item.name, poster: item.artwork,
+                          detail: [anime ? "Anime · Series" : item.mediaType == .tv ? "Show" : "Movie", item.year.map(String.init)].compactMap { $0 }.joined(separator: " · "),
+                          kind: anime ? .anime : item.mediaType == .tv ? .shows : .movies, libraryID: owned, route: item.route)
+        }
+        return library + online
+    }
+    private func count(_ item: Kind) -> Int? {
+        switch item {
+        case .all: allResults.count + peopleCount
+        case .people: peopleCount
+        default: allResults.filter { $0.kind == item }.count
+        }
+    }
+    @ViewBuilder private var universalResults: some View {
+        let shown = allResults.filter { kind == .all || $0.kind == kind }
+        if kind != .people {
+            if !shown.isEmpty || loading || failure != nil {
+                Text("SHOWS & MOVIES").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 6)
+            }
+            if loading && shown.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
+            if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
+            ForEach(shown.prefix(onlineExpanded ? 100 : 8)) { result in resultCard(result) }
+            if shown.count > 8 && !onlineExpanded {
+                Button { onlineExpanded = true; libraryExpanded = true } label: {
+                    Text("Show all \(shown.count)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        .frame(maxWidth: .infinity, minHeight: 50).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                }.buttonStyle(.springPress).accessibilityIdentifier("search-show-all")
+            }
+            if !loading && shown.isEmpty && failure == nil && completedQuery == normalized {
+                Text("No \(kind == .all ? "titles" : kind.rawValue.lowercased()) match “\(normalized)”.").font(.system(size: 14)).foregroundStyle(.secondary)
+            }
+        }
+    }
+    /// The design's result card: poster, name, "Anime · Series", then In library or + Add.
+    private func resultCard(_ result: Result) -> some View {
+        Button {
+            if let id = result.libraryID { chooseLibrary(id) } else if let route = result.route { chooseCatalog(route) }
+        } label: {
+            HStack(spacing: 16) {
+                Artwork(path: result.poster, title: result.name, initialsOnly: false).frame(width: 78, height: 117).clipShape(RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(result.name).font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(2).truncationMode(.tail)
+                    Text(result.detail).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Group {
+                        if result.libraryID != nil {
+                            Text("In library").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                                .padding(.horizontal, 16).frame(height: 38).background(HomeStyle.chip, in: Capsule())
+                        } else if let route = result.route {
+                            let busy = adding.contains(Self.key(route))
+                            Button { Task { await add(route) } } label: {
+                                HStack(spacing: 5) {
+                                    if busy { ProgressView().controlSize(.small).tint(Color(webHex: "#1a1030")) } else { Image(systemName: "plus").font(.system(size: 13, weight: .bold)) }
+                                    Text("Add")
+                                }.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+                                    .padding(.horizontal, 16).frame(height: 38)
+                                    .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                            }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
+                                .accessibilityLabel("Add " + result.name).accessibilityIdentifier("search-add-" + Self.key(route))
+                        }
+                    }.padding(.top, 4)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier(result.libraryID.map { "search-library-" + $0 } ?? "search-" + (result.route.map(Self.key) ?? result.id))
+    }
+    /// + Add: the title joins your library as Planned (its full details are read first).
+    private func add(_ route: CatalogRoute) async {
+        rememberQuery()
+        adding.insert(Self.key(route)); defer { adding.remove(Self.key(route)) }
+        guard let browse = try? await store.browse(route) else { failure = "This title couldn’t be added. Try again."; return }
+        _ = await store.importTitle(browse.details, category: browse.details.suggestedCategory)
+    }
+
     private func onlineRow(_ item: CatalogItem) -> some View {
         let layout = grid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))
         return layout {

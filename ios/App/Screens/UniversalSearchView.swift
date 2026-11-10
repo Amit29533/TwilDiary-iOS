@@ -168,26 +168,37 @@ struct SearchPeopleView: View {
     var kind: String? = nil
     var limit = 40
     let onChoose: () -> Void
+    /// How many people matched, for Search's People chip.
+    var onCount: (Int) -> Void = { _ in }
     @Environment(DiaryStore.self) private var store
     @State private var results: [SearchPerson] = []
     @State private var loading = false
     @State private var failure: String?
     @State private var shown = 0
     var body: some View {
+        // Design: PEOPLE, then a card per person: a round photo, the name and what they are.
         VStack(alignment: .leading, spacing: 10) {
-            if !visible.isEmpty { Text(kind == "cast" ? "Cast · TMDB" : kind == "character" ? "Characters · AniList" : kind == "voice" ? "Voice actors · AniList" : "People & characters").font(.headline) }
+            if !visible.isEmpty {
+                Text(kind == "cast" ? "CAST" : kind == "character" ? "CHARACTERS" : kind == "voice" ? "VOICE ACTORS" : "PEOPLE")
+                    .font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 10)
+            }
             ForEach(Array(visible.prefix(limit + shown)), id: \.key) { person in
                 Button { onChoose(); open(person) } label: {
-                    HStack(spacing: 12) {
-                        Artwork(path: person.image, title: person.name).frame(width: 52, height: 78).clipShape(RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 4) { Text(person.name).font(.subheadline.weight(.semibold)); Text(person.kind == "cast" ? "Cast · TMDB" : person.kind == "character" ? "Character · AniList" : "Voice actor · AniList").font(.caption).foregroundStyle(.secondary) }
-                        Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    HStack(spacing: 14) {
+                        Artwork(path: person.image, title: person.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(person.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                            Text(person.kind == "cast" ? "Cast · TMDB" : person.kind == "character" ? "Character · AniList" : "Voice actor · AniList")
+                                .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 4); Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78"))
+                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityIdentifier("search-person-" + person.key)
             }
-            if visible.count > limit { Button("More people") { shown += 12 }.font(.footnote).foregroundStyle(.primary).frame(minHeight: 44) }
+            if visible.count > limit + shown { Button("More people") { shown += 12 }.font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 44) }
             if let failure, visible.isEmpty == false { Text(failure).font(.caption).foregroundStyle(.secondary) }
         }.task(id: query + (kind ?? "all") + String(describing: store.sessionRevision)) { await load() }
+            .onChange(of: visible.count) { _, count in onCount(count) }
     }
     private var visible: [SearchPerson] { results.filter { kind == nil || $0.kind == kind } }
     @Environment(AppRouter.self) private var router
