@@ -106,12 +106,22 @@ struct AniListMostWatched: View {
     static let userKey = "anilistUser"
     @Environment(DiaryStore.self) private var store
     @AppStorage(AniListMostWatched.userKey) private var user = ""
-    @State private var rows: [RankedRow] = []
+    @State private var rows: [RankedRow]
     @State private var failure: String?
-    @State private var loading = false
+    @State private var loading: Bool
+    /// The last ranking per tab and AniList user: switching tabs shows it at once instead of
+    /// clearing to "Nothing to rank" and reloading (the flash between tabs).
+    @MainActor private static var saved: [String: [RankedRow]] = [:]
+    private static func key(_ kind: Kind, _ user: String) -> String { (kind == .voiceActors ? "voice:" : "character:") + user.lowercased() }
+    init(kind: Kind) {
+        self.kind = kind
+        let cached = Self.saved[Self.key(kind, UserDefaults.standard.string(forKey: Self.userKey) ?? "")]
+        _rows = State(initialValue: cached ?? [])
+        _loading = State(initialValue: cached == nil)
+    }
     var body: some View {
         MostWatchedSection(user: user.isEmpty ? nil : user, ranking: rankingRoute) { ranking }
-            .task(id: user) { rows = []; failure = nil; await load(force: false) }
+            .task(id: user) { failure = nil; await load(force: false) }
     }
     private var rankingRoute: PeopleRankingRoute {
         PeopleRankingRoute(category: kind == .voiceActors ? "Voice actors" : "Characters",
@@ -123,7 +133,7 @@ struct AniListMostWatched: View {
     @ViewBuilder private var ranking: some View {
         if user.isEmpty { connectPrompt }
         else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
-        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 220, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
+        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 190, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
         else if rows.isEmpty { Text("Nothing to rank yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
         else { MostWatchedShelf(ranking: rankingRoute) }
     }
@@ -140,9 +150,14 @@ struct AniListMostWatched: View {
         }.buttonStyle(.plain).accessibilityIdentifier("anilist-connect")
     }
     private func load(force: Bool) async {
-        guard !user.isEmpty else { rows = []; return }
+        guard !user.isEmpty else { rows = []; loading = false; return }
+        let key = Self.key(kind, user)
+        if !force, let cached = Self.saved[key] { rows = cached; loading = false; return }
         #if DEBUG
-        if store.isPreview { rows = kind == .voiceActors ? AniListPreview.topVoiceActors.map(Self.voiceRow) : AniListPreview.topCharacters.map(Self.characterRow); return }
+        if store.isPreview {
+            rows = kind == .voiceActors ? AniListPreview.topVoiceActors.map(Self.voiceRow) : AniListPreview.topCharacters.map(Self.characterRow)
+            Self.saved[key] = rows; loading = false; return
+        }
         #endif
         if force { await AniListClient.shared.forgetStats() }
         loading = true; failure = nil
@@ -156,6 +171,7 @@ struct AniListMostWatched: View {
             try Task.checkCancellation()
             guard requestedUser == user else { return }
             rows = result
+            Self.saved[key] = result
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     private static func voiceRow(_ stat: AniVoiceActorStat) -> RankedRow {
@@ -238,11 +254,20 @@ struct MostWatchedCast: View {
     /// Statistics → Faces of all time: three round photos and a See all tile.
     var round = false
     @Environment(DiaryStore.self) private var store
-    @State private var rows: [RankedRow] = []
-    @State private var aniList: [Int: AniPerson] = [:]
+    @State private var rows: [RankedRow]
+    @State private var aniList: [Int: AniPerson]
     @State private var progress: (counted: Int, total: Int)?
     @State private var failure: String?
-    @State private var loading = false
+    @State private var loading: Bool
+    init(kind: Kind, heading: String? = "Most watched", round: Bool = false) {
+        self.kind = kind; self.heading = heading; self.round = round
+        // A tab switch starts from the saved count (no blank or "nothing yet" flash); a first visit shows the placeholder.
+        let saved = Self.saved[kind]
+        _rows = State(initialValue: saved?.rows ?? [])
+        _aniList = State(initialValue: saved?.aniList ?? [:])
+        _progress = State(initialValue: saved.map { ($0.counted, $0.total) })
+        _loading = State(initialValue: saved == nil)
+    }
     var body: some View {
         MostWatchedSection(heading: heading, ranking: round ? nil : rankingRoute) { ranking }
             .task { await load() }
@@ -295,6 +320,7 @@ struct MostWatchedCast: View {
                    RankedRow(id: 1002, name: "Kana Ichinose", detail: "Fern · Frieren", image: nil, number: 11, count: "11 anime", extra: "160 plays")]
                 : [RankedRow(id: 525, name: "Kim Yeong-ok", detail: "Kim Gam-ri · Hometown Cha-Cha-Cha", image: nil, number: 5, count: "5 titles", extra: "74 plays"),
                    RankedRow(id: 77, name: "Jeon Bae-soo", detail: "Woo Gwang-woo · Extraordinary Attorney Woo", image: nil, number: 5, count: "5 titles", extra: "72 plays")]
+            loading = false
             if ProcessInfo.processInfo.arguments.contains("--ui-favourites-gallery") {
                 rows += (3...7).map { index in
                     RankedRow(id: 700 + index, name: "Reference \(kind == .voice ? "Voice Actor" : "Cast Member") \(index)",
@@ -306,7 +332,7 @@ struct MostWatchedCast: View {
         }
         #endif
         if let saved = Self.saved[kind], Date().timeIntervalSince(saved.at) < 3600 {
-            rows = saved.rows; aniList = saved.aniList; progress = (saved.counted, saved.total)
+            rows = saved.rows; aniList = saved.aniList; progress = (saved.counted, saved.total); loading = false
             for (id, actor) in saved.aniList { await AniListClient.shared.rememberPerson(staffID: actor.id, tmdbID: id) }
             return
         }

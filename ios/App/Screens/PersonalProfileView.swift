@@ -74,6 +74,171 @@ struct Hexagon: Shape {
     }
 }
 
+/// What each milestone is for, and the ladder it climbs (7-day streak, then 30-day streak).
+enum MilestoneInfo {
+    static func about(_ id: String) -> String {
+        switch id {
+        case "first-watch": "Log your very first movie or episode."
+        case "hundred-titles": "Watch a hundred different movies and shows."
+        case "week-streak": "Watch something seven days in a row."
+        case "month-streak": "Keep a watching streak going for thirty days."
+        case "ten-movies": "Watch ten different movies."
+        case "fifty-movies": "Watch fifty different movies."
+        case "first-anime": "Watch your first anime."
+        case "anime-explorer": "Watch twenty-five different anime."
+        case "hundred-hours": "Spend a hundred hours watching."
+        case "five-hundred-hours": "Spend five hundred hours watching."
+        case "genre-explorer": "Watch titles from five different genres."
+        default: "Keep watching to earn it."
+        }
+    }
+    static let ladders: [[String]] = [["first-watch", "hundred-titles"], ["week-streak", "month-streak"], ["ten-movies", "fifty-movies"],
+                                      ["first-anime", "anime-explorer"], ["hundred-hours", "five-hundred-hours"], ["genre-explorer"]]
+    static func ladder(_ id: String) -> [String] { ladders.first { $0.contains(id) } ?? [id] }
+}
+
+/// Tap a badge: it pops in over a dimmed page and spins (its back shows the name and status),
+/// with what it's for and how far the next level is. Tap the badge to spin it again.
+struct MilestoneDetailView: View {
+    let milestone: ProfileMilestone
+    let all: [ProfileMilestone]
+    let close: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+    @State private var angle = 0.0
+    @State private var showsBack = false
+    @State private var spinning = false
+    @State private var drag: CGFloat = 0
+    /// The progress bar fills once the panel has landed (so it never trails behind it).
+    @State private var filled = false
+    var body: some View {
+        let ladder = MilestoneInfo.ladder(milestone.id)
+        let level = (ladder.firstIndex(of: milestone.id) ?? 0) + 1
+        let next = milestone.earned ? ladder.dropFirst(level).first.flatMap { id in all.first { $0.id == id } } : nil
+        let goal = next ?? (milestone.earned ? nil : milestone)
+        let colour = Color(webHex: milestone.colour)
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial).overlay(Color.black.opacity(0.5)).ignoresSafeArea()
+                .opacity(shown ? 1 : 0).onTapGesture(perform: dismiss).accessibilityHidden(true)
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .frame(width: 44, height: 44).background(.white.opacity(0.1), in: Circle())
+                    }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("milestone-close")
+                }.padding(.horizontal, 20).padding(.top, 8).opacity(shown ? 1 : 0)
+                Spacer(minLength: 20)
+                ZStack {
+                    if showsBack { back(colour).rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0)) }
+                    else { MilestoneBadge(milestone: milestone, size: 170).shadow(color: colour.opacity(milestone.earned ? 0.45 : 0), radius: 30) }
+                }.frame(width: 200, height: 215)
+                    .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
+                    .scaleEffect(shown ? 1 : 0.35).opacity(shown ? 1 : 0)
+                    .contentShape(Rectangle()).onTapGesture { Task { await spin() } }
+                    .accessibilityElement().accessibilityLabel(milestone.title + (milestone.earned ? ", earned" : ", " + milestone.progressLabel))
+                    .accessibilityHint("Spins the badge").accessibilityAction { Task { await spin() } }
+                VStack(spacing: 8) {
+                    Text("\(milestone.earned ? "EARNED" : "IN PROGRESS") · LEVEL \(level) OF \(ladder.count)")
+                        .font(.system(size: 12, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary)
+                    Text(milestone.title).font(.system(size: 28, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center)
+                    Text(MilestoneInfo.about(milestone.id)).font(.system(size: 15)).foregroundStyle(HomeStyle.secondary)
+                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                }.padding(.top, 30).padding(.horizontal, 32).opacity(shown ? 1 : 0).offset(y: shown ? 0 : 18)
+                Spacer(minLength: 20)
+                panel(next: next, goal: goal)
+                    .padding(.horizontal, 16).padding(.bottom, 12).offset(y: shown ? 0 : 220)
+            }.offset(y: max(0, drag))
+        }.gesture(DragGesture().onChanged { drag = $0.translation.height }.onEnded { value in
+            if value.translation.height > 120 { dismiss() } else { withAnimation(.smooth) { drag = 0 } }
+        })
+        .sensoryFeedback(.success, trigger: shown) { _, now in now && milestone.earned }
+        .task {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.72)) { shown = true }
+            Task { try? await Task.sleep(for: .seconds(0.45)); withAnimation(.smooth(duration: 0.8)) { filled = true } }
+            guard !reduceMotion else { return }
+            try? await Task.sleep(for: .seconds(0.2))
+            await spin()
+        }
+    }
+    /// The badge's back: its name, earned or how far along, and the app's name.
+    private func back(_ colour: Color) -> some View {
+        ZStack {
+            Hexagon().fill(LinearGradient(colors: [colour.opacity(0.35), colour.opacity(0.12)], startPoint: .top, endPoint: .bottom))
+            Hexagon().stroke(colour, lineWidth: 3)
+            VStack(spacing: 8) {
+                Text(milestone.title).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center)
+                Text(milestone.earned ? "Earned" : milestone.progressLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(colour)
+                Text("TWILDIARY").font(.system(size: 10, weight: .bold)).tracking(2).foregroundStyle(.white.opacity(0.55)).padding(.top, 6)
+            }.padding(24)
+        }.frame(width: 170, height: 184)
+    }
+    private func panel(next: ProfileMilestone?, goal: ProfileMilestone?) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(next.map { "Next: " + $0.title } ?? (goal == nil ? "Top level reached" : "Your progress"))
+                .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+            if let goal {
+                let done = min(goal.progress, goal.target)
+                HStack {
+                    Text("\(done.formatted()) of \(goal.target.formatted())\(goal.unit)")
+                    Spacer()
+                    Text("\((goal.target - done).formatted()) to go")
+                }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                Capsule().fill(.white.opacity(0.1)).frame(height: 8).overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule().fill(Color(webHex: goal.colour))
+                            .frame(width: proxy.size.width * (filled ? min(1, Double(goal.progress) / Double(max(1, goal.target))) : 0))
+                    }
+                }
+            } else {
+                Text("You've earned every level of this badge.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+            }
+        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+            .accessibilityElement(children: .combine).accessibilityIdentifier("milestone-next")
+    }
+    /// One full turn: the back shows through the middle half.
+    private func spin() async {
+        guard !spinning, !reduceMotion else { return }
+        spinning = true
+        withAnimation(.easeIn(duration: 0.22)) { angle += 90 }
+        try? await Task.sleep(for: .seconds(0.22))
+        showsBack = true
+        withAnimation(.linear(duration: 0.44)) { angle += 180 }
+        try? await Task.sleep(for: .seconds(0.44))
+        showsBack = false
+        withAnimation(.easeOut(duration: 0.4)) { angle += 90 }
+        try? await Task.sleep(for: .seconds(0.4))
+        spinning = false
+    }
+    private func dismiss() {
+        withAnimation(.easeIn(duration: 0.2)) { shown = false; drag = 0 }
+        Task { try? await Task.sleep(for: .seconds(0.2)); close() }
+    }
+}
+
+/// Shows a badge's detail over everything (tab bar included), without the cover's slide-up.
+struct MilestoneDetailPresenter: ViewModifier {
+    @Binding var selection: ProfileMilestone?
+    let all: [ProfileMilestone]
+    func body(content: Content) -> some View {
+        content.fullScreenCover(item: $selection) { milestone in
+            MilestoneDetailView(milestone: milestone, all: all) {
+                var quiet = Transaction(); quiet.disablesAnimations = true
+                withTransaction(quiet) { selection = nil }
+            }.presentationBackground(.clear)
+        }
+    }
+}
+extension Binding where Value == ProfileMilestone? {
+    /// Opens the detail without the system slide (it animates itself).
+    func open(_ milestone: ProfileMilestone) {
+        var quiet = Transaction(); quiet.disablesAnimations = true
+        withTransaction(quiet) { wrappedValue = milestone }
+    }
+}
+
 struct PersonalProfileView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -83,6 +248,7 @@ struct PersonalProfileView: View {
     @State private var showAvatarPicker = false
     @State private var editing = false
     @State private var trakt: TraktProfileSummary?
+    @State private var openMilestone: ProfileMilestone?
     /// The Statistics tab a card opens (Statistics reads the same key).
     @AppStorage("stats.tab") private var statsTab = StatsView.Tab.overview
     var body: some View {
@@ -124,6 +290,7 @@ struct PersonalProfileView: View {
             .sheet(isPresented: $editing) { NavigationStack { EditProfileView() }.presentationDragIndicator(.visible) }
             .task { await ProfileAvatarCatalog.shared.load(preview: store.isPreview) }
             .task(id: store.sessionRevision) { trakt = await TraktProfileSummary.load(store: store) }
+            .modifier(MilestoneDetailPresenter(selection: $openMilestone, all: milestones))
     }
 
     private var handle: String {
@@ -266,40 +433,36 @@ struct PersonalProfileView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 14) {
                     ForEach((earned.isEmpty ? Array(milestones.prefix(12)) : earned)) { milestone in
-                        NavigationLink(value: MilestonesRoute()) { MilestoneBadge(milestone: milestone, size: 46) }.buttonStyle(.springPress)
+                        Button { $openMilestone.open(milestone) } label: { MilestoneBadge(milestone: milestone, size: 46) }.buttonStyle(.springPress)
+                            .accessibilityLabel(milestone.title + (milestone.earned ? ", earned" : ", " + milestone.progressLabel))
+                            .accessibilityIdentifier("profile-milestone-" + milestone.id)
                     }
                 }.padding(.vertical, 4).padding(.horizontal, 18)
             }.scrollIndicators(.hidden).padding(.horizontal, -18)
         }.padding(18).diaryPanel(padding: 0, radius: 22)
     }
-    /// What you watched on this day in earlier years.
+    /// What you watched on this date in earlier months and years; opens On this day.
     private var onThisDay: some View {
-        let calendar = DiaryDate.calendar()
-        let today = calendar.dateComponents([.month, .day, .year], from: store.now)
-        let past = store.workspace.activeEvents.compactMap { event -> (Date, MediaTitle)? in
-            guard let date = DiaryDate.parse(event.watchedAt), let title = store.title(event.titleId) else { return nil }
-            let parts = calendar.dateComponents([.month, .day, .year], from: date)
-            return parts.month == today.month && parts.day == today.day && parts.year != today.year ? (date, title) : nil
-        }.sorted { $0.0 > $1.0 }
-        return NavigationLink(value: HistoryRoute(day: past.first?.0)) { HStack(alignment: .top, spacing: 14) {
+        let days = OnThisDay.days(store.historyEntries(HistoryQuery()), now: store.now)
+        let watches = days.reduce(0) { $0 + $1.entries.count }
+        return NavigationLink(value: OnThisDayRoute()) { HStack(alignment: .top, spacing: 14) {
             VStack(spacing: 0) {
                 Text(store.now.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(theme.accent)
                 Text(store.now.formatted(.dateTime.day())).font(.system(size: 24, weight: .bold)).foregroundStyle(.white)
             }.frame(width: 56, height: 60).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 4) {
                 Text("On this day").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                if let first = past.first {
-                    let years = (today.year ?? 0) - calendar.component(.year, from: first.0)
-                    Text("\(years.counted("year", "years")) ago you watched \(first.1.name)" + (past.count > 1 ? " and \(past.count - 1) more." : "."))
+                if let first = days.first, let entry = first.entries.first {
+                    Text("\(first.ago) you watched \(entry.title.name)" + (watches > 1 ? " and \(watches - 1) more." : "."))
                         .font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Nothing happened today.").font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
-            if !past.isEmpty { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
+            if !days.isEmpty { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
         }.padding(16).diaryPanel(padding: 0, radius: 22).contentShape(Rectangle()) }
-            .buttonStyle(.plain).allowsHitTesting(!past.isEmpty).accessibilityElement(children: .combine).accessibilityIdentifier("profile-on-this-day")
+            .buttonStyle(.plain).allowsHitTesting(!days.isEmpty).accessibilityElement(children: .combine).accessibilityIdentifier("profile-on-this-day")
     }
     private func ratingsCard(_ insights: StatsInsights) -> some View {
         let most = max(1, insights.ratingCounts.max() ?? 1)
@@ -389,9 +552,179 @@ struct PersonalProfileView: View {
     }
 }
 
+struct OnThisDayRoute: Hashable {}
+
+/// Watches from today's date in earlier months and years (11 May and 11 Nov 2022 on 11 November).
+enum OnThisDay {
+    struct Day: Identifiable {
+        let id: String
+        let date: Date
+        /// "6 months ago", "4 years ago", "1 year, 6 months ago".
+        let ago: String
+        let entries: [HistoryEntry]
+    }
+    static func days(_ entries: [HistoryEntry], now: Date) -> [Day] {
+        let calendar = DiaryDate.calendar()
+        let today = calendar.startOfDay(for: now)
+        let dayOfMonth = calendar.component(.day, from: today)
+        var byDay: [String: (date: Date, entries: [(Date, HistoryEntry)])] = [:]
+        for entry in entries {
+            guard let watched = DiaryDate.parse(entry.event.watchedAt) else { continue }
+            let start = calendar.startOfDay(for: watched)
+            guard start < today, calendar.component(.day, from: start) == dayOfMonth else { continue }
+            byDay[DiaryDate.day(start), default: (start, [])].entries.append((watched, entry))
+        }
+        return byDay.map { key, value in
+            Day(id: key, date: value.date, ago: ago(from: value.date, to: today, calendar: calendar),
+                entries: value.entries.sorted { $0.0 > $1.0 }.map(\.1))
+        }.sorted { $0.date > $1.date }
+    }
+    static func ago(from: Date, to: Date, calendar: Calendar) -> String {
+        let months = max(1, calendar.dateComponents([.month], from: from, to: to).month ?? 1)
+        let years = months / 12, rest = months % 12
+        if years == 0 { return months.counted("month", "months") + " ago" }
+        if rest == 0 { return years.counted("year", "years") + " ago" }
+        return years.counted("year", "years") + ", " + rest.counted("month", "months") + " ago"
+    }
+}
+
+/// On this day: a carousel of the days (auto-advancing, with pause), then each day's watches.
+struct OnThisDayView: View {
+    @Environment(DiaryStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var page: String?
+    @State private var paused = false
+    var body: some View {
+        let days = OnThisDay.days(store.historyEntries(HistoryQuery()), now: store.now)
+        EdgeToEdgeScroll(frosted: true) {
+            VStack(alignment: .leading, spacing: 14) {
+                if days.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "calendar").font(.system(size: 28)).foregroundStyle(theme.accent)
+                        Text("Nothing on this day yet").font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                        Text("Watches from this date in earlier months and years appear here.").font(.system(size: 14))
+                            .foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 60)
+                } else {
+                    carousel(days)
+                    ForEach(days) { day in dayCard(day) }
+                    Text("More memories tomorrow").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        .frame(maxWidth: .infinity).padding(.top, 6)
+                }
+            }.padding(.horizontal, 16).padding(.bottom, 28)
+        }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text("On this day").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Text(store.now.formatted(.dateTime.weekday(.wide).day().month(.wide))).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    }.lineLimit(1).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+                }
+            }
+    }
+    private func carousel(_ days: [OnThisDay.Day]) -> some View {
+        let current = page ?? days.first?.id
+        return VStack(spacing: 12) {
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 12) {
+                    ForEach(days) { day in
+                        NavigationLink(value: day.entries[0].title.id) { memoryCard(day) }.buttonStyle(.springPress)
+                            .containerRelativeFrame(.horizontal).id(day.id)
+                    }
+                }.scrollTargetLayout()
+            }.scrollTargetBehavior(.viewAligned).scrollPosition(id: $page).scrollIndicators(.hidden)
+                .contentMargins(.horizontal, 30, for: .scrollContent).padding(.horizontal, -16)
+                .accessibilityIdentifier("on-this-day-carousel")
+            if days.count > 1 {
+                HStack(spacing: 14) {
+                    if days.count <= 12 {
+                        HStack(spacing: 6) {
+                            ForEach(days) { day in
+                                Capsule().fill(day.id == current ? Color.white : Color.white.opacity(0.3)).frame(width: day.id == current ? 22 : 7, height: 7)
+                            }
+                        }.animation(.smooth(duration: 0.3), value: current).accessibilityHidden(true)
+                    } else {
+                        Text("\((days.firstIndex { $0.id == current } ?? 0) + 1) of \(days.count)").font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                    }
+                    if !reduceMotion {
+                        Button { paused.toggle() } label: {
+                            Image(systemName: paused ? "play.fill" : "pause.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel(paused ? "Play memories" : "Pause memories").accessibilityIdentifier("on-this-day-pause")
+                    }
+                }.frame(maxWidth: .infinity)
+            }
+        }.task(id: "\(paused)-\(days.count)-\(reduceMotion)") {
+            // Every few seconds, the next day (Reduce Motion or Pause holds still).
+            guard !paused, !reduceMotion, days.count > 1 else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(4)) } catch { return }
+                let index = days.firstIndex { $0.id == page } ?? 0
+                withAnimation(.smooth(duration: 0.5)) { page = days[(index + 1) % days.count].id }
+            }
+        }
+    }
+    private func memoryCard(_ day: OnThisDay.Day) -> some View {
+        let first = day.entries[0]
+        let others = Set(day.entries.map(\.title.id)).count - 1
+        return VStack(alignment: .leading, spacing: 0) {
+            Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                .overlay { Artwork(path: first.title.backdrop ?? first.title.poster, title: first.title.name, initialsOnly: false) }
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(day.ago).font(.system(size: 24, weight: .bold)).lineLimit(1).minimumScaleFactor(0.8)
+                HStack(spacing: 8) {
+                    Text(first.title.name).font(.system(size: 17, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                    // The rest of that day's titles, kept visible however long the first name is.
+                    if others > 0 {
+                        Text("+\(others)").font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                            .padding(.horizontal, 8).frame(height: 22).background(HomeStyle.chip, in: Capsule()).fixedSize()
+                            .accessibilityLabel("and \(others) more")
+                    }
+                }
+            }.foregroundStyle(.white).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(8).background(theme.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 26))
+            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 26))
+            .accessibilityElement(children: .combine)
+    }
+    private func dayCard(_ day: OnThisDay.Day) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(day.ago).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                Text(day.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year())).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            ForEach(day.entries) { entry in
+                NavigationLink(value: entry.title.id) { row(entry) }.buttonStyle(.plain)
+            }
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("on-this-day-" + day.id)
+    }
+    private func row(_ entry: HistoryEntry) -> some View {
+        let watched = DiaryDate.parse(entry.event.watchedAt)
+        let detail = entry.episode.map { episode in
+            "S\(episode.season) · E\(episode.number)" + (episode.name.isEmpty || episode.name.hasPrefix("Episode ") ? "" : " · " + episode.name)
+        } ?? [entry.title.categoryName, entry.title.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
+        let meta = [entry.title.runtimeMinutes.flatMap { $0 > 0 ? DiaryDate.duration($0) : nil },
+                    watched.map { $0.formatted(date: .omitted, time: .shortened) }].compactMap { $0 }.joined(separator: " · ")
+        return HStack(spacing: 14) {
+            Color.clear.frame(width: 106, height: 60)
+                .overlay { Artwork(path: entry.title.backdrop ?? entry.title.poster, title: entry.title.name, initialsOnly: false) }
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.title.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(detail).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                if !meta.isEmpty { Text(meta).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.contentShape(Rectangle()).accessibilityElement(children: .combine)
+    }
+}
+
 /// Milestones: how many you've earned, every earned badge, and the next one with its progress.
 struct MilestonesView: View {
     @Environment(DiaryStore.self) private var store
+    @State private var selected: ProfileMilestone?
     /// Closest first, so "Next up" and the top of the Up next list agree (ties keep their order).
     static func closestFirst(_ items: [ProfileMilestone]) -> [ProfileMilestone] {
         func share(_ item: ProfileMilestone) -> Double { Double(item.progress) / Double(max(1, item.target)) }
@@ -416,17 +749,19 @@ struct MilestonesView: View {
                     if earned.isEmpty { Text("Log a watch to earn your first milestone.").font(.subheadline).foregroundStyle(.secondary) }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 4), spacing: 22) {
                         ForEach(earned) { item in
-                            VStack(spacing: 10) {
-                                MilestoneBadge(milestone: item, size: 52)
-                                Text(item.title).font(.system(size: 12.5, weight: .semibold)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                            }.accessibilityElement(children: .combine)
+                            Button { $selected.open(item) } label: {
+                                VStack(spacing: 10) {
+                                    MilestoneBadge(milestone: item, size: 52)
+                                    Text(item.title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                                }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                            }.buttonStyle(.springPress).accessibilityElement(children: .combine).accessibilityIdentifier("milestone-" + item.id)
                         }
                     }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Up next").font(.system(size: 22, weight: .bold))
                     ForEach(upcoming.prefix(6)) { item in
-                        HStack(spacing: 14) {
+                        Button { $selected.open(item) } label: { HStack(spacing: 14) {
                             MilestoneBadge(milestone: item, size: 40)
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack { Text(item.title).font(.system(size: 16, weight: .semibold)); Spacer(); Text(item.progressLabel).font(.system(size: 13)).foregroundStyle(.secondary) }
@@ -434,11 +769,13 @@ struct MilestonesView: View {
                                     GeometryReader { proxy in Capsule().fill(Color(webHex: item.colour)).frame(width: proxy.size.width * min(1, Double(item.progress) / Double(max(1, item.target)))) }
                                 }
                             }
-                        }.accessibilityElement(children: .combine)
+                        }.foregroundStyle(.white).contentShape(Rectangle()) }.buttonStyle(.plain)
+                            .accessibilityElement(children: .combine).accessibilityIdentifier("milestone-" + item.id)
                     }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
             }.padding(.horizontal, 16).padding(.bottom, 28)
         }.diaryScreenBackground().diaryPageNavigation("Milestones")
+            .modifier(MilestoneDetailPresenter(selection: $selected, all: milestones))
     }
 }
 

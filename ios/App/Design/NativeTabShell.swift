@@ -17,7 +17,10 @@ import UIKit
     func makeUIViewController(context: Context) -> UITabBarController {
         let controller = UITabBarController()
         controller.view.backgroundColor = .black
-        controller.tabBarMinimizeBehavior = .never
+        // Scrolling down shrinks the tab bar into a small pill; scrolling up (or a tap) brings it back.
+        // UI tests keep it open so they can reach every tab, unless they ask for the real behaviour.
+        let arguments = ProcessInfo.processInfo.arguments
+        controller.tabBarMinimizeBehavior = arguments.contains("--ui-testing") && !arguments.contains("--ui-tabbar-minimize") ? .never : .onScrollDown
         controller.viewControllers = AppTab.allCases.map { tab in
             let host = UIHostingController(rootView: page(tab))
             host.view.backgroundColor = .clear

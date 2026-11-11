@@ -155,7 +155,15 @@ import XCTest
                 back()
             }
             for _ in 0..<6 { app.swipeDown() }
-            if open("profile-milestones") { shot("milestones"); back() }
+            if open("profile-milestones") {
+                shot("milestones")
+                // A badge opens its detail: it spins, then settles with what it's for and the next level.
+                let badge = app.buttons["milestone-week-streak"]
+                if badge.waitForExistence(timeout: 3) { badge.tap(); Thread.sleep(forTimeInterval: 0.45); shot("milestone-spin"); Thread.sleep(forTimeInterval: 1.6); shot("milestone-detail") }
+                let close = app.buttons["milestone-close"]
+                if close.exists { close.tap(); Thread.sleep(forTimeInterval: 0.6) }
+                back()
+            }
             for _ in 0..<6 { app.swipeDown() }
             if open("profile-edit-name") || open("profile-avatar") { shot("editprofile") }
         }
@@ -195,6 +203,28 @@ import XCTest
             let filters = app.buttons["library-filters"]
             if filters.waitForExistence(timeout: 5) { filters.tap() }
             Thread.sleep(forTimeInterval: 2)
+        }
+    }
+
+    /// Scrolling down shrinks the tab bar; scrolling back up restores it.
+    func testTabBarMinimizeSnapshots() {
+        capture(tab: "home", name: "tabbar", pages: 3, extra: ["--ui-tabbar-minimize"])
+        let app = XCUIApplication()
+        app.swipeDown(); Thread.sleep(forTimeInterval: 1.2)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "tabbar-restored"; shot.lifetime = .keepAlways; add(shot)
+    }
+
+    /// Profile → On this day: the carousel and every earlier month/year with a watch on this date.
+    func testOnThisDaySnapshots() {
+        capture(tab: "more", name: "onthisday", pages: 3, extra: ["--ui-on-this-day"]) { app in
+            let profile = app.descendants(matching: .any)["settings-personal-profile"]
+            for _ in 0..<6 where !(profile.exists && profile.isHittable) { app.swipeUp() }
+            if profile.exists { profile.tap(); Thread.sleep(forTimeInterval: 2.5) }
+            let card = app.descendants(matching: .any)["profile-on-this-day"]
+            for _ in 0..<6 where !(card.exists && card.isHittable) { app.swipeUp() }
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "onthisday-card"; shot.lifetime = .keepAlways; self.add(shot)
+            if card.exists { card.tap() }
+            Thread.sleep(forTimeInterval: 2.5)
         }
     }
 

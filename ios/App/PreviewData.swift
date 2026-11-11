@@ -100,6 +100,26 @@ enum PreviewData {
         object["events"] = events
         return (try? JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))) ?? workspace
     }
+    /// Watches on the design data's "today" (23 Oct) 6 months, 1 year and 4 years back, for On this day.
+    static func withAnniversaries(_ workspace: Workspace, now: Date) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var events = object["events"] as! [[String: Any]]
+        var templates: [[String: Any]] = [], seen = Set<String>()
+        for event in events where seen.insert(event["titleId"] as? String ?? "").inserted { templates.append(event) }
+        guard !templates.isEmpty else { return workspace }
+        let calendar = DiaryDate.calendar()
+        let plan: [(months: Int, hour: Int, template: Int)] = [(6, 17, 0), (6, 21, 1), (12, 20, 2), (48, 22, 1)]
+        for (index, item) in plan.enumerated() {
+            guard let day = calendar.date(byAdding: .month, value: -item.months, to: calendar.startOfDay(for: now)),
+                  let at = calendar.date(byAdding: .hour, value: item.hour, to: day) else { continue }
+            var copy = templates[item.template % templates.count]
+            copy["id"] = "anniversary-\(index)"; copy["operationId"] = copy["id"]; copy["revokedAt"] = NSNull()
+            copy["watchedAt"] = at.formatted(.iso8601); copy["recordedAt"] = copy["watchedAt"]
+            events.append(copy)
+        }
+        object["events"] = events
+        return (try? JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))) ?? workspace
+    }
     /// Explicit identities/scores for profile repair UI checks; never loaded in Release.
     static var profileRepairWorkspace: Workspace {
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]

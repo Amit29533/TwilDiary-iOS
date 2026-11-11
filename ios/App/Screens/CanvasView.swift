@@ -34,7 +34,6 @@ private struct CanvasContent: View {
     @State private var genres: [String] = []
     @State private var anime = false
     @State private var showGenres = false
-    @Namespace private var tabSpace
     @State private var pageWidth: CGFloat = 390
     @State private var network: Int?
     @State private var year = ""
@@ -105,21 +104,25 @@ private struct CanvasContent: View {
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
     /// Movies · Shows · Lists in one dark track; the chosen one is a lilac pill that slides across.
     private var tabs: some View {
-        HStack(spacing: 4) {
-            ForEach(CanvasTab.allCases, id: \.self) { item in
+        let kinds = CanvasTab.allCases
+        let index = CGFloat(kinds.firstIndex(of: tab) ?? 0)
+        return HStack(spacing: 4) {
+            ForEach(kinds, id: \.self) { item in
                 let on = tab == item
-                Button { withAnimation(.snappy(duration: 0.28)) { tab = item }; if item == .movies { network = nil } } label: {
+                // The page swaps at once (no cross-fade flash); only the pill slides.
+                Button { tab = item; if item == .movies { network = nil } } label: {
                     Text(item.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
                         .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
-                        .frame(maxWidth: .infinity).frame(height: 36)
-                        .background {
-                            if on {
-                                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
-                                    .matchedGeometryEffect(id: "canvas-tab", in: tabSpace)
-                            }
-                        }
-                        .contentShape(Capsule())
+                        .animation(.snappy(duration: 0.28), value: on)
+                        .frame(maxWidth: .infinity).frame(height: 36).contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
+            }
+        }.background(alignment: .leading) {
+            GeometryReader { proxy in
+                let width = (proxy.size.width - 4 * CGFloat(kinds.count - 1)) / CGFloat(kinds.count)
+                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
+                    .frame(width: width, height: 36).offset(x: (width + 4) * index)
+                    .animation(.snappy(duration: 0.28), value: index)
             }
         }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
     }

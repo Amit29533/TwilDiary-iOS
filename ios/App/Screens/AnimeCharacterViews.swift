@@ -204,7 +204,6 @@ struct FavouritesView: View {
     /// recent, oldest or name.
     @AppStorage("favouritesSort") private var sort = "recent"
     @State private var query = ""
-    @Namespace private var tabSpace
     private var favourites: FavouritesStore { .shared }
     var body: some View {
         let all = favourites.items(tab)
@@ -286,20 +285,26 @@ struct FavouritesView: View {
     }
     /// Cast · Characters · Voice actors in one dark track; the chosen one is a sliding lilac pill.
     private var tabs: some View {
-        HStack(spacing: 4) {
-            ForEach(Favourite.Kind.allCases, id: \.self) { kind in
+        let kinds = Favourite.Kind.allCases
+        let index = CGFloat(kinds.firstIndex(of: tab) ?? 0)
+        return HStack(spacing: 4) {
+            ForEach(kinds, id: \.self) { kind in
                 let on = tab == kind
-                Button { withAnimation(.snappy(duration: 0.28)) { tab = kind } } label: {
+                // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
+                Button { tab = kind } label: {
                     Text(kind.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
-                        .frame(maxWidth: .infinity).frame(height: 40)
-                        .background {
-                            if on {
-                                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
-                                    .matchedGeometryEffect(id: "favourites-tab", in: tabSpace)
-                            }
-                        }.contentShape(Capsule())
+                        .animation(.snappy(duration: 0.28), value: on)
+                        .frame(maxWidth: .infinity).frame(height: 40).contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
+            }
+        }.background(alignment: .leading) {
+            // One pill that moves between the tabs, so it's never missing mid-switch.
+            GeometryReader { proxy in
+                let width = (proxy.size.width - 4 * CGFloat(kinds.count - 1)) / CGFloat(kinds.count)
+                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
+                    .frame(width: width, height: 40).offset(x: (width + 4) * index)
+                    .animation(.snappy(duration: 0.28), value: index)
             }
         }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
     }

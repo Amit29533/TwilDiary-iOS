@@ -39,8 +39,8 @@ import TwilDiaryCore
                     // scan, review, incoming watches and logging settings are retired.
                     retiredPage
                 } else {
+                // Same design as the Trakt-diary page: a header card, labelled groups of rows, Account last.
                 connection
-                apiAndLoggingSettings
                 if controller.restoringApproval { restoringImport }
                 if controller.status?.connected == true {
                     // A running scan leads the page; settings follow it.
@@ -53,6 +53,8 @@ import TwilDiaryCore
                         review(sync)
                     }
                 }
+                apiAndLoggingSettings
+                if controller.status?.connected == true { account }
                 }
                 if let error = controller.error {
                     // "Start a fresh preview": Trakt changed after this preview, so retrying can't succeed.
@@ -62,7 +64,7 @@ import TwilDiaryCore
                             .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button(stale ? "Start a fresh scan" : "Retry") { Task { if stale { await controller.rescan() } else { await controller.refresh() } } }
                             .buttonStyle(.diaryRowPrimary).disabled(controller.busy).accessibilityIdentifier(stale ? "trakt-fresh-scan" : "trakt-retry")
-                    }.diaryPanel().accessibilityIdentifier("trakt-error")
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).accessibilityIdentifier("trakt-error")
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("Trakt").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
@@ -111,7 +113,7 @@ import TwilDiaryCore
             Button("Pause import", systemImage: "pause.fill") { controller.pauseApplying() }
                 .buttonStyle(.diarySecondary).disabled(controller.paused)
                 .accessibilityIdentifier("trakt-pause-restoration")
-        }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-restoring-import")
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).accessibilityElement(children: .contain).accessibilityIdentifier("trakt-restoring-import")
     }
     private func transferProgress(_ sync: TraktSync) -> some View {
         let progress = TraktApplyProgress(sync)
@@ -136,8 +138,7 @@ import TwilDiaryCore
                 Text("\(progress.applied.formatted()) saved · \(progress.skipped.formatted()) skipped · \(progress.remaining.formatted()) remaining")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("trakt-apply-counts")
-            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+            }.padding(16).modifier(SettingsCard())
             if coolingDown { cooldownCard }
             else if let message = controller.retryMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             if controller.applyingAll {
@@ -175,34 +176,30 @@ import TwilDiaryCore
             .padding(.horizontal, 10).frame(height: 26).background(tint.opacity(0.14), in: Capsule())
     }
     private var incomingWatches: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Automatic").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4)
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    tile("arrow.down.circle.fill", color: Color(webHex: "#5E5CE6"))
-                    Toggle(isOn: Binding(get: { incoming.status?.enabled ?? false }, set: { enabled in
-                        Task { await incoming.configure(enabled: enabled) }
-                    })) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Incoming watches").font(.system(size: 15, weight: .semibold))
-                            Text(incomingSubtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        }
-                    }.tint(theme.accent).disabled(incoming.busy || incoming.status == nil || controller.status?.needsReconnect == true).accessibilityIdentifier("trakt-incoming-toggle")
-                }
-                Text("New plays arrive on their own; the rest waits for review.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if incoming.status?.enabled == true, let explanation = incoming.pauseExplanation {
-                    Text(explanation).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                if let status = incoming.status, incoming.status?.enabled == true, status.pending > 0 || status.review > 0 {
-                    Text("\(status.pending) waiting · \(status.review) need manual review").font(.caption).foregroundStyle(.secondary)
-                }
-                if let health = incoming.health { Text(health).font(.caption).foregroundStyle(.secondary) }
-                if let error = incoming.error { Text(error).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("trakt-incoming-error") }
-                Button { Task { await incoming.refresh() } } label: { Label("Refresh status", systemImage: "arrow.clockwise").frame(maxWidth: .infinity) }
-                    .font(.subheadline).buttonStyle(.diarySecondary).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
-            }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+        SettingsGroup(label: "Automatic") {
+            Toggle(isOn: Binding(get: { incoming.status?.enabled ?? false }, set: { enabled in
+                Task { await incoming.configure(enabled: enabled) }
+            })) {
+                optionLabel("Incoming watches", "New plays arrive on their own; the rest waits for review")
+            }.padding(.horizontal, 15).frame(minHeight: 64)
+                .disabled(incoming.busy || incoming.status == nil || controller.status?.needsReconnect == true).accessibilityIdentifier("trakt-incoming-toggle")
+            SettingsDivider()
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Status").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text(incomingSubtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    if incoming.status?.enabled == true, let explanation = incoming.pauseExplanation {
+                        Text(explanation).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let status = incoming.status, incoming.status?.enabled == true, status.pending > 0 || status.review > 0 {
+                        Text("\(status.pending) waiting · \(status.review) need manual review").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    }
+                    if let health = incoming.health { Text(health).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }
+                    if let error = incoming.error { Text(error).font(.system(size: 12)).foregroundStyle(Color(webHex: "#f5c26b")).accessibilityIdentifier("trakt-incoming-error") }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Button(incoming.busy ? "Checking…" : "Refresh") { Task { await incoming.refresh() } }
+                    .buttonStyle(SettingsPillButtonStyle()).disabled(incoming.busy).accessibilityIdentifier("trakt-incoming-refresh")
+            }.padding(.horizontal, 15).padding(.vertical, 12).frame(minHeight: 64)
         }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-incoming-panel")
     }
     private var incomingSubtitle: String {
@@ -212,50 +209,53 @@ import TwilDiaryCore
         if let date = DiaryDate.parse(incoming.status?.checkedAt) { return "Last checked " + date.formatted(date: .abbreviated, time: .shortened) }
         return "Waiting for the first scheduled check"
     }
-    private func tile(_ symbol: String, color: Color) -> some View {
-        Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
-    }
+    /// The header card, as on the Trakt-diary page: who's connected, then the one thing to do (scan or connect).
     private var connection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                BrandLogo(service: .trakt, size: 40)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(controller.status?.needsReconnect == true ? "Reconnect Trakt" : controller.status?.connected == true ? "Trakt" : controller.loading ? "Checking connection…" : "Connect to Trakt").font(.system(size: 20, weight: .bold))
-                    if let date = DiaryDate.parse(controller.status?.lastSyncAt) { Text("Last synced \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
-                    else if controller.status?.connected != true { Text("Your watches, together").font(.caption).foregroundStyle(.secondary) }
-                }
-                Spacer(minLength: 0)
-                if controller.status?.needsReconnect == true { statPill("Reconnect", tint: .orange) }
-                else if let name = controller.status?.username, controller.status?.connected == true { statPill("@" + name, tint: .mint) }
-            }
-            if (controller.sync?.pendingChanges ?? 0) > 0 && controller.sync?.run?.state != "building" {
-                statPill("\(controller.sync?.pendingChanges ?? 0) to review", tint: .orange)
-            }
-            if controller.status?.connected == true {
+        let connected = controller.status?.connected == true
+        let reconnect = controller.status?.needsReconnect == true
+        let pending = scanning ? 0 : (controller.sync?.pendingChanges ?? 0)
+        let synced = DiaryDate.parse(controller.status?.lastSyncAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
+        return SettingsServiceHeader(logo: .trakt,
+                                     title: reconnect ? "Reconnect Trakt" : connected ? "Trakt" : controller.loading ? "Checking connection…" : "Connect to Trakt",
+                                     subtitle: synced ?? (connected ? "Connected" : "Your watches, together"),
+                                     badge: reconnect ? ("Reconnect", .missing) : connected ? (controller.status?.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
+            if connected && !reconnect {
+                if pending > 0 { SettingsBadge(text: "\(pending) to review", tone: .missing) }
+                Text("Your diary lives on this server. Scan Trakt to compare them; nothing changes until you review.")
+                    .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 // Hidden while a scan runs; the scan card has its own Continue and Stop.
-                if retired {
-                    Text("Trakt holds your diary. Your edits go straight to Trakt.").font(.caption).foregroundStyle(.secondary)
-                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity) }
-                        .buttonStyle(.diarySecondary).disabled(controller.busy)
-                } else if !scanning { HStack(spacing: 10) {
+                if !scanning {
                     Button { Task { await controller.scan(start: true) } } label: {
-                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1).frame(maxWidth: .infinity)
-                    }.buttonStyle(.diaryPrimary).disabled(coolingDown)
-                    Button(role: .destructive) { Task { await controller.disconnect() } } label: { Text("Disconnect").lineLimit(1).frame(maxWidth: .infinity) }
-                        .buttonStyle(.diarySecondary)
-                }.disabled(controller.busy) }
-            } else if controller.status?.configured == true {
-                Button { showSignIn = true } label: { Text("Connect Trakt").frame(maxWidth: .infinity) }.buttonStyle(.diaryPrimary).disabled(controller.busy)
-                if !retired { Link("Connect in browser", destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")).font(.caption) }
-            } else if controller.status != nil { Text("Add a Trakt Client ID on your server first.").font(.subheadline).foregroundStyle(.secondary) }
+                        Label("Scan Trakt", systemImage: "arrow.trianglehead.2.clockwise.rotate.90").lineLimit(1)
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(coolingDown || controller.busy)
+                }
+            } else if reconnect || controller.status?.configured == true {
+                Text(reconnect ? "Trakt signed this iPhone out. Sign in again to keep syncing." : "Connect Trakt to compare it with your diary and keep them together.")
+                    .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                Button { showSignIn = true } label: { Label(reconnect ? "Reconnect Trakt" : "Connect Trakt", systemImage: "globe") }
+                    .buttonStyle(SettingsPrimaryButtonStyle()).disabled(controller.busy)
+                if !reconnect {
+                    Link(destination: AppConfiguration.backend.appendingPathComponent("preview/more/trakt")) { SettingsLinkLabel(text: "Connect in browser") }
+                }
+            } else if controller.status != nil {
+                Text("Add a Trakt Client ID on your server first.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+            }
             if coolingDown && controller.sync?.reviewing != true {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text("Next request in \(max(0, Int(ceil(controller.cooldownUntil.timeIntervalSince(context.date)))))s")
-                        .font(.caption).monospacedDigit().foregroundStyle(.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("trakt-cooldown-countdown")
                 }
             }
-        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.1)))
+        }
+    }
+    /// Disconnect sits at the bottom, as on the Trakt-diary page.
+    private var account: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsLabel(text: "Account") { EmptyView() }
+            Button("Disconnect Trakt", role: .destructive) { Task { await controller.disconnect() } }
+                .buttonStyle(SettingsDestructiveButtonStyle()).disabled(controller.busy).accessibilityIdentifier("trakt-disconnect")
+            SettingsFootnote(text: "Your diary on the server stays as it is. You can connect again any time.")
+        }
     }
     // MARK: Trakt holds the diary (design board 4)
 
@@ -312,7 +312,7 @@ import TwilDiaryCore
     private func optionLabel(_ title: String, _ subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+            Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -321,164 +321,112 @@ import TwilDiaryCore
     private var retired: Bool { store.serverRecord != nil }
     private var apiAndLoggingSettings: some View {
         let saved = store.providerSettings.trakt
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                HStack(spacing: 8) {
-                    DiaryIcon(name: "key-round", size: 16).foregroundStyle(theme.accent)
-                    Text("API & logging settings").font(.subheadline.weight(.semibold))
-                }
-                Spacer()
-                Button(showApiSettings ? "Hide" : (saved.hasCredentials ? "Change API" : "Configure API")) {
+        let clientId = customClientId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = customAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return SettingsGroup(label: "Logging") {
+            SettingsRow(title: "Watch logging", subtitle: "Where a new watch is sent") {
+                Menu {
+                    Picker("Watch logging method", selection: $loggingMethod) {
+                        ForEach(WatchLoggingMethod.allCases) { method in Text(method.label).tag(method) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(loggingMethod.label).lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold))
+                    }.font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        .padding(.horizontal, 12).frame(height: 34).background(HomeStyle.chip, in: Capsule())
+                }.accessibilityLabel("Watch logging method, " + loggingMethod.label).accessibilityIdentifier("trakt-logging-method-picker")
+            }
+            SettingsDivider()
+            SettingsRow(title: "Your own Trakt app", subtitle: saved.hasCredentials ? "Using your Client ID" : "Optional: your Client ID and token") {
+                Button(showApiSettings ? "Hide" : (saved.hasCredentials ? "Change" : "Set up")) {
                     customClientId = saved.clientId ?? ""
                     customAccessToken = saved.accessToken ?? ""
                     loggingMethod = saved.loggingMethod
                     apiSavedMessage = nil
-                    showApiSettings.toggle()
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.glass)
-                .accessibilityIdentifier("trakt-api-toggle")
-            }
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Watch logging method").font(.subheadline.weight(.semibold))
-                    Text("Keeps server watch logging and optionally fans out directly to Trakt").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                Picker("Watch logging method", selection: $loggingMethod) {
-                    ForEach(WatchLoggingMethod.allCases) { method in
-                        Text(method.label).tag(method)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: loggingMethod) { _, next in
-                    var updated = store.providerSettings.trakt
-                    updated.loggingMethod = next
-                    store.updateProviderConfig(updated)
-                }
-                .accessibilityIdentifier("trakt-logging-method-picker")
+                    withAnimation(.snappy) { showApiSettings.toggle() }
+                }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("trakt-api-toggle")
             }
             if let apiSavedMessage {
-                Text(apiSavedMessage).font(.caption).foregroundStyle(.mint)
+                Text(apiSavedMessage).font(.system(size: 12)).foregroundStyle(Color(webHex: "#7fe0b5"))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.bottom, 12)
                     .accessibilityIdentifier("trakt-api-saved-message")
             }
             if showApiSettings {
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Client ID (trakt-api-key)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    TextField("Your Trakt app Client ID", text: $customClientId)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding(12)
-                        .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                SettingsDivider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Client ID (trakt-api-key)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    TextField("Your Trakt app Client ID", text: $customClientId).settingsField(monospaced: true)
                         .accessibilityIdentifier("trakt-client-id-field")
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Direct Access Token / PAT (optional Bearer)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    SecureField("Optional token for direct device API sync", text: $customAccessToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding(12)
-                        .background(theme.field, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                    Text("Access token (optional)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
+                    SecureField("For direct sync from this iPhone", text: $customAccessToken).settingsField(monospaced: true)
                         .accessibilityIdentifier("trakt-access-token-field")
-                }
-                HStack(spacing: 10) {
-                    Button("Save API settings") {
-                        let hasCid = !customClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        let cfg = ExternalProviderConfig(
-                            provider: .trakt,
-                            enabled: hasCid,
-                            loggingMethod: loggingMethod,
-                            clientId: customClientId,
-                            accessToken: customAccessToken,
-                            username: controller.status?.username ?? saved.username,
-                            lastSyncedAt: saved.lastSyncedAt
-                        )
-                        guard store.updateProviderConfig(cfg) else { apiSavedMessage = store.error; return }
-                        apiSavedMessage = "Trakt API settings saved."
-                        showApiSettings = false
-                    }
-                    .buttonStyle(.glassProminent)
-                    .disabled(customClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("trakt-api-save")
-
-                    if !customClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                       !customAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button(apiTesting ? "Testing…" : "Test API") {
-                            Task {
-                                apiTesting = true
-                                defer { apiTesting = false }
-                                let cfg = ExternalProviderConfig(
-                                    provider: .trakt,
-                                    enabled: true,
-                                    loggingMethod: loggingMethod,
-                                    clientId: customClientId,
-                                    accessToken: customAccessToken
-                                )
-                                do {
-                                    try await store.testProviderConnection(cfg)
-                                    guard store.updateProviderConfig(cfg) else { apiSavedMessage = store.error; return }
-                                    apiSavedMessage = "Direct Trakt API verified."
-                                } catch {
-                                    apiSavedMessage = error.localizedDescription
+                    HStack(spacing: 10) {
+                        Button("Save") {
+                            let cfg = ExternalProviderConfig(provider: .trakt, enabled: !clientId.isEmpty, loggingMethod: loggingMethod,
+                                                             clientId: customClientId, accessToken: customAccessToken,
+                                                             username: controller.status?.username ?? saved.username, lastSyncedAt: saved.lastSyncedAt)
+                            guard store.updateProviderConfig(cfg) else { apiSavedMessage = store.error; return }
+                            apiSavedMessage = "Trakt API settings saved."
+                            showApiSettings = false
+                        }.buttonStyle(SettingsWideButtonStyle()).disabled(clientId.isEmpty).accessibilityIdentifier("trakt-api-save")
+                        if !clientId.isEmpty && !token.isEmpty {
+                            Button(apiTesting ? "Testing…" : "Test") {
+                                Task {
+                                    apiTesting = true
+                                    defer { apiTesting = false }
+                                    let cfg = ExternalProviderConfig(provider: .trakt, enabled: true, loggingMethod: loggingMethod,
+                                                                     clientId: customClientId, accessToken: customAccessToken)
+                                    do {
+                                        try await store.testProviderConnection(cfg)
+                                        guard store.updateProviderConfig(cfg) else { apiSavedMessage = store.error; return }
+                                        apiSavedMessage = "Direct Trakt API verified."
+                                    } catch { apiSavedMessage = error.localizedDescription }
                                 }
-                            }
+                            }.buttonStyle(SettingsWideButtonStyle(outlined: true)).disabled(apiTesting).accessibilityIdentifier("trakt-api-test")
                         }
-                        .buttonStyle(.glass)
-                        .disabled(apiTesting)
-                        .accessibilityIdentifier("trakt-api-test")
                     }
-
                     if saved.hasCredentials {
-                        Button("Reset API", role: .destructive) {
+                        Button("Use the server's Trakt app", role: .destructive) {
                             customClientId = ""
                             customAccessToken = ""
                             guard store.updateProviderConfig(ExternalProviderConfig(provider: .trakt, loggingMethod: loggingMethod)) else { apiSavedMessage = store.error; return }
                             apiSavedMessage = "Reverted to server Trakt settings."
                             showApiSettings = false
-                        }
-                        .buttonStyle(.glass)
-                        .accessibilityIdentifier("trakt-api-reset")
+                        }.font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(webHex: "#ffb3c0")).frame(minHeight: 44)
+                            .accessibilityIdentifier("trakt-api-reset")
                     }
-                }
+                }.padding(15)
             }
-        }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("trakt-api-settings-panel")
+        }.onChange(of: loggingMethod) { _, next in
+            var updated = store.providerSettings.trakt
+            updated.loggingMethod = next
+            store.updateProviderConfig(updated)
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-api-settings-panel")
     }
     private var preferences: some View {
         // Ratings are whole numbers 1–10 everywhere now, so there's no decimal-rating choice here.
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Sync preferences").font(.subheadline.bold()).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 12) {
-                // A switch for "settle conflicts myself or automatically", then which side wins.
-                Toggle(isOn: Binding(get: { controller.conflictDefault != .ask },
-                                     set: { controller.conflictDefault = $0 ? (TraktConflictDefault(rawValue: preferredSide) ?? .local) : .ask })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Settle conflicts automatically").font(.subheadline)
-                        Text(controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans finish on their own; your choice settles conflicts and removals")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }.tint(theme.accent).accessibilityIdentifier("trakt-conflict-default")
-                if controller.conflictDefault != .ask {
+        SettingsGroup(label: "Sync") {
+            // A switch for "settle conflicts myself or automatically", then which side wins.
+            Toggle(isOn: Binding(get: { controller.conflictDefault != .ask },
+                                 set: { controller.conflictDefault = $0 ? (TraktConflictDefault(rawValue: preferredSide) ?? .local) : .ask })) {
+                optionLabel("Settle conflicts automatically", controller.conflictDefault == .ask ? "You choose each conflict in the review" : "Scans finish on their own; your choice settles conflicts and removals")
+            }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("trakt-conflict-default")
+            if controller.conflictDefault != .ask {
+                SettingsDivider()
+                SettingsRow(title: "Prefer", subtitle: "Which side wins a conflict") {
                     HStack(spacing: 8) {
-                        Text("Prefer").font(.subheadline).foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
                         ForEach([TraktConflictDefault.local, .trakt]) { side in
                             let on = controller.conflictDefault == side
-                            Button { controller.conflictDefault = side; preferredSide = side.rawValue } label: {
-                                Text(side == .local ? "TwilDiary" : "Trakt").font(.system(size: 14, weight: .medium)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
-                                    .padding(.horizontal, 14).frame(height: 34)
-                                    .background(on ? theme.accent.opacity(0.12) : .clear, in: Capsule())
-                                    .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.7) : .white.opacity(0.14)))
-                                    .frame(minHeight: 44).contentShape(Capsule())
-                            }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("trakt-prefer-" + side.rawValue)
+                            Button(side == .local ? "TwilDiary" : "Trakt") { controller.conflictDefault = side; preferredSide = side.rawValue }
+                                .buttonStyle(SettingsPillButtonStyle(outlined: !on))
+                                .accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("trakt-prefer-" + side.rawValue)
                         }
-                    }.transition(.opacity.combined(with: .move(edge: .top)))
-                }
-                Divider(); Text("Included in each scan").font(.caption).foregroundStyle(.secondary)
-                Text("Watch history · Ratings · Watchlist").font(.subheadline)
-            }.diaryPanel()
+                    }
+                }.transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            SettingsDivider()
+            SettingsRow(title: "Each scan compares", subtitle: "Watch history · Ratings · Watchlist") { EmptyView() }
         }
     }
     private var scanProgress: some View {
@@ -514,8 +462,7 @@ import TwilDiaryCore
                             TimelineView(.periodic(from: .now, by: 1)) { context in Label(ProgressPace.elapsed(context.date.timeIntervalSince(started)) + " so far", systemImage: "clock") }
                         }
                     }.font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
-                }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+                }.padding(16).modifier(SettingsCard())
                     .accessibilityElement(children: .contain).accessibilityIdentifier("trakt-scan-card")
             }
             if coolingDown { cooldownCard }
@@ -545,8 +492,7 @@ import TwilDiaryCore
                 foundFigure(counts["safe"] ?? 0, "ready")
                 foundFigure(decide, "to decide", tint: decide > 0 ? Color(webHex: "#fac775") : nil)
                 foundFigure(counts["links"] ?? 0, "to link")
-            }.padding(.vertical, 14).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+            }.padding(.vertical, 14).modifier(SettingsCard())
         }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-found-so-far")
     }
     private func foundFigure(_ value: Int, _ label: String, tint: Color? = nil) -> some View {
@@ -694,8 +640,8 @@ import TwilDiaryCore
                 let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
                 layout { changeActions(change) }.padding(.leading, 46).disabled(controller.busy || !sync.reviewing)
             }
-        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+        }.padding(14).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             .accessibilityElement(children: .contain).accessibilityIdentifier("trakt-change-" + change.id)
     }
     /// "Import from Trakt · S1 · E3", "Removed on Trakt", or the error when something failed.
@@ -767,7 +713,7 @@ import TwilDiaryCore
                     }.accessibilityElement(children: .contain).accessibilityIdentifier("trakt-group-" + direction)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading).diaryPanel()
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
             .alert(groupAction.map { groupTitle($0) } ?? "", isPresented: Binding(get: { groupAction != nil }, set: { if !$0 { groupAction = nil } }),
  presenting: groupAction) { action in
                 Button(groupTitle(action), role: groupRemoves(action) ? .destructive : nil) {

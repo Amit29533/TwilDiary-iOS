@@ -1235,7 +1235,8 @@ import UIKit
     func testIncomingTraktWatchesCanBeEnabledDisabledAndReviewedWithoutAProgressOverlay() {
         let app = launch(); app.tabBars.buttons["Profile"].tap()
         openTrakt(app)
-        let toggle = app.switches["trakt-incoming-toggle"]
+        // The Settings design's switch, as on the Trakt-diary page.
+        let toggle = app.descendants(matching: .any)["trakt-incoming-toggle"]
         XCTAssertTrue(app.navigationBars["Trakt"].waitForExistence(timeout: 10))
         for _ in 0..<5 { if toggle.exists && toggle.isHittable { break }; app.swipeUp() }
         let toggleExists = toggle.waitForExistence(timeout: 5)
@@ -1273,7 +1274,13 @@ import UIKit
         XCTAssertTrue(app.staticTexts["Review changes"].waitForExistence(timeout: 10))
         let useTrakt = app.buttons["trakt-group-pull-trakt"]
         let tabBarTop = app.tabBars.firstMatch.frame.minY
-        for _ in 0..<10 { if useTrakt.isHittable && useTrakt.frame.maxY < tabBarTop - 8 { break }; app.swipeUp() }
+        // Slow, measured drags (a fling carries the long review list far past the group card); back up if it overshoots.
+        let upper = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)), lower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        for _ in 0..<30 {
+            if useTrakt.isHittable && useTrakt.frame.minY > 120 && useTrakt.frame.maxY < tabBarTop - 8 { break }
+            if useTrakt.exists && useTrakt.frame.maxY < 120 { upper.press(forDuration: 0.05, thenDragTo: lower, withVelocity: .slow, thenHoldForDuration: 0.1) }
+            else { lower.press(forDuration: 0.05, thenDragTo: upper, withVelocity: .slow, thenHoldForDuration: 0.1) }
+        }
         XCTAssertTrue(app.staticTexts["Removed on Trakt · 30"].exists)
         XCTAssertTrue(useTrakt.isHittable); capture("Trakt review groups")
         useTrakt.tap()
