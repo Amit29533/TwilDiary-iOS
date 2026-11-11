@@ -33,7 +33,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary
-        TWILDIARY_TRAKT_CLIENT_ID: ''
+        TWILDIARY_TRAKT_CLIENT_ID: 'pf247BS4jiJkBk_ccJhSS1menwegnU_EuT5MNUDmvu8'
         TWILDIARY_SIMKL_CLIENT_ID: ''
         TWILDIARY_MDBLIST_CLIENT_ID: ''
         TWILDIARY_WETRAKR_CLIENT_ID: ''
