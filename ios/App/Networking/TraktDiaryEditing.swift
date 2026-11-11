@@ -166,7 +166,9 @@ extension DiaryStore {
     func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
         guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
         let ids = events.compactMap(servicePlayID)
-        if service == .trakt {
+        if service == .trakt, TraktDirectStore.shared.localOnly {
+            // On this phone: nothing to send; the copy below is the diary.
+        } else if service == .trakt {
             let known = ids.filter { $0 > 0 }
             guard known.count == events.count else { throw APIError.message("That watch is still reaching Trakt. Try again in a moment.") }
             try await send("/sync/history/remove", ["ids": known])
@@ -189,6 +191,19 @@ extension DiaryStore {
         }
         updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) } }
         refreshCopySoon()
+    }
+    /// Every play of a title on the service. A play still on its way (no service id yet) waits
+    /// for one fresh read, then goes too.
+    func removeAllPlays(_ title: MediaTitle) async throws {
+        func plays() -> [WatchEvent] { workspace.events.filter { $0.titleId == title.id && $0.revokedAt == nil } }
+        guard !plays().isEmpty else { return }
+        do { try await serviceRemoveWatches(plays()) }
+        catch {
+            guard service == .trakt, !TraktDirectStore.shared.localOnly else { throw error }
+            await TraktDirectStore.shared.check(store: self)
+            applyDiarySource()
+            if !plays().isEmpty { try await serviceRemoveWatches(plays()) }
+        }
     }
     /// The service's play behind a watch in the service diary ("trakt-123").
     func servicePlayID(_ event: WatchEvent) -> Int64? {
@@ -281,6 +296,10 @@ extension DiaryStore {
         let status = values["status"] as? String
         // Whether the service keeps this status (otherwise the server does).
         var serviceHolds = true
+        // A watched movie set back to Planned (a watch logged by accident): its plays come off the
+        // service too, each by its own id, or the service would keep counting it as watched.
+        // Shows keep their history; resetting a season is its own action.
+        if status == "planned", !title.isSeries { try await removeAllPlays(title) }
         if let status {
             let wasPlanned = title.status == "planned", wasDropped = title.isSeries && title.status == "dropped"
             switch service {

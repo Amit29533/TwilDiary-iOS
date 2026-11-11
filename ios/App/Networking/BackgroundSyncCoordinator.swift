@@ -200,6 +200,7 @@ import BackgroundTasks
             await store.refreshOnForeground()
             if includeTransfer, !Task.isCancelled { await store.resumeTraktOnForeground() }
             if !Task.isCancelled { await ServerBackups.runIfDue(store: store) }
+            if !Task.isCancelled { await GoogleDrive.runIfDue(store: store) }
         }
         task.expirationHandler = {
             work.cancel()

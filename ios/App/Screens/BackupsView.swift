@@ -135,18 +135,7 @@ struct BackupsView: View {
             let snapshot: Snapshot = try await store.read("/api/backups/" + backup.id, timeout: 60)
             // Restore goes where your diary lives: into Trakt when Trakt holds it (the server's
             // copy is read-only then, and changing it wouldn't change what you see).
-            if store.traktHoldsDiary {
-                let diary = try snapshot.diary.merged(into: Workspace())
-                message = try await TraktDirectStore.shared.restore(diary, store: store)
-                return
-            }
-            if let service = store.diaryService ?? store.serverRecord {
-                failure = "Restoring a backup isn’t available yet while \(service.name) holds your diary."
-                return
-            }
-            let data = try snapshot.diary.encoded()
-            let result = try await store.importDiaryArchive(data)
-            message = "Restored to your server diary: \(result.titles.counted("title", "titles")) and \(result.events.counted("watch", "watches")) merged. What was already there was kept."
+            message = try await ServerBackups.restore(snapshot.diary, store: store)
         } catch { failure = error.localizedDescription }
     }
     private func delete(_ backup: Summary) async {
@@ -176,13 +165,30 @@ struct BackupsView: View {
     }
 
     /// The whole diary plus the last Trakt read, compressed and kept on your server (newest 20).
-    @discardableResult static func save(store: DiaryStore, label: String) async throws -> BackupsView.Summary {
+    /// The backup itself: the whole diary plus the last Trakt read (server and Google Drive alike).
+    static func snapshot(store: DiaryStore, label: String) async throws -> [String: Any] {
         let snapshot = store.workspace
         let diaryData = try await Task.detached(priority: .utility) { try DiaryExport(workspace: snapshot).encoded() }.value
         guard let diary = try JSONSerialization.jsonObject(with: diaryData) as? [String: Any] else { throw APIError.message("The diary couldn’t be packed.") }
         var body: [String: Any] = ["label": label, "diary": diary]
         if let library = TraktDirectStore.shared.library, let data = try? JSONEncoder().encode(library),
            let trakt = try? JSONSerialization.jsonObject(with: data) { body["trakt"] = trakt }
+        return body
+    }
+    /// Puts a backup back where your diary lives (Trakt, the diary on this phone, or the server's),
+    /// merging, so nothing newer is lost. Returns what to tell you.
+    static func restore(_ archive: DiaryExport, store: DiaryStore) async throws -> String {
+        if store.traktHoldsDiary {
+            return try await TraktDirectStore.shared.restore(try archive.merged(into: Workspace()), store: store)
+        }
+        if let service = store.diaryService ?? store.serverRecord {
+            throw APIError.message("Restoring a backup isn’t available yet while \(service.name) holds your diary.")
+        }
+        let result = try await store.importDiaryArchive(try archive.encoded())
+        return "Restored to your server diary: \(result.titles.counted("title", "titles")) and \(result.events.counted("watch", "watches")) merged. What was already there was kept."
+    }
+    @discardableResult static func save(store: DiaryStore, label: String) async throws -> BackupsView.Summary {
+        let body = try await snapshot(store: store, label: label)
         let saved: BackupsView.Summary = try await store.read("/api/backups", method: "POST", body: body, timeout: 60)
         noteLatest(DiaryDate.parse(saved.createdAt) ?? .now)
         return saved

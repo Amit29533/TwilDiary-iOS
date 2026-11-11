@@ -175,7 +175,7 @@ struct RootView: View {
     private var readyToShow: Bool { store.needsSignIn || store.hasLoadedWorkspace || !(store.loading || store.restoringCache) }
     private func liftSplash() {
         guard showSplash, splashPlayed, readyToShow, !ProcessInfo.processInfo.arguments.contains("--ui-splash-hold") else { return }
-        withAnimation(reduceMotion ? .easeOut(duration: 0.25) : .easeInOut(duration: 0.5)) { showSplash = false }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeInOut(duration: 0.35)) { showSplash = false }
     }
     var body: some View {
         @Bindable var router = router
@@ -251,6 +251,7 @@ struct RootView: View {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
                     await LocalBackups.write(store: store)
                     await ServerBackups.runIfDue(store: store)
+                    await GoogleDrive.runIfDue(store: store)
                     await EpisodeNotifications.reschedule(store: store)
                     await store.keepDiaryServiceCurrent()
                 }

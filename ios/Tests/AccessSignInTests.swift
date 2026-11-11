@@ -88,17 +88,13 @@ import TwilDiaryCore
     func testServerListedIDsAreRememberedAndBlanksIgnored() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ProviderAppIDsTests"))
         defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
-        // Built into the app: Trakt, Simkl and MDBList (public client IDs, as Cinopsys ships its own).
-        for provider in [SyncProviderKind.trakt, .simkl, .mdblist] { XCTAssertNotNil(ProviderAppIDs.id(for: provider, defaults: defaults), provider.rawValue) }
-        // Not built in (WeTrakr): the server's list is remembered; blanks and unset settings never count.
-        XCTAssertNil(ProviderAppIDs.id(for: .wetrakr, defaults: defaults))
-        ProviderAppIDs.remember([.wetrakr: " wetrakr-app "], defaults: defaults)
-        XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), "wetrakr-app")
-        ProviderAppIDs.remember([.wetrakr: ""], defaults: defaults)
-        XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), "wetrakr-app")
+        // Built into the app: all four services' public client IDs, as Cinopsys ships its own.
+        for provider in [SyncProviderKind.trakt, .simkl, .mdblist, .wetrakr] { XCTAssertNotNil(ProviderAppIDs.id(for: provider, defaults: defaults), provider.rawValue) }
+        // A server-listed ID never replaces a built-in one.
+        let builtIn = ProviderAppIDs.id(for: .wetrakr, defaults: defaults)
+        ProviderAppIDs.remember([.wetrakr: "other-app"], defaults: defaults)
+        XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), builtIn)
         defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
-        ProviderAppIDs.remember([.wetrakr: "$(TWILDIARY_WETRAKR_CLIENT_ID)"], defaults: defaults)
-        XCTAssertNil(ProviderAppIDs.id(for: .wetrakr, defaults: defaults))
         XCTAssertNil(ProviderAppIDs.id(for: .cloudflare, defaults: defaults))
         XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.simkl) && ServiceSignIn.supportsSheet(.mdblist) && !ServiceSignIn.supportsSheet(.cloudflare))
     }

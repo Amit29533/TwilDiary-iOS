@@ -32,6 +32,7 @@ struct TitleDetailView: View {
     @State private var showRating = false
     @State private var showInformation = false
     @State private var checkInMessage: String?
+    @State private var confirmRemoveHistory = false
     @State private var headerState = CompactHeaderState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var resetConfirmation = false
@@ -122,6 +123,7 @@ struct TitleDetailView: View {
                                         }.disabled(store.writesBlocked).accessibilityIdentifier("title-favorite")
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         checkInButton(title)
+                                        removeHistoryButton(title)
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
                                         TitleShareItem(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId)
@@ -151,6 +153,13 @@ struct TitleDetailView: View {
     }
     /// Sheets, dialogs and change observers live in their own function so the
     /// type checker handles two shorter modifier chains instead of one very long one.
+    /// "Remove from watch history": for a watch logged by accident (every watch of the title).
+    @ViewBuilder private func removeHistoryButton(_ title: MediaTitle) -> some View {
+        if store.workspace.events.contains(where: { $0.titleId == title.id && $0.revokedAt == nil }) {
+            Button("Remove from watch history", systemImage: "clock.arrow.circlepath", role: .destructive) { confirmRemoveHistory = true }
+                .disabled(store.writesBlocked).accessibilityIdentifier("title-remove-history")
+        }
+    }
     /// "Check in on Trakt" (a movie, or the next episode), when Trakt is connected.
     @ViewBuilder private func checkInButton(_ title: MediaTitle) -> some View {
         if store.traktSignedInOnPhone || store.traktHoldsDiary {
@@ -211,6 +220,10 @@ struct TitleDetailView: View {
                 notesField.observe(.init(value: title.notes, version: title.version))
                 ratingField.observe(.init(value: title.score, version: title.version))
             }
+            .alert("Remove every watch of \(title.name)?", isPresented: $confirmRemoveHistory) {
+                Button("Remove", role: .destructive) { Task { await store.removeWatchHistory(title); await loadCard(title) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text(store.diaryFromService ? "They come off \(store.diaryService?.name ?? "Trakt") too. Your rating, notes and lists stay." : "Your rating, notes and lists stay.") }
             .alert(checkInMessage ?? "", isPresented: Binding(get: { checkInMessage != nil }, set: { if !$0 { checkInMessage = nil } })) {
                 Button("OK", role: .cancel) {}
             }

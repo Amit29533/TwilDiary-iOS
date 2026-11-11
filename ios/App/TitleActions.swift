@@ -16,6 +16,18 @@ extension DiaryStore {
     /// The status menu on a show detail belongs to the selected season. The
     /// whole-title progress endpoint deliberately edits every season, so it
     /// must never be used here for Completed or Planned.
+    /// "Remove from watch history" (Cinopsys's remove-from-history): every watch of the title, on
+    /// the service holding your diary (each play by its own id) or in your server diary.
+    func removeWatchHistory(_ title: MediaTitle) async {
+        do {
+            if diaryFromService { try await removeAllPlays(title); undoLabel = nil; return }
+            // Server diary: the latest watch, again, until none is left (each one undoable there).
+            for _ in 0..<max(0, workspace.events.filter { $0.titleId == title.id && $0.revokedAt == nil }.count) {
+                guard workspace.events.contains(where: { $0.titleId == title.id && $0.revokedAt == nil }), let current = self.title(title.id) else { break }
+                await removeLatest(current)
+            }
+        } catch { self.error = error.localizedDescription }
+    }
     @discardableResult func setSeasonStatus(_ title: MediaTitle, season: Int, status: String, watchedAt: Date) async -> Bool {
         guard title.isSeries else { return await setStatus(title, status: status, watchedAt: watchedAt) }
         if status == "planned" { return await setSeasonProgress(title, season: season, count: 0, watchedAt: watchedAt) }

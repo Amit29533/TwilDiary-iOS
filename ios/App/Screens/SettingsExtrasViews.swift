@@ -144,10 +144,7 @@ struct SyncBackupView: View {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-backup-files")
                     SettingsDivider()
-                    SettingsLine(title: "Google Drive", subtitle: "A private copy in your own Drive") {
-                        Text("Needs setup").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-                            .padding(.horizontal, 12).frame(height: 32).background(.white.opacity(0.07), in: Capsule())
-                    }
+                    GoogleDriveRow()
                 }
                 if let localNotice { Text(localNotice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)

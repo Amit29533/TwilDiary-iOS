@@ -1,21 +1,19 @@
 import SwiftUI
 
-/// The animated splash: TwilDiary's star springs in and turns inside a violet glow, a ring of
-/// small sparkles bursts out, and the name rises letter by letter. It follows the black launch
+/// The animated splash: TwilDiary's star springs in and turns inside a violet glow, and a ring of
+/// small sparkles bursts out (about 0.65 s). It follows the black launch
 /// screen without a seam, stays (gently breathing) only while the diary is still opening, then
 /// lifts away. Reduce Motion: a plain fade.
 struct SplashView: View {
-    /// Called once the opening animation has played (about 1.4 s).
+    /// Called once the opening animation has played (about 0.65 s).
     var onFinished: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var markIn = false
     @State private var turned = false
     @State private var glow = false
     @State private var burst = false
-    @State private var lettersIn = 0
     @State private var taglineIn = false
     @State private var breathing = false
-    private let name = Array("TwilDiary")
     private let violet = Color(red: 0.69, green: 0.60, blue: 1.0)
 
     var body: some View {
@@ -48,16 +46,6 @@ struct SplashView: View {
                         .scaleEffect(markIn ? (breathing ? 1.04 : 1) : 0.2)
                         .opacity(markIn ? 1 : 0)
                 }.frame(width: 200, height: 120)
-                HStack(spacing: 0) {
-                    ForEach(Array(name.enumerated()), id: \.offset) { index, letter in
-                        Text(String(letter))
-                            .font(.system(size: 40, weight: .bold, design: .rounded)).tracking(-0.5)
-                            .foregroundStyle(.white)
-                            .opacity(index < lettersIn ? 1 : 0)
-                            .offset(y: index < lettersIn ? 0 : 14)
-                            .blur(radius: index < lettersIn ? 0 : 4)
-                    }
-                }.accessibilityElement().accessibilityLabel("TwilDiary")
                 Text("Your watch diary").font(.system(size: 15, weight: .medium)).foregroundStyle(.white.opacity(0.55))
                     .opacity(taglineIn ? 1 : 0).offset(y: taglineIn ? 0 : 6)
             }.offset(y: -10)
@@ -68,24 +56,20 @@ struct SplashView: View {
 
     private func play() async {
         if reduceMotion {
-            withAnimation(.easeOut(duration: 0.35)) { markIn = true; turned = true; glow = true; lettersIn = name.count; taglineIn = true }
-            try? await Task.sleep(for: .milliseconds(600))
+            withAnimation(.easeOut(duration: 0.25)) { markIn = true; turned = true; glow = true; taglineIn = true }
+            try? await Task.sleep(for: .milliseconds(350))
             onFinished(); return
         }
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.62)) { markIn = true }
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) { turned = true }
-        withAnimation(.easeOut(duration: 0.7)) { glow = true }
-        try? await Task.sleep(for: .milliseconds(260))
-        withAnimation(.easeOut(duration: 0.75)) { burst = true }
-        try? await Task.sleep(for: .milliseconds(120))
-        for index in 1...name.count {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) { lettersIn = index }
-            try? await Task.sleep(for: .milliseconds(45))
-        }
-        withAnimation(.easeOut(duration: 0.4)) { taglineIn = true }
-        try? await Task.sleep(for: .milliseconds(450))
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.62)) { markIn = true }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { turned = true }
+        withAnimation(.easeOut(duration: 0.45)) { glow = true }
+        try? await Task.sleep(for: .milliseconds(150))
+        withAnimation(.easeOut(duration: 0.5)) { burst = true }
+        try? await Task.sleep(for: .milliseconds(100))
+        withAnimation(.easeOut(duration: 0.3)) { taglineIn = true }
+        try? await Task.sleep(for: .milliseconds(400))
         onFinished()
         // Still opening: breathe until the diary is ready and the splash lifts away.
-        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { breathing = true }
+        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) { breathing = true }
     }
 }

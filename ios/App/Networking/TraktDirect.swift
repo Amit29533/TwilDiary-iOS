@@ -670,6 +670,23 @@ enum ServiceRemovals {
     /// favourites, dropped shows). Nothing on Trakt is changed or removed, so running it twice
     /// adds nothing twice; the answer counts what Trakt accepted, not what was asked.
     func restore(_ backup: Workspace, store: DiaryStore) async throws -> String {
+        if localOnly {
+            // On this phone: what the diary lacks from the backup goes straight into it.
+            let plan = TraktWritePlan.make(library: library ?? TraktLibrary(), workspace: backup, fillOnly: true)
+            guard !plan.isEmpty else { return "Your diary already has everything in this backup." }
+            func ref(_ title: TraktWritePlan.Ref) -> TraktTitleRef { TraktTitleRef(kind: title.movie ? .movie : .show, traktId: nil, tmdbId: title.tmdbId, name: title.name) }
+            update(store: store) { library in
+                for play in plan.plays {
+                    library.plays.append(TraktPlay(historyId: -TrackerDecode.playID("restore|\(play.title.tmdbId)|\(play.season ?? -1)|\(play.episode ?? -1)|\(play.watchedAt)"),
+                                                   title: ref(play.title), season: play.season, episode: play.episode, watchedAt: play.watchedAt))
+                }
+                for rating in plan.ratings { library.ratings.append(TraktRating(title: ref(rating.title), rating: rating.rating, ratedAt: nil)) }
+                library.watchlist += plan.watchlistAdd.map { TraktListed(title: ref($0), listedAt: nil) }
+                library.favorites += plan.favouritesAdd.map { TraktListed(title: ref($0), listedAt: nil) }
+                library.dropped += plan.dropped.map { TraktListed(title: ref($0), listedAt: nil) }
+            }
+            return "Restored to the diary on this phone: " + plan.summary.joined(separator: "; ") + "."
+        }
         guard !writing, !running else { throw APIError.message("Trakt is busy right now. Try again in a moment.") }
         let session = generation, before = library?.fetchedAt
         await check(store: store)

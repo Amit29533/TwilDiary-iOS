@@ -109,7 +109,7 @@ struct HomeView: View {
                             ScrollView(.horizontal) {
                                 LazyHStack(alignment: .top, spacing: 12) {
                                     ForEach(overview.upcoming.prefix(12)) { item in
-                                        NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) { HomeNewEpisodeCard(item: item) }
+                                        NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeCard(item: item) }
                                             .buttonStyle(.springPress).accessibilityIdentifier("home-upcoming-" + item.title.id)
                                     }
                                 }.scrollTargetLayout()
@@ -117,7 +117,7 @@ struct HomeView: View {
                         } else {
                             VStack(spacing: 10) {
                                 ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
-                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) { HomeNewEpisodeRow(item: item) }
+                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
                                         .buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
                                 }
                                 if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.system(size: 14, weight: .semibold)) }

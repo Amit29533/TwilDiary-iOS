@@ -1645,6 +1645,14 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertEqual(store.title("movie:603")?.status, "planned")
         XCTAssertNotNil(store.title("movie:603")?.poster)
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty, "On this phone sends nothing")
+        // A watch logged by accident, then the movie set back to Planned: the watch goes too.
+        let movie = try XCTUnwrap(store.title("movie:603"))
+        try await store.serviceAddPlays(movie, episodes: [], at: Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertEqual(store.workspace.events.filter { $0.titleId == "movie:603" }.count, 1)
+        XCTAssertEqual(store.title("movie:603")?.status, "completed")
+        try await store.servicePatch(try XCTUnwrap(store.title("movie:603")), values: ["status": "planned"])
+        XCTAssertTrue(store.workspace.events.filter { $0.titleId == "movie:603" && $0.revokedAt == nil }.isEmpty)
+        XCTAssertEqual(store.title("movie:603")?.status, "planned")
     }
     func testPublicRatingProviderFailureDoesNotExpireThePrivateSession() async throws {
         StubProtocol.state.reset { _ in .init(503, "Provider unavailable", contentType: "text/plain") }
