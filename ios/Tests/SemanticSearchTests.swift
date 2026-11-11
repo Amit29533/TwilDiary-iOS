@@ -41,4 +41,22 @@ import TwilDiaryCore
         XCTAssertEqual(reply.titles.first?.title, "Horimiya")
         XCTAssertEqual(reply.followups, ["Something shorter"])
     }
+
+    func testGroqGetsGeminisQuestionAndAnswersInGeminisShape() throws {
+        let body = SemanticSearch.body("a dog and his boy")
+        let converted = SemanticSearch.groqMessages(body)
+        XCTAssertEqual(converted.messages.first?["role"], "system")
+        XCTAssertTrue(converted.messages.first?["content"]?.contains(#"{"items": [...]}"#) == true, "A list answer is asked for inside an object (Groq's JSON mode)")
+        XCTAssertEqual(converted.messages.last?["role"], "user")
+        XCTAssertEqual(converted.messages.last?["content"], "a dog and his boy")
+        let unwrapped = SemanticSearch.groqText(#"{"items":[{"title":"Hachi","year":2009,"type":"movie","why":"A loyal dog"}]}"#, schema: converted.schema)
+        let shaped = SemanticSearch.geminiShaped(unwrapped)
+        let suggestions = try SemanticSearch.decode(shaped)
+        XCTAssertEqual(suggestions.first?.title, "Hachi")
+        // CineMind's object answers pass through unchanged.
+        let chat = CineMindView.body(system: "Be brief", history: [CineMindView.Message(fromYou: true, text: "Who is in it?")])
+        let turns = SemanticSearch.groqMessages(chat)
+        XCTAssertEqual(turns.messages.map { $0["role"] }, ["system", "user"])
+        XCTAssertEqual(SemanticSearch.groqText(#"{"answer":"Hi"}"#, schema: turns.schema), #"{"answer":"Hi"}"#)
+    }
 }

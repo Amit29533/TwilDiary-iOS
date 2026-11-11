@@ -12,9 +12,9 @@ struct APIsView: View {
     @State private var removing: APIKeyStatus?
     @State private var editingJellyfin = false
     @State private var jellyfinRevision = 0
-    @State private var editingGemini = false
-    @State private var geminiSet = SemanticSearch.key != nil
-    @State private var geminiKeys = SemanticSearch.ownKeys
+    /// The AI service a key is being added for.
+    @State private var addingAIKey: SemanticSearch.Service?
+    @State private var aiKeys: [SemanticSearch.Service: [String]] = Dictionary(uniqueKeysWithValues: SemanticSearch.Service.allCases.map { ($0, SemanticSearch.ownKeys($0)) })
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -50,14 +50,14 @@ struct APIsView: View {
                                 info: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
-                if !store.phoneOnly { geminiSection }
+                if !store.phoneOnly { aiSection(.gemini); aiSection(.groq) }
                 jellyfin
                 server
             }.padding(16).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("APIs").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .refreshable { await model?.load() }
             .task { if store.phoneOnly { return }; if model == nil { model = APIKeysModel(store: store) }; await model?.load() }
-            .sheet(isPresented: $editingGemini, onDismiss: { geminiSet = SemanticSearch.key != nil; geminiKeys = SemanticSearch.ownKeys }) { GeminiKeySheet() }
+            .sheet(item: $addingAIKey, onDismiss: reloadAIKeys) { GeminiKeySheet(service: $0) }
             .sheet(item: $editing) { key in
                 ReplaceKeySheet(key: key) { value in
                     // An error belongs in the sheet, not on the page hidden behind it.
@@ -165,35 +165,45 @@ struct APIsView: View {
                     status(TMDBDirect.token(store) != nil, TMDBDirect.token(store) != nil ? "Ready" : "Missing")
                 }.padding(15)
             }
-            geminiSection
+            aiSection(.gemini)
+            aiSection(.groq)
         }
     }
     /// Gemini: AI search and CineMind.
-    private var geminiSection: some View {
-        section(nil, "Gemini", icon: "sparkles") {
+    private func reloadAIKeys() {
+        for service in SemanticSearch.Service.allCases { aiKeys[service] = SemanticSearch.ownKeys(service) }
+    }
+    /// Gemini and Groq: AI search and CineMind. Each takes several keys, used in turn; Groq
+    /// answers when Gemini can't.
+    private func aiSection(_ service: SemanticSearch.Service) -> some View {
+        let keys = aiKeys[service] ?? []
+        let set = !keys.isEmpty || (service == .gemini && SemanticSearch.keys.first != nil)
+        return section(nil, service.name, icon: service == .gemini ? "sparkles" : "bolt.fill") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("CineMind and search by description").font(.system(size: 14)).foregroundStyle(HomeStyle.primary)
+                    Text(service == .gemini ? "AI search and CineMind" : "Backup when Gemini can’t answer").font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 0)
-                    status(geminiSet, geminiKeys.count > 1 ? "\(geminiKeys.count) keys" : geminiSet ? "Set" : "Not set")
+                    status(set, keys.count > 1 ? "\(keys.count) keys" : set ? "Set" : "Not set")
                 }
                 HStack(spacing: 8) {
-                    Text("For AI search and CineMind").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(service == .gemini ? "Lighter model first, then your other keys" : "Free key, fast open models").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 0)
-                    SettingsInfoButton(text: "Kept in this iPhone’s Keychain. Only your questions and the title you ask about go to Google.")
+                    SettingsInfoButton(text: service == .gemini
+                        ? "Kept in this iPhone’s Keychain. Each request starts with the next key; if one is used up, the next key answers. Keys share a limit when they’re from the same Google project, so make each in a different project."
+                        : "Kept in this iPhone’s Keychain. When every Gemini key is used up or busy, Groq answers instead, with its keys in turn.")
                 }
-                // Your keys, each removable; requests take turns between them.
-                ForEach(geminiKeys, id: \.self) { key in
+                ForEach(keys, id: \.self) { key in
                     HStack(spacing: 10) {
                         Image(systemName: "key.fill").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                         Text(SemanticSearch.masked(key)).font(.system(size: 14, design: .monospaced)).foregroundStyle(HomeStyle.primary)
                         Spacer(minLength: 0)
-                        Button(role: .destructive) { SemanticSearch.removeKey(key); geminiKeys = SemanticSearch.ownKeys; geminiSet = SemanticSearch.key != nil } label: {
+                        Button(role: .destructive) { SemanticSearch.removeKey(key, from: service); reloadAIKeys() } label: {
                             Image(systemName: "trash").font(.system(size: 14)).frame(width: 36, height: 36).contentShape(Rectangle())
                         }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#ff8a80")).accessibilityLabel("Remove key " + SemanticSearch.masked(key))
                     }.padding(.horizontal, 12).frame(height: 44).background(Color(webHex: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
                 }
-                Button(geminiKeys.isEmpty ? "Add Gemini key" : "Add another key") { editingGemini = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-gemini")
+                Button(keys.isEmpty ? "Add \(service.name) key" : "Add another key") { addingAIKey = service }
+                    .buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-" + service.rawValue)
             }.padding(15)
         }
     }

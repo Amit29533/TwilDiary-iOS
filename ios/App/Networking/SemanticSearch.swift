@@ -36,8 +36,50 @@ import TwilDiaryCore
               !value.isEmpty, !value.hasPrefix("$(") else { return [] }
         return [value]
     }
-    static var key: String? { keys.first }
+    /// Any key at all (Gemini or Groq): AI search and CineMind can answer.
+    static var key: String? { keys.first ?? groqKeys.first }
     static var hasOwnKey: Bool { !ownKeys.isEmpty }
+
+    /// The AI services, each with its own keys.
+    enum Service: String, CaseIterable, Identifiable, Sendable {
+        case gemini, groq
+        var id: String { rawValue }
+        var name: String { self == .gemini ? "Gemini" : "Groq" }
+        var keysPage: URL { URL(string: self == .gemini ? "https://aistudio.google.com/apikey" : "https://console.groq.com/keys")! }
+        var keysPageName: String { self == .gemini ? "Google AI Studio" : "GroqCloud" }
+    }
+    static func ownKeys(_ service: Service) -> [String] { service == .gemini ? ownKeys : groqKeys }
+    @discardableResult static func addKey(_ value: String, to service: Service) -> Bool {
+        service == .gemini ? addKey(value) : addGroqKey(value)
+    }
+    @discardableResult static func removeKey(_ value: String, from service: Service) -> Bool {
+        service == .gemini ? removeKey(value) : saveList(groqKeys.filter { $0 != value }, account: groqAccount)
+    }
+
+    // MARK: Groq
+
+    /// Groq: free keys for fast open models, asked when every Gemini key and model has failed
+    /// (or first, when there's no Gemini key). Its replies are turned into Gemini's shape, so
+    /// search and CineMind read them the same way.
+    private static let groqAccount = "groq.apiKeys", groqRotation = "groq.nextKey"
+    /// Tried in turn; a model Groq has retired is skipped.
+    static let groqModels = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+    static var groqKeys: [String] {
+        ((try? KeychainProviderSecretStore().readSecret(for: groqAccount)) ?? nil)
+            .flatMap { try? JSONDecoder().decode([String].self, from: Data($0.utf8)) } ?? []
+    }
+    @discardableResult private static func saveList(_ list: [String], account: String) -> Bool {
+        guard !list.isEmpty else { return KeychainProviderSecretStore().writeSecret(nil, for: account) }
+        guard let data = try? JSONEncoder().encode(list) else { return false }
+        return KeychainProviderSecretStore().writeSecret(String(decoding: data, as: UTF8.self), for: account)
+    }
+    @discardableResult static func addGroqKey(_ value: String) -> Bool {
+        let kept = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !kept.isEmpty else { return false }
+        var list = groqKeys
+        if !list.contains(kept) { list.append(kept) }
+        return saveList(list, account: groqAccount)
+    }
     @discardableResult private static func saveKeys(_ list: [String]) -> Bool {
         let store = KeychainProviderSecretStore()
         _ = store.writeSecret(nil, for: account)
@@ -77,7 +119,7 @@ import TwilDiaryCore
 
     /// Gemini's picks for the description, best first, each checked on TMDB.
     static func search(_ description: String, store: DiaryStore) async throws -> [Match] {
-        guard let key else { throw APIError.message("Add your Gemini API key to search by description.") }
+        guard let key else { throw APIError.message("Add a Gemini or Groq key (Profile → APIs) to search by description.") }
         let suggestions = try await suggest(description, key: key)
         guard let token = TMDBDirect.token(store) else { throw APIError.message("Finding the titles needs TMDB, which isn’t set up.") }
         var matches: [Match] = [], seen = Set<String>()
@@ -116,8 +158,23 @@ import TwilDiaryCore
     /// and only when every key has failed on it does it move to the next model. Each request
     /// starts with the next key in turn, so the keys share the load.
     static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
-        var list = keys
-        if list.isEmpty { list = [key] }
+        let gemini = keys, groq = groqKeys
+        guard !gemini.isEmpty || !groq.isEmpty else { throw APIError.message("Add a Gemini or Groq key on the APIs page.") }
+        var geminiFailure: Error?
+        if !gemini.isEmpty {
+            do { return try await geminiAnswer(body, keys: gemini, retried: retried) }
+            catch is CancellationError { throw CancellationError() }
+            catch { geminiFailure = error }
+        }
+        guard !groq.isEmpty else { throw geminiFailure ?? APIError.message("Gemini didn’t answer.") }
+        do { return try await groqAnswer(body, keys: groq) }
+        catch is CancellationError { throw CancellationError() }
+        catch {
+            guard let geminiFailure else { throw error }
+            throw APIError.message("Gemini: " + geminiFailure.localizedDescription + "\nGroq: " + error.localizedDescription)
+        }
+    }
+    private static func geminiAnswer(_ body: [String: Any], keys list: [String], retried: Bool) async throws -> Data {
         let start = UserDefaults.standard.integer(forKey: rotationKey) % list.count
         UserDefaults.standard.set((start + 1) % list.count, forKey: rotationKey)
         var models = [fallbackModel]
@@ -172,6 +229,85 @@ import TwilDiaryCore
             throw GeminiBusy.status(status, detail)
         }
         return data
+    }
+    /// The same question to Groq: each model in turn, each key in turn on it (starting with the
+    /// next key), once each. Groq's OpenAI-style reply comes back in Gemini's shape.
+    private static func groqAnswer(_ body: [String: Any], keys list: [String]) async throws -> Data {
+        let start = UserDefaults.standard.integer(forKey: groqRotation) % list.count
+        UserDefaults.standard.set((start + 1) % list.count, forKey: groqRotation)
+        let (messages, schema, temperature) = groqMessages(body)
+        var limited = 0, refused = 0, busy = 0, slow = 0, detail: String?
+        for model in groqModels {
+            var modelGone = false
+            for step in 0..<list.count where !modelGone {
+                let key = list[(start + step) % list.count]
+                var request = URLRequest(url: URL(string: "https://api.groq.com/openai/v1/chat/completions")!, timeoutInterval: 45)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
+                var payload: [String: Any] = ["model": model, "messages": messages, "temperature": temperature]
+                if schema != nil { payload["response_format"] = ["type": "json_object"] }
+                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+                let data: Data, response: URLResponse
+                do { (data, response) = try await URLSession.shared.data(for: request) }
+                catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) { slow += 1; continue }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                if (200..<300).contains(status),
+                   let text = ((root?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String {
+                    return geminiShaped(groqText(text, schema: schema))
+                }
+                let error = root?["error"] as? [String: Any]
+                let message = error?["message"] as? String, code = (error?["code"] as? String) ?? ""
+                detail = message ?? detail
+                switch status {
+                case 401, 403: refused += 1
+                case 429: limited += 1
+                case 404: modelGone = true
+                case 400 where code.contains("model") || (message ?? "").lowercased().contains("model"): modelGone = true
+                default: busy += 1
+                }
+            }
+        }
+        if limited > 0, refused == 0, busy == 0, slow == 0 {
+            throw APIError.message(list.count > 1 ? "All \(list.count) Groq keys have reached their limit for now." : "Groq’s free limit is used up for now.")
+        }
+        if refused > 0, limited == 0, busy == 0 { throw APIError.message("Groq didn’t accept the key" + (detail.map { ": " + $0 } ?? ".")) }
+        if slow > 0, busy == 0 { throw APIError.message("Groq took too long to answer.") }
+        throw APIError.message("Groq couldn’t answer" + (detail.map { ": " + $0 } ?? "."))
+    }
+    /// Gemini's request as Groq's chat messages: the system text (with the reply's JSON shape
+    /// spelled out, as Groq's JSON mode has no schema), then the conversation.
+    nonisolated static func groqMessages(_ body: [String: Any]) -> (messages: [[String: String]], schema: [String: Any]?, temperature: Double) {
+        func text(_ parts: Any?) -> String {
+            ((parts as? [[String: Any]]) ?? []).compactMap { $0["text"] as? String }.joined(separator: "\n")
+        }
+        var system = text((body["systemInstruction"] as? [String: Any])?["parts"])
+        let config = body["generationConfig"] as? [String: Any]
+        let schema = config?["responseSchema"] as? [String: Any]
+        if let schema, let shape = try? JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]) {
+            let wrapped = (schema["type"] as? String) == "ARRAY"
+            system += "\n\nReply with JSON only, no other text. " + (wrapped ? "Reply with an object {\"items\": [...]} whose items list follows this schema: " : "The object follows this schema: ")
+                + String(decoding: shape, as: UTF8.self) + " (OBJECT, ARRAY, STRING and INTEGER are JSON types; every required field must be present.)"
+        }
+        var messages: [[String: String]] = system.isEmpty ? [] : [["role": "system", "content": system]]
+        for turn in (body["contents"] as? [[String: Any]]) ?? [] {
+            let role = (turn["role"] as? String) == "model" ? "assistant" : "user"
+            messages.append(["role": role, "content": text(turn["parts"])])
+        }
+        return (messages, schema, (config?["temperature"] as? Double) ?? 0.6)
+    }
+    /// Groq's reply text, unwrapped from {"items": [...]} when the answer is a list.
+    nonisolated static func groqText(_ text: String, schema: [String: Any]?) -> String {
+        guard (schema?["type"] as? String) == "ARRAY", let data = text.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return text }
+        let list = object["items"] ?? object.values.first { $0 is [Any] }
+        guard let list, let unwrapped = try? JSONSerialization.data(withJSONObject: list) else { return text }
+        return String(decoding: unwrapped, as: UTF8.self)
+    }
+    /// A text answer in Gemini's reply shape.
+    nonisolated static func geminiShaped(_ text: String) -> Data {
+        (try? JSONSerialization.data(withJSONObject: ["candidates": [["content": ["parts": [["text": text]]]]]])) ?? Data()
     }
     /// The text of Gemini's first answer.
     nonisolated static func answerText(_ data: Data) throws -> String {
@@ -317,6 +453,7 @@ struct SemanticSearchSection: View {
 
 /// Your Gemini API key: pasted once, kept in the Keychain.
 struct GeminiKeySheet: View {
+    var service: SemanticSearch.Service = .gemini
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var value = ""
@@ -324,22 +461,22 @@ struct GeminiKeySheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Get a free key at Google AI Studio and paste it here. Add keys from other Google accounts to share the load.")
+                Text(service == .gemini ? "Get a free key at Google AI Studio and paste it here. Keys from other Google accounts share the load." : "Get a free key at GroqCloud and paste it here. Groq answers when Gemini can’t.")
                     .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
-                Button("Open Google AI Studio") { if let url = URL(string: "https://aistudio.google.com/apikey") { openURL(url) } }
+                Button("Open " + service.keysPageName) { openURL(service.keysPage) }
                     .font(.system(size: 15, weight: .semibold))
-                SecureField("Gemini API key", text: $value).font(.system(size: 15, design: .monospaced))
+                SecureField(service.name + " API key", text: $value).font(.system(size: 15, design: .monospaced))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .padding(12).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("gemini-key-field")
                 if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
                 Spacer()
             }.padding(20)
-                .navigationTitle(SemanticSearch.hasOwnKey ? "Add a Gemini key" : "Gemini API key").navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(SemanticSearch.ownKeys(service).isEmpty ? service.name + " API key" : "Add a " + service.name + " key").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save") {
-                            if SemanticSearch.addKey(value) { dismiss() } else { problem = "The key couldn’t be saved on this iPhone." }
+                            if SemanticSearch.addKey(value, to: service) { dismiss() } else { problem = "The key couldn’t be saved on this iPhone." }
                         }.disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
