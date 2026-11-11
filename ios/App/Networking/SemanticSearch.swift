@@ -13,18 +13,54 @@ import TwilDiaryCore
     /// moves to that one by itself (and remembers it).
     static var model: String { UserDefaults.standard.string(forKey: "gemini.model") ?? "gemini-3.8-flash" }
 
-    static var key: String? {
-        if let saved = (try? KeychainProviderSecretStore().readSecret(for: account)) ?? nil,
-           !saved.trimmingCharacters(in: .whitespaces).isEmpty { return saved }
+    /// Several keys can be added (each Google account's free key has its own limit): every
+    /// request starts with the next one in turn, and one that's used up or refused passes the
+    /// request on to the next. Kept in the Keychain as a list; an older single key joins it.
+    private static let listAccount = "gemini.apiKeys", rotationKey = "gemini.nextKey"
+    /// Your own keys, in the order added.
+    static var ownKeys: [String] {
+        let store = KeychainProviderSecretStore()
+        var list = ((try? store.readSecret(for: listAccount)) ?? nil)
+            .flatMap { try? JSONDecoder().decode([String].self, from: Data($0.utf8)) } ?? []
+        if let single = (try? store.readSecret(for: account)) ?? nil {
+            let trimmed = single.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, !list.contains(trimmed) { list.insert(trimmed, at: 0) }
+        }
+        return list
+    }
+    /// The keys requests use: your own, else the one built into this copy of the app.
+    static var keys: [String] {
+        let own = ownKeys
+        if !own.isEmpty { return own }
         guard let value = (Bundle.main.object(forInfoDictionaryKey: "TwilDiaryGeminiKey") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty, !value.hasPrefix("$(") else { return nil }
-        return value
+              !value.isEmpty, !value.hasPrefix("$(") else { return [] }
+        return [value]
     }
-    static var hasOwnKey: Bool { ((try? KeychainProviderSecretStore().readSecret(for: account)) ?? nil) != nil }
+    static var key: String? { keys.first }
+    static var hasOwnKey: Bool { !ownKeys.isEmpty }
+    @discardableResult private static func saveKeys(_ list: [String]) -> Bool {
+        let store = KeychainProviderSecretStore()
+        _ = store.writeSecret(nil, for: account)
+        guard !list.isEmpty else { return store.writeSecret(nil, for: listAccount) }
+        guard let data = try? JSONEncoder().encode(list) else { return false }
+        return store.writeSecret(String(decoding: data, as: UTF8.self), for: listAccount)
+    }
+    /// Adds a key (a key already there isn't added twice).
+    @discardableResult static func addKey(_ value: String) -> Bool {
+        let kept = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !kept.isEmpty else { return false }
+        var list = ownKeys
+        if !list.contains(kept) { list.append(kept) }
+        return saveKeys(list)
+    }
+    @discardableResult static func removeKey(_ value: String) -> Bool { saveKeys(ownKeys.filter { $0 != value }) }
+    /// nil removes every key; a value replaces them with that one.
     @discardableResult static func setKey(_ value: String?) -> Bool {
-        let kept = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return KeychainProviderSecretStore().writeSecret(kept?.isEmpty == false ? kept : nil, for: account)
+        let kept = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return saveKeys(kept.isEmpty ? [] : [kept])
     }
+    /// "••••AbC4": a key as the list shows it.
+    static func masked(_ key: String) -> String { "••••" + String(key.suffix(4)) }
 
     struct Suggestion: Decodable, Sendable, Equatable {
         let title: String
@@ -74,24 +110,45 @@ import TwilDiaryCore
         try decode(try await generate(body(description), key: key))
     }
 
-    /// One Gemini request (the same key and model for search and CineMind): the raw reply. A
-    /// retired model is followed to the one Google names, once.
+    /// One Gemini answer (search and CineMind alike), asked as few times as possible: once per
+    /// try, never repeated on the same key and model. The lighter model goes first (it's quicker
+    /// and its free limit is much higher); if it fails, the same question goes to your next key,
+    /// and only when every key has failed on it does it move to the next model. Each request
+    /// starts with the next key in turn, so the keys share the load.
     static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
-        // Gemini is busy now and then (HTTP 503, "high demand", or no answer in time): asked again
-        // twice, a little later each time, then once on Google's lighter model, before giving up.
-        var lastError: Error = APIError.message("Gemini didn’t answer. Try again.")
-        for (attempt, name) in [model, model, model, Self.fallbackModel].enumerated() {
-            if attempt > 0 { try await Task.sleep(for: .seconds(attempt == 1 ? 1 : 3)) }
-            do { return try await request(body, key: key, model: name, retried: retried) }
-            catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) {
-                lastError = APIError.message("Gemini took too long to answer. Try again.")
-            } catch GeminiBusy.status(let status, let detail) {
-                lastError = APIError.message(status == 503 ? "Gemini is busy right now. Try again in a moment." : "Gemini answered HTTP \(status)" + (detail.map { ": " + $0 } ?? "."))
+        var list = keys
+        if list.isEmpty { list = [key] }
+        let start = UserDefaults.standard.integer(forKey: rotationKey) % list.count
+        UserDefaults.standard.set((start + 1) % list.count, forKey: rotationKey)
+        var models = [fallbackModel]
+        if model != fallbackModel { models.append(model) }
+        var limited = 0, refused: [String] = [], busy = 0, slow = 0, other: String?
+        for name in models {
+            for step in 0..<list.count {
+                let index = (start + step) % list.count
+                do { return try await request(body, key: list[index], model: name, retried: retried) }
+                catch GeminiKey.limited { limited += 1 }
+                catch GeminiKey.refused(let detail) {
+                    if !refused.contains(masked(list[index])) { refused.append(masked(list[index])) }
+                    other = other ?? detail
+                }
+                catch GeminiBusy.status(let status, let detail) { busy += 1; if status != 503 { other = detail ?? "HTTP \(status)" } }
+                catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) { slow += 1 }
             }
         }
-        throw lastError
+        let tries = models.count * list.count
+        if limited == tries {
+            throw APIError.message(list.count > 1 ? "All \(list.count) Gemini keys have used their free limit for now. Try again in a minute." : "Gemini’s free limit is used up for now. Try again in a minute.")
+        }
+        if refused.count == list.count, limited == 0 {
+            throw APIError.message(list.count > 1 ? "Gemini didn’t accept your keys" + (other.map { ": " + $0 } ?? ".") : "Gemini didn’t accept the key" + (other.map { ": " + $0 } ?? "."))
+        }
+        if slow > 0, busy == 0 { throw APIError.message("Gemini took too long to answer. Try again.") }
+        throw APIError.message("Gemini is busy right now. Try again in a moment.")
     }
-    /// Google's lighter quick model, for when the usual one is overloaded.
+    /// A key's own problem: used up for now, or refused. The next key is tried.
+    private enum GeminiKey: Error { case limited, refused(String?) }
+    /// Google's lighter quick model, asked first: quick, and a much higher free limit.
     static let fallbackModel = "gemini-flash-lite-latest"
     private enum GeminiBusy: Error { case status(Int, String?) }
     private static func request(_ body: [String: Any], key: String, model name: String, retried: Bool) async throws -> Data {
@@ -104,15 +161,15 @@ import TwilDiaryCore
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let detail = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any]).flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
-            if status == 400 || status == 401 || status == 403 { throw APIError.message("Gemini didn’t accept the key" + (detail.map { ": " + $0 } ?? ".")) }
-            if status == 429 { throw APIError.message("Gemini’s free limit is used up for now. Try again in a minute.") }
+            if status == 400 || status == 401 || status == 403 { throw GeminiKey.refused(detail) }
+            if status == 429 { throw GeminiKey.limited }
             // A retired model: Google's answer names the one to use ("…use models/gemini-3.8-flash…").
             if status == 404, !retried, name == model, let next = successor(in: detail ?? ""), next != model {
                 UserDefaults.standard.set(next, forKey: "gemini.model")
                 return try await Self.request(body, key: key, model: next, retried: true)
             }
-            if status >= 500 { throw GeminiBusy.status(status, detail) }
-            throw APIError.message("Gemini answered HTTP \(status)" + (detail.map { ": " + $0 } ?? "."))
+            // Anything else (busy, a model this key can't use): the next key or model is tried.
+            throw GeminiBusy.status(status, detail)
         }
         return data
     }
@@ -176,14 +233,19 @@ import TwilDiaryCore
 
 /// Search with the AI pill on: Gemini's matches above the usual results, each with why it fits.
 struct SemanticSearchSection: View {
+    /// The description you sent (Search pressed); empty until then.
     let query: String
+    /// What's in the field now: sent at once when AI is turned on with text already there.
+    var typed = ""
     @Environment(DiaryStore.self) private var store
     @State private var matches: [SemanticSearch.Match] = []
     @State private var loading = false
     @State private var failure: String?
     @State private var addingKey = false
     @State private var hasKey = SemanticSearch.key != nil
-    @State private var searched = false
+    /// Sent when AI was turned on with text already typed.
+    @State private var asked = ""
+    private var description: String { query.isEmpty ? asked : query }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -205,12 +267,15 @@ struct SemanticSearchSection: View {
                 DiaryLoadingPlaceholder(height: 120, label: "Finding titles that match")
             } else if let failure {
                 Text(failure).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else if description.isEmpty {
+                Text("Describe it, then press Search.").font(.system(size: 14)).foregroundStyle(.secondary)
             } else if matches.isEmpty && !loading {
                 Text("Nothing matched that description. Try adding a detail.").font(.system(size: 14)).foregroundStyle(.secondary)
             }
             ForEach(matches) { match in row(match) }
         }
-        .task(id: query + (hasKey ? "|key" : "")) { await run() }
+        .onAppear { if query.isEmpty, asked.isEmpty { asked = typed } }
+        .task(id: description + (hasKey ? "|key" : "")) { await run(description) }
         .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         .accessibilityElement(children: .contain).accessibilityIdentifier("semantic-results")
     }
@@ -235,17 +300,13 @@ struct SemanticSearchSection: View {
         [item.route.kind == .tv ? "Show" : "Movie", item.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
     }
 
-    private func run() async {
-        guard hasKey, !store.isPreview else { return }
-        // Turning AI on searches what's already typed at once; after that, wait until typing
-        // settles (a new letter cancels this and starts again).
-        if searched { try? await Task.sleep(for: .milliseconds(900)) }
-        guard !Task.isCancelled else { return }
-        searched = true
+    /// One request per description you send (never while typing).
+    private func run(_ text: String) async {
+        guard hasKey, !store.isPreview, !text.isEmpty else { return }
         loading = true; failure = nil
         defer { if !Task.isCancelled { loading = false } }
         do {
-            let found = try await SemanticSearch.search(query, store: store)
+            let found = try await SemanticSearch.search(text, store: store)
             guard !Task.isCancelled else { return }
             withAnimation(.smooth) { matches = found }
         } catch {
@@ -263,7 +324,7 @@ struct GeminiKeySheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Get a free key at Google AI Studio, then paste it here. It stays in this iPhone’s Keychain; only your search descriptions are sent to Google.")
+                Text("Get a free key at Google AI Studio and paste it here. Add keys from other Google accounts to share the load.")
                     .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Open Google AI Studio") { if let url = URL(string: "https://aistudio.google.com/apikey") { openURL(url) } }
                     .font(.system(size: 15, weight: .semibold))
@@ -271,17 +332,14 @@ struct GeminiKeySheet: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .padding(12).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("gemini-key-field")
                 if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
-                if SemanticSearch.hasOwnKey {
-                    Button("Remove saved key", role: .destructive) { SemanticSearch.setKey(nil); dismiss() }.font(.system(size: 14))
-                }
                 Spacer()
             }.padding(20)
-                .navigationTitle("Gemini API key").navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(SemanticSearch.hasOwnKey ? "Add a Gemini key" : "Gemini API key").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save") {
-                            if SemanticSearch.setKey(value) { dismiss() } else { problem = "The key couldn’t be saved on this iPhone." }
+                            if SemanticSearch.addKey(value) { dismiss() } else { problem = "The key couldn’t be saved on this iPhone." }
                         }.disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }

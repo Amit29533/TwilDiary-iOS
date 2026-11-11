@@ -14,6 +14,7 @@ struct APIsView: View {
     @State private var jellyfinRevision = 0
     @State private var editingGemini = false
     @State private var geminiSet = SemanticSearch.key != nil
+    @State private var geminiKeys = SemanticSearch.ownKeys
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -56,7 +57,7 @@ struct APIsView: View {
         }.diaryScreenBackground().navigationTitle("APIs").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .refreshable { await model?.load() }
             .task { if store.phoneOnly { return }; if model == nil { model = APIKeysModel(store: store) }; await model?.load() }
-            .sheet(isPresented: $editingGemini, onDismiss: { geminiSet = SemanticSearch.key != nil }) { GeminiKeySheet() }
+            .sheet(isPresented: $editingGemini, onDismiss: { geminiSet = SemanticSearch.key != nil; geminiKeys = SemanticSearch.ownKeys }) { GeminiKeySheet() }
             .sheet(item: $editing) { key in
                 ReplaceKeySheet(key: key) { value in
                     // An error belongs in the sheet, not on the page hidden behind it.
@@ -174,14 +175,25 @@ struct APIsView: View {
                 HStack(spacing: 8) {
                     Text("CineMind and search by description").font(.system(size: 14)).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 0)
-                    status(geminiSet, geminiSet ? "Set" : "Not set")
+                    status(geminiSet, geminiKeys.count > 1 ? "\(geminiKeys.count) keys" : geminiSet ? "Set" : "Not set")
                 }
                 HStack(spacing: 8) {
                     Text("For AI search and CineMind").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     SettingsInfoButton(text: "Kept in this iPhone’s Keychain. Only your questions and the title you ask about go to Google.")
                 }
-                Button(geminiSet ? "Change key" : "Add Gemini key") { editingGemini = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-gemini")
+                // Your keys, each removable; requests take turns between them.
+                ForEach(geminiKeys, id: \.self) { key in
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.fill").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(SemanticSearch.masked(key)).font(.system(size: 14, design: .monospaced)).foregroundStyle(HomeStyle.primary)
+                        Spacer(minLength: 0)
+                        Button(role: .destructive) { SemanticSearch.removeKey(key); geminiKeys = SemanticSearch.ownKeys; geminiSet = SemanticSearch.key != nil } label: {
+                            Image(systemName: "trash").font(.system(size: 14)).frame(width: 36, height: 36).contentShape(Rectangle())
+                        }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#ff8a80")).accessibilityLabel("Remove key " + SemanticSearch.masked(key))
+                    }.padding(.horizontal, 12).frame(height: 44).background(Color(webHex: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
+                }
+                Button(geminiKeys.isEmpty ? "Add Gemini key" : "Add another key") { editingGemini = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-gemini")
             }.padding(15)
         }
     }

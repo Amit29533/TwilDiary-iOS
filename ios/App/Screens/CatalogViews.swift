@@ -71,6 +71,9 @@ struct CatalogSearchView: View {
     /// The search bar's AI pill: search by description with Gemini. Off again each time the app
     /// opens, so searches don't keep going to Gemini unnoticed.
     @State private var aiSearch = false
+    /// What AI search asks Gemini: set when you press Search (or turn AI on with text typed),
+    /// never while you type, so each description is one request.
+    @State private var aiQuery = ""
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
     var onClose: (() -> Void)? = nil
@@ -98,7 +101,7 @@ struct CatalogSearchView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
                 SearchField(placeholder: universal ? "Movies, shows, anime, people" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard,
-                            ai: universal ? $aiSearch : nil)
+                            ai: universal ? $aiSearch : nil, onSearch: { if aiSearch { aiQuery = normalized } })
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
             if universal { kindChips }
@@ -146,6 +149,8 @@ struct CatalogSearchView: View {
             }
         }.padding(.horizontal, 14).padding(.bottom, 12)
             .task(id: normalized) { if completedQuery != normalized || failure != nil { await search(number: 1, reset: true) } }
+            // AI turned on again starts from what's typed now, not the last description sent.
+            .onChange(of: aiSearch) { _, on in if on { aiQuery = "" } }
             .onDisappear { pageTask?.cancel(); generation = UUID(); loading = false }
     }
     // MARK: Universal results (owner's design): kind chips, SHOWS & MOVIES as cards, PEOPLE
@@ -210,7 +215,7 @@ struct CatalogSearchView: View {
     @ViewBuilder private var universalResults: some View {
         let shown = allResults.filter { kind == .all || $0.kind == kind }
         // AI on: Gemini's matches for the description first, then the usual results.
-        if aiSearch && kind != .people { SemanticSearchSection(query: normalized) }
+        if aiSearch && kind != .people { SemanticSearchSection(query: aiQuery, typed: normalized) }
         if kind != .people {
             if !shown.isEmpty || loading || failure != nil {
                 Text("SHOWS & MOVIES").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 6)

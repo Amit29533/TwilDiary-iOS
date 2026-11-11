@@ -334,6 +334,8 @@ struct SearchField: View {
     /// Search by description (Gemini): the small AI pill turns it on, and the border glows in
     /// Gemini's colours while it's on. nil: no pill.
     var ai: Binding<Bool>? = nil
+    /// The keyboard's Search key.
+    var onSearch: (() -> Void)? = nil
     @State private var didAutoFocus = false
     @State private var spin = 0.0
     @FocusState private var focused: Bool
@@ -345,7 +347,7 @@ struct SearchField: View {
     var body: some View {
         HStack(spacing: 10) {
             DiaryIcon(name: "search", size: 19).foregroundStyle(Color(webHex: "#a09aa9"))
-            TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false }.accessibilityLabel(aiOn ? "Search by description" : label)
+            TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false; onSearch?() }.accessibilityLabel(aiOn ? "Search by description" : label)
             if let ai { aiPill(ai) }
             if !text.isEmpty { Button { text = ""; focused = true } label: { DiaryIcon(name: "x", size: 16).frame(width: 26, height: 32) }.buttonStyle(.plain).accessibilityLabel("Clear search") }
         }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 12), field: true) }
