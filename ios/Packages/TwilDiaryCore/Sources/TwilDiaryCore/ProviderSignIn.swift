@@ -130,8 +130,13 @@ public enum ProviderWebSignIn {
         switch provider {
         case .simkl: URL(string: "https://simkl.com/oauth2/authorize")
         case .mdblist: URL(string: "https://mdblist.com/oauth/authorize/")
-        case .trakt, .cloudflare: nil
+        case .trakt: URL(string: "https://auth.trakt.tv/oauth/authorize")
+        case .cloudflare: nil
         }
+    }
+    /// What the app asks for. Trakt has no scopes: a sign-in can always read and write.
+    static func scope(for provider: SyncProviderKind) -> String? {
+        provider == .trakt ? nil : ProviderDeviceSignIn.endpoints(for: provider)?.scope
     }
 
     /// One sign-in attempt: what to open, and what to check when the service comes back.
@@ -145,7 +150,9 @@ public enum ProviderWebSignIn {
 
     public static func start(provider: SyncProviderKind, clientId: String, randomBytes: (Int) -> [UInt8] = secureBytes) -> Request? {
         let client = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !client.isEmpty, let page = authorizePage(for: provider), let scope = ProviderDeviceSignIn.endpoints(for: provider)?.scope else { return nil }
+        guard !client.isEmpty, let page = authorizePage(for: provider) else { return nil }
+        let scope = scope(for: provider)
+        guard provider == .trakt || scope != nil else { return nil }
         let verifier = base64URL(Data(randomBytes(64)))
         let state = base64URL(Data(randomBytes(24)))
         var components = URLComponents(url: page, resolvingAgainstBaseURL: false)!
@@ -153,11 +160,11 @@ public enum ProviderWebSignIn {
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "client_id", value: client),
             URLQueryItem(name: "redirect_uri", value: redirect(for: provider)),
-            URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "code_challenge", value: challenge(for: verifier)),
             URLQueryItem(name: "code_challenge_method", value: "S256")
         ]
+        if let scope { components.queryItems?.insert(URLQueryItem(name: "scope", value: scope), at: 3) }
         guard let url = components.url else { return nil }
         return Request(provider: provider, clientId: client, state: state, verifier: verifier, url: url)
     }
@@ -165,7 +172,7 @@ public enum ProviderWebSignIn {
     /// The code from the service's reply, once it is checked: same attempt (state), the right
     /// service (Simkl also names itself in `iss`), and not declined.
     public static func code(from callback: URL, for request: Request) throws -> String {
-        guard callback.scheme == callbackScheme, let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems else {
+        guard callback.scheme == callbackScheme, callback.host == "auth", callback.path == "/" + request.provider.rawValue, let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems else {
             throw ProviderSignInError.unexpected("The sign-in came back in a form TwilDiary doesn’t recognise.")
         }
         func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
@@ -195,3 +202,44 @@ public enum ProviderWebSignIn {
     }
 }
 
+/// Trakt signed in on this iPhone, without TwilDiary's server: Trakt's own sign-in page in Apple's
+/// sheet (`ProviderWebSignIn`, redirect `twildiary://auth/trakt`, PKCE), then Trakt's token route
+/// with JSON bodies and no client secret, the same requests the server makes today. Trakt replaces
+/// the refresh token on every renewal, so the pair is always saved together.
+public enum TraktPhoneSignIn {
+    public static let tokenURL = URL(string: "https://api.trakt.tv/oauth/token")!
+    public static let revokeURL = URL(string: "https://api.trakt.tv/oauth/revoke")!
+    /// Renew this long before the access token stops working.
+    public static let renewalMargin: TimeInterval = 15 * 60
+
+    static func json(_ fields: [String: String]) -> Data {
+        (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])) ?? Data()
+    }
+    public static func codeBody(code: String, for request: ProviderWebSignIn.Request) -> Data {
+        json(["code": code, "client_id": request.clientId, "redirect_uri": ProviderWebSignIn.redirect(for: .trakt),
+              "grant_type": "authorization_code", "code_verifier": request.verifier])
+    }
+    public static func refreshBody(clientId: String, refreshToken: String) -> Data {
+        json(["refresh_token": refreshToken, "client_id": clientId, "redirect_uri": ProviderWebSignIn.redirect(for: .trakt),
+              "grant_type": "refresh_token"])
+    }
+    public static func revokeBody(clientId: String, token: String) -> Data {
+        json(["token": token, "client_id": clientId])
+    }
+    /// Trakt's answer: both tokens are required (a renewal without a new refresh token would leave
+    /// the next renewal with a spent one).
+    public static func decode(status: Int, data: Data, now: Date = .now) -> ProviderDeviceSignIn.Poll {
+        let poll = ProviderDeviceSignIn.decodePoll(status: status, data: data, now: now)
+        if case .authorized(let tokens) = poll, tokens.refreshToken == nil || tokens.expiresAt == nil {
+            return .failed("Trakt returned an incomplete sign-in. Sign in again.")
+        }
+        return poll
+    }
+    /// The account name from `GET /users/settings`.
+    public static func username(from data: Data) -> String? {
+        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let user = object?["user"] as? [String: Any]
+        let name = (user?["username"] as? String) ?? ((user?["ids"] as? [String: Any])?["slug"] as? String)
+        return name.flatMap { $0.isEmpty ? nil : $0 }
+    }
+}

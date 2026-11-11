@@ -427,6 +427,7 @@ struct ExternalProviderConnectionView: View {
     /// TwilDiary's own app client IDs from the server (Settings → APIs), for "Sign in with …".
     @State private var apps: ProviderApps?
     @State private var signingIn = false
+    @State private var confirmTraktSignOut = false
     /// MDBList's code to approve on mdblist.com, while waiting for approval.
     @State private var approval: ProviderDeviceSignIn.Authorization?
     @Environment(\.openURL) private var openURL
@@ -499,6 +500,10 @@ struct ExternalProviderConnectionView: View {
         .onAppear { loadFromStore() }
         .task { await loadApps() }
         .onDisappear { signInTask?.cancel(); signInTask = nil }
+        .alert("Sign out of Trakt on this iPhone? Edits still waiting for Trakt stay queued until you sign in again.", isPresented: $confirmTraktSignOut) {
+            Button("Sign out", role: .destructive) { Task { await store.signOutTraktOnPhone(); loadFromStore(); statusMessage = "Signed out of Trakt." } }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private var tracker: MainTracker? {
@@ -560,12 +565,50 @@ struct ExternalProviderConnectionView: View {
             VStack(alignment: .leading, spacing: 12) {
                 switch provider {
                 case .trakt:
-                    let connected = store.traktController.status?.connected == true
-                    Text(connected ? "Signed in through TwilDiary." : "Sign in with your Trakt account on the Trakt page; TwilDiary keeps the connection.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    NavigationLink(value: AppDestination.trakt) {
-                        Label(connected ? "Open Trakt" : "Sign in with Trakt", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity)
-                    }.buttonStyle(SettingsPrimaryButtonStyle()).accessibilityIdentifier("trakt-sign-in")
+                    // Signed in on this iPhone: Trakt's own page, PKCE, tokens in the Keychain; the
+                    // server isn't involved. A sign-in made earlier through the server still works.
+                    let onPhone = store.traktSignedInOnPhone
+                    let appId = appClientId ?? ProfileText.line(signInAppID)
+                    Text(onPhone ? "Signed in on this iPhone\(currentConfig.username.map { " as @" + $0 } ?? "")."
+                         : store.traktController.status?.connected == true ? "Signed in through your server. Sign in here to keep Trakt on this iPhone only."
+                         : "Sign in on Trakt and come straight back.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("trakt-sign-in-state")
+                    Button {
+                        if let appId { startSignIn(appId) } else {
+                            errorMessage = "First, paste your Trakt app’s client ID below (one-time setup)."
+                            appIDFocused = true
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if signingIn { ProgressView().controlSize(.small) } else { Image(systemName: "person.crop.circle.badge.checkmark") }
+                            Text(signingIn ? "Signing in…" : onPhone ? "Sign in again" : "Sign in with Trakt").lineLimit(1)
+                        }.frame(maxWidth: .infinity)
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(signingIn).accessibilityIdentifier("trakt-sign-in")
+                    if onPhone {
+                        Button(role: .destructive) { confirmTraktSignOut = true } label: {
+                            Text("Sign out of Trakt").frame(maxWidth: .infinity)
+                        }.buttonStyle(SettingsDestructiveButtonStyle()).accessibilityIdentifier("trakt-sign-out")
+                    }
+                    NavigationLink(value: AppDestination.trakt) { SettingsLinkLabel(text: "Open the Trakt page") }
+                        .accessibilityIdentifier("trakt-open-page")
+                    SettingsDivider().padding(.horizontal, -15).padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("One-time setup").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Spacer(minLength: 8)
+                            SettingsInfoButton(text: "On trakt.tv/oauth/applications, open your app and add \(ProviderWebSignIn.redirect(for: .trakt)) as a redirect URI (one per line, next to any you have).")
+                        }
+                        Text("Your Trakt app needs the redirect \(ProviderWebSignIn.redirect(for: .trakt)).")
+                            .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        if appClientId == nil {
+                            TextField("Trakt app client ID", text: $signInAppID).settingsField(monospaced: true)
+                                .focused($appIDFocused)
+                                .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
+                                .accessibilityIdentifier("trakt-sign-in-app-id")
+                        }
+                        Link(destination: URL(string: "https://trakt.tv/oauth/applications")!) { SettingsLinkLabel(text: "Open Trakt’s app settings") }
+                    }
                 case .simkl, .mdblist:
                     // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
                     // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
@@ -659,6 +702,12 @@ struct ExternalProviderConnectionView: View {
             let callback = try await webAuthenticationSession.authenticate(using: request.url, callbackURLScheme: ProviderWebSignIn.callbackScheme)
             let code = try ProviderWebSignIn.code(from: callback, for: request)
             let tokens = try await store.directClient.finishWebSignIn(request, code: code)
+            if provider == .trakt {
+                try await store.finishTraktPhoneSignIn(clientId: appId, tokens: tokens)
+                loadFromStore()
+                statusMessage = "Signed in to Trakt on this iPhone."
+                return
+            }
             guard ProviderDeviceSignIn.grantsWrite(tokens, provider: provider) else {
                 throw APIError.message("\(displayName) gave read-only access. Sign in again and allow TwilDiary to make changes.")
             }

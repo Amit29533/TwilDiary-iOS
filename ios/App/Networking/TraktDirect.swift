@@ -6,7 +6,8 @@ import TwilDiaryCore
 // (api.trakt.tv) with the access token the Worker hands out, keeps the last read on this
 // iPhone, and compares it with the current diary. Read-only: nothing is written anywhere.
 
-/// From `GET /api/trakt/token`; the refresh token stays on the Worker.
+/// A current Trakt access token: from this iPhone's own sign-in, or (signed in before that
+/// existed) `GET /api/trakt/token`, where the server keeps the refresh token.
 struct TraktDirectToken: Decodable, Sendable {
     let accessToken: String
     /// Milliseconds since 1970, as the Worker stores it.
@@ -147,7 +148,7 @@ enum TraktDelivery: Equatable, Sendable {
         let started = Date.now, session = generation, editsAtStart = edits
         defer { if session == generation { running = false } }
         do {
-            if token?.usable != true { token = try await store.read("/api/trakt/token") }
+            if token?.usable != true { token = try await store.traktToken() }
             guard session == generation, let token else { return }
             let client = TraktDirectClient(token: token)
             // Edits made offline go first; still offline means there's nothing to read either.
@@ -380,7 +381,7 @@ enum TraktDelivery: Equatable, Sendable {
         var sent = 0, tally = ReplyTally(), notFound = Set<String>()
         let session = generation
         do {
-            if token?.usable != true { token = try await store.read("/api/trakt/token") }
+            if token?.usable != true { token = try await store.traktToken() }
             guard session == generation, let token else { return }
             let client = TraktDirectClient(token: token)
             let requests = plan.requests()
@@ -431,7 +432,7 @@ enum TraktDelivery: Equatable, Sendable {
         // Instant sync off: the edit waits with the others and goes with the next sync, in order.
         if !instantSync { pending.append(PendingWrite(path: path, body: data, owner: token?.username)); return }
         do {
-            if token?.usable != true { token = try await store.read("/api/trakt/token") }
+            if token?.usable != true { token = try await store.traktToken() }
         } catch {
             // Nothing has left the phone yet.
             guard session == generation else { throw CancellationError() }
@@ -573,7 +574,7 @@ enum TraktDelivery: Equatable, Sendable {
         guard !plan.isEmpty else { return "Trakt already has everything in this backup." }
         writing = true
         defer { if session == generation { writing = false; writeProgress = nil } }
-        if token?.usable != true { token = try await store.read("/api/trakt/token") }
+        if token?.usable != true { token = try await store.traktToken() }
         guard session == generation, let token else { throw CancellationError() }
         let client = TraktDirectClient(token: token)
         var tally = ReplyTally(), sent = 0
@@ -648,7 +649,7 @@ enum TraktDelivery: Equatable, Sendable {
     /// A Trakt client with your server's token, for reads outside the library (community info).
     func client(store: DiaryStore) async throws -> TraktDirectClient {
         if store.isPreview { throw APIError.message("Trakt reads need a real Trakt connection.") }
-        if token?.usable != true { token = try await store.read("/api/trakt/token") }
+        if token?.usable != true { token = try await store.traktToken() }
         guard let token else { throw APIError.message("Trakt isn’t connected.") }
         return TraktDirectClient(token: token)
     }
@@ -735,6 +736,8 @@ enum TraktDelivery: Equatable, Sendable {
     /// Sign-out: the Trakt copy is diary data, so it goes with the diary.
     /// Edits still waiting for Trakt go too (the sign-out warning counts them), and anything
     /// already running for this account can no longer save, show or send.
+    /// The next read or send fetches a token again (after a new sign-in on this iPhone).
+    func dropToken() { token = nil }
     func forget() {
         generation = UUID()
         refresh?.cancel(); refresh = nil

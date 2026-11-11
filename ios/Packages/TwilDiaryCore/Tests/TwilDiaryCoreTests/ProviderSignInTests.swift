@@ -107,6 +107,44 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     let mdblist = try #require(ProviderWebSignIn.start(provider: .mdblist, clientId: "md-app"))
     #expect(mdblist.url.absoluteString.hasPrefix("https://mdblist.com/oauth/authorize/?"))
     #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?code=xyz&state=\(mdblist.state)")!, for: mdblist) == "xyz")
-    #expect(ProviderWebSignIn.start(provider: .trakt, clientId: "x") == nil && ProviderWebSignIn.start(provider: .simkl, clientId: "  ") == nil)
+    #expect(ProviderWebSignIn.start(provider: .cloudflare, clientId: "x") == nil && ProviderWebSignIn.start(provider: .simkl, clientId: "  ") == nil)
+}
+
+/// Trakt on the phone: Trakt's own page with PKCE and no scope, JSON token requests without a
+/// client secret (as the server sends them), and a renewal is only kept with both new tokens.
+@Test func traktSignsInOnThePhoneWithPKCE() throws {
+    let trakt = try #require(ProviderWebSignIn.start(provider: .trakt, clientId: "trakt-app"))
+    let query = Dictionary(uniqueKeysWithValues: (URLComponents(url: trakt.url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+    #expect(trakt.url.host == "auth.trakt.tv" && trakt.url.path == "/oauth/authorize")
+    #expect(query["redirect_uri"] == "twildiary://auth/trakt" && query["scope"] == nil && query["code_challenge_method"] == "S256")
+    #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/trakt?code=c0de&state=\(trakt.state)")!, for: trakt) == "c0de")
+    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/trakt?code=c0de&state=nope")!, for: trakt) }
+    // Another service's return address is refused, even with the right state.
+    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=c0de&state=\(trakt.state)")!, for: trakt) }
+
+    let exchange = try #require(JSONSerialization.jsonObject(with: TraktPhoneSignIn.codeBody(code: "c0de", for: trakt)) as? [String: String])
+    #expect(exchange == ["code": "c0de", "client_id": "trakt-app", "redirect_uri": "twildiary://auth/trakt",
+                         "grant_type": "authorization_code", "code_verifier": trakt.verifier])
+    let renew = try #require(JSONSerialization.jsonObject(with: TraktPhoneSignIn.refreshBody(clientId: "trakt-app", refreshToken: "r1")) as? [String: String])
+    #expect(renew["grant_type"] == "refresh_token" && renew["refresh_token"] == "r1" && renew["client_secret"] == nil)
+
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let reply = Data(#"{"access_token":"a2","refresh_token":"r2","expires_in":86400,"created_at":1800000000,"token_type":"bearer","scope":"public"}"#.utf8)
+    guard case .authorized(let tokens) = TraktPhoneSignIn.decode(status: 200, data: reply, now: now) else { Issue.record("not signed in"); return }
+    #expect(tokens.accessToken == "a2" && tokens.refreshToken == "r2" && tokens.expiresAt == now.addingTimeInterval(86_400).formatted(.iso8601))
+    #expect(TraktPhoneSignIn.decode(status: 200, data: Data(#"{"access_token":"a2","expires_in":86400}"#.utf8), now: now)
+            == .failed("Trakt returned an incomplete sign-in. Sign in again."))
+    #expect(TraktPhoneSignIn.decode(status: 401, data: Data(#"{"error":"invalid_grant"}"#.utf8), now: now)
+            == .failed("The service no longer accepts this sign-in. Sign in again."))
+    #expect(TraktPhoneSignIn.username(from: Data(#"{"user":{"username":"amit","ids":{"slug":"amit"}}}"#.utf8)) == "amit")
+
+    // Renewed 15 minutes ahead for Trakt; a day ahead elsewhere.
+    var config = ExternalProviderConfig(provider: .trakt, enabled: true, clientId: "trakt-app", accessToken: "a", refreshToken: "r",
+                                        tokenExpiresAt: now.addingTimeInterval(3_600).formatted(.iso8601), connection: .signIn)
+    #expect(!config.needsRefresh(now: now))
+    config.tokenExpiresAt = now.addingTimeInterval(600).formatted(.iso8601)
+    #expect(config.needsRefresh(now: now))
+    let simkl = ExternalProviderConfig(provider: .simkl, refreshToken: "r", tokenExpiresAt: now.addingTimeInterval(3_600).formatted(.iso8601))
+    #expect(simkl.needsRefresh(now: now))
 }
 

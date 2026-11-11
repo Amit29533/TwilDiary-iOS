@@ -208,6 +208,14 @@ enum DeviceCodePollStatus: Equatable, Sendable {
 
     /// Trades the code from the sign-in sheet for tokens.
     func finishWebSignIn(_ request: ProviderWebSignIn.Request, code: String) async throws -> ProviderDeviceSignIn.Tokens {
+        if request.provider == .trakt {
+            let (data, status) = try await post(TraktPhoneSignIn.tokenURL, TraktPhoneSignIn.codeBody(code: code, for: request), json: true)
+            switch TraktPhoneSignIn.decode(status: status, data: data) {
+            case .authorized(let tokens): return tokens
+            case .failed(let message): throw APIError.message(message)
+            default: throw APIError.message("Trakt didn’t finish the sign-in (HTTP \(status)).")
+            }
+        }
         guard let endpoints = ProviderDeviceSignIn.endpoints(for: request.provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
         let (data, status) = try await postForm(endpoints.token, ProviderWebSignIn.tokenBody(code: code, for: request))
         switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
@@ -233,6 +241,15 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     }
     /// A new access token from the refresh token (MDBList: 30-day tokens; Simkl: 7 days).
     func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {
+        if provider == .trakt {
+            let (data, status) = try await post(TraktPhoneSignIn.tokenURL, TraktPhoneSignIn.refreshBody(clientId: clientId, refreshToken: refreshToken), json: true)
+            switch TraktPhoneSignIn.decode(status: status, data: data) {
+            case .authorized(let tokens): return tokens
+            case .failed(let message) where status == 400 || status == 401: throw ProviderRenewalError.signInEnded(message)
+            case .failed(let message): throw APIError.message(message)
+            default: throw APIError.message("Trakt didn’t renew the sign-in (HTTP \(status)).")
+            }
+        }
         guard let endpoints = ProviderDeviceSignIn.endpoints(for: provider) else { throw APIError.message("This service has no sign-in TwilDiary can use.") }
         let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.refreshBody(clientId: clientId, refreshToken: refreshToken))
         switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
@@ -241,10 +258,32 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         default: throw APIError.message("The service didn’t renew the sign-in (HTTP \(status)).")
         }
     }
+    /// The Trakt account a token belongs to (`GET /users/settings`).
+    func traktUsername(clientId: String, accessToken: String) async throws -> String {
+        var request = URLRequest(url: URL(string: "https://api.trakt.tv/users/settings")!, timeoutInterval: 20)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("2", forHTTPHeaderField: "trakt-api-version")
+        request.setValue(clientId, forHTTPHeaderField: "trakt-api-key")
+        request.setValue("Bearer " + accessToken, forHTTPHeaderField: "Authorization")
+        request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status), let name = TraktPhoneSignIn.username(from: data) else {
+            throw APIError.message("Trakt didn’t say which account signed in (HTTP \(status)).")
+        }
+        return name
+    }
+    /// Ends a Trakt sign-in on Trakt's side too. Best effort: signing out works offline.
+    func revokeTrakt(clientId: String, token: String) async {
+        _ = try? await post(TraktPhoneSignIn.revokeURL, TraktPhoneSignIn.revokeBody(clientId: clientId, token: token), json: true)
+    }
     private func postForm(_ url: URL, _ body: Data) async throws -> (Data, Int) {
+        try await post(url, body, json: false)
+    }
+    private func post(_ url: URL, _ body: Data, json: Bool) async throws -> (Data, Int) {
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue(json ? "application/json" : "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = body
@@ -348,5 +387,14 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             return .authorized(accessToken: token)
         }
         return .pending
+    }
+}
+
+/// A renewal the service refused for good (spent or revoked refresh token): the account needs
+/// signing in again. Anything else (offline, busy) keeps the sign-in for the next try.
+enum ProviderRenewalError: LocalizedError, Equatable {
+    case signInEnded(String)
+    var errorDescription: String? {
+        switch self { case .signInEnded(let message): message }
     }
 }

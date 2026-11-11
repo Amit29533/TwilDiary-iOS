@@ -82,11 +82,12 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
         self.connection = connection
     }
 
-    /// True when the access token expires within `margin` seconds and a refresh token can renew it.
-    public func needsRefresh(now: Date = .now, margin: TimeInterval = 86_400) -> Bool {
+    /// True when the access token expires within `margin` seconds and a refresh token can renew it
+    /// (by default a day; Trakt's tokens are short-lived, so 15 minutes there).
+    public func needsRefresh(now: Date = .now, margin: TimeInterval? = nil) -> Bool {
         guard refreshToken != nil, let text = tokenExpiresAt,
               let expires = try? Date(text, strategy: .iso8601) else { return false }
-        return expires.timeIntervalSince(now) < margin
+        return expires.timeIntervalSince(now) < (margin ?? (provider == .trakt ? TraktPhoneSignIn.renewalMargin : 86_400))
     }
 
     /// True when the required API credentials for this provider have been entered.

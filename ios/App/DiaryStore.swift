@@ -154,6 +154,8 @@ import TwilDiaryCore
     private let api: DiaryAPI
     private let cache: any WorkspaceCaching
     private let outboxStore: any SyncOutboxStoring
+    /// Token renewals under way, one per service.
+    @ObservationIgnored private var renewals: [SyncProviderKind: Task<ExternalProviderConfig, Never>] = [:]
     private let providerSettingsStore: any ProviderSettingsStoring
     private(set) var outbox = SyncOutboxQueue()
     private var confirmedWorkspace = Workspace()
@@ -1122,11 +1124,22 @@ import TwilDiaryCore
         try outboxStore.save(next, scope: scope)
         outbox = next
     }
-    /// The provider's settings, with a sign-in token renewed first when it expires within a day
-    /// (MDBList and Simkl sign-ins). A failed renewal keeps the old token; the request then reports it.
+    /// The provider's settings, with a sign-in token renewed first when it is about to expire
+    /// (a day ahead; 15 minutes for Trakt). One renewal at a time per service: callers arriving
+    /// while it runs get its result, so a rotated refresh token is never spent twice. A failed
+    /// renewal keeps the old token; the request then reports it.
     func freshProviderConfig(_ provider: SyncProviderKind) async -> ExternalProviderConfig {
+        if let running = renewals[provider] { return await running.value }
+        let task = Task { @MainActor in await self.renewProviderConfig(provider) }
+        renewals[provider] = task
+        let result = await task.value
+        renewals[provider] = nil
+        return result
+    }
+    private func renewProviderConfig(_ provider: SyncProviderKind) async -> ExternalProviderConfig {
         let config = providerSettings.config(for: provider)
-        // Trakt through TwilDiary: the server keeps the refresh token and hands out a current one.
+        // Trakt through TwilDiary's server (signed in before phone sign-in existed): the server
+        // keeps the refresh token and hands out a current one.
         let traktExpiry = config.tokenExpiresAt.flatMap { try? Date($0, strategy: .iso8601) }
         let traktDue = traktExpiry.map { $0.timeIntervalSince(now) < 86_400 } ?? true
         if provider == .trakt, config.connection == .signIn, config.refreshToken == nil, traktDue,
@@ -1137,15 +1150,72 @@ import TwilDiaryCore
             renewed.tokenExpiresAt = Date(timeIntervalSince1970: token.expiresAt / 1000).ISO8601Format()
             return updateProviderConfig(renewed) ? renewed : config
         }
-        guard config.needsRefresh(now: now), let clientId = config.clientId, let refresh = config.refreshToken,
-              let tokens = try? await directClient.refreshSignIn(provider: provider, clientId: clientId, refreshToken: refresh) else { return config }
+        guard config.needsRefresh(now: now), let clientId = config.clientId, let refresh = config.refreshToken else { return config }
+        let tokens: ProviderDeviceSignIn.Tokens
+        do { tokens = try await directClient.refreshSignIn(provider: provider, clientId: clientId, refreshToken: refresh) }
+        catch ProviderRenewalError.signInEnded {
+            // Spent or revoked: keep the settings (so pending edits stay) and ask for a new sign-in.
+            if providerSettings.config(for: provider) == config { error = "\(provider.displayName) needs signing in again (Profile → Connections)." }
+            return config
+        } catch { return config }
         // Settings changed while renewing (disconnect, another sign-in): leave them alone.
         guard providerSettings.config(for: provider) == config else { return providerSettings.config(for: provider) }
         var renewed = config
         renewed.accessToken = tokens.accessToken
         renewed.refreshToken = tokens.refreshToken ?? refresh
         renewed.tokenExpiresAt = tokens.expiresAt
-        return updateProviderConfig(renewed) ? renewed : config
+        // A renewed token stays on this iPhone; only a new sign-in changes what other devices see.
+        return updateProviderConfig(renewed, syncVault: false) ? renewed : config
+    }
+    /// Trakt signed in on this iPhone (its own refresh token in the Keychain), rather than through
+    /// TwilDiary's server.
+    var traktSignedInOnPhone: Bool {
+        let config = providerSettings.config(for: .trakt)
+        return config.connection == .signIn && config.refreshToken != nil && config.isAuthenticated
+    }
+    /// A current Trakt token: from this iPhone's own sign-in (renewed here when due), else from the
+    /// server's connection (`GET /api/trakt/token`) for a sign-in made before.
+    func traktToken() async throws -> TraktDirectToken {
+        if traktSignedInOnPhone {
+            let config = await freshProviderConfig(.trakt)
+            guard let clientId = config.clientId, let access = config.accessToken else { throw APIError.message("Trakt isn’t connected.") }
+            let expires = config.tokenExpiresAt.flatMap { try? Date($0, strategy: .iso8601) } ?? now.addingTimeInterval(3_600)
+            return TraktDirectToken(accessToken: access, expiresAt: expires.timeIntervalSince1970 * 1000, clientId: clientId, username: config.username ?? "")
+        }
+        return try await read("/api/trakt/token")
+    }
+    /// Saves a Trakt sign-in made on this iPhone: checks which account it is first (a sign-in whose
+    /// account can't be read is withdrawn, not kept), then turns Trakt on. Another account than
+    /// before starts over, so nothing read or queued for the old one reaches it.
+    func finishTraktPhoneSignIn(clientId: String, tokens: ProviderDeviceSignIn.Tokens) async throws {
+        let username: String
+        do { username = try await directClient.traktUsername(clientId: clientId, accessToken: tokens.accessToken) }
+        catch {
+            await directClient.revokeTrakt(clientId: clientId, token: tokens.accessToken)
+            throw error
+        }
+        let before = providerSettings.config(for: .trakt)
+        if let previous = before.username, previous.caseInsensitiveCompare(username) != .orderedSame { TraktDirectStore.shared.forget() }
+        var signedIn = before
+        signedIn.clientId = clientId; signedIn.accessToken = tokens.accessToken
+        signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
+        signedIn.username = username; signedIn.connection = .signIn; signedIn.enabled = true
+        if !signedIn.loggingMethod.includesDirectAPI { signedIn.loggingMethod = .serverAndDirectAPI }
+        guard updateProviderConfig(signedIn) else { throw APIError.message(error ?? "The Trakt sign-in couldn’t be saved.") }
+        TraktDirectStore.shared.dropToken()
+    }
+    /// Signs this iPhone out of Trakt: Trakt is told to end the sign-in, the tokens leave the
+    /// Keychain, and the phone's Trakt copy is forgotten. Edits still waiting stay queued.
+    func signOutTraktOnPhone() async {
+        let config = providerSettings.config(for: .trakt)
+        if let clientId = config.clientId, let token = config.accessToken {
+            await directClient.revokeTrakt(clientId: clientId, token: token)
+        }
+        var cleared = config
+        cleared.accessToken = nil; cleared.refreshToken = nil; cleared.tokenExpiresAt = nil
+        cleared.enabled = false; cleared.connection = nil
+        updateProviderConfig(cleared)
+        TraktDirectStore.shared.forget()
     }
     /// Tests an external provider's API credentials directly from the device (or simulates verification in UI preview mode).
     func testProviderConnection(_ config: ExternalProviderConfig) async throws {
