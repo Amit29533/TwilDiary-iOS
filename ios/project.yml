@@ -34,8 +34,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary
         TWILDIARY_TRAKT_CLIENT_ID: 'pf247BS4jiJkBk_ccJhSS1menwegnU_EuT5MNUDmvu8'
-        TWILDIARY_SIMKL_CLIENT_ID: ''
-        TWILDIARY_MDBLIST_CLIENT_ID: ''
+        TWILDIARY_SIMKL_CLIENT_ID: 'b8a8608d8971e7efeb787d21fde2e236704c066749a9bb2cc1367314421d657e'
+        TWILDIARY_MDBLIST_CLIENT_ID: 'Eag63uTbztrOAYB4kh0kganxsR4aqwm6MDz9tmdb'
+        # TMDB key: never in git (public repo). Passed when building: TWILDIARY_TMDB_KEY=… (see CODEMAGIC.md).
+        TWILDIARY_TMDB_KEY: ''
         TWILDIARY_WETRAKR_CLIENT_ID: ''
         MARKETING_VERSION: '2.0.0'
         CURRENT_PROJECT_VERSION: '67'

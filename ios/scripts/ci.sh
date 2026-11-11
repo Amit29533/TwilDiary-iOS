@@ -43,8 +43,9 @@ PY
     python3 ios/tools/verify-build-log.py "$ARTIFACTS/logs/simulator-build.log" '** TEST BUILD SUCCEEDED **'
     ;;
   build-device)
+    # TwilDiary's TMDB key comes from the environment (a secret in CI), never from the repo.
     xcodebuild build "${COMMON[@]}" -destination 'generic/platform=iOS' -configuration Release \
-      -derivedDataPath "$PWD/ios/.derived/device" 2>&1 | tee "$ARTIFACTS/logs/device-build.log"
+      -derivedDataPath "$PWD/ios/.derived/device" ${TWILDIARY_TMDB_KEY:+TWILDIARY_TMDB_KEY="$TWILDIARY_TMDB_KEY"} 2>&1 | tee "$ARTIFACTS/logs/device-build.log"
     python3 -B ios/tools/test_verify_build_log.py
     python3 ios/tools/verify-build-log.py "$ARTIFACTS/logs/device-build.log" '** BUILD SUCCEEDED **'
     ;;

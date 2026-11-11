@@ -14,9 +14,15 @@ import TwilDiaryCore
         let artwork: [String]
     }
 
-    /// Your key, when one is saved on this phone.
+    /// Your key when one is saved on this phone, else TwilDiary's own (built into the app, as
+    /// Cinopsys ships its own), so posters and details work with no setup.
     static func token(_ store: DiaryStore) -> String? {
-        guard let value = store.providerSettings.customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        if let value = store.providerSettings.customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty { return value }
+        return builtIn
+    }
+    static var builtIn: String? {
+        guard let value = (Bundle.main.object(forInfoDictionaryKey: "TwilDiaryTMDBKey") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty, !value.hasPrefix("$(") else { return nil }
         return value
     }
 

@@ -17,6 +17,8 @@
 	<string>$(TWILDIARY_SIMKL_CLIENT_ID)</string>
 	<key>TwilDiaryMDBListClientID</key>
 	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
+	<key>TwilDiaryTMDBKey</key>
+	<string>$(TWILDIARY_TMDB_KEY)</string>
 	<key>TwilDiaryWeTrakrClientID</key>
 	<string>$(TWILDIARY_WETRAKR_CLIENT_ID)</string>
 	<!-- Black launch screen, so the animated splash follows it without a seam. -->

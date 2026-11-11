@@ -34,3 +34,11 @@ this migration. Existing integration permissions must not be broadened silently.
 GitHub Actions is enabled on the destination; the local Node/database/release-tool
 checks can run without Codemagic. Historical setup notes are preserved in
 `ios/docs/legacy-repository/CODEMAGIC-BEFORE-CONSOLIDATION.md`.
+
+## Built-in keys
+
+The public app IDs for Trakt, Simkl and MDBList are in `ios/project.yml`. TwilDiary's TMDB key is
+not in the repository (it is public): add it to Codemagic as a secure environment variable named
+`TWILDIARY_TMDB_KEY`, and `ios/scripts/ci.sh build-device` passes it into the build. Locally it lives
+in the ignored `.local/keys.env`. Without it the app uses your own TMDB key from Settings, or the
+server's.

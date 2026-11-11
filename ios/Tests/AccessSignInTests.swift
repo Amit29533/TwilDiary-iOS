@@ -1,5 +1,6 @@
 import XCTest
 @testable import TwilDiary
+import TwilDiaryCore
 
 @MainActor final class AccessSignInTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -87,12 +88,17 @@ import XCTest
     func testServerListedIDsAreRememberedAndBlanksIgnored() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ProviderAppIDsTests"))
         defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
-        XCTAssertNil(ProviderAppIDs.id(for: .simkl, defaults: defaults))
-        ProviderAppIDs.remember([.trakt: "trakt-app", .simkl: " simkl-app ", .mdblist: nil], defaults: defaults)
-        XCTAssertEqual(ProviderAppIDs.id(for: .simkl, defaults: defaults), "simkl-app")
-        ProviderAppIDs.remember([.simkl: "", .mdblist: "$(TWILDIARY_MDBLIST_CLIENT_ID)"], defaults: defaults)
-        XCTAssertEqual(ProviderAppIDs.id(for: .simkl, defaults: defaults), "simkl-app")
-        XCTAssertNil(ProviderAppIDs.id(for: .mdblist, defaults: defaults))
+        // Built into the app: Trakt, Simkl and MDBList (public client IDs, as Cinopsys ships its own).
+        for provider in [SyncProviderKind.trakt, .simkl, .mdblist] { XCTAssertNotNil(ProviderAppIDs.id(for: provider, defaults: defaults), provider.rawValue) }
+        // Not built in (WeTrakr): the server's list is remembered; blanks and unset settings never count.
+        XCTAssertNil(ProviderAppIDs.id(for: .wetrakr, defaults: defaults))
+        ProviderAppIDs.remember([.wetrakr: " wetrakr-app "], defaults: defaults)
+        XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), "wetrakr-app")
+        ProviderAppIDs.remember([.wetrakr: ""], defaults: defaults)
+        XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), "wetrakr-app")
+        defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
+        ProviderAppIDs.remember([.wetrakr: "$(TWILDIARY_WETRAKR_CLIENT_ID)"], defaults: defaults)
+        XCTAssertNil(ProviderAppIDs.id(for: .wetrakr, defaults: defaults))
         XCTAssertNil(ProviderAppIDs.id(for: .cloudflare, defaults: defaults))
         XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.simkl) && ServiceSignIn.supportsSheet(.mdblist) && !ServiceSignIn.supportsSheet(.cloudflare))
     }
