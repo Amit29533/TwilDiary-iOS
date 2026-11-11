@@ -31,6 +31,7 @@ struct TitleDetailView: View {
     @State private var ratingField = VersionedField<Double?>(value: nil, version: nil)
     @State private var showRating = false
     @State private var showInformation = false
+    @State private var checkInMessage: String?
     @State private var headerState = CompactHeaderState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var resetConfirmation = false
@@ -120,6 +121,7 @@ struct TitleDetailView: View {
                                             Task { await store.patch(title, values: ["favorite": !title.favorite]) }
                                         }.disabled(store.writesBlocked).accessibilityIdentifier("title-favorite")
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
+                                        checkInButton(title)
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
                                         TitleShareItem(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId)
@@ -149,6 +151,27 @@ struct TitleDetailView: View {
     }
     /// Sheets, dialogs and change observers live in their own function so the
     /// type checker handles two shorter modifier chains instead of one very long one.
+    /// "Check in on Trakt" (a movie, or the next episode), when Trakt is connected.
+    @ViewBuilder private func checkInButton(_ title: MediaTitle) -> some View {
+        if store.traktSignedInOnPhone || store.traktHoldsDiary {
+            Button("Check in on Trakt", systemImage: "checkmark.circle.badge.questionmark") {
+                Task {
+                    do { checkInMessage = try await TraktDirectStore.shared.checkIn(title, episode: nextEpisode(title), store: store) }
+                    catch { checkInMessage = error.localizedDescription }
+                }
+            }.accessibilityIdentifier("title-check-in")
+        }
+    }
+    /// The next episode to check in to: the first aired, unskipped regular episode you haven't watched.
+    private func nextEpisode(_ title: MediaTitle) -> Episode? {
+        guard title.isSeries else { return nil }
+        let watched = Set(store.workspace.events.filter { $0.titleId == title.id && $0.revokedAt == nil }.compactMap(\.episodeId))
+        let today = DiaryDate.day(store.now)
+        return store.workspace.episodes.filter { episode in
+            episode.titleId == title.id && episode.season > 0 && episode.skipped != true && !watched.contains(episode.id)
+                && (episode.airedOn.map { String($0.prefix(10)) <= today } ?? false)
+        }.min { ($0.season, $0.number) < ($1.season, $1.number) }
+    }
     private func detailPresentations(title: MediaTitle, content: some View) -> some View {
         content
             // Presented while an episode is chosen; swiping inside changes the episode, not the sheet.
@@ -187,6 +210,9 @@ struct TitleDetailView: View {
                 guard initializedEditor else { return }
                 notesField.observe(.init(value: title.notes, version: title.version))
                 ratingField.observe(.init(value: title.score, version: title.version))
+            }
+            .alert(checkInMessage ?? "", isPresented: Binding(get: { checkInMessage != nil }, set: { if !$0 { checkInMessage = nil } })) {
+                Button("OK", role: .cancel) {}
             }
             .alert("Move \(title.name) to Trash?", isPresented: $confirmTrash) {
                 Button("Move to Trash", role: .destructive) { Task { if await store.trash(title) { dismissPage() } } }

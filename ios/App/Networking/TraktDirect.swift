@@ -451,6 +451,26 @@ enum ServiceRemovals {
     }
     // MARK: Phase 4b: edits in the Trakt diary
 
+    /// "Watching now" on Trakt: a movie, or one episode of a show. Trakt logs the play itself once
+    /// its runtime ends (it shows on the next read). Returns what to tell you.
+    func checkIn(_ title: MediaTitle, episode: Episode?, store: DiaryStore) async throws -> String {
+        if store.isPreview { throw APIError.message("Checking in needs a real Trakt connection.") }
+        guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so Trakt can’t find it.") }
+        let client = try await self.client(store: store)
+        var body: [String: Any] = ["app_version": "2.0.0"]
+        if title.isSeries {
+            guard let episode else { throw APIError.message("There’s no next episode to check in to.") }
+            body["show"] = ["ids": ["tmdb": tmdb]]
+            body["episode"] = ["season": episode.season, "number": episode.number]
+        } else { body["movie"] = ["ids": ["tmdb": tmdb]] }
+        try await pace()
+        do { _ = try await client.send("POST", "/checkin", body: try JSONSerialization.data(withJSONObject: body)) }
+        catch let error as TraktWriteError where error.status == 409 {
+            throw APIError.message("You’re already checked in to something on Trakt. It ends on its own when that finishes.")
+        }
+        refreshSoon(store: store)
+        return title.isSeries ? "Checked in to \(title.name) S\(episode?.season ?? 0) E\(episode?.number ?? 0) on Trakt. It’s logged when the episode ends." : "Checked in to \(title.name) on Trakt. It’s logged when the movie ends."
+    }
     /// A title's note on Trakt: a new note, the changed text, or (empty) removed. Trakt keeps 500
     /// characters; the phone's copy is updated at once.
     func setNote(_ text: String, for title: TraktTitleRef, store: DiaryStore) async throws {
