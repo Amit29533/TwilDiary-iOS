@@ -26,6 +26,16 @@ public enum TraktDiary {
         let rated = Dictionary(library.ratings.compactMap { r in r.title.diaryKey.map { ($0, r.rating) } }, uniquingKeysWith: { first, _ in first })
         func keys(_ list: [TraktListed]) -> Set<String> { Set(list.compactMap(\.title.diaryKey)) }
         let watchlist = keys(library.watchlist), favourites = keys(library.favorites), dropped = keys(library.dropped)
+        // Each title's note on the service (the newest, when there are several).
+        var notes: [String: String] = [:]
+        for note in library.notes.sorted(by: { ($0.updatedAt ?? "") < ($1.updatedAt ?? "") }) {
+            if let k = note.title?.diaryKey, !note.text.isEmpty { notes[k] = note.text }
+        }
+        func note(_ server: String, _ k: String) -> String {
+            // The service's note, unless the server keeps the same note in full (over the service's limit).
+            guard let text = notes[k] else { return server }
+            return server.hasPrefix(text) ? server : text
+        }
         var played = Set<String>()
         for play in library.plays { if let k = play.title.diaryKey { played.insert(k) } }
 
@@ -38,6 +48,7 @@ public enum TraktDiary {
             var value = title
             apply(&value, key: k, rating: rated[k], watchlist: watchlist, favourites: favourites, dropped: dropped, played: played)
             if !keepsFavourites { value.favorite = title.favorite }
+            value.notes = note(title.notes, k)
             titles.append(value); idForKey[k] = title.id
         }
         for (k, ref) in refs.sorted(by: { $0.key < $1.key }) where idForKey[k] == nil {
@@ -46,6 +57,7 @@ public enum TraktDiary {
                                    status: "planned", favorite: false, queued: false, score: nil, notes: "", deletedAt: nil, version: 1,
                                    seasons: nil, createdAt: nil)
             apply(&value, key: k, rating: rated[k], watchlist: watchlist, favourites: favourites, dropped: dropped, played: played)
+            value.notes = note(value.notes, k)
             titles.append(value); idForKey[k] = k
         }
 

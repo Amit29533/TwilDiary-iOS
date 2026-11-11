@@ -352,6 +352,13 @@ extension DiaryStore {
         // The server keeps the rest: what the service can't hold (a dropped movie; favourites
         // outside Trakt) and notes, tags and Queue.
         var rest = values.filter { !["score", "favorite", "status"].contains($0.key) }
+        // Notes: to Trakt (500 characters). Your server keeps the full text when it's connected and
+        // the note is longer, or already keeps this title's extras.
+        if service == .trakt, let text = values["notes"] as? String {
+            try await TraktDirectStore.shared.setNote(text, for: titleRef(title), store: self)
+            let needsServer = text.count > 500 || !isServiceOnly(title)
+            if phoneOnly || !needsServer { rest.removeValue(forKey: "notes") }
+        }
         if let status, !serviceHolds || (!title.isSeries && title.status == "dropped") { rest["status"] = status }
         if let favourite, !favouritesHere { rest["favorite"] = favourite }
         // A title only on the service has no server record yet: its status follows the service

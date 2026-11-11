@@ -53,6 +53,24 @@ struct TraktDirectClient: Sendable {
         }
         throw TraktWriteError(status: 429, message: "Trakt is busy right now. Try again in a minute.")
     }
+    /// PUT or DELETE (a note): one try; a refusal or a lost answer throws.
+    func send(_ method: String, _ path: String, body: Data? = nil) async throws -> Data {
+        try ProviderCooldowns.check(Self.base)
+        var request = URLRequest(url: Self.base.appending(path: path), timeoutInterval: 30)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("2", forHTTPHeaderField: "trakt-api-version")
+        request.setValue(token.clientId, forHTTPHeaderField: "trakt-api-key")
+        request.setValue("Bearer " + token.accessToken, forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
+        if status == 429, let http { ProviderCooldowns.record(Self.base, http) }
+        if status == 420 { throw TraktWriteError(status: 420, message: "Trakt says your account is at its notes limit (HTTP 420). A Trakt VIP account lifts it.") }
+        guard (200..<300).contains(status) || (method == "DELETE" && status == 404) else { throw TraktWriteError(status: status, message: "Trakt answered HTTP \(status) for \(path).") }
+        return data
+    }
     func get(_ path: String, query: [String: String] = [:]) async throws -> Reply {
         var components = URLComponents(url: Self.base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
@@ -432,6 +450,34 @@ enum ServiceRemovals {
         await check(store: store)
     }
     // MARK: Phase 4b: edits in the Trakt diary
+
+    /// A title's note on Trakt: a new note, the changed text, or (empty) removed. Trakt keeps 500
+    /// characters; the phone's copy is updated at once.
+    func setNote(_ text: String, for title: TraktTitleRef, store: DiaryStore) async throws {
+        if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
+        let client = try await self.client(store: store)
+        let kept = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+        let existing = library?.notes.first { $0.title?.diaryKey == title.diaryKey }
+        try await pace()
+        var saved: TraktNote?
+        if let existing {
+            if kept.isEmpty { _ = try await client.send("DELETE", "/notes/\(existing.id)") }
+            else {
+                let reply = try await client.send("PUT", "/notes/\(existing.id)", body: try JSONSerialization.data(withJSONObject: ["notes": kept]))
+                saved = TraktNote(id: existing.id, title: existing.title, text: kept, updatedAt: (try? JSONSerialization.jsonObject(with: reply) as? [String: Any])?["updated_at"] as? String)
+            }
+        } else if !kept.isEmpty {
+            let slot = title.kind == .movie ? "movie" : "show"
+            let body: [String: Any] = [slot: ["ids": ["tmdb": title.tmdbId ?? 0]], "notes": kept, "privacy": "private", "spoiler": false]
+            let reply = try await client.send("POST", "/notes", body: try JSONSerialization.data(withJSONObject: body))
+            let object = (try? JSONSerialization.jsonObject(with: reply)) as? [String: Any]
+            if let id = (object?["id"] as? NSNumber)?.int64Value { saved = TraktNote(id: id, title: title, text: kept, updatedAt: object?["updated_at"] as? String) }
+        }
+        update(store: store) { library in
+            library.notes.removeAll { $0.title?.diaryKey == title.diaryKey }
+            if let saved { library.notes.append(saved) }
+        }
+    }
 
     /// One write to Trakt with the server's token (one a second at most, waiting out 429s).
     /// An edit that may still reach Trakt is kept and sent before the next read instead of failing

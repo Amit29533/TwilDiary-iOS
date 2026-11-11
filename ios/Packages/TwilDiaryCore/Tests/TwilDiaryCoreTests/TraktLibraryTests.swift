@@ -433,3 +433,23 @@ private func diary() throws -> Workspace {
     let second = try #require(diary.episodes.first { $0.number == 2 })
     #expect(second.id == "tv:209867|s1e2" && second.name.isEmpty && second.still == nil && second.hidden == true && second.airedOn == "2023-10-02")
 }
+
+/// Trakt's notes show on their titles; a longer note the server keeps in full stays in full.
+@Test func traktNotesShowInTheTraktDiary() {
+    let movie = TraktTitleRef(kind: .movie, traktId: 1, tmdbId: 603, name: "The Matrix")
+    let show = TraktTitleRef(kind: .show, traktId: 2, tmdbId: 1399, name: "Show")
+    let long = String(repeating: "a", count: 600)
+    var server = MediaTitle(id: "m1", name: "The Matrix", category: "movie", year: 1999, overview: "", poster: nil, backdrop: nil, communityScore: nil,
+                            tmdbId: 603, genres: [], tags: [], runtimeMinutes: nil, status: "completed", favorite: false, queued: false, score: nil,
+                            notes: long, deletedAt: nil, version: 1, seasons: nil, createdAt: nil)
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: movie, watchedAt: "2026-01-01T00:00:00Z")],
+                               watchlist: [TraktListed(title: show, listedAt: nil)],
+                               notes: [TraktNote(id: 5, title: movie, text: String(long.prefix(500)), updatedAt: nil),
+                                       TraktNote(id: 6, title: show, text: "Start with season 2", updatedAt: nil)])
+    var diary = TraktDiary.build(library: library, server: Workspace(titles: [server]))
+    #expect(diary.titles.first { $0.id == "m1" }?.notes == long, "the server's full note wins over Trakt's first 500 characters")
+    #expect(diary.titles.first { $0.id == "tv:1399" }?.notes == "Start with season 2")
+    server.notes = "Old note"
+    diary = TraktDiary.build(library: library, server: Workspace(titles: [server]))
+    #expect(diary.titles.first { $0.id == "m1" }?.notes == String(long.prefix(500)), "a different note on Trakt is the newer word")
+}
