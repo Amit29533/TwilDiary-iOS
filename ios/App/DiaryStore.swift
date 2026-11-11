@@ -1248,6 +1248,9 @@ import TwilDiaryCore
                 throw APIError.message("Sign in to MDBList or enter your MDBList API key.")
             }
             _ = try await directClient.fetchMDBListRatings(config: config, tmdbId: 550, isSeries: false)
+        case .wetrakr:
+            guard config.isAuthenticated else { throw APIError.message("Sign in to WeTrakr, or enter its app key and an access token.") }
+            _ = try await directClient.read(config, path: "/sync/last_activities")
         case .cloudflare:
             break
         }
@@ -1983,6 +1986,7 @@ extension DiaryStore {
                     case .trakt: target = .trakt
                     case .simkl: target = .simkl
                     case .mdblist: target = .mdblist
+                    case .wetrakr: target = .wetrakr
                     case nil: target = nil
                     }
                 default: target = nil

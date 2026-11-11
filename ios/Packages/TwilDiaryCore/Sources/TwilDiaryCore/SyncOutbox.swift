@@ -6,6 +6,7 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
     case trakt
     case simkl
     case mdblist
+    case wetrakr
     public var id: Self { self }
     public var displayName: String {
         switch self {
@@ -13,6 +14,7 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
         case .trakt: "Trakt"
         case .simkl: "Simkl"
         case .mdblist: "MDBList"
+        case .wetrakr: "WeTrakr"
         }
     }
 }
@@ -54,7 +56,7 @@ public struct SyncOutboxEntry: Codable, Identifiable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, operationId, createdAt, mutation, pendingProviders, attempts, lastError, confirmedActions, uncertainActions
     }
-    /// A provider the app no longer has (WeTrakr was removed) is dropped from a saved entry instead
+    /// A provider the app doesn't know (one removed in a later version) is dropped from a saved entry instead
     /// of failing the whole outbox, which would lose every other pending edit.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

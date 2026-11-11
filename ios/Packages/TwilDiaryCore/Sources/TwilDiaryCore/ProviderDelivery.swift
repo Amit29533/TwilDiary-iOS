@@ -39,7 +39,8 @@ public enum ProviderDeliveryPlanner {
                     let episodeItem: [String: Any] = ["number": episode.number, "watched_at": watchedAt]
                     watch["seasons"] = [["number": episode.season, "episodes": [episodeItem]]]
                 } else { watch["watched_at"] = watchedAt }
-                add("history", provider == .mdblist ? "/sync/watched" : "/sync/history", watch, history: true)
+                if provider == .wetrakr { add("history", "/sync/tracking", WeTrakrWrite.watched(watch, rewatch: true), history: true) }
+                else { add("history", provider == .mdblist ? "/sync/watched" : "/sync/history", watch, history: true) }
             }
         case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _):
             if clearScore || score != nil {
@@ -54,6 +55,7 @@ public enum ProviderDeliveryPlanner {
                 if provider == .simkl && !planned { blocked.append("Removing a Simkl plan requires review so existing watch history is preserved.") }
                 else if provider == .simkl { var value = item; value["to"] = "plantowatch"; add("watchlist", "/sync/add-to-list", value) }
                 else if provider == .mdblist { add("watchlist", planned ? "/watchlist/items/add" : "/watchlist/items/remove") }
+                else if provider == .wetrakr { var value = item; value["status"] = "planning"; add("watchlist", planned ? "/sync/tracking" : "/sync/tracking/remove", value) }
                 else { add("watchlist", planned ? "/sync/watchlist" : "/sync/watchlist/remove") }
             }
             // A status the service doesn't keep (watching and completed come from the watches
@@ -63,9 +65,10 @@ public enum ProviderDeliveryPlanner {
                     // Simkl moves the title to its list (this also takes it off Plan to Watch).
                     var value = item; value["to"] = list; add("status", "/sync/add-to-list", value)
                 } else if provider == .mdblist { add("status", "/sync/dropped") }
+                else if provider == .wetrakr { var value = item; value["status"] = "dropped"; add("status", "/sync/tracking", value) }
                 else if provider == .trakt { add("status", "/users/hidden/dropped") }
             }
-            if let favorite, provider == .trakt { add("favorite", favorite ? "/sync/favorites" : "/sync/favorites/remove") }
+            if let favorite, provider == .trakt || provider == .wetrakr { add("favorite", favorite ? "/sync/favorites" : "/sync/favorites/remove") }
         default:
             blocked.append("This edit requires provider-specific reconciliation before delivery.")
         }
@@ -78,13 +81,14 @@ public enum ProviderDeliveryPlanner {
         guard case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation else { return true }
         if provider == .cloudflare || score != nil || clearScore || queued != nil { return true }
         if let status, statusCarried(status, provider: provider, isSeries: isSeries) { return true }
-        return favorite != nil && provider == .trakt
+        return favorite != nil && (provider == .trakt || provider == .wetrakr)
     }
     static func statusCarried(_ status: String, provider: SyncProviderKind, isSeries: Bool) -> Bool {
         if status == "planned" { return true }
         switch provider {
         case .simkl: return TraktWritePlan.simklList(status: status, isSeries: isSeries) != nil
         case .trakt, .mdblist: return status == "dropped" && isSeries
+        case .wetrakr: return status == "dropped"
         case .cloudflare: return true
         }
     }
@@ -98,7 +102,9 @@ public enum ProviderDeliveryPlanner {
             if let text = value as? String { return !text.isEmpty }
             return false
         }
-        if nonempty(object["not_found"]) || nonempty(object["errors"]) || nonempty(object["failed"]) || nonempty(object["error"]) { return false }
+        // WeTrakr spells them notFound and errored.
+        if nonempty(object["not_found"]) || nonempty(object["notFound"]) || nonempty(object["errors"]) || nonempty(object["errored"])
+            || nonempty(object["failed"]) || nonempty(object["error"]) { return false }
         func positiveCount(_ value: Any?) -> Bool {
             guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return false }
             let count = number.doubleValue
@@ -107,7 +113,7 @@ public enum ProviderDeliveryPlanner {
         func confirmedCount(_ value: Any?) -> Bool {
             if positiveCount(value) { return true }
             guard let counts = value as? [String: Any] else { return false }
-            return ["movies", "shows", "episodes", "seasons", "items", "ratings"].contains { positiveCount(counts[$0]) }
+            return ["total", "movies", "shows", "episodes", "seasons", "items", "ratings"].contains { positiveCount(counts[$0]) }
         }
         return ["added", "updated", "existing", "deleted", "removed", "matched"].contains { confirmedCount(object[$0]) }
     }

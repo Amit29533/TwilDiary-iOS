@@ -100,6 +100,7 @@ struct ConnectionsView: View {
         case .trakt: store.traktSignedInOnPhone || trakt?.status?.connected == true
         case .simkl: store.providerSettings.simkl.enabled && store.providerSettings.simkl.isAuthenticated
         case .mdblist: store.providerSettings.mdblist.enabled && store.providerSettings.mdblist.isAuthenticated
+        case .wetrakr: store.providerSettings.wetrakr.enabled && store.providerSettings.wetrakr.isAuthenticated
         }
     }
     /// "Connected", "Not connected", "Reconnect"… (Trakt's from your server).
@@ -110,6 +111,7 @@ struct ConnectionsView: View {
             : TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
         case .simkl: connected(.simkl) ? "Connected" : "Not connected"
         case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
+        case .wetrakr: connected(.wetrakr) ? "Connected" : "Not connected"
         }
     }
     private func account(_ tracker: MainTracker) -> String? {
@@ -117,6 +119,7 @@ struct ConnectionsView: View {
         case .trakt: store.traktSignedInOnPhone ? store.providerSettings.trakt.username : trakt?.status?.username
         case .simkl: store.providerSettings.simkl.username
         case .mdblist: store.providerSettings.mdblist.username
+        case .wetrakr: store.providerSettings.wetrakr.username
         }
     }
     private func checkedAt(_ tracker: MainTracker) -> Date? {
@@ -133,13 +136,13 @@ struct ConnectionsView: View {
     }
     private var lastResult: String? {
         if let error = traktDirect.error { return error }
-        for tracker in [MainTracker.simkl, .mdblist] { if let error = others.errors[tracker] { return "\(tracker.name): " + error } }
+        for tracker in [MainTracker.simkl, .mdblist, .wetrakr] { if let error = others.errors[tracker] { return "\(tracker.name): " + error } }
         return traktDirect.writeResult ?? others.writeResults.values.first
     }
 
     private func trackerRow(_ tracker: MainTracker) -> some View {
         let isMain = tracker == main, on = connected(tracker)
-        let destination: AppDestination = tracker == .trakt ? .trakt : tracker == .simkl ? .simkl : .mdblist
+        let destination: AppDestination = switch tracker { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
         let checked = checkedAt(tracker).map { "checked " + $0.formatted(.relative(presentation: .named)) }
         let detail = on ? [account(tracker).map { "@" + $0 }, checked].compactMap { $0 }.joined(separator: " · ") : ""
         // A connection that needs attention says so (in amber), instead of looking healthy.

@@ -29,8 +29,8 @@ struct MainTrackerView: View {
                     Text(tracker.keptInCloudflare.joined(separator: " · ").capitalizedFirst)
                         .font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("main-tracker-cloudflare")
                 }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 14, radius: 16)
-                if tracker != .trakt, !store.providerSettings.config(for: tracker == .simkl ? .simkl : .mdblist).isAuthenticated {
-                    NavigationLink(value: tracker == .simkl ? AppDestination.simkl : AppDestination.mdblist) {
+                if tracker != .trakt, !store.providerSettings.config(for: tracker.provider).isAuthenticated {
+                    NavigationLink(value: tracker == .simkl ? AppDestination.simkl : tracker == .wetrakr ? AppDestination.wetrakr : AppDestination.mdblist) {
                         Label("Connect \(tracker.name) first", systemImage: "link").frame(maxWidth: .infinity)
                     }.font(.subheadline).buttonStyle(.diarySecondary).accessibilityIdentifier("main-tracker-connect")
                 }
@@ -104,10 +104,10 @@ struct MainTrackerView: View {
 
 extension MainTracker {
     var brand: BrandLogo.Service {
-        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist }
+        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
     }
     var provider: SyncProviderKind {
-        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist }
+        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
     }
 }
 
@@ -294,6 +294,7 @@ struct TrackerPreviewPanel: View {
         case .trakt: "Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed."
         case .simkl: "Reads your Simkl library (watches, ratings, plan to watch, dropped and memos) and compares it with your diary. Simkl keeps one watch per episode, so rewatches aren’t counted as differences. Nothing changes until you send."
         case .mdblist: "Reads your MDBList watched items, ratings, dropped shows and watchlist and compares them with your diary. Items it can’t read are counted, not guessed. Nothing changes until you send."
+        case .wetrakr: "Reads your WeTrakr plays (rewatches included), ratings, watchlist, favourites and dropped titles, then only its journal of what changed, and compares them with your diary. Nothing changes until you send."
         }
     }
 

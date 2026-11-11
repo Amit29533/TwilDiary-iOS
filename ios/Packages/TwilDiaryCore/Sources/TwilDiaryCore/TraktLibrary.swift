@@ -16,9 +16,11 @@ public struct TraktTitleRef: Codable, Hashable, Sendable {
     public let year: Int?
     /// Simkl's own id (Simkl reads only): how its "removed" check names titles.
     public let simklId: Int?
-    public init(kind: Kind, traktId: Int?, tmdbId: Int?, imdbId: String? = nil, tvdbId: Int? = nil, name: String, year: Int? = nil, simklId: Int? = nil) {
+    /// WeTrakr's own id (WeTrakr reads only): how its journal names titles.
+    public let weTrakrId: Int?
+    public init(kind: Kind, traktId: Int?, tmdbId: Int?, imdbId: String? = nil, tvdbId: Int? = nil, name: String, year: Int? = nil, simklId: Int? = nil, weTrakrId: Int? = nil) {
         self.kind = kind; self.traktId = traktId; self.tmdbId = tmdbId; self.imdbId = imdbId; self.tvdbId = tvdbId; self.name = name; self.year = year
-        self.simklId = simklId
+        self.simklId = simklId; self.weTrakrId = weTrakrId
     }
     /// "movie:603" or "tv:1399", as the diary matches titles; nil without a TMDB id.
     public var diaryKey: String? { tmdbId.map { (kind == .movie ? "movie:" : "tv:") + String($0) } }
@@ -32,8 +34,11 @@ public struct TraktPlay: Codable, Hashable, Sendable {
     public let episode: Int?
     /// ISO 8601 from Trakt; nil when Trakt has no date.
     public let watchedAt: String?
-    public init(historyId: Int64, title: TraktTitleRef, season: Int? = nil, episode: Int? = nil, watchedAt: String?) {
+    /// The service's own id for this play when it isn't a number (WeTrakr's play_id).
+    public let remoteId: String?
+    public init(historyId: Int64, title: TraktTitleRef, season: Int? = nil, episode: Int? = nil, watchedAt: String?, remoteId: String? = nil) {
         self.historyId = historyId; self.title = title; self.season = season; self.episode = episode; self.watchedAt = watchedAt
+        self.remoteId = remoteId
     }
 }
 

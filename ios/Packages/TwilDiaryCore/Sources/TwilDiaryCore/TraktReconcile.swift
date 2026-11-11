@@ -165,7 +165,7 @@ public struct TraktWritePlan: Equatable, Sendable {
 
     /// The writes, at most 100 items per request (each service takes batches; one request a second).
     public func requests() -> [Request] {
-        let historyPath = tracker == .mdblist ? "/sync/watched" : "/sync/history"
+        let historyPath = tracker == .mdblist ? "/sync/watched" : tracker == .wetrakr ? "/sync/tracking" : "/sync/history"
         var result: [Request] = []
         func ids(_ ref: Ref) -> [String: Any] { ["ids": ["tmdb": ref.tmdbId]] }
         func batches<T>(_ items: [T], _ size: Int = 100) -> [[T]] {
@@ -191,7 +191,9 @@ public struct TraktWritePlan: Equatable, Sendable {
                 let entry = shows[id]!
                 return ["ids": ["tmdb": id], "seasons": entry.seasons.keys.sorted().map { ["number": $0, "episodes": entry.seasons[$0]!] }]
             }
-            add(historyPath, ["movies": movies, "shows": showBodies], "plays", batch.count)
+            if tracker == .wetrakr {
+                add(historyPath, ["movies": movies.map { WeTrakrWrite.watched($0, rewatch: true) }, "shows": showBodies.map { WeTrakrWrite.watched($0, rewatch: true) }], "plays", batch.count)
+            } else { add(historyPath, ["movies": movies, "shows": showBodies], "plays", batch.count) }
         }
         for batch in batches(ratings) {
             let body: [String: Any] = [
@@ -217,6 +219,15 @@ public struct TraktWritePlan: Equatable, Sendable {
                 add("/sync/add-to-list", listed(batch.map(\.title)) { to[$0] ?? "completed" }, "moved off Plan to Watch", batch.count)
             }
             for batch in batches(dropped) { add("/sync/add-to-list", listed(batch) { _ in "dropped" }, "dropped shows", batch.count) }
+        case .wetrakr:
+            func status(_ refs: [Ref], _ value: String) -> [String: Any] {
+                ["movies": refs.filter(\.movie).map { ids($0).merging(["status": value]) { $1 } },
+                 "shows": refs.filter { !$0.movie }.map { ids($0).merging(["status": value]) { $1 } }]
+            }
+            for batch in batches(watchlistAdd) { add("/sync/tracking", status(batch, "planning"), "added to the watchlist", batch.count) }
+            for batch in batches(watchlistRemove) { add("/sync/tracking/remove", status(batch, "planning"), "taken off the watchlist", batch.count) }
+            for batch in batches(favouritesAdd) { add("/sync/favorites", split(batch), "favourites", batch.count) }
+            for batch in batches(dropped) { add("/sync/tracking", status(batch, "dropped"), "dropped shows", batch.count) }
         case .mdblist:
             for batch in batches(watchlistAdd) { add("/watchlist/items/add", split(batch), "added to the watchlist", batch.count) }
             for batch in batches(watchlistRemove) { add("/watchlist/items/remove", split(batch), "taken off the watchlist", batch.count) }

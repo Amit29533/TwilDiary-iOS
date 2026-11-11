@@ -14,6 +14,7 @@ import TwilDiaryCore
         case .trakt: "TwilDiaryTraktClientID"
         case .simkl: "TwilDiarySimklClientID"
         case .mdblist: "TwilDiaryMDBListClientID"
+        case .wetrakr: "TwilDiaryWeTrakrClientID"
         case .cloudflare: nil
         }
     }
@@ -48,11 +49,11 @@ import TwilDiaryCore
 }
 
 /// One-tap sign-in: the service's own page in Apple's sign-in sheet, back to the app signed in.
-/// Trakt and Simkl only; MDBList's sign-in is a device code shown on its page.
+/// Trakt, Simkl and WeTrakr; MDBList's sign-in is a device code shown on its page.
 enum ServiceSignIn {
     enum Outcome: Equatable { case signedIn(String), cancelled }
 
-    static func supportsSheet(_ provider: SyncProviderKind) -> Bool { provider == .trakt || provider == .simkl }
+    static func supportsSheet(_ provider: SyncProviderKind) -> Bool { provider == .trakt || provider == .simkl || provider == .wetrakr }
 
     /// Opens the page, checks the reply and trades the code for tokens. Nothing is saved here.
     @MainActor static func tokens(_ provider: SyncProviderKind, clientId: String, using session: WebAuthenticationSession,

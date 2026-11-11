@@ -769,27 +769,31 @@ enum TraktDelivery: Equatable, Sendable {
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
-        for tracker in [MainTracker.simkl, .mdblist] {
+        for tracker in [MainTracker.simkl, .mdblist, .wetrakr] {
             libraries[tracker] = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
         }
     }
     private func file(_ tracker: MainTracker) -> URL { folder.appending(path: tracker.rawValue + ".json") }
 
     func check(_ tracker: MainTracker, store: DiaryStore) async {
-        guard tracker == .simkl || tracker == .mdblist, running == nil else { return }
+        guard tracker != .trakt, running == nil else { return }
         if store.isPreview { errors[tracker] = "Direct reads need a real \(tracker.name) connection."; return }
         running = tracker; errors[tracker] = nil
         let started = Date.now, session = generation, editsAtStart = edits
         defer { if session == generation { running = nil } }
         do {
-            let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
+            let config = await store.freshProviderConfig(tracker.provider)
             let client = store.directClient
             var requests = 1
             let activitiesData = try await client.read(config, path: tracker == .simkl ? "/sync/activities" : "/sync/last_activities")
-            let activities = try (tracker == .simkl ? TraktDecode.activities(from: activitiesData) : TrackerDecode.flatActivities(from: activitiesData))
+            let activities = try (tracker == .simkl ? TraktDecode.activities(from: activitiesData)
+                                  : tracker == .wetrakr ? WeTrakrDecode.activities(from: activitiesData) : TrackerDecode.flatActivities(from: activitiesData))
             var library = libraries[tracker] ?? TraktLibrary()
             var fetched: [TraktDomain] = []
-            if tracker == .simkl {
+            if tracker == .wetrakr {
+                let read = try await readWeTrakr(client, config, into: &library, activities: activities)
+                requests += read.requests; fetched = read.fetched
+            } else if tracker == .simkl {
                 // Simkl's sync rules: the whole library once, then only what changed.
                 let fullQuery = ["extended": "full", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
                 func fullPull() async throws {
@@ -892,7 +896,7 @@ enum TraktDelivery: Equatable, Sendable {
     func write(_ tracker: MainTracker, _ path: String, body: [String: Any], store: DiaryStore) async throws {
         if store.isPreview { throw APIError.message("Writing to \(tracker.name) needs a real \(tracker.name) connection.") }
         try await pace()
-        let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
+        let config = await store.freshProviderConfig(tracker.provider)
         let reply = try await store.directClient.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body))
         // A title the service couldn't find wasn't changed: the caller leaves the phone's copy as is.
         if TraktDirectStore.notFoundCount(reply) > 0 {
@@ -937,7 +941,7 @@ enum TraktDelivery: Equatable, Sendable {
         let session = generation
         defer { if session == generation { writing = nil; writeProgress = nil } }
         do {
-            let config = await store.freshProviderConfig(tracker == .simkl ? .simkl : .mdblist)
+            let config = await store.freshProviderConfig(tracker.provider)
             let requests = plan.requests()
             for (index, request) in requests.enumerated() {
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
@@ -955,6 +959,65 @@ enum TraktDelivery: Equatable, Sendable {
         guard session == generation else { return }
         writing = nil; writeProgress = nil
         await check(tracker, store: store)
+    }
+
+    /// WeTrakr, the way its sync guide describes: the first time (or when the journal can't place
+    /// something) its compact lists in full, then only its journal from the last mark: what changed
+    /// and how, oldest first, so an unchanged library costs one call.
+    private func readWeTrakr(_ client: DirectProviderClient, _ config: ExternalProviderConfig, into library: inout TraktLibrary,
+                             activities: TraktActivities) async throws -> (requests: Int, fetched: [TraktDomain]) {
+        var requests = 0
+        let previous = library.fetchedAt == nil ? nil : library.activities
+        let mark = previous?.stamps["journal.mark"]
+        var mustReadAll = previous == nil || mark == nil
+        var nextMark = mark
+        if !mustReadAll, let mark, activities.all != previous?.all {
+            var seen = Set<String>()
+            for page in 1...20 {
+                let data: Data
+                do { data = try await client.read(config, path: "/sync/journal", query: ["from_date": mark, "limit": "1000", "page": String(page)]) }
+                catch APIError.rejected(let status, _) where (400..<500).contains(status) && status != 429 { mustReadAll = true; break }  // JOURNAL_EXPIRED and the like
+                requests += 1
+                let result = try WeTrakrDecode.applyJournal(data, to: &library, seen: &seen)
+                if result.needsFullRead { mustReadAll = true; break }
+                nextMark = result.mark ?? nextMark
+                if result.entries < 1000 { break }
+            }
+        }
+        var fetched: [TraktDomain] = mustReadAll ? [.history, .ratings, .watchlist, .favorites, .dropped] : (nextMark != mark ? [.history] : [])
+        if mustReadAll {
+            func all(_ path: String) async throws -> [Data] {
+                var pages: [Data] = [], after: String?
+                for _ in 0..<40 {
+                    var query = ["compact": "true", "limit": "5000"]
+                    if let after { query["after"] = after }
+                    let reply = try await client.readWeTrakr(config, path: path, query: query)
+                    requests += 1; pages.append(reply.data)
+                    guard let next = reply.next else { break }
+                    after = next
+                }
+                return pages
+            }
+            var skipped = 0, fresh = TraktLibrary()
+            for path in ["/sync/tracking/watched/history/movies", "/sync/tracking/watched/history/episodes"] {
+                for page in try await all(path) { fresh.plays += try WeTrakrDecode.plays(from: page, skipped: &skipped) }
+            }
+            for target in ["movies", "shows"] {
+                for page in try await all("/sync/tracking/planning/" + target) { fresh.watchlist += try WeTrakrDecode.listed(from: page, skipped: &skipped) }
+                for page in try await all("/sync/tracking/dropped/" + target) { fresh.dropped += try WeTrakrDecode.listed(from: page, skipped: &skipped) }
+                for page in try await all("/sync/favorites/" + target) { fresh.favorites += try WeTrakrDecode.listed(from: page, skipped: &skipped) }
+            }
+            for page in try await all("/sync/ratings/all") { fresh.ratings += try WeTrakrDecode.ratings(from: page, skipped: &skipped) }
+            library.plays = fresh.plays; library.watchlist = fresh.watchlist; library.dropped = fresh.dropped
+            library.favorites = fresh.favorites; library.ratings = fresh.ratings; library.skipped = skipped
+            // Everything up to here is in; the journal carries on from how far it could be read.
+            nextMark = activities.stamps["journal_visible_until"] ?? activities.all
+        }
+        var stamps = activities.stamps
+        if let nextMark { stamps["journal.mark"] = nextMark }
+        library.activities = TraktActivities(all: activities.all, stamps: stamps)
+        if fetched.isEmpty { fetched = [] }
+        return (requests, fetched)
     }
 
     /// Follows MDBList's cursor, 1,000 items a page, at most 50 pages.

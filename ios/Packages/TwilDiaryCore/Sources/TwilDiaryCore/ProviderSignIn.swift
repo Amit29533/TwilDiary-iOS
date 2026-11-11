@@ -22,6 +22,10 @@ public enum ProviderDeviceSignIn {
         case .simkl:
             Endpoints(authorize: URL(string: "https://api.simkl.com/oauth2/device")!,
                       token: URL(string: "https://api.simkl.com/oauth2/token")!, scope: "media:read media:write")
+        // WeTrakr: refreshing is its own route (`refresh`); the device flow isn't used.
+        case .wetrakr:
+            Endpoints(authorize: URL(string: "https://api.wetrakr.com/oauth/device/code")!,
+                      token: URL(string: "https://api.wetrakr.com/oauth/token")!, scope: "")
         case .trakt, .cloudflare:
             nil
         }
@@ -131,12 +135,13 @@ public enum ProviderWebSignIn {
         case .simkl: URL(string: "https://simkl.com/oauth2/authorize")
         case .mdblist: URL(string: "https://mdblist.com/oauth/authorize/")
         case .trakt: URL(string: "https://auth.trakt.tv/oauth/authorize")
+        case .wetrakr: URL(string: "https://api.wetrakr.com/oauth/authorize")
         case .cloudflare: nil
         }
     }
     /// What the app asks for. Trakt has no scopes: a sign-in can always read and write.
     static func scope(for provider: SyncProviderKind) -> String? {
-        provider == .trakt ? nil : ProviderDeviceSignIn.endpoints(for: provider)?.scope
+        provider == .trakt || provider == .wetrakr ? nil : ProviderDeviceSignIn.endpoints(for: provider)?.scope
     }
 
     /// One sign-in attempt: what to open, and what to check when the service comes back.
@@ -152,7 +157,7 @@ public enum ProviderWebSignIn {
         let client = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !client.isEmpty, let page = authorizePage(for: provider) else { return nil }
         let scope = scope(for: provider)
-        guard provider == .trakt || scope != nil else { return nil }
+        guard provider == .trakt || provider == .wetrakr || scope != nil else { return nil }
         let verifier = base64URL(Data(randomBytes(64)))
         let state = base64URL(Data(randomBytes(24)))
         var components = URLComponents(url: page, resolvingAgainstBaseURL: false)!

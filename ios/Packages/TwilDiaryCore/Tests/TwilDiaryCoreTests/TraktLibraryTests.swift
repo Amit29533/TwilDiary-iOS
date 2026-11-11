@@ -112,7 +112,8 @@ private func diary() throws -> Workspace {
     #expect(MainTracker.simkl.keptInCloudflare.contains("rewatch counts"))
     #expect(MainTracker.simkl.keptInCloudflare.contains("favourite titles"))
     #expect(MainTracker.mdblist.keptInCloudflare.contains("notes"))
-    #expect(MainTracker.allCases == [.trakt, .simkl, .mdblist])
+    #expect(MainTracker.wetrakr.keptInCloudflare == ["notes"])
+    #expect(MainTracker.allCases == [.trakt, .simkl, .mdblist, .wetrakr])
 }
 
 @Test func simklAllItemsBecomeWatchesRatingsListsAndNotes() throws {

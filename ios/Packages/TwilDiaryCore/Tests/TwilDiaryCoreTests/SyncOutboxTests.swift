@@ -389,8 +389,8 @@ import TwilDiaryTestSupport
 
 }
 
-/// WeTrakr was removed from the app: a saved outbox naming it still loads, with every other
-/// pending edit kept and WeTrakr simply dropped.
+/// A service the app no longer knows: a saved outbox naming it still loads, with every other
+/// pending edit kept and that service simply dropped.
 @Test func aSavedOutboxNamingARemovedProviderStillLoads() throws {
     let entry = SyncOutboxEntry(createdAt: "2026-10-23T19:00:00Z",
                                 mutation: .patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: nil, notes: nil),
@@ -398,7 +398,7 @@ import TwilDiaryTestSupport
     // The real encoding of a mutation, with a removed provider added to the saved list.
     var saved = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(SyncOutboxQueue(entries: [entry]))) as? [String: Any])
     var entries = try #require(saved["entries"] as? [[String: Any]])
-    entries[0]["pendingProviders"] = ["cloudflare", "simkl", "wetrakr"]
+    entries[0]["pendingProviders"] = ["cloudflare", "simkl", "retired-service"]
     saved["entries"] = entries
     let queue = try JSONDecoder().decode(SyncOutboxQueue.self, from: JSONSerialization.data(withJSONObject: saved))
     #expect(queue.entries.count == 1)

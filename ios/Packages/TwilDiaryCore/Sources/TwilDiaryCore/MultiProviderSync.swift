@@ -93,7 +93,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     /// True when the required API credentials for this provider have been entered.
     public var hasCredentials: Bool {
         switch provider {
-        case .trakt, .simkl:
+        case .trakt, .simkl, .wetrakr:
             guard let cid = Self.trimmed(clientId), !cid.isEmpty else { return false }
             return true
         case .mdblist:
@@ -107,7 +107,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     /// True when the provider has both an API key/client ID and an user access token (or API key for MDBList).
     public var isAuthenticated: Bool {
         switch provider {
-        case .trakt, .simkl:
+        case .trakt, .simkl, .wetrakr:
             guard let cid = Self.trimmed(clientId), !cid.isEmpty,
                   let token = Self.trimmed(accessToken), !token.isEmpty else { return false }
             return true
@@ -138,18 +138,32 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public var trakt: ExternalProviderConfig
     public var simkl: ExternalProviderConfig
     public var mdblist: ExternalProviderConfig
+    public var wetrakr: ExternalProviderConfig
+
+    private enum CodingKeys: String, CodingKey { case customTmdbToken, trakt, simkl, mdblist, wetrakr }
+    /// Settings saved before WeTrakr came back have no entry for it.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        customTmdbToken = try c.decodeIfPresent(String.self, forKey: .customTmdbToken)
+        trakt = try c.decode(ExternalProviderConfig.self, forKey: .trakt)
+        simkl = try c.decode(ExternalProviderConfig.self, forKey: .simkl)
+        mdblist = try c.decode(ExternalProviderConfig.self, forKey: .mdblist)
+        wetrakr = try c.decodeIfPresent(ExternalProviderConfig.self, forKey: .wetrakr) ?? ExternalProviderConfig(provider: .wetrakr)
+    }
 
     public init(
         customTmdbToken: String? = nil,
         trakt: ExternalProviderConfig = ExternalProviderConfig(provider: .trakt),
         simkl: ExternalProviderConfig = ExternalProviderConfig(provider: .simkl),
-        mdblist: ExternalProviderConfig = ExternalProviderConfig(provider: .mdblist)
+        mdblist: ExternalProviderConfig = ExternalProviderConfig(provider: .mdblist),
+        wetrakr: ExternalProviderConfig = ExternalProviderConfig(provider: .wetrakr)
     ) {
         self.customTmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         if self.customTmdbToken?.isEmpty == true { self.customTmdbToken = nil }
         self.trakt = trakt
         self.simkl = simkl
         self.mdblist = mdblist
+        self.wetrakr = wetrakr
     }
 
     public func config(for provider: SyncProviderKind) -> ExternalProviderConfig {
@@ -157,6 +171,7 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
         case .trakt: trakt
         case .simkl: simkl
         case .mdblist: mdblist
+        case .wetrakr: wetrakr
         case .cloudflare: ExternalProviderConfig(provider: .cloudflare, enabled: true)
         }
     }
@@ -166,6 +181,7 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
         case .trakt: trakt = config
         case .simkl: simkl = config
         case .mdblist: mdblist = config
+        case .wetrakr: wetrakr = config
         case .cloudflare: break
         }
     }
@@ -173,7 +189,7 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     /// Returns all direct providers that are currently enabled, authenticated, and configured to receive watch logs.
     public var activeDirectLoggingProviders: Set<SyncProviderKind> {
         var result: Set<SyncProviderKind> = []
-        for item in [trakt, simkl, mdblist] {
+        for item in [trakt, simkl, mdblist, wetrakr] {
             if item.enabled && item.isAuthenticated && item.loggingMethod.includesDirectAPI {
                 result.insert(item.provider)
             }
@@ -606,6 +622,7 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         case .trakt: "TK"
         case .simkl: "SK"
         case .mdblist: "ML"
+        case .wetrakr: "WT"
         case .cloudflare: "TD"
         }
     }
@@ -615,6 +632,7 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         case .trakt: "Trakt"
         case .simkl: "Simkl"
         case .mdblist: "MDBList"
+        case .wetrakr: "WeTrakr"
         case .cloudflare: "TwilDiary"
         }
     }
@@ -694,6 +712,7 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         case .trakt: "Trakt"
         case .simkl: "Simkl"
         case .mdblist: "MDBList"
+        case .wetrakr: "WeTrakr"
         case .cloudflare: "TwilDiary"
         }
         let title: String = switch phase {

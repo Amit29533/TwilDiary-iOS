@@ -17,6 +17,8 @@
 	<string>$(TWILDIARY_SIMKL_CLIENT_ID)</string>
 	<key>TwilDiaryMDBListClientID</key>
 	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
+	<key>TwilDiaryWeTrakrClientID</key>
+	<string>$(TWILDIARY_WETRAKR_CLIENT_ID)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

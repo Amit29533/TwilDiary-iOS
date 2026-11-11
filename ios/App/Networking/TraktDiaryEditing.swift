@@ -15,7 +15,7 @@ extension DiaryStore {
     var diaryFromService: Bool { diaryService != nil }
     private var service: MainTracker { diaryService ?? .trakt }
     private func providerKind(_ tracker: MainTracker) -> SyncProviderKind {
-        switch tracker { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist }
+        tracker.provider
     }
 
     private func serviceRef(_ title: MediaTitle) throws -> [String: Any] {
@@ -35,18 +35,19 @@ extension DiaryStore {
         switch service {
         case .trakt: try await TraktDirectStore.shared.write(path, body: body, store: self)
         case .simkl, .mdblist: try await TrackerPreviewStore.shared.write(service, path, body: body, store: self)
+        case .wetrakr: throw APIError.message("Editing the WeTrakr diary here isn’t available yet. Your edits still reach WeTrakr as a copy.")
         }
     }
     private func updateCopy(_ change: (inout TraktLibrary) -> Void) {
         switch service {
         case .trakt: TraktDirectStore.shared.update(store: self, change)
-        case .simkl, .mdblist: TrackerPreviewStore.shared.update(service, store: self, change)
+        case .simkl, .mdblist, .wetrakr: TrackerPreviewStore.shared.update(service, store: self, change)
         }
     }
     private func refreshCopySoon() {
         switch service {
         case .trakt: TraktDirectStore.shared.refreshSoon(store: self)
-        case .simkl, .mdblist: TrackerPreviewStore.shared.refreshSoon(service, store: self)
+        case .simkl, .mdblist, .wetrakr: TrackerPreviewStore.shared.refreshSoon(service, store: self)
         }
     }
 
@@ -61,7 +62,8 @@ extension DiaryStore {
         case .trakt: path = listed ? "/sync/watchlist" : "/sync/watchlist/remove"
         case .mdblist: path = listed ? "/watchlist/items/add" : "/watchlist/items/remove"
         // Simkl's only removal also clears the title's history, so its list is left as it is.
-        case .simkl: return
+        // The WeTrakr diary is read-only here for now.
+        case .simkl, .wetrakr: return
         }
         var body: [String: Any] = [:]
         let movies = planned.filter { !$0.isSeries }, shows = planned.filter(\.isSeries)
@@ -314,6 +316,8 @@ extension DiaryStore {
                     if wasDropped { try await send("/sync/dropped/remove", ["shows": [item]]) }
                     serviceHolds = false
                 }
+            case .wetrakr:
+                serviceHolds = false
             }
         }
         let favourite = values["favorite"] as? Bool

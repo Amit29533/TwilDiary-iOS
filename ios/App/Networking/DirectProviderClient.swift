@@ -83,6 +83,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             headers = traktHeaders(DirectTraktCredentials(clientId: config.clientId ?? "", accessToken: config.accessToken ?? ""))
         case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
         case .mdblist: base = "https://api.mdblist.com"; headers = mdblistAuth(config).headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
+        case .wetrakr: base = "https://api.wetrakr.com"; headers = WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken)
         case .cloudflare: throw APIError.message("Diary mutations must use the authenticated diary API.")
         }
         var components = URLComponents(string: base + delivery.path)!
@@ -93,7 +94,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
 
     /// A read for the main-tracker preview (Simkl or MDBList): GET with the service's own sign-in.
     func read(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:]) async throws -> Data {
-        guard config.isAuthenticated else { throw APIError.message("Connect \(config.provider == .simkl ? "Simkl" : "MDBList") first, in Settings.") }
+        guard config.isAuthenticated else { throw APIError.message("Connect \(config.provider.displayName) first, in Connections.") }
         let base: String, headers: [String: String]
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         switch config.provider {
@@ -103,19 +104,20 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             let auth = mdblistAuth(config)
             headers = auth.headers.merging(["Accept": "application/json"]) { first, _ in first }
             items += auth.query
+        case .wetrakr: base = "https://api.wetrakr.com"; headers = WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken)
         default: throw APIError.message("This service is read by its own client.")
         }
         var components = URLComponents(string: base + path)!
         if !items.isEmpty { components.queryItems = items }
         do { return try await send(url: components.url!, method: "GET", headers: headers) }
         catch APIError.rejected(let status, _) where status == 401 || status == 403 {
-            throw APIError.message("\(config.provider == .simkl ? "Simkl" : "MDBList") didn’t accept the sign-in (HTTP \(status)). Reconnect it in Settings.")
+            throw APIError.message("\(config.provider.displayName) didn’t accept the sign-in (HTTP \(status)). Reconnect it in Connections.")
         }
     }
 
     /// A write for "Make Simkl / MDBList match the diary": POST of a ready JSON body, returning the reply.
     func write(_ config: ExternalProviderConfig, path: String, body: Data) async throws -> Data {
-        let name = config.provider == .simkl ? "Simkl" : "MDBList"
+        let name = config.provider.displayName
         guard config.enabled, config.isAuthenticated else { throw APIError.message("Connect \(name) first, in Connections.") }
         let base: String, headers: [String: String]
         var items: [URLQueryItem] = []
@@ -126,6 +128,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             let auth = mdblistAuth(config)
             headers = auth.headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
             items = auth.query
+        case .wetrakr: base = "https://api.wetrakr.com"; headers = WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken)
         default: throw APIError.message("This service is written by its own client.")
         }
         var components = URLComponents(string: base + path)!
@@ -208,6 +211,15 @@ enum DeviceCodePollStatus: Equatable, Sendable {
 
     /// Trades the code from the sign-in sheet for tokens.
     func finishWebSignIn(_ request: ProviderWebSignIn.Request, code: String) async throws -> ProviderDeviceSignIn.Tokens {
+        if request.provider == .wetrakr {
+            let body = WeTrakrWrite.codeBody(code: code, clientId: request.clientId, verifier: request.verifier, redirect: ProviderWebSignIn.redirect(for: .wetrakr))
+            let (data, status) = try await post(WeTrakrWrite.tokenURL, body, json: true, extra: ["wetrakr-api-version": "1"])
+            switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
+            case .authorized(let tokens): return tokens
+            case .failed(let message): throw APIError.message(message)
+            default: throw APIError.message("WeTrakr didn’t finish the sign-in (HTTP \(status)).")
+            }
+        }
         if request.provider == .trakt {
             let (data, status) = try await post(TraktPhoneSignIn.tokenURL, TraktPhoneSignIn.codeBody(code: code, for: request), json: true)
             switch TraktPhoneSignIn.decode(status: status, data: data) {
@@ -241,6 +253,16 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     }
     /// A new access token from the refresh token (MDBList: 30-day tokens; Simkl: 7 days).
     func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {
+        if provider == .wetrakr {
+            // WeTrakr rotates the refresh token on every renewal (7-day access tokens).
+            let (data, status) = try await post(WeTrakrWrite.refreshURL, WeTrakrWrite.refreshBody(refreshToken: refreshToken), json: true, extra: ["wetrakr-api-version": "1"])
+            switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
+            case .authorized(let tokens): return tokens
+            case .failed(let message) where status == 400 || status == 401: throw ProviderRenewalError.signInEnded(message)
+            case .failed(let message): throw APIError.message(message)
+            default: throw APIError.message("WeTrakr didn’t renew the sign-in (HTTP \(status)).")
+            }
+        }
         if provider == .trakt {
             let (data, status) = try await post(TraktPhoneSignIn.tokenURL, TraktPhoneSignIn.refreshBody(clientId: clientId, refreshToken: refreshToken), json: true)
             switch TraktPhoneSignIn.decode(status: status, data: data) {
@@ -257,6 +279,24 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         case .failed(let message): throw APIError.message(message)
         default: throw APIError.message("The service didn’t renew the sign-in (HTTP \(status)).")
         }
+    }
+    /// A WeTrakr read that also returns the reply's headers (its compact lists page with the
+    /// `X-Pagination-Next` cursor).
+    func readWeTrakr(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:]) async throws -> (data: Data, next: String?) {
+        guard config.isAuthenticated else { throw APIError.message("Connect WeTrakr first, in Connections.") }
+        var components = URLComponents(string: "https://api.wetrakr.com" + path)!
+        if !query.isEmpty { components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        var request = URLRequest(url: components.url!, timeoutInterval: 30)
+        for (key, value) in WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken) { request.setValue(value, forHTTPHeaderField: key) }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.message("WeTrakr didn’t answer.") }
+        if http.statusCode == 401 || http.statusCode == 403 { throw APIError.message("WeTrakr didn’t accept the sign-in (HTTP \(http.statusCode)). Reconnect it in Connections.") }
+        guard (200..<300).contains(http.statusCode) else {
+            let code = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String
+            throw APIError.rejected(http.statusCode, code ?? "Provider returned HTTP \(http.statusCode).")
+        }
+        let next = http.value(forHTTPHeaderField: "X-Pagination-Next").flatMap { $0.isEmpty ? nil : $0 }
+        return (data, next)
     }
     /// The Trakt account a token belongs to (`GET /users/settings`).
     func traktUsername(clientId: String, accessToken: String) async throws -> String {
@@ -280,10 +320,11 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     private func postForm(_ url: URL, _ body: Data) async throws -> (Data, Int) {
         try await post(url, body, json: false)
     }
-    private func post(_ url: URL, _ body: Data, json: Bool) async throws -> (Data, Int) {
+    private func post(_ url: URL, _ body: Data, json: Bool, extra: [String: String] = [:]) async throws -> (Data, Int) {
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.httpMethod = "POST"
         request.setValue(json ? "application/json" : "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        for (key, value) in extra { request.setValue(value, forHTTPHeaderField: key) }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = body

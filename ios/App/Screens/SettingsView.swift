@@ -444,6 +444,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .simkl: .simkl
         case .mdblist: .mdblist
+        case .wetrakr: .wetrakr
         case .trakt: .trakt
         case .cloudflare: .cloudflare
         }
@@ -453,6 +454,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .simkl: "Simkl"
         case .mdblist: "MDBList"
+        case .wetrakr: "WeTrakr"
         case .trakt: "Trakt"
         case .cloudflare: "TwilDiary"
         }
@@ -462,6 +464,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .simkl: "Watch history, ratings and lists."
         case .mdblist: "Public ratings, watch history and watchlist."
+        case .wetrakr: "Watch history with rewatches, ratings and lists."
         case .trakt: "Watch history, ratings and watchlist."
         case .cloudflare: "Hosted diary sync."
         }
@@ -471,6 +474,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .simkl: "Watch history · Ratings · Plan to watch · Dropped"
         case .mdblist: "Watch history · Ratings · Watchlist · Dropped shows"
+        case .wetrakr: "Watch history · Ratings · Watchlist · Favourites · Dropped"
         case .trakt, .cloudflare: "Watch history · Ratings · Watchlist"
         }
     }
@@ -507,7 +511,7 @@ struct ExternalProviderConnectionView: View {
     }
 
     private var tracker: MainTracker? {
-        switch provider { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .cloudflare: nil }
+        switch provider { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .cloudflare: nil }
     }
 
     /// One switch: whether your edits go to this service, and what's still on its way.
@@ -609,7 +613,7 @@ struct ExternalProviderConnectionView: View {
                         }
                         Link(destination: URL(string: "https://trakt.tv/oauth/applications")!) { SettingsLinkLabel(text: "Open Trakt’s app settings") }
                     }
-                case .simkl, .mdblist:
+                case .simkl, .mdblist, .wetrakr:
                     // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
                     // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
                     let appId = appClientId ?? ProfileText.line(signInAppID)
@@ -648,6 +652,8 @@ struct ExternalProviderConnectionView: View {
                                 Spacer(minLength: 8)
                                 SettingsInfoButton(text: provider == .mdblist
                                     ? "Create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here or under Connections → All keys."
+                                    : provider == .wetrakr
+                                    ? "In WeTrakr, open Settings → API, create an app with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID (the app key) here."
                                     : "Create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here or under Connections → All keys.")
                             }
                             Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : "Paste your \(displayName) client ID.")
@@ -657,7 +663,7 @@ struct ExternalProviderConnectionView: View {
                                 .focused($appIDFocused)
                                 .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
-                            Link(destination: URL(string: provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/")!) {
+                            Link(destination: URL(string: provider == .simkl ? "https://simkl.com/settings/developer/" : provider == .wetrakr ? "https://api.wetrakr.com/" : "https://mdblist.com/developer/")!) {
                                 SettingsLinkLabel(text: "Open \(displayName)’s developer page")
                             }
                         }
@@ -674,6 +680,7 @@ struct ExternalProviderConnectionView: View {
         case .simkl: apps?.simkl
         case .mdblist: apps?.mdblist
         case .trakt: apps?.trakt
+        case .wetrakr: nil
         case .cloudflare: nil
         }
         return listed.flatMap { $0.isEmpty ? nil : $0 } ?? ProviderAppIDs.id(for: provider)

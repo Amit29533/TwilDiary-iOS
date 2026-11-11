@@ -6,7 +6,7 @@ import Foundation
 // service can't hold stays in Cloudflare. Read-only for now: nothing here writes anywhere.
 
 public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
-    case trakt, simkl, mdblist
+    case trakt, simkl, mdblist, wetrakr
     public var id: String { rawValue }
 
     /// What the service can hold as the diary. Anything it can't stays in Cloudflare.
@@ -22,7 +22,7 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 
     public var name: String {
-        switch self { case .trakt: "Trakt"; case .simkl: "Simkl"; case .mdblist: "MDBList" }
+        switch self { case .trakt: "Trakt"; case .simkl: "Simkl"; case .mdblist: "MDBList"; case .wetrakr: "WeTrakr" }
     }
 
     public var capabilities: Capabilities {
@@ -30,6 +30,8 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         case .trakt: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: 500, changeCheck: true)
         case .simkl: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: 140, changeCheck: true)
         case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true)
+        // WeTrakr keeps every play, favourites and dropped titles, and its journal names what changed.
+        case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true)
         }
     }
 
@@ -39,6 +41,7 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         case .trakt: "History with rewatches, ratings, watchlist, favourites, dropped shows, notes up to 500 characters."
         case .simkl: "History (one watch per episode), ratings, plan to watch, dropped, notes up to 140 characters. Best for anime."
         case .mdblist: "History, ratings, watchlist and dropped. No notes or favourites."
+        case .wetrakr: "History with rewatches, ratings, watchlist, favourites and dropped. Notes stay in TwilDiary."
         }
     }
 

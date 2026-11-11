@@ -184,7 +184,7 @@ struct FilterPill: View {
 /// Each service's own current logo, in its own colours (from the service's site), sized like a
 /// settings icon. Nothing is redrawn or reduced to a name.
 struct BrandLogo: View {
-    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, cloudflare, anilist, imdb, myanimelist, metacritic, rottenTomatoes, letterboxd }
+    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, wetrakr, cloudflare, anilist, imdb, myanimelist, metacritic, rottenTomatoes, letterboxd }
     let service: Service
     var size: CGFloat = 34
     var body: some View {
@@ -197,6 +197,9 @@ struct BrandLogo: View {
             case .tmdb: Image("tmdb-logo").resizable().scaledToFit().padding(size * 0.04)
             case .simkl: Image("brand-simkl").resizable().scaledToFit().clipShape(corner)
             case .mdblist: Image("brand-mdblist").resizable().scaledToFit().clipShape(corner)
+            // WeTrakr's "we" mark on its violet (drawn here; no image asset yet).
+            case .wetrakr: Text("we").font(.system(size: size * 0.46, weight: .black, design: .rounded)).tracking(-size * 0.03)
+                .foregroundStyle(.white).frame(width: size, height: size).background(Color(webHex: "#4b3df5"), in: corner)
             case .cloudflare: Image("brand-cloudflare").resizable().scaledToFit()
                 .padding(size * 0.12).background(.white, in: corner)
             case .anilist: Image("brand-anilist").resizable().scaledToFit()
