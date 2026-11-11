@@ -23,7 +23,17 @@ enum EpisodeRowState: Equatable {
 
 /// The newest watch of each episode of a title, for "Watched today".
 @MainActor enum EpisodeWatchDates {
+    /// Kept until the diary changes: the Episodes page asks on every redraw, and reading each
+    /// watch's date again was the page's biggest cost for a long show.
+    private static var saved: (key: String, value: [String: Date])?
     static func latest(_ store: DiaryStore, titleID: String) -> [String: Date] {
+        let key = titleID + "|" + store.homeWorkspaceRevision.uuidString
+        if let saved, saved.key == key { return saved.value }
+        let value = compute(store, titleID: titleID)
+        saved = (key, value)
+        return value
+    }
+    private static func compute(_ store: DiaryStore, titleID: String) -> [String: Date] {
         var result: [String: Date] = [:]
         for event in store.titleScope(titleID).activeEvents where event.titleId == titleID {
             guard let id = event.episodeId, let date = DiaryDate.parse(event.watchedAt ?? event.recordedAt) else { continue }

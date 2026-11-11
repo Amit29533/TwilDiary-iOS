@@ -214,6 +214,9 @@ import UIKit
 @MainActor final class TabBarScrollUpRestorer: NSObject, UIGestureRecognizerDelegate {
     private weak var controller: UITabBarController?
     private var restored = false
+    /// The bar shrinks only after a scroll down (finger moving up); until then it's full size and a
+    /// scroll up has nothing to bring back. Without this, every drag up pumped the bar.
+    private var shrunk = false
     private lazy var watcher: UIPanGestureRecognizer = {
         let gesture = UIPanGestureRecognizer(target: self, action: #selector(track(_:)))
         gesture.cancelsTouchesInView = false
@@ -233,9 +236,11 @@ import UIKit
         case .changed:
             guard !restored, let controller, controller.tabBarMinimizeBehavior == .onScrollDown else { return }
             let moved = gesture.translation(in: controller.view)
-            // A finger moving down the screen scrolls the page up.
-            guard moved.y > 24, moved.y > abs(moved.x) * 1.5 else { return }
-            restored = true
+            // A finger moving up scrolls the page down: the system shrinks the bar.
+            if moved.y < -24, -moved.y > abs(moved.x) * 1.5 { shrunk = true; return }
+            // A finger moving down the screen scrolls the page up: bring the bar back, once.
+            guard shrunk, moved.y > 24, moved.y > abs(moved.x) * 1.5 else { return }
+            restored = true; shrunk = false
             // There's no "expand" call: switching shrinking off expands the bar; it's back on at once
             // for the next scroll down. The switch runs inside a spring, and the bar grows in from
             // slightly smaller and dimmer, so it eases back instead of popping.

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The animated splash: TwilDiary's star springs in and turns inside a violet glow, and a ring of
-/// small sparkles bursts out (about 0.65 s). It follows the black launch
+/// The animated splash: TwilDiary's star springs in and turns, on its own with no glow or
+/// sparkles (about 0.65 s). It follows the black launch
 /// screen without a seam, stays (gently breathing) only while the diary is still opening, then
 /// lifts away. Reduce Motion: a plain fade.
 struct SplashView: View {
@@ -19,29 +19,12 @@ struct SplashView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            // The glow behind the mark.
-            RadialGradient(colors: [violet.opacity(0.55), violet.opacity(0.12), .clear], center: .center, startRadius: 4, endRadius: 190)
-                .frame(width: 380, height: 380)
-                .scaleEffect(glow ? (breathing ? 1.08 : 1) : 0.3)
-                .opacity(glow ? (breathing ? 0.85 : 1) : 0)
-                .offset(y: -40)
-                .blur(radius: 6)
             VStack(spacing: 26) {
                 ZStack {
-                    // Sparkles bursting out of the mark.
-                    ForEach(0..<8, id: \.self) { index in
-                        let angle = Double(index) / 8 * 2 * .pi + .pi / 8
-                        let reach: CGFloat = index.isMultiple(of: 2) ? 88 : 64
-                        BrandMark().fill(violet)
-                            .frame(width: index.isMultiple(of: 2) ? 12 : 8, height: index.isMultiple(of: 2) ? 12 : 8)
-                            .offset(x: burst ? cos(angle) * reach : 0, y: burst ? sin(angle) * reach : 0)
-                            .scaleEffect(burst ? 1 : 0.2)
-                            .opacity(burst ? 0 : (markIn ? 1 : 0))
-                    }
+                    // Just the star (owner's choice: no glow or sparkles around it).
                     BrandMark()
                         .fill(LinearGradient(colors: [.white, violet], startPoint: .top, endPoint: .bottom))
                         .frame(width: 78, height: 78)
-                        .shadow(color: violet.opacity(0.8), radius: glow ? 22 : 0)
                         .rotationEffect(.degrees(turned ? 0 : -90))
                         .scaleEffect(markIn ? (breathing ? 1.04 : 1) : 0.2)
                         .opacity(markIn ? 1 : 0)

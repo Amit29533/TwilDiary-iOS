@@ -120,6 +120,8 @@ enum TraktDelivery: Equatable, Sendable {
     case rejected
 
     static func of(_ error: Error) -> TraktDelivery {
+        // Our own cool-down after the service asked us to slow down: nothing was sent.
+        if let error = error as? APIError, case .message(let text) = error, text.contains("slow down") { return .retryLater }
         if let error = error as? TraktWriteError {
             switch error.status {
             case 401, 403: return .authBlocked
@@ -181,6 +183,7 @@ enum ServiceRemovals {
         UserDefaults.standard.set(on, forKey: Self.localKey)
         localOnly = on
         generation = UUID(); pending = []; token = nil; report = nil; plan = nil
+        resetSender()
         file = on ? Self.localFile : traktFile
         library = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
         if on, library == nil {
@@ -201,7 +204,7 @@ enum ServiceRemovals {
             guard session == generation, let token else { return }
             let client = TraktDirectClient(token: token)
             // Edits made offline go first; still offline means there's nothing to read either.
-            guard await sendPending(client, owner: token.username, session: session) else { return }
+            guard await sendPending(client, owner: token.username, session: session, store: store) else { return }
             var requests = 1
             let activities = try TraktDecode.activities(from: try await client.get("/sync/last_activities").data)
             var library = self.library ?? TraktLibrary()
@@ -248,12 +251,16 @@ enum ServiceRemovals {
             self.library = library
             save(library)
             if store.traktHoldsDiary { rememberSeen(library) }
+            // The diary on screen first; the comparison follows.
+            if store.diaryFromTrakt { store.applyDiarySource() }
             // Compare with the server's diary (the record until the switch-over), not the Trakt view;
             // after it, only what that old copy has and Trakt lacks altogether.
+            // The comparison and the plan read the whole library: worked out in the background.
+            let analysis = await analysis(library, store: store)
+            guard session == generation else { return }
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
-                            skipped: skipped, comparison: comparison(library, store: store))
-            plan = matchPlan(store: store)
-            if store.diaryFromTrakt { store.applyDiarySource() }
+                            skipped: skipped, comparison: analysis.comparison)
+            plan = analysis.plan
             autoFillIfNeeded(store: store)
         } catch {
             if !Task.isCancelled, session == generation { self.error = error.localizedDescription }
@@ -308,14 +315,16 @@ enum ServiceRemovals {
     /// has, unless your change in the diary is newer than Trakt's last change to that list (the
     /// newer change wins). Without a time for the diary change, Trakt's removal stands.
     private func settled(_ library: TraktLibrary, _ diary: Workspace) -> Set<String> {
-        // Removals on Trakt switched off: the diary puts back what Trakt no longer has.
-        guard ServiceRemovals.apply else { return [] }
         loadSeen()
-        let known = copied.union(seenOnTrakt)
+        return Self.settled(library, diary, known: copied.union(seenOnTrakt), removals: ServiceRemovals.apply)
+    }
+    nonisolated static func settled(_ library: TraktLibrary, _ diary: Workspace, known: Set<String>, removals: Bool) -> Set<String> {
+        // Removals on Trakt switched off: the diary puts back what Trakt no longer has.
+        guard removals else { return [] }
         let plan = TraktWritePlan.make(library: library, workspace: diary, fillOnly: true)
         return plan.tokens.filter { token in
             guard known.contains(token) else { return false }
-            guard let mine = Self.diaryTime(token, diary), let theirs = Self.traktTime(token, library) else { return true }
+            guard let mine = diaryTime(token, diary), let theirs = traktTime(token, library) else { return true }
             return mine <= theirs
         }
     }
@@ -376,16 +385,10 @@ enum ServiceRemovals {
         return (movies.0 + shows.0, movies.1 + shows.1, movies.2 + shows.2)
     }
 
+    /// Written in the background (a run of edits writes once); the copy on screen is the record
+    /// until then, and the next check saves it again if a write fails.
     private func save(_ library: TraktLibrary) {
-        do {
-            let folder = file.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try JSONEncoder().encode(library).write(to: file, options: [.atomic, .completeFileProtection])
-            var values = URLResourceValues(); values.isExcludedFromBackup = true
-            var url = folder; try url.setResourceValues(values)
-        } catch {
-            // The read still shows until the app closes; the next check saves it again.
-        }
+        BackgroundFiles.save(library, to: file, protected: true, excludeFolderFromBackup: true)
     }
     // MARK: Phase 2: make Trakt match the diary
 
@@ -415,6 +418,17 @@ enum ServiceRemovals {
     private func comparison(_ library: TraktLibrary, store: DiaryStore) -> TraktComparison {
         let fill = store.traktHoldsDiary
         return TraktComparison.compare(library, with: store.serverDiary, oneWay: fill, except: fill ? settled(library, store.serverDiary) : [])
+    }
+    /// The comparison with the diary and the plan for "Make Trakt match", away from the main thread.
+    private func analysis(_ library: TraktLibrary, store: DiaryStore) async -> (comparison: TraktComparison, plan: TraktWritePlan) {
+        let fill = store.traktHoldsDiary, diary = store.serverDiary
+        loadSeen()
+        let known = copied.union(seenOnTrakt), removals = ServiceRemovals.apply
+        return await Task.detached(priority: .utility) {
+            let except = fill ? Self.settled(library, diary, known: known, removals: removals) : []
+            return (TraktComparison.compare(library, with: diary, oneWay: fill, except: except),
+                    TraktWritePlan.make(library: library, workspace: diary, fillOnly: fill, except: except))
+        }.value
     }
     /// Things already copied from the old server copy into Trakt (never offered twice, so
     /// something you later take off Trakt stays off).
@@ -532,43 +546,58 @@ enum ServiceRemovals {
     /// (no connection, Trakt busy or down, sign-in to renew, or an answer lost on the way, which is
     /// checked against Trakt before anything is sent twice). Only a real refusal throws, and so
     /// does a title Trakt couldn't find: the caller then leaves the phone's copy unchanged.
-    func write(_ path: String, body: [String: Any], store: DiaryStore) async throws {
+    /// An edit, the way Cinopsys makes it: kept on the phone (in order) while the screen already
+    /// shows it, and sent to Trakt at once in the background (with the next sync when Instant sync
+    /// is off or you're offline). An edit Trakt refuses puts the screen back as Trakt has it, and
+    /// says so. `resolve`: a removal of plays Trakt has no id for here yet (just added), looked up
+    /// in Trakt's history at their time when its turn comes.
+    func write(_ path: String, body: [String: Any], store: DiaryStore, resolve: Bool = false) throws {
         if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
         if localOnly { return }  // On this phone: the copy is the diary.
         let data = try JSONSerialization.data(withJSONObject: body)
+        pending.append(PendingWrite(path: path, body: data, owner: token?.username, resolve: resolve ? true : nil))
+        if instantSync { flush(store: store) }
+    }
+    @ObservationIgnored private var flushing = false
+    @ObservationIgnored private var sending = false
+    /// The edit being sent right now (Undo leaves it alone: it may already be on Trakt).
+    @ObservationIgnored private var inFlight: String?
+    @ObservationIgnored private var retry: Task<Void, Never>?
+    @ObservationIgnored private var retries = 0
+    private func resetSender() {
+        flushing = false; sending = false; inFlight = nil; retries = 0
+        retry?.cancel(); retry = nil
+    }
+    /// Sends what's waiting now, in the background; a quiet read then gives new plays their Trakt ids.
+    func flush(store: DiaryStore) {
+        guard !flushing, !localOnly, !store.isPreview, !pending.isEmpty else { return }
+        flushing = true
         let session = generation
-        // Instant sync off: the edit waits with the others and goes with the next sync, in order.
-        if !instantSync { pending.append(PendingWrite(path: path, body: data, owner: token?.username)); return }
-        do {
-            if token?.usable != true { token = try await store.traktToken() }
-        } catch {
-            // Nothing has left the phone yet.
-            guard session == generation else { throw CancellationError() }
-            pending.append(PendingWrite(path: path, body: data, owner: token?.username)); return
+        Task { [weak self] in
+            guard let self else { return }
+            var sent = false
+            do {
+                if self.token?.usable != true { self.token = try await store.traktToken() }
+                if session == self.generation, let token = self.token {
+                    sent = await self.sendPending(TraktDirectClient(token: token), owner: token.username, session: session, store: store)
+                }
+            } catch {}
+            guard session == self.generation else { return }
+            self.flushing = false
+            if sent { self.refreshSoon(store: store) } else { self.retryLater(store: store) }
         }
-        guard session == generation, let token else { throw CancellationError() }
-        if !pending.isEmpty { pending.append(PendingWrite(path: path, body: data, owner: token.username)); return }
-        try await pace()
-        let reply: Data
-        do {
-            reply = try await TraktDirectClient(token: token).post(path, body: data)
-        } catch {
-            guard session == generation else { throw CancellationError() }
-            switch TraktDelivery.of(error) {
-            case .rejected: throw error
-            case .authBlocked:
-                pending.append(PendingWrite(path: path, body: data, owner: token.username))
-                self.error = "Trakt needs you to reconnect. Your changes are kept and sent once it’s reconnected."
-                return
-            case .uncertain:
-                pending.append(PendingWrite(path: path, body: data, owner: token.username, uncertain: true)); return
-            case .notSent, .retryLater:
-                pending.append(PendingWrite(path: path, body: data, owner: token.username)); return
-            }
-        }
-        if Self.notFoundCount(reply) > 0 {
-            refreshSoon(store: store)
-            throw APIError.message("Trakt couldn’t find this title by its TMDB id, so it wasn’t changed there.")
+    }
+    /// Couldn't send yet (offline, Trakt busy): tries again in 30 seconds, ten times at most; after
+    /// that the next sync sends it (opening the app, every ten minutes, Sync now).
+    private func retryLater(store: DiaryStore) {
+        guard retry == nil, !pending.isEmpty, retries < 10 else { return }
+        retries += 1
+        let session = generation
+        retry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard let self, !Task.isCancelled, session == self.generation else { return }
+            self.retry = nil
+            self.flush(store: store)
         }
     }
 
@@ -606,64 +635,139 @@ enum ServiceRemovals {
     // MARK: Edits waiting for a connection
 
     struct PendingWrite: Codable, Equatable {
+        /// Names this edit while it waits (sending and Undo go by it).
+        var id: String? = UUID().uuidString
         let path: String
         let body: Data
         /// The Trakt account it was made for; never sent under another one.
         var owner: String?
         /// The answer was lost: Trakt may already have it (checked before sending again).
         var uncertain: Bool?
+        /// Plays to remove that Trakt has no id for here yet: found in its history at their time first.
+        var resolve: Bool?
     }
     /// Kept on the phone (in order) until Trakt takes them.
     private(set) var pending: [PendingWrite] = TraktDirectStore.loadPending() {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(pending), forKey: "trakt.pendingWrites") }
     }
     nonisolated private static func loadPending() -> [PendingWrite] {
-        (UserDefaults.standard.data(forKey: "trakt.pendingWrites")).flatMap { try? JSONDecoder().decode([PendingWrite].self, from: $0) } ?? []
+        let saved = (UserDefaults.standard.data(forKey: "trakt.pendingWrites")).flatMap { try? JSONDecoder().decode([PendingWrite].self, from: $0) } ?? []
+        return saved.map { write in
+            var write = write
+            if write.id == nil { write.id = UUID().uuidString }
+            return write
+        }
     }
     /// Sends what's waiting, oldest first; false while Trakt can't take them yet (then nothing is
     /// read either, so the phone keeps showing your edits). A watch whose answer was lost is first
     /// looked up in Trakt's history at its time, and only the plays missing there are sent, so a
     /// play is never doubled. An edit Trakt refuses, or one made for another Trakt account, is
     /// dropped and said: Trakt is the record, and the read that follows shows what it kept.
-    private func sendPending(_ client: TraktDirectClient, owner: String, session: UUID) async -> Bool {
+    private func sendPending(_ client: TraktDirectClient, owner: String, session: UUID, store: DiaryStore?) async -> Bool {
+        // One sender at a time (an edit's send and a sync's), so nothing goes twice.
+        guard !sending else { return false }
+        sending = true
+        defer { if session == generation { sending = false; inFlight = nil } }
         while let next = pending.first {
             guard session == generation, !Task.isCancelled else { return false }
             if let other = next.owner, other != owner {
-                pending.removeFirst()
+                pending.removeAll { $0.id == next.id }
                 self.error = "An edit kept for another Trakt account was discarded."
                 continue
             }
+            inFlight = next.id
+            var body: Data? = next.body
             do {
-                var body: Data? = next.body
-                if next.uncertain == true, next.path == "/sync/history" {
-                    body = try await missingPlays(next.body, client: client)
-                }
+                // Looking plays up first: a failed look-up keeps the edit for the next try.
+                if next.resolve == true { body = try await resolvedRemoval(next.body, client: client) }
+                else if next.uncertain == true, next.path == "/sync/history" { body = try await missingPlays(next.body, client: client) }
+            } catch { return false }
+            do {
                 guard session == generation else { return false }
                 if let body {
                     try await pace()
                     let reply = try await client.post(next.path, body: body)
                     guard session == generation else { return false }
-                    if Self.notFoundCount(reply) > 0 { self.error = "Trakt couldn’t find a title from an edit made offline, so it wasn’t changed there." }
+                    if Self.notFoundCount(reply) > 0 { refused("Trakt couldn’t find a title by its TMDB id, so it wasn’t changed there.", store: store) }
                 }
-                pending.removeFirst()
+                pending.removeAll { $0.id == next.id }
             } catch {
                 guard session == generation, !Task.isCancelled else { return false }
                 switch TraktDelivery.of(error) {
                 case .notSent, .retryLater:
                     return false
                 case .uncertain:
-                    pending[0].uncertain = true
+                    if let index = pending.firstIndex(where: { $0.id == next.id }) { pending[index].uncertain = true }
                     return false
                 case .authBlocked:
                     self.error = "Trakt needs you to reconnect. Your changes are kept and sent once it’s reconnected."
+                    store?.error = self.error
                     return false
                 case .rejected:
-                    pending.removeFirst()
-                    self.error = "An edit made offline was refused by Trakt: " + error.localizedDescription
+                    pending.removeAll { $0.id == next.id }
+                    refused("Trakt refused a change: " + error.localizedDescription, store: store)
+                }
+            }
+            inFlight = nil
+        }
+        retries = 0
+        return true
+    }
+    /// A change Trakt refused or couldn't place: you're told, and the screen goes back to what
+    /// Trakt has (each list an edit touched is read again).
+    private func refused(_ message: String, store: DiaryStore?) {
+        error = message
+        store?.error = message
+        if let store { refreshSoon(store: store, after: 1) }
+    }
+    /// A removal of plays Trakt has no id for here yet (just added): each is found in Trakt's
+    /// history at its time (the same title, season and episode, the nearest within a minute),
+    /// as Cinopsys does, and removed by its id. nil when none is there (nothing to remove).
+    private func resolvedRemoval(_ body: Data, client: TraktDirectClient) async throws -> Data? {
+        let wanted = Self.requestedPlays(body)
+        let times = wanted.compactMap(\.when)
+        guard let first = times.min(), let last = times.max() else { return nil }
+        let format = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        let window = ["start_at": format.format(first.addingTimeInterval(-60)), "end_at": format.format(last.addingTimeInterval(60)), "limit": "1000"]
+        let found = try TraktDecode.history(from: try await client.get("/sync/history", query: window).data).items
+        let ids = Self.historyIDs(for: wanted, in: found)
+        guard !ids.isEmpty else { return nil }
+        return try JSONSerialization.data(withJSONObject: ["ids": ids])
+    }
+    /// Each wanted play's Trakt history id: the same title, season and episode, the nearest within a minute.
+    nonisolated static func historyIDs(for wanted: [(tmdb: Int?, movie: Bool, season: Int?, episode: Int?, when: Date?)], in found: [TraktPlay]) -> [Int64] {
+        var ids: [Int64] = []
+        for play in wanted {
+            guard let when = play.when else { continue }
+            var best: (id: Int64, gap: TimeInterval)?
+            for candidate in found where candidate.historyId > 0 && !ids.contains(candidate.historyId)
+                && candidate.title.tmdbId == play.tmdb && (candidate.title.kind == .movie) == play.movie
+                && candidate.season == play.season && candidate.episode == play.episode {
+                guard let at = candidate.watchedAt.flatMap(DiaryDate.parse) else { continue }
+                let gap = abs(at.timeIntervalSince(when))
+                if gap <= 60, gap < (best?.gap ?? .infinity) { best = (candidate.historyId, gap) }
+            }
+            if let best { ids.append(best.id) }
+        }
+        return ids
+    }
+    /// The plays a Trakt-shaped body names: the movie, or the show's episode, with its time.
+    nonisolated static func requestedPlays(_ body: Data) -> [(tmdb: Int?, movie: Bool, season: Int?, episode: Int?, when: Date?)] {
+        guard let root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return [] }
+        func tmdb(_ item: [String: Any]) -> Int? { ((item["ids"] as? [String: Any])?["tmdb"] as? NSNumber)?.intValue }
+        var plays: [(tmdb: Int?, movie: Bool, season: Int?, episode: Int?, when: Date?)] = []
+        for movie in (root["movies"] as? [[String: Any]]) ?? [] {
+            plays.append((tmdb(movie), true, nil, nil, DiaryDate.parse(movie["watched_at"] as? String)))
+        }
+        for show in (root["shows"] as? [[String: Any]]) ?? [] {
+            for season in (show["seasons"] as? [[String: Any]]) ?? [] {
+                for episode in (season["episodes"] as? [[String: Any]]) ?? [] {
+                    plays.append((tmdb(show), false, (season["number"] as? NSNumber)?.intValue, (episode["number"] as? NSNumber)?.intValue,
+                                  DiaryDate.parse(episode["watched_at"] as? String)))
                 }
             }
         }
-        return true
+        return plays
     }
     /// Puts a backup back into Trakt while Trakt holds the diary: only what Trakt lacks (plays
     /// not there at their time, ratings Trakt has none for, Planned for titles never watched,
@@ -727,7 +831,7 @@ enum ServiceRemovals {
     func cancelPending(watchedAt when: String) -> Bool {
         let before = pending.count
         // One whose answer was lost may already be on Trakt: that one is read and removed there instead.
-        pending.removeAll { $0.uncertain != true && $0.path == "/sync/history" && String(decoding: $0.body, as: UTF8.self).contains(when) }
+        pending.removeAll { $0.id != inFlight && $0.uncertain != true && $0.path == "/sync/history" && String(decoding: $0.body, as: UTF8.self).contains(when) }
         return pending.count != before
     }
     /// For a history write whose answer was lost: Trakt's history at that time (a minute either
@@ -871,6 +975,8 @@ enum ServiceRemovals {
         // so they're cleared here; otherwise "busy" would stay on and stop the automatic reads.
         running = false; writing = false; writeProgress = nil
         library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil; pending = []
+        resetSender()
+        BackgroundFiles.cancel(file)
         seenOnTrakt = []; seenLoaded = true; autoTried = []
         // The on-this-phone diary is yours alone: leaving it never deletes it.
         if !localOnly { try? FileManager.default.removeItem(at: file) }
@@ -909,6 +1015,8 @@ enum ServiceRemovals {
         let started = Date.now, session = generation, editsAtStart = edits
         defer { if session == generation { running = nil } }
         do {
+            // Edits still waiting go first; while they can't, the phone keeps showing them.
+            if !(pending[tracker] ?? []).isEmpty { guard await sendPending(tracker, store: store, session: session) else { return } }
             let config = await store.freshProviderConfig(tracker.provider)
             let client = store.directClient
             var requests = 1
@@ -1021,9 +1129,16 @@ enum ServiceRemovals {
             libraries[tracker] = library
             save(library, tracker)
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
+            // The comparison and the plan read the whole library: worked out in the background.
+            let diary = store.diaryToMatch, planned = store.diaryService != tracker && store.serverRecord != tracker, read = library
+            let (comparison, plan) = await Task.detached(priority: .utility) {
+                (TraktComparison.compare(read, with: diary, tracker: tracker),
+                 planned ? TraktWritePlan.make(library: read, workspace: diary, tracker: tracker) : nil)
+            }.value
+            guard session == generation else { return }
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
-                                     skipped: library.skipped, comparison: TraktComparison.compare(library, with: store.diaryToMatch, tracker: tracker))
-            plans[tracker] = matchPlan(tracker, store: store)
+                                     skipped: library.skipped, comparison: comparison)
+            plans[tracker] = plan
         } catch {
             if !Task.isCancelled, session == generation { errors[tracker] = error.localizedDescription }
         }
@@ -1042,17 +1157,192 @@ enum ServiceRemovals {
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
     }
     @ObservationIgnored private var refresh: Task<Void, Never>?
-    /// One write with the service's own sign-in (one a second at most).
-    func write(_ tracker: MainTracker, _ path: String, body: [String: Any], store: DiaryStore) async throws {
-        if store.isPreview { throw APIError.message("Writing to \(tracker.name) needs a real \(tracker.name) connection.") }
-        try await pace()
-        let config = await store.freshProviderConfig(tracker.provider)
-        let reply = try await store.directClient.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body))
-        // A title the service couldn't find wasn't changed: the caller leaves the phone's copy as is.
-        if TraktDirectStore.notFoundCount(reply) > 0 {
-            refreshSoon(tracker, store: store)
-            throw APIError.message("\(tracker.name) couldn’t find this title by its TMDB id, so it wasn’t changed there.")
+    // MARK: Edits waiting for the service (as Cinopsys keeps them)
+
+    struct PendingWrite: Codable, Equatable {
+        var id: String? = UUID().uuidString
+        let path: String
+        let body: Data
+    }
+    /// Each service's edits, kept on the phone in order until it takes them.
+    private(set) var pending: [MainTracker: [PendingWrite]] = TrackerPreviewStore.loadPending() {
+        didSet {
+            let saved = Dictionary(uniqueKeysWithValues: pending.map { ($0.key.rawValue, $0.value) })
+            UserDefaults.standard.set(try? JSONEncoder().encode(saved), forKey: "trackers.pendingWrites")
         }
+    }
+    nonisolated private static func loadPending() -> [MainTracker: [PendingWrite]] {
+        guard let data = UserDefaults.standard.data(forKey: "trackers.pendingWrites"),
+              let saved = try? JSONDecoder().decode([String: [PendingWrite]].self, from: data) else { return [:] }
+        var result: [MainTracker: [PendingWrite]] = [:]
+        for (key, writes) in saved {
+            guard let tracker = MainTracker(rawValue: key) else { continue }
+            result[tracker] = writes.map { write in
+                var write = write
+                if write.id == nil { write.id = UUID().uuidString }
+                return write
+            }
+        }
+        return result
+    }
+    /// An edit: kept on the phone (the screen already shows it) and sent at once in the background.
+    func write(_ tracker: MainTracker, _ path: String, body: [String: Any], store: DiaryStore) throws {
+        if store.isPreview { throw APIError.message("Writing to \(tracker.name) needs a real \(tracker.name) connection.") }
+        let data = try JSONSerialization.data(withJSONObject: body)
+        pending[tracker, default: []].append(PendingWrite(path: path, body: data))
+        flush(tracker, store: store)
+    }
+    @ObservationIgnored private var flushing: Set<MainTracker> = []
+    @ObservationIgnored private var sending: Set<MainTracker> = []
+    @ObservationIgnored private var retries: [MainTracker: Int] = [:]
+    @ObservationIgnored private var retryTasks: [MainTracker: Task<Void, Never>] = [:]
+    func flush(_ tracker: MainTracker, store: DiaryStore) {
+        guard !flushing.contains(tracker), !store.isPreview, !(pending[tracker] ?? []).isEmpty else { return }
+        flushing.insert(tracker)
+        let session = generation
+        Task { [weak self] in
+            guard let self else { return }
+            let sent = await self.sendPending(tracker, store: store, session: session)
+            guard session == self.generation else { return }
+            self.flushing.remove(tracker)
+            if sent { self.refreshSoon(tracker, store: store) } else { self.retryLater(tracker, store: store) }
+        }
+    }
+    /// Couldn't send yet: again in 30 seconds, ten times at most; after that with the next sync.
+    private func retryLater(_ tracker: MainTracker, store: DiaryStore) {
+        guard retryTasks[tracker] == nil, !(pending[tracker] ?? []).isEmpty, (retries[tracker] ?? 0) < 10 else { return }
+        retries[tracker, default: 0] += 1
+        let session = generation
+        retryTasks[tracker] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard let self, !Task.isCancelled, session == self.generation else { return }
+            self.retryTasks[tracker] = nil
+            self.flush(tracker, store: store)
+        }
+    }
+    /// Sends the service's waiting edits, oldest first; false while it can't take them yet.
+    private func sendPending(_ tracker: MainTracker, store: DiaryStore, session: UUID) async -> Bool {
+        guard !sending.contains(tracker) else { return false }
+        sending.insert(tracker)
+        defer { if session == generation { sending.remove(tracker) } }
+        let config = await store.freshProviderConfig(tracker.provider)
+        while let next = pending[tracker]?.first {
+            guard session == generation, !Task.isCancelled else { return false }
+            do {
+                try await pace()
+                guard session == generation else { return false }
+                let reply = try await store.directClient.write(config, path: next.path, body: next.body)
+                guard session == generation else { return false }
+                pending[tracker]?.removeAll { $0.id == next.id }
+                if TraktDirectStore.notFoundCount(reply) > 0 {
+                    refused(tracker, "\(tracker.name) couldn’t find a title by its TMDB id, so it wasn’t changed there.", store: store)
+                }
+            } catch {
+                guard session == generation, !Task.isCancelled else { return false }
+                switch Self.delivery(error) {
+                case .rejected:
+                    pending[tracker]?.removeAll { $0.id == next.id }
+                    refused(tracker, "\(tracker.name) refused a change: " + error.localizedDescription, store: store)
+                case .authBlocked:
+                    errors[tracker] = error.localizedDescription
+                    store.error = "\(tracker.name) needs you to reconnect. Your changes are kept and sent once it’s reconnected."
+                    return false
+                case .notSent, .retryLater, .uncertain:
+                    return false
+                }
+            }
+        }
+        retries[tracker] = 0
+        return true
+    }
+    /// What a failed write means: these services keep one watch per episode (or take a rewatch
+    /// on purpose), so an edit whose answer was lost is simply sent again.
+    static func delivery(_ error: Error) -> TraktDelivery {
+        if let error = error as? APIError {
+            switch error {
+            case .rejected(let status, _):
+                if status == 401 || status == 403 { return .authBlocked }
+                return status == 408 || status == 429 || status >= 500 ? .retryLater : .rejected
+            case .message(let text):
+                if text.contains("sign-in") || text.contains("Connect ") || text.contains("Reconnect") { return .authBlocked }
+                if text.contains("busy") || text.contains("slow down") { return .retryLater }
+                return .rejected
+            default:
+                return .retryLater
+            }
+        }
+        let kind = TraktDelivery.of(error)
+        return kind == .rejected ? .rejected : .retryLater
+    }
+    /// Check-in, the way Cinopsys does it on each service: Simkl's and WeTrakr's scrobble/checkin,
+    /// MDBList's checkin (a movie, or the show's next episode). The service logs the watch when it ends.
+    func checkIn(_ tracker: MainTracker, _ title: MediaTitle, episode: Episode?, store: DiaryStore) async throws -> String {
+        if store.isPreview { throw APIError.message("Checking in needs a real \(tracker.name) connection.") }
+        guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so \(tracker.name) can’t find it.") }
+        if title.isSeries && episode == nil { throw APIError.message("There’s no next episode to check in to.") }
+        if tracker == .trakt { return try await TraktDirectStore.shared.checkIn(title, episode: episode, store: store) }
+        let config = await store.freshProviderConfig(tracker.provider)
+        let client = store.directClient
+        let slot = title.isSeries ? "show" : "movie"
+        var path = "/scrobble/checkin"
+        var body: [String: Any] = [:]
+        switch tracker {
+        case .mdblist:
+            path = "/checkin"
+            var media: [String: Any] = ["ids": ["tmdb": tmdb]]
+            if let episode, title.isSeries { media["season"] = episode.season; media["episode"] = episode.number }
+            body[slot] = media
+        case .wetrakr:
+            body[slot] = ["id": try await weTrakrID(title, tmdb: tmdb, config: config, client: client)]
+            if let episode, title.isSeries { body["episode"] = ["season": episode.season, "number": episode.number] }
+            body["app_version"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0"
+        default:
+            body[slot] = ["ids": ["tmdb": tmdb]]
+            if let episode, title.isSeries { body["episode"] = ["season": episode.season, "number": episode.number] }
+        }
+        do { _ = try await client.write(config, path: path, body: try JSONSerialization.data(withJSONObject: body)) }
+        catch APIError.rejected(let status, _) where status == 409 {
+            throw APIError.message("You’re already checked in to something on \(tracker.name). It ends on its own when that finishes.")
+        }
+        refreshSoon(tracker, store: store, after: 30)
+        return title.isSeries ? "Checked in to \(title.name) S\(episode?.season ?? 0) E\(episode?.number ?? 0) on \(tracker.name). It’s logged when the episode ends."
+            : "Checked in to \(title.name) on \(tracker.name). It’s logged when the movie ends."
+    }
+    /// WeTrakr names titles by its own id: from what was read of your WeTrakr library, else its
+    /// look-up by TMDB id (GET /media/external/tmdb/{id}).
+    private func weTrakrID(_ title: MediaTitle, tmdb: Int, config: ExternalProviderConfig, client: DirectProviderClient) async throws -> Int {
+        let kind: TraktTitleRef.Kind = title.isSeries ? .show : .movie
+        if let library = libraries[.wetrakr] {
+            let refs = library.plays.map(\.title) + library.watchlist.map(\.title) + library.favorites.map(\.title)
+                + library.dropped.map(\.title) + library.ratings.map(\.title)
+            if let id = refs.first(where: { $0.tmdbId == tmdb && $0.kind == kind && $0.weTrakrId != nil })?.weTrakrId { return id }
+        }
+        let data = try await client.read(config, path: "/media/external/tmdb/\(tmdb)", query: ["type": title.isSeries ? "show" : "movie"])
+        if let id = Self.weTrakrMatch(data, show: title.isSeries) { return id }
+        throw APIError.message("WeTrakr couldn’t find “\(title.name)”.")
+    }
+    /// The id in WeTrakr's external look-up reply: a list of {id, type}, or one of them, or a list
+    /// under data/results; the first of the right kind.
+    nonisolated static func weTrakrMatch(_ data: Data, show: Bool) -> Int? {
+        let root = try? JSONSerialization.jsonObject(with: data)
+        var matches: [[String: Any]] = []
+        if let list = root as? [[String: Any]] { matches = list }
+        else if let object = root as? [String: Any] {
+            for key in ["data", "results", "matches", "items"] {
+                if let list = object[key] as? [[String: Any]] { matches = list; break }
+            }
+            if matches.isEmpty { matches = [object] }
+        }
+        let wanted: Set<String> = show ? ["show", "shows", "tv", "series"] : ["movie", "movies"]
+        let match = matches.first { item in (item["type"] as? String).map { wanted.contains($0.lowercased()) } ?? true }
+        return (match?["id"] as? NSNumber)?.intValue
+    }
+    /// A refused edit: you're told, and the service is read in full again so the screen shows what it kept.
+    private func refused(_ tracker: MainTracker, _ message: String, store: DiaryStore) {
+        errors[tracker] = message
+        store.error = message
+        libraries[tracker]?.activities = nil
+        refreshSoon(tracker, store: store, after: 1)
     }
     /// Applies an edit to the phone's copy and redraws the diary at once.
     @ObservationIgnored private var edits = 0
@@ -1080,6 +1370,42 @@ enum ServiceRemovals {
     func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
         guard store.diaryService != tracker, store.serverRecord != tracker else { return nil }
         return libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.diaryToMatch, tracker: tracker) }
+    }
+    /// A backup or an import into Simkl, MDBList or WeTrakr while it holds the diary: only what it
+    /// lacks (watches at their dates, ratings where it has none, Planned for titles never
+    /// watched), nothing changed or taken off, so running it twice adds nothing twice.
+    func restore(_ tracker: MainTracker, _ backup: Workspace, store: DiaryStore) async throws -> String {
+        guard writing == nil, running == nil else { throw APIError.message("\(tracker.name) is busy right now. Try again in a moment.") }
+        if store.isPreview { throw APIError.message("Writing to \(tracker.name) needs a real \(tracker.name) connection.") }
+        let session = generation
+        await check(tracker, store: store)
+        guard session == generation else { throw CancellationError() }
+        if let failure = errors[tracker] { throw APIError.message("\(tracker.name) couldn’t be read, so nothing was added. " + failure) }
+        guard let library = libraries[tracker] else { throw APIError.message("\(tracker.name) couldn’t be read, so nothing was added.") }
+        let plan = TraktWritePlan.make(library: library, workspace: backup, tracker: tracker, fillOnly: true)
+        guard !plan.isEmpty else { return "\(tracker.name) already has everything in it." }
+        writing = tracker
+        defer { if session == generation { writing = nil; writeProgress = nil } }
+        let config = await store.freshProviderConfig(tracker.provider)
+        var tally = TraktDirectStore.ReplyTally(), sent = 0
+        let requests = plan.requests()
+        do {
+            for (index, request) in requests.enumerated() {
+                writeProgress = "Adding \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
+                try await pace()
+                guard session == generation else { throw CancellationError() }
+                tally.add(try await store.directClient.write(config, path: request.path, body: request.body))
+                sent += request.count
+            }
+        } catch {
+            writing = nil
+            await check(tracker, store: store)
+            throw APIError.message((sent > 0 ? "Added \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + error.localizedDescription)
+        }
+        writing = nil
+        await check(tracker, store: store)
+        return "Added to \(tracker.name): " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: tracker.name)
+            + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) watches have no date and were left out." : "")
     }
     /// Sends the plan one request a second (each service's own endpoints, within what it keeps),
     /// then reads the service again so the comparison shows the result.
@@ -1185,12 +1511,7 @@ enum ServiceRemovals {
     }
 
     private func save(_ library: TraktLibrary, _ tracker: MainTracker) {
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try JSONEncoder().encode(library).write(to: file(tracker), options: [.atomic, .completeFileProtection])
-            var values = URLResourceValues(); values.isExcludedFromBackup = true
-            var url = folder; try url.setResourceValues(values)
-        } catch { }
+        BackgroundFiles.save(library, to: file(tracker), protected: true, excludeFolderFromBackup: true)
     }
     /// Sign-out: these copies are diary data, so they go with the diary.
     /// Anything already running for this account can no longer save or show its results.
@@ -1198,7 +1519,11 @@ enum ServiceRemovals {
         generation = UUID()
         refresh?.cancel(); refresh = nil
         running = nil; writing = nil; writeProgress = nil
-        libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]
+        libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]; pending = [:]
+        BackgroundFiles.cancel(folder: folder)
+        flushing = []; sending = []; retries = [:]
+        for task in retryTasks.values { task.cancel() }
+        retryTasks = [:]
         try? FileManager.default.removeItem(at: folder)
     }
 }
@@ -1239,7 +1564,7 @@ extension DiaryStore {
             await trakt.check(store: self)
         } else if let tracker = diaryFromTracker {
             let others = TrackerPreviewStore.shared
-            guard others.running == nil, others.writing == nil, due(others.libraries[tracker]?.fetchedAt) else { return }
+            guard others.running == nil, others.writing == nil, due(others.libraries[tracker]?.fetchedAt) || !(others.pending[tracker] ?? []).isEmpty else { return }
             await others.check(tracker, store: self)
         }
     }

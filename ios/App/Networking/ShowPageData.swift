@@ -130,7 +130,7 @@ enum ShowPageRoute: Hashable {
     static func rateEpisode(store: DiaryStore, show: Int, season: Int, episode: Int, episodeID: String, rating: Int?) async throws {
         var saved = EpisodeRatings.all
         let body: [String: Any] = ["shows": [["ids": ["tmdb": show], "seasons": [["number": season, "episodes": [rating.map { ["number": episode, "rating": $0] } ?? ["number": episode]]]]]]]
-        try await TraktDirectStore.shared.write(rating == nil ? "/sync/ratings/remove" : "/sync/ratings", body: body, store: store)
+        try TraktDirectStore.shared.write(rating == nil ? "/sync/ratings/remove" : "/sync/ratings", body: body, store: store)
         saved[episodeID] = rating
         EpisodeRatings.all = saved
     }

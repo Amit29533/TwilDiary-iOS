@@ -10,6 +10,8 @@ public struct LibraryQuery: Equatable, Sendable {
     /// titles the Jellyfin list the phone last read was matched to.
     public var jellyfin = false
     public var jellyfinTitles: Set<String> = []
+    /// Only titles you rated at least this (the filter sheet's "Your rating").
+    public var minScore: Double?
     public var sort = Sort.library
     /// Settings → Language & region: sort "The Bear" under B.
     public var ignoreArticles = false
@@ -51,6 +53,7 @@ public struct LibraryQuery: Equatable, Sendable {
                 && (genres.isEmpty || title.genres.contains { genres.contains($0) })
                 && (tag.isEmpty || title.tags?.contains(tag) == true) && diskMatches && jellyfinMatches
                 && (availability == "all" || confirmed == (availability == "present"))
+                && (minScore.map { least in (title.score ?? 0) >= least } ?? true)
         }
         guard sort != .library else { return selected }
         return selected.sorted { left, right in

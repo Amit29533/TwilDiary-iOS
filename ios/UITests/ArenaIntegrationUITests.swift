@@ -58,12 +58,12 @@ import XCTest
     func testEveryServiceOffersSignInOrYourOwnKey() {
         let app = launch()
         app.tabBars.buttons["Profile"].tap(); openConnections(app)
-        for (row, title, signIn, key) in [("settings-simkl", "Simkl", "simkl-sign-in-unavailable", "simkl-client-id-field"),
-                                          ("settings-mdblist", "MDBList", "mdblist-sign-in-unavailable", "mdblist-api-key-field")] {
+        for (row, title, signIn, key) in [("settings-simkl", "Simkl", "simkl-sign-in", "simkl-client-id-field"),
+                                          ("settings-mdblist", "MDBList", "mdblist-sign-in", "mdblist-api-key-field")] {
             let entry = app.buttons[row]
             reveal(entry, app: app); entry.tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), title)
-            XCTAssertTrue(app.descendants(matching: .any)[signIn].waitForExistence(timeout: 5), "\(title) explains its sign-in")
+            XCTAssertTrue(app.descendants(matching: .any)[signIn].waitForExistence(timeout: 5), "\(title) offers its one-tap sign-in (TwilDiary's app ID is built in)")
             // Your own key is folded away under one button.
             let ownKey = app.buttons[row.replacingOccurrences(of: "settings-", with: "") + "-own-key"]
             reveal(ownKey, app: app); ownKey.tap()

@@ -93,7 +93,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     }
 
     /// A read for the main-tracker preview (Simkl or MDBList): GET with the service's own sign-in.
-    func read(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:]) async throws -> Data {
+    func read(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:], method: String = "GET") async throws -> Data {
         guard config.isAuthenticated else { throw APIError.message("Connect \(config.provider.displayName) first, in Connections.") }
         let base: String, headers: [String: String]
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -109,7 +109,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         var components = URLComponents(string: base + path)!
         if !items.isEmpty { components.queryItems = items }
-        do { return try await send(url: components.url!, method: "GET", headers: headers) }
+        do { return try await send(url: components.url!, method: method, headers: headers) }
         catch APIError.rejected(let status, _) where status == 401 || status == 403 {
             throw APIError.message("\(config.provider.displayName) didn’t accept the sign-in (HTTP \(status)). Reconnect it in Connections.")
         }

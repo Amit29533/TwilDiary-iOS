@@ -359,9 +359,9 @@ struct AiringCalendarView: View {
                     Text("\(progress.watched) of \(progress.aired) watched").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).monospacedDigit()
                     Spacer(minLength: 4)
                     Button { Task { await store.recordViewing(group.title, episode: first.episode, watchedAt: store.now) } } label: {
-                        Text("Watch E\(first.episode.number)").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
+                        Text("Watch E\(first.episode.number)").font(.system(size: 14, weight: .bold)).foregroundStyle(WatchStyle.ink).lineLimit(1)
                             .padding(.horizontal, 14).frame(height: 34)
-                            .background(HomeStyle.chip, in: Capsule())
+                            .background(WatchStyle.fill, in: Capsule())
                             .frame(minHeight: 44).contentShape(Capsule())
                     }.buttonStyle(.springPress).disabled(store.writesBlocked || marking)
                         .accessibilityLabel("Mark S\(first.episode.season) E\(first.episode.number) of \(group.title.name) watched")

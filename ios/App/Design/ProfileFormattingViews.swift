@@ -356,25 +356,40 @@ private struct ProfileRichText: View {
 }
 
 /// A bulleted part of a description ("Awards", "Trivia", "Non-anime roles") as its own card:
-/// the first four items, then the rest on request.
+/// the first four items; "Show all" opens the whole list in a sheet, so the page never grows long
+/// or jumps when it's closed again.
 struct ProfileSectionCard: View {
     let section: ProfileFormattedBiography.Section
     @State private var all = false
     var body: some View {
         ProfileHighlightCard(title: section.title, icon: section.icon) {
             VStack(alignment: .leading, spacing: 9) {
-                ForEach(Array((all ? section.items : Array(section.items.prefix(4))).enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Circle().fill(HomeStyle.chipText).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
-                        ProfileRichText(markdown: item)
-                    }
-                }
+                items(Array(section.items.prefix(4)))
                 if section.items.count > 4 {
-                    Button(all ? "Show less" : "Show all \(section.items.count)") { withAnimation(.smooth(duration: 0.25)) { all.toggle() } }
+                    Button("Show all \(section.items.count)") { all = true }
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain).frame(minHeight: 36)
+                        .accessibilityIdentifier("profile-section-all-" + section.id)
                 }
             }
         }.accessibilityIdentifier("profile-section-" + section.id)
+            .sheet(isPresented: $all) {
+                NavigationStack {
+                    ScrollView { items(section.items).padding(.horizontal, 20).padding(.vertical, 12) }
+                        .background(Color(webHex: "#111116"))
+                        .navigationTitle(section.title).navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { all = false } } }
+                }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+            }
+    }
+    private func items(_ list: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(Array(list.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
+                    Circle().fill(HomeStyle.chipText).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 4 }
+                    ProfileRichText(markdown: item)
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

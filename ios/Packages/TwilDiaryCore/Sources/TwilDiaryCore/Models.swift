@@ -26,6 +26,12 @@ public struct MediaTitle: Codable, Identifiable, Hashable, Sendable {
     /// When the title last changed on the server (ISO 8601): against Trakt, the newer change wins.
     public var updatedAt: String? = nil
     public var isSeries: Bool { category == "show" || category == "anime" }
+    /// A title known only by its TMDB id (an import from another app); its details fill in later.
+    public static func imported(id: String, name: String, series: Bool, year: Int?, tmdbId: Int, status: String, score: Double?, createdAt: String) -> MediaTitle {
+        MediaTitle(id: id, name: name, category: series ? "show" : "movie", year: year, overview: "", poster: nil, backdrop: nil,
+                   communityScore: nil, tmdbId: tmdbId, genres: [], tags: [], runtimeMinutes: nil, status: status, favorite: false,
+                   queued: false, score: score, notes: "", deletedAt: nil, version: 1, seasons: nil, createdAt: createdAt)
+    }
     /// The same title under another category (anime, anime movie…), as you chose it.
     public func withCategory(_ category: String) -> MediaTitle {
         MediaTitle(id: id, name: name, category: category, year: year, overview: overview, poster: poster, backdrop: backdrop,
@@ -58,6 +64,10 @@ public struct Episode: Codable, Identifiable, Hashable, Sendable {
     public let hidden: Bool?
     public let communityScore: Double?
     public var skipped: Bool?
+    /// An episode known only by its number (an import from another app).
+    public static func numbered(id: String, titleId: String, season: Int, number: Int) -> Episode {
+        Episode(id: id, titleId: titleId, season: season, number: number, name: "", overview: "", airedOn: nil, still: nil, hidden: nil, communityScore: nil, skipped: nil)
+    }
 }
 
 public struct WatchEvent: Codable, Identifiable, Hashable, Sendable {
@@ -151,11 +161,18 @@ public struct WatchCard: Codable, Equatable, Sendable {
 public enum DiaryDate {
     private static let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
     private static let wholeSeconds = Date.ISO8601FormatStyle(includingFractionalSeconds: false)
+    /// Made once per time zone and reused: every date on screen asks for it, and building a
+    /// calendar each time was a steady cost while scrolling.
     public static func calendar(timeZone: TimeZone = .current) -> Calendar {
+        calendarLock.lock(); defer { calendarLock.unlock() }
+        if let saved = savedCalendar, saved.timeZone == timeZone { return saved }
         var value = Calendar(identifier: .gregorian)
         value.timeZone = timeZone; value.firstWeekday = 2; value.minimumDaysInFirstWeek = 4
+        savedCalendar = value
         return value
     }
+    private static let calendarLock = NSLock()
+    nonisolated(unsafe) private static var savedCalendar: Calendar?
     public static func parse(_ value: String?) -> Date? {
         guard let value, value.count >= 20, SeasonAdjustment.validDay(String(value.prefix(10))) else { return nil }
         return (try? fractional.parse(value)) ?? (try? wholeSeconds.parse(value))

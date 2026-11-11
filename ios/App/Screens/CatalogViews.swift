@@ -68,6 +68,8 @@ struct CatalogSearchView: View {
     @State private var libraryExpanded = false
     @State private var onlineExpanded = false
     @AppStorage("recentSearches.v1") private var recentJSON = "[]"
+    /// The search bar's AI pill: search by description with Gemini.
+    @AppStorage("search.ai") private var aiSearch = false
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
     var onClose: (() -> Void)? = nil
@@ -94,7 +96,8 @@ struct CatalogSearchView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
-                SearchField(placeholder: universal ? "Movies, shows, anime, people" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard)
+                SearchField(placeholder: universal ? "Movies, shows, anime, people" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard,
+                            ai: universal ? $aiSearch : nil)
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
             if universal { kindChips }
@@ -205,6 +208,8 @@ struct CatalogSearchView: View {
     }
     @ViewBuilder private var universalResults: some View {
         let shown = allResults.filter { kind == .all || $0.kind == kind }
+        // AI on: Gemini's matches for the description first, then the usual results.
+        if aiSearch && kind != .people { SemanticSearchSection(query: normalized) }
         if kind != .people {
             if !shown.isEmpty || loading || failure != nil {
                 Text("SHOWS & MOVIES").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 6)

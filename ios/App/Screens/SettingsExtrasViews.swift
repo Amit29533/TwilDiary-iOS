@@ -96,6 +96,8 @@ struct SyncBackupView: View {
     @AppStorage("confirmDeletions") private var confirmDeletions = true
     @AppStorage(ServiceRemovals.key) private var applyRemovals = true
     @AppStorage(EpisodeNotifications.enabledKey) private var episodeAlerts = false
+    @State private var releaseAlerts = ReleaseAlerts.enabled
+    @State private var importing = false
     @AppStorage(LocalBackups.enabledKey) private var filesBackup = false
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -129,6 +131,15 @@ struct SyncBackupView: View {
                             else { EpisodeNotifications.disable() }
                         })).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-episode-alerts")
+                    SettingsDivider()
+                    SettingsLine(title: "Releases", subtitle: "When a Planned movie comes out to stream, a show you finished gets a new season, or one you watch comes back") {
+                        Toggle("", isOn: Binding(get: { releaseAlerts }, set: { on in
+                            releaseAlerts = on
+                            Task {
+                                if await !ReleaseAlerts.setEnabled(on, store: store) { releaseAlerts = false; localNotice = "Allow notifications for TwilDiary in the Settings app." }
+                            }
+                        })).labelsHidden().tint(theme.accent)
+                    }.accessibilityIdentifier("sync-release-alerts")
                 }
                 SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
@@ -145,10 +156,17 @@ struct SyncBackupView: View {
                     }.accessibilityIdentifier("sync-backup-files")
                     SettingsDivider()
                     GoogleDriveRow()
+                    SettingsDivider()
+                    Button { importing = true } label: {
+                        SettingsLine(title: "Import from another app", subtitle: "Letterboxd, IMDb or TV Time: watches, ratings and watchlist") {
+                            DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+                        }
+                    }.buttonStyle(.plain).accessibilityIdentifier("sync-import")
                 }
                 if let localNotice { Text(localNotice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
         }.diaryScreenBackground().diaryPageNavigation("Sync & backup")
+            .sheet(isPresented: $importing) { ImportHistoryView() }
             .task {
                 refresh = UIApplication.shared.backgroundRefreshStatus
                 if !store.isPreview, let list: BackupList = try? await store.read("/api/backups") {

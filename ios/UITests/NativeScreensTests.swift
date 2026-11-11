@@ -438,9 +438,11 @@ import UIKit
         for _ in 0..<12 { if upcoming.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(upcoming.isHittable); capture("Home upcoming later season"); upcoming.tap()
         let season = app.buttons["title-season"]
-        XCTAssertTrue(season.waitForExistence(timeout: 10)); XCTAssertEqual(season.value as? String, "Season 2")
-        XCTAssertTrue(season.isHittable, "Upcoming navigation must land at Episodes, as the web hash link does")
-        XCTAssertTrue(app.buttons["title-episode-1"].isHittable); capture("Upcoming linked season Episodes")
+        XCTAssertTrue(season.waitForExistence(timeout: 10)); XCTAssertEqual(season.value as? String, "Season 2", "the episode's season is chosen")
+        // The show opens at its top (owner's choice), not scrolled down to Episodes.
+        capture("Upcoming opens the show")
+        for _ in 0..<8 { if season.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(season.isHittable)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].waitAndTap()

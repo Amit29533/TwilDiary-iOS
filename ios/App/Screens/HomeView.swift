@@ -78,6 +78,8 @@ struct HomeView: View {
                             }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                         }
                     }
+                    // Your saved Library filters, each a shelf.
+                    if !SavedFilters.shared.all.isEmpty { HomeSavedShelves() }
                     let seeds = Self.recommendationSeeds(recent)
                     if !seeds.isEmpty { HomeRecommendedShelf(seeds: seeds) }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.

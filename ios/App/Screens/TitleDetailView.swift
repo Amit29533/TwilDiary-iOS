@@ -160,12 +160,15 @@ struct TitleDetailView: View {
                 .disabled(store.writesBlocked).accessibilityIdentifier("title-remove-history")
         }
     }
-    /// "Check in on Trakt" (a movie, or the next episode), when Trakt is connected.
+    /// "Check in on <service>" (a movie, or the next episode): the service holding your diary
+    /// (Simkl, MDBList or WeTrakr), else Trakt when it's connected.
     @ViewBuilder private func checkInButton(_ title: MediaTitle) -> some View {
-        if store.traktSignedInOnPhone || store.traktHoldsDiary {
-            Button("Check in on Trakt", systemImage: "checkmark.circle.badge.questionmark") {
+        if let tracker = store.diaryFromTracker ?? ((store.traktSignedInOnPhone || store.traktHoldsDiary) ? MainTracker.trakt : nil),
+           LiveCheckIn.shared.active == nil {
+            Button("Check in on \(tracker.name)", systemImage: "checkmark.circle.badge.questionmark") {
                 Task {
-                    do { checkInMessage = try await TraktDirectStore.shared.checkIn(title, episode: nextEpisode(title), store: store) }
+                    // The banner above the tab bar shows it from here (time left, Cancel).
+                    do { try await LiveCheckIn.shared.start(tracker, title, episode: nextEpisode(title), store: store) }
                     catch { checkInMessage = error.localizedDescription }
                 }
             }.accessibilityIdentifier("title-check-in")
@@ -407,7 +410,7 @@ struct TitleDetailView: View {
                     } } label: {
                         Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                             .font(.system(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
-                    }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked || store.viewingFrozenServerCopy || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
+                    }.buttonStyle(.diaryWatch).disabled(store.writesBlocked || store.viewingFrozenServerCopy || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
                         .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)
                 if DiaryDate.day(watchDate) != DiaryDate.day(store.now) {

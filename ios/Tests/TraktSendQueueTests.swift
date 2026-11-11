@@ -1,0 +1,53 @@
+import XCTest
+import TwilDiaryCore
+@testable import TwilDiary
+
+/// Edits sent the way Cinopsys sends them: queued, sent in the background, and a play just added
+/// (no Trakt id here yet) found in Trakt's history at its time before it's removed.
+@MainActor final class TraktSendQueueTests: XCTestCase {
+    private func body(_ object: [String: Any]) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+
+    func testRemovalFindsJustAddedPlaysByTheirTime() throws {
+        let show = TraktTitleRef(kind: .show, traktId: 1, tmdbId: 1399, name: "Show")
+        let movie = TraktTitleRef(kind: .movie, traktId: 2, tmdbId: 603, name: "Movie")
+        let found = [
+            TraktPlay(historyId: 10, title: show, season: 1, episode: 2, watchedAt: "2026-11-11T10:00:00.000Z"),
+            TraktPlay(historyId: 11, title: show, season: 1, episode: 2, watchedAt: "2026-11-11T09:00:00.000Z"),  // an older watch: kept
+            TraktPlay(historyId: 12, title: show, season: 1, episode: 3, watchedAt: "2026-11-11T10:00:00.000Z"),  // another episode: kept
+            TraktPlay(historyId: 20, title: movie, watchedAt: "2026-11-11T10:00:01.000Z"),
+        ]
+        let wanted = TraktDirectStore.requestedPlays(try body([
+            "movies": [["ids": ["tmdb": 603], "watched_at": "2026-11-11T10:00:00.000Z"]],
+            "shows": [["ids": ["tmdb": 1399], "seasons": [["number": 1, "episodes": [["number": 2, "watched_at": "2026-11-11T10:00:00.000Z"]]]]]],
+        ]))
+        XCTAssertEqual(wanted.count, 2)
+        XCTAssertEqual(Set(TraktDirectStore.historyIDs(for: wanted, in: found)), [10, 20])
+    }
+
+    func testRemovalLeavesAPlayOutsideTheMinute() throws {
+        let movie = TraktTitleRef(kind: .movie, traktId: 2, tmdbId: 603, name: "Movie")
+        let found = [TraktPlay(historyId: 20, title: movie, watchedAt: "2026-11-11T10:05:00.000Z")]
+        let wanted = TraktDirectStore.requestedPlays(try body(["movies": [["ids": ["tmdb": 603], "watched_at": "2026-11-11T10:00:00.000Z"]]]))
+        XCTAssertEqual(TraktDirectStore.historyIDs(for: wanted, in: found), [], "a watch at another time is never removed")
+    }
+
+    func testFailedSendsAreKeptOrDroppedLikeCinopsys() {
+        XCTAssertEqual(TrackerPreviewStore.delivery(URLError(.notConnectedToInternet)), .retryLater, "offline: kept")
+        XCTAssertEqual(TrackerPreviewStore.delivery(URLError(.timedOut)), .retryLater, "lost answer: sent again")
+        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(503, "down")), .retryLater)
+        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(429, "busy")), .retryLater)
+        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(401, "sign-in")), .authBlocked, "kept until reconnected")
+        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(400, "bad")), .rejected, "refused: dropped, and the screen put back")
+        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.message("Simkl is busy with another change right now. Try again in a minute.")), .retryLater)
+        XCTAssertEqual(TraktDelivery.of(APIError.message("Trakt asked TwilDiary to slow down. It tries again after 10:00.")), .retryLater,
+                       "a cool-down never drops an edit")
+    }
+
+    func testWeTrakrLookUpReadsItsOwnId() throws {
+        func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+        XCTAssertEqual(TrackerPreviewStore.weTrakrMatch(try data([["id": 7, "type": "movie"], ["id": 9, "type": "show"]]), show: true), 9)
+        XCTAssertEqual(TrackerPreviewStore.weTrakrMatch(try data(["id": 42, "type": "movie"]), show: false), 42)
+        XCTAssertEqual(TrackerPreviewStore.weTrakrMatch(try data(["data": [["id": 5, "type": "show"]]]), show: true), 5)
+        XCTAssertNil(TrackerPreviewStore.weTrakrMatch(try data([["id": 7, "type": "movie"]]), show: true), "never a title of the other kind")
+    }
+}

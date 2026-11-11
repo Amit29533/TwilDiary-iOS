@@ -233,6 +233,21 @@ import XCTest
     }
 
     /// Scrolling down shrinks the tab bar; scrolling back up restores it.
+    /// Recorded from outside (simctl): drags up at the top leave the full-size bar alone; a scroll
+    /// down shrinks it and the next drag up brings it back once.
+    func testTabBarNoPumping() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-tabbar-minimize", "--ui-keep-launch-tab", "-launchTab", "home"]
+        app.launch()
+        Thread.sleep(forTimeInterval: 2)
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        func drag(_ dy: Double) { start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45 + dy)), withVelocity: .slow, thenHoldForDuration: 0.1); Thread.sleep(forTimeInterval: 0.8) }
+        drag(0.2); drag(0.2)          // at the top, already full size: nothing should pump
+        drag(-0.3); drag(-0.3)        // scroll down: the bar shrinks
+        drag(0.25)                    // scroll up: it grows back, once
+        drag(0.2)                     // and stays put
+        XCTAssertTrue(app.tabBars.firstMatch.exists)
+    }
     func testTabBarMinimizeSnapshots() {
         capture(tab: "home", name: "tabbar", pages: 3, extra: ["--ui-tabbar-minimize"])
         let app = XCUIApplication()
@@ -345,6 +360,36 @@ import XCTest
             if field.waitForExistence(timeout: 5) { field.tap(); field.typeText("Frieren"); app.keyboards.buttons["search"].firstMatch.tap() }
             Thread.sleep(forTimeInterval: 3)
         }
+    }
+
+    /// Today's look: Home's header logo and Start button, Search's AI pill with the Gemini glow,
+    /// and the full-screen photo viewer with and without its controls.
+    func testNewLookSnapshots() {
+        capture(tab: "home", name: "newlook-home", pages: 1)
+        capture(tab: "search", name: "newlook-ai", pages: 1) { app in
+            let field = app.textFields.firstMatch
+            if field.waitForExistence(timeout: 5) { field.tap(); field.typeText("a boy and his dog") }
+            let ai = app.buttons["search-ai"]
+            if ai.waitForExistence(timeout: 5) { ai.tap() }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-profile-repairs", "--ui-profile-format=cast:172069"]
+        app.launch()
+        Thread.sleep(forTimeInterval: 4)
+        func shot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+        shot("newlook-person")
+        let photos = app.buttons.matching(NSPredicate(format: "identifier ENDSWITH '-photos'")).firstMatch
+        guard photos.waitForExistence(timeout: 5) else { return }
+        photos.tap(); Thread.sleep(forTimeInterval: 2)
+        let first = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Photo'")).firstMatch
+        guard first.waitForExistence(timeout: 5) else { return }
+        first.tap(); Thread.sleep(forTimeInterval: 2.5)
+        shot("newlook-viewer")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap(); Thread.sleep(forTimeInterval: 1)
+        shot("newlook-viewer-hidden")
+        app.swipeLeft(); Thread.sleep(forTimeInterval: 1.5)
+        shot("newlook-viewer-next")
     }
 
     /// A title that isn't in the library (Home → Recommended), top to bottom.

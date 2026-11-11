@@ -17,6 +17,10 @@ struct LibraryView: View {
     @SceneStorage("library.tag") private var tag = ""
     @SceneStorage("library.drive") private var drive = ""
     @SceneStorage("library.favorites") private var favoritesOnly = false
+    /// "Your rating": only titles you rated at least this (0: any).
+    @SceneStorage("library.minScore") private var minScore = 0
+    @State private var namingShelf = false
+    @State private var shelfName = ""
     @State private var showFilters = false
     @State private var showAllGenres = false
     /// The overview's "See all" shows the whole grid until the filters change.
@@ -239,7 +243,7 @@ struct LibraryView: View {
     /// With no filters, the grid opens as an overview: five titles and "+N See all", then the
     /// genres as rows, each opening that genre.
     private var showsOverview: Bool {
-        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && filtered.count > 6
+        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && minScore == 0 && filtered.count > 6
     }
     private var overview: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -363,6 +367,14 @@ struct LibraryView: View {
     // MARK: Filter sheet
 
     private var filterSheet: some View {
+        filterSheetContent
+            .alert("Save as a Home shelf", isPresented: $namingShelf) {
+                TextField("Name", text: $shelfName)
+                Button("Save") { saveShelf() }
+                Button("Cancel", role: .cancel) { }
+            } message: { Text("These filters become a shelf on Home, one tap from these titles.") }
+    }
+    private var filterSheetContent: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -404,8 +416,24 @@ struct LibraryView: View {
                         ForEach(HomeDiskShortcut.all) { disk in sheetChip(disk.label, icon: "internaldrive", on: drive == disk.key) { drive = disk.key } }
                         ForEach(extraDisks) { disk in sheetChip(disk.deviceName + " · " + disk.letters.joined(separator: " / "), icon: "internaldrive", on: drive == disk.key) { drive = disk.key } }
                     }
+                    sheetLabel("Your rating")
+                    InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                        sheetChip("Any", on: minScore == 0) { minScore = 0 }.accessibilityIdentifier("filter-rating-any")
+                        ForEach([6, 7, 8, 9], id: \.self) { least in
+                            sheetChip("\(least)+", on: minScore == least) { minScore = least }.accessibilityIdentifier("filter-rating-\(least)")
+                        }
+                    }
                     sheetLabel("Show")
                     VStack(spacing: 0) {
+                        Button { shelfName = activeFilterNames.joined(separator: " · "); namingShelf = true } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                Text("Save as a Home shelf").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Spacer()
+                            }.padding(.horizontal, 16).frame(minHeight: 58).contentShape(Rectangle())
+                        }.buttonStyle(.plain).disabled(activeFilterNames.isEmpty).opacity(activeFilterNames.isEmpty ? 0.45 : 1)
+                            .accessibilityIdentifier("filter-save-shelf")
+                        SettingsDivider()
                         Toggle(isOn: $favoritesOnly) { Text("Favorites only").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(maxWidth: .infinity, alignment: .leading) }
                             .toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).frame(minHeight: 58).accessibilityIdentifier("filter-favorites")
                         SettingsDivider()
@@ -478,13 +506,20 @@ struct LibraryView: View {
         guard router.libraryRevision > appliedShortcutRevision else { return }
         appliedShortcutRevision = router.libraryRevision
         category = .all; genres = router.libraryGenreShortcut.isEmpty ? [] : [router.libraryGenreShortcut]; drive = router.libraryDiskShortcut; status = "all"; tag = ""; favoritesOnly = false
+        minScore = 0
         switch router.libraryShortcut { case "queue": status = "queue"; case "planned", "watching", "completed", "dropped": status = router.libraryShortcut ?? "all"; case "disk": drive = HomeDiskShortcut.all.first?.key ?? ""; case "add": router.search(); default: break }
+        // A Home shelf's ›: its saved filter, all of it.
+        if let saved = router.librarySavedShortcut {
+            category = LibraryCategory(rawValue: saved.category) ?? .all; status = saved.status; genres = Set(saved.genres)
+            tag = saved.tag; drive = saved.drive; favoritesOnly = saved.favorites; minScore = saved.minScore ?? 0
+            if let order = LibraryQuery.Sort(rawValue: saved.sort) { sort = order }
+        }
     }
-    private var filterScope: String { [category.rawValue, status, genresRaw, tag, drive, String(favoritesOnly), sort.rawValue].joined(separator: "\n") }
+    private var filterScope: String { [category.rawValue, status, genresRaw, tag, drive, String(favoritesOnly), String(minScore), sort.rawValue].joined(separator: "\n") }
     private var collectionTags: [String] { Array(Set(collection.flatMap { $0.tags ?? [] })).sorted() }
     private var collection: [MediaTitle] { store.workspace.activeTitles }
     private var trashCount: Int { store.workspace.titles.count { $0.deletedAt != nil } }
-    private var activeFilterCount: Int { genres.count + (tag.isEmpty ? 0 : 1) + (drive.isEmpty ? 0 : 1) + (favoritesOnly ? 1 : 0) }
+    private var activeFilterCount: Int { genres.count + (tag.isEmpty ? 0 : 1) + (drive.isEmpty ? 0 : 1) + (favoritesOnly ? 1 : 0) + (minScore > 0 ? 1 : 0) }
     private var activeFilterNames: [String] {
         var names: [String] = []
         if category != .all { names.append(category.rawValue) }
@@ -493,9 +528,18 @@ struct LibraryView: View {
         if !tag.isEmpty { names.append(tag) }
         if !drive.isEmpty { names.append(driveLabel) }
         if favoritesOnly { names.append("Favorites") }
+        if minScore > 0 { names.append("Rated \(minScore)+") }
         return names
     }
-    private func clearFilters() { category = .all; status = "all"; genres = []; tag = ""; drive = ""; favoritesOnly = false }
+    private func clearFilters() { category = .all; status = "all"; genres = []; tag = ""; drive = ""; favoritesOnly = false; minScore = 0 }
+    /// Saves what's chosen now (category, status, genres, collection, disk, favourites, rating and
+    /// order) as a shelf on Home.
+    private func saveShelf() {
+        let name = shelfName.trimmingCharacters(in: .whitespacesAndNewlines)
+        SavedFilters.shared.add(SavedFilter(name: name.isEmpty ? activeFilterNames.joined(separator: " · ") : name, category: category.rawValue,
+                                            status: status, genres: genres.sorted(), tag: tag, drive: drive, favorites: favoritesOnly,
+                                            minScore: minScore > 0 ? minScore : nil, sort: sort.rawValue))
+    }
     /// Genres in the current category and status, most common first.
     private var genreCounts: [(String, Int)] {
         let diary = LibraryShelf.make(query(status: status, genres: [], drive: "", favorites: false)).filter { $0.genre != "Without a genre" }.map { ($0.genre, $0.titles.count) }
@@ -546,6 +590,7 @@ struct LibraryView: View {
         // The saved Jellyfin list (JellyfinShelf) works away from home and after sign-out.
         query.jellyfin = status == "jellyfin"; query.jellyfinTitles = status == "jellyfin" ? jellyfin.titleIDs(diary: collection) : []
         query.disk = diskKey(drive)
+        query.minScore = minScore > 0 ? Double(minScore) : nil
         query.sort = sort
         return store.libraryTitles(query, source: ratingSource)
     }

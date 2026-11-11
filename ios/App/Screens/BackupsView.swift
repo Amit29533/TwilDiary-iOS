@@ -181,6 +181,9 @@ struct BackupsView: View {
         if store.traktHoldsDiary {
             return try await TraktDirectStore.shared.restore(try archive.merged(into: Workspace()), store: store)
         }
+        if let tracker = store.diaryFromTracker {
+            return try await TrackerPreviewStore.shared.restore(tracker, try archive.merged(into: Workspace()), store: store)
+        }
         if let service = store.diaryService ?? store.serverRecord {
             throw APIError.message("Restoring a backup isn’t available yet while \(service.name) holds your diary.")
         }

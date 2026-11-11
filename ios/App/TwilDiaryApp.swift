@@ -96,6 +96,8 @@ struct SavedTitleRoute: Hashable {
     var libraryShortcut: String?
     var libraryGenreShortcut = ""
     var libraryDiskShortcut = ""
+    /// A saved filter to open the Library with (a Home shelf's ›).
+    var librarySavedShortcut: SavedFilter?
     var libraryRevision = 0
     var statsRevision = 0
     /// Bumped when Search is tapped while already on Search: the field takes focus (keyboard up).
@@ -142,7 +144,8 @@ struct SavedTitleRoute: Hashable {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         randomPick = RandomPickScope(titleIDs: titleIDs)
     }
-    func library(_ shortcut: String) { if shortcut == "add" { search(); return }; libraryGenreShortcut = ""; libraryDiskShortcut = ""; libraryShortcut = shortcut; libraryRevision += 1; paths[.library] = NavigationPath(); selectedTab = .library }
+    func librarySaved(_ filter: SavedFilter) { library("all"); librarySavedShortcut = filter }
+    func library(_ shortcut: String) { if shortcut == "add" { search(); return }; libraryGenreShortcut = ""; libraryDiskShortcut = ""; librarySavedShortcut = nil; libraryShortcut = shortcut; libraryRevision += 1; paths[.library] = NavigationPath(); selectedTab = .library }
     func libraryGenre(_ genre: String) { library("all"); libraryGenreShortcut = genre }
     func libraryDisk(_ key: String) { library("all"); libraryDiskShortcut = key == "all" ? "" : key }
     func statsToday() { statsRevision += 1; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.statistics); selectedTab = .more }
@@ -218,6 +221,8 @@ struct RootView: View {
                     .ignoresSafeArea(.container)
                     .background(.black)
                     .overlay(alignment: .bottom) { RootNoticeBanner() }
+                    // A check-in running: its banner above the tab bar (time left, Cancel).
+                    .overlay(alignment: .bottom) { CheckInBanner() }
                     // Milestones (a season or show finished, round watch counts) get a starfall over everything.
                     .overlay { CelebrationOverlay() }
             }
@@ -249,10 +254,14 @@ struct RootView: View {
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
+                    // Backups and alerts can wait: they start once the app has settled.
+                    try? await Task.sleep(for: .seconds(4))
+                    guard !Task.isCancelled else { return }
                     await LocalBackups.write(store: store)
                     await ServerBackups.runIfDue(store: store)
                     await GoogleDrive.runIfDue(store: store)
                     await EpisodeNotifications.reschedule(store: store)
+                    await ReleaseAlerts.refresh(store: store)
                     await store.keepDiaryServiceCurrent()
                 }
                 else { store.suspendTraktForBackground() }
@@ -349,6 +358,10 @@ struct RootView: View {
 private struct RootNoticeBanner: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
+        // Above the check-in banner while one is running.
+        notice.padding(.bottom, LiveCheckIn.shared.active == nil ? 0 : 80)
+    }
+    @ViewBuilder private var notice: some View {
         if let notice = store.mutationRefreshNotice {
             // A small pill above the tab bar, not a banner over the page header.
             HStack(spacing: 10) {

@@ -8,12 +8,12 @@ import TwilDiaryCore
 /// tags, Queue, Trash). Details are read again after a week.
 @MainActor final class PhoneCatalog {
     static let shared = PhoneCatalog()
-    private struct Entry: Codable { let title: MediaTitle; let fetchedAt: Date }
+    private struct Entry: Codable, Sendable { let title: MediaTitle; let fetchedAt: Date }
     private let file = URL.applicationSupportDirectory.appending(path: "Trackers/catalog.json")
     private lazy var entries: [String: Entry] = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([String: Entry].self, from: $0) } ?? [:]
     private var filling = false, fillingEpisodes = false
     private var failed: [String: Date] = [:]
-    private struct Episodes: Codable { let list: [CatalogEpisodeFact]; let fetchedAt: Date }
+    private struct Episodes: Codable, Sendable { let list: [CatalogEpisodeFact]; let fetchedAt: Date }
     private let episodesFile = URL.applicationSupportDirectory.appending(path: "Trackers/episodes.json")
     private lazy var episodeEntries: [String: Episodes] = (try? Data(contentsOf: episodesFile)).flatMap { try? JSONDecoder().decode([String: Episodes].self, from: $0) } ?? [:]
     /// Episode lists by show key, for `TraktDiary.addingCatalogEpisodes`.
@@ -55,8 +55,7 @@ import TwilDiaryCore
             }
         }
         if changed {
-            try? FileManager.default.createDirectory(at: episodesFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? JSONEncoder().encode(episodeEntries).write(to: episodesFile, options: .atomic)
+            BackgroundFiles.save(episodeEntries, to: episodesFile)
             store.applyDiarySource()
         }
     }
@@ -66,8 +65,7 @@ import TwilDiaryCore
         var title = TraktDiary.catalogTitle(details)
         if ["movie", "show", "anime", "anime-movie"].contains(category) { title = title.withCategory(category) }
         entries[title.id] = Entry(title: title, fetchedAt: .now)
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder().encode(entries).write(to: file, options: .atomic)
+        BackgroundFiles.save(entries, to: file)
         return title
     }
     /// Titles by key ("tv:1399"), for `TraktDiary.build`.
@@ -102,8 +100,7 @@ import TwilDiaryCore
             }
         }
         if changed {
-            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? JSONEncoder().encode(entries).write(to: file, options: .atomic)
+            BackgroundFiles.save(entries, to: file)
             store.applyDiarySource()
         }
         return true

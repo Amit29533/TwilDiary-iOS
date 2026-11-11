@@ -51,7 +51,7 @@ import TwilDiaryCore
         fileprivate let day: Date
         fileprivate let calendar: Calendar
     }
-    private var homeWorkspaceRevision = UUID()
+    private(set) var homeWorkspaceRevision = UUID()
     private(set) var homeProjection: HomeProjection?
     @ObservationIgnored private var preparedHome: (request: HomeProjectionRequest, workspace: Workspace)?
     @ObservationIgnored private var homeLoadID = UUID()
@@ -556,16 +556,15 @@ import TwilDiaryCore
         guard hasLoadedWorkspace else { return }
         if diaryFromTrakt {
             if let library = TraktDirectStore.shared.library {
-                workspace = TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: confirmedWorkspace, catalog: PhoneCatalog.shared.titles),
-                                                             catalog: PhoneCatalog.shared.episodes)
-                fillServiceOnlyTitles()
+                let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles, episodes = PhoneCatalog.shared.episodes
+                buildDiary { TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: server, catalog: titles), catalog: episodes) }
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
             }
         } else if let tracker = diaryFromTracker {
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
-                workspace = TraktDiary.build(library: library, server: confirmedWorkspace, tracker: tracker, catalog: PhoneCatalog.shared.titles)
-                fillServiceOnlyTitles()
+                let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles
+                buildDiary { TraktDiary.build(library: library, server: server, tracker: tracker, catalog: titles) }
             } else {
                 workspace = outbox.project(onto: confirmedWorkspace)
                 if TrackerPreviewStore.shared.running == nil { Task { await TrackerPreviewStore.shared.check(tracker, store: self) } }
@@ -576,6 +575,26 @@ import TwilDiaryCore
             if trimmedSnapshot, !phoneHoldsDiary { trimmedSnapshot = false; Task { await self.refresh() } }
         }
     }
+    /// Builds the diary from the service's copy away from the main thread (it reads every play),
+    /// then shows it. A run of edits builds once: an older build still running is dropped. Previews
+    /// and tests build at once, as before.
+    private func buildDiary(_ make: @escaping @Sendable () -> Workspace) {
+        diaryBuildTicket += 1
+        let ticket = diaryBuildTicket
+        diaryBuild?.cancel()
+        if isPreview || Self.runningTests {
+            workspace = make(); fillServiceOnlyTitles(); return
+        }
+        diaryBuild = Task { [weak self] in
+            let built = await Task.detached(priority: .userInitiated) { make() }.value
+            guard let self, !Task.isCancelled, ticket == self.diaryBuildTicket else { return }
+            self.workspace = built
+            self.fillServiceOnlyTitles()
+        }
+    }
+    @ObservationIgnored private var diaryBuild: Task<Void, Never>?
+    @ObservationIgnored private var diaryBuildTicket = 0
+    private static let runningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     /// Titles only on the service get their details on the phone (TMDB, with your key) instead of
     /// being copied into the server diary; without a key they still join the server, as before.
     private func fillServiceOnlyTitles() {

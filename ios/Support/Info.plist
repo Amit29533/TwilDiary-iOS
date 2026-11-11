@@ -19,6 +19,8 @@
 	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
 	<key>TwilDiaryTMDBKey</key>
 	<string>$(TWILDIARY_TMDB_KEY)</string>
+	<key>TwilDiaryGeminiKey</key>
+	<string>$(TWILDIARY_GEMINI_KEY)</string>
 	<key>TwilDiaryGoogleClientID</key>
 	<string>$(TWILDIARY_GOOGLE_CLIENT_ID)</string>
 	<key>TwilDiaryWeTrakrClientID</key>

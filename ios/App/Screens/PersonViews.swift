@@ -136,7 +136,12 @@ struct PersonView: View {
             ProfileFact(id: prefix + "-deathday", icon: "calendar", label: "Died", value: person?.deathday.map(ProfileDate.short), wide: true)
         ].compactMap { $0 }
     }
-    private var about: some View {
+    /// About only when there's something to say (a biography, other names or AniList's details).
+    @ViewBuilder private var about: some View {
+        let others = (person?.aliases ?? []).filter { ![person?.name, actor?.name, actor?.native].contains($0) }
+        if actor != nil || !ProfileText.withoutSourceCredit(person?.biography ?? "").text.isEmpty || !others.isEmpty { aboutContent }
+    }
+    private var aboutContent: some View {
         let content = actor.map { ProfileFormattedBiography(description: $0.description, hideSpoilers: hideSpoilers) }
         // The facts sit in the header (or the card under it); About keeps the prose.
         let place = ProfileText.line(person?.birthplace) ?? actor?.homeTown
@@ -348,6 +353,8 @@ struct PersonFilmographyView: View {
     @State private var failure: String?
     @State private var filters: PersonFilmographyFilters
     @State private var shown = 40
+    /// The big heading has scrolled under the bar: the bar shows it (as Explore does).
+    @State private var headingHidden = false
     init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
         VStack(spacing: 0) {
@@ -358,6 +365,7 @@ struct PersonFilmographyView: View {
                         Text(person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label)
                             .font(.system(size: 22, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("person-filmography-heading")
+                            .onGeometryChange(for: Bool.self) { $0.frame(in: .global).maxY < 100 } action: { hidden in headingHidden = hidden }
                         Spacer(minLength: 0)
                         CollectionLayoutToggle(grid: $grid, collection: "catalog")
                     }
@@ -374,10 +382,23 @@ struct PersonFilmographyView: View {
                     else { DiaryLoadingPlaceholder(height: 240, label: "Loading filmography").padding(14) }
                 }.padding(.horizontal, 14).padding(.bottom, 100)
             }.scrollDismissesKeyboard(.interactively)
-        }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }.diaryScreenBackground().navigationTitle(barTitle).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    ZStack {
+                        if headingHidden { Text(heading).transition(.blurReplace(.downUp)) }
+                        else { Text(person?.name ?? "").transition(.blurReplace(.upUp)) }
+                    }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                        .animation(.smooth(duration: 0.35), value: headingHidden)
+                        .accessibilityAddTraits(.isHeader)
+                }
+            }
 
             .task(id: route) { await load() }.onChange(of: filters) { _, _ in shown = 40 }
     }
+    /// "Shriya Saran’s Known for".
+    private var heading: String { person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label }
+    private var barTitle: String { headingHidden ? heading : (person?.name ?? route.section.label) }
     private func load() async {
         failure = nil
         do { let result = try await store.person(route.person); guard !Task.isCancelled else { return }; person = result.person }

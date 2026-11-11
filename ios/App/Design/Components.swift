@@ -133,12 +133,15 @@ struct SectionMoreButton: View {
 /// Planned), an outline for the rest.
 struct DiaryCapsuleButtonStyle: ButtonStyle {
     var prominent = true
+    /// Watch actions (Log a watch, Mark E3 watched): the bright lavender gradient with dark text.
+    var bright = false
     /// A smaller capsule for actions inside list rows.
     var compact = false
-    func makeBody(configuration: Configuration) -> some View { Styled(configuration: configuration, prominent: prominent, compact: compact) }
+    func makeBody(configuration: Configuration) -> some View { Styled(configuration: configuration, prominent: prominent, bright: bright, compact: compact) }
     private struct Styled: View {
         let configuration: ButtonStyleConfiguration
         let prominent: Bool
+        let bright: Bool
         let compact: Bool
         @AppStorage("theme") private var theme = DiaryTheme.twilight
         @Environment(\.isEnabled) private var enabled
@@ -147,8 +150,8 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
             let destructive = configuration.role == .destructive
             configuration.label.font(.system(size: compact ? 13 : 15, weight: .semibold)).lineLimit(1)
                 .padding(.horizontal, compact ? 12 : 16).frame(minHeight: compact ? 36 : 44)
-                .foregroundStyle(prominent ? HomeStyle.chipText : destructive ? Color(webHex: "#ff8a80") : theme.accent)
-                .background(prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
+                .foregroundStyle(bright ? WatchStyle.ink : prominent ? HomeStyle.chipText : destructive ? Color(webHex: "#ff8a80") : theme.accent)
+                .background(bright ? AnyShapeStyle(WatchStyle.fill) : prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
                 .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
                 .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
@@ -158,6 +161,8 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
 }
 extension ButtonStyle where Self == DiaryCapsuleButtonStyle {
     static var diaryPrimary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: true) }
+    /// Logging a watch: the bright lavender gradient.
+    static var diaryWatch: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: true, bright: true) }
     static var diarySecondary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: false) }
     static var diaryRowPrimary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: true, compact: true) }
     static var diaryRowSecondary: DiaryCapsuleButtonStyle { DiaryCapsuleButtonStyle(prominent: false, compact: true) }
@@ -201,10 +206,11 @@ struct BrandLogo: View {
             // WeTrakr's "we" mark on its violet (drawn here; no image asset yet).
             case .wetrakr: Text("we").font(.system(size: size * 0.46, weight: .black, design: .rounded)).tracking(-size * 0.03)
                 .foregroundStyle(.white).frame(width: size, height: size).background(Color(webHex: "#4b3df5"), in: corner)
+            // A square tile (the cloud is twice as wide as tall: sized first, then the tile).
             case .cloudflare: Image("brand-cloudflare").resizable().scaledToFit()
-                .padding(size * 0.12).background(.white, in: corner)
+                .padding(size * 0.14).frame(width: size, height: size).background(.white, in: corner)
             case .anilist: Image("brand-anilist").resizable().scaledToFit()
-                .padding(size * 0.08).background(Color(webHex: "#2b2d42"), in: corner)
+                .padding(size * 0.08).frame(width: size, height: size).background(Color(webHex: "#2b2d42"), in: corner)
             case .imdb: Image("brand-imdb").resizable().scaledToFit()
             case .myanimelist: Image("brand-myanimelist").resizable().scaledToFit().clipShape(corner)
             case .metacritic: Image("brand-metacritic").resizable().scaledToFit()
@@ -276,12 +282,11 @@ struct PageHeader: View {
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
             if gesture.triggered { presentPick() }
         } label: {
-            // Design: a 44 pt frosted grey circle (rgba 120 122 132 / .38) with a 20 pt #cdbbff mark.
-            BrandMark().fill(Color(webHex: "#cdbbff")).frame(width: 20, height: 20).rotationEffect(.degrees(angle))
-                .frame(width: 44, height: 44)
-                .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.38), in: Circle())
-                .background(.ultraThinMaterial, in: Circle())
-                .contentShape(Circle())
+            // The original Liquid Glass logo (owner's choice): the mark in the theme's accent on glass.
+            BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
+                .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
+                // The tap shape sits outside the glass; otherwise the interactive glass takes the tap.
+                .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain)
             // Quick taps can reach the button as one; a real triple tap opens the pick too.
             .simultaneousGesture(TapGesture(count: 3).onEnded { presentPick() })
@@ -319,16 +324,32 @@ struct SearchField: View {
     var autoFocus = false
     var focusRevision = 0
     var dismissRevision = 0
+    /// Search by description (Gemini): the small AI pill turns it on, and the border glows in
+    /// Gemini's colours while it's on. nil: no pill.
+    var ai: Binding<Bool>? = nil
     @State private var didAutoFocus = false
+    @State private var spin = 0.0
     @FocusState private var focused: Bool
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Gemini's blue, violet, rose and gold, round the border and back to blue.
+    static let geminiColors = [Color(webHex: "#4285F4"), Color(webHex: "#9B72CB"), Color(webHex: "#D96570"), Color(webHex: "#F2A60C"), Color(webHex: "#4285F4")]
+    private var aiOn: Bool { ai?.wrappedValue == true }
     var body: some View {
         HStack(spacing: 10) {
             DiaryIcon(name: "search", size: 19).foregroundStyle(Color(webHex: "#a09aa9"))
-            TextField(placeholder, text: $text).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false }.accessibilityLabel(label)
+            TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false }.accessibilityLabel(aiOn ? "Search by description" : label)
+            if let ai { aiPill(ai) }
             if !text.isEmpty { Button { text = ""; focused = true } label: { DiaryIcon(name: "x", size: 16).frame(width: 26, height: 32) }.buttonStyle(.plain).accessibilityLabel("Clear search") }
         }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 12), field: true) }
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(focused ? theme.accent.opacity(0.65) : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(focused && !aiOn ? theme.accent.opacity(0.65) : .clear))
+            .overlay { if aiOn { geminiGlow.transition(.opacity) } }
+            .animation(.easeInOut(duration: 0.3), value: aiOn)
+            .onChange(of: aiOn, initial: true) { _, on in
+                spin = 0
+                guard on, !reduceMotion else { return }
+                withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) { spin = 360 }
+            }
             .onDisappear { focused = false }
             .onChange(of: focusRevision) { _, _ in
                 focused = true
@@ -337,6 +358,27 @@ struct SearchField: View {
             }
             .onChange(of: dismissRevision) { _, _ in focused = false }
             .task { if autoFocus && !didAutoFocus { didAutoFocus = true; focused = true } }
+    }
+    /// "AI" in a small pill: grey when off, Gemini's gradient when on.
+    private func aiPill(_ ai: Binding<Bool>) -> some View {
+        Button { ai.wrappedValue.toggle(); if ai.wrappedValue { focused = true } } label: {
+            Text("AI").font(.system(size: 12, weight: .bold)).foregroundStyle(ai.wrappedValue ? .white : Color(webHex: "#a09aa9"))
+                .padding(.horizontal, 9).frame(height: 24)
+                .background {
+                    if ai.wrappedValue { Capsule().fill(LinearGradient(colors: Array(Self.geminiColors.prefix(3)), startPoint: .leading, endPoint: .trailing)) }
+                    else { Capsule().fill(.white.opacity(0.08)).overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.75)) }
+                }
+                .frame(minWidth: 36, minHeight: 36).contentShape(Rectangle())
+        }.buttonStyle(.plain).sensoryFeedback(.selection, trigger: ai.wrappedValue)
+            .accessibilityLabel("Search by description with AI").accessibilityValue(ai.wrappedValue ? "On" : "Off").accessibilityIdentifier("search-ai")
+    }
+    /// The border in Gemini's colours, turning slowly, with a soft glow outside it.
+    private var geminiGlow: some View {
+        let gradient = AngularGradient(colors: Self.geminiColors, center: .center, angle: .degrees(spin))
+        return ZStack {
+            RoundedRectangle(cornerRadius: 12).stroke(gradient, lineWidth: 6).blur(radius: 9).opacity(0.75)
+            RoundedRectangle(cornerRadius: 12).strokeBorder(gradient, lineWidth: 1.8)
+        }.allowsHitTesting(false)
     }
 }
 
@@ -568,6 +610,13 @@ struct TextShadow: ViewModifier {
     }
 }
 
+/// Watch actions keep the bright lavender gradient with dark text (Start, + E2, Log watch, the
+/// round +); other main buttons are dark violet with lavender text.
+enum WatchStyle {
+    static let fill = LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)
+    static let ink = Color(webHex: "#1a1030")
+}
+
 private struct CardCircle: ViewModifier {
     let glass: Bool
     let tint: Color?
@@ -700,8 +749,8 @@ struct ProgressCard: View {
                     HStack(spacing: 8) {
                         actionIcon(.mark, symbol: "play.fill", size: 13)
                         Text(startLabel).font(.system(size: 15, weight: .bold))
-                    }.foregroundStyle(HomeStyle.chipText).frame(maxWidth: .infinity).frame(height: 48)
-                        .background(HomeStyle.chip, in: Capsule())
+                    }.foregroundStyle(WatchStyle.ink).frame(maxWidth: .infinity).frame(height: 48)
+                        .background(WatchStyle.fill, in: Capsule())
                         .contentShape(Capsule())
                 }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel(startLabel + ", " + title.name)
                 Button { Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } } label: {
@@ -835,8 +884,8 @@ struct ProgressCard: View {
                 .monospacedDigit().lineLimit(1).fixedSize().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
                 .accessibilityIdentifier("watch-count-" + title.id)
             Button { Task { await markWatch() } } label: {
-                actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(HomeStyle.chipText)
-                    .frame(width: 36, height: 36).background(HomeStyle.chip, in: Circle())
+                actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(WatchStyle.ink)
+                    .frame(width: 36, height: 36).background(WatchStyle.fill, in: Circle())
                     .contentShape(Rectangle().inset(by: -4))
             }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
         }.frame(height: 44)
@@ -848,12 +897,12 @@ struct ProgressCard: View {
                     Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: nil)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 15, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(HomeStyle.chipText).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: HomeStyle.chip)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(WatchStyle.ink).frame(width: 36, height: 36).background(WatchStyle.fill, in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
                             .font(.system(size: 13, weight: .semibold)).frame(height: 34).padding(.horizontal, 14)
-                            .foregroundStyle(HomeStyle.chipText).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
+                            .foregroundStyle(WatchStyle.ink).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
                     }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
                 } }.frame(height: 44)
@@ -914,7 +963,7 @@ struct ProgressCard: View {
         guard title.isSeries, let card else { return nil }
         return remaining.flatMap { $0 > 0 ? DiaryDate.duration($0) + (card.progress.watched > 0 ? " left" : "") : nil }
     }
-    /// "+ E2", "▶ Start" before the first episode, "Log watch" for movies: dark violet with lavender text.
+    /// "+ E2", "▶ Start" before the first episode, "Log watch" for movies: the bright lavender gradient.
     private var nextButton: some View {
         let starting = title.isSeries && card.map { $0.progress.watched == 0 } == true
         let label: String = {
@@ -926,9 +975,9 @@ struct ProgressCard: View {
             HStack(spacing: 6) {
                 actionIcon(.mark, symbol: starting ? "play.fill" : title.isSeries ? "plus" : "checkmark", size: starting ? 11 : 14).fontWeight(.bold)
                 Text(label).font(.system(size: 15, weight: .bold)).lineLimit(1)
-            }.foregroundStyle(HomeStyle.chipText)
+            }.foregroundStyle(WatchStyle.ink)
                 .padding(.horizontal, 16).frame(height: 40)
-                .background { Capsule().fill(HomeStyle.chip) }
+                .background { Capsule().fill(WatchStyle.fill) }
                 .fixedSize()
                 // A 40 pt pill, with the 44 pt tap target the platform asks for.
                 .frame(minHeight: 44).contentShape(Rectangle())

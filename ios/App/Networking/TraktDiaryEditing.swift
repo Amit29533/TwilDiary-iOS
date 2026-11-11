@@ -1,10 +1,11 @@
 import Foundation
 import TwilDiaryCore
 
-/// Trakt-first phase 4b, and phase 5 for Simkl and MDBList: with "Show my diary from <service>" on,
-/// edits go to that service. Watches (at their exact time), removing a watch, ratings, Planned and
-/// dropped are written to the service and applied to the phone's copy of it at once, so the screen
-/// updates without a full re-read. Favourites go to Trakt (Simkl and MDBList keep none, so your
+/// Trakt-first phase 4b, and phase 5 for Simkl, MDBList and WeTrakr: with "Show my diary from
+/// <service>" on, edits go to that service, the way Cinopsys makes them. Watches (at their exact
+/// time), removing a watch, ratings, Planned and dropped change the phone's copy first, so the
+/// screen updates at once, and go to the service right away in the background (kept on the phone
+/// until it takes them). Favourites go to Trakt (Simkl and MDBList keep none, so your
 /// server keeps them); notes, tags, Queue and Trash stay on your server.
 ///
 /// The same edits also go to the other connected services (the mirrors) through the delivery
@@ -31,11 +32,11 @@ extension DiaryStore {
 
     // MARK: Talking to the service
 
-    private func send(_ path: String, _ body: [String: Any]) async throws {
+    /// Queues the edit for the service and sends it in the background (never waits for an answer).
+    private func send(_ path: String, _ body: [String: Any], resolve: Bool = false) throws {
         switch service {
-        case .trakt: try await TraktDirectStore.shared.write(path, body: body, store: self)
-        case .simkl, .mdblist: try await TrackerPreviewStore.shared.write(service, path, body: body, store: self)
-        case .wetrakr: throw APIError.message("Editing the WeTrakr diary here isn’t available yet. Your edits still reach WeTrakr as a copy.")
+        case .trakt: try TraktDirectStore.shared.write(path, body: body, store: self, resolve: resolve)
+        case .simkl, .mdblist, .wetrakr: try TrackerPreviewStore.shared.write(service, path, body: body, store: self)
         }
     }
     private func updateCopy(_ change: (inout TraktLibrary) -> Void) {
@@ -61,15 +62,20 @@ extension DiaryStore {
         switch service {
         case .trakt: path = listed ? "/sync/watchlist" : "/sync/watchlist/remove"
         case .mdblist: path = listed ? "/watchlist/items/add" : "/watchlist/items/remove"
+        case .wetrakr: path = listed ? "/sync/tracking" : "/sync/tracking/remove"
         // Simkl's only removal also clears the title's history, so its list is left as it is.
-        // The WeTrakr diary is read-only here for now.
-        case .simkl, .wetrakr: return
+        case .simkl: return
+        }
+        func entry(_ title: MediaTitle) throws -> [String: Any] {
+            var value = try serviceRef(title)
+            if service == .wetrakr { value["status"] = "planning" }
+            return value
         }
         var body: [String: Any] = [:]
         let movies = planned.filter { !$0.isSeries }, shows = planned.filter(\.isSeries)
-        if !movies.isEmpty { body["movies"] = try movies.map { try serviceRef($0) } }
-        if !shows.isEmpty { body["shows"] = try shows.map { try serviceRef($0) } }
-        try await send(path, body)
+        if !movies.isEmpty { body["movies"] = try movies.map { try entry($0) } }
+        if !shows.isEmpty { body["shows"] = try shows.map { try entry($0) } }
+        try send(path, body)
         let refs = planned.map { titleRef($0) }, keys = Set(refs.map(\.diaryKey))
         updateCopy { library in
             library.watchlist.removeAll { keys.contains($0.title.diaryKey) }
@@ -96,17 +102,19 @@ extension DiaryStore {
     @discardableResult func serviceAddPlays(_ title: MediaTitle, episodes: [(season: Int, number: Int)], at date: Date) async throws -> String {
         var item = try serviceRef(title)
         let when = stamp(date)
-        let path = service == .mdblist ? "/sync/watched" : "/sync/history"
+        let path = service == .mdblist ? "/sync/watched" : service == .wetrakr ? "/sync/tracking" : "/sync/history"
+        // WeTrakr: status "watched" with tracked_at; a rewatch is a new play, as on Trakt.
+        func shaped(_ watch: [String: Any]) -> [String: Any] { service == .wetrakr ? WeTrakrWrite.watched(watch, rewatch: true) : watch }
         if title.isSeries {
             guard !episodes.isEmpty else { throw APIError.message("No episode is ready to mark.") }
             let seasons = Set(episodes.map { $0.season }).sorted().map { season in
                 ["number": season, "episodes": episodes.filter { $0.season == season }.map { ["number": $0.number, "watched_at": when] }] as [String: Any]
             }
             item["seasons"] = seasons
-            try await send(path, ["shows": [item]])
+            try send(path, ["shows": [shaped(item)]])
         } else {
             item["watched_at"] = when
-            try await send(path, ["movies": [item]])
+            try send(path, ["movies": [shaped(item)]])
         }
         let ref = titleRef(title)
         let oneEach = !service.capabilities.keepsRewatches
@@ -140,7 +148,7 @@ extension DiaryStore {
 
     /// Undo for plays just added: exactly those plays (the same title at that time, so another
     /// watch of the same episode is never touched). Still waiting to reach Trakt: taken out of the
-    /// queue. Sent but without Trakt's ids yet: Trakt is read first, then those plays removed.
+    /// queue. Sent but without Trakt's ids yet: found in Trakt's history at their time and removed.
     func serviceUndoPlays(_ title: MediaTitle, at when: String) async throws {
         if service == .trakt, TraktDirectStore.shared.cancelPending(watchedAt: when) {
             updateCopy { library in library.plays.removeAll { $0.historyId < 0 && $0.watchedAt == when } }
@@ -153,9 +161,6 @@ extension DiaryStore {
                     || (time != nil && DiaryDate.parse(event.watchedAt).map { abs($0.timeIntervalSince(time!)) < 1 } == true))
             }
         }
-        if service == .trakt, plays().contains(where: { (servicePlayID($0) ?? 0) <= 0 }) {
-            await TraktDirectStore.shared.check(store: self)
-        }
         let found = plays()
         guard !found.isEmpty else { throw APIError.message("That watch isn’t on \(service.name) any more.") }
         try await serviceRemoveWatches(found)
@@ -163,6 +168,11 @@ extension DiaryStore {
 
     /// Removes exactly these watches. Trakt removes those very plays (by id, never all plays of an
     /// episode); Simkl and MDBList keep one watch per episode or movie, so that watch is removed.
+    /// The screen changes at once and the removal goes in the background. Trakt: plays it has ids
+    /// for go by id (all in one request); a play just added (no id here yet) is found in Trakt's
+    /// history at its time when its turn comes, right after the add itself (Cinopsys's way, with
+    /// no read first). WeTrakr removes the play at its time; Simkl and MDBList keep one watch per
+    /// episode or movie, so that watch is removed.
     func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
         guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
         let ids = events.compactMap(servicePlayID)
@@ -170,40 +180,62 @@ extension DiaryStore {
             // On this phone: nothing to send; the copy below is the diary.
         } else if service == .trakt {
             let known = ids.filter { $0 > 0 }
-            guard known.count == events.count else { throw APIError.message("That watch is still reaching Trakt. Try again in a moment.") }
-            try await send("/sync/history/remove", ["ids": known])
+            let fresh = events.filter { (servicePlayID($0) ?? 0) <= 0 }
+            if !known.isEmpty { try send("/sync/history/remove", ["ids": known]) }
+            if !fresh.isEmpty { try send("/sync/history/remove", try playsBody(fresh, timed: true), resolve: true) }
         } else {
-            var movies: [[String: Any]] = [], shows: [Int: [Int: [Int]]] = [:]
-            for event in events {
-                guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { throw APIError.message("This watch has no TMDB id, so \(service.name) can’t find it.") }
-                if title.isSeries {
-                    guard let episode = workspace.episodes.first(where: { $0.id == event.episodeId }) else { throw APIError.message("This watch has no episode to remove.") }
-                    shows[tmdb, default: [:]][episode.season, default: []].append(episode.number)
-                } else { movies.append(["ids": ["tmdb": tmdb]]) }
-            }
-            let showBodies: [[String: Any]] = shows.keys.sorted().map { tmdb in
-                let seasons = shows[tmdb] ?? [:]
-                return ["ids": ["tmdb": tmdb], "seasons": seasons.keys.sorted().map { season in
-                    ["number": season, "episodes": (seasons[season] ?? []).map { ["number": $0] }] as [String: Any]
-                }]
-            }
-            try await send(service == .mdblist ? "/sync/watched/remove" : "/sync/history/remove", ["movies": movies, "shows": showBodies])
+            let path = service == .mdblist ? "/sync/watched/remove" : service == .wetrakr ? "/sync/tracking/remove" : "/sync/history/remove"
+            try send(path, try playsBody(events, timed: service == .wetrakr))
         }
         updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) } }
         refreshCopySoon()
     }
-    /// Every play of a title on the service. A play still on its way (no service id yet) waits
-    /// for one fresh read, then goes too.
-    func removeAllPlays(_ title: MediaTitle) async throws {
-        func plays() -> [WatchEvent] { workspace.events.filter { $0.titleId == title.id && $0.revokedAt == nil } }
-        guard !plays().isEmpty else { return }
-        do { try await serviceRemoveWatches(plays()) }
-        catch {
-            guard service == .trakt, !TraktDirectStore.shared.localOnly else { throw error }
-            await TraktDirectStore.shared.check(store: self)
-            applyDiarySource()
-            if !plays().isEmpty { try await serviceRemoveWatches(plays()) }
+    /// Watches as the service's body (movies; shows > seasons > episodes), with each play's time
+    /// when `timed`. WeTrakr's shape: status "watched" and tracked_at.
+    private func playsBody(_ events: [WatchEvent], timed: Bool) throws -> [String: Any] {
+        var movies: [[String: Any]] = [], shows: [Int: [Int: [[String: Any]]]] = [:]
+        for event in events {
+            guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { throw APIError.message("This watch has no TMDB id, so \(service.name) can’t find it.") }
+            if timed && event.watchedAt == nil { throw APIError.message("This watch has no time, so \(service.name) can’t tell which play to remove.") }
+            if title.isSeries {
+                guard let episode = workspace.episodes.first(where: { $0.id == event.episodeId }) else { throw APIError.message("This watch has no episode to remove.") }
+                var entry: [String: Any] = ["number": episode.number]
+                if timed, let when = event.watchedAt { entry["watched_at"] = when }
+                shows[tmdb, default: [:]][episode.season, default: []].append(entry)
+            } else {
+                var entry: [String: Any] = ["ids": ["tmdb": tmdb]]
+                if timed, let when = event.watchedAt { entry["watched_at"] = when }
+                movies.append(entry)
+            }
         }
+        var showBodies: [[String: Any]] = shows.keys.sorted().map { tmdb in
+            let seasons = shows[tmdb] ?? [:]
+            return ["ids": ["tmdb": tmdb], "seasons": seasons.keys.sorted().map { season in
+                ["number": season, "episodes": seasons[season] ?? []] as [String: Any]
+            }]
+        }
+        if service == .wetrakr {
+            func tracked(_ watch: [String: Any]) -> [String: Any] {
+                var value = WeTrakrWrite.watched(watch, rewatch: false)
+                value.removeValue(forKey: "allow_rewatch")
+                return value
+            }
+            movies = movies.map(tracked); showBodies = showBodies.map(tracked)
+        }
+        return ["movies": movies, "shows": showBodies]
+    }
+    /// Every play of a title. Trakt: the whole title in one removal (as Cinopsys removes history),
+    /// plays just added included, with nothing read first.
+    func removeAllPlays(_ title: MediaTitle) async throws {
+        let plays = workspace.events.filter { $0.titleId == title.id && $0.revokedAt == nil }
+        guard !plays.isEmpty else { return }
+        guard service == .trakt else { return try await serviceRemoveWatches(plays) }
+        if !TraktDirectStore.shared.localOnly {
+            try send("/sync/history/remove", [title.isSeries ? "shows" : "movies": [try serviceRef(title)]])
+        }
+        let ids = Set(plays.compactMap(servicePlayID)), key = titleRef(title).diaryKey
+        updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) || (key != nil && $0.title.diaryKey == key) } }
+        refreshCopySoon()
     }
     /// The service's play behind a watch in the service diary ("trakt-123").
     func servicePlayID(_ event: WatchEvent) -> Int64? {
@@ -289,9 +321,9 @@ extension DiaryStore {
         let item = try serviceRef(title)
         let slot = title.isSeries ? "shows" : "movies"
         if let score = values["score"] as? Double {
-            try await send("/sync/ratings", [slot: [item.merging(["rating": Int(score.rounded())]) { $1 }]])
+            try send("/sync/ratings", [slot: [item.merging(["rating": Int(score.rounded())]) { $1 }]])
         } else if values["score"] is NSNull {
-            try await send("/sync/ratings/remove", [slot: [item]])
+            try send("/sync/ratings/remove", [slot: [item]])
         }
         let status = values["status"] as? String
         // Whether the service keeps this status (otherwise the server does).
@@ -301,18 +333,18 @@ extension DiaryStore {
         // Shows keep their history; resetting a season is its own action.
         if status == "planned", !title.isSeries { try await removeAllPlays(title) }
         if let status {
-            let wasPlanned = title.status == "planned", wasDropped = title.isSeries && title.status == "dropped"
+            let wasPlanned = title.status == "planned", wasDropped = (title.isSeries || service == .wetrakr) && title.status == "dropped"
             switch service {
             case .trakt:
                 switch status {
                 case "planned":
-                    try await send("/sync/watchlist", [slot: [item]])
-                    if wasDropped { try await send("/users/hidden/dropped/remove", ["shows": [item]]) }
+                    try send("/sync/watchlist", [slot: [item]])
+                    if wasDropped { try send("/users/hidden/dropped/remove", ["shows": [item]]) }
                 case "dropped" where title.isSeries:
-                    try await send("/users/hidden/dropped", ["shows": [item]])
+                    try send("/users/hidden/dropped", ["shows": [item]])
                 default:
-                    if wasPlanned { try await send("/sync/watchlist/remove", [slot: [item]]) }
-                    if wasDropped { try await send("/users/hidden/dropped/remove", ["shows": [item]]) }
+                    if wasPlanned { try send("/sync/watchlist/remove", [slot: [item]]) }
+                    if wasDropped { try send("/users/hidden/dropped/remove", ["shows": [item]]) }
                     // Trakt has no Completed, Watching or Paused (nor dropped movies): the server's
                     // record of the title keeps your choice, so it survives the next read.
                     serviceHolds = false
@@ -320,32 +352,45 @@ extension DiaryStore {
             case .simkl:
                 // Simkl moves the title to the list for its status (that keeps its history).
                 if let list = TraktWritePlan.simklList(status: status, isSeries: title.isSeries) {
-                    try await send("/sync/add-to-list", [slot: [item.merging(["to": list]) { $1 }]])
+                    try send("/sync/add-to-list", [slot: [item.merging(["to": list]) { $1 }]])
                 } else { serviceHolds = false }
             case .mdblist:
                 switch status {
                 case "planned":
-                    try await send("/watchlist/items/add", [slot: [item]])
-                    if wasDropped { try await send("/sync/dropped/remove", ["shows": [item]]) }
+                    try send("/watchlist/items/add", [slot: [item]])
+                    if wasDropped { try send("/sync/dropped/remove", ["shows": [item]]) }
                 case "dropped" where title.isSeries:
-                    if wasPlanned { try await send("/watchlist/items/remove", [slot: [item]]) }
-                    try await send("/sync/dropped", ["shows": [item]])
+                    if wasPlanned { try send("/watchlist/items/remove", [slot: [item]]) }
+                    try send("/sync/dropped", ["shows": [item]])
                 default:
-                    if wasPlanned { try await send("/watchlist/items/remove", [slot: [item]]) }
-                    if wasDropped { try await send("/sync/dropped/remove", ["shows": [item]]) }
+                    if wasPlanned { try send("/watchlist/items/remove", [slot: [item]]) }
+                    if wasDropped { try send("/sync/dropped/remove", ["shows": [item]]) }
                     serviceHolds = false
                 }
             case .wetrakr:
-                serviceHolds = false
+                // WeTrakr's tracking statuses: planning and dropped (movies too); watched comes from the plays.
+                func tracking(_ value: String) -> [String: Any] { item.merging(["status": value]) { $1 } }
+                switch status {
+                case "planned":
+                    if wasDropped { try send("/sync/tracking/remove", [slot: [tracking("dropped")]]) }
+                    try send("/sync/tracking", [slot: [tracking("planning")]])
+                case "dropped":
+                    if wasPlanned { try send("/sync/tracking/remove", [slot: [tracking("planning")]]) }
+                    try send("/sync/tracking", [slot: [tracking("dropped")]])
+                default:
+                    if wasPlanned { try send("/sync/tracking/remove", [slot: [tracking("planning")]]) }
+                    if wasDropped { try send("/sync/tracking/remove", [slot: [tracking("dropped")]]) }
+                    serviceHolds = false
+                }
             }
         }
         let favourite = values["favorite"] as? Bool
         let favouritesHere = service.capabilities.holdsFavourites
         if let favourite, favouritesHere {
-            try await send(favourite ? "/sync/favorites" : "/sync/favorites/remove", [slot: [item]])
+            try send(favourite ? "/sync/favorites" : "/sync/favorites/remove", [slot: [item]])
         }
         let ref = titleRef(title)
-        let dropsHere = title.isSeries
+        let dropsHere = title.isSeries || service == .wetrakr
         updateCopy { library in
             let key = ref.diaryKey
             if let score = values["score"] as? Double {
@@ -378,7 +423,7 @@ extension DiaryStore {
             let needsServer = text.count > 500 || !isServiceOnly(title)
             if phoneOnly || !needsServer { rest.removeValue(forKey: "notes") }
         }
-        if let status, !serviceHolds || (!title.isSeries && title.status == "dropped") { rest["status"] = status }
+        if let status, !serviceHolds || (!title.isSeries && title.status == "dropped" && service != .wetrakr) { rest["status"] = status }
         if let favourite, !favouritesHere { rest["favorite"] = favourite }
         // A title only on the service has no server record yet: its status follows the service
         // until it joins (in a moment, on its own); notes, tags and Queue have to wait for that.

@@ -96,8 +96,9 @@ struct PersonPhotosPage: View {
     }
 }
 
-/// Full screen, one photo at a time (design page 3): ✕, "3 / 12" and ••• on top; a strip of every
-/// photo and Save, Share and Download in the panel below. Swipe or tap a thumbnail to move.
+/// Full screen, one photo at a time: the picture fills the screen. A tap hides or shows the
+/// controls (✕, "3 / 12" and ••• with Save, Share and Download); swiping to the next photo leaves
+/// them as they are. Pinch or double-tap to zoom; drag to look around while zoomed.
 struct PersonPhotoViewer: View {
     let name: String
     let photos: [PersonPhoto]
@@ -105,89 +106,72 @@ struct PersonPhotoViewer: View {
     @State private var saved = PersonPhotoLikes.load()
     @State private var message: String?
     @State private var downloading = false
+    @State private var controls = true
+    @State private var zoomed = false
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     init(name: String, photos: [PersonPhoto], start: Int) { self.name = name; self.photos = photos; _index = State(initialValue: start) }
     private var current: PersonPhoto? { photos.indices.contains(index) ? photos[index] : nil }
     /// TMDB's full-size picture of the current photo.
     private var original: URL? { current?.originalURL }
     var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                TabView(selection: $index) {
-                    ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
-                        Artwork(path: photo.link(size: "w780"), title: name, initialsOnly: false, contentMode: .fit, prefersOriginal: true)
-                            .tag(offset)
-                    }
-                }.tabViewStyle(.page(indexDisplayMode: .never))
-                HStack {
-                    Button { dismiss() } label: { circle("xmark") }.buttonStyle(.plain).accessibilityLabel("Close")
-                    Spacer(minLength: 8)
-                    Text("\(index + 1) / \(photos.count)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
-                        .padding(.horizontal, 18).frame(height: 40).background(Color(webHex: "#2b2727").opacity(0.88), in: Capsule())
-                        .accessibilityLabel("Photo \(index + 1) of \(photos.count)")
-                    Spacer(minLength: 8)
-                    Menu {
-                        if let title = current?.title { Text("From " + title) }
-                        if let original {
-                            Link(destination: original) { Label("Open full size", systemImage: "arrow.up.right.square") }
-                            Button("Copy link", systemImage: "link") { UIPasteboard.general.url = original; message = "Link copied." }
-                        }
-                    } label: { circle("ellipsis") }.accessibilityLabel("More photo options")
-                }.padding(.horizontal, 16).padding(.top, 8)
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+            TabView(selection: $index) {
+                ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
+                    ZoomablePhoto(path: photo.link(size: "w780"), name: name, active: offset == index, zoomed: $zoomed) {
+                        withAnimation(.easeInOut(duration: 0.2)) { controls.toggle() }
+                    }.tag(offset)
+                }
+            }.tabViewStyle(.page(indexDisplayMode: .never)).scrollDisabled(zoomed).ignoresSafeArea()
+            if controls { topBar.transition(.opacity) }
+            if controls, let message {
+                VStack {
+                    Spacer()
+                    Text(message).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 16).frame(height: 36).background(Color(webHex: "#1c1a1e").opacity(0.9), in: Capsule()).padding(.bottom, 30)
+                }.transition(.opacity).allowsHitTesting(false)
             }
-            panel
-        }.background(Color.black.ignoresSafeArea()).preferredColorScheme(.dark).statusBarHidden()
-            .onChange(of: index) { _, _ in message = nil }
+        }.preferredColorScheme(.dark).statusBarHidden().persistentSystemOverlays(controls ? .automatic : .hidden)
+            .onChange(of: index) { _, _ in message = nil; zoomed = false }
+    }
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: { circle("xmark") }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("photo-close")
+            Spacer(minLength: 8)
+            Text("\(index + 1) / \(photos.count)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
+                .padding(.horizontal, 18).frame(height: 40).background(Color(webHex: "#2b2727").opacity(0.88), in: Capsule())
+                .accessibilityLabel("Photo \(index + 1) of \(photos.count)")
+            Spacer(minLength: 8)
+            menu
+        }.padding(.horizontal, 16).padding(.top, 8)
+            .background(alignment: .top) {
+                LinearGradient(colors: [.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 140).ignoresSafeArea().allowsHitTesting(false)
+            }
+    }
+    /// Save, Share, Download and the rest, all under •••.
+    private var menu: some View {
+        let liked = current.map { saved.contains($0.path) } ?? false
+        return Menu {
+            if let title = current?.title { Text("From " + title) }
+            Button(liked ? "Saved" : "Save", systemImage: liked ? "heart.fill" : "heart") {
+                guard let current else { return }
+                if liked { saved.remove(current.path); message = "Removed from saved." } else { saved.insert(current.path); message = "Saved." }
+                PersonPhotoLikes.store(saved)
+            }.accessibilityIdentifier("photo-save")
+            if let original {
+                ShareLink(item: original) { Label("Share", systemImage: "square.and.arrow.up") }
+                Button(downloading ? "Downloading…" : "Download", systemImage: "arrow.down.to.line") { Task { await download() } }
+                    .disabled(downloading).accessibilityIdentifier("photo-download")
+                Link(destination: original) { Label("Open full size", systemImage: "arrow.up.right.square") }
+                Button("Copy link", systemImage: "link") { UIPasteboard.general.url = original; message = "Link copied." }
+            }
+        } label: { circle("ellipsis") }.accessibilityLabel("More photo options").accessibilityIdentifier("photo-menu")
     }
     private func circle(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
             .frame(width: 44, height: 44).background(Color(webHex: "#1c1a1e").opacity(0.85), in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67)).contentShape(Circle())
-    }
-    private var panel: some View {
-        VStack(spacing: 16) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 10) {
-                        ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
-                            Button { withAnimation(.smooth(duration: 0.3)) { index = offset } } label: {
-                                Artwork(path: photo.link(size: "w185"), title: name, initialsOnly: false, alignment: .top)
-                                    .frame(width: 58, height: 76).clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(offset == index ? theme.accent : .clear, lineWidth: 2.5))
-                                    .opacity(offset == index ? 1 : 0.75)
-                            }.buttonStyle(.plain).id(offset).accessibilityLabel("Photo \(offset + 1)")
-                                .accessibilityAddTraits(offset == index ? .isSelected : [])
-                        }
-                    }.padding(.horizontal, 20)
-                }.scrollIndicators(.hidden).frame(height: 80)
-                    .onAppear { proxy.scrollTo(index, anchor: .center) }
-                    .onChange(of: index) { _, value in withAnimation(.smooth(duration: 0.3)) { proxy.scrollTo(value, anchor: .center) } }
-            }
-            HStack(spacing: 0) {
-                let liked = current.map { saved.contains($0.path) } ?? false
-                Button {
-                    guard let current else { return }
-                    if liked { saved.remove(current.path) } else { saved.insert(current.path) }
-                    PersonPhotoLikes.store(saved)
-                } label: { action(liked ? "heart.fill" : "heart", liked ? "Saved" : "Save") }
-                    .buttonStyle(.plain).sensoryFeedback(.selection, trigger: liked).accessibilityIdentifier("photo-save")
-                Group {
-                    if let original { ShareLink(item: original) { action("square.and.arrow.up", "Share") } }
-                    else { action("square.and.arrow.up", "Share").opacity(0.4) }
-                }.buttonStyle(.plain).accessibilityIdentifier("photo-share")
-                Button { Task { await download() } } label: { action(downloading ? "hourglass" : "arrow.down.to.line", "Download") }
-                    .buttonStyle(.plain).disabled(original == nil || downloading).accessibilityIdentifier("photo-download")
-            }
-            Text(message ?? " ").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).frame(height: 14)
-        }.padding(.top, 18).padding(.bottom, 4)
-            .background(Color(webHex: "#0b0b10"), in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
-    }
-    private func action(_ symbol: String, _ label: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 22, weight: .regular)).foregroundStyle(theme.accent)
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-        }.frame(maxWidth: .infinity, minHeight: 56).contentShape(Rectangle())
     }
     /// Saves the full-size picture to Photos (asking once for permission to add).
     private func download() async {
@@ -202,6 +186,61 @@ struct PersonPhotoViewer: View {
             }
             message = "Saved to Photos."
         } catch { message = error.localizedDescription }
+    }
+}
+
+/// One photo that zooms: pinch (up to 5×) or double-tap (2.5×, again to fit), drag while zoomed.
+/// A single tap is passed up (show or hide the controls). Leaving the page zooms back out.
+private struct ZoomablePhoto: View {
+    let path: String?
+    let name: String
+    let active: Bool
+    @Binding var zoomed: Bool
+    let onTap: () -> Void
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            Artwork(path: path, title: name, initialsOnly: false, contentMode: .fit, prefersOriginal: true)
+                .frame(width: size.width, height: size.height)
+                .scaleEffect(scale).offset(offset)
+                .contentShape(Rectangle())
+                .gesture(MagnifyGesture()
+                    .onChanged { value in scale = min(5, max(1, lastScale * value.magnification)); offset = clamped(offset, in: size) }
+                    .onEnded { _ in settle(in: size) })
+                .highPriorityGesture(scale > 1.01 ? DragGesture()
+                    .onChanged { value in
+                        offset = clamped(CGSize(width: lastOffset.width + value.translation.width, height: lastOffset.height + value.translation.height), in: size)
+                    }
+                    .onEnded { _ in lastOffset = offset } : nil)
+                .onTapGesture(count: 2) { location in
+                    withAnimation(.snappy(duration: 0.28)) {
+                        if scale > 1.01 { reset() } else {
+                            scale = 2.5; lastScale = 2.5
+                            // Zoom in on the tapped spot.
+                            let point = CGSize(width: (size.width / 2 - location.x) * 1.5, height: (size.height / 2 - location.y) * 1.5)
+                            offset = clamped(point, in: size); lastOffset = offset
+                        }
+                    }
+                    zoomed = scale > 1.01
+                }
+                .onTapGesture { onTap() }
+        }
+        .onChange(of: active) { _, now in if !now { reset() } }
+        .accessibilityElement().accessibilityLabel("Photo of " + name).accessibilityAddTraits(.isImage)
+    }
+    private func settle(in size: CGSize) {
+        if scale < 1.05 { withAnimation(.snappy(duration: 0.25)) { reset() } } else { lastScale = scale; offset = clamped(offset, in: size); lastOffset = offset }
+        zoomed = scale > 1.01
+    }
+    private func reset() { scale = 1; lastScale = 1; offset = .zero; lastOffset = .zero; if active { zoomed = false } }
+    /// Keeps the zoomed picture covering the screen (no panning past its edges).
+    private func clamped(_ value: CGSize, in size: CGSize) -> CGSize {
+        let maxX = max(0, (scale - 1) * size.width / 2), maxY = max(0, (scale - 1) * size.height / 2)
+        return CGSize(width: min(maxX, max(-maxX, value.width)), height: min(maxY, max(-maxY, value.height)))
     }
 }
 

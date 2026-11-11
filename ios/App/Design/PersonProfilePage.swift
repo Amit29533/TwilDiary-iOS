@@ -34,15 +34,13 @@ struct PersonProfilePage<Content: View>: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if heroFacts.isEmpty {
-                        hero(height: max(380, geometry.size.width * 1.25) + (dynamicType.isAccessibilitySize ? 100 : 0), topInset: geometry.safeAreaInsets.top)
-                    } else {
-                        let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
-                                                 largeText: dynamicType.isAccessibilitySize)
-                        cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
-                        if fit.besidePhoto < heroFacts.count {
-                            ProfileFacts(items: Array(heroFacts.dropFirst(fit.besidePhoto))).padding(.horizontal, 14).padding(.bottom, 6)
-                        }
+                    // The photo card with the name beside it, for everyone: a person TMDB knows no
+                    // facts about (no birthday, birthplace…) used to get the older full-photo header.
+                    let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
+                                             largeText: dynamicType.isAccessibilitySize)
+                    cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
+                    if fit.besidePhoto < heroFacts.count {
+                        ProfileFacts(items: Array(heroFacts.dropFirst(fit.besidePhoto))).padding(.horizontal, 14).padding(.bottom, 6)
                     }
                     if showsPhotoShelf { PersonPhotoShelf(name: name, photos: photos).padding(.horizontal, 14).padding(.bottom, 6) }
                     content.padding(.horizontal, 14)
