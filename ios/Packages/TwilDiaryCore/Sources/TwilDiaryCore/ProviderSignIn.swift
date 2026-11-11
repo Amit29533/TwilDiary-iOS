@@ -135,7 +135,9 @@ public enum ProviderWebSignIn {
     public static let returnSite = "https://twildiary-auth.amit29533.workers.dev"
     /// The redirect registered with the service (and sent in the token exchange).
     public static func redirect(for provider: SyncProviderKind) -> String {
-        provider == .trakt ? returnSite + "/trakt" : callbackScheme + "://auth/" + provider.rawValue
+        // Trakt and WeTrakr (as Cinopsys signs in to both) through the https page; Simkl's mobile
+        // apps take the app's own address.
+        provider == .trakt || provider == .wetrakr ? returnSite + "/" + provider.rawValue : callbackScheme + "://auth/" + provider.rawValue
     }
     static func authorizePage(for provider: SyncProviderKind) -> URL? {
         switch provider {

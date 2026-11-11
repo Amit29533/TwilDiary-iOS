@@ -85,8 +85,8 @@ private func data(_ text: String) -> Data { Data(text.utf8) }
     #expect(headers["wetrakr-api-key"] == "app" && headers["wetrakr-api-version"] == "1" && headers["Authorization"] == "Bearer tok")
     // Sign-in: WeTrakr's page with PKCE, back to the app.
     let start = try #require(ProviderWebSignIn.start(provider: .wetrakr, clientId: "app"))
-    #expect(start.url.host == "api.wetrakr.com" && start.url.path == "/oauth/authorize" && start.url.absoluteString.contains("redirect_uri=twildiary://auth/wetrakr"))
-    let exchange = try #require(JSONSerialization.jsonObject(with: WeTrakrWrite.codeBody(code: "c", clientId: "app", verifier: start.verifier, redirect: "twildiary://auth/wetrakr")) as? [String: String])
+    #expect(start.url.host == "api.wetrakr.com" && start.url.path == "/oauth/authorize" && start.url.absoluteString.contains("redirect_uri=https://twildiary-auth.amit29533.workers.dev/wetrakr"))
+    let exchange = try #require(JSONSerialization.jsonObject(with: WeTrakrWrite.codeBody(code: "c", clientId: "app", verifier: start.verifier, redirect: ProviderWebSignIn.redirect(for: .wetrakr))) as? [String: String])
     #expect(exchange["client_id"] == "app" && exchange["code_verifier"] == start.verifier && exchange["client_secret"] == nil)
     // Saved settings from before WeTrakr came back still load.
     let old = data(#"{"trakt":{"provider":"trakt","enabled":false,"loggingMethod":"server_and_direct"},"simkl":{"provider":"simkl","enabled":false,"loggingMethod":"server_and_direct"},"mdblist":{"provider":"mdblist","enabled":false,"loggingMethod":"server_and_direct"}}"#)
