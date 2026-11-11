@@ -473,7 +473,8 @@ import TwilDiaryCore
         guard hasLoadedWorkspace else { return }
         if diaryFromTrakt {
             if let library = TraktDirectStore.shared.library {
-                workspace = TraktDiary.build(library: library, server: confirmedWorkspace, catalog: PhoneCatalog.shared.titles)
+                workspace = TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: confirmedWorkspace, catalog: PhoneCatalog.shared.titles),
+                                                             catalog: PhoneCatalog.shared.episodes)
                 fillServiceOnlyTitles()
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
@@ -488,12 +489,19 @@ import TwilDiaryCore
             }
         } else {
             workspace = outbox.project(onto: confirmedWorkspace)
+            // Back to the server's diary after a trimmed read: fetch its full copy (watches included).
+            if trimmedSnapshot, !phoneHoldsDiary { trimmedSnapshot = false; Task { await self.refresh() } }
         }
     }
     /// Titles only on the service get their details on the phone (TMDB, with your key) instead of
     /// being copied into the server diary; without a key they still join the server, as before.
     private func fillServiceOnlyTitles() {
         let missing = workspace.titles.filter { isServiceOnly($0) && $0.poster == nil }.map(\.id)
+        // Episode lists for the shows in the diary, from TMDB on the phone.
+        if phoneHoldsDiary {
+            let shows = workspace.titles.filter { $0.isSeries && $0.deletedAt == nil }.compactMap { $0.tmdbId.map { "tv:" + String($0) } }
+            Task { await PhoneCatalog.shared.fillEpisodes(shows, store: self) }
+        }
         guard !missing.isEmpty else { return }
         if TMDBDirect.token(self) != nil { Task { await PhoneCatalog.shared.fill(missing, store: self) } }
         else if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
@@ -573,7 +581,26 @@ import TwilDiaryCore
             } else { cacheWarning = nil }
         }
     }
+    /// Trakt holds the diary and the phone reads it (signed in here, with a TMDB key): the server
+    /// sends only what Trakt can't hold. Titles (your notes, tags, Queue, Trash and status choices),
+    /// file locations, and the episodes you marked; watches come from Trakt and episode lists from
+    /// TMDB on the phone. A server without the marked filter just sends every episode, which also works.
+    var phoneHoldsDiary: Bool { diaryFromTrakt && traktSignedInOnPhone && TMDBDirect.token(self) != nil }
+    /// The last server read left out watches and episode lists (see `phoneHoldsDiary`).
+    @ObservationIgnored private var trimmedSnapshot = false
     private func readWorkspaceSnapshot() async throws -> Workspace {
+        trimmedSnapshot = phoneHoldsDiary
+        if phoneHoldsDiary {
+            async let titles = api.allPages("titles", as: MediaTitle.self)
+            async let marked = api.allPages("episodes", as: Episode.self, marked: true)
+            async let locations = api.allPages("locations", as: FileLocation.self)
+            let values = try await (titles, marked, locations)
+            try Task.checkCancellation()
+            let validating = Task.detached(priority: .userInitiated) {
+                try Workspace(titles: values.0, episodes: values.1, events: [], locations: values.2).validatingIdentities()
+            }
+            return try await validating.value
+        }
         async let titles = api.allPages("titles", as: MediaTitle.self)
         async let episodes = api.allPages("episodes", as: Episode.self)
         async let events = api.allPages("events", as: WatchEvent.self)

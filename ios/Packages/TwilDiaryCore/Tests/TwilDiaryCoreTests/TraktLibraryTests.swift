@@ -416,3 +416,20 @@ private func diary() throws -> Workspace {
     #expect(title.id == "tv:209867" && title.category == "anime" && title.poster != nil && title.status == "watching")
     #expect(diary.events.count == 1 && diary.episodes.first?.titleId == "tv:209867")
 }
+
+/// The phone's TMDB episode lists fill in a show: every episode with its air date; watched ones
+/// show their name and still, unwatched ones stay hidden; a marked (skipped) episode keeps its mark.
+@Test func catalogEpisodesFillShowsWithoutTheServersCopy() throws {
+    let show = TraktTitleRef(kind: .show, traktId: 1, tmdbId: 209867, name: "Frieren")
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 9, title: show, season: 1, episode: 1, watchedAt: "2026-11-01T20:00:00Z")])
+    var built = TraktDiary.build(library: library, server: Workspace())
+    let facts = (1...3).map { CatalogEpisodeFact(season: 1, number: $0, name: "Episode \($0)", overview: "Summary \($0)", airedOn: "2023-10-0\($0)",
+                                                  stillPath: "/still\($0).jpg", communityScore: 8.5) }
+    built.episodes[0].skipped = true
+    let diary = TraktDiary.addingCatalogEpisodes(built, catalog: ["tv:209867": facts])
+    #expect(diary.episodes.count == 3)
+    let first = try #require(diary.episodes.first { $0.number == 1 })
+    #expect(first.id == built.episodes[0].id && first.name == "Episode 1" && first.still != nil && first.hidden == false && first.skipped == true)
+    let second = try #require(diary.episodes.first { $0.number == 2 })
+    #expect(second.id == "tv:209867|s1e2" && second.name.isEmpty && second.still == nil && second.hidden == true && second.airedOn == "2023-10-02")
+}

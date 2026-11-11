@@ -226,7 +226,7 @@ final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable
         }
         throw APIError.message("The diary could not be reached. Please try again.")
     }
-    func allPages<T: Decodable & Sendable>(_ section: String, as: T.Type) async throws -> [T] {
+    func allPages<T: Decodable & Sendable>(_ section: String, as: T.Type, marked: Bool = false) async throws -> [T] {
         let generation = sessionGeneration
         var result: [T] = []; var after: String?; var visited = Set<String>()
         repeat {
@@ -234,6 +234,7 @@ final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable
             guard generation == sessionGeneration else { throw CancellationError() }
             var query = URLComponents(); query.queryItems = [URLQueryItem(name: "section", value: section)]
             if let after { query.queryItems?.append(URLQueryItem(name: "after", value: after)) }
+            if marked { query.queryItems?.append(URLQueryItem(name: "marked", value: "1")) }
             let data = try await responseData("/api/workspace?" + (query.percentEncodedQuery ?? ""))
             let decoding = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()

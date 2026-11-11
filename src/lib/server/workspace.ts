@@ -1,4 +1,4 @@
-import { asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { database } from './db/index.ts';
 import {
   titles,
@@ -213,11 +213,14 @@ export async function workspacePage(db: Db, params: URLSearchParams) {
     ]);
     rows = projectTitles(values, seasonList, ui, identities);
   } else if (section === 'episodes') {
+    // marked=1: only the episodes you marked yourself (skipped). The phone reads episode lists
+    // from TMDB once Trakt holds the diary, so it needs just your marks from here.
+    const marked = params.get('marked') === '1';
     const values = await db
       .select(episodeColumns)
       .from(episodes)
       .innerJoin(seasons, eq(episodes.seasonId, seasons.id))
-      .where(gt(episodes.id, after))
+      .where(marked ? and(gt(episodes.id, after), eq(episodes.skipped, true)) : gt(episodes.id, after))
       .orderBy(asc(episodes.id))
       .limit(limit + 1)
       .all();

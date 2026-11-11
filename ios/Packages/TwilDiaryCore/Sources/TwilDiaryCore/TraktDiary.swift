@@ -105,3 +105,58 @@ public enum TraktDiary {
         else if title.status == "dropped" && title.isSeries { title.status = "planned" }
     }
 }
+
+/// An episode as TMDB lists it, kept in the phone's catalog.
+public struct CatalogEpisodeFact: Codable, Hashable, Sendable {
+    public let season: Int
+    public let number: Int
+    public let name: String
+    public let overview: String
+    public let airedOn: String?
+    public let stillPath: String?
+    public let communityScore: Double?
+    public init(season: Int, number: Int, name: String, overview: String, airedOn: String?, stillPath: String?, communityScore: Double?) {
+        self.season = season; self.number = number; self.name = name; self.overview = overview
+        self.airedOn = airedOn; self.stillPath = stillPath; self.communityScore = communityScore
+    }
+}
+
+public extension TraktDiary {
+    /// Adds the phone's TMDB episode lists to a diary built from the service, so shows have every
+    /// episode (air dates for progress, the calendar and "next up") without the server's copy.
+    /// An episode the diary already has keeps its id and your marks (skipped); names, summaries
+    /// and stills show only once you've watched the episode, as the server's spoiler rule does.
+    static func addingCatalogEpisodes(_ diary: Workspace, catalog: [String: [CatalogEpisodeFact]]) -> Workspace {
+        guard !catalog.isEmpty else { return diary }
+        var result = diary
+        var index: [String: Int] = [:]
+        for (position, episode) in diary.episodes.enumerated() { index["\(episode.titleId)|\(episode.season)|\(episode.number)"] = position }
+        let watched = Set(diary.events.filter { $0.revokedAt == nil }.compactMap(\.episodeId))
+        for title in diary.titles where title.isSeries {
+            guard let tmdb = title.tmdbId, let facts = catalog["tv:" + String(tmdb)] else { continue }
+            for fact in facts {
+                let slot = "\(title.id)|\(fact.season)|\(fact.number)"
+                let id = index[slot].map { diary.episodes[$0].id } ?? "\(title.id)|s\(fact.season)e\(fact.number)"
+                let seen = watched.contains(id)
+                let episode = Episode(id: id, titleId: title.id, season: fact.season, number: fact.number,
+                                      name: seen ? fact.name : "", overview: seen ? fact.overview : "", airedOn: fact.airedOn,
+                                      still: seen ? CatalogTools.image(fact.stillPath) : nil, hidden: !seen,
+                                      communityScore: fact.communityScore, skipped: index[slot].flatMap { diary.episodes[$0].skipped })
+                if let position = index[slot] {
+                    // Keep what the diary already shows when TMDB has less (a renamed or missing episode).
+                    let current = diary.episodes[position]
+                    result.episodes[position] = Episode(id: current.id, titleId: current.titleId, season: current.season, number: current.number,
+                                                        name: episode.name.isEmpty ? current.name : episode.name,
+                                                        overview: episode.overview.isEmpty ? current.overview : episode.overview,
+                                                        airedOn: episode.airedOn ?? current.airedOn, still: episode.still ?? current.still,
+                                                        hidden: episode.hidden, communityScore: episode.communityScore ?? current.communityScore,
+                                                        skipped: current.skipped)
+                } else {
+                    index[slot] = result.episodes.count
+                    result.episodes.append(episode)
+                }
+            }
+        }
+        return result
+    }
+}
