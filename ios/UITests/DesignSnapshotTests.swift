@@ -5,6 +5,16 @@ import XCTest
 @MainActor final class DesignSnapshotTests: XCTestCase {
     override func setUp() async throws { continueAfterFailure = true }
 
+    /// The animated splash, recorded from outside the test (simctl recordVideo) while it plays.
+    func testSplashPlays() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-splash"]
+        app.launch()
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "splash"; shot.lifetime = .keepAlways; add(shot)
+        // It lifts once it has played and the diary is ready: the tabs are there after it.
+        Thread.sleep(forTimeInterval: 2.5)
+        XCTAssertTrue(app.tabBars.firstMatch.exists)
+    }
     /// The first screen, signed out: where your library lives (as Cinopsys asks it).
     func testFirstScreenSnapshots() {
         let app = XCUIApplication()

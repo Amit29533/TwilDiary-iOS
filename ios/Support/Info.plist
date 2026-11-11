@@ -19,6 +19,12 @@
 	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
 	<key>TwilDiaryWeTrakrClientID</key>
 	<string>$(TWILDIARY_WETRAKR_CLIENT_ID)</string>
+	<!-- Black launch screen, so the animated splash follows it without a seam. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

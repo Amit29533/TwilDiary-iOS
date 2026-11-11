@@ -168,6 +168,15 @@ struct RootView: View {
     /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
     @Namespace private var zoom
     @State private var askAlerts = false
+    /// The animated splash: shown at launch (not in UI tests unless asked), lifted once it has
+    /// played and there's something to show (your diary, the first screen, or why it can't open).
+    @State private var showSplash = !ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.arguments.contains("--ui-splash")
+    @State private var splashPlayed = false
+    private var readyToShow: Bool { store.needsSignIn || store.hasLoadedWorkspace || !(store.loading || store.restoringCache) }
+    private func liftSplash() {
+        guard showSplash, splashPlayed, readyToShow, !ProcessInfo.processInfo.arguments.contains("--ui-splash-hold") else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.25) : .easeInOut(duration: 0.5)) { showSplash = false }
+    }
     var body: some View {
         @Bindable var router = router
         Group {
@@ -229,6 +238,14 @@ struct RootView: View {
                 askAlerts = !Task.isCancelled
             }
             .sheet(isPresented: $askAlerts) { EpisodeAlertsPrompt() }
+            .overlay {
+                if showSplash {
+                    SplashView { splashPlayed = true; liftSplash() }
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 1.12)))
+                        .zIndex(1)
+                }
+            }
+            .onChange(of: readyToShow) { _, _ in liftSplash() }
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
