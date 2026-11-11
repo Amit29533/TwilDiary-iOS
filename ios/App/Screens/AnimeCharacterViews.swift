@@ -81,6 +81,8 @@ struct CharacterView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @State private var character: AniCharacterDetail?
     @State private var failure: String?
+    /// MyAnimeList's pictures of this character, after AniList's own.
+    @State private var morePhotos: [PersonPhoto] = []
     var body: some View {
         Group {
             if let character {
@@ -88,6 +90,7 @@ struct CharacterView: View {
                 PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
                                   kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
                                   identifier: "character", heroFacts: characterFacts(character, biography: biography),
+                                  photos: ProfilePhotoSources.merge(character.image.map { [PersonPhoto(path: $0, kind: "portrait", aspectRatio: 2.0 / 3.0, title: nil)] } ?? [], morePhotos),
                                   backdrop: character.appearances.lazy.compactMap { $0.banner }.first ?? character.appearances.first(where: { $0.cover != nil })?.cover) {
                     VStack(alignment: .leading, spacing: 18) {
                         if let source = route.sourceTitle {
@@ -109,6 +112,16 @@ struct CharacterView: View {
                 }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
             }
         }.task(id: route.id) { if character == nil { await load() } }
+            .task(id: character?.id ?? 0) {
+                #if DEBUG
+                if store.isPreview { return }
+                #endif
+                guard let character else { return }
+                let found = await ProfilePhotoSources.shared.character(name: character.name, native: character.native,
+                                                                       anime: character.appearances.prefix(6).flatMap(\.names))
+                guard !Task.isCancelled else { return }
+                withAnimation(.smooth) { morePhotos = found }
+            }
     }
     /// Every fact AniList has (some characters have many, some none); the first three sit beside the picture.
     private func characterFacts(_ character: AniCharacterDetail, biography: ProfileFormattedBiography) -> [ProfileFact] {

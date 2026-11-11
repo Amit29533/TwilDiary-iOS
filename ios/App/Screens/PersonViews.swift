@@ -19,6 +19,8 @@ struct PersonView: View {
     @State private var missing = false
     @State private var matching = false
     @State private var expanded = false
+    /// TMDB, Commons and MyAnimeList pictures beyond the server's list.
+    @State private var morePhotos: [PersonPhoto] = []
 
     /// The page keeps the identity the route opened (favourite, identifiers, role line).
     private var voiceFirst: Bool { if case .voice = start, actor != nil { return true }; return false }
@@ -34,7 +36,7 @@ struct PersonView: View {
                                   favouriteSubtitle: voiceFirst ? actor?.roles.first.map { "Voice of " + $0.character.name } : person?.department,
                                   identifier: prefix,
                                   sameVoice: actor?.id, samePerson: person?.id,
-                                  heroFacts: facts, photos: person?.photos ?? [], showsPhotoShelf: false, backdrop: backdrop) {
+                                  heroFacts: facts, photos: photos, showsPhotoShelf: false, backdrop: backdrop) {
                     // Design (Actor Profile, page 1): About under the header, then Photos, then the credits.
                     VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -64,6 +66,7 @@ struct PersonView: View {
                 }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar).tint(.white)
             }
         }.task(id: start) { if person == nil && actor == nil { await load() } }
+            .task(id: "\(person?.id ?? 0):\(actor?.id ?? 0)") { await loadMorePhotos() }
     }
 
     /// Their best-known title's cover: for a voice actor, the cover of their most popular anime (AniList
@@ -75,6 +78,21 @@ struct PersonView: View {
             return item.backdrop ?? CatalogTools.image(item.backdropPath, size: "w780")
         }
         return actor?.roles.lazy.compactMap({ $0.banner }).first ?? actor?.roles.first(where: { $0.cover != nil })?.cover
+    }
+    /// The server's photos, then TMDB's, Commons and MyAnimeList's (each picture once).
+    private var photos: [PersonPhoto] {
+        let aniList = actor?.image.map { [PersonPhoto(path: $0, kind: "portrait", aspectRatio: 2.0 / 3.0, title: nil)] } ?? []
+        return ProfilePhotoSources.merge(person?.photos ?? [], morePhotos, aniList)
+    }
+    private func loadMorePhotos() async {
+        #if DEBUG
+        if store.isPreview { return }
+        #endif
+        var found: [PersonPhoto] = []
+        if let person { found += await ProfilePhotoSources.shared.cast(tmdbID: person.id, token: TMDBDirect.token(store)) }
+        if let actor { found += await ProfilePhotoSources.shared.voiceActor(name: actor.name, native: actor.native) }
+        guard !Task.isCancelled else { return }
+        withAnimation(.smooth) { morePhotos = found }
     }
     private var routeName: String? { if case .voice(let route) = start { return route.name }; return nil }
     /// "15 anime" you've watched with them (from a ranking), when the page was opened from one.

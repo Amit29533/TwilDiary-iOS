@@ -25,7 +25,7 @@ struct PersonPhotoShelf: View {
                     LazyHStack(spacing: 12) {
                         ForEach(Array(photos.prefix(12).enumerated()), id: \.element.id) { index, photo in
                             Button { viewing = index } label: {
-                                Artwork(path: CatalogTools.image(photo.path, size: "w500"), title: name, initialsOnly: false, alignment: .top)
+                                Artwork(path: photo.link(size: "w500"), title: name, initialsOnly: false, alignment: .top)
                                     .frame(width: 156, height: 200).clipShape(RoundedRectangle(cornerRadius: 18))
                             }.buttonStyle(.springPress).accessibilityLabel(photo.title.map { "Photo from " + $0 } ?? "Photo of " + name)
                         }
@@ -88,7 +88,7 @@ struct PersonPhotosPage: View {
             ForEach(Array(photos.enumerated()).filter { ($0.offset % 2 == 0) == even }, id: \.element.id) { index, photo in
                 Button { viewing = index } label: {
                     Color.clear.aspectRatio(max(0.55, min(1.8, photo.aspectRatio)), contentMode: .fit)
-                        .overlay { Artwork(path: CatalogTools.image(photo.path, size: "w500"), title: route.name, initialsOnly: false, alignment: .top) }
+                        .overlay { Artwork(path: photo.link(size: "w500"), title: route.name, initialsOnly: false, alignment: .top) }
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                 }.buttonStyle(.springPress).accessibilityLabel(photo.title.map { "Photo from " + $0 } ?? "Photo of " + route.name)
             }
@@ -110,16 +110,13 @@ struct PersonPhotoViewer: View {
     init(name: String, photos: [PersonPhoto], start: Int) { self.name = name; self.photos = photos; _index = State(initialValue: start) }
     private var current: PersonPhoto? { photos.indices.contains(index) ? photos[index] : nil }
     /// TMDB's full-size picture of the current photo.
-    private var original: URL? {
-        guard let current, CatalogTools.image(current.path, size: "w780") != nil else { return nil }
-        return URL(string: "https://image.tmdb.org/t/p/original" + current.path)
-    }
+    private var original: URL? { current?.originalURL }
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 TabView(selection: $index) {
                     ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
-                        Artwork(path: CatalogTools.image(photo.path, size: "w780"), title: name, initialsOnly: false, contentMode: .fit, prefersOriginal: true)
+                        Artwork(path: photo.link(size: "w780"), title: name, initialsOnly: false, contentMode: .fit, prefersOriginal: true)
                             .tag(offset)
                     }
                 }.tabViewStyle(.page(indexDisplayMode: .never))
@@ -155,7 +152,7 @@ struct PersonPhotoViewer: View {
                     LazyHStack(spacing: 10) {
                         ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
                             Button { withAnimation(.smooth(duration: 0.3)) { index = offset } } label: {
-                                Artwork(path: CatalogTools.image(photo.path, size: "w185"), title: name, initialsOnly: false, alignment: .top)
+                                Artwork(path: photo.link(size: "w185"), title: name, initialsOnly: false, alignment: .top)
                                     .frame(width: 58, height: 76).clipShape(RoundedRectangle(cornerRadius: 12))
                                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(offset == index ? theme.accent : .clear, lineWidth: 2.5))
                                     .opacity(offset == index ? 1 : 0.75)
