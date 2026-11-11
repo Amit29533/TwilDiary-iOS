@@ -218,9 +218,11 @@ struct SearchPeopleView: View {
             #endif
             struct Reply: Decodable { let items: [SearchPerson] }
             if kind == nil || kind == "cast" { do {
-                let page: Reply = try await store.read(CatalogTools.apiPath("/api/metadata/people", query: ["q": requested]))
+                let items: [SearchPerson]
+                if let token = TMDBDirect.token(store) { items = try await TMDBDirect.searchPeople(requested, token: token) }
+                else { items = (try await store.read(CatalogTools.apiPath("/api/metadata/people", query: ["q": requested])) as Reply).items }
                 guard !Task.isCancelled, requested == query, revision == store.sessionRevision else { return }
-                results = page.items
+                results = items
             } catch { if !Task.isCancelled { failure = "TMDB people could not be loaded. Try again." } } }
             if kind != "cast" {
                 let anime = try await AniListClient.shared.searchPeople(requested)

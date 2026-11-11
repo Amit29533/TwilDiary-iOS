@@ -32,10 +32,13 @@ extension DiscoveryServing {
             #if DEBUG
             if store.isPreview { return PreviewCatalog.discovery(query) }
             #endif
-            // Trakt picks are read on the phone; the server only adds their posters and details.
-            if let picks = await Self.phonePicks(query, store: store) {
-                return try await store.read(CatalogTools.apiPath("/api/discovery", query: picks))
+            // Trakt picks are read on the phone. With your TMDB key everything else is too; without
+            // one the server adds posters and details.
+            let picks = await Self.phonePicks(query, store: store)
+            if let token = TMDBDirect.token(store), query["source"] != "trakt" || picks != nil {
+                return try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
             }
+            if let picks { return try await store.read(CatalogTools.apiPath("/api/discovery", query: picks)) }
             return try await store.read(key)
         }
         guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
@@ -58,6 +61,11 @@ extension DiscoveryServing {
     func traktConnected() async throws -> Bool {
         guard !store.needsSignIn else { store.discoveryCache.reset(); throw APIError.signIn }
         if store.isPreview { return false }
+        // Signed in on this iPhone: nothing to ask the server.
+        if store.traktSignedInOnPhone {
+            store.discoveryCache.activateAccount(store.providerSettings.config(for: .trakt).username ?? "trakt")
+            return true
+        }
         let revision = store.discoveryRevision
         let status = try await store.discoveryCache.status(scope: revision) { [store] in try await store.read("/api/trakt/status") }
         guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }

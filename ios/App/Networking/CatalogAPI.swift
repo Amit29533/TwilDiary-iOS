@@ -18,6 +18,17 @@ extension DiaryStore {
             return DiarySearchPage(library: [], online: result.items, page: result.page, totalPages: result.totalPages)
         }
         #endif
+        // TMDB from the phone with your key; which results are already yours comes from the diary on the phone.
+        if let token = TMDBDirect.token(self) {
+            let found = try await TMDBDirect.search(DiarySearchTools.normalize(query), page: page, token: token)
+            var library: [SearchLibraryTitle] = [], online: [CatalogItem] = []
+            for item in found.items {
+                if let saved = workspace.activeTitles.first(where: { $0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv) }) {
+                    if !library.contains(where: { $0.id == saved.id }) { library.append(SearchLibraryTitle(saved)) }
+                } else { online.append(item) }
+            }
+            return DiarySearchPage(library: library, online: online, page: found.page, totalPages: found.totalPages)
+        }
         return try await read(CatalogTools.apiPath("/api/search", query: ["q": query, "scope": "online", "page": String(page)]))
     }
     func browse(_ route: CatalogRoute) async throws -> CatalogBrowse {
@@ -69,9 +80,9 @@ extension DiaryStore {
             if ProfileFormattingPreview.enabled { response = try ProfileFormattingPreview.person(id) ?? PreviewCatalog.person }
             else { response = PreviewCatalog.person }
         }
-        else { response = try await read(CatalogTools.apiPath("/api/metadata/person", query: ["id": String(id)])) }
+        else { response = try await personFromTMDB(id) }
         #else
-        response = try await read(CatalogTools.apiPath("/api/metadata/person", query: ["id": String(id)]))
+        response = try await personFromTMDB(id)
         #endif
         try Task.checkCancellation()
         guard revision == sessionRevision, !needsSignIn else { throw CancellationError() }
@@ -79,6 +90,11 @@ extension DiaryStore {
         if cachedPeople.count >= 32, let oldest = cachedPeople.min(by: { $0.value.at < $1.value.at })?.key { cachedPeople.removeValue(forKey: oldest) }
         cachedPeople[id] = (.now, response)
         return response
+    }
+    /// TMDB from the phone with your key; the diary server (which caches people for a week) without one.
+    private func personFromTMDB(_ id: Int) async throws -> PersonResponse {
+        if let token = TMDBDirect.token(self) { return try await TMDBDirect.person(id, token: token) }
+        return try await read(CatalogTools.apiPath("/api/metadata/person", query: ["id": String(id)]))
     }
     func prepareSavedSeason(_ title: MediaTitle, number: Int, force: Bool = false) async throws {
         guard (0...999).contains(number) else { throw APIError.message("Choose a valid season.") }

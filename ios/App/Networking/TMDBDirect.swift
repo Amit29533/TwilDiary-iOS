@@ -2,8 +2,8 @@ import Foundation
 import TwilDiaryCore
 
 /// Reads TMDB straight from the phone with your own TMDB key (Settings → TMDB), kept encrypted in
-/// the iOS Keychain with the other provider credentials. Used where the diary server has no route
-/// (Related collections), so those features need no server change.
+/// the iOS Keychain with the other provider credentials. Every TMDB read is made here when a key is
+/// saved (TwilDiary's server is only the fallback without one), so metadata never needs Cloudflare.
 @MainActor enum TMDBDirect {
     struct Overview: Sendable {
         let genres: [TitleKeyword]
@@ -198,6 +198,206 @@ import TwilDiaryCore
         }.sorted { ($0.year ?? 9999) < ($1.year ?? 9999) }
         return TitleCollection(id: id, name: data["name"] as? String ?? "", overview: data["overview"] as? String ?? "",
                                posterPath: data["poster_path"] as? String, backdropPath: data["backdrop_path"] as? String, parts: items)
+    }
+
+    // MARK: Search and people, as the server's routes answer them (src/lib/server/tmdb.ts)
+
+    /// Online search (`search/multi`, or `find` for an IMDb id), movies and shows only.
+    static func search(_ query: String, page: Int, token: String) async throws -> CatalogPage {
+        if query.range(of: #"^tt\d{7,10}$"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            let data = try await object("find/\(query.lowercased())", query: ["external_source": "imdb_id"], token: token)
+            let movies = (data["movie_results"] as? [[String: Any]] ?? []).compactMap { catalogItem($0, kind: .movie) }
+            let shows = (data["tv_results"] as? [[String: Any]] ?? []).compactMap { catalogItem($0, kind: .tv) }
+            return CatalogPage(items: movies + shows, page: 1, totalPages: 1)
+        }
+        let data = try await object("search/multi", query: ["query": query, "page": String(page), "include_adult": "false", "language": "en-US"], token: token)
+        let items = (data["results"] as? [[String: Any]] ?? []).compactMap { item -> CatalogItem? in
+            guard item["adult"] as? Bool != true, let type = item["media_type"] as? String, let kind = MediaKind(rawValue: type) else { return nil }
+            return catalogItem(item, kind: kind)
+        }
+        return CatalogPage(items: items, page: data["page"] as? Int ?? page, totalPages: min(data["total_pages"] as? Int ?? 0, 500),
+                           totalResults: data["total_results"] as? Int)
+    }
+
+    /// People by name (`search/person`), each once, adults left out.
+    static func searchPeople(_ query: String, token: String) async throws -> [SearchPerson] {
+        let data = try await object("search/person", query: ["query": query, "page": "1", "include_adult": "false", "language": "en-US"], token: token)
+        var seen = Set<Int>()
+        return (data["results"] as? [[String: Any]] ?? []).compactMap { item in
+            guard item["adult"] as? Bool != true, let id = item["id"] as? Int, id > 0,
+                  let name = item["name"] as? String, !name.isEmpty, seen.insert(id).inserted else { return nil }
+            return SearchPerson(id: id, name: name, image: CatalogTools.image(item["profile_path"] as? String, size: "w185"))
+        }
+    }
+
+    /// Keyword tags by name (`search/keyword`), at most 20.
+    static func keywords(_ query: String, token: String) async throws -> [TitleKeyword] {
+        let q = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+        guard q.count >= 2 else { return [] }
+        let data = try await object("search/keyword", query: ["query": q, "page": "1"], token: token)
+        return (data["results"] as? [[String: Any]] ?? []).prefix(20).compactMap { item in
+            guard let id = item["id"] as? Int, id > 0, let name = item["name"] as? String, !name.isEmpty else { return nil }
+            return TitleKeyword(id: id, name: name)
+        }
+    }
+
+    /// A person's page: details, every credit once (roles and jobs joined), portraits then the
+    /// posters and stills they're tagged in, as the server's `person` builds it.
+    static func person(_ id: Int, token: String) async throws -> PersonResponse {
+        let data = try await object("person/\(id)", query: ["append_to_response": "combined_credits,images,tagged_images", "language": "en-US"], token: token)
+        guard data["id"] as? Int == id, let name = data["name"] as? String, !name.isEmpty else { throw APIError.message("TMDB sent an incomplete person.") }
+        let combined = data["combined_credits"] as? [String: Any] ?? [:]
+        var order: [String] = [], credits: [String: [String: Any]] = [:]
+        for item in (combined["cast"] as? [[String: Any]] ?? []) + (combined["crew"] as? [[String: Any]] ?? []) {
+            guard item["adult"] as? Bool != true, let type = item["media_type"] as? String, let kind = MediaKind(rawValue: type),
+                  let base = catalogItem(item, kind: kind) else { continue }
+            let key = base.key
+            let character = (item["character"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let job = (item["job"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if var existing = credits[key] {
+                func joined(_ field: String, _ value: String, limit: Int) {
+                    let current = existing[field] as? String ?? ""
+                    guard !value.isEmpty, !current.components(separatedBy: " / ").contains(value) else { return }
+                    existing[field] = String([current, value].filter { !$0.isEmpty }.joined(separator: " / ").prefix(limit))
+                }
+                joined("character", character, limit: 600); joined("job", job, limit: 400)
+                credits[key] = existing
+                continue
+            }
+            order.append(key)
+            let episodes = (item["episode_count"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+            let popularity = (item["popularity"] as? Double).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil } ?? 0
+            credits[key] = [
+                "id": base.id, "mediaType": kind.rawValue, "name": base.name, "year": base.year as Any? ?? NSNull(), "overview": base.overview,
+                "posterPath": base.posterPath as Any? ?? NSNull(), "backdropPath": base.backdropPath as Any? ?? NSNull(),
+                "rating": base.rating as Any? ?? NSNull(), "votes": base.votes ?? 0, "genres": base.genres ?? [],
+                "character": character, "job": job, "popularity": popularity, "episodeCount": episodes as Any? ?? NSNull()
+            ]
+        }
+        var seenPhotos = Set<String>(), photos: [[String: Any]] = []
+        func photo(_ item: [String: Any], kind: String, title: String?) {
+            guard let file = item["file_path"] as? String, CatalogTools.image(file) != nil, seenPhotos.insert(file).inserted else { return }
+            let ratio = (item["aspect_ratio"] as? Double).flatMap { $0 > 0.2 && $0 < 5 ? $0 : nil } ?? 0.667
+            photos.append(["path": file, "kind": kind, "aspectRatio": ratio, "title": title as Any? ?? NSNull()])
+        }
+        for item in ((data["images"] as? [String: Any])?["profiles"] as? [[String: Any]] ?? []).prefix(30) { photo(item, kind: "portrait", title: nil) }
+        for item in ((data["tagged_images"] as? [String: Any])?["results"] as? [[String: Any]] ?? []).prefix(40) {
+            let media = item["media"] as? [String: Any]
+            let title = ((media?["title"] as? String) ?? (media?["name"] as? String)).flatMap { $0.isEmpty ? nil : $0 }
+            photo(item, kind: item["image_type"] as? String == "poster" ? "poster" : "still", title: title)
+        }
+        func date(_ key: String) -> Any { (data[key] as? String).flatMap { $0.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil ? $0 : nil } as Any? ?? NSNull() }
+        var aliases: [String] = []
+        for alias in data["also_known_as"] as? [String] ?? [] where !alias.isEmpty && !aliases.contains(alias) && aliases.count < 20 { aliases.append(alias) }
+        let person: [String: Any] = [
+            "id": id, "name": name, "biography": data["biography"] as? String ?? "", "birthday": date("birthday"), "deathday": date("deathday"),
+            "birthplace": data["place_of_birth"] as? String ?? "", "department": data["known_for_department"] as? String ?? "",
+            "profilePath": data["profile_path"] as Any? ?? NSNull(), "aliases": aliases,
+            "credits": order.compactMap { credits[$0] }, "photos": Array(photos.prefix(60))
+        ]
+        return try JSONDecoder().decode(PersonResponse.self, from: JSONSerialization.data(withJSONObject: ["person": person, "stale": false]))
+    }
+
+    // MARK: Discovery, as the server's /api/discovery answers it
+
+    /// Explore and Canvas shelves: TMDB's weekly trending, `discover` with the same filters, "because
+    /// you watched" (a title of yours, by its TMDB id) and Trakt picks (`tmdbIds`, read from Trakt on
+    /// the phone), each filled in from TMDB here.
+    static func discover(_ q: [String: String], workspace: Workspace, token: String) async throws -> CatalogPage {
+        let source = q["source"] ?? "tmdb"
+        guard let kind = MediaKind(rawValue: q["type"] ?? "movie") else { throw APIError.message("Choose valid discovery filters") }
+        let type = kind.rawValue
+        let sort = q["sort"] ?? "popular"
+        let page = Int(q["page"] ?? "1") ?? 1
+        let minimum = Double(q["minimum"] ?? "0") ?? 0
+        func filtered(_ items: [CatalogItem]) -> [CatalogItem] {
+            let kept = items.filter { item in
+                (q["genre"].map { $0.isEmpty || (item.genres ?? []).contains($0) } ?? true)
+                && (q["year"].map { $0.isEmpty || item.year.map(String.init) == $0 } ?? true)
+                && (minimum == 0 || (item.rating ?? -1) >= minimum)
+            }
+            switch sort {
+            case "rating": return kept.sorted { ($0.rating ?? -1) != ($1.rating ?? -1) ? ($0.rating ?? -1) > ($1.rating ?? -1) : ($0.votes ?? 0) > ($1.votes ?? 0) }
+            case "newest": return kept.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
+            default: return kept
+            }
+        }
+        if source == "trakt" {
+            let limit = Int(q["limit"] ?? "8") ?? 8
+            var ids: [Int] = []
+            for id in (q["tmdbIds"] ?? "").split(separator: ",").compactMap({ Int($0) }) where !ids.contains(id) && ids.count < limit { ids.append(id) }
+            var items: [CatalogItem] = []
+            // Four at a time, in the picks' order.
+            for start in stride(from: 0, to: ids.count, by: 4) {
+                let chunk = Array(ids[start..<min(start + 4, ids.count)])
+                let found = await withTaskGroup(of: (Int, CatalogDetails?).self) { group in
+                    for (index, id) in chunk.enumerated() { group.addTask { (index, try? await details(CatalogRoute(kind: kind, id: id), token: token)) } }
+                    var all: [(Int, CatalogDetails?)] = []
+                    for await result in group { all.append(result) }
+                    return all.sorted { $0.0 < $1.0 }.compactMap(\.1)
+                }
+                for detail in found {
+                    let genres = detail.genres.map { name in
+                        name == "Science Fiction" || name == "Sci-Fi & Fantasy" ? "Sci-fi & fantasy"
+                        : name == "Action" || name == "Action & Adventure" ? "Action & adventure" : name
+                    }
+                    items.append(CatalogItem(id: detail.id, mediaType: kind, name: detail.name, year: detail.year, overview: detail.overview,
+                                             posterPath: detail.posterPath, backdropPath: detail.backdropPath, genres: genres))
+                }
+            }
+            if !ids.isEmpty && items.isEmpty { throw APIError.message("Trakt responded, but poster metadata could not be loaded. Try again.") }
+            return CatalogPage(items: filtered(items), page: 1, totalPages: 1)
+        }
+        var params: [String: String] = ["page": String(page), "include_adult": "false", "language": "en-US"]
+        let path: String
+        var trending = false
+        if source == "because" {
+            guard let seed = q["seed"], let title = workspace.activeTitles.first(where: { $0.id == seed }) else {
+                throw APIError.message("Choose a watched title for recommendations.")
+            }
+            guard let id = title.tmdbId else { throw APIError.message("Match this title to TMDb first.") }
+            path = "\(title.isSeries ? "tv" : "movie")/\(id)/recommendations"
+        } else {
+            let genre = DiscoveryGenre.all.first { $0.name == q["genre"] }
+            let genreID = genre.flatMap { kind == .movie ? $0.movie : $0.tv }
+            let keyword = q["keyword"].flatMap(Int.init) ?? (kind == .tv && !(q["genre"] ?? "").isEmpty && genreID == nil ? SearchLabData.tvGenreKeywords[q["genre"] ?? ""] : nil)
+            let lab = ["keywords", "genres", "certification", "yearFrom", "yearTo", "status", "language"].contains { !(q[$0] ?? "").isEmpty }
+            trending = sort == "trending" && keyword == nil && (q["company"] ?? "").isEmpty && (q["network"] ?? "").isEmpty && !lab
+            if trending {
+                path = "trending/\(type)/week"
+            } else {
+                path = "discover/\(type)"
+                let dateField = kind == .movie ? "primary_release_date" : "first_air_date"
+                params["sort_by"] = sort == "rating" ? "vote_average.desc" : sort == "newest" ? dateField + ".desc" : "popularity.desc"
+                if let keyword { params["with_keywords"] = String(keyword) }
+                if let genreID, q["keyword"] != nil || keyword == nil { params["with_genres"] = String(genreID) }
+                if let company = q["company"], !company.isEmpty { params["with_companies"] = company }
+                let keywords = (q["keywords"] ?? "").split(separator: ",").map(String.init)
+                if !keywords.isEmpty { params["with_keywords"] = keywords.joined(separator: q["keywordMode"] == "all" ? "," : "|") }
+                let names = (q["genres"] ?? "").split(separator: ",").map(String.init)
+                if !names.isEmpty {
+                    let ids = names.compactMap { name in DiscoveryGenre.all.first { $0.name == name }.flatMap { kind == .movie ? $0.movie : $0.tv } }
+                    if !ids.isEmpty { params["with_genres"] = ids.map(String.init).joined(separator: ",") }
+                    let missing = kind == .tv ? names.compactMap { SearchLabData.tvGenreKeywords[$0] }.map(String.init) : []
+                    if !missing.isEmpty { params["with_keywords"] = ([params["with_keywords"] ?? ""] + missing).filter { !$0.isEmpty }.joined(separator: ",") }
+                }
+                if let rating = q["certification"], !rating.isEmpty, kind == .movie { params["certification_country"] = "US"; params["certification"] = rating }
+                if let from = q["yearFrom"], !from.isEmpty { params[dateField + ".gte"] = from + "-01-01" }
+                if let to = q["yearTo"], !to.isEmpty { params[dateField + ".lte"] = to + "-12-31" }
+                if kind == .tv, let status = q["status"], let code = ["returning": "0", "production": "2", "ended": "3", "canceled": "4"][status] { params["with_status"] = code }
+                if let language = q["language"], !language.isEmpty { params["with_original_language"] = language }
+                if kind == .tv, let network = q["network"], !network.isEmpty { params["with_networks"] = network }
+                if let year = q["year"], !year.isEmpty { params[kind == .movie ? "primary_release_year" : "first_air_date_year"] = year }
+                params["vote_count.gte"] = sort == "rating" ? "200" : "20"
+                if minimum > 0 { params["vote_average.gte"] = q["minimum"] }
+                let today = Date.now.formatted(.iso8601.year().month().day())
+                if (params[dateField + ".lte"] ?? "9999") > today { params[dateField + ".lte"] = today }
+            }
+        }
+        let data = try await object(path, query: params, token: token)
+        let items = (data["results"] as? [[String: Any]] ?? []).filter { ($0["adult"] as? Bool) != true }.compactMap { catalogItem($0, kind: kind) }
+        return CatalogPage(items: trending || source == "because" ? filtered(items) : items, page: data["page"] as? Int ?? page,
+                           totalPages: min(data["total_pages"] as? Int ?? 0, 500), totalResults: data["total_results"] as? Int)
     }
 
     /// One TMDB v3 read. A v4 read access token goes in the Authorization header; a 32-character

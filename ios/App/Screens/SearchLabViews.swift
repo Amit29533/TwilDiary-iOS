@@ -124,7 +124,9 @@ struct SearchLabView: View {
                 guard query.count >= 2 else { foundTags = []; return }
                 do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
                 struct Reply: Decodable { let items: [TitleKeyword] }
-                if let reply: Reply = try? await store.read(CatalogTools.apiPath("/api/metadata/keywords", query: ["q": query])) { foundTags = reply.items }
+                if let token = TMDBDirect.token(store) {
+                    if let tags = try? await TMDBDirect.keywords(query, token: token) { foundTags = tags }
+                } else if let reply: Reply = try? await store.read(CatalogTools.apiPath("/api/metadata/keywords", query: ["q": query])) { foundTags = reply.items }
             }
             .task(id: filters) {
                 // "Show 48 titles": TMDB's count for these filters (not knowable once your library narrows it).
