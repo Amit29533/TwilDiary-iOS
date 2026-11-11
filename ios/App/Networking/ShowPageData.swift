@@ -55,9 +55,11 @@ enum ShowPageRoute: Hashable {
         let key = route.kind.rawValue + ":" + String(route.id) + ":" + sort
         if let entry = cache[key], Date.now.timeIntervalSince(entry.at) < 3_600 { return entry.value }
         if store.isPreview { return [] }
-        let page: CanvasListsPage = try await store.read(CatalogTools.apiPath("/api/canvas/lists", query: [
-            "title": route.kind.rawValue + ":" + String(route.id), "sort": sort, "kind": "all"
-        ]), timeout: 30)
+        let query = ["title": route.kind.rawValue + ":" + String(route.id), "sort": sort, "kind": "all"]
+        // On the phone with your Trakt sign-in and TMDB key; the server otherwise.
+        let page: CanvasListsPage
+        if let direct = try await CanvasDirect.lists(query, store: store) { page = direct }
+        else { page = try await store.read(CatalogTools.apiPath("/api/canvas/lists", query: query), timeout: 30) }
         if cache.count >= 100 { cache.removeAll() }
         cache[key] = (.now, page.lists)
         return page.lists

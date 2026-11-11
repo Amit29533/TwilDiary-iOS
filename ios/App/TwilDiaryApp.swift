@@ -164,7 +164,6 @@ struct RootView: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showSignIn = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
     @Namespace private var zoom
@@ -172,20 +171,15 @@ struct RootView: View {
         @Bindable var router = router
         Group {
             if store.needsSignIn {
-                VStack(spacing: 22) {
-                    BrandMark().fill(.tint).frame(width: 56, height: 56)
-                    Text("TwilDiary").font(.largeTitle.bold())
-                    Text("Your diary, now on iOS.").foregroundStyle(.secondary)
-                    Button("Sign in to your diary") { showSignIn = true }.buttonStyle(.glassProminent).controlSize(.large)
-                    if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
-                    .sheet(isPresented: $showSignIn) {
-                        NavigationStack {
-                            AccessSignIn { credential in showSignIn = false; Task { await store.connect(credential) } }
-                                .navigationTitle("Private sign-in").navigationBarTitleDisplayMode(.inline)
-                                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showSignIn = false } } }
+                // The ways in, straight away (as Cinopsys opens): Trakt, then Google or email.
+                AccessSignIn { credential in Task { await store.connect(credential) } }
+                    .safeAreaInset(edge: .bottom) {
+                        if let error = store.error {
+                            Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.bottom, 8)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea())
             } else if !store.hasLoadedWorkspace {
                 VStack(spacing: 22) {
                     BrandMark().fill(.tint).frame(width: 48, height: 48)

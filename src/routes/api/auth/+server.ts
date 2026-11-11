@@ -29,7 +29,10 @@ export const GET: RequestHandler = async (event) => {
   return privateJson({
     authenticated: Boolean(event.locals.owner),
     owner: event.locals.owner ?? null,
-    methods
+    methods,
+    // TwilDiary's Trakt app ID (public, never a secret), so the app can offer "Continue with
+    // Trakt" before anyone is signed in.
+    traktClientId: env?.TRAKT_CLIENT_ID?.trim() || null
   });
 };
 

@@ -67,3 +67,21 @@ import TwilDiaryTestSupport
     let restore = OptimisticMutation.restoreWatch(eventId: "local-7", titleId: movie.id, expectedVersion: 2)
     #expect(plan(restore, .simkl).deliveries.map(\.path) == ["/sync/history"])
 }
+
+/// Most watched cast, counted on the phone: each person once per title, ranked by titles then
+/// plays; their role comes from their most-played title, without TMDB's "(voice)".
+@Test func castRankingCountsPeopleAcrossWatchedTitles() {
+    let watched = [CastRanking.Watched(key: "tv:1", name: "Frieren", plays: 28), CastRanking.Watched(key: "tv:2", name: "Bocchi", plays: 12),
+                   CastRanking.Watched(key: "tv:3", name: "Dandadan", plays: 3)]
+    let kana = CastRanking.Member(id: 7, name: "Kana Ichinose", character: "Fern (voice)", profilePath: "/k.jpg")
+    let atsumi = CastRanking.Member(id: 8, name: "Atsumi Tanezaki", character: "Frieren (voice)", profilePath: nil)
+    let casts: [String: [CastRanking.Member]] = [
+        "tv:1": [atsumi, kana, kana],
+        "tv:2": [CastRanking.Member(id: 7, name: "Kana Ichinose", character: "Ryo (voice)", profilePath: "/k.jpg")],
+        "tv:3": [atsumi]
+    ]
+    let rows = CastRanking.rank(watched, casts: casts)
+    #expect(rows.map(\.id) == [7, 8])
+    #expect(rows[0].titles == 2 && rows[0].plays == 40 && rows[0].character == "Fern" && rows[0].title == "Frieren")
+    #expect(rows[1].titles == 2 && rows[1].plays == 31)
+}

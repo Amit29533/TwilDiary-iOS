@@ -1399,6 +1399,38 @@ import TwilDiaryCore
                 if failures > 0 && result.isEmpty { throw APIError.message("MDBList ratings are unavailable right now.") }
                 return result
             }
+            // Trakt with your sign-in: each title's rating straight from Trakt (search by TMDB id,
+            // extended), four at a time, instead of the server asking Trakt for you.
+            if source == .trakt, self.traktSignedInOnPhone, let client = try? await TraktDirectStore.shared.client(store: self) {
+                var result: [String: PublicRating] = [:], failures = 0
+                let wanted: [(id: String, tmdb: Int, type: String)] = ids.compactMap { id in
+                    guard let title = self.title(id), let tmdb = title.tmdbId else { result[id] = PublicRating(score: nil, state: "unrated"); return nil }
+                    return (id, tmdb, title.isSeries ? "show" : "movie")
+                }
+                for start in stride(from: 0, to: wanted.count, by: 4) {
+                    let chunk = Array(wanted[start..<min(start + 4, wanted.count)])
+                    let found = await withTaskGroup(of: (String, Double??).self) { group in
+                        for item in chunk {
+                            group.addTask {
+                                guard let reply = try? await client.get("search/tmdb/\(item.tmdb)", query: ["type": item.type, "extended": "full"]),
+                                      let rows = try? JSONSerialization.jsonObject(with: reply.data) as? [[String: Any]] else { return (item.id, nil) }
+                                let media = rows.compactMap { $0[item.type] as? [String: Any] }.first { ($0["ids"] as? [String: Any])?["tmdb"] as? Int == item.tmdb }
+                                return (item.id, .some((media?["rating"] as? Double).flatMap { $0 > 0 ? min(10, $0) : nil }))
+                            }
+                        }
+                        var all: [(String, Double??)] = []
+                        for await value in group { all.append(value) }
+                        return all
+                    }
+                    for (id, score) in found {
+                        guard let score else { failures += 1; continue }
+                        result[id] = score.map { PublicRating(score: $0, state: "rated") } ?? PublicRating(score: nil, state: "unrated")
+                    }
+                    guard generation == self.sessionGeneration, !Task.isCancelled else { throw CancellationError() }
+                }
+                if failures > 0 && result.isEmpty { throw APIError.message("Trakt ratings are unavailable right now.") }
+                return result
+            }
             do {
                 var query: [String: String] = ["ids": ids.joined(separator: ",")]
                 if source == .mdblist { query["source"] = "mdblist" }

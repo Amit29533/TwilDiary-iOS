@@ -36,6 +36,11 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
     private(set) var error: String?
     init(store: DiaryStore) { self.store = store }
     var hasMore: Bool { page > 0 && page < totalPages }
+    /// On the phone with your Trakt sign-in and TMDB key; the server otherwise.
+    private static func read(_ query: [String: String], store: DiaryStore) async throws -> CanvasListsPage {
+        if let direct = try await CanvasDirect.lists(query, store: store) { return direct }
+        return try await store.read(CatalogTools.apiPath("/api/canvas/lists", query: query))
+    }
     func load(sort: String, kind: String, more: Bool = false) async {
         let requested = ["sort": sort, "kind": kind]
         if more && (loading || !hasMore || requested != scope) { return }
@@ -48,9 +53,9 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
         do {
             let next: CanvasListsPage
             #if DEBUG
-            if store.isPreview { next = PreviewCatalog.canvasLists(page: number) } else { next = try await store.read(CatalogTools.apiPath("/api/canvas/lists", query: requested.merging(["page": String(number)]) { $1 })) }
+            if store.isPreview { next = PreviewCatalog.canvasLists(page: number) } else { next = try await Self.read(requested.merging(["page": String(number)]) { $1 }, store: store) }
             #else
-            next = try await store.read(CatalogTools.apiPath("/api/canvas/lists", query: requested.merging(["page": String(number)]) { $1 }))
+            next = try await Self.read(requested.merging(["page": String(number)]) { $1 }, store: store)
             #endif
             guard generation == request, !Task.isCancelled else { return }
             let known = Set(lists.map(\.id))
@@ -106,18 +111,23 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
         defer { loading = false }
         do {
             let next: CanvasListItemsPage
+            var ratings: [String: Double]?
             #if DEBUG
-            if store.isPreview { next = PreviewCatalog.canvasListItems(page: number) } else { next = try await store.read("/api/canvas/lists/\(id)?page=\(number)") }
+            if store.isPreview { next = PreviewCatalog.canvasListItems(page: number) }
+            else if let direct = try await CanvasDirect.items(list: id, page: number, store: store) { next = direct.page; ratings = direct.ratings }
+            else { next = try await store.read("/api/canvas/lists/\(id)?page=\(number)") }
             #else
-            next = try await store.read("/api/canvas/lists/\(id)?page=\(number)")
+            if let direct = try await CanvasDirect.items(list: id, page: number, store: store) { next = direct.page; ratings = direct.ratings }
+            else { next = try await store.read("/api/canvas/lists/\(id)?page=\(number)") }
             #endif
             let library = Dictionary(store.workspace.activeTitles.compactMap { title in title.tmdbId.map { ((title.isSeries ? "tv:" : "movie:") + String($0), title.id) } }, uniquingKeysWith: { first, _ in first })
-            // Each title's community rating, read from Trakt on the phone for the same page.
-            let ratings = await Self.traktRatings(store: store, list: id, page: number)
+            // Each title's community rating: from the same read on the phone, or Trakt for the server's page.
+            if ratings == nil { ratings = await Self.traktRatings(store: store, list: id, page: number) }
+            let rated = ratings ?? [:]
             let converted = next.items.map { item in
                 let key = item.mediaType.rawValue + ":" + String(item.tmdbId)
                 return CatalogItem(id: item.tmdbId, mediaType: item.mediaType, name: item.name, year: item.year, posterPath: item.posterPath, backdropPath: item.backdropPath,
-                                   rating: ratings[key], inLibraryId: library[key])
+                                   rating: rated[key], inLibraryId: library[key])
             }
             items = CatalogTools.merging(items, converted)
             page = next.page; totalPages = next.totalPages

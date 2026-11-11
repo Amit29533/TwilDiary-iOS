@@ -45,35 +45,31 @@ enum SignInNavigationPolicy {
     @State private var formError: String?
     var body: some View {
         ScrollView {
-            // Design (board 6): the mark, the heading, Continue with Google or email, OR, Other ways.
+            // The mark, the heading, the ways in (Trakt, then Google or email), then Other ways.
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 10) {
                     BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
                     Text("Sign in to your diary").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
-                    Text("Sign in to your own TwilDiary server.")
+                    Text("Choose how to sign in. Trakt keeps your diary; your server keeps the rest.")
                         .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                // The usual way: your server's sign-in page in Apple's sign-in sheet (Safari), so
-                // Google, email codes, passkeys and saved passwords all work.
-                VStack(alignment: .leading, spacing: 8) {
-                    Button { Task { await webSignIn() } } label: {
-                        HStack(spacing: 8) {
-                            if webSigningIn { ProgressView().controlSize(.small) } else { Image(systemName: "globe") }
-                            Text(webSigningIn ? "Signing in…" : "Continue with Google or email")
-                        }
-                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(webSigningIn || submitting)
-                        .accessibilityIdentifier("sign-in-web")
+                // The ways in, as rows (as Cinopsys lists them): Trakt first, then your server's own
+                // sign-in page. Both open in Apple's sign-in sheet and come straight back.
+                VStack(alignment: .leading, spacing: 10) {
                     // Trakt's own sign-in page; your server checks it's the Trakt account linked to
                     // your diary, and this iPhone stays signed in to Trakt as well.
-                    if let traktApp = ProviderAppIDs.id(for: .trakt) {
-                        Button { Task { await traktSignIn(traktApp) } } label: {
-                            HStack(spacing: 8) {
-                                if traktSigningIn { ProgressView().controlSize(.small) } else { BrandLogo(service: .trakt, size: 22) }
-                                Text(traktSigningIn ? "Signing in…" : "Continue with Trakt").lineLimit(1)
-                            }.frame(maxWidth: .infinity)
-                        }.buttonStyle(SettingsWideButtonStyle()).disabled(webSigningIn || traktSigningIn || submitting)
-                            .accessibilityIdentifier("sign-in-trakt")
+                    optionRow(busy: traktSigningIn, id: "sign-in-trakt", title: "Trakt", detail: "Sign in with your Trakt account") {
+                        BrandLogo(service: .trakt, size: 40)
+                    } action: {
+                        Task {
+                            if let traktApp = await traktAppID() { await traktSignIn(traktApp) }
+                            else { webError = "Your server hasn’t shared its Trakt app yet. Use Google or email this once; Trakt is offered from then on." }
+                        }
                     }
+                    optionRow(busy: webSigningIn, id: "sign-in-web", title: "Google or email", detail: "Your TwilDiary server’s sign-in page") {
+                        Image(systemName: "globe").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                    } action: { Task { await webSignIn() } }
                     Text("Opens the sign-in page and comes straight back.")
                         .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
                     if let webError {
@@ -201,6 +197,30 @@ enum SignInNavigationPolicy {
         }
     }
 
+    private func optionRow<Icon: View>(busy: Bool, id: String, title: String, detail: String, @ViewBuilder icon: () -> Icon, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                icon()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(busy ? "Signing in…" : title).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(detail).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if busy { ProgressView().controlSize(.small) } else { SettingsChevron() }
+            }.padding(.horizontal, 15).frame(minHeight: 68).contentShape(Rectangle()).modifier(SettingsCard())
+        }.buttonStyle(.plain).disabled(webSigningIn || traktSigningIn || submitting).accessibilityIdentifier(id)
+    }
+    /// TwilDiary's Trakt app ID: built in, remembered, or from your server's public sign-in check.
+    private func traktAppID() async -> String? {
+        if let known = ProviderAppIDs.id(for: .trakt) { return known }
+        struct Check: Decodable { let traktClientId: String? }
+        var request = URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/auth"), timeoutInterval: 15)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let id = (try? JSONDecoder().decode(Check.self, from: data))?.traktClientId else { return nil }
+        ProviderAppIDs.remember([.trakt: id])
+        return ProviderAppIDs.id(for: .trakt)
+    }
     /// Continue with Trakt: Trakt's page in Apple's sheet (PKCE), then your server signs you in once
     /// that Trakt account is the one linked to your diary. The same sign-in becomes this iPhone's
     /// Trakt connection, so Trakt needs no second sign-in.

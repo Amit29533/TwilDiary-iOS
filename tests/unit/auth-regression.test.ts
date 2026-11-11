@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { d1Fixture } from '../helpers/d1.ts';
 import { connectFixture, traktEnv } from '../helpers/trakt.ts';
-import { POST } from '../../src/routes/api/auth/+server.ts';
+import { GET, POST } from '../../src/routes/api/auth/+server.ts';
 import { signDiarySessionToken, verifyDiarySessionToken, verifyMultiMethodRequest } from '../../src/lib/server/access.ts';
 import { consumeSignInAttempt } from '../../src/lib/server/auth-throttle.ts';
 
@@ -47,4 +47,15 @@ test('persistent auth throttle rejects the eleventh address attempt and distribu
     await consumeSignInAttempt({DB: f.binding}, 'fixture-ip', now + 15 * 60 * 1000);
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM auth_attempts').get()!.n, 2);
   } finally { f.close(); }
+});
+
+test('the public sign-in check shares only the public Trakt app ID, never a secret', async () => {
+  const request = new Request('https://diary.test/api/auth');
+  const response = await GET({request, url: new URL(request.url), locals: {bindings: {TRAKT_CLIENT_ID: ' public-trakt-app ', TRAKT_CLIENT_SECRET: 'never-shared', TRAKT_TOKEN_KEY: 'never-shared'}}} as never);
+  const body = await response.json();
+  assert.equal(body.traktClientId, 'public-trakt-app');
+  assert.equal(body.authenticated, false);
+  assert.ok(!JSON.stringify(body).includes('never-shared'));
+  const unset = await (await GET({request, url: new URL(request.url), locals: {bindings: {}}} as never)).json();
+  assert.equal(unset.traktClientId, null);
 });

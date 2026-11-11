@@ -350,7 +350,14 @@ struct MostWatchedCast: View {
         do {
             // A round loads a few missing casts; stop when done or when a round adds nothing.
             for _ in 0..<40 {
-                let page: Page = try await store.read(CatalogTools.apiPath("/api/stats/cast", query: kind == .voice ? ["kind": "voice"] : [:]))
+                let page: Page
+                // Counted on the phone with your TMDB key (casts are fetched once and kept); the server otherwise.
+                if let direct = await PhoneCastStats.shared.round(kind == .voice ? .voice : .cast, store: store) {
+                    page = Page(items: direct.rows.map { Page.Item(id: $0.id, name: $0.name, image: $0.image, character: $0.character, title: $0.title, titles: $0.titles, plays: $0.plays) },
+                                counted: direct.counted, total: direct.total, pending: direct.pending)
+                } else {
+                    page = try await store.read(CatalogTools.apiPath("/api/stats/cast", query: kind == .voice ? ["kind": "voice"] : [:]))
+                }
                 rows = page.items.map(row)
                 progress = (page.counted, page.total)
                 let finished = page.pending == 0 || page.counted == last || Task.isCancelled
@@ -368,5 +375,42 @@ struct MostWatchedCast: View {
                 last = page.counted
             }
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+}
+
+/// "Most watched" cast and voice actors counted on this iPhone: your watched titles from the
+/// diary, each title's TMDB cast fetched once (20 a round, like the server) and kept in a file.
+@MainActor final class PhoneCastStats {
+    static let shared = PhoneCastStats()
+    private let file = URL.applicationSupportDirectory.appending(path: "Trackers/casts.json")
+    private lazy var casts: [String: [CastRanking.Member]] = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([String: [CastRanking.Member]].self, from: $0) } ?? [:]
+    struct Round { let rows: [CastRanking.Row]; let counted: Int; let total: Int; let pending: Int }
+    /// nil without a TMDB key.
+    func round(_ kind: CastRanking.Kind, store: DiaryStore) async -> Round? {
+        guard let token = TMDBDirect.token(store) else { return nil }
+        let watched = CastRanking.watched(store.workspace, kind: kind)
+        let missing = watched.filter { casts[$0.key] == nil }.prefix(20)
+        let fetched = await withTaskGroup(of: (String, [CastRanking.Member]?).self) { group in
+            for title in missing {
+                group.addTask {
+                    let parts = title.key.split(separator: ":")
+                    guard parts.count == 2, let id = Int(parts[1]) else { return (title.key, nil) }
+                    let route = CatalogRoute(kind: parts[0] == "movie" ? .movie : .tv, id: id)
+                    guard let cast = try? await TMDBDirect.cast(route, token: token) else { return (title.key, nil) }
+                    return (title.key, cast.cast.map { CastRanking.Member(id: $0.id, name: $0.name, character: $0.character, profilePath: $0.profilePath) })
+                }
+            }
+            var all: [(String, [CastRanking.Member]?)] = []
+            for await result in group { all.append(result) }
+            return all
+        }
+        var changed = false
+        for (key, members) in fetched { if let members { casts[key] = members; changed = true } }
+        if changed {
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONEncoder().encode(casts).write(to: file, options: .atomic)
+        }
+        let counted = watched.filter { casts[$0.key] != nil }.count
+        return Round(rows: CastRanking.rank(watched, casts: casts), counted: counted, total: watched.count, pending: watched.count - counted)
     }
 }
