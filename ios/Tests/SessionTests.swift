@@ -1612,6 +1612,20 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             XCTAssertEqual(StubProtocol.state.recorded().count, 1)
         }
     }
+    /// Signed in with Trakt alone: a server read says to connect the server (no request is made)
+    /// and never sends you back to sign-in; a later server sign-in ends phone-only mode.
+    func testPhoneOnlyDiaryNeverSignsOutOnServerReads() async throws {
+        StubProtocol.state.reset { _ in .init(302, "Private sign-in", contentType: "text/html") }
+        let storage = MemorySessionStorage()
+        let store = makeStore(api: api(storage))
+        store.enterPhoneOnlyForTesting()
+        do { let _: EmptyResponse = try await store.read("/api/backups"); XCTFail("read should not reach the server") }
+        catch { XCTAssertEqual(error.localizedDescription, DiaryStore.needsServer) }
+        await store.loadPublicRatings([try XCTUnwrap(PreviewData.workspace.titles.first)], source: .trakt)
+        XCTAssertFalse(store.needsSignIn)
+        XCTAssertTrue(StubProtocol.state.recorded().isEmpty, "phone-only mode makes no server requests")
+        XCTAssertTrue(store.phoneOnly)
+    }
     func testPublicRatingProviderFailureDoesNotExpireThePrivateSession() async throws {
         StubProtocol.state.reset { _ in .init(503, "Provider unavailable", contentType: "text/plain") }
         let storage = MemorySessionStorage(); storage.credential = credential

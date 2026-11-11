@@ -30,6 +30,9 @@ enum SignInNavigationPolicy {
         }
     }
     let completion: @MainActor (AccessCredential) -> Void
+    /// Trakt signed in, but your server didn't give a diary session (Cloudflare Access in front of
+    /// it): open the app on Trakt alone. nil where that isn't offered (connecting a server later).
+    var phoneOnly: (@MainActor () -> Void)? = nil
     @State private var mode: SignInMode = .passcode
     @State private var showOtherWays = false
     @State private var traktSigningIn = false
@@ -235,10 +238,15 @@ enum SignInNavigationPolicy {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             if let host = authURL.host { request.setValue("\(authURL.scheme ?? "https")://\(host)", forHTTPHeaderField: "Origin") }
             request.httpBody = try JSONSerialization.data(withJSONObject: ["method": "provider", "provider": "trakt", "accessToken": tokens.accessToken, "clientId": clientId])
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+            let reply = try? await URLSession.shared.data(for: request)
+            let json = reply.flatMap { (try? JSONSerialization.jsonObject(with: $0.0)) as? [String: Any] }
+            guard let http = reply?.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                   let issued = json?["token"] as? String, AccessCookiePolicy.validToken(issued) else {
+                PendingTraktSignIn.waiting = (clientId, tokens)
+                // No diary session from your server (it sits behind Cloudflare Access, or is
+                // offline): Trakt alone opens the app; the server can be connected later.
+                if let phoneOnly { phoneOnly(); return }
+                PendingTraktSignIn.waiting = nil
                 let message = (json?["error"] as? [String: Any])?["message"] as? String
                 webError = message ?? "Your server didn’t accept this Trakt account. Use the Trakt account linked to your diary, or Continue with Google or email."
                 return

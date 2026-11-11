@@ -121,6 +121,11 @@ import TwilDiaryCore
     /// Titles whose adoption failed: how many tries, and when the next may run.
     @ObservationIgnored var adoptionRetry: [String: (tries: Int, after: Date)] = [:]
     @ObservationIgnored var adoptingTraktTitles = false
+    static let phoneOnlyKey = "phoneOnlyDiary"
+    /// Signed in with Trakt only (as Cinopsys works): no TwilDiary server session. The diary is
+    /// built on the phone from Trakt and TMDB; what needs the server (backups, notes, tags, file
+    /// locations, Trash) asks you to connect it in Connections.
+    private(set) var phoneOnly = false
     /// Which diary is on screen: "server", "trakt", "simkl" or "mdblist".
     var diarySource = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) ?? "server" {
         didSet {
@@ -134,7 +139,7 @@ import TwilDiaryCore
     }
     /// Phase 5: the diary built from Simkl or MDBList; edits go to it (TraktDiaryEditing).
     var diaryFromTracker: MainTracker? {
-        get { diarySource == "simkl" ? .simkl : diarySource == "mdblist" ? .mdblist : nil }
+        get { MainTracker(rawValue: diarySource).flatMap { $0 == .trakt ? nil : $0 } }
         set { diarySource = newValue?.rawValue ?? "server" }
     }
     var mutationRefreshNotice: String? {
@@ -266,6 +271,11 @@ import TwilDiaryCore
         #endif
         if !isPreview {
             needsSignIn = self.api.credential == nil
+            if needsSignIn, UserDefaults.standard.bool(forKey: Self.phoneOnlyKey), traktSignedInOnPhone {
+                phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
+                if diarySource != "trakt" { UserDefaults.standard.set("trakt", forKey: Self.diarySourceKey); diarySource = "trakt" }
+                applyDiarySource()
+            }
             if let scope = self.api.credential?.cacheScope {
                 outbox = self.outboxStore.load(scope: scope)
             }
@@ -294,7 +304,26 @@ import TwilDiaryCore
         let cutoff = now.addingTimeInterval(-7 * 86_400)
         pendingWatches = items.filter { (DiaryDate.parse($0.value["watchedAt"] as? String) ?? .distantPast) > cutoff }
     }
+    /// Opens the app on Trakt alone: after a Trakt sign-in when your server can't be reached
+    /// (Cloudflare Access in front of it), or by choice. Nothing is read from the server.
+    func startPhoneOnly() async {
+        await PendingTraktSignIn.adopt(store: self)
+        guard traktSignedInOnPhone else { error = "Trakt didn’t finish signing in. Try again."; return }
+        UserDefaults.standard.set(true, forKey: Self.phoneOnlyKey)
+        sessionGeneration = UUID(); snapshotGeneration = UUID()
+        phoneOnly = true; error = nil
+        confirmedWorkspace = Workspace(); hasLoadedWorkspace = true
+        if diarySource != "trakt" { diarySource = "trakt" } else { applyDiarySource() }
+        needsSignIn = false
+        await TraktDirectStore.shared.check(store: self)
+        applyDiarySource()
+    }
+    #if DEBUG
+    /// Tests: the phone-only state without a real Trakt sign-in.
+    func enterPhoneOnlyForTesting() { phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true }
+    #endif
     func connect(_ credential: AccessCredential) async {
+        if phoneOnly { phoneOnly = false; UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey); hasLoadedWorkspace = false }
         vaultSyncTask?.cancel(); vaultSyncTask = nil
         cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
         let previousScope = api.credential?.cacheScope
@@ -331,6 +360,11 @@ import TwilDiaryCore
         } catch { if generation == sessionGeneration { fail(error) } }
     }
     func signOut() {
+        if phoneOnly {
+            // Trakt was the sign-in: signing out ends it too.
+            phoneOnly = false; UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey)
+            Task { await self.signOutTraktOnPhone() }
+        }
         BackgroundSyncCoordinator.shared.endLiveActivity()
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
         vaultSyncTask?.cancel(); vaultSyncTask = nil; vaultDirty = [:]; providerVaultNotice = nil
@@ -361,6 +395,12 @@ import TwilDiaryCore
     }
     func refresh() async {
         guard !loading, !needsSignIn else { return }
+        if phoneOnly {
+            loading = true; defer { loading = false }
+            await TraktDirectStore.shared.check(store: self)
+            applyDiarySource()
+            return
+        }
         api.retryQuota()
         #if DEBUG
         if isPreview && fixture == nil { return }
@@ -378,6 +418,7 @@ import TwilDiaryCore
     /// No background polling on the phone. Coalesce rapid scene changes and
     /// wait for in-flight write receipts before reading the scheduled D1 result.
     func refreshOnForeground(at date: Date = .now) async {
+        if phoneOnly, !needsSignIn { await refresh(); return }
         guard !needsSignIn, !api.isQuotaBlocked, lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
         let session = sessionGeneration
         while busy && session == sessionGeneration && !Task.isCancelled {
@@ -933,7 +974,8 @@ import TwilDiaryCore
         vaultStateDefaults?.set(data, forKey: "providerVault.pending." + scope)
     }
     private func stageVaultChanges(from previous: ProviderConnectionSettings, to next: ProviderConnectionSettings) {
-        guard !isPreview else { return }
+        // Signed in with Trakt alone: no server to copy settings to.
+        guard !isPreview, !phoneOnly, api.credential != nil else { return }
         for path in Self.vaultPaths where vaultHash(vaultValue(path, settings: previous)) != vaultHash(vaultValue(path, settings: next)) {
             vaultDirty[path] = VaultDirtyField(baseline: vaultDirty[path]?.baseline ?? vaultHash(vaultValue(path, settings: previous)), generation: UUID())
         }
@@ -1344,6 +1386,7 @@ import TwilDiaryCore
         }
         if isPreview { throw APIError.message("The browsing fixture is read-only.") }
         #endif
+        if phoneOnly { throw APIError.message(Self.needsServer) }
         let generation = sessionGeneration
         do {
             if let mutation = queuedMutation(path, method: method, body: body),
@@ -1879,8 +1922,9 @@ import TwilDiaryCore
         catch { try await reload() }
     }
     private static let targetedRefreshLimit = 50
+    static let needsServer = "This needs your TwilDiary server. Connect it in Profile → Connections → Server sign-in."
     private func fail(_ cause: Error) {
-        if case APIError.signIn = cause {
+        if case APIError.signIn = cause, !phoneOnly {
             retainedTraktController?.invalidateSession(); retainedTraktController = nil
             needsSignIn = true
         }

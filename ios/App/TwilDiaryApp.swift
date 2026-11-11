@@ -172,7 +172,8 @@ struct RootView: View {
         Group {
             if store.needsSignIn {
                 // The ways in, straight away (as Cinopsys opens): Trakt, then Google or email.
-                AccessSignIn { credential in Task { await store.connect(credential) } }
+                AccessSignIn(completion: { credential in Task { await store.connect(credential) } },
+                             phoneOnly: { Task { await store.startPhoneOnly() } })
                     .safeAreaInset(edge: .bottom) {
                         if let error = store.error {
                             Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)

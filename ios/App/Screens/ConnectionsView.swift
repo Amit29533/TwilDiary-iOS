@@ -43,7 +43,9 @@ struct ConnectionsView: View {
                 }
                 SettingsGroup(label: "Your diary") {
                     Button { showDiaryAccess = true } label: {
-                        rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in", "How this iPhone signs in to your TwilDiary server", value: nil)
+                        rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in",
+                                 store.phoneOnly ? "Not connected. Connect for backups, notes, tags, files and Trash" : "How this iPhone signs in to your TwilDiary server",
+                                 value: store.phoneOnly ? "Connect" : nil)
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
                     divider
                     row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "Copies of your diary kept on your server",
