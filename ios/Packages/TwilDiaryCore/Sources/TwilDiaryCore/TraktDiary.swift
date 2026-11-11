@@ -9,7 +9,9 @@ import Foundation
 public enum TraktDiary {
     /// `tracker`: the service the library comes from. What it doesn't keep (favourites on Simkl and
     /// MDBList) stays as the server has it.
-    public static func build(library: TraktLibrary, server: Workspace, tracker: MainTracker = .trakt) -> Workspace {
+    /// `catalog`: titles made on the phone from TMDB (`catalogTitle`) for what's only on the
+    /// service, so they show their poster, seasons and category without joining the server.
+    public static func build(library: TraktLibrary, server: Workspace, tracker: MainTracker = .trakt, catalog: [String: MediaTitle] = [:]) -> Workspace {
         let keepsFavourites = tracker.capabilities.holdsFavourites
         func key(_ title: MediaTitle) -> String? { title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }
         var serverByKey: [String: MediaTitle] = [:]
@@ -39,7 +41,7 @@ public enum TraktDiary {
             titles.append(value); idForKey[k] = title.id
         }
         for (k, ref) in refs.sorted(by: { $0.key < $1.key }) where idForKey[k] == nil {
-            var value = MediaTitle(id: k, name: ref.name, category: ref.kind == .movie ? "movie" : "show", year: ref.year, overview: "",
+            var value = catalog[k] ?? MediaTitle(id: k, name: ref.name, category: ref.kind == .movie ? "movie" : "show", year: ref.year, overview: "",
                                    poster: nil, backdrop: nil, communityScore: nil, tmdbId: ref.tmdbId, genres: [], tags: [], runtimeMinutes: nil,
                                    status: "planned", favorite: false, queued: false, score: nil, notes: "", deletedAt: nil, version: 1,
                                    seasons: nil, createdAt: nil)
@@ -70,6 +72,19 @@ public enum TraktDiary {
                                      watchedAt: play.watchedAt, recordedAt: stamp, origin: tracker.rawValue))
         }
         return Workspace(titles: titles, episodes: episodes, events: events, locations: server.locations)
+    }
+
+    /// A title as the phone knows it from TMDB (no server record): its key ("tv:1399") as id,
+    /// name, year, poster and backdrop, genres, runtime, score, seasons and category (anime when
+    /// TMDB says Japanese animation), the same facts the server stores when a title is added.
+    public static func catalogTitle(_ details: CatalogDetails) -> MediaTitle {
+        let key = (details.mediaType == .tv ? "tv:" : "movie:") + String(details.id)
+        let seasons = details.seasons?.map { Season(number: $0.number, name: $0.name, expectedEpisodes: $0.expectedEpisodes, metadataLoadedAt: nil, metadataVersion: nil) }
+        return MediaTitle(id: key, name: details.name, category: details.suggestedCategory, year: details.year, overview: details.overview,
+                          poster: CatalogTools.image(details.posterPath), backdrop: CatalogTools.image(details.backdropPath, size: "w780"),
+                          communityScore: details.communityScore, tmdbId: details.id, genres: details.genres, tags: [],
+                          runtimeMinutes: details.runtimeMinutes, status: "planned", favorite: false, queued: false, score: nil, notes: "",
+                          deletedAt: nil, version: 1, seasons: details.mediaType == .tv ? seasons : nil, createdAt: nil)
     }
 
     /// Trakt's word on a title: rating, favourite, and its status (dropped, Planned, or watched).

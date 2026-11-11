@@ -397,3 +397,22 @@ private func diary() throws -> Workspace {
     let expired = try MDBListJournal.apply(Data(#"{"requires_full_sync":true,"reason":"sync_window_expired"}"#.utf8), to: &library)
     #expect(expired.needsFullRead)
 }
+
+/// A title only on Trakt takes its poster, seasons and category from the phone's TMDB catalog
+/// (keeping Trakt's word on its status), so it doesn't need a server record to look right.
+@Test func traktOnlyTitlesUseThePhonesCatalog() throws {
+    let details = try JSONDecoder().decode(CatalogDetails.self, from: data(#"""
+    {"id":209867,"mediaType":"tv","name":"Frieren: Beyond Journey's End","year":2023,"overview":"An elf mage.","posterPath":"/frieren.jpg",
+     "backdropPath":"/back.jpg","genres":["Animation","Drama"],"runtimeMinutes":24,"communityScore":8.8,"suggestedCategory":"anime",
+     "seasons":[{"number":1,"name":"Season 1","expectedEpisodes":28}]}
+    """#))
+    let catalog = TraktDiary.catalogTitle(details)
+    #expect(catalog.id == "tv:209867" && catalog.category == "anime" && catalog.poster == "https://image.tmdb.org/t/p/w500/frieren.jpg")
+    #expect(catalog.seasons?.first?.expectedEpisodes == 28 && catalog.backdrop == "https://image.tmdb.org/t/p/w780/back.jpg")
+    let show = TraktTitleRef(kind: .show, traktId: 1, tmdbId: 209867, name: "Frieren")
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 9, title: show, season: 1, episode: 1, watchedAt: "2026-11-01T20:00:00Z")])
+    let diary = TraktDiary.build(library: library, server: Workspace(), catalog: [catalog.id: catalog])
+    let title = try #require(diary.titles.first)
+    #expect(title.id == "tv:209867" && title.category == "anime" && title.poster != nil && title.status == "watching")
+    #expect(diary.events.count == 1 && diary.episodes.first?.titleId == "tv:209867")
+}

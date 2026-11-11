@@ -358,9 +358,10 @@ extension DiaryStore {
         // until it joins (in a moment, on its own); notes, tags and Queue have to wait for that.
         if isServiceOnly(title) { rest.removeValue(forKey: "status") }
         if !rest.isEmpty {
-            guard !isServiceOnly(title) else { throw APIError.message("Notes, tags and Queue need this title in your server diary. It joins on its own in a moment, or add it from its page.") }
-            rest["expectedVersion"] = title.version
-            let _: EmptyResponse = try await read("/api/titles/\(title.id)", method: "PATCH", body: rest)
+            // Notes, tags and Queue live on your server: a title only on the service joins it now.
+            let saved = try await joinServer(title)
+            rest["expectedVersion"] = saved.version
+            let _: EmptyResponse = try await read("/api/titles/\(saved.id)", method: "PATCH", body: rest)
         }
     }
 }

@@ -473,25 +473,31 @@ import TwilDiaryCore
         guard hasLoadedWorkspace else { return }
         if diaryFromTrakt {
             if let library = TraktDirectStore.shared.library {
-                workspace = TraktDiary.build(library: library, server: confirmedWorkspace)
-                if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
-                    Task { await self.adoptServiceOnlyTitles() }
-                }
+                workspace = TraktDiary.build(library: library, server: confirmedWorkspace, catalog: PhoneCatalog.shared.titles)
+                fillServiceOnlyTitles()
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
             }
         } else if let tracker = diaryFromTracker {
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
-                workspace = TraktDiary.build(library: library, server: confirmedWorkspace, tracker: tracker)
-                if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
-                    Task { await self.adoptServiceOnlyTitles() }
-                }
+                workspace = TraktDiary.build(library: library, server: confirmedWorkspace, tracker: tracker, catalog: PhoneCatalog.shared.titles)
+                fillServiceOnlyTitles()
             } else {
                 workspace = outbox.project(onto: confirmedWorkspace)
                 if TrackerPreviewStore.shared.running == nil { Task { await TrackerPreviewStore.shared.check(tracker, store: self) } }
             }
         } else {
             workspace = outbox.project(onto: confirmedWorkspace)
+        }
+    }
+    /// Titles only on the service get their details on the phone (TMDB, with your key) instead of
+    /// being copied into the server diary; without a key they still join the server, as before.
+    private func fillServiceOnlyTitles() {
+        let missing = workspace.titles.filter { isServiceOnly($0) && $0.poster == nil }.map(\.id)
+        guard !missing.isEmpty else { return }
+        if TMDBDirect.token(self) != nil { Task { await PhoneCatalog.shared.fill(missing, store: self) } }
+        else if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
+            Task { await self.adoptServiceOnlyTitles() }
         }
     }
     private func reloadFromServer() async throws {
@@ -1336,7 +1342,8 @@ import TwilDiaryCore
     }
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
         await perform(refreshing: [title.id]) {
-            guard !self.isServiceOnly(title) else { throw APIError.message("This title is only on \(self.diaryService?.name ?? "Trakt") so far. It joins your server diary on its own in a moment; then Trash works.") }
+            // Trash is kept on your server: a title only on the service joins it first.
+            let title = try await self.joinServer(title)
             let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
             // A service holds the diary: a Planned title leaves its watchlist too (Undo puts it back).
             let onService = self.diaryFromService || self.traktHoldsDiary
@@ -1351,7 +1358,7 @@ import TwilDiaryCore
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
         await perform(refreshing: [title.id]) {
-            guard !self.isServiceOnly(title) else { throw APIError.message("This title is only on \(self.diaryService?.name ?? "Trakt") so far. It joins your server diary on its own in a moment; then Trash works.") }
+            let title = try await self.joinServer(title)
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
             if self.diaryFromService || self.traktHoldsDiary { try await self.serviceWatchlist([title], listed: true) }
         }
