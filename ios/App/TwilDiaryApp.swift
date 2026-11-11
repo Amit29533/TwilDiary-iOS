@@ -167,6 +167,7 @@ struct RootView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
     @Namespace private var zoom
+    @State private var askAlerts = false
     var body: some View {
         @Bindable var router = router
         Group {
@@ -219,11 +220,20 @@ struct RootView: View {
                         onAdd: { router.randomPick = nil; router.library("add") }).id(scope.id)
                 }
             }.onChange(of: store.sessionRevision) { _, _ in router.randomPick = nil }
+            // Once your diary has loaded the first time: "Turn on notifications", as Cinopsys asks.
+            .task(id: store.hasLoadedWorkspace) {
+                guard store.hasLoadedWorkspace, !store.needsSignIn, !store.isPreview,
+                      !UserDefaults.standard.bool(forKey: EpisodeNotifications.askedKey) else { return }
+                try? await Task.sleep(for: .seconds(2))
+                askAlerts = !Task.isCancelled
+            }
+            .sheet(isPresented: $askAlerts) { EpisodeAlertsPrompt() }
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
                     await LocalBackups.write(store: store)
                     await ServerBackups.runIfDue(store: store)
+                    await EpisodeNotifications.reschedule(store: store)
                     await store.keepDiaryServiceCurrent()
                 }
                 else { store.suspendTraktForBackground() }

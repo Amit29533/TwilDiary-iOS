@@ -85,3 +85,26 @@ import TwilDiaryTestSupport
     #expect(rows[0].titles == 2 && rows[0].plays == 40 && rows[0].character == "Fern" && rows[0].title == "Frieren")
     #expect(rows[1].titles == 2 && rows[1].plays == 31)
 }
+
+/// New-episode alerts: shows you're watching, episodes airing in the next two weeks, one alert
+/// per show per day; skipped episodes, specials, past days and shows you're not watching are left out.
+@Test func episodeAlertsCoverTheNextTwoWeeksOfShowsYouWatch() throws {
+    func show(_ id: String, _ status: String) -> MediaTitle {
+        MediaTitle(id: id, name: id.capitalized, category: "show", year: nil, overview: "", poster: nil, backdrop: nil, communityScore: nil, tmdbId: 1,
+                   genres: [], tags: [], runtimeMinutes: nil, status: status, favorite: false, queued: false, score: nil, notes: "", deletedAt: nil,
+                   version: 1, seasons: nil, createdAt: nil)
+    }
+    func episode(_ title: String, _ season: Int, _ number: Int, _ day: String, skipped: Bool? = nil) -> Episode {
+        Episode(id: "\(title)-\(season)-\(number)", titleId: title, season: season, number: number, name: "", overview: "", airedOn: day,
+                still: nil, hidden: true, communityScore: nil, skipped: skipped)
+    }
+    let workspace = Workspace(titles: [show("frieren", "watching"), show("planned", "planned"), show("dropped", "dropped")],
+                              episodes: [episode("frieren", 2, 3, "2026-11-12"), episode("frieren", 2, 4, "2026-11-12"), episode("frieren", 2, 5, "2026-11-19"),
+                                         episode("frieren", 2, 6, "2026-11-30"), episode("frieren", 2, 2, "2026-11-05"), episode("frieren", 0, 1, "2026-11-13"),
+                                         episode("frieren", 2, 7, "2026-11-20", skipped: true), episode("planned", 1, 1, "2026-11-12"), episode("dropped", 1, 1, "2026-11-12")],
+                              events: [])
+    let alerts = EpisodeAlerts.upcoming(workspace, today: "2026-11-11")
+    #expect(alerts.map(\.day) == ["2026-11-12", "2026-11-19"])
+    #expect(alerts[0].title == "Frieren" && alerts[0].body == "S2 E3–E4 are out today." && alerts[0].id == "episode|frieren|2026-11-12")
+    #expect(alerts[1].body == "S2 E5 is out today.")
+}

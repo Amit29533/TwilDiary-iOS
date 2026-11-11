@@ -95,6 +95,7 @@ struct SyncBackupView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("confirmDeletions") private var confirmDeletions = true
     @AppStorage(ServiceRemovals.key) private var applyRemovals = true
+    @AppStorage(EpisodeNotifications.enabledKey) private var episodeAlerts = false
     @AppStorage(LocalBackups.enabledKey) private var filesBackup = false
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -120,6 +121,14 @@ struct SyncBackupView: View {
                     SettingsLine(title: "Removals on Trakt", subtitle: applyRemovals ? "Something removed on Trakt leaves your diary too" : "Your diary puts back what Trakt no longer has") {
                         Toggle("", isOn: $applyRemovals).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-apply-removals")
+                }
+                SettingsGroup(label: "Notifications") {
+                    SettingsLine(title: "New episodes", subtitle: "An alert the day a show you watch has a new episode") {
+                        Toggle("", isOn: Binding(get: { episodeAlerts }, set: { on in
+                            if on { Task { if await !EpisodeNotifications.enable(store: store) { localNotice = "Allow notifications for TwilDiary in the Settings app." } } }
+                            else { EpisodeNotifications.disable() }
+                        })).labelsHidden().tint(theme.accent)
+                    }.accessibilityIdentifier("sync-episode-alerts")
                 }
                 SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
