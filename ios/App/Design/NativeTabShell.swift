@@ -237,9 +237,19 @@ import UIKit
             guard moved.y > 24, moved.y > abs(moved.x) * 1.5 else { return }
             restored = true
             // There's no "expand" call: switching shrinking off expands the bar; it's back on at once
-            // for the next scroll down.
-            controller.tabBarMinimizeBehavior = .never
-            Task { @MainActor [weak controller] in controller?.tabBarMinimizeBehavior = .onScrollDown }
+            // for the next scroll down. The switch runs inside a spring, and the bar grows in from
+            // slightly smaller and dimmer, so it eases back instead of popping.
+            let bar = controller.tabBar
+            let reduceMotion = UIAccessibility.isReduceMotionEnabled
+            if !reduceMotion { bar.transform = CGAffineTransform(scaleX: 0.8, y: 0.8).translatedBy(x: 0, y: 18); bar.alpha = 0.4 }
+            UIView.animate(withDuration: reduceMotion ? 0.2 : 0.55, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0.2,
+                           options: [.allowUserInteraction, .beginFromCurrentState]) {
+                controller.tabBarMinimizeBehavior = .never
+                bar.transform = .identity; bar.alpha = 1
+                controller.view.layoutIfNeeded()
+            } completion: { [weak controller] _ in
+                controller?.tabBarMinimizeBehavior = .onScrollDown
+            }
         default: break
         }
     }
