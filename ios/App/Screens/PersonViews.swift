@@ -203,17 +203,19 @@ struct PersonView: View {
     }
     /// Characters as a sideways row (the first 20), then the round > to all of them.
     private func roles(_ actor: AniVoiceActorDetail) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        // Each character once, however many seasons they're in.
+        let characters = actor.characters
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Characters \(actor.roles.count)").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                Text("Characters \(characters.count)").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 Spacer(minLength: 4)
-                if actor.roles.count > 1 {
+                if characters.count > 1 {
                     SectionMoreLink(label: "All characters", value: VoiceActorCharactersRoute(id: actor.id, name: actor.name),
                                     identifier: "voice-actor-characters-more")
                 }
             }
             ProfileShelf {
-                ForEach(actor.roles.prefix(20)) { role in
+                ForEach(characters.prefix(20)) { role in
                     VoiceActorRoleCard(role: role, grid: !typeSize.isAccessibilitySize)
                         .containerRelativeFrame(.horizontal) { width, _ in typeSize.isAccessibilitySize ? width : min(150, max(104, (width - 24) / 2.85)) }
                 }

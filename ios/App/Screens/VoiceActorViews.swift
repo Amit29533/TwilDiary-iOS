@@ -51,10 +51,10 @@ struct VoiceActorCharactersView: View {
         #if DEBUG
         if store.isPreview {
             let actor = ProfileFormattingPreview.enabled ? (ProfileFormattingPreview.voice(route.id) ?? AniListPreview.voiceActor(route.id)) : AniListPreview.voiceActor(route.id)
-            roles = actor.roles; return
+            roles = actor.characters; return
         }
         #endif
-        do { roles = try await AniListClient.shared.voiceActor(route.id).roles }
+        do { roles = try await AniListClient.shared.voiceActor(route.id).characters }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }
@@ -84,7 +84,15 @@ struct VoiceActorRoleCard: View {
                                                year: role.year, role: role.role, voiceActor: nil,
                                                format: role.format, alternateTitles: role.alternateTitles)) {
                 VStack(alignment: .leading, spacing: 4) {
-                    ProfileCardCaption(title: role.anime, secondary: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        ProfileCardCaption(title: role.anime, secondary: true)
+                        // Their other seasons and films with this character.
+                        if role.moreAnime > 0 {
+                            Text("+\(role.moreAnime)").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                                .padding(.horizontal, 6).frame(height: 18).background(HomeStyle.chip, in: Capsule()).fixedSize()
+                                .accessibilityLabel("and \(role.moreAnime) more")
+                        }
+                    }
                     if let score = role.rating, score > 0 {
                         RatingBadge(score: score, source: "AniList")
                             .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")

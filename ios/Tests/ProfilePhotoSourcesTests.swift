@@ -22,4 +22,14 @@ import TwilDiaryCore
         XCTAssertEqual(a.link(size: "w500"), "https://image.tmdb.org/t/p/w500/a.jpg")
         XCTAssertEqual(a.originalURL?.absoluteString, "https://image.tmdb.org/t/p/original/a.jpg")
     }
+    func testVoiceActorListsEachCharacterOnceWithTheirOtherSeasons() {
+        func role(_ character: Int, _ anime: Int) -> AniRole {
+            AniRole(character: AniPerson(id: character, name: "C\(character)", image: nil), animeID: anime, anime: "A\(anime)",
+                    cover: nil, year: nil, role: "MAIN")
+        }
+        let once = AniRole.oncePerCharacter([role(1, 10), role(2, 10), role(1, 11), role(1, 12), role(3, 13)])
+        XCTAssertEqual(once.map(\.character.id), [1, 2, 3])
+        XCTAssertEqual(once.map(\.animeID), [10, 10, 13], "The most popular anime (listed first) stays on the card")
+        XCTAssertEqual(once.map(\.moreAnime), [2, 0, 0])
+    }
 }

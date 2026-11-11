@@ -69,7 +69,27 @@ struct AniRole: Hashable, Sendable, Identifiable {
     var rating: Double? = nil
     /// A wide picture for a page header (see AniAppearance.banner).
     var banner: String? = nil
+    /// Other anime (seasons, films) they voice this character in, besides `anime`.
+    var moreAnime = 0
     var id: String { "\(character.id)-\(animeID)" }
+    /// One card per character: their most popular anime (roles arrive most popular first),
+    /// counting the other seasons and films instead of repeating the character.
+    static func oncePerCharacter(_ roles: [AniRole]) -> [AniRole] {
+        var order: [Int] = [], first: [Int: AniRole] = [:], count: [Int: Int] = [:]
+        for role in roles {
+            if first[role.character.id] == nil { order.append(role.character.id); first[role.character.id] = role }
+            count[role.character.id, default: 0] += 1
+        }
+        return order.compactMap { id in
+            guard var role = first[id] else { return nil }
+            role.moreAnime = (count[id] ?? 1) - 1
+            return role
+        }
+    }
+}
+extension AniVoiceActorDetail {
+    /// Each character once (see AniRole.oncePerCharacter); `roles` keeps every anime.
+    var characters: [AniRole] { AniRole.oncePerCharacter(roles) }
 }
 struct AniVoiceActorDetail: Sendable {
     let id: Int
