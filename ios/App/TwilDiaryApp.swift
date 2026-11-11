@@ -228,6 +228,7 @@ struct RootView: View {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
                     await LocalBackups.write(store: store)
+                    await ServerBackups.runIfDue(store: store)
                     await store.keepDiaryServiceCurrent()
                 }
                 else { store.suspendTraktForBackground() }

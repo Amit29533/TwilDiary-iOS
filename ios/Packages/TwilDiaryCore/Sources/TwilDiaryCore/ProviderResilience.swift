@@ -48,3 +48,27 @@ public enum LostWriteCheck {
         }
     }
 }
+
+/// How often the phone saves a backup to your server on its own (as Cinopsys does with its
+/// folder and Drive backups: every 1, 7 or 30 days, with an hour's leeway so a backup made a
+/// little early still counts).
+public enum BackupSchedule: String, CaseIterable, Identifiable, Sendable {
+    case off, daily, weekly, monthly
+    public var id: String { rawValue }
+    public var label: String {
+        switch self { case .off: "Off"; case .daily: "Daily"; case .weekly: "Weekly"; case .monthly: "Monthly" }
+    }
+    public var interval: TimeInterval? {
+        switch self { case .off: nil; case .daily: 86_400; case .weekly: 7 * 86_400; case .monthly: 30 * 86_400 }
+    }
+    /// When the next automatic backup is due (now, when there has never been one).
+    public func next(after last: Date?, now: Date = .now) -> Date? {
+        guard let interval else { return nil }
+        guard let last else { return now }
+        return last.addingTimeInterval(interval - 3_600)
+    }
+    public func isDue(last: Date?, now: Date = .now) -> Bool {
+        guard let next = next(after: last, now: now) else { return false }
+        return now >= next
+    }
+}

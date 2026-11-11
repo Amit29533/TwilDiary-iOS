@@ -31,3 +31,15 @@ import TwilDiaryTestSupport
     let rating = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: nil, notes: nil)
     #expect(!LostWriteCheck.delivered(rating, in: base, library: TraktLibrary()))
 }
+
+/// Automatic backups: due when there's never been one, then every 1, 7 or 30 days (an hour early
+/// is fine); off never runs.
+@Test func automaticBackupsFollowTheirSchedule() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    #expect(BackupSchedule.weekly.isDue(last: nil, now: now))
+    #expect(!BackupSchedule.weekly.isDue(last: now.addingTimeInterval(-6 * 86_400), now: now))
+    #expect(BackupSchedule.weekly.isDue(last: now.addingTimeInterval(-7 * 86_400 + 1_800), now: now))
+    #expect(BackupSchedule.daily.isDue(last: now.addingTimeInterval(-86_400), now: now))
+    #expect(!BackupSchedule.monthly.isDue(last: now.addingTimeInterval(-20 * 86_400), now: now))
+    #expect(!BackupSchedule.off.isDue(last: nil, now: now) && BackupSchedule.off.next(after: nil, now: now) == nil)
+}

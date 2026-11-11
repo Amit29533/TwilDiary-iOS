@@ -122,6 +122,8 @@ struct SyncBackupView: View {
                             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                         }
                     }.buttonStyle(.plain).accessibilityIdentifier("sync-backup-server")
+                    SettingsDivider()
+                    ServerBackups.SchedulePicker().padding(.horizontal, 16).frame(minHeight: 60)
                 }
                 SettingsGroup(label: "Extra backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in Files → On My iPhone → TwilDiary") {
@@ -138,7 +140,10 @@ struct SyncBackupView: View {
         }.diaryScreenBackground().diaryPageNavigation("Sync & backup")
             .task {
                 refresh = UIApplication.shared.backgroundRefreshStatus
-                if !store.isPreview, let list: BackupList = try? await store.read("/api/backups") { lastServerBackup = list.backups.compactMap { DiaryDate.parse($0.createdAt) }.max() }
+                if !store.isPreview, let list: BackupList = try? await store.read("/api/backups") {
+                    lastServerBackup = list.backups.compactMap { DiaryDate.parse($0.createdAt) }.max()
+                    ServerBackups.noteLatest(lastServerBackup)
+                }
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { refresh = UIApplication.shared.backgroundRefreshStatus } }
             .onChange(of: filesBackup) { _, on in

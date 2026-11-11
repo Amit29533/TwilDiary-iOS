@@ -39,6 +39,7 @@ struct BackupsView: View {
                     }
                     Text("A copy of your whole diary (titles, watches, ratings, notes, tags and file mappings) plus your last Trakt read, kept on your server. Restoring merges it back, so nothing newer is lost.")
                         .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    ServerBackups.SchedulePicker()
                     Button { Task { await backUp() } } label: {
                         HStack(spacing: 8) {
                             if working != nil { ProgressView().controlSize(.small).tint(Color(webHex: "#1a1030")) }
@@ -112,20 +113,17 @@ struct BackupsView: View {
         #if DEBUG
         if store.isPreview { backups = []; return }
         #endif
-        do { backups = (try await store.read("/api/backups") as BackupList).backups; failure = nil }
+        do {
+            backups = (try await store.read("/api/backups") as BackupList).backups; failure = nil
+            ServerBackups.noteLatest(backups?.compactMap { DiaryDate.parse($0.createdAt) }.max())
+        }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     private func backUp() async {
         working = "Backing up…"; message = nil; failure = nil
         defer { working = nil }
         do {
-            let snapshot = store.workspace
-            let diaryData = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
-            guard let diary = try JSONSerialization.jsonObject(with: diaryData) as? [String: Any] else { throw APIError.message("The diary couldn’t be packed.") }
-            var body: [String: Any] = ["label": "Manual backup", "diary": diary]
-            if let library = TraktDirectStore.shared.library, let data = try? JSONEncoder().encode(library),
-               let trakt = try? JSONSerialization.jsonObject(with: data) { body["trakt"] = trakt }
-            let saved: Summary = try await store.read("/api/backups", method: "POST", body: body, timeout: 60)
+            let saved = try await ServerBackups.save(store: store, label: "Manual backup")
             message = "Backed up \(saved.titles.counted("title", "titles")) and \(saved.watches.counted("watch", "watches"))."
             await load()
         } catch { failure = error.localizedDescription }
@@ -155,5 +153,73 @@ struct BackupsView: View {
         struct Deleted: Decodable { let deleted: Bool }
         do { _ = try await store.read("/api/backups/" + backup.id, method: "DELETE") as Deleted; await load() }
         catch { failure = error.localizedDescription }
+    }
+}
+
+/// Backups on your server: "Back up now", and the automatic ones (Off, Daily, Weekly, Monthly;
+/// weekly unless you change it), saved when the app opens or refreshes in the background once one
+/// is due. An empty diary isn't backed up; a failed attempt waits six hours before the next.
+@MainActor enum ServerBackups {
+    static let scheduleKey = "serverBackup.schedule"
+    private static let lastKey = "serverBackup.last", attemptKey = "serverBackup.attempt"
+    static var schedule: BackupSchedule {
+        BackupSchedule(rawValue: UserDefaults.standard.string(forKey: scheduleKey) ?? "") ?? .weekly
+    }
+    static var last: Date? {
+        let stamp = UserDefaults.standard.double(forKey: lastKey)
+        return stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
+    }
+    /// The newest backup the server lists (manual ones count too).
+    static func noteLatest(_ date: Date?) {
+        guard let date, date > (last ?? .distantPast) else { return }
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: lastKey)
+    }
+
+    /// The whole diary plus the last Trakt read, compressed and kept on your server (newest 20).
+    @discardableResult static func save(store: DiaryStore, label: String) async throws -> BackupsView.Summary {
+        let snapshot = store.workspace
+        let diaryData = try await Task.detached(priority: .utility) { try DiaryExport(workspace: snapshot).encoded() }.value
+        guard let diary = try JSONSerialization.jsonObject(with: diaryData) as? [String: Any] else { throw APIError.message("The diary couldn’t be packed.") }
+        var body: [String: Any] = ["label": label, "diary": diary]
+        if let library = TraktDirectStore.shared.library, let data = try? JSONEncoder().encode(library),
+           let trakt = try? JSONSerialization.jsonObject(with: data) { body["trakt"] = trakt }
+        let saved: BackupsView.Summary = try await store.read("/api/backups", method: "POST", body: body, timeout: 60)
+        noteLatest(DiaryDate.parse(saved.createdAt) ?? .now)
+        return saved
+    }
+
+    /// Saves an automatic backup when one is due.
+    static func runIfDue(store: DiaryStore, now: Date = .now) async {
+        guard !store.isPreview, !store.needsSignIn, store.hasLoadedWorkspace, !store.workspace.titles.isEmpty,
+              schedule.isDue(last: last, now: now) else { return }
+        let attempted = UserDefaults.standard.double(forKey: attemptKey)
+        guard now.timeIntervalSince1970 - attempted > 6 * 3_600 else { return }
+        UserDefaults.standard.set(now.timeIntervalSince1970, forKey: attemptKey)
+        _ = try? await save(store: store, label: "Automatic backup")
+    }
+
+    /// "Automatic backups: Weekly" with the next one's date.
+    struct SchedulePicker: View {
+        @AppStorage(ServerBackups.scheduleKey) private var choice = BackupSchedule.weekly.rawValue
+        var body: some View {
+            let current = BackupSchedule(rawValue: choice) ?? .weekly
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Automatic backups").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(current.next(after: ServerBackups.last).map { "Next: " + ($0 <= .now ? "when you next open the app" : $0.formatted(date: .abbreviated, time: .omitted)) } ?? "Only when you tap Back up now")
+                        .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Menu {
+                    Picker("Automatic backups", selection: $choice) {
+                        ForEach(BackupSchedule.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                } label: {
+                    HStack(spacing: 6) { Text(current.label); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
+                }.accessibilityLabel("Automatic backups").accessibilityValue(current.label).accessibilityIdentifier("backup-schedule")
+            }
+        }
     }
 }
