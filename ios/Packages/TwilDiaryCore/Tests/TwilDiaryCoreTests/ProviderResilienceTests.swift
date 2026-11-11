@@ -43,3 +43,27 @@ import TwilDiaryTestSupport
     #expect(!BackupSchedule.monthly.isDue(last: now.addingTimeInterval(-20 * 86_400), now: now))
     #expect(!BackupSchedule.off.isDue(last: nil, now: now) && BackupSchedule.off.next(after: nil, now: now) == nil)
 }
+
+/// Removing a watch reaches each service as that one play: Trakt by its history id (never "every
+/// play of the title"), WeTrakr by its time, Simkl and MDBList their watch; undoing it sends it again.
+@Test func removingAWatchSendsOnlyThatPlay() throws {
+    var base = try SampleWorkspace.mapped()
+    let movie = try #require(base.titles.first { !$0.isSeries && $0.tmdbId != nil })
+    base.events.append(WatchEvent(id: "trakt-42", operationId: "x", titleId: movie.id, episodeId: nil, watchedAt: "2026-11-05T20:00:00.000Z", recordedAt: "2026-11-05T20:00:00.000Z"))
+    base.events.append(WatchEvent(id: "local-7", operationId: "y", titleId: movie.id, episodeId: nil, watchedAt: "2026-11-06T20:00:00.000Z", recordedAt: "2026-11-06T20:00:00.000Z"))
+    func plan(_ mutation: OptimisticMutation, _ provider: SyncProviderKind) -> ProviderDeliveryPlan {
+        ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-07T00:00:00Z", mutation: mutation, pendingProviders: [provider]), provider: provider, in: base)
+    }
+    let revokeTrakt = OptimisticMutation.revokeWatch(eventId: "trakt-42", titleId: movie.id, expectedVersion: 1, revokedAt: "2026-11-07T00:00:00Z")
+    let trakt = plan(revokeTrakt, .trakt)
+    #expect(trakt.deliveries.map(\.path) == ["/sync/history/remove"] && (trakt.deliveries[0].body["ids"] as? [Int64]) == [42])
+    let revokeLocal = OptimisticMutation.revokeWatch(eventId: "local-7", titleId: movie.id, expectedVersion: 1, revokedAt: "2026-11-07T00:00:00Z")
+    #expect(plan(revokeLocal, .trakt).deliveries.isEmpty && !plan(revokeLocal, .trakt).blocked.isEmpty, "no Trakt id: never a blanket removal")
+    let wetrakr = plan(revokeLocal, .wetrakr)
+    let item = try #require((wetrakr.deliveries.first?.body["movies"] as? [[String: Any]])?.first)
+    #expect(wetrakr.deliveries.first?.path == "/sync/tracking/remove" && item["tracked_at"] as? String == "2026-11-06T20:00:00.000Z" && item["allow_rewatch"] == nil)
+    #expect(plan(revokeLocal, .mdblist).deliveries.map(\.path) == ["/sync/watched/remove"])
+    #expect(plan(revokeLocal, .simkl).deliveries.map(\.path) == ["/sync/history/remove"])
+    let restore = OptimisticMutation.restoreWatch(eventId: "local-7", titleId: movie.id, expectedVersion: 2)
+    #expect(plan(restore, .simkl).deliveries.map(\.path) == ["/sync/history"])
+}

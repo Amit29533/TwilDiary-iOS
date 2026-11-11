@@ -78,7 +78,7 @@ extension DiaryStore {
     }
 
     /// Queues an edit for the connected mirrors, never the service the diary comes from.
-    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .simkl, .mdblist]) {
+    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .simkl, .mdblist, .wetrakr]) {
         var skip: Set<SyncProviderKind> = [.cloudflare]
         if let diaryService { skip.insert(providerKind(diaryService)) }
         // The service holding the diary gets your edits directly (one writer, one pace), also

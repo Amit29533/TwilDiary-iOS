@@ -28,19 +28,57 @@ public enum ProviderDeliveryPlanner {
             let body: [String: Any] = value ?? item
             deliveries.append(ProviderDelivery(key: key, path: path, body: [slot: [body]], history: history))
         }
+        /// The play in each service's shape: the movie, or show > season > episode, with its time.
+        func watchItem(_ episodeID: String?, _ watchedAt: String) -> [String: Any]? {
+            var watch = item
+            if title.isSeries {
+                guard let episode = workspace.episodes.first(where: { $0.id == episodeID && $0.titleId == title.id }), episode.season >= 0, episode.number > 0 else { return nil }
+                let episodeItem: [String: Any] = ["number": episode.number, "watched_at": watchedAt]
+                watch["seasons"] = [["number": episode.season, "episodes": [episodeItem]]]
+            } else { watch["watched_at"] = watchedAt }
+            return watch
+        }
+        func sendWatch(_ watch: [String: Any]) {
+            if provider == .wetrakr { add("history", "/sync/tracking", WeTrakrWrite.watched(watch, rewatch: true), history: true) }
+            else { add("history", provider == .mdblist ? "/sync/watched" : "/sync/history", watch, history: true) }
+        }
         switch entry.mutation {
         case .markWatch(_, _, let episodeID, let watchedAt, _, _):
-            do {
-                var watch = item
-                if title.isSeries {
-                    guard let episode = workspace.episodes.first(where: { $0.id == episodeID && $0.titleId == title.id }), episode.season >= 0, episode.number > 0 else {
-                        return ProviderDeliveryPlan(deliveries: [], blocked: ["A mapped episode is required before this watch can sync."])
-                    }
-                    let episodeItem: [String: Any] = ["number": episode.number, "watched_at": watchedAt]
-                    watch["seasons"] = [["number": episode.season, "episodes": [episodeItem]]]
-                } else { watch["watched_at"] = watchedAt }
-                if provider == .wetrakr { add("history", "/sync/tracking", WeTrakrWrite.watched(watch, rewatch: true), history: true) }
-                else { add("history", provider == .mdblist ? "/sync/watched" : "/sync/history", watch, history: true) }
+            guard let watch = watchItem(episodeID, watchedAt) else {
+                return ProviderDeliveryPlan(deliveries: [], blocked: ["A mapped episode is required before this watch can sync."])
+            }
+            sendWatch(watch)
+        case .restoreWatch(let eventID, _, _):
+            // Undoing a removal sends that play again, at its own time.
+            guard let event = workspace.events.first(where: { $0.id == eventID }), let date = event.watchedAt,
+                  let watch = watchItem(event.episodeId, date) else {
+                return ProviderDeliveryPlan(deliveries: [], blocked: ["This watch has no date or episode to send again."])
+            }
+            sendWatch(watch)
+        case .revokeWatch(let eventID, _, _, _):
+            // Only that play: Trakt by its history id (a removal without one would take every
+            // play of the title), WeTrakr by its time, Simkl and MDBList their one watch.
+            guard let event = workspace.events.first(where: { $0.id == eventID }) else {
+                return ProviderDeliveryPlan(deliveries: [], blocked: ["This watch is no longer in the diary."])
+            }
+            switch provider {
+            case .trakt:
+                guard eventID.hasPrefix("trakt-"), let history = Int64(eventID.dropFirst(6)) else {
+                    blocked.append("Remove this play on Trakt itself: it has no Trakt history id here."); break
+                }
+                deliveries.append(ProviderDelivery(key: "history-remove", path: "/sync/history/remove", body: ["ids": [history]], history: false))
+            case .wetrakr:
+                guard let date = event.watchedAt, var watch = watchItem(event.episodeId, date).map({ WeTrakrWrite.watched($0, rewatch: false) }) else {
+                    blocked.append("WeTrakr removes one play by its time, and this watch has none."); break
+                }
+                watch.removeValue(forKey: "allow_rewatch")
+                add("history-remove", "/sync/tracking/remove", watch)
+            case .simkl, .mdblist:
+                guard let watch = watchItem(event.episodeId, event.watchedAt ?? entry.createdAt) else {
+                    blocked.append("A mapped episode is required before this removal can sync."); break
+                }
+                add("history-remove", provider == .mdblist ? "/sync/watched/remove" : "/sync/history/remove", watch)
+            case .cloudflare: break
             }
         case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _):
             if clearScore || score != nil {

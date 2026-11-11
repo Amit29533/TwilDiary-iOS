@@ -118,6 +118,13 @@ enum TraktDelivery: Equatable, Sendable {
     }
 }
 
+/// Whether something removed on the service holding your diary is removed from the diary too
+/// (on, the default) or put back from your diary on the next sync (off). Cinopsys asks the same.
+enum ServiceRemovals {
+    static let key = "applyServiceRemovals"
+    static var apply: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+}
+
 /// The last direct read of Trakt and how it compares with the diary (Trakt page → Direct from Trakt).
 @MainActor @Observable final class TraktDirectStore {
     static let shared = TraktDirectStore()
@@ -263,6 +270,8 @@ enum TraktDelivery: Equatable, Sendable {
     /// has, unless your change in the diary is newer than Trakt's last change to that list (the
     /// newer change wins). Without a time for the diary change, Trakt's removal stands.
     private func settled(_ library: TraktLibrary, _ diary: Workspace) -> Set<String> {
+        // Removals on Trakt switched off: the diary puts back what Trakt no longer has.
+        guard ServiceRemovals.apply else { return [] }
         loadSeen()
         let known = copied.union(seenOnTrakt)
         let plan = TraktWritePlan.make(library: library, workspace: diary, fillOnly: true)

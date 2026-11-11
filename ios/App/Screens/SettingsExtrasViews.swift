@@ -94,6 +94,7 @@ struct SyncBackupView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("confirmDeletions") private var confirmDeletions = true
+    @AppStorage(ServiceRemovals.key) private var applyRemovals = true
     @AppStorage(LocalBackups.enabledKey) private var filesBackup = false
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -115,6 +116,10 @@ struct SyncBackupView: View {
                     }.buttonStyle(.plain).accessibilityHint("Background App Refresh is turned on in the Settings app")
                     SettingsDivider()
                     SettingsLine(title: "Confirm deletions", subtitle: "Ask before removing titles") { Toggle("", isOn: $confirmDeletions).labelsHidden().tint(theme.accent) }
+                    SettingsDivider()
+                    SettingsLine(title: "Removals on Trakt", subtitle: applyRemovals ? "Something removed on Trakt leaves your diary too" : "Your diary puts back what Trakt no longer has") {
+                        Toggle("", isOn: $applyRemovals).labelsHidden().tint(theme.accent)
+                    }.accessibilityIdentifier("sync-apply-removals")
                 }
                 SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
