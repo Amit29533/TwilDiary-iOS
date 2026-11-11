@@ -83,13 +83,13 @@ enum SignInNavigationPolicy {
                         }
                     }
                     if let onThisPhone {
-                        optionRow(busy: false, id: "sign-in-local", title: "On this phone", detail: "Everything stays on this phone. No account needed") {
+                        optionRow(busy: false, id: "sign-in-local", title: "On this phone", detail: "Stays on this phone. No account") {
                             Image(systemName: "iphone").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
                         } action: { onThisPhone() }
                     }
                     optionRow(busy: webSigningIn, id: "sign-in-web", title: phoneOnly == nil ? "Google or email" : "Your TwilDiary server",
-                              detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email, for backups and extras") {
+                              detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email, for backups") {
                         Image(systemName: "globe").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
                     } action: { Task { await webSignIn() } }
