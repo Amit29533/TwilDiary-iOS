@@ -33,6 +33,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary
+        TWILDIARY_TRAKT_CLIENT_ID: ''
+        TWILDIARY_SIMKL_CLIENT_ID: ''
+        TWILDIARY_MDBLIST_CLIENT_ID: ''
         MARKETING_VERSION: '2.0.0'
         CURRENT_PROJECT_VERSION: '67'
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO

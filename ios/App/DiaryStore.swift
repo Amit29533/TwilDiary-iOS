@@ -323,7 +323,11 @@ import TwilDiaryCore
                 undoLabel = nil; undoAction = nil
             }
             loading = false; busy = false
-            needsSignIn = false; error = nil; restoreCachedWorkspace(); await refresh()
+            needsSignIn = false; error = nil; restoreCachedWorkspace()
+            // Signed in with Trakt on the sign-in page: that sign-in is this iPhone's Trakt connection too.
+            await PendingTraktSignIn.adopt(store: self)
+            await ProviderAppIDs.refresh(store: self)
+            await refresh()
         } catch { if generation == sessionGeneration { fail(error) } }
     }
     func signOut() {

@@ -31,6 +31,8 @@ enum SignInNavigationPolicy {
     }
     let completion: @MainActor (AccessCredential) -> Void
     @State private var mode: SignInMode = .passcode
+    @State private var showOtherWays = false
+    @State private var traktSigningIn = false
     @State private var webSigningIn = false
     @State private var webError: String?
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
@@ -61,18 +63,33 @@ enum SignInNavigationPolicy {
                         }
                     }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(webSigningIn || submitting)
                         .accessibilityIdentifier("sign-in-web")
-                    Text("Opens your server’s sign-in page.")
+                    // Trakt's own sign-in page; your server checks it's the Trakt account linked to
+                    // your diary, and this iPhone stays signed in to Trakt as well.
+                    if let traktApp = ProviderAppIDs.id(for: .trakt) {
+                        Button { Task { await traktSignIn(traktApp) } } label: {
+                            HStack(spacing: 8) {
+                                if traktSigningIn { ProgressView().controlSize(.small) } else { BrandLogo(service: .trakt, size: 22) }
+                                Text(traktSigningIn ? "Signing in…" : "Continue with Trakt").lineLimit(1)
+                            }.frame(maxWidth: .infinity)
+                        }.buttonStyle(SettingsWideButtonStyle()).disabled(webSigningIn || traktSigningIn || submitting)
+                            .accessibilityIdentifier("sign-in-trakt")
+                    }
+                    Text("Opens the sign-in page and comes straight back.")
                         .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
                     if let webError {
                         Text(webError).font(.footnote).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("sign-in-browser-error")
                     }
                 }
-                HStack(spacing: 12) {
-                    Rectangle().fill(HomeStyle.cardBorder).frame(height: HomeStyle.hairline)
-                    Text("OR").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
-                    Rectangle().fill(HomeStyle.cardBorder).frame(height: HomeStyle.hairline)
-                }.accessibilityHidden(true)
+                Button { withAnimation(Motion.smooth) { showOtherWays.toggle() } } label: {
+                    HStack {
+                        Text("Other ways to sign in").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                            .rotationEffect(.degrees(showOtherWays ? 180 : 0))
+                    }.padding(.horizontal, 16).frame(minHeight: 52).contentShape(Rectangle()).modifier(SettingsCard())
+                }.buttonStyle(.plain).accessibilityIdentifier("sign-in-other-ways")
+                if showOtherWays {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Text("Other ways").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
@@ -90,6 +107,7 @@ enum SignInNavigationPolicy {
                     Text(mode.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     alternativeForm
                 }.padding(16).modifier(SettingsCard())
+                }
             }.padding(20)
         }.scrollDismissesKeyboard(.interactively)
             .onChange(of: mode) { _, _ in formError = nil }
@@ -180,6 +198,35 @@ enum SignInNavigationPolicy {
             // Closing the sheet is not an error.
         } catch {
             webError = "The sign-in page couldn’t finish: " + error.localizedDescription
+        }
+    }
+
+    /// Continue with Trakt: Trakt's page in Apple's sheet (PKCE), then your server signs you in once
+    /// that Trakt account is the one linked to your diary. The same sign-in becomes this iPhone's
+    /// Trakt connection, so Trakt needs no second sign-in.
+    private func traktSignIn(_ clientId: String) async {
+        webError = nil; traktSigningIn = true
+        defer { traktSigningIn = false }
+        do {
+            guard let tokens = try await ServiceSignIn.tokens(.trakt, clientId: clientId, using: webAuthenticationSession, client: DirectProviderClient()) else { return }
+            let authURL = AppConfiguration.backend.appendingPathComponent("api/auth")
+            var request = URLRequest(url: authURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let host = authURL.host { request.setValue("\(authURL.scheme ?? "https")://\(host)", forHTTPHeaderField: "Origin") }
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["method": "provider", "provider": "trakt", "accessToken": tokens.accessToken, "clientId": clientId])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let issued = json?["token"] as? String, AccessCookiePolicy.validToken(issued) else {
+                let message = (json?["error"] as? [String: Any])?["message"] as? String
+                webError = message ?? "Your server didn’t accept this Trakt account. Use the Trakt account linked to your diary, or Continue with Google or email."
+                return
+            }
+            PendingTraktSignIn.waiting = (clientId, tokens)
+            completion(AccessCredential(token: issued, expires: (json?["expiresAt"] as? String).flatMap(DiaryDate.parse)))
+        } catch {
+            webError = "Trakt sign-in couldn’t finish: " + error.localizedDescription
         }
     }
 

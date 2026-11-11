@@ -9,6 +9,14 @@
 	<!-- Jellyfin on the home network usually serves plain HTTP (192.168.x.x:8096). This allows
 	     only local addresses; every other connection keeps App Transport Security. The rest of
 	     the Info.plist is generated from the INFOPLIST_KEY_ build settings in project.yml. -->
+	<!-- TwilDiary's own app IDs for one-tap "Sign in with …" (public client IDs, never secrets).
+	     Set TWILDIARY_*_CLIENT_ID when building; empty means the app uses the IDs your server lists. -->
+	<key>TwilDiaryTraktClientID</key>
+	<string>$(TWILDIARY_TRAKT_CLIENT_ID)</string>
+	<key>TwilDiarySimklClientID</key>
+	<string>$(TWILDIARY_SIMKL_CLIENT_ID)</string>
+	<key>TwilDiaryMDBListClientID</key>
+	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -670,18 +670,20 @@ struct ExternalProviderConnectionView: View {
         }
     }
     private var appClientId: String? {
-        switch provider {
+        let listed: String? = switch provider {
         case .simkl: apps?.simkl
         case .mdblist: apps?.mdblist
         case .trakt: apps?.trakt
         case .cloudflare: nil
         }
+        return listed.flatMap { $0.isEmpty ? nil : $0 } ?? ProviderAppIDs.id(for: provider)
     }
     private func loadApps() async {
         #if DEBUG
         if store.isPreview { apps = ProviderApps(trakt: "preview", simkl: nil, mdblist: nil); return }
         #endif
         let loaded: ProviderApps? = try? await store.read("/api/providers/apps")
+        if let loaded { ProviderAppIDs.remember([.trakt: loaded.trakt, .simkl: loaded.simkl, .mdblist: loaded.mdblist]) }
         apps = loaded ?? ProviderApps(trakt: nil, simkl: nil, mdblist: nil)
     }
     private func startSignIn(_ appId: String) {

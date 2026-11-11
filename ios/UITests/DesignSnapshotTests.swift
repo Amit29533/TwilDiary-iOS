@@ -70,7 +70,13 @@ import XCTest
             for id in ["settings-trakt", "settings-simkl", "settings-mdblist", "settings-tmdb", "settings-anilist", "settings-apis"] {
                 if open(id) { shot("svc-" + id); scrolled("svc-" + id + "-2"); back(); app.swipeDown(); app.swipeDown() }
             }
-            if open("settings-signin-methods") { shot("svc-signin"); app.swipeDown(velocity: .fast); Thread.sleep(forTimeInterval: 1) }
+            shot("svc-connections")
+            if open("settings-signin-methods") {
+                shot("svc-signin")
+                let other = app.buttons["sign-in-other-ways"]
+                if other.exists { other.tap(); Thread.sleep(forTimeInterval: 1); shot("svc-signin-other") }
+                app.swipeDown(velocity: .fast); Thread.sleep(forTimeInterval: 1)
+            }
             back()
         }
         app.swipeDown(); app.swipeDown()

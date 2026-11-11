@@ -80,3 +80,20 @@ import XCTest
         XCTAssertNil(state.error)
     }
 }
+
+/// One-tap sign-in needs TwilDiary's app IDs without pasting: the server's list is remembered on
+/// the phone, a missing entry keeps the earlier one, and blanks or unset build settings never count.
+@MainActor final class ProviderAppIDsTests: XCTestCase {
+    func testServerListedIDsAreRememberedAndBlanksIgnored() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ProviderAppIDsTests"))
+        defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
+        XCTAssertNil(ProviderAppIDs.id(for: .simkl, defaults: defaults))
+        ProviderAppIDs.remember([.trakt: "trakt-app", .simkl: " simkl-app ", .mdblist: nil], defaults: defaults)
+        XCTAssertEqual(ProviderAppIDs.id(for: .simkl, defaults: defaults), "simkl-app")
+        ProviderAppIDs.remember([.simkl: "", .mdblist: "$(TWILDIARY_MDBLIST_CLIENT_ID)"], defaults: defaults)
+        XCTAssertEqual(ProviderAppIDs.id(for: .simkl, defaults: defaults), "simkl-app")
+        XCTAssertNil(ProviderAppIDs.id(for: .mdblist, defaults: defaults))
+        XCTAssertNil(ProviderAppIDs.id(for: .cloudflare, defaults: defaults))
+        XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.simkl) && !ServiceSignIn.supportsSheet(.mdblist))
+    }
+}

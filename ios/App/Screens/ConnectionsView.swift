@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 import TwilDiaryCore
 
 /// Profile → Connections. On top, where your diary lives: Trakt, Simkl and MDBList in one list.
@@ -17,6 +18,8 @@ struct ConnectionsView: View {
     @State private var others = TrackerPreviewStore.shared
     @State private var matching: MainTracker?
     @State private var note: String?
+    @State private var signingIn: MainTracker?
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     private var main: MainTracker { MainTracker(rawValue: mainTracker) ?? .trakt }
 
@@ -94,7 +97,7 @@ struct ConnectionsView: View {
 
     private func connected(_ tracker: MainTracker) -> Bool {
         switch tracker {
-        case .trakt: trakt?.status?.connected == true
+        case .trakt: store.traktSignedInOnPhone || trakt?.status?.connected == true
         case .simkl: store.providerSettings.simkl.enabled && store.providerSettings.simkl.isAuthenticated
         case .mdblist: store.providerSettings.mdblist.enabled && store.providerSettings.mdblist.isAuthenticated
         }
@@ -103,14 +106,15 @@ struct ConnectionsView: View {
     private func badge(_ tracker: MainTracker) -> String {
         switch tracker {
         case .trakt:
-            TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
+            store.traktSignedInOnPhone ? "Connected"
+            : TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
         case .simkl: connected(.simkl) ? "Connected" : "Not connected"
         case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
         }
     }
     private func account(_ tracker: MainTracker) -> String? {
         switch tracker {
-        case .trakt: trakt?.status?.username
+        case .trakt: store.traktSignedInOnPhone ? store.providerSettings.trakt.username : trakt?.status?.username
         case .simkl: store.providerSettings.simkl.username
         case .mdblist: store.providerSettings.mdblist.username
         }
@@ -170,9 +174,27 @@ struct ConnectionsView: View {
                 // VoiceOver hears the status even when the row shows the account instead.
                 .accessibilityLabel([tracker.name, isMain ? "Main" : nil, status, detail.isEmpty ? nil : detail].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityIdentifier("settings-" + tracker.rawValue)
+            // Not signed in: one tap opens the service's own sign-in page right here.
+            if !on || problem, ServiceSignIn.supportsSheet(tracker.provider) {
+                Button { Task { await signIn(tracker) } } label: {
+                    Group {
+                        if signingIn == tracker { ProgressView().controlSize(.small) }
+                        else { Text(problem ? "Reconnect" : "Sign in").font(.system(size: 13, weight: .semibold)).lineLimit(1) }
+                    }.padding(.horizontal, 14).frame(height: 32).foregroundStyle(HomeStyle.chipText).background(HomeStyle.chip, in: Capsule())
+                }.buttonStyle(.plain).disabled(signingIn != nil).accessibilityIdentifier(tracker.rawValue + "-quick-sign-in")
+            }
             Menu {
                 if !isMain { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
                 Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on)
+                // Connected through your server: move the Trakt sign-in onto this iPhone in one tap.
+                if tracker == .trakt, on, !store.traktSignedInOnPhone {
+                    Button("Sign in on this iPhone", systemImage: "iphone") { Task { await signIn(.trakt) } }
+                }
+                if tracker == .trakt, store.traktSignedInOnPhone {
+                    Button("Sign out of Trakt", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                        Task { await store.signOutTraktOnPhone(); note = "Signed out of Trakt on this iPhone." }
+                    }
+                }
                 if let plan = writePlan(tracker), !plan.isEmpty {
                     Button("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath") { matching = tracker }
                 }
@@ -183,6 +205,15 @@ struct ConnectionsView: View {
         }.background(isMain ? Color(webHex: "#1a1730") : .clear)
     }
 
+    private func signIn(_ tracker: MainTracker) async {
+        signingIn = tracker; note = nil
+        defer { signingIn = nil }
+        do {
+            if case .signedIn(let who) = try await ServiceSignIn.run(tracker.provider, store: store, using: webAuthenticationSession) {
+                note = "Signed in to \(tracker.name) as \(who)."
+            }
+        } catch { note = error.localizedDescription }
+    }
     /// The main tracker holds the diary: the diary is shown from it, and edits go to it.
     private func makeMain(_ tracker: MainTracker) {
         mainTracker = tracker.rawValue

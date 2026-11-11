@@ -106,6 +106,9 @@ extension MainTracker {
     var brand: BrandLogo.Service {
         switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist }
     }
+    var provider: SyncProviderKind {
+        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist }
+    }
 }
 
 private extension String {
