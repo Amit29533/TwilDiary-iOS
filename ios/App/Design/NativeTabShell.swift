@@ -31,6 +31,9 @@ import UIKit
         let coordinator = context.coordinator
         coordinator.controller = controller
         coordinator.renderedPageKey = pageKey
+        // iOS shrinks the bar on scroll down but only brings it back at the end of a page;
+        // this brings it back as soon as you scroll up.
+        if controller.tabBarMinimizeBehavior == .onScrollDown { coordinator.scrollUp.attach(to: controller) }
         controller.delegate = coordinator
         // No content swipe between tabs: a sideways swipe belongs to the page (All, Movies, Shows, Anime).
         controller.selectedIndex = AppTab.allCases.firstIndex(of: selection) ?? 0
@@ -56,6 +59,7 @@ import UIKit
     }
     static func dismantleUIViewController(_ controller: UITabBarController, coordinator: Coordinator) {
         controller.view.removeGestureRecognizer(coordinator.pan)
+        coordinator.scrollUp.detach(from: controller)
         controller.delegate = nil
     }
 
@@ -64,6 +68,7 @@ import UIKit
         var canPage: @MainActor (AppTab) -> Bool
         var onReselect: @MainActor (AppTab) -> Void
         weak var controller: UITabBarController?
+        let scrollUp = TabBarScrollUpRestorer()
         var renderedPageKey: String?
         var interaction: UIPercentDrivenInteractiveTransition?
         private var origin = 0
@@ -202,4 +207,43 @@ import UIKit
             self.completion(completed)
         }
     }
+}
+
+/// Brings a shrunken tab bar back as soon as a page is dragged upward (content scrolling back
+/// toward the top). It only watches: it never claims, delays or cancels a touch.
+@MainActor final class TabBarScrollUpRestorer: NSObject, UIGestureRecognizerDelegate {
+    private weak var controller: UITabBarController?
+    private var restored = false
+    private lazy var watcher: UIPanGestureRecognizer = {
+        let gesture = UIPanGestureRecognizer(target: self, action: #selector(track(_:)))
+        gesture.cancelsTouchesInView = false
+        gesture.delaysTouchesBegan = false
+        gesture.delaysTouchesEnded = false
+        gesture.delegate = self
+        return gesture
+    }()
+    func attach(to controller: UITabBarController) {
+        self.controller = controller
+        controller.view.addGestureRecognizer(watcher)
+    }
+    func detach(from controller: UITabBarController) { controller.view.removeGestureRecognizer(watcher) }
+    @objc private func track(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began: restored = false
+        case .changed:
+            guard !restored, let controller, controller.tabBarMinimizeBehavior == .onScrollDown else { return }
+            let moved = gesture.translation(in: controller.view)
+            // A finger moving down the screen scrolls the page up.
+            guard moved.y > 24, moved.y > abs(moved.x) * 1.5 else { return }
+            restored = true
+            // There's no "expand" call: switching shrinking off expands the bar; it's back on at once
+            // for the next scroll down.
+            controller.tabBarMinimizeBehavior = .never
+            Task { @MainActor [weak controller] in controller?.tabBarMinimizeBehavior = .onScrollDown }
+        default: break
+        }
+    }
+    nonisolated func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    nonisolated func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool { false }
+    nonisolated func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRequireFailureOf other: UIGestureRecognizer) -> Bool { false }
 }
