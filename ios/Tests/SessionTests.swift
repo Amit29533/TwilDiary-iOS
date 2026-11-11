@@ -1626,6 +1626,26 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertTrue(StubProtocol.state.recorded().isEmpty, "phone-only mode makes no server requests")
         XCTAssertTrue(store.phoneOnly)
     }
+    /// On this phone: no account; a title you add lands in the diary on the phone as Planned, and
+    /// nothing is sent anywhere.
+    func testOnThisPhoneDiaryKeepsEditsOnThePhone() async throws {
+        StubProtocol.state.reset { _ in .init(500, "should not be called", contentType: "text/plain") }
+        let store = makeStore(api: api(MemorySessionStorage()))
+        defer {
+            // Leave no trace for the next test: the diary source and the on-phone mode are app-wide settings.
+            TraktDirectStore.shared.useLocal(false)
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        await store.startOnThisPhone()
+        XCTAssertTrue(store.onThisPhone); XCTAssertFalse(store.needsSignIn)
+        let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":603,"mediaType":"movie","name":"The Matrix","year":1999,"overview":"","posterPath":"/m.jpg","genres":["Action"],"suggestedCategory":"movie"}"#.utf8))
+        let id = await store.importTitle(details, category: "movie")
+        XCTAssertEqual(id, "movie:603")
+        XCTAssertEqual(store.title("movie:603")?.status, "planned")
+        XCTAssertNotNil(store.title("movie:603")?.poster)
+        XCTAssertTrue(StubProtocol.state.recorded().isEmpty, "On this phone sends nothing")
+    }
     func testPublicRatingProviderFailureDoesNotExpireThePrivateSession() async throws {
         StubProtocol.state.reset { _ in .init(503, "Provider unavailable", contentType: "text/plain") }
         let storage = MemorySessionStorage(); storage.credential = credential

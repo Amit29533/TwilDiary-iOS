@@ -26,6 +26,13 @@ public struct MediaTitle: Codable, Identifiable, Hashable, Sendable {
     /// When the title last changed on the server (ISO 8601): against Trakt, the newer change wins.
     public var updatedAt: String? = nil
     public var isSeries: Bool { category == "show" || category == "anime" }
+    /// The same title under another category (anime, anime movie…), as you chose it.
+    public func withCategory(_ category: String) -> MediaTitle {
+        MediaTitle(id: id, name: name, category: category, year: year, overview: overview, poster: poster, backdrop: backdrop,
+                   communityScore: communityScore, tmdbId: tmdbId, genres: genres, tags: tags, runtimeMinutes: runtimeMinutes, status: status,
+                   favorite: favorite, queued: queued, score: score, notes: notes, deletedAt: deletedAt, version: version, seasons: seasons,
+                   createdAt: createdAt)
+    }
     public var categoryName: String {
         switch category { case "anime-movie": "Anime movie"; default: category.capitalized }
     }

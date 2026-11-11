@@ -61,6 +61,15 @@ import TwilDiaryCore
         }
     }
 
+    /// A title you add with no server: its details kept here, under your chosen category.
+    func add(_ details: CatalogDetails, category: String) -> MediaTitle {
+        var title = TraktDiary.catalogTitle(details)
+        if ["movie", "show", "anime", "anime-movie"].contains(category) { title = title.withCategory(category) }
+        entries[title.id] = Entry(title: title, fetchedAt: .now)
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(entries).write(to: file, options: .atomic)
+        return title
+    }
     /// Titles by key ("tv:1399"), for `TraktDiary.build`.
     var titles: [String: MediaTitle] { entries.mapValues(\.title) }
 

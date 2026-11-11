@@ -117,6 +117,15 @@ extension DiaryStore {
         // A title joining from the service is background work: it never holds "busy", which would
         // turn away your own edits made meanwhile, and its failures stay quiet (it's retried).
         let quiet = !sendToService
+        // No server (a service alone, or On this phone): the title goes on the service's watchlist
+        // (or the diary on the phone), with its details kept on the phone.
+        if phoneOnly {
+            guard sendToService else { return nil }
+            let title = PhoneCatalog.shared.add(details, category: category)
+            applyDiarySource()
+            do { try await servicePatch(title, values: ["status": "planned"]); error = nil; return title.id }
+            catch { self.error = error.localizedDescription; return nil }
+        }
         guard quiet || !busy, canMutate else { return nil }
         let revision = sessionRevision
         if !quiet { busy = true }

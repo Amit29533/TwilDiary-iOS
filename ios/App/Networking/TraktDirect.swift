@@ -164,14 +164,34 @@ enum ServiceRemovals {
     /// Changes on sign-out. Reads and sends compare it after every wait, so work started for the
     /// previous account can't save, show or send anything once it's gone.
     @ObservationIgnored private var generation = UUID()
-    private let file: URL
+    private var file: URL
+    private let traktFile: URL
+    /// "On this phone" (no account): the same diary and edits as Trakt's, kept in its own file and
+    /// never sent anywhere.
+    static let localKey = "localDiary"
+    private(set) var localOnly = UserDefaults.standard.bool(forKey: TraktDirectStore.localKey)
+    private static let localFile = URL.applicationSupportDirectory.appending(path: "Local/library.json")
     init(file: URL = URL.applicationSupportDirectory.appending(path: "Trakt/library.json")) {
-        self.file = file
+        self.traktFile = file
+        self.file = UserDefaults.standard.bool(forKey: TraktDirectStore.localKey) ? Self.localFile : file
+        library = (try? Data(contentsOf: self.file)).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
+    }
+    /// Switches between the on-this-phone diary and Trakt's copy (each keeps its own file).
+    func useLocal(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Self.localKey)
+        localOnly = on
+        generation = UUID(); pending = []; token = nil; report = nil; plan = nil
+        file = on ? Self.localFile : traktFile
         library = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
+        if on, library == nil {
+            let empty = TraktLibrary(fetchedAt: Date.now.formatted(.iso8601))
+            library = empty; save(empty)
+        }
     }
 
     func check(store: DiaryStore) async {
         guard !running else { return }
+        if localOnly { store.applyDiarySource(); return }
         if store.isPreview { error = "Direct Trakt reads need a real Trakt connection."; return }
         running = true; error = nil
         let started = Date.now, session = generation, editsAtStart = edits
@@ -454,7 +474,7 @@ enum ServiceRemovals {
     /// "Watching now" on Trakt: a movie, or one episode of a show. Trakt logs the play itself once
     /// its runtime ends (it shows on the next read). Returns what to tell you.
     func checkIn(_ title: MediaTitle, episode: Episode?, store: DiaryStore) async throws -> String {
-        if store.isPreview { throw APIError.message("Checking in needs a real Trakt connection.") }
+        if store.isPreview || localOnly { throw APIError.message("Checking in needs a Trakt account.") }
         guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so Trakt can’t find it.") }
         let client = try await self.client(store: store)
         var body: [String: Any] = ["app_version": "2.0.0"]
@@ -475,6 +495,14 @@ enum ServiceRemovals {
     /// characters; the phone's copy is updated at once.
     func setNote(_ text: String, for title: TraktTitleRef, store: DiaryStore) async throws {
         if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
+        if localOnly {
+            let kept = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            update(store: store) { library in
+                library.notes.removeAll { $0.title?.diaryKey == title.diaryKey }
+                if !kept.isEmpty { library.notes.append(TraktNote(id: -TrackerDecode.playID("note|" + (title.diaryKey ?? title.name)), title: title, text: kept, updatedAt: Date.now.formatted(.iso8601))) }
+            }
+            return
+        }
         let client = try await self.client(store: store)
         let kept = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
         let existing = library?.notes.first { $0.title?.diaryKey == title.diaryKey }
@@ -506,6 +534,7 @@ enum ServiceRemovals {
     /// does a title Trakt couldn't find: the caller then leaves the phone's copy unchanged.
     func write(_ path: String, body: [String: Any], store: DiaryStore) async throws {
         if store.isPreview { throw APIError.message("Writing to Trakt needs a real Trakt connection.") }
+        if localOnly { return }  // On this phone: the copy is the diary.
         let data = try JSONSerialization.data(withJSONObject: body)
         let session = generation
         // Instant sync off: the edit waits with the others and goes with the next sync, in order.
@@ -760,6 +789,7 @@ enum ServiceRemovals {
     /// A quiet re-read ten seconds after the last edit (a run of edits makes one read), so new plays get their real Trakt ids
     /// (needed to remove exactly that play later).
     func refreshSoon(store: DiaryStore, after seconds: Double = 10) {
+        if localOnly { return }
         refresh?.cancel()
         let session = generation
         refresh = Task { [weak self] in
@@ -825,7 +855,8 @@ enum ServiceRemovals {
         running = false; writing = false; writeProgress = nil
         library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil; pending = []
         seenOnTrakt = []; seenLoaded = true; autoTried = []
-        try? FileManager.default.removeItem(at: file)
+        // The on-this-phone diary is yours alone: leaving it never deletes it.
+        if !localOnly { try? FileManager.default.removeItem(at: file) }
         try? FileManager.default.removeItem(at: seenFile)
     }
 }

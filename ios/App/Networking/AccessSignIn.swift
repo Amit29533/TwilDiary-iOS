@@ -33,6 +33,8 @@ enum SignInNavigationPolicy {
     /// Trakt signed in, but your server didn't give a diary session (Cloudflare Access in front of
     /// it): open the app on Trakt alone. nil where that isn't offered (connecting a server later).
     var phoneOnly: (@MainActor (MainTracker) -> Void)? = nil
+    /// "On this phone": no account; nil where it isn't offered.
+    var onThisPhone: (@MainActor () -> Void)? = nil
     @Environment(DiaryStore.self) private var store
     @State private var serviceSigningIn: MainTracker?
     @State private var mode: SignInMode = .passcode
@@ -79,6 +81,12 @@ enum SignInNavigationPolicy {
                                 BrandLogo(service: tracker.brand, size: 40)
                             } action: { Task { await serviceSignIn(tracker) } }
                         }
+                    }
+                    if let onThisPhone {
+                        optionRow(busy: false, id: "sign-in-local", title: "On this phone", detail: "Everything stays on this phone. No account needed") {
+                            Image(systemName: "iphone").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                        } action: { onThisPhone() }
                     }
                     optionRow(busy: webSigningIn, id: "sign-in-web", title: phoneOnly == nil ? "Google or email" : "Your TwilDiary server",
                               detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email, for backups and extras") {
