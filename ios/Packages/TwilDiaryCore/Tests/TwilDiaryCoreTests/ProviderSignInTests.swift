@@ -116,14 +116,15 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     let trakt = try #require(ProviderWebSignIn.start(provider: .trakt, clientId: "trakt-app"))
     let query = Dictionary(uniqueKeysWithValues: (URLComponents(url: trakt.url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
     #expect(trakt.url.host == "auth.trakt.tv" && trakt.url.path == "/oauth/authorize")
-    #expect(query["redirect_uri"] == "twildiary://auth/trakt" && query["scope"] == nil && query["code_challenge_method"] == "S256")
+    // Trakt takes only https:// redirects: its return page hands the reply to twildiary://auth/trakt.
+    #expect(query["redirect_uri"] == "https://twildiary-auth.amit29533.workers.dev/trakt" && query["scope"] == nil && query["code_challenge_method"] == "S256")
     #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/trakt?code=c0de&state=\(trakt.state)")!, for: trakt) == "c0de")
     #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/trakt?code=c0de&state=nope")!, for: trakt) }
     // Another service's return address is refused, even with the right state.
     #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=c0de&state=\(trakt.state)")!, for: trakt) }
 
     let exchange = try #require(JSONSerialization.jsonObject(with: TraktPhoneSignIn.codeBody(code: "c0de", for: trakt)) as? [String: String])
-    #expect(exchange == ["code": "c0de", "client_id": "trakt-app", "redirect_uri": "twildiary://auth/trakt",
+    #expect(exchange == ["code": "c0de", "client_id": "trakt-app", "redirect_uri": "https://twildiary-auth.amit29533.workers.dev/trakt",
                          "grant_type": "authorization_code", "code_verifier": trakt.verifier])
     let renew = try #require(JSONSerialization.jsonObject(with: TraktPhoneSignIn.refreshBody(clientId: "trakt-app", refreshToken: "r1")) as? [String: String])
     #expect(renew["grant_type"] == "refresh_token" && renew["refresh_token"] == "r1" && renew["client_secret"] == nil)

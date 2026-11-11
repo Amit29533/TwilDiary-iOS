@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // https://twildiary-auth.<account>.workers.dev/<service>: the sign-in return address the
+  // iPhone app registers with Trakt (and other services). No bindings, no cron.
+  "name": "twildiary-auth",
+  "main": "index.ts",
+  "compatibility_date": "2026-10-21",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": false }
+}

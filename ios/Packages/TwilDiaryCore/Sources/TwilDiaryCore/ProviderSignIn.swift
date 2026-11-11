@@ -129,7 +129,14 @@ public enum ProviderSignInError: LocalizedError, Equatable, Sendable {
 /// each registered with the redirect `twildiary://auth/<service>`).
 public enum ProviderWebSignIn {
     public static let callbackScheme = "twildiary"
-    public static func redirect(for provider: SyncProviderKind) -> String { callbackScheme + "://auth/" + provider.rawValue }
+    /// The https return address (workers/auth-return): live Trakt apps accept only https://
+    /// redirects, so Trakt sends the browser there and it hands the reply to
+    /// twildiary://auth/trakt, which Apple's sign-in sheet catches, as Cinopsys does with its site.
+    public static let returnSite = "https://twildiary-auth.amit29533.workers.dev"
+    /// The redirect registered with the service (and sent in the token exchange).
+    public static func redirect(for provider: SyncProviderKind) -> String {
+        provider == .trakt ? returnSite + "/trakt" : callbackScheme + "://auth/" + provider.rawValue
+    }
     static func authorizePage(for provider: SyncProviderKind) -> URL? {
         switch provider {
         case .simkl: URL(string: "https://simkl.com/oauth2/authorize")
