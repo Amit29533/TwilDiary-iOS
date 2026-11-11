@@ -88,7 +88,7 @@ struct CharacterView: View {
                 PersonProfilePage(name: character.name, nativeName: character.native, role: "Character", image: character.image,
                                   kind: .character, ref: character.id, favouriteSubtitle: character.appearances.first.map { "In " + $0.title },
                                   identifier: "character", heroFacts: characterFacts(character, biography: biography),
-                                  backdrop: character.appearances.first(where: { $0.cover != nil })?.cover) {
+                                  backdrop: character.appearances.lazy.compactMap { $0.banner }.first ?? character.appearances.first(where: { $0.cover != nil })?.cover) {
                     VStack(alignment: .leading, spacing: 18) {
                         if let source = route.sourceTitle {
                             Button("In " + source) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain).foregroundStyle(.primary)

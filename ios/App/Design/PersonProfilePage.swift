@@ -165,6 +165,13 @@ struct PersonProfilePage<Content: View>: View {
                             ], startPoint: .top, endPoint: .bottom)
                             .frame(height: topInset + 64 + photoWidth * 1.45).allowsHitTesting(false).accessibilityHidden(true)
                         }
+                        // Press and hold the cover for a peek and View full screen, as on posters.
+                        .overlay(alignment: .top) {
+                            Color.clear.frame(width: width, height: TitleCover.artworkHeight(width: width)).contentShape(Rectangle())
+                                .fullScreenArtwork(backdrop, title: name, aspect: 16.0 / 9.0)
+                                .accessibilityElement().accessibilityLabel("Cover art").accessibilityHint("Press and hold to see it whole")
+                                .accessibilityAddTraits(.isImage)
+                        }
                 } else {
                     RadialGradient(colors: [theme.accent.opacity(0.28), .clear], center: .top, startRadius: 0, endRadius: width * 0.9)
                         .frame(height: topInset + 320).allowsHitTesting(false).accessibilityHidden(true)

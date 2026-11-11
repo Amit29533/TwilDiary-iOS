@@ -69,11 +69,12 @@ struct PersonView: View {
     /// Their best-known title's cover: for a voice actor, the cover of their most popular anime (AniList
     /// lists roles by popularity); for cast, TMDB's backdrop of what they're known for.
     private var backdrop: String? {
-        if voiceFirst || person == nil, let cover = actor?.roles.first(where: { $0.cover != nil })?.cover { return cover }
+        // The wide banner (or biggest cover) of their most popular anime; the small poster is a last resort.
+        if voiceFirst || person == nil, let cover = actor?.roles.lazy.compactMap({ $0.banner }).first ?? actor?.roles.first(where: { $0.cover != nil })?.cover { return cover }
         if let person, let item = (store.personSections(person).knownFor + person.credits).first(where: { $0.backdrop != nil || $0.backdropPath != nil }) {
             return item.backdrop ?? CatalogTools.image(item.backdropPath, size: "w780")
         }
-        return actor?.roles.first(where: { $0.cover != nil })?.cover
+        return actor?.roles.lazy.compactMap({ $0.banner }).first ?? actor?.roles.first(where: { $0.cover != nil })?.cover
     }
     private var routeName: String? { if case .voice(let route) = start { return route.name }; return nil }
     /// "15 anime" you've watched with them (from a ranking), when the page was opened from one.
