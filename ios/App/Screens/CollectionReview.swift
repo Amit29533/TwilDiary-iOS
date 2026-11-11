@@ -30,7 +30,7 @@ struct CollectionReviewView: View {
                             if await store.manage(review.titles, change: review.change) { onSaved(); dismiss() }
                             else { failure = store.error ?? "Wait for the current change to finish." }
                         }
-                    } label: { Text(store.busy ? "Saving…" : review.change == .purge ? "Delete permanently" : "Confirm").font(.subheadline.bold()).frame(maxWidth: .infinity).frame(minHeight: 50) }.buttonStyle(.glassProminent).disabled(store.writesBlocked).accessibilityIdentifier("confirm-collection")
+                    } label: { Text(store.busy ? "Saving…" : review.change == .purge ? "Delete permanently" : "Confirm").font(.subheadline.bold()).frame(maxWidth: .infinity).frame(minHeight: 50) }.buttonStyle(.diaryPrimary).disabled(store.writesBlocked).accessibilityIdentifier("confirm-collection")
                 }.padding(20)
             }.navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(store.busy) } }
         }.interactiveDismissDisabled(store.busy).presentationDetents([.medium, .large])

@@ -255,7 +255,7 @@ struct TrackerPreviewPanel: View {
             Button { confirmMatch = true } label: {
                 Label(fill ? "Copy what’s missing into Trakt" : "Make Trakt match the diary",
                       systemImage: fill ? "square.and.arrow.down.on.square" : "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
-            }.font(.subheadline.weight(.semibold)).buttonStyle(.glassProminent).disabled(running).accessibilityIdentifier("trakt-make-match")
+            }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier("trakt-make-match")
                 .confirmationDialog(fill ? "Copy into Trakt?" : "Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
                     Button("Send to Trakt") { Task { await trakt.makeTraktMatch(store: store) } }
                     Button("Cancel", role: .cancel) {}
@@ -278,7 +278,7 @@ struct TrackerPreviewPanel: View {
         if let plan, !plan.isEmpty, others.writing == nil {
             Button { confirmMatch = true } label: {
                 Label("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
-            }.font(.subheadline.weight(.semibold)).buttonStyle(.glassProminent).disabled(running).accessibilityIdentifier(tracker.rawValue + "-make-match")
+            }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier(tracker.rawValue + "-make-match")
                 .confirmationDialog("Make \(tracker.name) match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
                     Button("Send to \(tracker.name)") { Task { await others.makeMatch(tracker, store: store) } }
                     Button("Cancel", role: .cancel) {}

@@ -40,9 +40,9 @@ private struct ExplorePill: View {
 struct ExploreLabButton: View {
     var body: some View {
         NavigationLink(value: SearchLabRoute()) {
-            Image(systemName: "flask").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#1a1030"))
+            Image(systemName: "flask").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                 .frame(width: 44, height: 44)
-                .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Circle())
+                .background(HomeStyle.chip, in: Circle())
                 .contentShape(Circle())
         }.buttonStyle(.springPress).accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
     }

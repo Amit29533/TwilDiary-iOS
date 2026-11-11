@@ -75,14 +75,14 @@ struct RandomPickDialog: View {
                                     .buttonStyle(.glass)
                                     .disabled(active.count < 2 || rolling).accessibilityIdentifier("random-pick-again")
                                 Button { onOpen(picked.id) } label: { HStack(spacing: 7) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 18) }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.glassProminent).accessibilityIdentifier("random-pick-open")
+                                    .buttonStyle(.diaryPrimary).accessibilityIdentifier("random-pick-open")
                             }.font(.system(size: 14, weight: .semibold)).padding(.top, 16)
                         } else {
                             VStack(spacing: 14) {
                                 DiaryIcon(name: "sparkles", size: 32).foregroundStyle(theme.accent)
                                 Text("Your next story starts here").font(.system(size: 20, weight: .bold)).foregroundStyle(.primary)
                                 Text("Add some titles to your collection for a surprise pick.").font(.system(size: 14)).foregroundStyle(.secondary)
-                                Button("Add a title", action: onAdd).buttonStyle(.glassProminent).controlSize(.large)
+                                Button("Add a title", action: onAdd).buttonStyle(.diaryPrimary).controlSize(.large)
                             }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.vertical, 28)
                         }
                     }.padding(16)

@@ -81,9 +81,9 @@ struct TrashView: View {
                         Text(titles.isEmpty ? "Select titles" : "\(titles.count) selected").font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(HomeStyle.primary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         Button("Restore") { review = CollectionReview(titles: titles, change: .restore) }
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                             .padding(.horizontal, 18).frame(height: 40)
-                            .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                            .background(HomeStyle.chip, in: Capsule())
                             .accessibilityIdentifier("trash-restore-selected")
                         Button("Delete forever", role: .destructive) { review = CollectionReview(titles: titles, change: .purge) }
                             .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))

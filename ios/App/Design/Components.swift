@@ -129,7 +129,8 @@ struct SectionMoreButton: View {
     }
 }
 
-/// Compact 44 pt capsule buttons: the accent fill for the main action, an outline for the rest.
+/// Compact 44 pt capsule buttons: dark violet with lavender text for the main action (as Add to
+/// Planned), an outline for the rest.
 struct DiaryCapsuleButtonStyle: ButtonStyle {
     var prominent = true
     /// A smaller capsule for actions inside list rows.
@@ -146,8 +147,8 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
             let destructive = configuration.role == .destructive
             configuration.label.font(.system(size: compact ? 13 : 15, weight: .semibold)).lineLimit(1)
                 .padding(.horizontal, compact ? 12 : 16).frame(minHeight: compact ? 36 : 44)
-                .foregroundStyle(prominent ? theme.ink : destructive ? Color(webHex: "#ff8a80") : theme.accent)
-                .background(prominent ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
+                .foregroundStyle(prominent ? HomeStyle.chipText : destructive ? Color(webHex: "#ff8a80") : theme.accent)
+                .background(prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
                 .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
                 .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
@@ -699,8 +700,8 @@ struct ProgressCard: View {
                     HStack(spacing: 8) {
                         actionIcon(.mark, symbol: "play.fill", size: 13)
                         Text(startLabel).font(.system(size: 15, weight: .bold))
-                    }.foregroundStyle(Color(webHex: "#0b0b10")).frame(maxWidth: .infinity).frame(height: 48)
-                        .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                    }.foregroundStyle(HomeStyle.chipText).frame(maxWidth: .infinity).frame(height: 48)
+                        .background(HomeStyle.chip, in: Capsule())
                         .contentShape(Capsule())
                 }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel(startLabel + ", " + title.name)
                 Button { Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } } label: {
@@ -834,8 +835,8 @@ struct ProgressCard: View {
                 .monospacedDigit().lineLimit(1).fixedSize().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
                 .accessibilityIdentifier("watch-count-" + title.id)
             Button { Task { await markWatch() } } label: {
-                actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(Color(webHex: "#0b0b10"))
-                    .frame(width: 36, height: 36).background(theme.accent, in: Circle())
+                actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(HomeStyle.chipText)
+                    .frame(width: 36, height: 36).background(HomeStyle.chip, in: Circle())
                     .contentShape(Rectangle().inset(by: -4))
             }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
         }.frame(height: 44)
@@ -847,13 +848,13 @@ struct ProgressCard: View {
                     Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: nil)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 15, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: theme.accent)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(HomeStyle.chipText).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: HomeStyle.chip)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
-                            .font(.system(size: 13, weight: .semibold)).frame(height: 22).padding(.horizontal, 6)
-                            .foregroundStyle(theme.ink)
-                    }.buttonStyle(.glassProminent).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
+                            .font(.system(size: 13, weight: .semibold)).frame(height: 34).padding(.horizontal, 14)
+                            .foregroundStyle(HomeStyle.chipText).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
+                    }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
                 } }.frame(height: 44)
     }
@@ -913,7 +914,7 @@ struct ProgressCard: View {
         guard title.isSeries, let card else { return nil }
         return remaining.flatMap { $0 > 0 ? DiaryDate.duration($0) + (card.progress.watched > 0 ? " left" : "") : nil }
     }
-    /// "+ E2" in the accent gradient; "▶ Start" (dark) before the first episode; "Log watch" for movies.
+    /// "+ E2", "▶ Start" before the first episode, "Log watch" for movies: dark violet with lavender text.
     private var nextButton: some View {
         let starting = title.isSeries && card.map { $0.progress.watched == 0 } == true
         let label: String = {
@@ -925,12 +926,9 @@ struct ProgressCard: View {
             HStack(spacing: 6) {
                 actionIcon(.mark, symbol: starting ? "play.fill" : title.isSeries ? "plus" : "checkmark", size: starting ? 11 : 14).fontWeight(.bold)
                 Text(label).font(.system(size: 15, weight: .bold)).lineLimit(1)
-            }.foregroundStyle(starting ? HomeStyle.chipText : Color(webHex: "#1a1030"))
+            }.foregroundStyle(HomeStyle.chipText)
                 .padding(.horizontal, 16).frame(height: 40)
-                .background {
-                    if starting { Capsule().fill(HomeStyle.chip) }
-                    else { Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)) }
-                }
+                .background { Capsule().fill(HomeStyle.chip) }
                 .fixedSize()
                 // A 40 pt pill, with the 44 pt tap target the platform asks for.
                 .frame(minHeight: 44).contentShape(Rectangle())

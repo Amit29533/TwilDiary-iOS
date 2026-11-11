@@ -326,10 +326,9 @@ struct YearRangeSlider: View {
 /// "Show 48 titles": the full-width gradient pill at the bottom of Search Lab.
 struct LabShowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 17, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+        configuration.label.font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.chipText)
             .frame(maxWidth: .infinity).frame(height: 56)
-            .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
-            .shadow(color: Color(webHex: "#a98bff").opacity(0.25), radius: 16, y: 6)
+            .background(HomeStyle.chip, in: Capsule())
             .opacity(configuration.isPressed ? 0.85 : 1).scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }

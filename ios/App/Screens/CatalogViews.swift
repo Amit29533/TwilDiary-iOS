@@ -243,9 +243,9 @@ struct CatalogSearchView: View {
                                 HStack(spacing: 5) {
                                     if busy { ProgressView().controlSize(.small).tint(Color(webHex: "#1a1030")) } else { Image(systemName: "plus").font(.system(size: 13, weight: .bold)) }
                                     Text("Add")
-                                }.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+                                }.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 16).frame(height: 38)
-                                    .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                                    .background(HomeStyle.chip, in: Capsule())
                             }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
                                 .accessibilityLabel("Add " + result.name).accessibilityIdentifier("search-add-" + Self.key(route))
                         }

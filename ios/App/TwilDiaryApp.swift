@@ -199,7 +199,7 @@ struct RootView: View {
                     if store.loading || store.restoringCache { ProgressView() }
                     else {
                         Text(store.error ?? "You’re signed in. Retry to load your diary.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        Button("Retry") { Task { await store.refresh() } }.buttonStyle(.glassProminent).controlSize(.large)
+                        Button("Retry") { Task { await store.refresh() } }.buttonStyle(.diaryPrimary).controlSize(.large)
                         Button("Sign out") { store.signOut() }.foregroundStyle(.secondary)
                     }
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)

@@ -99,13 +99,14 @@ struct SettingsPillButtonStyle: ButtonStyle {
     }
 }
 
-/// "Sync now", "Back up now": a 50 pt full-width pill in the accent gradient.
+/// "Sync now", "Back up now": a 50 pt full-width pill, dark violet with lavender text (the
+/// look of a title page's Add to Planned).
 struct SettingsPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
+        configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
             .frame(maxWidth: .infinity).frame(height: 50)
-            .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+            .background(HomeStyle.chip, in: Capsule())
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
     }
 }

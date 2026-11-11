@@ -294,8 +294,8 @@ struct LibraryView: View {
             Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 30)).foregroundStyle(.secondary).accessibilityHidden(true)
             Text("No titles match").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
             Text(activeFilterNames.joined(separator: " · ")).font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("Clear filters") { clearFilters() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink)
-                .padding(.horizontal, 18).frame(height: 40).background(theme.accent, in: Capsule()).buttonStyle(.plain).padding(.top, 6)
+            Button("Clear filters") { clearFilters() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                .padding(.horizontal, 18).frame(height: 40).background(HomeStyle.chip, in: Capsule()).buttonStyle(.plain).padding(.top, 6)
         }.frame(maxWidth: .infinity).padding(.vertical, 40).padding(.horizontal, 24)
     }
     private var skeleton: some View {
