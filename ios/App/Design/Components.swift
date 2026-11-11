@@ -190,7 +190,7 @@ struct FilterPill: View {
 /// Each service's own current logo, in its own colours (from the service's site), sized like a
 /// settings icon. Nothing is redrawn or reduced to a name.
 struct BrandLogo: View {
-    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, wetrakr, cloudflare, anilist, imdb, myanimelist, metacritic, rottenTomatoes, letterboxd }
+    enum Service { case trakt, tmdb, jellyfin, simkl, mdblist, wetrakr, cloudflare, anilist, imdb, myanimelist, metacritic, rottenTomatoes, letterboxd, tvtime }
     let service: Service
     var size: CGFloat = 34
     var body: some View {
@@ -216,6 +216,9 @@ struct BrandLogo: View {
             case .metacritic: Image("brand-metacritic").resizable().scaledToFit()
             case .rottenTomatoes: Image("brand-rottentomatoes").resizable().scaledToFit().clipShape(corner)
             case .letterboxd: Image("brand-letterboxd").resizable().scaledToFit().clipShape(corner)
+            // TV Time's black "tv" on its yellow (drawn here; no image asset).
+            case .tvtime: Text("tv").font(.system(size: size * 0.5, weight: .black, design: .rounded)).tracking(-size * 0.02)
+                .foregroundStyle(.black).frame(width: size, height: size).background(Color(webHex: "#FFD400"), in: corner)
             }
         }.frame(width: size, height: size).accessibilityHidden(true)
     }
@@ -284,7 +287,11 @@ struct PageHeader: View {
         } label: {
             // The original Liquid Glass logo (owner's choice): the mark in the theme's accent on glass.
             BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
-                .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
+                .frame(width: 44, height: 44)
+                // Held to the dark look: over bright artwork (pulling to refresh) plain glass flips
+                // between light and dark and the logo flashes.
+                .glassEffect(.regular.tint(.black.opacity(0.32)).interactive(), in: Circle())
+                .environment(\.colorScheme, .dark)
                 // The tap shape sits outside the glass; otherwise the interactive glass takes the tap.
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain)

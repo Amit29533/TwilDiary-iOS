@@ -51,10 +51,13 @@ struct ImportHistoryView: View {
                 .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach(ImportSource.allCases) { option in
                 Button { source = option; picking = true } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(option.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        Text(option.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: 14) {
+                        BrandLogo(service: option.logo, size: 44)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(option.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text(option.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
                         .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))

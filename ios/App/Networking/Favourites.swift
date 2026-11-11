@@ -43,7 +43,9 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
     #endif
     func contains(_ kind: Favourite.Kind, _ ref: Int) -> Bool { items.contains { $0.kind == kind && $0.ref == ref } }
     func items(_ kind: Favourite.Kind) -> [Favourite] { items.filter { $0.kind == kind } }
+    func replace(_ restored: [Favourite]) { items = restored; save() }
     func toggle(_ kind: Favourite.Kind, ref: Int, name: String, image: String?, subtitle: String?, store: DiaryStore) {
+        defer { if store.phoneOnly { PhoneExtras.shared.touch(.favourites) } }
         if let existing = items.first(where: { $0.kind == kind && $0.ref == ref }) {
             items.removeAll { $0.id == existing.id }; save()
             Task {
@@ -61,6 +63,8 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
         #if DEBUG
         if store.isPreview { return }
         #endif
+        // No server: the hearts live on this phone (and in its Drive and Files backups).
+        if store.phoneOnly { return }
         struct Page: Decodable { let items: [Remote] }
         struct Remote: Decodable { let kind: String; let ref: Int; let name: String; let image: String?; let subtitle: String?; let savedAt: String }
         do {
@@ -81,6 +85,7 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
         #if DEBUG
         if store.isPreview { return true }
         #endif
+        if store.phoneOnly { return true }
         struct Receipt: Decodable {}
         do {
             if removing { let _: Receipt = try await store.read("/api/favourites/" + item.id, method: "DELETE") }

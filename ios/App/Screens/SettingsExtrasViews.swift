@@ -90,6 +90,38 @@ extension Locale {
 
 // MARK: Sync & backup
 
+/// Settings → Notifications: everything TwilDiary can tell you about, in one place.
+struct NotificationsSettingsView: View {
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(EpisodeNotifications.enabledKey) private var episodeAlerts = false
+    @State private var releaseAlerts = ReleaseAlerts.enabled
+    @State private var notice: String?
+    var body: some View {
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 22) {
+                SettingsGroup(label: "Alerts") {
+                    SettingsLine(title: "New episodes", subtitle: "The day a show you watch has a new episode") {
+                        Toggle("", isOn: Binding(get: { episodeAlerts }, set: { on in
+                            if on { Task { if await !EpisodeNotifications.enable(store: store) { notice = "Allow notifications for TwilDiary in the Settings app." } } }
+                            else { EpisodeNotifications.disable() }
+                        })).labelsHidden().tint(theme.accent)
+                    }.accessibilityIdentifier("sync-episode-alerts")
+                    SettingsDivider()
+                    SettingsLine(title: "Releases", subtitle: "A Planned movie out to stream, a new season of a show you finished, a show you watch coming back") {
+                        Toggle("", isOn: Binding(get: { releaseAlerts }, set: { on in
+                            releaseAlerts = on
+                            Task { if await !ReleaseAlerts.setEnabled(on, store: store) { releaseAlerts = false; notice = "Allow notifications for TwilDiary in the Settings app." } }
+                        })).labelsHidden().tint(theme.accent)
+                    }.accessibilityIdentifier("sync-release-alerts")
+                }
+                SettingsFootnote(text: "A check-in also tells you when its watch is logged, while alerts are allowed.")
+                if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
+            }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
+        }.diaryScreenBackground().diaryPageNavigation("Notifications")
+    }
+}
+
 struct SyncBackupView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -119,27 +151,6 @@ struct SyncBackupView: View {
                     }.buttonStyle(.plain).accessibilityHint("Background App Refresh is turned on in the Settings app")
                     SettingsDivider()
                     SettingsLine(title: "Confirm deletions", subtitle: "Ask before removing titles") { Toggle("", isOn: $confirmDeletions).labelsHidden().tint(theme.accent) }
-                    SettingsDivider()
-                    SettingsLine(title: "Removals on Trakt", subtitle: applyRemovals ? "Something removed on Trakt leaves your diary too" : "Your diary puts back what Trakt no longer has") {
-                        Toggle("", isOn: $applyRemovals).labelsHidden().tint(theme.accent)
-                    }.accessibilityIdentifier("sync-apply-removals")
-                }
-                SettingsGroup(label: "Notifications") {
-                    SettingsLine(title: "New episodes", subtitle: "An alert the day a show you watch has a new episode") {
-                        Toggle("", isOn: Binding(get: { episodeAlerts }, set: { on in
-                            if on { Task { if await !EpisodeNotifications.enable(store: store) { localNotice = "Allow notifications for TwilDiary in the Settings app." } } }
-                            else { EpisodeNotifications.disable() }
-                        })).labelsHidden().tint(theme.accent)
-                    }.accessibilityIdentifier("sync-episode-alerts")
-                    SettingsDivider()
-                    SettingsLine(title: "Releases", subtitle: "When a Planned movie comes out to stream, a show you finished gets a new season, or one you watch comes back") {
-                        Toggle("", isOn: Binding(get: { releaseAlerts }, set: { on in
-                            releaseAlerts = on
-                            Task {
-                                if await !ReleaseAlerts.setEnabled(on, store: store) { releaseAlerts = false; localNotice = "Allow notifications for TwilDiary in the Settings app." }
-                            }
-                        })).labelsHidden().tint(theme.accent)
-                    }.accessibilityIdentifier("sync-release-alerts")
                 }
                 SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
@@ -193,7 +204,13 @@ struct SyncBackupView: View {
         guard force || UserDefaults.standard.string(forKey: lastKey) != day else { return nil }
         let snapshot = store.workspace
         do {
-            let data = try await Task.detached(priority: .utility) { try DiaryExport(workspace: snapshot).encoded() }.value
+            var data = try await Task.detached(priority: .utility) { try DiaryExport(workspace: snapshot).encoded() }.value
+            // No server: the phone's extras ride along (Import diary puts them back).
+            if store.phoneOnly, let phone = ServerBackups.phoneExtras(),
+               var root = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                root["phone"] = phone
+                data = try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+            }
             let folder = URL.documentsDirectory.appending(path: "Backups", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try data.write(to: folder.appending(path: "TwilDiary-\(day).json"), options: .atomic)

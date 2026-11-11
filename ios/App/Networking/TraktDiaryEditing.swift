@@ -421,10 +421,21 @@ extension DiaryStore {
         if service == .trakt, let text = values["notes"] as? String {
             try await TraktDirectStore.shared.setNote(text, for: titleRef(title), store: self)
             let needsServer = text.count > 500 || !isServiceOnly(title)
-            if phoneOnly || !needsServer { rest.removeValue(forKey: "notes") }
+            // With no server, the phone keeps a longer note's full text (Trakt has its first 500).
+            if phoneOnly { rest["notes"] = text.count > 500 ? text : "" }
+            else if !needsServer { rest.removeValue(forKey: "notes") }
         }
         if let status, !serviceHolds || (!title.isSeries && title.status == "dropped" && service != .wetrakr) { rest["status"] = status }
         if let favourite, !favouritesHere { rest["favorite"] = favourite }
+        if phoneOnly {
+            // No server: the phone keeps the rest. A status the service holds clears the phone's.
+            if status != nil, rest["status"] == nil { rest["status"] = NSNull() }
+            if !rest.isEmpty {
+                PhoneExtras.shared.update(title, rest)
+                applyDiarySource()
+            }
+            return
+        }
         // A title only on the service has no server record yet: its status follows the service
         // until it joins (in a moment, on its own); notes, tags and Queue have to wait for that.
         if isServiceOnly(title) { rest.removeValue(forKey: "status") }

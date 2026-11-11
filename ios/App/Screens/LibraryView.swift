@@ -518,7 +518,7 @@ struct LibraryView: View {
     private var filterScope: String { [category.rawValue, status, genresRaw, tag, drive, String(favoritesOnly), String(minScore), sort.rawValue].joined(separator: "\n") }
     private var collectionTags: [String] { Array(Set(collection.flatMap { $0.tags ?? [] })).sorted() }
     private var collection: [MediaTitle] { store.workspace.activeTitles }
-    private var trashCount: Int { store.workspace.titles.count { $0.deletedAt != nil } }
+    private var trashCount: Int { store.phoneOnly ? PhoneTrash.shared.titles.count : store.workspace.titles.count { $0.deletedAt != nil } }
     private var activeFilterCount: Int { genres.count + (tag.isEmpty ? 0 : 1) + (drive.isEmpty ? 0 : 1) + (favoritesOnly ? 1 : 0) + (minScore > 0 ? 1 : 0) }
     private var activeFilterNames: [String] {
         var names: [String] = []

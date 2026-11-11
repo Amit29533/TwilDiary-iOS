@@ -88,8 +88,19 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         var components = URLComponents(string: base + delivery.path)!
         if config.provider == .mdblist, !mdblistAuth(config).query.isEmpty { components.queryItems = mdblistAuth(config).query }
-        let data = try await send(url: components.url!, method: "POST", headers: headers, jsonBody: delivery.body)
-        guard ProviderDeliveryPlanner.confirms(data) else { throw APIError.message("The provider did not confirm this item; the edit remains pending.") }
+        let prepared = await ServiceIDs.shared.prepare(try JSONSerialization.data(withJSONObject: delivery.body), for: config.provider, config: config, client: self)
+        let data: Data
+        if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty {
+            data = ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing)
+        } else {
+            let body = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
+            data = ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: body), adding: prepared.missing)
+        }
+        guard ProviderDeliveryPlanner.confirms(data) else {
+            // A title the service can't find is set aside (said once), not retried forever.
+            if ProviderDeliveryPlanner.notFound(data) { throw APIError.rejected(404, "\(config.provider.displayName) couldn’t find this title by its TMDB id, so it wasn’t changed there.") }
+            throw APIError.message("The provider did not confirm this item; the edit remains pending.")
+        }
     }
 
     /// A read for the main-tracker preview (Simkl or MDBList): GET with the service's own sign-in.
@@ -133,20 +144,33 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         var components = URLComponents(string: base + path)!
         if !items.isEmpty { components.queryItems = items }
-        do { return try await send(url: components.url!, method: "POST", headers: headers, rawBody: body) }
+        // Each title named by the service's own id too (looked up once when unknown); titles the
+        // service doesn't have are left out and reported as not found.
+        let prepared = await ServiceIDs.shared.prepare(body, for: config.provider, config: config, client: self)
+        if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
+        let sending = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
+        do { return ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending), adding: prepared.missing) }
         catch APIError.rejected(let status, _) where status == 401 || status == 403 {
             throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
         } catch APIError.rejected(let status, let message) where status == 429 || (config.provider == .simkl && status == 400 && message.contains("rate_limit")) {
             // Simkl takes one write per account at a time and answers "rate_limit" while another
             // is still running; its guide says wait and try once more (same for a plain 429).
             try await Task.sleep(for: .seconds(3))
-            do { return try await send(url: components.url!, method: "POST", headers: headers, rawBody: body) }
+            do { return ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending), adding: prepared.missing) }
             catch APIError.rejected(let again, _) where again == 400 || again == 429 {
                 throw APIError.message("\(name) is busy with another change right now. Try again in a minute.")
             }
         }
     }
 
+    /// Simkl numbers anime episodes its own way unless told the seasons are TVDB-style (as TMDB's
+    /// mostly are): every show in a Simkl write says so, as Cinopsys sends it.
+    nonisolated static func simklAnimeSeasons(_ body: Data) -> Data {
+        guard var root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any], var shows = root["shows"] as? [[String: Any]], !shows.isEmpty else { return body }
+        for index in shows.indices where shows[index]["seasons"] != nil { shows[index]["use_tvdb_anime_seasons"] = true }
+        root["shows"] = shows
+        return (try? JSONSerialization.data(withJSONObject: root)) ?? body
+    }
     /// MDBList takes a sign-in token as Bearer, or an API key as ?apikey= — never both (MDBList
     /// warns that sending the same credential both ways fails).
     private func mdblistAuth(_ config: ExternalProviderConfig) -> (query: [URLQueryItem], headers: [String: String]) {

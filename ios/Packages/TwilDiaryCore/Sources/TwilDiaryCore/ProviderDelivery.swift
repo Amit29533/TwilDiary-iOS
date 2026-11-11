@@ -131,6 +131,17 @@ public enum ProviderDeliveryPlanner {
         }
     }
 
+    /// The service answered but couldn't find the title (by its TMDB id): sending again won't help.
+    public static func notFound(_ data: Data) -> Bool {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        func nonempty(_ value: Any?) -> Bool {
+            if let array = value as? [Any] { return !array.isEmpty }
+            if let object = value as? [String: Any] { return object.values.contains { nonempty($0) } }
+            if let number = value as? NSNumber { return number.doubleValue > 0 }
+            return false
+        }
+        return nonempty(object["not_found"]) || nonempty(object["notFound"])
+    }
     public static func confirms(_ data: Data) -> Bool {
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
         func nonempty(_ value: Any?) -> Bool {
@@ -150,8 +161,12 @@ public enum ProviderDeliveryPlanner {
         }
         func confirmedCount(_ value: Any?) -> Bool {
             if positiveCount(value) { return true }
+            // Simkl lists what it added ({"added": {"movies": [{…}]}}) instead of counting it.
+            if let items = value as? [Any] { return !items.isEmpty }
             guard let counts = value as? [String: Any] else { return false }
-            return ["total", "movies", "shows", "episodes", "seasons", "items", "ratings"].contains { positiveCount(counts[$0]) }
+            return ["total", "movies", "shows", "episodes", "seasons", "items", "ratings", "anime"].contains { key in
+                positiveCount(counts[key]) || ((counts[key] as? [Any]).map { !$0.isEmpty } ?? false)
+            }
         }
         return ["added", "updated", "existing", "deleted", "removed", "matched"].contains { confirmedCount(object[$0]) }
     }

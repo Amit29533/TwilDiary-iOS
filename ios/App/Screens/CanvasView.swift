@@ -102,7 +102,7 @@ private struct CanvasContent: View {
             .task(id: [tab.rawValue, listSort, listKind]) { if tab == .lists { await lists.load(sort: listSort, kind: listKind) } }
     }
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
-    /// Movies · Shows · Lists in one dark track; the chosen one is a lilac pill that slides across.
+    /// Movies · Shows · Lists on a Liquid Glass track; the chosen one is a lilac pill that slides across.
     private var tabs: some View {
         let kinds = CanvasTab.allCases
         let index = CGFloat(kinds.firstIndex(of: tab) ?? 0)
@@ -124,7 +124,7 @@ private struct CanvasContent: View {
                     .frame(width: width, height: 36).offset(x: (width + 4) * index)
                     .animation(.snappy(duration: 0.28), value: index)
             }
-        }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
+        }.padding(4).glassEffect(.regular, in: Capsule())
     }
     private var pills: some View {
         ScrollView(.horizontal) {

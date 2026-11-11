@@ -108,6 +108,8 @@ struct PersonPhotoViewer: View {
     @State private var downloading = false
     @State private var controls = true
     @State private var zoomed = false
+    /// How far a photo is pulled down to close it (0…1): the page fades and the controls step aside.
+    @State private var pulled: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     init(name: String, photos: [PersonPhoto], start: Int) { self.name = name; self.photos = photos; _index = State(initialValue: start) }
     private var current: PersonPhoto? { photos.indices.contains(index) ? photos[index] : nil }
@@ -115,15 +117,16 @@ struct PersonPhotoViewer: View {
     private var original: URL? { current?.originalURL }
     var body: some View {
         ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
+            Color.black.opacity(Double(1 - pulled * 0.7)).ignoresSafeArea()
             TabView(selection: $index) {
                 ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
-                    ZoomablePhoto(path: photo.link(size: "w780"), name: name, active: offset == index, zoomed: $zoomed) {
-                        withAnimation(.easeInOut(duration: 0.2)) { controls.toggle() }
-                    }.tag(offset)
+                    ZoomablePhoto(path: photo.link(size: "w780"), name: name, active: offset == index, zoomed: $zoomed,
+                                  onTap: { withAnimation(.easeInOut(duration: 0.2)) { controls.toggle() } },
+                                  onPull: { pulled = $0 }, onClose: { dismiss() })
+                        .tag(offset)
                 }
             }.tabViewStyle(.page(indexDisplayMode: .never)).scrollDisabled(zoomed).ignoresSafeArea()
-            if controls { topBar.transition(.opacity) }
+            if controls && pulled == 0 { topBar.transition(.opacity) }
             if controls, let message {
                 VStack {
                     Spacer()
@@ -131,7 +134,7 @@ struct PersonPhotoViewer: View {
                         .padding(.horizontal, 16).frame(height: 36).background(Color(webHex: "#1c1a1e").opacity(0.9), in: Capsule()).padding(.bottom, 30)
                 }.transition(.opacity).allowsHitTesting(false)
             }
-        }.preferredColorScheme(.dark).statusBarHidden().persistentSystemOverlays(controls ? .automatic : .hidden)
+        }.presentationBackground(.clear).preferredColorScheme(.dark).statusBarHidden().persistentSystemOverlays(controls ? .automatic : .hidden)
             .onChange(of: index) { _, _ in message = nil; zoomed = false }
     }
     private var topBar: some View {
@@ -189,58 +192,130 @@ struct PersonPhotoViewer: View {
     }
 }
 
-/// One photo that zooms: pinch (up to 5×) or double-tap (2.5×, again to fit), drag while zoomed.
-/// A single tap is passed up (show or hide the controls). Leaving the page zooms back out.
-private struct ZoomablePhoto: View {
+/// One photo in the system's zooming scroll view (as Photos does it, so it stays smooth): pinch up
+/// to 5×, double-tap to 2.5× on that spot and again to fit, pan while zoomed. A single tap is passed
+/// up (show or hide the controls). Not zoomed, dragging down moves the photo with the finger and
+/// closes the viewer when let go far enough or flicked. Leaving the page zooms back out.
+private struct ZoomablePhoto: UIViewRepresentable {
     let path: String?
     let name: String
     let active: Bool
     @Binding var zoomed: Bool
     let onTap: () -> Void
-    @State private var scale: CGFloat = 1
-    @State private var lastScale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
-    var body: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            Artwork(path: path, title: name, initialsOnly: false, contentMode: .fit, prefersOriginal: true)
-                .frame(width: size.width, height: size.height)
-                .scaleEffect(scale).offset(offset)
-                .contentShape(Rectangle())
-                .gesture(MagnifyGesture()
-                    .onChanged { value in scale = min(5, max(1, lastScale * value.magnification)); offset = clamped(offset, in: size) }
-                    .onEnded { _ in settle(in: size) })
-                .highPriorityGesture(scale > 1.01 ? DragGesture()
-                    .onChanged { value in
-                        offset = clamped(CGSize(width: lastOffset.width + value.translation.width, height: lastOffset.height + value.translation.height), in: size)
-                    }
-                    .onEnded { _ in lastOffset = offset } : nil)
-                .onTapGesture(count: 2) { location in
-                    withAnimation(.snappy(duration: 0.28)) {
-                        if scale > 1.01 { reset() } else {
-                            scale = 2.5; lastScale = 2.5
-                            // Zoom in on the tapped spot.
-                            let point = CGSize(width: (size.width / 2 - location.x) * 1.5, height: (size.height / 2 - location.y) * 1.5)
-                            offset = clamped(point, in: size); lastOffset = offset
-                        }
-                    }
-                    zoomed = scale > 1.01
-                }
-                .onTapGesture { onTap() }
+    /// How far the photo is pulled down (0…1), while closing by a drag.
+    let onPull: (CGFloat) -> Void
+    let onClose: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> PhotoScrollView {
+        let view = PhotoScrollView()
+        view.delegate = context.coordinator
+        view.minimumZoomScale = 1; view.maximumZoomScale = 5
+        view.showsVerticalScrollIndicator = false; view.showsHorizontalScrollIndicator = false
+        view.contentInsetAdjustmentBehavior = .never
+        view.decelerationRate = .fast
+        view.isAccessibilityElement = true; view.accessibilityLabel = "Photo of " + name; view.accessibilityTraits = .image
+        let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
+        double.numberOfTapsRequired = 2
+        let single = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.singleTap))
+        single.require(toFail: double)
+        let pull = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pull(_:)))
+        pull.delegate = context.coordinator
+        [double, single, pull].forEach(view.addGestureRecognizer)
+        context.coordinator.load(path, into: view)
+        return view
+    }
+    func updateUIView(_ view: PhotoScrollView, context: Context) {
+        context.coordinator.parent = self
+        if !active, view.zoomScale != 1 { view.setZoomScale(1, animated: false) }
+    }
+
+    @MainActor final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+        var parent: ZoomablePhoto
+        init(_ parent: ZoomablePhoto) { self.parent = parent }
+
+        func load(_ path: String?, into view: PhotoScrollView) {
+            guard let request = PublicArtworkRequest(path: path, pixels: 1536, prefersOriginal: true) else { return }
+            if let bitmap = PublicArtworkCache.shared.cached(request) { view.show(UIImage(cgImage: bitmap.image)); return }
+            Task { [weak view] in
+                guard let bitmap = await PublicArtworkCache.shared.image(request) else { return }
+                view?.show(UIImage(cgImage: bitmap.image))
+            }
         }
-        .onChange(of: active) { _, now in if !now { reset() } }
-        .accessibilityElement().accessibilityLabel("Photo of " + name).accessibilityAddTraits(.isImage)
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { (scrollView as? PhotoScrollView)?.imageView }
+        func scrollViewDidZoom(_ scrollView: UIScrollView) { (scrollView as? PhotoScrollView)?.center() }
+        func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+            parent.zoomed = scale > 1.01
+        }
+        @objc func singleTap() { parent.onTap() }
+        @objc func doubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let view = gesture.view as? PhotoScrollView else { return }
+            if view.zoomScale > 1.01 { view.setZoomScale(1, animated: true); parent.zoomed = false; return }
+            let point = gesture.location(in: view.imageView)
+            let size = CGSize(width: view.bounds.width / 2.5, height: view.bounds.height / 2.5)
+            view.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
+            parent.zoomed = true
+        }
+        /// Drag down to close: only when not zoomed, and only a mostly downward drag (sideways swipes page).
+        func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+            guard let pan = gesture as? UIPanGestureRecognizer, let view = pan.view as? UIScrollView else { return true }
+            guard view.zoomScale <= 1.01 else { return false }
+            let velocity = pan.velocity(in: view)
+            return velocity.y > 0 && abs(velocity.y) > abs(velocity.x) * 1.4
+        }
+        @objc func pull(_ gesture: UIPanGestureRecognizer) {
+            guard let view = gesture.view as? PhotoScrollView else { return }
+            let drag = gesture.translation(in: view.superview)
+            let progress = min(1, max(0, drag.y / 320))
+            switch gesture.state {
+            case .changed:
+                view.transform = CGAffineTransform(translationX: drag.x * 0.4, y: max(0, drag.y)).scaledBy(x: 1 - progress * 0.12, y: 1 - progress * 0.12)
+                parent.onPull(progress)
+            case .ended, .cancelled:
+                if gesture.state == .ended, drag.y > 110 || gesture.velocity(in: view).y > 900 {
+                    parent.onClose()
+                } else {
+                    UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) { view.transform = .identity }
+                    parent.onPull(0)
+                }
+            default: break
+            }
+        }
     }
-    private func settle(in size: CGSize) {
-        if scale < 1.05 { withAnimation(.snappy(duration: 0.25)) { reset() } } else { lastScale = scale; offset = clamped(offset, in: size); lastOffset = offset }
-        zoomed = scale > 1.01
+}
+
+/// The scroll view behind one photo: the picture sized to fit, kept in the middle as it zooms.
+final class PhotoScrollView: UIScrollView {
+    let imageView = UIImageView()
+    private var fittedTo: CGSize = .zero
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        imageView.contentMode = .scaleAspectFit
+        addSubview(imageView)
     }
-    private func reset() { scale = 1; lastScale = 1; offset = .zero; lastOffset = .zero; if active { zoomed = false } }
-    /// Keeps the zoomed picture covering the screen (no panning past its edges).
-    private func clamped(_ value: CGSize, in size: CGSize) -> CGSize {
-        let maxX = max(0, (scale - 1) * size.width / 2), maxY = max(0, (scale - 1) * size.height / 2)
-        return CGSize(width: min(maxX, max(-maxX, value.width)), height: min(maxY, max(-maxY, value.height)))
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    func show(_ image: UIImage) {
+        imageView.image = image
+        fittedTo = .zero
+        setNeedsLayout()
+    }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let image = imageView.image, image.size.width > 0, bounds.width > 0 else { return }
+        if zoomScale == 1, fittedTo != bounds.size {
+            let scale = min(bounds.width / image.size.width, bounds.height / image.size.height)
+            let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            imageView.frame = CGRect(origin: .zero, size: size)
+            contentSize = size
+            fittedTo = bounds.size
+        }
+        center()
+    }
+    /// Keeps the picture centred while it's smaller than the screen.
+    func center() {
+        let horizontal = max(0, (bounds.width - contentSize.width) / 2), vertical = max(0, (bounds.height - contentSize.height) / 2)
+        contentInset = UIEdgeInsets(top: vertical, left: horizontal, bottom: vertical, right: horizontal)
     }
 }
 

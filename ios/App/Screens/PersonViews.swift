@@ -355,6 +355,7 @@ struct PersonFilmographyView: View {
     @State private var shown = 40
     /// The big heading has scrolled under the bar: the bar shows it (as Explore does).
     @State private var headingHidden = false
+    @State private var headerState = CompactHeaderState()
     init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
         VStack(spacing: 0) {
@@ -365,7 +366,11 @@ struct PersonFilmographyView: View {
                         Text(person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label)
                             .font(.system(size: 22, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("person-filmography-heading")
-                            .onGeometryChange(for: Bool.self) { $0.frame(in: .global).maxY < 100 } action: { hidden in headingHidden = hidden }
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
+                                let progress = ScrollLinkedBarTitle.progress(headingBottom: bottom)
+                                headerState.update(progress)
+                                if (progress >= 0.5) != headingHidden { headingHidden = progress >= 0.5 }
+                            }
                         Spacer(minLength: 0)
                         CollectionLayoutToggle(grid: $grid, collection: "catalog")
                     }
@@ -385,12 +390,7 @@ struct PersonFilmographyView: View {
         }.diaryScreenBackground().navigationTitle(barTitle).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    ZStack {
-                        if headingHidden { Text(heading).transition(.blurReplace(.downUp)) }
-                        else { Text(person?.name ?? "").transition(.blurReplace(.upUp)) }
-                    }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
-                        .animation(.smooth(duration: 0.35), value: headingHidden)
-                        .accessibilityAddTraits(.isHeader)
+                    ScrollLinkedBarTitle(resting: person?.name ?? "", scrolled: heading, state: headerState)
                 }
             }
 

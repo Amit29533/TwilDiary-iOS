@@ -10,6 +10,7 @@ enum ImportSource: String, CaseIterable, Identifiable, Sendable {
     case letterboxd, imdb, tvtime
     var id: Self { self }
     var name: String { switch self { case .letterboxd: "Letterboxd"; case .imdb: "IMDb"; case .tvtime: "TV Time" } }
+    @MainActor var logo: BrandLogo.Service { switch self { case .letterboxd: .letterboxd; case .imdb: .imdb; case .tvtime: .tvtime } }
     var hint: String {
         switch self {
         case .letterboxd: "Settings → Data → Export your data on letterboxd.com. Pick the ZIP (or its CSV files)."

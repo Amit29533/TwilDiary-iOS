@@ -116,9 +116,11 @@ import UIKit
             if id == 172069 { XCTAssertTrue(element(app, "person-age").label.contains("43")); XCTAssertTrue(element(app, "person-deathday").exists) }
             capture("Cast \(id) compact borderless facts and full location", app: app)
             let bio = element(app, "profile-biography"); reveal(bio, in: app)
-            XCTAssertTrue(app.buttons["Expand biography"].exists)
-            app.buttons["Expand biography"].tap()
-            XCTAssertTrue(app.buttons["Collapse biography"].exists)
+            // More opens the whole biography in a sheet (the page itself never grows and jumps).
+            XCTAssertTrue(app.buttons["Read the whole biography"].exists)
+            app.buttons["Read the whole biography"].tap()
+            XCTAssertTrue(app.navigationBars["About"].waitForExistence(timeout: 5))
+            app.navigationBars["About"].buttons["Done"].tap()
             XCTAssertEqual(app.tabBars.count, 0)
             app.terminate()
         }
@@ -137,7 +139,7 @@ import UIKit
             if id == 176754 { XCTAssertFalse(element(app, "character-birthday").exists) }
             capture("Character \(id) freeform age and optional facts", app: app)
             let bio = element(app, "profile-biography"); reveal(bio, in: app)
-            if id == 176754 { XCTAssertFalse(app.buttons["Expand biography"].exists, "Short biographies have no empty More control") }
+            if id == 176754 { XCTAssertFalse(app.buttons["Read the whole biography"].exists, "Short biographies have no empty More control") }
             // Relatives sit in the "Family and relations" highlight (labels may be shown in capitals).
             if id == 138100 {
                 let relations = app.staticTexts.matching(NSPredicate(format: "label ==[c] 'Relatives' OR label ==[c] 'Family and relations'")).firstMatch

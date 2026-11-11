@@ -153,11 +153,21 @@ import BackgroundTasks
         #endif
         #if canImport(ActivityKit)
         if let id = liveActivityID {
-            let ending = state.phase == .completed
+            // Done or stuck: it says so for a moment, then goes (it never stays up asking).
+            let ending = state.phase == .completed || state.phase == .failed
             if ending { liveActivityID = nil }
             enqueueLiveActivityUpdate(id: id, state: state, ending: ending)
-        } else if state.phase != .completed {
+        } else if state.phase != .completed && state.phase != .failed {
             guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+            // One at a time: any left from before (another run, a crash) goes first.
+            let staleIDs = Activity<SyncLiveActivityAttributes>.activities.map(\.id)
+            if !staleIDs.isEmpty {
+                Task.detached(priority: .utility) {
+                    for activity in Activity<SyncLiveActivityAttributes>.activities where staleIDs.contains(activity.id) {
+                        await activity.end(nil, dismissalPolicy: .immediate)
+                    }
+                }
+            }
             let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(300))
             let attributes = SyncLiveActivityAttributes()
             liveActivityID = try? Activity.request(attributes: attributes, content: content, pushType: nil).id
@@ -175,7 +185,7 @@ import BackgroundTasks
             guard let activity = Activity<SyncLiveActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
             if ending {
                 let content = state.map { ActivityContent(state: $0, staleDate: nil) }
-                await activity.end(content, dismissalPolicy: state == nil ? .immediate : .default)
+                await activity.end(content, dismissalPolicy: state == nil ? .immediate : .after(.now.addingTimeInterval(6)))
             } else if let state {
                 let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(300))
                 await activity.update(content)

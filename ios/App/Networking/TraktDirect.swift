@@ -250,6 +250,7 @@ enum ServiceRemovals {
             if edits != editsAtStart { refreshSoon(store: store, after: 2); return }
             self.library = library
             save(library)
+            ServiceIDs.shared.learn(from: library)
             if store.traktHoldsDiary { rememberSeen(library) }
             // The diary on screen first; the comparison follows.
             if store.diaryFromTrakt { store.applyDiarySource() }
@@ -1028,6 +1029,11 @@ enum ServiceRemovals {
             if tracker == .wetrakr {
                 let read = try await readWeTrakr(client, config, into: &library, activities: activities)
                 requests += read.requests; fetched = read.fetched
+                // WeTrakr's compact lists name titles by id only: names from the diary or the TMDB catalog.
+                var names: [String: String] = [:]
+                for title in store.workspace.titles { if let key = title.tmdbId.map({ (title.isSeries ? "tv:" : "movie:") + String($0) }) { names[key] = title.name } }
+                for (key, title) in PhoneCatalog.shared.titles where names[key] == nil { names[key] = title.name }
+                library = library.naming { ref in ref.diaryKey.flatMap { names[$0] } }
             } else if tracker == .simkl {
                 // Simkl's sync rules: the whole library once, then only what changed.
                 let fullQuery = ["extended": "full", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
@@ -1128,6 +1134,7 @@ enum ServiceRemovals {
             if edits != editsAtStart { refreshSoon(tracker, store: store, after: 2); return }
             libraries[tracker] = library
             save(library, tracker)
+            ServiceIDs.shared.learn(from: library)
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
             // The comparison and the plan read the whole library: worked out in the background.
             let diary = store.diaryToMatch, planned = store.diaryService != tracker && store.serverRecord != tracker, read = library
@@ -1403,6 +1410,7 @@ enum ServiceRemovals {
             throw APIError.message((sent > 0 ? "Added \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + error.localizedDescription)
         }
         writing = nil
+        libraries[tracker]?.activities = nil
         await check(tracker, store: store)
         return "Added to \(tracker.name): " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: tracker.name)
             + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) watches have no date and were left out." : "")
@@ -1434,6 +1442,9 @@ enum ServiceRemovals {
         }
         guard session == generation else { return }
         writing = nil; writeProgress = nil
+        // Read it all again: a service's change stamps can lag its writes, and an unchanged stamp
+        // would keep showing the copy from before the send.
+        libraries[tracker]?.activities = nil
         await check(tracker, store: store)
     }
 

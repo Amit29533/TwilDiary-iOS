@@ -120,6 +120,25 @@ public struct TraktLibrary: Codable, Equatable, Sendable {
     }
 }
 
+extension TraktLibrary {
+    /// The same library with a name for every title that came without one (WeTrakr's compact
+    /// lists carry ids only): `lookup` gives it from the diary or the phone's TMDB catalog.
+    public func naming(_ lookup: (TraktTitleRef) -> String?) -> TraktLibrary {
+        func named(_ ref: TraktTitleRef) -> TraktTitleRef {
+            guard ref.name.trimmingCharacters(in: .whitespaces).isEmpty, let name = lookup(ref), !name.isEmpty else { return ref }
+            return TraktTitleRef(kind: ref.kind, traktId: ref.traktId, tmdbId: ref.tmdbId, imdbId: ref.imdbId, tvdbId: ref.tvdbId,
+                                 name: name, year: ref.year, simklId: ref.simklId, weTrakrId: ref.weTrakrId)
+        }
+        var copy = self
+        copy.plays = plays.map { TraktPlay(historyId: $0.historyId, title: named($0.title), season: $0.season, episode: $0.episode, watchedAt: $0.watchedAt, remoteId: $0.remoteId) }
+        copy.ratings = ratings.map { TraktRating(title: named($0.title), rating: $0.rating, ratedAt: $0.ratedAt) }
+        copy.watchlist = watchlist.map { TraktListed(title: named($0.title), listedAt: $0.listedAt) }
+        copy.favorites = favorites.map { TraktListed(title: named($0.title), listedAt: $0.listedAt) }
+        copy.dropped = dropped.map { TraktListed(title: named($0.title), listedAt: $0.listedAt) }
+        return copy
+    }
+}
+
 /// Reads Trakt's JSON defensively: an item that can't be identified is skipped and counted, so
 /// one odd entry never hides the rest of a list.
 public enum TraktDecode {

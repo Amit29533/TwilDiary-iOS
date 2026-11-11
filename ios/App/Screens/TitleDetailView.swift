@@ -69,6 +69,8 @@ struct TitleDetailView: View {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
                                 if store.viewingFrozenServerCopy { frozenCopyNotice }
+                                // Ask Gemini about this title (spoiler-safe to where you are).
+                                CineMindButton(title: title).padding(.horizontal, 16).padding(.top, -8)
                                 progressPanel(title).padding(.top, -8)
                                 if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -126,7 +128,6 @@ struct TitleDetailView: View {
                                         removeHistoryButton(title)
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
-                                        TitleShareItem(name: title.name, kind: title.isSeries ? .tv : .movie, id: title.tmdbId)
                                         Divider()
                                         Button("Move to Trash", systemImage: "trash", role: .destructive) { if confirmDeletions { confirmTrash = true } else { Task { if await store.trash(title) { dismissPage() } } } }
                                             .disabled(store.writesBlocked).accessibilityIdentifier("title-menu-trash")

@@ -56,7 +56,9 @@ import TwilDiaryCore
             self.retryScheduled = false; self.retryRound += 1
         }
     }
-    func prepare(_ titleIDs: [String], fetch: ([String]) async throws -> [String: PublicRating]) async {
+    /// `batch` titles are asked for at a time; `seconds` is how long one run may take before the rest
+    /// waits for the next (MDBList, read title by title, gets longer and bigger batches).
+    func prepare(_ titleIDs: [String], batch size: Int = 4, seconds: Double = 12, fetch: ([String]) async throws -> [String: PublicRating]) async {
         var seen = Set<String>()
         let now = clock()
         let ids = titleIDs.filter { seen.insert($0).inserted && !inflight.contains($0) && (expires[$0].map { $0 <= now } ?? true) }
@@ -68,11 +70,11 @@ import TwilDiaryCore
         }
         // The existing endpoint fans out four provider calls at a time. Small batches
         // avoid waiting for six sequential provider waves before the first score appears.
-        let deadline = now.addingTimeInterval(12)
-        for offset in stride(from: 0, to: ids.count, by: 4) {
+        let deadline = now.addingTimeInterval(seconds)
+        for offset in stride(from: 0, to: ids.count, by: size) {
             guard session == generation, !Task.isCancelled else { return }
             if clock() >= deadline { markUnavailable(ids[offset...]); return }
-            let batch = Array(ids[offset..<min(offset + 4, ids.count)])
+            let batch = Array(ids[offset..<min(offset + size, ids.count)])
             let results: [String: PublicRating]
             do { results = try await fetch(batch) }
             catch is CancellationError { return }

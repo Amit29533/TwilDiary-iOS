@@ -23,4 +23,22 @@ import TwilDiaryCore
         XCTAssertNil(suggestions.last?.year)
         XCTAssertThrowsError(try SemanticSearch.decode(Data("{}".utf8)), "no answer is said, not shown as nothing found")
     }
+
+    func testFollowsARetiredModelToTheOneGoogleNames() {
+        let message = "This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features."
+        XCTAssertEqual(SemanticSearch.successor(in: message), "gemini-3.8-flash")
+        XCTAssertNil(SemanticSearch.successor(in: "Model not found."))
+    }
+
+    func testCineMindKeepsTheConversationAndReadsItsAnswer() throws {
+        let history = [CineMindView.Message(fromYou: true, text: "Is it worth finishing?"),
+                       CineMindView.Message(fromYou: false, text: "Yes."),
+                       CineMindView.Message(fromYou: true, text: "Why?")]
+        let body = CineMindView.body(system: "context", history: history)
+        let turns = try XCTUnwrap(body["contents"] as? [[String: Any]])
+        XCTAssertEqual(turns.map { $0["role"] as? String }, ["user", "model", "user"], "the whole chat goes, in order")
+        let reply = try CineMindView.decode(#"{"answer":"**Horimiya** is lighter.","titles":[{"title":"Horimiya","year":2021,"type":"tv","why":"Romance|Slice of life"}],"followups":["Something shorter"]}"#)
+        XCTAssertEqual(reply.titles.first?.title, "Horimiya")
+        XCTAssertEqual(reply.followups, ["Something shorter"])
+    }
 }

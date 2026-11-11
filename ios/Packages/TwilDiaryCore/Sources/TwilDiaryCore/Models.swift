@@ -110,6 +110,30 @@ public struct FileLocation: Codable, Identifiable, Hashable, Sendable {
         while relative.hasPrefix(separator) { relative.removeFirst() }
         return base + separator + relative
     }
+    /// A folder Jellyfin holds, kept on the phone (no server): split the way the server splits it
+    /// ("D:\TV\Show" → drive D:, "\\nas\media\TV" → the share, "/mnt/media/TV" → POSIX), present.
+    public static func jellyfin(titleId: String, folder: String, season: Int?, fileCount: Int, checkedAt: String) -> FileLocation {
+        var letter = "", root = "/", relative = folder
+        let characters = Array(folder)
+        if characters.count >= 2, characters[1] == ":", characters[0].isLetter {
+            letter = String(characters[0]).uppercased() + ":"; root = letter + "\\"
+            relative = String(folder.dropFirst(2)).trimmingCharacters(in: CharacterSet(charactersIn: "\\/"))
+        } else if folder.hasPrefix("\\\\") {
+            let parts = folder.dropFirst(2).split(separator: "\\", omittingEmptySubsequences: false).map(String.init)
+            root = "\\\\" + parts.prefix(2).joined(separator: "\\")
+            relative = parts.dropFirst(2).joined(separator: "\\")
+        } else {
+            relative = String(folder.drop { $0 == "/" })
+        }
+        return FileLocation(id: "jellyfin|" + titleId + "|" + folder, titleId: titleId, deviceName: "Jellyfin", deviceId: "jellyfin",
+                            volumeId: "jellyfin:" + (letter.isEmpty ? root : letter), driveLetter: letter, root: root, relativePath: relative,
+                            season: season, fileCount: fileCount, evidence: "present", sizeBytes: nil, checkedAt: checkedAt)
+    }
+    /// The same folder for another title id (a title's phone key).
+    public func moved(to titleId: String) -> FileLocation {
+        FileLocation(id: id, titleId: titleId, deviceName: deviceName, deviceId: deviceId, volumeId: volumeId, driveLetter: driveLetter,
+                     root: root, relativePath: relativePath, season: season, fileCount: fileCount, evidence: evidence, sizeBytes: sizeBytes, checkedAt: checkedAt)
+    }
 }
 
 public struct WorkspacePage<Item: Decodable & Sendable>: Decodable, Sendable {

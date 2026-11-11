@@ -34,6 +34,31 @@ struct CompactTitleNavigation: View {
     }
 }
 
+/// A page title that hands over to the heading as it scrolls under the bar (Explore, a person's
+/// lists): the same scroll-linked fade and small lift as a title page's name, never a swap.
+struct ScrollLinkedBarTitle: View {
+    let resting: String
+    let scrolled: String
+    let state: CompactHeaderState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        let progress = state.progress
+        ZStack {
+            Text(resting).opacity(Double(1 - progress)).offset(y: reduceMotion ? 0 : -progress * 6)
+                .accessibilityHidden(progress >= 0.5)
+            Text(scrolled).opacity(Double(progress)).offset(y: reduceMotion ? 0 : (1 - progress) * 6)
+                .accessibilityHidden(progress < 0.5)
+        }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+            .accessibilityAddTraits(.isHeader)
+    }
+    /// From the heading's bottom edge on screen: 0 while it's in view, 1 once it's under the bar.
+    static func progress(headingBottom: CGFloat) -> CGFloat {
+        guard headingBottom.isFinite else { return 0 }
+        let value = min(1, max(0, (130 - headingBottom) / 70))
+        return (value * 32).rounded() / 32
+    }
+}
+
 /// Ignore the crossing band: toolbar layout and a reversing scroll must not
 /// repeatedly insert/remove the title at the same single-pixel threshold.
 enum CompactHeaderTransition {

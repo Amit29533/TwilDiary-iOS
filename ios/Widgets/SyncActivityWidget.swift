@@ -13,49 +13,24 @@ struct SyncLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SyncLiveActivityAttributes.self) { context in
             DynamicIslandSyncBannerView(state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.88))
+                .activityBackgroundTint(.black)
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    HStack(spacing: 6) {
-                        Image(systemName: context.state.phase == .completed ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
-                            .font(.caption.bold())
-                        Text(context.state.providerDisplayName)
-                            .font(.caption.bold())
-                    }
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text("\(context.state.percent)%")
-                        .font(.caption.monospacedDigit().bold())
-                }
+                DynamicIslandExpandedRegion(.leading) { SyncAppMark(size: 44).padding(.leading, 4) }
+                DynamicIslandExpandedRegion(.trailing) { SyncRing(state: context.state, size: 40).padding(.trailing, 4) }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(context.state.title)
-                        .font(.caption.bold())
-                        .lineLimit(1)
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ProgressView(value: context.state.fraction)
-                        Text(context.state.subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(SyncActivityText.headline(context.state)).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                        Text(SyncActivityText.detail(context.state)).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
                 }
             } compactLeading: {
-                HStack(spacing: 4) {
-                    Image(systemName: context.state.phase == .completed ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
-                        .font(.caption2.bold())
-                    Text(context.state.compactBadge)
-                        .font(.caption2.bold())
-                }
+                SyncAppMark(size: 22)
             } compactTrailing: {
-                Text("\(context.state.percent)%")
-                    .font(.caption2.monospacedDigit().bold())
+                SyncRing(state: context.state, size: 20)
             } minimal: {
-                ProgressView(value: context.state.fraction)
-                    .progressViewStyle(.circular)
+                SyncRing(state: context.state, size: 20)
             }
         }
     }

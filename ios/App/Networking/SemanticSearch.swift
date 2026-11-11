@@ -9,7 +9,9 @@ import TwilDiaryCore
 @MainActor enum SemanticSearch {
     private static let account = "gemini.apiKey"
     /// Settings can pick another Gemini model; this one is quick and cheap.
-    static var model: String { UserDefaults.standard.string(forKey: "gemini.model") ?? "gemini-2.5-flash" }
+    /// Google's current quick model; when Google retires one and names its successor, the app
+    /// moves to that one by itself (and remembers it).
+    static var model: String { UserDefaults.standard.string(forKey: "gemini.model") ?? "gemini-3.8-flash" }
 
     static var key: String? {
         if let saved = (try? KeychainProviderSecretStore().readSecret(for: account)) ?? nil,
@@ -52,7 +54,7 @@ import TwilDiaryCore
     }
 
     /// The title on TMDB: by name and year first, then by name alone.
-    private static func find(_ suggestion: Suggestion, token: String) async -> CatalogItem? {
+    static func find(_ suggestion: Suggestion, token: String) async -> CatalogItem? {
         let tv = suggestion.type.lowercased() != "movie"
         let path = tv ? "search/tv" : "search/movie"
         var queries: [[String: String]] = []
@@ -69,20 +71,39 @@ import TwilDiaryCore
 
     /// Asks Gemini for up to ten titles, as JSON (the reply is held to a schema).
     static func suggest(_ description: String, key: String) async throws -> [Suggestion] {
-        var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!, timeoutInterval: 45)
+        try decode(try await generate(body(description), key: key))
+    }
+
+    /// One Gemini request (the same key and model for search and CineMind): the raw reply. A
+    /// retired model is followed to the one Google names, once.
+    static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
+        var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!, timeoutInterval: 60)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body(description))
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let detail = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any]).flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
             if status == 400 || status == 401 || status == 403 { throw APIError.message("Gemini didn’t accept the key" + (detail.map { ": " + $0 } ?? ".")) }
             if status == 429 { throw APIError.message("Gemini’s free limit is used up for now. Try again in a minute.") }
+            // A retired model: Google's answer names the one to use ("…use models/gemini-3.8-flash…").
+            if status == 404, !retried, let next = successor(in: detail ?? ""), next != model {
+                UserDefaults.standard.set(next, forKey: "gemini.model")
+                return try await generate(body, key: key, retried: true)
+            }
             throw APIError.message("Gemini answered HTTP \(status)" + (detail.map { ": " + $0 } ?? "."))
         }
-        return try decode(data)
+        return data
+    }
+    /// The text of Gemini's first answer.
+    nonisolated static func answerText(_ data: Data) throws -> String {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let parts = (((root["candidates"] as? [[String: Any]])?.first?["content"] as? [String: Any])?["parts"] as? [[String: Any]]) else {
+            throw APIError.message("Gemini sent no answer. Try asking another way.")
+        }
+        return parts.compactMap { $0["text"] as? String }.joined()
     }
 
     static func body(_ description: String) -> [String: Any] {
@@ -114,6 +135,14 @@ import TwilDiaryCore
         ]
     }
 
+    /// The model a "no longer available" answer points to (the last "models/…flash" it names).
+    nonisolated static func successor(in message: String) -> String? {
+        let pattern = #"models/(gemini-[A-Za-z0-9.\-]*flash[A-Za-z0-9.\-]*)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(message.startIndex..., in: message)
+        guard let last = regex.matches(in: message, range: range).last, let name = Range(last.range(at: 1), in: message) else { return nil }
+        return String(message[name])
+    }
     /// The suggestions in Gemini's reply (the JSON text of its first answer).
     nonisolated static func decode(_ data: Data) throws -> [Suggestion] {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],

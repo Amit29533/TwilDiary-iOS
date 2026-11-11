@@ -117,7 +117,10 @@ struct TrashView: View {
                 Button("Cancel", role: .cancel) { }
             } message: { Text("This permanently removes every title in Trash and its diary history. Files on your disks stay untouched.") }
     }
-    private var archived: [MediaTitle] { store.workspace.titles.filter { $0.deletedAt != nil } }
+    private var archived: [MediaTitle] {
+        // No server: the phone's own Trash.
+        store.phoneOnly ? PhoneTrash.shared.titles : store.workspace.titles.filter { $0.deletedAt != nil }
+    }
     private var shown: [MediaTitle] {
         var query = LibraryQuery()
         query.archived = true

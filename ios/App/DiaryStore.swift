@@ -123,8 +123,8 @@ import TwilDiaryCore
     @ObservationIgnored var adoptingTraktTitles = false
     static let phoneOnlyKey = "phoneOnlyDiary"
     /// Signed in with Trakt only (as Cinopsys works): no TwilDiary server session. The diary is
-    /// built on the phone from Trakt and TMDB; what needs the server (backups, notes, tags, file
-    /// locations, Trash) asks you to connect it in Connections.
+    /// built on the phone from Trakt and TMDB; what Trakt can't hold (tags, Queue, full notes,
+    /// statuses, file folders, Trash, favourite people) is kept on the phone and in its backups.
     private(set) var phoneOnly = false
     /// The service a phone-only diary comes from (an older saved "true" means Trakt).
     static var savedPhoneOnly: MainTracker? {
@@ -557,14 +557,23 @@ import TwilDiaryCore
         if diaryFromTrakt {
             if let library = TraktDirectStore.shared.library {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles, episodes = PhoneCatalog.shared.episodes
-                buildDiary { TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: server, catalog: titles), catalog: episodes) }
+                let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
+                buildDiary {
+                    // No server: the phone's extras (tags, Queue, full notes, statuses, files) take its place.
+                    let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles) } ?? server
+                    return TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: record, catalog: titles), catalog: episodes)
+                }
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
             }
         } else if let tracker = diaryFromTracker {
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles
-                buildDiary { TraktDiary.build(library: library, server: server, tracker: tracker, catalog: titles) }
+                let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
+                buildDiary {
+                    let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles) } ?? server
+                    return TraktDiary.build(library: library, server: record, tracker: tracker, catalog: titles)
+                }
             } else {
                 workspace = outbox.project(onto: confirmedWorkspace)
                 if TrackerPreviewStore.shared.running == nil { Task { await TrackerPreviewStore.shared.check(tracker, store: self) } }
@@ -582,7 +591,9 @@ import TwilDiaryCore
         diaryBuildTicket += 1
         let ticket = diaryBuildTicket
         diaryBuild?.cancel()
-        if isPreview || Self.runningTests {
+        // The first build after opening happens at once, under the splash, so Home opens complete.
+        if isPreview || Self.runningTests || !builtFromService {
+            builtFromService = true
             workspace = make(); fillServiceOnlyTitles(); return
         }
         diaryBuild = Task { [weak self] in
@@ -594,6 +605,7 @@ import TwilDiaryCore
     }
     @ObservationIgnored private var diaryBuild: Task<Void, Never>?
     @ObservationIgnored private var diaryBuildTicket = 0
+    @ObservationIgnored private var builtFromService = false
     private static let runningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     /// Titles only on the service get their details on the phone (TMDB, with your key) instead of
     /// being copied into the server diary; without a key they still join the server, as before.
@@ -1049,6 +1061,7 @@ import TwilDiaryCore
         }
     }
     func pushProviderVaultToServer() async {
+        if phoneOnly { providerVaultNotice = nil; return }
         guard !isPreview, !needsSignIn, !vaultSending, !vaultResolving else { return }
         vaultSending = true; defer { vaultSending = false }
         let session = sessionGeneration
@@ -1107,6 +1120,8 @@ import TwilDiaryCore
         return result
     }
     func pullProviderVaultFromServer() async {
+        // No server sign-in (Trakt-only, On this phone): the settings live on this iPhone only.
+        if phoneOnly { providerVaultNotice = nil; return }
         guard !isPreview, !needsSignIn else { return }
         do {
             let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
@@ -1227,7 +1242,8 @@ import TwilDiaryCore
                         do { try await directClient.deliver(delivery, entry: entry, config: config) }
                         catch APIError.rejected(let status, let message) {
                             guard session == sessionGeneration, !Task.isCancelled else { return }
-                            if (400..<500).contains(status) { try persistDelivery(entryID: entry.id, key: key, confirmed: false, rejected: true) }
+                            // Busy (429) or timed out (408): kept for later, as Cinopsys leaves the batch queued.
+                            if (400..<500).contains(status), status != 429, status != 408 { try persistDelivery(entryID: entry.id, key: key, confirmed: false, rejected: true) }
                             throw APIError.rejected(status, message)
                         }
                         guard session == sessionGeneration, !Task.isCancelled else { return }
@@ -1472,7 +1488,11 @@ import TwilDiaryCore
         }
     }
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
-        await perform(refreshing: [title.id]) {
+        // No server: Trash is kept on the phone (the watches and the title leave the service).
+        if phoneOnly { return await trashOnPhone(title) }
+        // Everything "Remove from watch history" does comes first: the watches go too.
+        if workspace.events.contains(where: { $0.titleId == title.id && $0.revokedAt == nil }) { await removeWatchHistory(title) }
+        return await perform(refreshing: [title.id]) {
             // Trash is kept on your server: a title only on the service joins it first.
             let title = try await self.joinServer(title)
             let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
@@ -1488,7 +1508,10 @@ import TwilDiaryCore
         }
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
-        await perform(refreshing: [title.id]) {
+        if phoneOnly, PhoneTrash.shared.contains(title.id) {
+            do { try await restoreOnPhone(title); return true } catch { self.error = error.localizedDescription; return false }
+        }
+        return await perform(refreshing: [title.id]) {
             let title = try await self.joinServer(title)
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
             if self.diaryFromService || self.traktHoldsDiary { try await self.serviceWatchlist([title], listed: true) }
@@ -1509,7 +1532,8 @@ import TwilDiaryCore
         communityRatings.selectSource(source)
         if retry { communityRatings.retryUnavailable() }
         let generation = sessionGeneration
-        await communityRatings.prepare(titles.map(\.id)) { ids in
+        let direct = source == .mdblist && providerSettings.mdblist.isAuthenticated
+        await communityRatings.prepare(titles.map(\.id), batch: direct ? 8 : 4, seconds: direct ? 240 : 12) { ids in
             #if DEBUG
             if self.isPreview {
                 if ProcessInfo.processInfo.arguments.contains("--ui-ratings-unavailable") { return [:] }
@@ -1524,15 +1548,25 @@ import TwilDiaryCore
             if source == .mdblist, self.providerSettings.mdblist.isAuthenticated {
                 let config = await self.freshProviderConfig(.mdblist)
                 var result: [String: PublicRating] = [:], failures = 0
+                var wanted: [(id: String, tmdb: Int, series: Bool)] = []
                 for id in ids {
                     guard let title = self.title(id), let tmdb = title.tmdbId else { result[id] = PublicRating(score: nil, state: "unrated"); continue }
-                    do {
-                        let summary = try await self.directClient.fetchMDBListRatings(config: config, tmdbId: tmdb, isSeries: title.isSeries)
-                        let score = summary.aggregatedScore.map { $0 > 10 ? $0 / 10 : $0 }
-                        result[id] = score.map { $0 > 0 ? PublicRating(score: min(10, $0), state: "rated") : PublicRating(score: nil, state: "unrated") } ?? PublicRating(score: nil, state: "unrated")
-                    } catch is CancellationError { throw CancellationError() }
-                    catch { failures += 1 }
+                    wanted.append((id, tmdb, title.isSeries))
                 }
+                // The batch at once (MDBList answers each title on its own), not one after another.
+                let client = self.directClient
+                let tasks = wanted.map { item in
+                    Task { @MainActor () -> (String, PublicRating?) in
+                        guard let summary = try? await client.fetchMDBListRatings(config: config, tmdbId: item.tmdb, isSeries: item.series) else { return (item.id, nil) }
+                        let score = summary.aggregatedScore.map { $0 > 10 ? $0 / 10 : $0 }
+                        return (item.id, score.map { $0 > 0 ? PublicRating(score: min(10, $0), state: "rated") : PublicRating(score: nil, state: "unrated") }
+                            ?? PublicRating(score: nil, state: "unrated"))
+                    }
+                }
+                var found: [(String, PublicRating?)] = []
+                for task in tasks { found.append(await task.value) }
+                if Task.isCancelled { throw CancellationError() }
+                for (id, rating) in found { if let rating { result[id] = rating } else { failures += 1 } }
                 guard generation == self.sessionGeneration else { throw CancellationError() }
                 if failures > 0 && result.isEmpty { throw APIError.message("MDBList ratings are unavailable right now.") }
                 return result
@@ -1779,6 +1813,24 @@ import TwilDiaryCore
         return await perform(refreshing: [title.id]) { try self.requireWatchEdits(); try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
+        // The phone's Trash: restore puts titles back, delete forever just forgets them here.
+        if phoneOnly, change == .restore || change == .purge {
+            if change == .purge { PhoneTrash.shared.remove(Set(reviewed.map(\.id))); return true }
+            var all = true
+            for title in reviewed { if await !restore(title) { all = false } }
+            return all
+        }
+        if phoneOnly, case .queue(let queued) = change {
+            // No server: the Queue is kept on this phone.
+            for title in reviewed { PhoneExtras.shared.update(title, ["queued": queued]) }
+            applyDiarySource()
+            return true
+        }
+        if phoneOnly, change == .trash {
+            var all = true
+            for title in reviewed { if await !trash(title) { all = false } }
+            return all
+        }
         if diaryFromService {
             switch change {
             case .status(let status):
@@ -1821,7 +1873,8 @@ import TwilDiaryCore
         }
     }
     @discardableResult func emptyTrash() async -> Bool {
-        await perform { let _: EmptyResponse = try await self.read("/api/trash", method: "DELETE", body: ["confirmation": "EMPTY_TRASH"]) }
+        if phoneOnly { PhoneTrash.shared.removeAll(); return true }
+        return await perform { let _: EmptyResponse = try await self.read("/api/trash", method: "DELETE", body: ["confirmation": "EMPTY_TRASH"]) }
     }
     private func applyProgress(_ reviewed: [MediaTitle], status: String, watchedAt: Date) async throws {
         let request = try CollectionRequest(titles: reviewed, change: .status(status))
@@ -1909,6 +1962,11 @@ import TwilDiaryCore
         }
     }
     func dismissUndo() { undoLabel = nil; undoAction = nil }
+    /// Undo for an edit made outside this file (the phone's Trash).
+    func setUndo(_ titles: Set<String>, _ action: @escaping () async throws -> Void) {
+        undoAction = action
+        undoTitles = titles
+    }
     func installUndo(_ actions: [(event: WatchEvent, action: String)], label: String) {
         guard !actions.isEmpty else { return }
         undoLabel = label

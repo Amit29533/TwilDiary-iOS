@@ -50,4 +50,34 @@ import TwilDiaryCore
         XCTAssertEqual(TrackerPreviewStore.weTrakrMatch(try data(["data": [["id": 5, "type": "show"]]]), show: true), 5)
         XCTAssertNil(TrackerPreviewStore.weTrakrMatch(try data([["id": 7, "type": "movie"]]), show: true), "never a title of the other kind")
     }
+
+    func testSimklListsAndNotFoundTitlesAreUnderstood() throws {
+        func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+        XCTAssertTrue(ProviderDeliveryPlanner.confirms(try data(["added": ["movies": [["to": "plantowatch", "ids": ["tmdb": 603]]]], "not_found": ["movies": []]])),
+                      "Simkl lists what it added")
+        XCTAssertTrue(ProviderDeliveryPlanner.notFound(try data(["added": ["movies": 0], "not_found": ["movies": [["ids": ["tmdb": 1]]]]])))
+        XCTAssertFalse(ProviderDeliveryPlanner.notFound(try data(["added": ["movies": 1], "not_found": ["movies": []]])))
+        let sent = DirectProviderClient.simklAnimeSeasons(try data(["shows": [["ids": ["tmdb": 1], "seasons": [["number": 2]]], ["ids": ["tmdb": 2]]]]))
+        let shows = try XCTUnwrap((try JSONSerialization.jsonObject(with: sent) as? [String: Any])?["shows"] as? [[String: Any]])
+        XCTAssertEqual(shows.first?["use_tvdb_anime_seasons"] as? Bool, true)
+        XCTAssertNil(shows.last?["use_tvdb_anime_seasons"], "a whole show (no seasons) is left as it is")
+    }
+
+    func testIdOnlyTitlesGetTheirNames() {
+        let bare = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 1399, name: "")
+        let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: bare, season: 1, episode: 1, watchedAt: nil)], watchlist: [TraktListed(title: bare, listedAt: nil)])
+        let named = library.naming { $0.diaryKey == "tv:1399" ? "Game of Thrones" : nil }
+        XCTAssertEqual(named.plays.first?.title.name, "Game of Thrones")
+        XCTAssertEqual(named.watchlist.first?.title.name, "Game of Thrones")
+    }
+
+    func testServiceLookUpsAndLeftOutTitles() throws {
+        func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+        XCTAssertEqual(ServiceIDs.simklID(try data([["type": "movie", "ids": ["simkl": 53536, "tmdb": "603"]]])), 53536)
+        XCTAssertEqual(ServiceIDs.simklID(try data(["ids": ["simkl_id": 7]])), 7)
+        XCTAssertNil(ServiceIDs.simklID(try data([Any]())))
+        let reply = ServiceIDs.reply(try data(["added": ["movies": 1]]), adding: [["ids": ["tmdb": 9], "slot": "movies"]])
+        XCTAssertTrue(ProviderDeliveryPlanner.notFound(reply), "a title the service lacks is reported, not silently dropped")
+        XCTAssertEqual(TraktDirectStore.notFoundCount(reply), 1)
+    }
 }

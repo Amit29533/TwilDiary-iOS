@@ -77,7 +77,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
     }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, simkl, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, simkl, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -175,7 +175,14 @@ struct RootView: View {
     /// played and there's something to show (your diary, the first screen, or why it can't open).
     @State private var showSplash = !ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.arguments.contains("--ui-splash")
     @State private var splashPlayed = false
-    private var readyToShow: Bool { store.needsSignIn || store.hasLoadedWorkspace || !(store.loading || store.restoringCache) }
+    /// The splash lifts on a Home that's ready to draw (its rows worked out), so opening never shows
+    /// a half-built page that then jumps into place; 2.5 s at most.
+    private var readyToShow: Bool {
+        if store.needsSignIn { return true }
+        guard store.hasLoadedWorkspace || !(store.loading || store.restoringCache) else { return false }
+        return store.homeProjection != nil || !store.hasLoadedWorkspace || splashWaited
+    }
+    @State private var splashWaited = false
     private func liftSplash() {
         guard showSplash, splashPlayed, readyToShow, !ProcessInfo.processInfo.arguments.contains("--ui-splash-hold") else { return }
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeInOut(duration: 0.35)) { showSplash = false }
@@ -251,9 +258,12 @@ struct RootView: View {
                 }
             }
             .onChange(of: readyToShow) { _, _ in liftSplash() }
+            .task { try? await Task.sleep(for: .seconds(2.5)); splashWaited = true; liftSplash() }
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
+                    // No server: tags, Queue, notes, files, favourite people and Trash from Drive.
+                    await PhoneDriveSync.pullIfDue(store: store)
                     // Backups and alerts can wait: they start once the app has settled.
                     try? await Task.sleep(for: .seconds(4))
                     guard !Task.isCancelled else { return }
@@ -333,6 +343,7 @@ struct RootView: View {
                     case .about: AboutView()
                     case .languageRegion: LanguageRegionView()
                     case .syncBackup: SyncBackupView()
+                    case .notifications: NotificationsSettingsView()
                     } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }

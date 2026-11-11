@@ -25,23 +25,38 @@ struct AiringCalendarView: View {
     @Namespace private var underline
 
     private var range: Int { tab == .catchup ? catchupDays : upcomingDays }
-    private func schedule(_ mode: UpcomingSchedule.Mode, days: Int) -> UpcomingSchedule {
-        UpcomingSchedule(workspace: store.workspace, now: store.now, category: category, horizonDays: days,
-                         dedupeByTitle: !showAllEpisodes && mode == .upcoming, mode: mode)
+    /// Both schedules, worked out in the background when the diary or the filters change (they read
+    /// every episode and watch): redraws, and the swipe back, only show what's already done.
+    @State private var computed: (key: String, upcoming: UpcomingSchedule, aired: UpcomingSchedule)?
+    private var scheduleKey: String {
+        [store.homeWorkspaceRevision.uuidString, category.rawValue, tab.rawValue, String(upcomingDays), String(catchupDays),
+         String(showAllEpisodes), DiaryDate.day(store.now)].joined(separator: "|")
     }
+    private func computeSchedules() async {
+        let key = scheduleKey, snapshot = store.workspace, now = store.now, category = category, dedupe = !showAllEpisodes
+        let upcomingSpan = tab == .all ? 365 : upcomingDays, airedSpan = tab == .all ? 365 : catchupDays
+        let result = await Task.detached(priority: .userInitiated) {
+            (UpcomingSchedule(workspace: snapshot, now: now, category: category, horizonDays: upcomingSpan, dedupeByTitle: dedupe, mode: .upcoming),
+             UpcomingSchedule(workspace: snapshot, now: now, category: category, horizonDays: airedSpan, dedupeByTitle: false, mode: .catchup))
+        }.value
+        guard !Task.isCancelled else { return }
+        computed = (key, result.0, result.1)
+    }
+    private static let empty = UpcomingSchedule(workspace: Workspace(), now: .now, category: .all, horizonDays: 1, dedupeByTitle: false, mode: .upcoming)
     private func narrowed(_ items: [UpcomingSchedule.Item]) -> [UpcomingSchedule.Item] {
         genres.isEmpty ? items : items.filter { !genres.isDisjoint(with: $0.title.genres) }
     }
 
     var body: some View {
-        let upcoming = schedule(.upcoming, days: tab == .all ? 365 : upcomingDays)
-        let aired = schedule(.catchup, days: tab == .all ? 365 : catchupDays)
+        let upcoming = computed?.upcoming ?? Self.empty
+        let aired = computed?.aired ?? Self.empty
         let upcomingItems = narrowed(upcoming.items), airedItems = narrowed(aired.items)
         let genreNames = Set((upcoming.items + aired.items).flatMap(\.title.genres)).sorted()
         EdgeToEdgeScroll(frosted: true) {
             VStack(alignment: .leading, spacing: 16) {
                 tabs
-                switch tab {
+                if computed == nil { DiaryLoadingPlaceholder(height: 260, label: "Loading the calendar") }
+                else { switch tab {
                 case .upcoming:
                     monthCard(upcomingItems)
                     filters
@@ -53,7 +68,7 @@ struct AiringCalendarView: View {
                 case .all:
                     filters
                     allList(upcoming: status == .behind ? [] : upcomingItems, aired: status == .upcoming ? [] : airedItems)
-                }
+                } }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 110)
         }.diaryScreenBackground().diaryPageNavigation("Airing calendar")
             .toolbar {
@@ -61,6 +76,7 @@ struct AiringCalendarView: View {
             }
             .sheet(isPresented: $showGenres) { CalendarGenreSheet(names: genreNames, chosen: $genres) }
             .onChange(of: tab) { _, _ in selectedDate = nil }
+            .task(id: scheduleKey) { await computeSchedules() }
     }
 
     // MARK: Header pieces

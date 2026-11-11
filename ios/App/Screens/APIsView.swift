@@ -12,6 +12,8 @@ struct APIsView: View {
     @State private var removing: APIKeyStatus?
     @State private var editingJellyfin = false
     @State private var jellyfinRevision = 0
+    @State private var editingGemini = false
+    @State private var geminiSet = SemanticSearch.key != nil
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -22,7 +24,10 @@ struct APIsView: View {
                     Spacer(minLength: 0)
                     SettingsInfoButton(text: "Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
                 }.padding(.leading, 4)
-                if let model, model.loaded, model.keys.isEmpty, let error = model.error {
+                if store.phoneOnly {
+                    // No server sign-in: the keys this iPhone uses.
+                    phoneKeys
+                } else if let model, model.loaded, model.keys.isEmpty, let error = model.error {
                     // Nothing to list: one clear card instead of empty service sections.
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
@@ -44,12 +49,14 @@ struct APIsView: View {
                                 info: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
+                if !store.phoneOnly { geminiSection }
                 jellyfin
                 server
             }.padding(16).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("APIs").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .refreshable { await model?.load() }
-            .task { if model == nil { model = APIKeysModel(store: store) }; await model?.load() }
+            .task { if store.phoneOnly { return }; if model == nil { model = APIKeysModel(store: store) }; await model?.load() }
+            .sheet(isPresented: $editingGemini, onDismiss: { geminiSet = SemanticSearch.key != nil }) { GeminiKeySheet() }
             .sheet(item: $editing) { key in
                 ReplaceKeySheet(key: key) { value in
                     // An error belongs in the sheet, not on the page hidden behind it.
@@ -147,6 +154,34 @@ struct APIsView: View {
             }.padding(15)
         }
     }
+    /// TMDB (TwilDiary's own key, or yours) and Gemini for search by description.
+    private var phoneKeys: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            section(.tmdb, "TMDB", icon: "film") {
+                HStack(spacing: 8) {
+                    Text(store.providerSettings.customTmdbToken == nil ? "TwilDiary’s key, built in" : "Your own key").font(.system(size: 14)).foregroundStyle(HomeStyle.primary)
+                    Spacer(minLength: 0)
+                    status(TMDBDirect.token(store) != nil, TMDBDirect.token(store) != nil ? "Ready" : "Missing")
+                }.padding(15)
+            }
+            geminiSection
+        }
+    }
+    /// Gemini: AI search and CineMind.
+    private var geminiSection: some View {
+        section(nil, "Gemini", icon: "sparkles") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("CineMind and search by description").font(.system(size: 14)).foregroundStyle(HomeStyle.primary)
+                    Spacer(minLength: 0)
+                    status(geminiSet, geminiSet ? "Set" : "Not set")
+                }
+                Text("Kept in this iPhone’s Keychain. Only your questions and the title you ask about go to Google.")
+                    .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                Button(geminiSet ? "Change key" : "Add Gemini key") { editingGemini = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-gemini")
+            }.padding(15)
+        }
+    }
     private var server: some View {
         section(nil, "TwilDiary server", icon: "server.rack") {
             VStack(alignment: .leading, spacing: 8) {
@@ -154,7 +189,8 @@ struct APIsView: View {
                     Text(BackendEndpoint.production.host ?? "").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
                     // The diary itself proves the connection; a keys error (an older server) doesn't mean it's down.
-                    status(store.hasLoadedWorkspace && store.error == nil, store.hasLoadedWorkspace && store.error == nil ? "Connected" : "Not connected")
+                    let online = !store.phoneOnly && store.hasLoadedWorkspace && store.error == nil
+                    status(online, store.phoneOnly ? "Not signed in" : online ? "Connected" : "Not connected")
                 }
                 HStack(spacing: 6) {
                     Text("Fixed in the app.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)

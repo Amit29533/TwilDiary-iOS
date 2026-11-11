@@ -19,6 +19,7 @@ import TwilDiaryCore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(ServiceRemovals.key) private var applyRemovals = true
     @State private var scanPace = ProgressPace()
     @State private var applyPace = ProgressPace()
     init(store: DiaryStore) {
@@ -285,6 +286,10 @@ import TwilDiaryCore
                 })) {
                     optionLabel("Instant sync", traktDirect.instantSync ? "Send edits as you make them" : "Edits wait for the next sync")
                 }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("trakt-instant-sync")
+                SettingsDivider()
+                Toggle(isOn: $applyRemovals) {
+                    optionLabel("Removals on Trakt", applyRemovals ? "Something removed on Trakt leaves your diary too" : "Your diary puts back what Trakt no longer has")
+                }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("sync-apply-removals")
                 SettingsDivider()
                 SettingsRow(title: "Pending requests", subtitle: "Waiting to be sent") {
                     SettingsBadge(text: traktDirect.pending.isEmpty ? "None" : traktDirect.pending.count.formatted(), tone: traktDirect.pending.isEmpty ? .good : .missing)

@@ -14,7 +14,7 @@ struct BackupsView: View {
         let sizeBytes: Int
     }
     private struct BackupList: Decodable { let backups: [Summary] }
-    private struct Snapshot: Decodable { let diary: DiaryExport }
+    private struct Snapshot: Decodable { let diary: DiaryExport; let phone: PhoneExtras.Backup? }
 
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -135,7 +135,7 @@ struct BackupsView: View {
             let snapshot: Snapshot = try await store.read("/api/backups/" + backup.id, timeout: 60)
             // Restore goes where your diary lives: into Trakt when Trakt holds it (the server's
             // copy is read-only then, and changing it wouldn't change what you see).
-            message = try await ServerBackups.restore(snapshot.diary, store: store)
+            message = try await ServerBackups.restore(snapshot.diary, phone: snapshot.phone, store: store)
         } catch { failure = error.localizedDescription }
     }
     private func delete(_ backup: Summary) async {
@@ -173,11 +173,20 @@ struct BackupsView: View {
         var body: [String: Any] = ["label": label, "diary": diary]
         if let library = TraktDirectStore.shared.library, let data = try? JSONEncoder().encode(library),
            let trakt = try? JSONSerialization.jsonObject(with: data) { body["trakt"] = trakt }
+        if store.phoneOnly, let phone = phoneExtras() { body["phone"] = phone }
         return body
+    }
+    /// With no server: the phone's tags, Queue, full notes, statuses, file folders, favourite
+    /// people and Trash, as a backup carries them.
+    static func phoneExtras() -> Any? {
+        (try? JSONEncoder().encode(PhoneExtras.shared.backup)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
     }
     /// Puts a backup back where your diary lives (Trakt, the diary on this phone, or the server's),
     /// merging, so nothing newer is lost. Returns what to tell you.
-    static func restore(_ archive: DiaryExport, store: DiaryStore) async throws -> String {
+    static func restore(_ archive: DiaryExport, phone: PhoneExtras.Backup? = nil, store: DiaryStore) async throws -> String {
+        // No server: what the service can't hold comes back onto the phone (merged, before the
+        // service's part, so the rebuilt diary shows it).
+        if store.phoneOnly { PhoneExtras.shared.restore(phone, archive: archive) }
         if store.traktHoldsDiary {
             return try await TraktDirectStore.shared.restore(try archive.merged(into: Workspace()), store: store)
         }

@@ -16,6 +16,7 @@ struct ConnectionsView: View {
     @State private var trakt: TraktController?
     @State private var traktDirect = TraktDirectStore.shared
     @State private var others = TrackerPreviewStore.shared
+    @State private var profiles = AccountProfiles.shared
     @State private var matching: MainTracker?
     @State private var note: String?
     @State private var signingIn: MainTracker?
@@ -44,7 +45,7 @@ struct ConnectionsView: View {
                 SettingsGroup(label: "Your diary") {
                     Button { showDiaryAccess = true } label: {
                         rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in",
-                                 store.phoneOnly ? "Not connected. Connect for backups, notes, tags, files and Trash" : "How this iPhone signs in to your TwilDiary server",
+                                 store.phoneOnly ? "Not connected. Optional: tags, notes, files and Trash stay on this phone and Google Drive" : "How this iPhone signs in to your TwilDiary server",
                                  value: store.phoneOnly ? "Connect" : nil)
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
                     divider
@@ -58,8 +59,10 @@ struct ConnectionsView: View {
                         row(BrandLogo(service: .anilist, size: 38), "AniList", "Characters and voice actors",
                             value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, destination: .anilist, id: "settings-anilist")
                         divider
-                        row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare", "Usage against the free plan", value: nil, destination: .cloudflare, id: "settings-cloudflare")
-                        divider
+                        if !store.phoneOnly {
+                            row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare", "Usage against the free plan", value: nil, destination: .cloudflare, id: "settings-cloudflare")
+                            divider
+                        }
                         NavigationLink(value: AppDestination.apis) {
                             Text("All keys").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
@@ -145,28 +148,30 @@ struct ConnectionsView: View {
     private func trackerRow(_ tracker: MainTracker) -> some View {
         let isMain = tracker == main, on = connected(tracker)
         let destination: AppDestination = switch tracker { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
-        let checked = checkedAt(tracker).map { "checked " + $0.formatted(.relative(presentation: .named)) }
-        let detail = on ? [account(tracker).map { "@" + $0 }, checked].compactMap { $0 }.joined(separator: " · ") : ""
+        let profile = on ? profiles.account(tracker) : nil
+        let checked = checkedAt(tracker).map { $0.formatted(.relative(presentation: .named)) }
+        let detail = on ? [profile?.name ?? account(tracker), checked].compactMap { $0 }.joined(separator: " · ") : ""
         // A connection that needs attention says so (in amber), instead of looking healthy.
         let status = badge(tracker), problem = ["Reconnect", "Unavailable"].contains(status)
         return HStack(spacing: 4) {
             NavigationLink(value: destination) {
                 HStack(spacing: 14) {
-                    BrandLogo(service: tracker.brand, size: 44)
+                    // As Cinopsys: your picture on the service, its logo on the corner.
+                    avatar(profile?.avatar, on: on)
                         .overlay(alignment: .bottomTrailing) {
-                            if isMain {
-                                Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, theme.accent).background(Circle().fill(Color(webHex: "#111115")).padding(1)).offset(x: 5, y: 5)
-                            }
-                        }.opacity(on || isMain ? 1 : 0.55)
+                            BrandLogo(service: tracker.brand, size: 20)
+                                .overlay(RoundedRectangle(cornerRadius: 20 * 0.225).strokeBorder(Color(webHex: "#111115"), lineWidth: 2))
+                                .offset(x: 4, y: 4)
+                        }.opacity(on || isMain ? 1 : 0.6)
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 7) {
-                            Text(tracker.name).font(.system(size: isMain ? 16 : 15, weight: isMain ? .bold : .semibold)).foregroundStyle(HomeStyle.primary)
+                        HStack(spacing: 6) {
+                            Text(tracker.name).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                            if let plan = profile?.plan { Text("· " + plan).font(.system(size: 15)).foregroundStyle(HomeStyle.secondary) }
                             if isMain {
-                                Text("Main").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                                    .padding(.horizontal, 8).frame(height: 17).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                                Image(systemName: "checkmark.seal.fill").font(.system(size: 15)).symbolRenderingMode(.palette)
+                                    .foregroundStyle(.white, theme.accent).accessibilityHidden(true)
                             }
-                        }
+                        }.lineLimit(1)
                         HStack(spacing: 6) {
                             if on && !problem { Circle().fill(Color(webHex: "#7fe0b5")).frame(width: 6, height: 6) }
                             Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: 12))
@@ -176,6 +181,7 @@ struct ConnectionsView: View {
                     Spacer(minLength: 0)
                 }.padding(.leading, 15).padding(.vertical, 12).contentShape(Rectangle())
             }.buttonStyle(.plain)
+                .task(id: on) { if on { await profiles.refresh(tracker, store: store) } }
                 // VoiceOver hears the status even when the row shows the account instead.
                 .accessibilityLabel([tracker.name, isMain ? "Main" : nil, status, detail.isEmpty ? nil : detail].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityIdentifier("settings-" + tracker.rawValue)
@@ -207,15 +213,24 @@ struct ConnectionsView: View {
                 Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
-        }.background(isMain ? Color(webHex: "#1a1730") : .clear)
+        }.background(isMain ? Color(webHex: "#1d1934") : .clear)
     }
 
+    /// Your picture on the service, or a plain person while it's unknown or you're not signed in.
+    private func avatar(_ path: String?, on: Bool) -> some View {
+        ZStack {
+            Circle().fill(Color(webHex: "#2a2a31"))
+            Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(Color(webHex: "#8e8e9c"))
+            if let path { Artwork(path: path, title: "", initialsOnly: false).clipShape(Circle()) }
+        }.frame(width: 46, height: 46)
+    }
     private func signIn(_ tracker: MainTracker) async {
         signingIn = tracker; note = nil
         defer { signingIn = nil }
         do {
-            if case .signedIn(let who) = try await ServiceSignIn.run(tracker.provider, store: store, using: webAuthenticationSession) {
-                note = "Signed in to \(tracker.name) as \(who)."
+            if case .signedIn = try await ServiceSignIn.run(tracker.provider, store: store, using: webAuthenticationSession) {
+                await profiles.refresh(tracker, store: store, force: true)
+                note = "Signed in to \(tracker.name)" + (profiles.account(tracker)?.name.map { " as " + $0 } ?? "") + "."
             }
         } catch { note = error.localizedDescription }
     }

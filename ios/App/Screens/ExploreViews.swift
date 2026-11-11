@@ -13,7 +13,7 @@ struct ExploreView: View {
             }
         }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() }.sharedBackgroundVisibility(.hidden) }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
     }
 }
 
@@ -36,15 +36,13 @@ private struct ExplorePill: View {
     }
 }
 
-/// Search Lab's way in: a 44 pt lilac circle with a flask, top right on every Explore page.
+/// Search Lab's way in: a flask in a Liquid Glass circle (a toolbar button, like Back), top right
+/// on every Explore page.
 struct ExploreLabButton: View {
     var body: some View {
         NavigationLink(value: SearchLabRoute()) {
             Image(systemName: "flask").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                .frame(width: 44, height: 44)
-                .background(HomeStyle.chip, in: Circle())
-                .contentShape(Circle())
-        }.buttonStyle(.springPress).accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
+        }.accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
     }
 }
 
@@ -193,7 +191,7 @@ struct ExploreSectionView: View {
                 }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
             }
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() }.sharedBackgroundVisibility(.hidden) }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
     }
 }
 
@@ -224,6 +222,7 @@ private struct DiscoveryBrowser: View {
     @State private var section: DiscoverySection
     /// The big heading has scrolled under the top bar: the bar then names the list.
     @State private var headingHidden = false
+    @State private var headerState = CompactHeaderState()
     let service: any DiscoveryServing
     let store: DiaryStore
     var promptForGenre: Bool
@@ -250,7 +249,11 @@ private struct DiscoveryBrowser: View {
             HStack(spacing: 10) {
                 Text(filters.label ?? section.label).font(.system(size: promptForGenre ? 22 : 30, weight: .bold)).tracking(-0.6)
                     .foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.8)
-                    .onGeometryChange(for: Bool.self) { $0.frame(in: .global).maxY < 100 } action: { hidden in headingHidden = hidden }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
+                        let progress = ScrollLinkedBarTitle.progress(headingBottom: bottom)
+                        headerState.update(progress)
+                        if (progress >= 0.5) != headingHidden { headingHidden = progress >= 0.5 }
+                    }
                 Spacer(minLength: 0)
                 if promptForGenre { SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters), identifier: "explore-more-genres") }
             }
@@ -262,16 +265,7 @@ private struct DiscoveryBrowser: View {
         .navigationTitle(headingHidden ? (filters.label ?? section.label) : "Explore")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ZStack {
-                    if headingHidden {
-                        ViewThatFits(in: .horizontal) {
-                            Text(filters.label ?? section.label)
-                            Text(filters.label ?? section.shortLabel)
-                        }.transition(.blurReplace(.downUp))
-                    } else { Text("Explore").transition(.blurReplace(.upUp)) }
-                }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    .animation(.smooth(duration: 0.35), value: headingHidden)
-                    .accessibilityAddTraits(.isHeader)
+                ScrollLinkedBarTitle(resting: "Explore", scrolled: filters.label ?? section.label, state: headerState)
             }
         }
         .task(id: filters) {

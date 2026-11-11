@@ -441,6 +441,15 @@ struct JellyfinClient: Sendable {
                 let folder = Self.parent(movie.file)
                 items.append(["kind": "movie", "ids": movie.ids, "folder": shared[folder] == nil ? folder : movie.file, "fileCount": 1])
             }
+            if store.phoneOnly {
+                // No server: matched on the phone, and the folders kept here.
+                progress = "Matching with your diary…"
+                let found = Self.match(items, titles: store.workspace.activeTitles, checkedAt: startedAt)
+                PhoneExtras.shared.setJellyfin(found.locations)
+                remember(JellyfinSummary(at: .now, mapped: found.mapped, notInDiary: items.count - found.mapped, personal: personal, libraries: chosen.count))
+                store.applyDiarySource()
+                return
+            }
             struct Receipt: Decodable { let mapped: Int; let notInDiary: Int }
             var mapped = 0, notInDiary = 0
             // Small pages keep each request's database statements well inside the Worker's limits.
@@ -505,6 +514,48 @@ struct JellyfinClient: Sendable {
             switch key.lowercased() { case "tmdb": ids["tmdb"] = value; case "imdb": ids["imdb"] = value; case "tvdb": ids["tvdb"] = value; default: break }
         }
         return ids
+    }
+    /// Sync now's items matched to diary titles by TMDB id (or IMDb/TVDB, from the ids the phone
+    /// knows), as the server matches them: a show is one location per season folder (seasons
+    /// sharing a folder share one), a movie its folder.
+    static func match(_ items: [[String: Any]], titles: [MediaTitle], checkedAt: String) -> (locations: [FileLocation], mapped: Int) {
+        var owners: [String: String] = [:]
+        for title in titles {
+            guard let tmdb = title.tmdbId else { continue }
+            let kind = title.isSeries ? "series" : "movie", key = PhoneExtras.key(title)
+            owners["tmdb:\(kind):\(tmdb)"] = title.id
+            if let known = ServiceIDs.shared.known(key) {
+                if let imdb = known.imdb { owners["imdb:\(kind):\(imdb)"] = title.id }
+                if let tvdb = known.tvdb { owners["tvdb:\(kind):\(tvdb)"] = title.id }
+            }
+        }
+        var locations: [FileLocation] = [], mapped = 0
+        for item in items {
+            guard let kind = item["kind"] as? String, let ids = item["ids"] as? [String: String] else { continue }
+            var owner: String?
+            for provider in ["tmdb", "imdb", "tvdb"] where owner == nil {
+                if let id = ids[provider] { owner = owners["\(provider):\(kind):\(id)"] }
+            }
+            guard let owner else { continue }
+            mapped += 1
+            let seasons = item["seasons"] as? [[String: Any]] ?? []
+            if kind == "series", !seasons.isEmpty {
+                var folders: [String: [(number: Int, count: Int)]] = [:], order: [String] = []
+                for season in seasons {
+                    guard let folder = season["folder"] as? String, let number = season["number"] as? Int else { continue }
+                    if folders[folder] == nil { order.append(folder) }
+                    folders[folder, default: []].append((number, season["fileCount"] as? Int ?? 0))
+                }
+                for folder in order {
+                    let together = folders[folder] ?? []
+                    locations.append(.jellyfin(titleId: owner, folder: folder, season: together.count == 1 ? together[0].number : nil,
+                                               fileCount: together.reduce(0) { $0 + $1.count }, checkedAt: checkedAt))
+                }
+            } else if let folder = item["folder"] as? String {
+                locations.append(.jellyfin(titleId: owner, folder: folder, season: nil, fileCount: item["fileCount"] as? Int ?? 1, checkedAt: checkedAt))
+            }
+        }
+        return (locations, mapped)
     }
     /// The folder holding a file, for Windows or POSIX paths.
     static func parent(_ path: String) -> String {

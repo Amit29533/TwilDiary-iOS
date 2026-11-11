@@ -68,8 +68,9 @@ struct CatalogSearchView: View {
     @State private var libraryExpanded = false
     @State private var onlineExpanded = false
     @AppStorage("recentSearches.v1") private var recentJSON = "[]"
-    /// The search bar's AI pill: search by description with Gemini.
-    @AppStorage("search.ai") private var aiSearch = false
+    /// The search bar's AI pill: search by description with Gemini. Off again each time the app
+    /// opens, so searches don't keep going to Gemini unnoticed.
+    @State private var aiSearch = false
     var onLibraryChoose: ((String) -> Void)? = nil
     var onCatalogChoose: ((CatalogRoute) -> Void)? = nil
     var onClose: (() -> Void)? = nil

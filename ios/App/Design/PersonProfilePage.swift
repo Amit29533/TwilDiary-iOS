@@ -39,8 +39,9 @@ struct PersonProfilePage<Content: View>: View {
                     let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
                                              largeText: dynamicType.isAccessibilitySize)
                     cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
-                    if fit.besidePhoto < heroFacts.count {
-                        ProfileFacts(items: Array(heroFacts.dropFirst(fit.besidePhoto))).padding(.horizontal, 14).padding(.bottom, 6)
+                    let below = heroFacts.indices.filter { !fit.beside.contains($0) }.map { heroFacts[$0] }
+                    if !below.isEmpty {
+                        ProfileFacts(items: below).padding(.horizontal, 14).padding(.bottom, 6)
                     }
                     if showsPhotoShelf { PersonPhotoShelf(name: name, photos: photos).padding(.horizontal, 14).padding(.bottom, 6) }
                     content.padding(.horizontal, 14)
@@ -134,7 +135,7 @@ struct PersonProfilePage<Content: View>: View {
                     Text(role).font(.system(size: 17)).foregroundStyle(.white.opacity(0.62)).lineLimit(1).padding(.top, 4)
                         .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 }
-                ForEach(Array(heroFacts.prefix(fit.besidePhoto).enumerated()), id: \.element.id) { index, fact in
+                ForEach(Array(fit.beside.map { heroFacts[$0] }.enumerated()), id: \.element.id) { index, fact in
                     if index > 0 { Rectangle().fill(.white.opacity(0.1)).frame(height: HomeStyle.hairline) }
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) { Image(systemName: fact.icon).font(.system(size: 12)); Text(fact.label) }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
@@ -250,7 +251,8 @@ struct ProfileBiography: View {
     var body: some View {
         if !text.characters.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                prose.lineLimit(expanded ? nil : collapsedLines)
+                // The page never grows: "More" opens the whole text in a sheet, so nothing below jumps.
+                prose.lineLimit(collapsedLines)
                     .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(identifier)
                     .background(alignment: .topLeading) {
                         ZStack(alignment: .topLeading) {
@@ -261,14 +263,22 @@ struct ProfileBiography: View {
                         }.hidden().allowsHitTesting(false).accessibilityHidden(true)
                     }
                 if overflows {
-                    Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { expanded.toggle() } } label: {
-                        HStack(spacing: 5) { Text(expanded ? lessLabel : moreLabel); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption) }
+                    Button { expanded = true } label: {
+                        HStack(spacing: 5) { Text(moreLabel); Image(systemName: "chevron.right").font(.caption) }
                             .font(.subheadline).frame(minHeight: 44)
                     }.buttonStyle(.plain).foregroundStyle(HomeStyle.chipText).fontWeight(.semibold)
-                        .accessibilityLabel(expanded ? "Collapse " + (identifier == "profile-aliases" ? "names" : "biography") : "Expand " + (identifier == "profile-aliases" ? "names" : "biography"))
+                        .accessibilityLabel("Read the whole " + (identifier == "profile-aliases" ? "list of names" : "biography"))
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
                 .onChange(of: String(text.characters)) { _, _ in expanded = false }
+                .sheet(isPresented: $expanded) {
+                    NavigationStack {
+                        ScrollView { prose.lineLimit(nil).fixedSize(horizontal: false, vertical: true).textSelection(.enabled).padding(20) }
+                            .background(Color(webHex: "#111116"))
+                            .navigationTitle(identifier == "profile-aliases" ? "Other names" : "About").navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { expanded = false } } }
+                    }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                }
         }
     }
     private var prose: some View {
@@ -306,7 +316,9 @@ struct ProfileWebsiteButtons: View {
 struct ProfileHeroFit {
     let photoWidth: CGFloat
     let nameSize: CGFloat
-    let besidePhoto: Int
+    /// The facts (by position) that sit beside the photo: in order, each that still fits, at most
+    /// four; one too tall (a two-line value) is skipped for a shorter one after it, not the end.
+    let beside: [Int]
     /// With accessibility text sizes every fact goes to the full-width card below, not the narrow column.
     init(width: CGFloat, name: String, nativeName: String?, role: String?, facts: [ProfileFact], largeText: Bool = false) {
         photoWidth = min(220, (width - 28) * 0.47)
@@ -326,15 +338,15 @@ struct ProfileHeroFit {
         if let native = ProfileText.line(nativeName), native != ProfileText.line(name) { used += CGFloat(min(2, lines(native, size: 14))) * 18 + 4 }
         if ProfileText.line(role) != nil { used += 26 }
         used += 8
-        var count = 0
-        for fact in facts.prefix(largeText ? 0 : 4) {
+        var chosen: [Int] = []
+        for (index, fact) in facts.enumerated() where !largeText && chosen.count < 4 {
             let valueLines = CGFloat(min(2, lines(fact.value, size: 19)))
             let height = 18 + 4 + valueLines * 24 + 22
             // A little past the photo's bottom is fine; a fact that would sit far below it isn't.
-            guard used + height <= photoHeight + 18 else { break }
-            used += height; count += 1
+            guard used + height <= photoHeight + 18 else { continue }
+            used += height; chosen.append(index)
         }
-        besidePhoto = count
+        beside = chosen
     }
 }
 

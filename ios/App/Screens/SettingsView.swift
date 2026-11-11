@@ -41,7 +41,7 @@ struct SettingsView: View {
                         Text(warning).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 4).accessibilityIdentifier("settings-cache-warning")
                     }
-                    if let notice = store.providerVaultNotice {
+                    if let notice = store.providerVaultNotice, !store.phoneOnly {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(notice).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             Button("Review provider settings sync") { reviewProviderConflict = true }.font(.subheadline)
@@ -129,6 +129,8 @@ struct SettingsView: View {
                         Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "Letterboxd, IMDb, MAL and more", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
                         divider
                         NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync, server and extra copies", disclosure: true) }.accessibilityIdentifier("settings-backups")
+                        divider
+                        NavigationLink(value: AppDestination.notifications) { settingsRow("bell.badge.fill", .red, "Notifications", subtitle: "New episodes and releases", disclosure: true) }.accessibilityIdentifier("settings-notifications")
                     }
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
@@ -169,6 +171,15 @@ struct SettingsView: View {
                         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
                         do {
                             let data = try Data(contentsOf: url)
+                            if store.phoneOnly, url.pathExtension.lowercased() == "json" {
+                                // No server: a TwilDiary backup goes where the diary lives, its phone extras onto the phone.
+                                struct Copy: Decodable { let phone: PhoneExtras.Backup? }
+                                let archive = try DiaryExport.decoded(from: data)
+                                let phone = (try? JSONDecoder().decode(Copy.self, from: data))?.phone
+                                _ = try await ServerBackups.restore(archive, phone: phone, store: store)
+                                backupNotice = "Restored"
+                                return
+                            }
                             let summary = try await store.importDiaryArchive(data)
                             backupNotice = "Imported \(summary.titles)"
                         } catch {
@@ -180,21 +191,29 @@ struct SettingsView: View {
                 }
             }
     }
+    /// With no server sign-in, the diary is the service's: reading it, sending your edits, or synced.
+    private var phoneDiaryState: String {
+        if store.onThisPhone { return "On this phone" }
+        guard let service = store.diaryService else { return "Synced" }
+        let reading = service == .trakt ? TraktDirectStore.shared.running : TrackerPreviewStore.shared.running == service
+        let sending = service == .trakt ? TraktDirectStore.shared.pending.count : TrackerPreviewStore.shared.pending[service]?.count ?? 0
+        return reading ? "Refreshing…" : sending > 0 ? "Sending \(sending)…" : "Synced"
+    }
     /// "Your diary": its state, what it holds, when it was last updated and what it's
     /// connected to. Tapping refreshes it from the server.
     private var diaryCard: some View {
         let titles = store.workspace.activeTitles.count, watches = store.workspace.activeEvents.count
-        let state = store.loading ? "Refreshing…" : store.pendingDiaryEdits > 0 ? "Pending sync" : store.busy ? "Saving…" : store.quotaBlockedUntil != nil ? "Paused" : store.showingCachedSnapshot ? "Saved copy" : "Synced"
-        let tint: Color = state == "Synced" ? Color(webHex: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
+        let state = store.phoneOnly ? phoneDiaryState : store.loading ? "Refreshing…" : store.pendingDiaryEdits > 0 ? "Pending sync" : store.busy ? "Saving…" : store.quotaBlockedUntil != nil ? "Paused" : store.showingCachedSnapshot ? "Saved copy" : "Synced"
+        let tint: Color = state == "Synced" || state == "On this phone" ? Color(webHex: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
         return VStack(alignment: .leading, spacing: 0) {
-            Button { Task { await store.refresh() } } label: {
+            Button { Task { if store.phoneOnly { await store.readDiaryServiceIfDue(olderThan: 0) } else { await store.refresh() } } } label: {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Text("Your diary").font(.system(size: 18, weight: .bold))
                         Spacer(minLength: 8)
                         HStack(spacing: 5) { Circle().fill(tint).frame(width: 6, height: 6); Text(state) }
                             .font(.system(size: 12, weight: .bold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 22)
-                            .background(state == "Synced" ? Color(webHex: "#1b2b25") : tint.opacity(0.14), in: Capsule())
+                            .background(state == "Synced" || state == "On this phone" ? Color(webHex: "#1b2b25") : tint.opacity(0.14), in: Capsule())
                     }
                     HStack(spacing: 8) {
                         statTile(titles, "titles")
@@ -232,7 +251,7 @@ struct SettingsView: View {
         let region = UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US"
         return language + " · " + LanguageRegionView.regionName(region)
     }
-    private var trashCount: Int { store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) } }
+    private var trashCount: Int { store.phoneOnly ? PhoneTrash.shared.titles.count : store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) } }
     private var driveCount: Int { DiskSummary.make(store.workspace.locations).count }
     /// Trakt's state in a word for its row; the full sync controls live on the Trakt page.
     /// "Trakt · 2 connected": the main tracker and how many services are signed in.
