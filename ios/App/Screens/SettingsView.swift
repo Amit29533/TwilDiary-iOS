@@ -701,7 +701,8 @@ struct ExternalProviderConnectionView: View {
     /// the code for tokens, saves them and turns sync on.
     private func runSignIn(_ appId: String) async {
         errorMessage = nil; statusMessage = nil
-        if provider == .mdblist { await runDeviceSignIn(appId); return }
+        // MDBList: its sign-in page (a Public PKCE app); an older "Device Code" app falls back to the code.
+        if provider == .mdblist, ProviderAppIDs.id(for: .mdblist) == nil, appClientId == nil { await runDeviceSignIn(appId); return }
         guard let request = ProviderWebSignIn.start(provider: provider, clientId: appId) else {
             errorMessage = "TwilDiary can’t sign in to \(displayName) yet."; return
         }

@@ -32,7 +32,9 @@ enum SignInNavigationPolicy {
     let completion: @MainActor (AccessCredential) -> Void
     /// Trakt signed in, but your server didn't give a diary session (Cloudflare Access in front of
     /// it): open the app on Trakt alone. nil where that isn't offered (connecting a server later).
-    var phoneOnly: (@MainActor () -> Void)? = nil
+    var phoneOnly: (@MainActor (MainTracker) -> Void)? = nil
+    @Environment(DiaryStore.self) private var store
+    @State private var serviceSigningIn: MainTracker?
     @State private var mode: SignInMode = .passcode
     @State private var showOtherWays = false
     @State private var traktSigningIn = false
@@ -52,8 +54,8 @@ enum SignInNavigationPolicy {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 10) {
                     BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
-                    Text("Sign in to your diary").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
-                    Text("Choose how to sign in. Trakt keeps your diary; your server keeps the rest.")
+                    Text(phoneOnly == nil ? "Sign in to your diary" : "How should we keep your library?").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                    Text(phoneOnly == nil ? "Sign in to your TwilDiary server." : "Pick where your library lives. You can connect more services and your TwilDiary server any time.")
                         .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 // The ways in, as rows (as Cinopsys lists them): Trakt first, then your server's own
@@ -61,7 +63,7 @@ enum SignInNavigationPolicy {
                 VStack(alignment: .leading, spacing: 10) {
                     // Trakt's own sign-in page; your server checks it's the Trakt account linked to
                     // your diary, and this iPhone stays signed in to Trakt as well.
-                    optionRow(busy: traktSigningIn, id: "sign-in-trakt", title: "Trakt", detail: "Sign in with your Trakt account") {
+                    optionRow(busy: traktSigningIn, id: "sign-in-trakt", title: "Trakt", detail: "Syncs to your Trakt account") {
                         BrandLogo(service: .trakt, size: 40)
                     } action: {
                         Task {
@@ -69,7 +71,17 @@ enum SignInNavigationPolicy {
                             else { webError = "Your server hasn’t shared its Trakt app yet. Use Google or email this once; Trakt is offered from then on." }
                         }
                     }
-                    optionRow(busy: webSigningIn, id: "sign-in-web", title: "Google or email", detail: "Your TwilDiary server’s sign-in page") {
+                    // Simkl, MDBList and WeTrakr: the app opens on that service alone.
+                    if phoneOnly != nil {
+                        ForEach([MainTracker.simkl, .mdblist, .wetrakr], id: \.self) { tracker in
+                            optionRow(busy: serviceSigningIn == tracker, id: "sign-in-" + tracker.rawValue, title: tracker.name,
+                                      detail: "Syncs to your \(tracker.name) account") {
+                                BrandLogo(service: tracker.brand, size: 40)
+                            } action: { Task { await serviceSignIn(tracker) } }
+                        }
+                    }
+                    optionRow(busy: webSigningIn, id: "sign-in-web", title: phoneOnly == nil ? "Google or email" : "Your TwilDiary server",
+                              detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email, for backups and extras") {
                         Image(systemName: "globe").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
                     } action: { Task { await webSignIn() } }
@@ -211,7 +223,15 @@ enum SignInNavigationPolicy {
                 Spacer(minLength: 8)
                 if busy { ProgressView().controlSize(.small) } else { SettingsChevron() }
             }.padding(.horizontal, 15).frame(minHeight: 68).contentShape(Rectangle()).modifier(SettingsCard())
-        }.buttonStyle(.plain).disabled(webSigningIn || traktSigningIn || submitting).accessibilityIdentifier(id)
+        }.buttonStyle(.plain).disabled(webSigningIn || traktSigningIn || serviceSigningIn != nil || submitting).accessibilityIdentifier(id)
+    }
+    /// Simkl, MDBList or WeTrakr: its own sign-in page, then the app opens on that service.
+    private func serviceSignIn(_ tracker: MainTracker) async {
+        webError = nil; serviceSigningIn = tracker
+        defer { serviceSigningIn = nil }
+        do {
+            if case .signedIn = try await ServiceSignIn.run(tracker.provider, store: store, using: webAuthenticationSession) { phoneOnly?(tracker) }
+        } catch { webError = error.localizedDescription }
     }
     /// TwilDiary's Trakt app ID: built in, remembered, or from your server's public sign-in check.
     private func traktAppID() async -> String? {
@@ -245,7 +265,7 @@ enum SignInNavigationPolicy {
                 PendingTraktSignIn.waiting = (clientId, tokens)
                 // No diary session from your server (it sits behind Cloudflare Access, or is
                 // offline): Trakt alone opens the app; the server can be connected later.
-                if let phoneOnly { phoneOnly(); return }
+                if let phoneOnly { phoneOnly(.trakt); return }
                 PendingTraktSignIn.waiting = nil
                 let message = (json?["error"] as? [String: Any])?["message"] as? String
                 webError = message ?? "Your server didn’t accept this Trakt account. Use the Trakt account linked to your diary, or Continue with Google or email."

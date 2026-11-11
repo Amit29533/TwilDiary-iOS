@@ -126,6 +126,12 @@ import TwilDiaryCore
     /// built on the phone from Trakt and TMDB; what needs the server (backups, notes, tags, file
     /// locations, Trash) asks you to connect it in Connections.
     private(set) var phoneOnly = false
+    /// The service a phone-only diary comes from (an older saved "true" means Trakt).
+    static var savedPhoneOnly: MainTracker? {
+        let value = UserDefaults.standard.object(forKey: phoneOnlyKey)
+        if let name = value as? String { return MainTracker(rawValue: name) }
+        return (value as? Bool) == true ? .trakt : nil
+    }
     /// Which diary is on screen: "server", "trakt", "simkl" or "mdblist".
     var diarySource = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) ?? "server" {
         didSet {
@@ -266,14 +272,15 @@ import TwilDiaryCore
                 showingCachedSnapshot = true; lastRefreshedAt = now.addingTimeInterval(-600)
                 cacheWarning = "Your diary is loaded, but its protected offline copy could not be updated."
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-signed-out") { needsSignIn = true; hasLoadedWorkspace = false }
             if ProcessInfo.processInfo.arguments.contains("--ui-mutations") { fixture = FixtureDiaryBackend(workspace: workspace, scanner: ProcessInfo.processInfo.arguments.contains("--ui-scanner")) }
         }
         #endif
         if !isPreview {
             needsSignIn = self.api.credential == nil
-            if needsSignIn, UserDefaults.standard.bool(forKey: Self.phoneOnlyKey), traktSignedInOnPhone {
+            if needsSignIn, let tracker = Self.savedPhoneOnly, tracker == .trakt ? traktSignedInOnPhone : providerSettings.config(for: tracker.provider).isAuthenticated {
                 phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
-                if diarySource != "trakt" { UserDefaults.standard.set("trakt", forKey: Self.diarySourceKey); diarySource = "trakt" }
+                if diarySource != tracker.rawValue { UserDefaults.standard.set(tracker.rawValue, forKey: Self.diarySourceKey); diarySource = tracker.rawValue }
                 applyDiarySource()
             }
             if let scope = self.api.credential?.cacheScope {
@@ -306,16 +313,23 @@ import TwilDiaryCore
     }
     /// Opens the app on Trakt alone: after a Trakt sign-in when your server can't be reached
     /// (Cloudflare Access in front of it), or by choice. Nothing is read from the server.
-    func startPhoneOnly() async {
-        await PendingTraktSignIn.adopt(store: self)
-        guard traktSignedInOnPhone else { error = "Trakt didn’t finish signing in. Try again."; return }
-        UserDefaults.standard.set(true, forKey: Self.phoneOnlyKey)
+    func startPhoneOnly(_ tracker: MainTracker = .trakt) async {
+        if tracker == .trakt { await PendingTraktSignIn.adopt(store: self) }
+        let signedIn = tracker == .trakt ? traktSignedInOnPhone : providerSettings.config(for: tracker.provider).isAuthenticated
+        guard signedIn else { error = "\(tracker.name) didn’t finish signing in. Try again."; return }
+        UserDefaults.standard.set(tracker.rawValue, forKey: Self.phoneOnlyKey)
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         phoneOnly = true; error = nil
         confirmedWorkspace = Workspace(); hasLoadedWorkspace = true
-        if diarySource != "trakt" { diarySource = "trakt" } else { applyDiarySource() }
+        if diarySource != tracker.rawValue { diarySource = tracker.rawValue } else { applyDiarySource() }
+        UserDefaults.standard.set(tracker.rawValue, forKey: MainTrackerView.key)
         needsSignIn = false
-        await TraktDirectStore.shared.check(store: self)
+        await readService()
+    }
+    /// Phone-only: reads the service the diary comes from.
+    private func readService() async {
+        if let tracker = diaryFromTracker { await TrackerPreviewStore.shared.check(tracker, store: self) }
+        else { await TraktDirectStore.shared.check(store: self) }
         applyDiarySource()
     }
     #if DEBUG
@@ -361,9 +375,16 @@ import TwilDiaryCore
     }
     func signOut() {
         if phoneOnly {
-            // Trakt was the sign-in: signing out ends it too.
+            // The service was the sign-in: signing out ends it too.
+            let tracker = Self.savedPhoneOnly ?? .trakt
             phoneOnly = false; UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey)
-            Task { await self.signOutTraktOnPhone() }
+            if tracker == .trakt { Task { await self.signOutTraktOnPhone() } }
+            else {
+                var cleared = providerSettings.config(for: tracker.provider)
+                cleared.accessToken = nil; cleared.refreshToken = nil; cleared.tokenExpiresAt = nil; cleared.enabled = false; cleared.connection = nil
+                updateProviderConfig(cleared)
+                TrackerPreviewStore.shared.forget()
+            }
         }
         BackgroundSyncCoordinator.shared.endLiveActivity()
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
@@ -397,8 +418,7 @@ import TwilDiaryCore
         guard !loading, !needsSignIn else { return }
         if phoneOnly {
             loading = true; defer { loading = false }
-            await TraktDirectStore.shared.check(store: self)
-            applyDiarySource()
+            await readService()
             return
         }
         api.retryQuota()

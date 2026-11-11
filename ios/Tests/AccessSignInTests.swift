@@ -94,6 +94,6 @@ import XCTest
         XCTAssertEqual(ProviderAppIDs.id(for: .simkl, defaults: defaults), "simkl-app")
         XCTAssertNil(ProviderAppIDs.id(for: .mdblist, defaults: defaults))
         XCTAssertNil(ProviderAppIDs.id(for: .cloudflare, defaults: defaults))
-        XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.simkl) && !ServiceSignIn.supportsSheet(.mdblist))
+        XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.simkl) && ServiceSignIn.supportsSheet(.mdblist) && !ServiceSignIn.supportsSheet(.cloudflare))
     }
 }

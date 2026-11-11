@@ -5,6 +5,16 @@ import XCTest
 @MainActor final class DesignSnapshotTests: XCTestCase {
     override func setUp() async throws { continueAfterFailure = true }
 
+    /// The first screen, signed out: where your library lives (as Cinopsys asks it).
+    func testFirstScreenSnapshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-signed-out"]
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 2)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "first-screen"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertTrue(app.buttons["sign-in-trakt"].exists && app.buttons["sign-in-wetrakr"].exists)
+    }
     func testHomeSnapshots() { capture(tab: "home", name: "home", pages: 7) }
     /// The title page of the show in Continue watching, top to bottom.
     func testShowSnapshots() {

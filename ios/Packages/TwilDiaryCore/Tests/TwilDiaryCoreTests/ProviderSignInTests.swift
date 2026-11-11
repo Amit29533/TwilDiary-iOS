@@ -106,6 +106,8 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     #expect(body.contains("grant_type=authorization_code") && body.contains("code_verifier=" + simkl.verifier) && !body.contains("client_secret"))
     let mdblist = try #require(ProviderWebSignIn.start(provider: .mdblist, clientId: "md-app"))
     #expect(mdblist.url.absoluteString.hasPrefix("https://mdblist.com/oauth/authorize/?"))
+    // MDBList's Public PKCE apps take an https redirect: the return page hands it to the app.
+    #expect(ProviderWebSignIn.redirect(for: .mdblist) == "https://twildiary-auth.amit29533.workers.dev/mdblist")
     #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?code=xyz&state=\(mdblist.state)")!, for: mdblist) == "xyz")
     #expect(ProviderWebSignIn.start(provider: .cloudflare, clientId: "x") == nil && ProviderWebSignIn.start(provider: .simkl, clientId: "  ") == nil)
 }
