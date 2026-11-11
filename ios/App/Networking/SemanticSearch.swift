@@ -36,49 +36,70 @@ import TwilDiaryCore
               !value.isEmpty, !value.hasPrefix("$(") else { return [] }
         return [value]
     }
-    /// Any key at all (Gemini or Groq): AI search and CineMind can answer.
-    static var key: String? { keys.first ?? groqKeys.first }
+    /// Any key at all (Gemini, Groq or Requesty): AI search and CineMind can answer.
+    static var key: String? { keys.first ?? groqKeys.first ?? requestyKeys.first }
     static var hasOwnKey: Bool { !ownKeys.isEmpty }
 
     /// The AI services, each with its own keys.
     enum Service: String, CaseIterable, Identifiable, Sendable {
-        case gemini, groq
+        case gemini, groq, requesty
         var id: String { rawValue }
-        var name: String { self == .gemini ? "Gemini" : "Groq" }
-        var keysPage: URL { URL(string: self == .gemini ? "https://aistudio.google.com/apikey" : "https://console.groq.com/keys")! }
-        var keysPageName: String { self == .gemini ? "Google AI Studio" : "GroqCloud" }
+        var name: String { switch self { case .gemini: "Gemini"; case .groq: "Groq"; case .requesty: "Requesty" } }
+        var keysPage: URL {
+            let address = switch self { case .gemini: "https://aistudio.google.com/apikey"; case .groq: "https://console.groq.com/keys"; case .requesty: "https://app.requesty.ai/api-keys" }
+            return URL(string: address)!
+        }
+        var keysPageName: String { switch self { case .gemini: "Google AI Studio"; case .groq: "GroqCloud"; case .requesty: "Requesty" } }
+        /// Where an OpenAI-style service's keys live in the Keychain, and its turn counter.
+        var account: String { rawValue + ".apiKeys" }
+        var rotation: String { rawValue + ".nextKey" }
     }
-    static func ownKeys(_ service: Service) -> [String] { service == .gemini ? ownKeys : groqKeys }
+    static func ownKeys(_ service: Service) -> [String] {
+        switch service { case .gemini: ownKeys; case .groq: groqKeys; case .requesty: requestyKeys }
+    }
     @discardableResult static func addKey(_ value: String, to service: Service) -> Bool {
-        service == .gemini ? addKey(value) : addGroqKey(value)
+        forgetRests(forKey: value.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard service != .gemini else { return addKey(value) }
+        let kept = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !kept.isEmpty else { return false }
+        var list = ownKeys(service)
+        if !list.contains(kept) { list.append(kept) }
+        return saveList(list, account: service.account)
     }
     @discardableResult static func removeKey(_ value: String, from service: Service) -> Bool {
-        service == .gemini ? removeKey(value) : saveList(groqKeys.filter { $0 != value }, account: groqAccount)
+        service == .gemini ? removeKey(value) : saveList(ownKeys(service).filter { $0 != value }, account: service.account)
     }
+    private static func list(_ account: String) -> [String] {
+        ((try? KeychainProviderSecretStore().readSecret(for: account)) ?? nil)
+            .flatMap { try? JSONDecoder().decode([String].self, from: Data($0.utf8)) } ?? []
+    }
+
+    // MARK: Requesty
+
+    /// Requesty: one key for many models through its gateway. Its free models need no card
+    /// (a shared daily allowance), and a paid account can name any model or routing policy.
+    /// Asked after Gemini and Groq.
+    static var requestyKeys: [String] { list(Service.requesty.account) }
+    /// Your choice of model or policy ("policy/…"), tried before the free ones.
+    static var requestyModel: String? {
+        get { UserDefaults.standard.string(forKey: "requesty.model").flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } }
+        set { UserDefaults.standard.set(newValue?.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "requesty.model") }
+    }
+    /// Requesty's free models, larger (more film knowledge) first.
+    static let requestyFreeModels = ["google/gemma-4-31b-it", "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3-ultra-550b-a55b"]
 
     // MARK: Groq
 
     /// Groq: free keys for fast open models, asked when every Gemini key and model has failed
     /// (or first, when there's no Gemini key). Its replies are turned into Gemini's shape, so
     /// search and CineMind read them the same way.
-    private static let groqAccount = "groq.apiKeys", groqRotation = "groq.nextKey"
     /// Tried in turn; a model Groq has retired is skipped.
     static let groqModels = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
-    static var groqKeys: [String] {
-        ((try? KeychainProviderSecretStore().readSecret(for: groqAccount)) ?? nil)
-            .flatMap { try? JSONDecoder().decode([String].self, from: Data($0.utf8)) } ?? []
-    }
+    static var groqKeys: [String] { list(Service.groq.account) }
     @discardableResult private static func saveList(_ list: [String], account: String) -> Bool {
         guard !list.isEmpty else { return KeychainProviderSecretStore().writeSecret(nil, for: account) }
         guard let data = try? JSONEncoder().encode(list) else { return false }
         return KeychainProviderSecretStore().writeSecret(String(decoding: data, as: UTF8.self), for: account)
-    }
-    @discardableResult static func addGroqKey(_ value: String) -> Bool {
-        let kept = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !kept.isEmpty else { return false }
-        var list = groqKeys
-        if !list.contains(kept) { list.append(kept) }
-        return saveList(list, account: groqAccount)
     }
     @discardableResult private static func saveKeys(_ list: [String]) -> Bool {
         let store = KeychainProviderSecretStore()
@@ -152,62 +173,161 @@ import TwilDiaryCore
         try decode(try await generate(body(description), key: key))
     }
 
-    /// One Gemini answer (search and CineMind alike), asked as few times as possible: once per
-    /// try, never repeated on the same key and model. The lighter model goes first (it's quicker
-    /// and its free limit is much higher); if it fails, the same question goes to your next key,
-    /// and only when every key has failed on it does it move to the next model. Each request
-    /// starts with the next key in turn, so the keys share the load.
-    static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
-        let gemini = keys, groq = groqKeys
-        guard !gemini.isEmpty || !groq.isEmpty else { throw APIError.message("Add a Gemini or Groq key on the APIs page.") }
-        var geminiFailure: Error?
-        if !gemini.isEmpty {
-            do { return try await geminiAnswer(body, keys: gemini, retried: retried) }
-            catch is CancellationError { throw CancellationError() }
-            catch { geminiFailure = error }
-        }
-        guard !groq.isEmpty else { throw geminiFailure ?? APIError.message("Gemini didn’t answer.") }
-        do { return try await groqAnswer(body, keys: groq) }
-        catch is CancellationError { throw CancellationError() }
-        catch {
-            guard let geminiFailure else { throw error }
-            throw APIError.message("Gemini: " + geminiFailure.localizedDescription + "\nGroq: " + error.localizedDescription)
-        }
+    // MARK: Routing
+
+    /// One way to ask: a service, one of its keys, one of its models.
+    struct Route: Hashable, Sendable {
+        let service: Service
+        let key: String
+        let model: String
+        /// Kept on the phone without the key itself (its last 8 characters tell keys apart).
+        var id: String { service.rawValue + "|" + String(key.suffix(8)) + "|" + model }
     }
-    private static func geminiAnswer(_ body: [String: Any], keys list: [String], retried: Bool) async throws -> Data {
-        let start = UserDefaults.standard.integer(forKey: rotationKey) % list.count
-        UserDefaults.standard.set((start + 1) % list.count, forKey: rotationKey)
-        var models = [fallbackModel]
-        if model != fallbackModel { models.append(model) }
-        var limited = 0, refused: [String] = [], busy = 0, slow = 0, other: String?
-        for name in models {
-            for step in 0..<list.count {
-                let index = (start + step) % list.count
-                do { return try await request(body, key: list[index], model: name, retried: retried) }
-                catch GeminiKey.limited { limited += 1 }
-                catch GeminiKey.refused(let detail) {
-                    if !refused.contains(masked(list[index])) { refused.append(masked(list[index])) }
-                    other = other ?? detail
-                }
-                catch GeminiBusy.status(let status, let detail) { busy += 1; if status != 503 { other = detail ?? "HTTP \(status)" } }
-                catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) { slow += 1 }
+    /// Why a route failed, which decides how long it rests.
+    enum Failure: Error {
+        case limited(TimeInterval?, daily: Bool, String?)
+        case refused(String?)
+        case busy(String?)
+        case slow
+        case modelGone(String?)
+    }
+
+    /// Every route, best first: Gemini's lighter model on each key, then Gemini's model on each
+    /// key, then Groq's and Requesty's models on theirs. Each service's keys start with the next
+    /// one in turn, so they share the load.
+    static func routes(advancing: Bool = false) -> [Route] {
+        func turn(_ list: [String], _ counter: String) -> [String] {
+            guard !list.isEmpty else { return [] }
+            let start = UserDefaults.standard.integer(forKey: counter) % list.count
+            if advancing { UserDefaults.standard.set((start + 1) % list.count, forKey: counter) }
+            return Array(list[start...] + list[..<start])
+        }
+        let gemini = turn(keys, rotationKey), groq = turn(groqKeys, Service.groq.rotation), requesty = turn(requestyKeys, Service.requesty.rotation)
+        var geminiModels = [fallbackModel]
+        if model != fallbackModel { geminiModels.append(model) }
+        let requestyModels = (requestyModel.map { [$0] } ?? []) + requestyFreeModels
+        return geminiModels.flatMap { name in gemini.map { Route(service: .gemini, key: $0, model: name) } }
+            + groqModels.flatMap { name in groq.map { Route(service: .groq, key: $0, model: name) } }
+            + requestyModels.flatMap { name in requesty.map { Route(service: .requesty, key: $0, model: name) } }
+    }
+
+    // The routes resting after a failure, and until when (kept between launches).
+    private static let restingKey = "ai.resting"
+    private static var resting: [String: Date] {
+        get {
+            let saved = UserDefaults.standard.dictionary(forKey: restingKey) as? [String: Double] ?? [:]
+            return saved.compactMapValues { stamp in stamp > Date.now.timeIntervalSince1970 ? Date(timeIntervalSince1970: stamp) : nil }
+        }
+        set { UserDefaults.standard.set(newValue.mapValues(\.timeIntervalSince1970), forKey: restingKey) }
+    }
+    private static var restReasons: [String: String] {
+        get { UserDefaults.standard.dictionary(forKey: restingKey + ".why") as? [String: String] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: restingKey + ".why") }
+    }
+    private static func rest(_ route: Route, _ failure: Failure) {
+        let seconds: TimeInterval, why: String
+        switch failure {
+        case .limited(let after, let daily, _):
+            seconds = daily ? untilQuotaDay() : max(10, min(after ?? 60, 3_600)); why = daily ? "daily limit" : "limit"
+        case .refused: seconds = 6 * 3_600; why = "key refused"
+        case .busy, .slow: seconds = 20; why = "busy"
+        case .modelGone: seconds = 7 * 86_400; why = "model retired"
+        }
+        resting[route.id] = Date.now.addingTimeInterval(seconds)
+        restReasons[route.id] = why
+    }
+    /// Free daily limits start again at midnight Pacific time.
+    private static func untilQuotaDay() -> TimeInterval {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles") ?? .current
+        let next = calendar.nextDate(after: .now, matching: DateComponents(hour: 0, minute: 5), matchingPolicy: .nextTime) ?? Date.now.addingTimeInterval(3_600)
+        return next.timeIntervalSinceNow
+    }
+    /// A key you add starts fresh.
+    static func forgetRests(forKey key: String) {
+        let tail = "|" + String(key.suffix(8)) + "|"
+        resting = resting.filter { !$0.key.contains(tail) }
+    }
+
+    /// A service as the APIs page shows it: how many of its routes can answer now, and when the
+    /// first resting one is back (with why).
+    struct Health: Sendable { let ready: Int; let total: Int; let back: Date?; let why: String? }
+    static func health(_ service: Service) -> Health {
+        let all = routes().filter { $0.service == service }
+        let now = resting, reasons = restReasons
+        let waiting = all.compactMap { route in now[route.id].map { (route, $0) } }
+        let soonest = waiting.min { $0.1 < $1.1 }
+        return Health(ready: all.count - waiting.count, total: all.count, back: soonest?.1, why: soonest.flatMap { reasons[$0.0.id] })
+    }
+
+    /// One answer for search and CineMind, from whichever service can give it now. Routes that
+    /// are resting (a used-up limit until it resets, a busy service for a moment, a refused key
+    /// for a few hours) are skipped, so the question goes straight to one that works; each route
+    /// is asked at most once. With everything resting, the one back soonest is tried anyway.
+    static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
+        let all = routes(advancing: true)
+        guard !all.isEmpty else { throw APIError.message("Add a Gemini, Groq or Requesty key on the APIs page.") }
+        let now = resting
+        var order = all.filter { now[$0.id] == nil }
+        if order.isEmpty, let soonest = all.min(by: { (now[$0.id] ?? .distantPast) < (now[$1.id] ?? .distantPast) }) { order = [soonest] }
+        var failures: [(Route, Failure)] = []
+        for route in order {
+            do {
+                let data = try await attempt(route, body: body, retried: retried)
+                var saved = resting; saved[route.id] = nil; resting = saved
+                return data
+            } catch is CancellationError { throw CancellationError() }
+            catch let failure as Failure { rest(route, failure); failures.append((route, failure)) }
+            catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+            catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) {
+                rest(route, .slow); failures.append((route, .slow))
             }
         }
-        let tries = models.count * list.count
-        if limited == tries {
-            throw APIError.message(list.count > 1 ? "All \(list.count) Gemini keys have used their free limit for now. Try again in a minute." : "Gemini’s free limit is used up for now. Try again in a minute.")
-        }
-        if refused.count == list.count, limited == 0 {
-            throw APIError.message(list.count > 1 ? "Gemini didn’t accept your keys" + (other.map { ": " + $0 } ?? ".") : "Gemini didn’t accept the key" + (other.map { ": " + $0 } ?? "."))
-        }
-        if slow > 0, busy == 0 { throw APIError.message("Gemini took too long to answer. Try again.") }
-        throw APIError.message("Gemini is busy right now. Try again in a moment.")
+        throw APIError.message(summary(failures, all: all))
     }
-    /// A key's own problem: used up for now, or refused. The next key is tried.
-    private enum GeminiKey: Error { case limited, refused(String?) }
+    /// What to say when nothing answered.
+    private static func summary(_ failures: [(Route, Failure)], all: [Route]) -> String {
+        let back = resting.filter { id, _ in all.contains { $0.id == id } }.values.min()
+        let when = back.map { " Back " + ($0.timeIntervalSinceNow < 90 ? "in a moment." : "at " + $0.formatted(date: .omitted, time: .shortened) + ".") } ?? ""
+        let reasons = failures.map(\.1)
+        if !reasons.isEmpty, reasons.allSatisfy({ if case .limited = $0 { true } else { false } }) {
+            return "Every AI key has used its free limit for now." + when
+        }
+        if !reasons.isEmpty, reasons.allSatisfy({ if case .refused = $0 { true } else { false } }) {
+            let detail = reasons.compactMap { if case .refused(let text) = $0 { text } else { nil } }.first
+            return "Your AI keys weren’t accepted" + (detail.map { ": " + $0 } ?? ".")
+        }
+        if failures.isEmpty { return "Every AI service is resting after a problem." + when }
+        if reasons.allSatisfy({ if case .slow = $0 { true } else { false } }) { return "The AI took too long to answer. Try again." }
+        return "The AI services are busy right now." + when
+    }
+    private static func attempt(_ route: Route, body: [String: Any], retried: Bool) async throws -> Data {
+        switch route.service {
+        case .gemini: return try await request(body, key: route.key, model: route.model, retried: retried)
+        case .groq: return try await chat(body, route: route, url: "https://api.groq.com/openai/v1/chat/completions", jsonMode: true)
+        case .requesty: return try await chat(body, route: route, url: "https://router.requesty.ai/v1/chat/completions", jsonMode: false)
+        }
+    }
+    /// "Wait 33s" from a 429: Retry-After, or Gemini's RetryInfo; and whether it's a daily limit.
+    nonisolated static func retryHint(_ data: Data, _ response: URLResponse?) -> (after: TimeInterval?, daily: Bool, message: String?) {
+        let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let error = root?["error"] as? [String: Any]
+        let message = error?["message"] as? String
+        var after = ((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init)
+        var daily = false
+        for detail in (error?["details"] as? [[String: Any]]) ?? [] {
+            if let delay = detail["retryDelay"] as? String, let seconds = TimeInterval(delay.trimmingCharacters(in: CharacterSet(charactersIn: "s"))) { after = seconds }
+            for violation in (detail["violations"] as? [[String: Any]]) ?? [] {
+                if ((violation["quotaId"] as? String) ?? "").lowercased().contains("perday") { daily = true }
+            }
+        }
+        let text = (message ?? "").lowercased()
+        if text.contains("per day") || text.contains("perday") || text.contains("(rpd)") || text.contains("(tpd)") || text.contains("daily") { daily = true }
+        return (after, daily, message)
+    }
+
     /// Google's lighter quick model, asked first: quick, and a much higher free limit.
     static let fallbackModel = "gemini-flash-lite-latest"
-    private enum GeminiBusy: Error { case status(Int, String?) }
     private static func request(_ body: [String: Any], key: String, model name: String, retried: Bool) async throws -> Data {
         var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(name):generateContent")!, timeoutInterval: 45)
         request.httpMethod = "POST"
@@ -217,64 +337,52 @@ import TwilDiaryCore
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let detail = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any]).flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
-            if status == 400 || status == 401 || status == 403 { throw GeminiKey.refused(detail) }
-            if status == 429 { throw GeminiKey.limited }
-            // A retired model: Google's answer names the one to use ("…use models/gemini-3.8-flash…").
-            if status == 404, !retried, name == model, let next = successor(in: detail ?? ""), next != model {
-                UserDefaults.standard.set(next, forKey: "gemini.model")
-                return try await Self.request(body, key: key, model: next, retried: true)
+            let hint = retryHint(data, response), detail = hint.message
+            if status == 429 { throw Failure.limited(hint.after, daily: hint.daily, detail) }
+            if status == 401 || status == 403 || (status == 400 && (detail ?? "").lowercased().contains("key")) { throw Failure.refused(detail) }
+            if status == 404 {
+                // A retired model: Google's answer names the one to use ("…use models/gemini-3.8-flash…").
+                if !retried, name == model, let next = successor(in: detail ?? ""), next != model {
+                    UserDefaults.standard.set(next, forKey: "gemini.model")
+                    return try await Self.request(body, key: key, model: next, retried: true)
+                }
+                throw Failure.modelGone(detail)
             }
-            // Anything else (busy, a model this key can't use): the next key or model is tried.
-            throw GeminiBusy.status(status, detail)
+            throw Failure.busy(detail ?? "HTTP \(status)")
         }
         return data
     }
-    /// The same question to Groq: each model in turn, each key in turn on it (starting with the
-    /// next key), once each. Groq's OpenAI-style reply comes back in Gemini's shape.
-    private static func groqAnswer(_ body: [String: Any], keys list: [String]) async throws -> Data {
-        let start = UserDefaults.standard.integer(forKey: groqRotation) % list.count
-        UserDefaults.standard.set((start + 1) % list.count, forKey: groqRotation)
+    /// One question to an OpenAI-style service (Groq, Requesty) on one key and model; its reply
+    /// comes back in Gemini's shape. `jsonMode`: the service holds the reply to JSON (otherwise
+    /// the prompt asks for it and the reply is cleaned up).
+    private static func chat(_ body: [String: Any], route: Route, url: String, jsonMode: Bool) async throws -> Data {
         let (messages, schema, temperature) = groqMessages(body)
-        var limited = 0, refused = 0, busy = 0, slow = 0, detail: String?
-        for model in groqModels {
-            var modelGone = false
-            for step in 0..<list.count where !modelGone {
-                let key = list[(start + step) % list.count]
-                var request = URLRequest(url: URL(string: "https://api.groq.com/openai/v1/chat/completions")!, timeoutInterval: 45)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
-                var payload: [String: Any] = ["model": model, "messages": messages, "temperature": temperature]
-                if schema != nil { payload["response_format"] = ["type": "json_object"] }
-                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-                let data: Data, response: URLResponse
-                do { (data, response) = try await URLSession.shared.data(for: request) }
-                catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) { slow += 1; continue }
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-                if (200..<300).contains(status),
-                   let text = ((root?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String {
-                    return geminiShaped(groqText(text, schema: schema))
-                }
-                let error = root?["error"] as? [String: Any]
-                let message = error?["message"] as? String, code = (error?["code"] as? String) ?? ""
-                detail = message ?? detail
-                switch status {
-                case 401, 403: refused += 1
-                case 429: limited += 1
-                case 404: modelGone = true
-                case 400 where code.contains("model") || (message ?? "").lowercased().contains("model"): modelGone = true
-                default: busy += 1
-                }
-            }
+        var request = URLRequest(url: URL(string: url)!, timeoutInterval: 60)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer " + route.key, forHTTPHeaderField: "Authorization")
+        if route.service == .requesty { request.setValue("TwilDiary", forHTTPHeaderField: "X-Title") }
+        var payload: [String: Any] = ["model": route.model, "messages": messages, "temperature": temperature]
+        if schema != nil, jsonMode { payload["response_format"] = ["type": "json_object"] }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if (200..<300).contains(status),
+           let text = ((root?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String {
+            return geminiShaped(groqText(text, schema: schema))
         }
-        if limited > 0, refused == 0, busy == 0, slow == 0 {
-            throw APIError.message(list.count > 1 ? "All \(list.count) Groq keys have reached their limit for now." : "Groq’s free limit is used up for now.")
+        let error = root?["error"] as? [String: Any]
+        let message = error?["message"] as? String, code = (error?["code"] as? String) ?? ""
+        switch status {
+        case 401, 403: throw Failure.refused(message)
+        case 429:
+            let hint = retryHint(data, response)
+            throw Failure.limited(hint.after, daily: hint.daily, message)
+        case 404: throw Failure.modelGone(message)
+        case 400 where code.contains("model") || (message ?? "").lowercased().contains("model"): throw Failure.modelGone(message)
+        default: throw Failure.busy(message ?? "HTTP \(status)")
         }
-        if refused > 0, limited == 0, busy == 0 { throw APIError.message("Groq didn’t accept the key" + (detail.map { ": " + $0 } ?? ".")) }
-        if slow > 0, busy == 0 { throw APIError.message("Groq took too long to answer.") }
-        throw APIError.message("Groq couldn’t answer" + (detail.map { ": " + $0 } ?? "."))
     }
     /// Gemini's request as Groq's chat messages: the system text (with the reply's JSON shape
     /// spelled out, as Groq's JSON mode has no schema), then the conversation.
@@ -298,7 +406,12 @@ import TwilDiaryCore
         return (messages, schema, (config?["temperature"] as? Double) ?? 0.6)
     }
     /// Groq's reply text, unwrapped from {"items": [...]} when the answer is a list.
-    nonisolated static func groqText(_ text: String, schema: [String: Any]?) -> String {
+    nonisolated static func groqText(_ raw: String, schema: [String: Any]?) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if schema != nil, let open = text.firstIndex(where: { $0 == "{" || $0 == "[" }),
+           let close = text.lastIndex(where: { $0 == "}" || $0 == "]" }), open < close {
+            text = String(text[open...close])
+        }
         guard (schema?["type"] as? String) == "ARRAY", let data = text.data(using: .utf8),
               let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return text }
         let list = object["items"] ?? object.values.first { $0 is [Any] }

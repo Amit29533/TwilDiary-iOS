@@ -50,7 +50,7 @@ struct APIsView: View {
                                 info: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
-                if !store.phoneOnly { aiSection(.gemini); aiSection(.groq) }
+                if !store.phoneOnly { aiSection(.gemini); aiSection(.groq); aiSection(.requesty) }
                 jellyfin
                 server
             }.padding(16).padding(.bottom, 100)
@@ -130,6 +130,17 @@ struct APIsView: View {
         default: SettingsBadge(text: "Not set", tone: .missing)
         }
     }
+    /// "Ready", "2 of 3 ready", or "Resting until 17:05 · daily limit" when nothing can answer now.
+    @ViewBuilder private func healthBadge(_ health: SemanticSearch.Health, keys: Int) -> some View {
+        if health.total > 0, health.ready == 0, let back = health.back {
+            HStack(spacing: 5) { Circle().fill(Color(webHex: "#f5c26b")).frame(width: 6, height: 6); Text("Back " + back.formatted(date: .omitted, time: .shortened) + (health.why.map { " · " + $0 } ?? "")) }
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(webHex: "#f5c26b")).lineLimit(1)
+        } else if health.ready < health.total {
+            status(true, "\(health.ready) of \(health.total) ready")
+        } else {
+            status(true, keys > 1 ? "\(keys) keys · ready" : "Ready")
+        }
+    }
     private func status(_ ok: Bool, _ message: String) -> some View {
         HStack(spacing: 5) { Circle().fill(ok ? Color(webHex: "#7fe0b5") : Color(webHex: "#ff6b6b")).frame(width: 6, height: 6); Text(message) }
             .font(.system(size: 12, weight: .semibold)).foregroundStyle(ok ? Color(webHex: "#7fe0b5") : Color(webHex: "#ff8a80")).lineLimit(1)
@@ -167,6 +178,7 @@ struct APIsView: View {
             }
             aiSection(.gemini)
             aiSection(.groq)
+            aiSection(.requesty)
         }
     }
     /// Gemini: AI search and CineMind.
@@ -178,19 +190,20 @@ struct APIsView: View {
     private func aiSection(_ service: SemanticSearch.Service) -> some View {
         let keys = aiKeys[service] ?? []
         let set = !keys.isEmpty || (service == .gemini && SemanticSearch.keys.first != nil)
-        return section(nil, service.name, icon: service == .gemini ? "sparkles" : "bolt.fill") {
+        return section(nil, service.name, icon: service == .gemini ? "sparkles" : service == .groq ? "bolt.fill" : "arrow.triangle.branch") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text(service == .gemini ? "AI search and CineMind" : "Backup when Gemini can’t answer").font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(service == .gemini ? "AI search and CineMind" : service == .groq ? "Backup when Gemini can’t answer" : "Last backup, many models").font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 0)
-                    status(set, keys.count > 1 ? "\(keys.count) keys" : set ? "Set" : "Not set")
+                    if set { healthBadge(SemanticSearch.health(service), keys: max(1, keys.count)) } else { status(false, "Not set") }
                 }
                 HStack(spacing: 8) {
-                    Text(service == .gemini ? "Lighter model first, then your other keys" : "Free key, fast open models").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(service == .gemini ? "Lighter model first, then your other keys" : service == .groq ? "Free key, fast open models" : "Free models, 200 requests a day").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     SettingsInfoButton(text: service == .gemini
                         ? "Kept in this iPhone’s Keychain. Each request starts with the next key; if one is used up, the next key answers. Keys share a limit when they’re from the same Google project, so make each in a different project."
-                        : "Kept in this iPhone’s Keychain. When every Gemini key is used up or busy, Groq answers instead, with its keys in turn.")
+                        : service == .groq ? "Kept in this iPhone’s Keychain. When every Gemini key is used up or busy, Groq answers instead, with its keys in turn."
+                        : "Kept in this iPhone’s Keychain. Asked when Gemini and Groq can’t answer, starting with your own model (if you set one) and then Requesty’s free models.")
                 }
                 ForEach(keys, id: \.self) { key in
                     HStack(spacing: 10) {
@@ -202,6 +215,7 @@ struct APIsView: View {
                         }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#ff8a80")).accessibilityLabel("Remove key " + SemanticSearch.masked(key))
                     }.padding(.horizontal, 12).frame(height: 44).background(Color(webHex: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
                 }
+                if service == .requesty, !keys.isEmpty { RequestyModelField() }
                 Button(keys.isEmpty ? "Add \(service.name) key" : "Add another key") { addingAIKey = service }
                     .buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-" + service.rawValue)
             }.padding(15)
@@ -321,5 +335,17 @@ struct JellyfinSetupSheet: View {
             message = "Connected to " + (info.ServerName ?? "Jellyfin")
             try? await Task.sleep(for: .seconds(0.8)); dismiss()
         } catch { message = error.localizedDescription }
+    }
+}
+
+/// Requesty's model (or "policy/…" routing policy) to ask first; empty uses its free models.
+private struct RequestyModelField: View {
+    @State private var value = SemanticSearch.requestyModel ?? ""
+    var body: some View {
+        TextField("Model (optional), e.g. google/gemini-flash", text: $value)
+            .font(.system(size: 14, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
+            .padding(.horizontal, 12).frame(height: 44).background(Color(webHex: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
+            .onChange(of: value) { _, now in SemanticSearch.requestyModel = now }
+            .accessibilityIdentifier("apis-requesty-model")
     }
 }

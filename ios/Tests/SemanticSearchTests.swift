@@ -59,4 +59,16 @@ import TwilDiaryCore
         XCTAssertEqual(turns.messages.map { $0["role"] }, ["system", "user"])
         XCTAssertEqual(SemanticSearch.groqText(#"{"answer":"Hi"}"#, schema: turns.schema), #"{"answer":"Hi"}"#)
     }
+
+    func testLimitRepliesSayHowLongToRest() {
+        let perMinute = Data(#"{"error":{"code":429,"message":"Quota exceeded","details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel-FreeTier"}]},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"33s"}]}}"#.utf8)
+        let minute = SemanticSearch.retryHint(perMinute, nil)
+        XCTAssertEqual(minute.after, 33); XCTAssertFalse(minute.daily)
+        let perDay = Data(#"{"error":{"code":429,"message":"Quota exceeded","details":[{"violations":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}"#.utf8)
+        XCTAssertTrue(SemanticSearch.retryHint(perDay, nil).daily)
+        let groq = Data(#"{"error":{"message":"Rate limit reached for model on requests per day (RPD): Limit 1000","code":"rate_limit_exceeded"}}"#.utf8)
+        let response = HTTPURLResponse(url: URL(string: "https://api.groq.com")!, statusCode: 429, httpVersion: nil, headerFields: ["Retry-After": "12"])
+        let hint = SemanticSearch.retryHint(groq, response)
+        XCTAssertEqual(hint.after, 12); XCTAssertTrue(hint.daily)
+    }
 }
