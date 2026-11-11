@@ -35,9 +35,11 @@ struct TraktDirectClient: Sendable {
         request.setValue("2", forHTTPHeaderField: "trakt-api-version")
         request.setValue(token.clientId, forHTTPHeaderField: "trakt-api-key")
         request.setValue("Bearer " + token.accessToken, forHTTPHeaderField: "Authorization")
+        try ProviderCooldowns.check(Self.base)
         for attempt in 0..<3 {
             let (data, response) = try await session.data(for: request)
             let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
+            if status == 429, attempt == 2, let http { ProviderCooldowns.record(Self.base, http) }
             // 429 means Trakt refused before writing anything, so asking again is safe.
             if status == 429 && attempt < 2 {
                 let wait = Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 2
@@ -61,9 +63,11 @@ struct TraktDirectClient: Sendable {
         request.setValue("2", forHTTPHeaderField: "trakt-api-version")
         request.setValue(token.clientId, forHTTPHeaderField: "trakt-api-key")
         request.setValue("Bearer " + token.accessToken, forHTTPHeaderField: "Authorization")
+        try ProviderCooldowns.check(Self.base)
         for attempt in 0..<3 {
             let (data, response) = try await session.data(for: request)
             let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
+            if status == 429, attempt == 2, let http { ProviderCooldowns.record(Self.base, http) }
             if status == 429 && attempt < 2 {
                 let wait = Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 2
                 try await Task.sleep(for: .seconds(min(max(wait, 1), 30)))

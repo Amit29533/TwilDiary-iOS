@@ -185,6 +185,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         jsonBody: [String: Any]? = nil,
         rawBody: Data? = nil
     ) async throws -> Data {
+        try ProviderCooldowns.check(url)
         var request = URLRequest(url: url)
         request.httpMethod = method
         for (key, value) in headers {
@@ -199,6 +200,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.message("Unexpected provider response.")
         }
+        ProviderCooldowns.record(url, http)
         guard (200..<300).contains(http.statusCode) else {
             // Simkl's "one write at a time" refusal is a 400 whose body says rate_limit.
             let busy = (String(data: data.prefix(500), encoding: .utf8) ?? "").contains("rate_limit")
@@ -286,10 +288,12 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         guard config.isAuthenticated else { throw APIError.message("Connect WeTrakr first, in Connections.") }
         var components = URLComponents(string: "https://api.wetrakr.com" + path)!
         if !query.isEmpty { components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        try ProviderCooldowns.check(components.url!)
         var request = URLRequest(url: components.url!, timeoutInterval: 30)
         for (key, value) in WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken) { request.setValue(value, forHTTPHeaderField: key) }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.message("WeTrakr didn’t answer.") }
+        ProviderCooldowns.record(components.url!, http)
         if http.statusCode == 401 || http.statusCode == 403 { throw APIError.message("WeTrakr didn’t accept the sign-in (HTTP \(http.statusCode)). Reconnect it in Connections.") }
         guard (200..<300).contains(http.statusCode) else {
             let code = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String
@@ -437,5 +441,39 @@ enum ProviderRenewalError: LocalizedError, Equatable {
     case signInEnded(String)
     var errorDescription: String? {
         switch self { case .signInEnded(let message): message }
+    }
+}
+
+/// A service's "wait before asking again", kept on this iPhone (per host, so it survives a
+/// restart): no request goes to that service until the pause is over. From its own headers
+/// (`ProviderCooldown`); a later answer that isn't a refusal doesn't shorten it.
+enum ProviderCooldowns {
+    private static let prefix = "providerCooldown."
+    private static func name(_ host: String) -> String {
+        switch host {
+        case "api.trakt.tv": "Trakt"
+        case "api.simkl.com": "Simkl"
+        case "api.mdblist.com": "MDBList"
+        case "api.wetrakr.com": "WeTrakr"
+        default: host
+        }
+    }
+    static func until(_ url: URL, now: Date = .now) -> Date? {
+        guard let host = url.host else { return nil }
+        let stamp = UserDefaults.standard.double(forKey: prefix + host)
+        return stamp > now.timeIntervalSince1970 ? Date(timeIntervalSince1970: stamp) : nil
+    }
+    /// Throws while the service has asked TwilDiary to wait.
+    static func check(_ url: URL) throws {
+        guard let until = until(url), let host = url.host else { return }
+        throw APIError.message("\(name(host)) asked TwilDiary to slow down. It tries again after \(until.formatted(date: .omitted, time: .shortened)).")
+    }
+    static func record(_ url: URL, _ response: HTTPURLResponse, now: Date = .now) {
+        guard let host = url.host else { return }
+        var headers: [String: String] = [:]
+        for (key, value) in response.allHeaderFields { if let key = key as? String, let value = value as? String { headers[key] = value } }
+        guard let until = ProviderCooldown.until(status: response.statusCode, headers: headers, now: now) else { return }
+        let key = prefix + host
+        UserDefaults.standard.set(max(UserDefaults.standard.double(forKey: key), until.timeIntervalSince1970), forKey: key)
     }
 }

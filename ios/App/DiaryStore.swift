@@ -1079,7 +1079,14 @@ import TwilDiaryCore
                         let key = provider.rawValue + ":" + delivery.key
                         guard let current = outbox.entries.first(where: { $0.id == entry.id }) else { break }
                         if current.confirmedActions?.contains(key) == true { continue }
-                        if current.uncertainActions?.contains(key) == true { throw APIError.message("A previous history request needs reconciliation before retrying; no duplicate watch was sent.") }
+                        if current.uncertainActions?.contains(key) == true {
+                            // The answer to an earlier send was lost: read the service and see.
+                            switch await lostWriteArrived(provider, entry.mutation) {
+                            case true?: try persistDelivery(entryID: entry.id, key: key, confirmed: true); continue
+                            case false?: break  // not there: safe to send again (marked unsure again first)
+                            case nil: throw APIError.message("A previous history request needs reconciliation before retrying; no duplicate watch was sent.")
+                            }
+                        }
                         if delivery.history { try persistDelivery(entryID: entry.id, key: key, confirmed: false) }
                         do { try await directClient.deliver(delivery, entry: entry, config: config) }
                         catch APIError.rejected(let status, let message) {
@@ -1170,6 +1177,22 @@ import TwilDiaryCore
         renewed.tokenExpiresAt = tokens.expiresAt
         // A renewed token stays on this iPhone; only a new sign-in changes what other devices see.
         return updateProviderConfig(renewed, syncVault: false) ? renewed : config
+    }
+    /// Whether a watch whose answer was lost is on the service: true when its fresh copy shows the
+    /// play, false when it doesn't, nil when the service couldn't be read just now.
+    func lostWriteArrived(_ provider: SyncProviderKind, _ mutation: OptimisticMutation) async -> Bool? {
+        guard let tracker = MainTracker(rawValue: provider.rawValue) else { return nil }
+        let started = Date.now.addingTimeInterval(-1)
+        let library: TraktLibrary?
+        if tracker == .trakt {
+            await TraktDirectStore.shared.check(store: self)
+            library = TraktDirectStore.shared.library
+        } else {
+            await TrackerPreviewStore.shared.check(tracker, store: self)
+            library = TrackerPreviewStore.shared.libraries[tracker]
+        }
+        guard let library, let fetched = library.fetchedAt.flatMap({ DiaryDate.parse($0) }), fetched >= started else { return nil }
+        return LostWriteCheck.delivered(mutation, in: workspace, library: library)
     }
     /// Trakt signed in on this iPhone (its own refresh token in the Keychain), rather than through
     /// TwilDiary's server.
