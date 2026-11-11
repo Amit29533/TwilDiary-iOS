@@ -199,6 +199,11 @@ public enum TrackerDecode {
         var lists = Set<TraktDomain>()
         for key in Set(now.stamps.keys).union(previous.stamps.keys) where now.stamps[key] != previous.stamps[key] {
             let name = key.lowercased()
+            // Removals show only in the journal's stamp: watches and ratings come from the journal.
+            if name == "journal_at" { lists.formUnion([.history, .ratings]); continue }
+            // Collection, paused, lists and comments aren't read into the diary.
+            if ["collected_at", "paused_at", "episode_paused_at", "list_updated_at", "external_lists_updated_at",
+                "liked_lists_updated_at", "commented_at", "journal.since"].contains(name) { continue }
             if name.contains("watchlist") { lists.insert(.watchlist) }
             else if name.contains("rat") { lists.insert(.ratings) }
             else if name.contains("drop") || name.contains("hidden") { lists.insert(.dropped) }
@@ -284,5 +289,63 @@ public enum TrackerDecode {
                                     date: stamp, rating: rating.flatMap { (1...10).contains($0) ? $0 : nil }))
         }
         return page
+    }
+}
+
+// MARK: MDBList's journal
+
+/// `GET /sync/journal` (MDBList's published schema): the latest retained state per item for
+/// watched and ratings, removals included, 30 days back. Rows are applied as the current truth;
+/// season and show rows are skipped (episode rows carry each episode's own state).
+public enum MDBListJournal {
+    public struct Result: Equatable, Sendable {
+        public var applied = 0
+        /// The window expired (`requires_full_sync`): read the lists in full.
+        public var needsFullRead = false
+        public var nextCursor: String?
+        /// The server's clock for this read: the next `since`.
+        public var serverTime: String?
+    }
+    /// Saved activities without the journal mark kept among them (for "did anything move?").
+    public static func unmarked(_ activities: TraktActivities?) -> TraktActivities? {
+        activities.map { TraktActivities(all: $0.all, stamps: $0.stamps.filter { $0.key != "journal.since" }) }
+    }
+    public static func apply(_ data: Data, to library: inout TraktLibrary) throws -> Result {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "MDBList sent an unreadable journal."))
+        }
+        var result = Result(serverTime: root["server_time"] as? String)
+        if root["requires_full_sync"] as? Bool == true { result.needsFullRead = true; return result }
+        let pagination = root["pagination"] as? [String: Any]
+        if pagination?["has_more"] as? Bool == true { result.nextCursor = pagination?["next_cursor"] as? String }
+        for row in root["journal"] as? [[String: Any]] ?? [] {
+            let ids = row["ids"] as? [String: Any] ?? [:]
+            guard let tmdb = TrackerDecode.int(ids["tmdb"]) else { continue }
+            let type = row["item_type"] as? String, added = row["status"] as? String == "added"
+            let kind: TraktTitleRef.Kind = type == "movie" ? .movie : .show
+            let title = TraktTitleRef(kind: kind, traktId: nil, tmdbId: tmdb, imdbId: ids["imdb"] as? String, tvdbId: TrackerDecode.int(ids["tvdb"]), name: "")
+            let season = (row["season"] as? NSNumber)?.intValue, episode = (row["episode"] as? NSNumber)?.intValue
+            func same(_ other: TraktTitleRef) -> Bool { other.kind == kind && other.tmdbId == tmdb }
+            switch row["category"] as? String {
+            case "watched":
+                guard type == "movie" || type == "episode" else { continue }
+                if type == "episode", season == nil || episode == nil { continue }
+                library.plays.removeAll { same($0.title) && $0.season == season && $0.episode == episode }
+                if added {
+                    let id = TrackerDecode.playID("mdblist|\(kind.rawValue)|\(tmdb)|\(season ?? -1)|\(episode ?? -1)")
+                    library.plays.append(TraktPlay(historyId: id, title: title, season: season, episode: episode, watchedAt: row["value_at"] as? String))
+                }
+                result.applied += 1
+            case "rated":
+                guard type == "movie" || type == "show" else { continue }
+                library.ratings.removeAll { same($0.title) }
+                if added, let rating = TrackerDecode.int(row["rating"]), (1...10).contains(rating) {
+                    library.ratings.append(TraktRating(title: title, rating: rating, ratedAt: row["value_at"] as? String))
+                }
+                result.applied += 1
+            default: continue
+            }
+        }
+        return result
     }
 }

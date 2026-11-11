@@ -372,3 +372,28 @@ private func diary() throws -> Workspace {
     #expect(TrackerDecode.mdblistListsToRead(previous: before, now: unknown) == nil, "Something new moved: read everything")
     #expect(TrackerDecode.mdblistListsToRead(previous: nil, now: before) == nil)
 }
+
+/// MDBList's journal (its published schema): a watched episode added, a movie unwatched, a rating
+/// changed, season rows skipped, the cursor and server time kept; an expired window asks for a full read.
+@Test func mdblistJournalAppliesTheLatestStatePerItem() throws {
+    let show = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 1396, name: "Breaking Bad")
+    let movie = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 155, name: "The Dark Knight")
+    var library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: movie, watchedAt: "2026-09-01T00:00:00Z")],
+                               ratings: [TraktRating(title: movie, rating: 7, ratedAt: nil)])
+    let page = Data(#"""
+    {"server_time":"2026-09-30T10:00:00Z","pagination":{"has_more":true,"next_cursor":"c2"},"journal":[
+     {"category":"watched","item_type":"episode","ids":{"tmdb":1396},"status":"added","action_at":"2026-09-29T21:00:00Z","value_at":"2026-09-29T20:00:00Z","season":1,"episode":2},
+     {"category":"watched","item_type":"season","ids":{"tmdb":1396},"status":"added","action_at":"2026-09-29T21:00:00Z","season":1},
+     {"category":"watched","item_type":"movie","ids":{"tmdb":155},"status":"removed","action_at":"2026-09-29T22:00:00Z"},
+     {"category":"rated","item_type":"movie","ids":{"tmdb":155},"status":"added","action_at":"2026-09-29T22:00:00Z","rating":9,"rating_precise":8.5}]}
+    """#.utf8)
+    let result = try MDBListJournal.apply(page, to: &library)
+    #expect(result.applied == 3 && result.nextCursor == "c2" && result.serverTime == "2026-09-30T10:00:00Z" && !result.needsFullRead)
+    #expect(library.plays.count == 1 && library.plays[0].title.tmdbId == show.tmdbId && library.plays[0].episode == 2)
+    #expect(library.ratings.map(\.rating) == [9])
+    // The same rows again change nothing (each row is that item's current state).
+    _ = try MDBListJournal.apply(page, to: &library)
+    #expect(library.plays.count == 1 && library.ratings.count == 1)
+    let expired = try MDBListJournal.apply(Data(#"{"requires_full_sync":true,"reason":"sync_window_expired"}"#.utf8), to: &library)
+    #expect(expired.needsFullRead)
+}

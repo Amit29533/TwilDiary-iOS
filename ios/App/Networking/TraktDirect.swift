@@ -835,10 +835,31 @@ enum TraktDelivery: Equatable, Sendable {
                     }
                 }
                 library.activities = activities
-            } else if library.activities != activities || library.fetchedAt == nil {
+            } else if MDBListJournal.unmarked(library.activities) != activities || library.fetchedAt == nil {
                 // MDBList: only the lists whose time moved (all of them on the first read).
-                let lists = TrackerDecode.mdblistListsToRead(previous: library.fetchedAt == nil ? nil : library.activities, now: activities)
-                    ?? [.history, .ratings, .dropped, .watchlist]
+                let previous = library.fetchedAt == nil ? nil : MDBListJournal.unmarked(library.activities)
+                var lists = TrackerDecode.mdblistListsToRead(previous: previous, now: activities) ?? [.history, .ratings, .dropped, .watchlist]
+                // Watches and ratings: only what changed since the last read, from MDBList's journal
+                // (removals included). A window older than its 30 days, or a failed read, falls back
+                // to reading those lists whole.
+                let serverTime = ((try? JSONSerialization.jsonObject(with: activitiesData)) as? [String: Any])?["server_time"] as? String
+                if previous != nil, let since = library.activities?.stamps["journal.since"], !lists.isDisjoint(with: [.history, .ratings]) {
+                    var copy = library, cursor: String?, complete = false
+                    do {
+                        for _ in 0..<20 {
+                            let query = cursor.map { ["cursor": $0, "limit": "1000"] } ?? ["since": since, "limit": "1000"]
+                            let result = try MDBListJournal.apply(try await client.read(config, path: "/sync/journal", query: query), to: &copy)
+                            requests += 1
+                            if result.needsFullRead { break }
+                            guard let next = result.nextCursor else { complete = true; break }
+                            cursor = next
+                        }
+                    } catch { complete = false }
+                    if complete {
+                        library.plays = copy.plays; library.ratings = copy.ratings
+                        lists.subtract([.history, .ratings]); fetched += [.history, .ratings]
+                    }
+                }
                 if lists.contains(.history) {
                     let watched = try await mdblistPages(client, config, "/sync/watched")
                     library.plays = watched.items.map { item in
@@ -862,7 +883,9 @@ enum TraktDelivery: Equatable, Sendable {
                     library.watchlist = watchlist.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
                     requests += watchlist.calls; fetched.append(.watchlist)
                 }
-                library.activities = activities
+                var stamps = activities.stamps
+                if let mark = serverTime ?? library.activities?.stamps["journal.since"] { stamps["journal.since"] = mark }
+                library.activities = TraktActivities(all: activities.all, stamps: stamps)
             }
             library.fetchedAt = Date.now.formatted(.iso8601)
             // Signed out while reading: the previous account's lists are dropped, not saved.
