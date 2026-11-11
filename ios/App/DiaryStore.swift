@@ -1523,7 +1523,7 @@ import TwilDiaryCore
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/metadata", method: "POST")
         }
     }
-    let communityRatings = CommunityRatingsController()
+    let communityRatings = CommunityRatingsController(folder: ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? URL.cachesDirectory : nil, pause: 2)
     func publicScore(_ title: MediaTitle, source: PublicRatingSource) -> Double? {
         CommunityScore.value(tmdb: title.communityScore, trakt: communityRatings.source == source ? communityRatings.entries[title.id] : nil, source: source)
     }
@@ -1533,7 +1533,7 @@ import TwilDiaryCore
         if retry { communityRatings.retryUnavailable() }
         let generation = sessionGeneration
         let direct = source == .mdblist && providerSettings.mdblist.isAuthenticated
-        await communityRatings.prepare(titles.map(\.id), batch: direct ? 8 : 4, seconds: direct ? 240 : 12) { ids in
+        await communityRatings.prepare(titles.map(\.id), batch: direct ? 4 : 4, seconds: direct ? 240 : 12) { ids in
             #if DEBUG
             if self.isPreview {
                 if ProcessInfo.processInfo.arguments.contains("--ui-ratings-unavailable") { return [:] }
@@ -1557,7 +1557,17 @@ import TwilDiaryCore
                 let client = self.directClient
                 let tasks = wanted.map { item in
                     Task { @MainActor () -> (String, PublicRating?) in
-                        guard let summary = try? await client.fetchMDBListRatings(config: config, tmdbId: item.tmdb, isSeries: item.series) else { return (item.id, nil) }
+                        // MDBList asks us to slow down now and then (HTTP 429): wait and ask again.
+                        var summary: MDBListSyncEngine.RatingSummary?
+                        for attempt in 0..<3 where summary == nil {
+                            do { summary = try await client.fetchMDBListRatings(config: config, tmdbId: item.tmdb, isSeries: item.series) }
+                            catch APIError.rejected(let status, _) where status == 429 || status >= 500 {
+                                try? await Task.sleep(for: .seconds(Double(2 << attempt)))
+                            } catch APIError.rejected(let status, _) where status == 404 {
+                                return (item.id, PublicRating(score: nil, state: "unrated"))
+                            } catch { break }
+                        }
+                        guard let summary else { return (item.id, nil) }
                         let score = summary.aggregatedScore.map { $0 > 10 ? $0 / 10 : $0 }
                         return (item.id, score.map { $0 > 0 ? PublicRating(score: min(10, $0), state: "rated") : PublicRating(score: nil, state: "unrated") }
                             ?? PublicRating(score: nil, state: "unrated"))

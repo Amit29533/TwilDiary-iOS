@@ -723,7 +723,9 @@ struct ProgressCard: View {
                 Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(webHex: "#f5f5f7"))
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
             }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-            if notStarted { startRow } else { progressRow }
+            // Its row fades in once progress is known, instead of one row flashing into the other.
+            Group { if notStarted { startRow } else { progressRow } }
+                .opacity(card == nil ? 0 : 1).animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: card == nil)
         }.padding(.horizontal, 8).frame(height: 196)
     }
     private var progressRow: some View {
@@ -759,14 +761,14 @@ struct ProgressCard: View {
                     }.foregroundStyle(WatchStyle.ink).frame(maxWidth: .infinity).frame(height: 48)
                         .background(WatchStyle.fill, in: Capsule())
                         .contentShape(Capsule())
-                }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel(startLabel + ", " + title.name)
-                Button { Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } } label: {
+                }.buttonStyle(.springPress).disabled(!markable).starBurst(trigger: sparks).accessibilityLabel(startLabel + ", " + title.name)
+                Button { guard !cardBusy, !store.needsMutationRefresh else { return }; Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } } label: {
                     Image(systemName: title.queued == true ? "checkmark" : "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
                         .frame(width: 48, height: 48)
                         .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.32), in: Circle())
                         .background(.ultraThinMaterial, in: Circle())
                         .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1))
-                }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh)
+                }.buttonStyle(.plain)
                     .accessibilityLabel(title.queued == true ? "Remove from Queue" : "Add to Queue")
             }.padding(.top, 14)
         }
@@ -886,7 +888,7 @@ struct ProgressCard: View {
                 actionIcon(.remove, symbol: "minus", size: 15).fontWeight(.bold).foregroundStyle(Color(webHex: "#f5f5f7"))
                     .frame(width: 35, height: 35).background(Color(webHex: "#3a3a40"), in: Circle())
                     .contentShape(Rectangle().inset(by: -5))
-            }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+            }.buttonStyle(.plain).disabled(card != nil && card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
             Text(card.map { "\($0.progress.watched) / \($0.progress.total)" } ?? "–").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
                 .monospacedDigit().lineLimit(1).fixedSize().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
                 .accessibilityIdentifier("watch-count-" + title.id)
@@ -894,23 +896,23 @@ struct ProgressCard: View {
                 actionIcon(.mark, symbol: "plus", size: 17).fontWeight(.bold).foregroundStyle(WatchStyle.ink)
                     .frame(width: 36, height: 36).background(WatchStyle.fill, in: Circle())
                     .contentShape(Rectangle().inset(by: -4))
-            }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
+            }.buttonStyle(.plain).disabled(!markable).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
         }.frame(height: 44)
     }
     private var cardControls: some View {
                 // One container lets the card's glass controls render and morph together.
                 GlassEffectContainer(spacing: 6) { HStack(spacing: 6) {
                 if title.isSeries {
-                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: nil)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(cardBusy || store.needsMutationRefresh || card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
+                    Button { Task { await removeWatch() } } label: { actionIcon(.remove, symbol: "minus", size: 16).frame(width: 36, height: 36).modifier(CardCircle(glass: hero || compact, tint: nil)).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(card != nil && card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
                     // The last watched episode ("E5"); the subtitle carries "of 8".
                     Text(cardText?.counter ?? "–").font(.system(size: 15, weight: .semibold)).monospacedDigit().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched).frame(minWidth: 24).accessibilityIdentifier("watch-count-" + title.id)
-                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(WatchStyle.ink).frame(width: 36, height: 36).background(WatchStyle.fill, in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
+                    Button { Task { await markWatch() } } label: { actionIcon(.mark, symbol: "plus", size: 17).foregroundStyle(WatchStyle.ink).frame(width: 36, height: 36).background(WatchStyle.fill, in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(!markable).starBurst(trigger: sparks).accessibilityLabel("Mark next watch for \(title.name)")
                 } else {
                     Button { Task { await markWatch() } } label: {
                         HStack(spacing: 8) { actionIcon(.mark, symbol: "checkmark", size: 17); Text(fraction > 0 ? "Watched" : "Log watch") }
                             .font(.system(size: 13, weight: .semibold)).frame(height: 34).padding(.horizontal, 14)
                             .foregroundStyle(WatchStyle.ink).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
-                    }.buttonStyle(.springPress).disabled(!canMark).starBurst(trigger: sparks).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
+                    }.buttonStyle(.springPress).disabled(!markable).starBurst(trigger: sparks).accessibilityLabel((fraction > 0 ? "Watched " : "Log watch for ") + title.name)
                 }
                 } }.frame(height: 44)
     }
@@ -988,7 +990,7 @@ struct ProgressCard: View {
                 .fixedSize()
                 // A 40 pt pill, with the 44 pt tap target the platform asks for.
                 .frame(minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.springPress).disabled(!canMark).opacity(canMark || card == nil ? 1 : 0.5).starBurst(trigger: sparks)
+        }.buttonStyle(.springPress).disabled(!markable).opacity(markable ? 1 : 0.5).starBurst(trigger: sparks)
             .accessibilityLabel((title.isSeries ? (starting ? "Start " : "Mark ") + label : label) + ", " + title.name)
             .accessibilityIdentifier("progress-next-" + title.id)
     }
@@ -1019,7 +1021,14 @@ struct ProgressCard: View {
         else { Image(systemName: symbol).font(.system(size: size)).symbolEffect(.bounce, value: watchFeedback) }
     }
     private var canMark: Bool {
-        guard !cardBusy, !store.needsMutationRefresh, let card else { return false }
+        guard !cardBusy, !store.needsMutationRefresh, card != nil else { return false }
+        return markable
+    }
+    /// Whether there's anything to mark at all. Only this dims the button: a save or refresh in
+    /// progress (or progress still loading) doesn't, so the hero's buttons don't flash on opening
+    /// the app or pulling to refresh; a tap then simply waits.
+    private var markable: Bool {
+        guard let card else { return true }
         return title.isSeries ? card.next != nil : card.progress.watched == 0
     }
     private var fraction: Double { guard let card, card.progress.total > 0 else { return 0 }; return min(1, Double(card.progress.watched) / Double(card.progress.total)) }
@@ -1037,11 +1046,13 @@ struct ProgressCard: View {
     }
     private func openTitle() { guard Date.now >= suppressNavigationUntil else { return }; router.openTitle(title.id, tab: router.selectedTab) }
     private func markWatch() async {
+        guard canMark else { return }
         let previous = card?.progress.watched
         await store.markNext(title, expectedEpisode: card?.next?.id); await loadCard()
         if let previous, let current = card?.progress.watched, current > previous { watchFeedback += 1; sparks += 1 }
     }
     private func removeWatch() async {
+        guard !cardBusy, !store.needsMutationRefresh, card?.previous != nil else { return }
         let previous = card?.progress.watched
         await store.removeLatest(title, expected: card?.previous); await loadCard()
         if let previous, let current = card?.progress.watched, current < previous { watchFeedback += 1 }

@@ -364,6 +364,7 @@ struct CatalogDetailView: View {
     @State private var loading = false
     @State private var showOverview = false
     @State private var showInformation = false
+    @State private var showCineMind = false
     @State private var showFiles = false
     @State private var headerState = CompactHeaderState()
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
@@ -419,6 +420,7 @@ struct CatalogDetailView: View {
                         let saved = savedTitle
                         Menu {
                             Button("Sentiments", systemImage: "info.circle") { showInformation = true }.accessibilityIdentifier("catalog-information")
+                            Button("Ask CineMind", systemImage: "sparkle") { showCineMind = true }.disabled(details == nil).accessibilityIdentifier("catalog-cinemind")
                             // Sentiments, File location and Share only read; the library edits need write access.
                             let canEdit = store.canMutate && !store.busy && details?.libraryTitle?.trashed != true
                             Button(saved?.favorite == true ? "Remove from Favourites" : "Add to Favourites", systemImage: saved?.favorite == true ? "heart.slash" : "heart") {
@@ -449,6 +451,7 @@ struct CatalogDetailView: View {
                             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showFiles = false } } }
                     }.presentationDetents([.medium]).presentationDragIndicator(.visible)
                 }
+                .cineMind(isPresented: $showCineMind, title: savedTitle ?? details.map { TraktDiary.catalogTitle($0.details) })
                 .sheet(isPresented: $showInformation) {
                     CommunityInformationSheet(name: details?.details.name ?? "Title", artwork: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") ?? CatalogTools.image($0.details.posterPath) }, identity: CommunityIdentity(kind: route.kind, id: route.id))
                 }

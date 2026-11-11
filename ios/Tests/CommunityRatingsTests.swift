@@ -34,7 +34,7 @@ import TwilDiaryCore
         XCTAssertEqual(ratings.entries["title-1"]?.state, "unavailable")
         XCTAssertTrue(ratings.unavailable); XCTAssertFalse(ratings.loading)
     }
-    func testRatedAndUnratedExpireAfterADayButUnavailableRetriesAfterOneMinute() async {
+    func testRatedAndUnratedExpireAfterThreeDaysButUnavailableRetriesAfterOneMinute() async {
         var now = Date(timeIntervalSince1970: 1_000_000)
         let ratings = CommunityRatingsController(clock: { now })
         var batches: [[String]] = []
@@ -49,7 +49,7 @@ import TwilDiaryCore
         now = now.addingTimeInterval(1)
         await ratings.prepare(["rated", "unrated", "missing"], fetch: fetch)
         XCTAssertEqual(batches.last, ["missing"])
-        now = Date(timeIntervalSince1970: 1_086_400)
+        now = Date(timeIntervalSince1970: 1_259_200)
         await ratings.prepare(["rated", "unrated"], fetch: fetch)
         XCTAssertEqual(batches.last, ["rated", "unrated"])
         XCTAssertEqual(batches.count, 3)
@@ -109,17 +109,29 @@ import TwilDiaryCore
         let ids = (0..<100).map { "title-\($0)" }
         var calls = 0
         await ratings.prepare(ids) { _ in calls += 1; throw APIError.message("Offline") }
-        XCTAssertEqual(calls, 1); XCTAssertEqual(ratings.entries.count, 100)
+        XCTAssertEqual(calls, 3, "Three failed batches in a row: the service is down, the rest wait"); XCTAssertEqual(ratings.entries.count, 100)
         XCTAssertFalse(ratings.loading); XCTAssertTrue(ratings.unavailable)
         ratings.retryUnavailable()
         await ratings.prepare(ids) { batch in calls += 1; return Dictionary(uniqueKeysWithValues: batch.map { ($0, PublicRating(score: nil, state: "unrated")) }) }
-        XCTAssertEqual(calls, 26); XCTAssertFalse(ratings.unavailable)
+        XCTAssertEqual(calls, 28); XCTAssertFalse(ratings.unavailable)
+    }
+    func testOneFailedBatchDoesNotFailTheRest() async {
+        let ratings = CommunityRatingsController()
+        var calls = 0
+        await ratings.prepare((0..<12).map(String.init)) { batch in
+            calls += 1
+            if calls == 1 { throw APIError.rejected(429, "Slow down") }
+            return Dictionary(uniqueKeysWithValues: batch.map { ($0, PublicRating(score: 7, state: "rated")) })
+        }
+        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(ratings.entries["0"]?.state, "unavailable")
+        XCTAssertEqual(ratings.entries["11"]?.score, 7)
     }
     func testUnavailableEnvelopeAlsoStopsFutileBatchesWithoutTreatingUnratedAsAnOutage() async {
         let ratings = CommunityRatingsController()
         var calls = 0
         await ratings.prepare((0..<60).map(String.init)) { batch in calls += 1; return Dictionary(uniqueKeysWithValues: batch.map { ($0, PublicRating(score: nil, state: "unavailable")) }) }
-        XCTAssertEqual(calls, 1); XCTAssertEqual(ratings.entries.count, 60); XCTAssertFalse(ratings.loading)
+        XCTAssertEqual(calls, 3); XCTAssertEqual(ratings.entries.count, 60); XCTAssertFalse(ratings.loading)
     }
 
     func testSlowSuccessfulProviderStopsAtTheWholeLoadBudgetAndPublishesItsFirstBatch() async {
@@ -131,7 +143,7 @@ import TwilDiaryCore
             return Dictionary(uniqueKeysWithValues: batch.map { ($0, PublicRating(score: 8.1, state: "rated")) })
         }
         XCTAssertEqual(calls, 1); XCTAssertEqual(ratings.entries["0"]?.score, 8.1)
-        XCTAssertEqual(ratings.entries["59"]?.state, "unavailable"); XCTAssertFalse(ratings.loading)
+        XCTAssertNil(ratings.entries["59"], "Out of time is not a failure: the rest are asked for again"); XCTAssertFalse(ratings.loading)
     }
 
 }

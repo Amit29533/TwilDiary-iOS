@@ -72,7 +72,7 @@ struct AiringCalendarView: View {
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 110)
         }.diaryScreenBackground().diaryPageNavigation("Airing calendar")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { optionsMenu(upcoming: upcoming, aired: aired) }.sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) { optionsMenu(upcoming: upcoming, aired: aired) }
             }
             .sheet(isPresented: $showGenres) { CalendarGenreSheet(names: genreNames, chosen: $genres) }
             .onChange(of: tab) { _, _ in selectedDate = nil }
@@ -108,11 +108,11 @@ struct AiringCalendarView: View {
             Section { Toggle("Show all episodes", isOn: $showAllEpisodes) }
             Section {
                 if !upcoming.items.isEmpty {
-                    ShareLink(item: upcoming.icsString(hideSpoilers: hideSpoilers), subject: Text("TwilDiary Airing Schedule")) { Label("Export to calendar (.ics)", systemImage: "square.and.arrow.down") }
+                    ShareLink(item: upcoming.icsString(hideSpoilers: hideSpoilers), subject: Text("TwilDiary Airing Schedule")) { Label("Export .ics", systemImage: "calendar.badge.plus") }
                 }
                 Button(syncingDates ? "Syncing…" : "Sync now", systemImage: "arrow.clockwise") { syncDates() }.disabled(syncingDates || store.writesBlocked)
             }
-        } label: { TitleMoreButtonLabel(glass: false) }.accessibilityLabel("Calendar options").accessibilityIdentifier("calendar-options")
+        } label: { TitleMoreButtonLabel() }.accessibilityLabel("Calendar options").accessibilityIdentifier("calendar-options")
     }
     private func rangeLabel(_ days: Int) -> String { (tab == .catchup ? "Last " : "Next ") + "\(days) days" }
 

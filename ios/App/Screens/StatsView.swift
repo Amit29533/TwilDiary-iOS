@@ -114,10 +114,9 @@ struct StatsView: View {
                         }
                     } label: {
                         HStack(spacing: 5) { Text(scopeLabel); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                            .padding(.horizontal, 14).frame(height: 38).background(HomeStyle.chip, in: Capsule())
+                            .font(.system(size: 14, weight: .semibold)).padding(.horizontal, 4)
                     }.accessibilityLabel("Statistics period").accessibilityValue(scopeLabel).accessibilityIdentifier("stats-scope")
-                }.sharedBackgroundVisibility(.hidden)
+                }
             }
             .onChange(of: monthly) { _, on in if on && !yearly && month > clock { month = clock } ; if on { tab = .overview } }
             .onChange(of: yearly) { _, on in if on { tab = .overview; yearDate = clock } }

@@ -19,6 +19,9 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         public let noteLimit: Int?
         /// A cheap "has anything changed?" call, so an unchanged library isn't downloaded again.
         public let changeCheck: Bool
+        /// Specials (season 0). MDBList answers "added" but never keeps them, so they're neither
+        /// sent there nor counted as missing.
+        public var keepsSpecials = true
     }
 
     public var name: String {
@@ -29,7 +32,7 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .trakt: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: 500, changeCheck: true)
         case .simkl: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: 140, changeCheck: true)
-        case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true)
+        case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true, keepsSpecials: false)
         // WeTrakr keeps every play, favourites and dropped titles, and its journal names what changed.
         case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true)
         }

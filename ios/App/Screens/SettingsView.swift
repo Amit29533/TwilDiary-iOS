@@ -124,11 +124,11 @@ struct SettingsView: View {
                             settingsRow("link", .purple, "Connections", subtitle: "Trakt, Simkl, AniList and more", value: connectionsSummary, disclosure: true)
                         }.accessibilityIdentifier("settings-connections")
                         divider
-                        Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
+                        Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress and notes", disclosure: true) }
                         divider
                         Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "Letterboxd, IMDb, MAL and more", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
                         divider
-                        NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync, server and extra copies", disclosure: true) }.accessibilityIdentifier("settings-backups")
+                        NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync and backups", disclosure: true) }.accessibilityIdentifier("settings-backups")
                         divider
                         NavigationLink(value: AppDestination.notifications) { settingsRow("bell.badge.fill", .red, "Notifications", subtitle: "New episodes and releases", disclosure: true) }.accessibilityIdentifier("settings-notifications")
                     }
@@ -356,7 +356,7 @@ struct TMDBConnectionView: View {
             // Design (board 9): the service card with its two buttons, then one note.
             VStack(alignment: .leading, spacing: 14) {
                 let custom = store.providerSettings.customTmdbToken != nil
-                SettingsServiceHeader(logo: .tmdb, title: "TMDB", subtitle: "Posters, title details, seasons and episodes.",
+                SettingsServiceHeader(logo: .tmdb, title: "TMDB", subtitle: "Posters, details and episodes",
                                       badge: verified ? ("Connected", .good) : checking ? ("Checking…", .plain) : ("Not connected", .missing)) {
                     HStack(spacing: 10) {
                         Button(checking ? "Checking…" : "Check connection") { Task { await check() } }

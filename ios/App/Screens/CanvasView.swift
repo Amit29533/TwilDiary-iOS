@@ -77,16 +77,16 @@ private struct CanvasContent: View {
         return filters.applying(recommendations.items).filter { item in wanted.allSatisfy { item.genres?.contains($0) == true } }
     }
     var body: some View {
-        // Movies · Shows · Lists sit in the frosted top bar; the pills and art scroll underneath.
-        EdgeToEdgeScroll(frosted: true) {
+        // Movies · Shows · Lists as large words at the top of the page (owner's layout); they
+        // scroll away with it, leaving the art the whole screen.
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
+                tabs
                 pills
                 Group { if tab == .lists { listsContent } else { titlesContent } }
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            // Centred, as wide as the bar allows without touching the back button.
-            .toolbar { ToolbarItem(placement: .principal) { tabs.frame(width: max(220, pageWidth - 128)) }.sharedBackgroundVisibility(.hidden) }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
             .sheet(isPresented: $showGenres) {
                 CanvasGenreSheet(names: DiscoveryGenre.names(type: kind.rawValue), genres: $genres, anime: $anime)
@@ -104,27 +104,19 @@ private struct CanvasContent: View {
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
     /// Movies · Shows · Lists on a Liquid Glass track; the chosen one is a lilac pill that slides across.
     private var tabs: some View {
-        let kinds = CanvasTab.allCases
-        let index = CGFloat(kinds.firstIndex(of: tab) ?? 0)
-        return HStack(spacing: 4) {
-            ForEach(kinds, id: \.self) { item in
+        HStack(alignment: .firstTextBaseline, spacing: 22) {
+            ForEach(CanvasTab.allCases, id: \.self) { item in
                 let on = tab == item
-                // The page swaps at once (no cross-fade flash); only the pill slides.
+                // The page swaps at once (no cross-fade flash); only the words change weight.
                 Button { tab = item; if item == .movies { network = nil } } label: {
-                    Text(item.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
-                        .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
-                        .animation(.snappy(duration: 0.28), value: on)
-                        .frame(maxWidth: .infinity).frame(height: 36).contentShape(Capsule())
+                    Text(item.label).font(.system(size: 30, weight: .bold)).tracking(-0.6).lineLimit(1)
+                        .foregroundStyle(on ? Color.white : Color(webHex: "#8a8794"))
+                        .animation(.snappy(duration: 0.2), value: on)
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
-        }.background(alignment: .leading) {
-            GeometryReader { proxy in
-                let width = (proxy.size.width - 4 * CGFloat(kinds.count - 1)) / CGFloat(kinds.count)
-                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
-                    .frame(width: width, height: 36).offset(x: (width + 4) * index)
-                    .animation(.snappy(duration: 0.28), value: index)
-            }
-        }.padding(4).glassEffect(.regular, in: Capsule())
+            Spacer(minLength: 0)
+        }.padding(.horizontal, 4).padding(.top, 4)
     }
     private var pills: some View {
         ScrollView(.horizontal) {

@@ -77,7 +77,25 @@ import TwilDiaryCore
     /// One Gemini request (the same key and model for search and CineMind): the raw reply. A
     /// retired model is followed to the one Google names, once.
     static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
-        var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!, timeoutInterval: 60)
+        // Gemini is busy now and then (HTTP 503, "high demand", or no answer in time): asked again
+        // twice, a little later each time, then once on Google's lighter model, before giving up.
+        var lastError: Error = APIError.message("Gemini didn’t answer. Try again.")
+        for (attempt, name) in [model, model, model, Self.fallbackModel].enumerated() {
+            if attempt > 0 { try await Task.sleep(for: .seconds(attempt == 1 ? 1 : 3)) }
+            do { return try await request(body, key: key, model: name, retried: retried) }
+            catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) {
+                lastError = APIError.message("Gemini took too long to answer. Try again.")
+            } catch GeminiBusy.status(let status, let detail) {
+                lastError = APIError.message(status == 503 ? "Gemini is busy right now. Try again in a moment." : "Gemini answered HTTP \(status)" + (detail.map { ": " + $0 } ?? "."))
+            }
+        }
+        throw lastError
+    }
+    /// Google's lighter quick model, for when the usual one is overloaded.
+    static let fallbackModel = "gemini-flash-lite-latest"
+    private enum GeminiBusy: Error { case status(Int, String?) }
+    private static func request(_ body: [String: Any], key: String, model name: String, retried: Bool) async throws -> Data {
+        var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(name):generateContent")!, timeoutInterval: 45)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
@@ -89,10 +107,11 @@ import TwilDiaryCore
             if status == 400 || status == 401 || status == 403 { throw APIError.message("Gemini didn’t accept the key" + (detail.map { ": " + $0 } ?? ".")) }
             if status == 429 { throw APIError.message("Gemini’s free limit is used up for now. Try again in a minute.") }
             // A retired model: Google's answer names the one to use ("…use models/gemini-3.8-flash…").
-            if status == 404, !retried, let next = successor(in: detail ?? ""), next != model {
+            if status == 404, !retried, name == model, let next = successor(in: detail ?? ""), next != model {
                 UserDefaults.standard.set(next, forKey: "gemini.model")
-                return try await generate(body, key: key, retried: true)
+                return try await Self.request(body, key: key, model: next, retried: true)
             }
+            if status >= 500 { throw GeminiBusy.status(status, detail) }
             throw APIError.message("Gemini answered HTTP \(status)" + (detail.map { ": " + $0 } ?? "."))
         }
         return data

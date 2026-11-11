@@ -176,8 +176,11 @@ struct APIsView: View {
                     Spacer(minLength: 0)
                     status(geminiSet, geminiSet ? "Set" : "Not set")
                 }
-                Text("Kept in this iPhone’s Keychain. Only your questions and the title you ask about go to Google.")
-                    .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Text("For AI search and CineMind").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    SettingsInfoButton(text: "Kept in this iPhone’s Keychain. Only your questions and the title you ask about go to Google.")
+                }
                 Button(geminiSet ? "Change key" : "Add Gemini key") { editingGemini = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-gemini")
             }.padding(15)
         }

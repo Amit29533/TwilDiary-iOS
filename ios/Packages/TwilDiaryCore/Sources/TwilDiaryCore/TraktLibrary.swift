@@ -277,6 +277,11 @@ public struct TraktComparison: Equatable, Sendable {
         let titleKey = Dictionary(titles.compactMap { title in title.tmdbId.map { (title.id, (title.isSeries ? "tv:" : "movie:") + String($0)) } }, uniquingKeysWith: { first, _ in first })
         let episodes = Dictionary(workspace.episodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func name(_ key: String) -> String { byKey[key]?.name ?? key }
+        /// The diary's name for a title, else the service's (WeTrakr sometimes sends none), else its key.
+        func label(_ key: String, _ service: String) -> String {
+            if let known = byKey[key]?.name, !known.isEmpty { return known }
+            return service.isEmpty ? key : service
+        }
 
         // Plays: how many times each movie or episode was watched, on each side.
         func playKey(_ title: String, _ season: Int?, _ episode: Int?) -> String {
@@ -285,13 +290,16 @@ public struct TraktComparison: Equatable, Sendable {
         var trakt: [String: Int] = [:], diary: [String: Int] = [:], labels: [String: String] = [:]
         for play in library.plays {
             guard let key = play.title.diaryKey else { continue }
+            if play.season == 0, !can.keepsSpecials { continue }
             let full = playKey(key, play.season, play.episode)
             trakt[full, default: 0] += 1
-            labels[full] = play.season.map { "\(play.title.name) S\($0)E\(play.episode ?? 0)" } ?? play.title.name
+            let named = label(key, play.title.name)
+            labels[full] = play.season.map { "\(named) S\($0)E\(play.episode ?? 0)" } ?? named
         }
         for event in workspace.activeEvents {
             guard let key = titleKey[event.titleId] else { continue }
             let episode = event.episodeId.flatMap { episodes[$0] }
+            if episode?.season == 0, !can.keepsSpecials { continue }
             let full = playKey(key, episode?.season, episode?.number)
             diary[full, default: 0] += 1
             if labels[full] == nil { labels[full] = episode.map { "\(name(key)) S\($0.season)E\($0.number)" } ?? name(key) }
@@ -332,7 +340,7 @@ public struct TraktComparison: Equatable, Sendable {
             let title = byKey[key]
             let listedName = (library.watchlist + library.favorites + library.dropped).first { $0.title.diaryKey == key }?.title.name
             let ratedName = library.ratings.first { $0.title.diaryKey == key }?.title.name
-            let label: String = title?.name ?? ratedName ?? listedName ?? key
+            let label: String = [title?.name, ratedName, listedName].compactMap { $0 }.first { !$0.isEmpty } ?? key
             let score = title?.score.map { Int($0.rounded()) }
             if score != ratings[key] {
                 result.ratingDifferences.append(Difference(title: label, detail: "diary \(score.map(String.init) ?? "none"), \(service) \(ratings[key].map(String.init) ?? "none")"))

@@ -26,6 +26,18 @@ struct CineMindButton: View {
     }
 }
 
+extension View {
+    /// CineMind as a sheet, from a title's ••• menu (a saved title or a preview), pulled up to full screen.
+    func cineMind(isPresented: Binding<Bool>, title: MediaTitle?) -> some View {
+        sheet(isPresented: isPresented) {
+            if let title {
+                CineMindView(title: title).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                    .presentationBackground(Color(webHex: "#0d0c13"))
+            }
+        }
+    }
+}
+
 /// The star in a violet square.
 struct CineMindMark: View {
     let size: CGFloat

@@ -37,8 +37,11 @@ struct BackupsView: View {
                             Text(backups?.first.map(date) ?? (backups == nil ? "Checking…" : "None yet")).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                         }
                     }
-                    Text("A copy of your whole diary (titles, watches, ratings, notes, tags and file mappings) plus your last Trakt read, kept on your server. Restoring merges it back, so nothing newer is lost.")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Text("Your whole diary, kept on your server").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                        SettingsInfoButton(text: "Titles, watches, ratings, notes, tags and file locations, plus your last Trakt read. Restoring merges it back, so nothing newer is lost.")
+                    }
                     ServerBackups.SchedulePicker()
                     Button { Task { await backUp() } } label: {
                         HStack(spacing: 8) {

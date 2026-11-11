@@ -31,6 +31,7 @@ struct TitleDetailView: View {
     @State private var ratingField = VersionedField<Double?>(value: nil, version: nil)
     @State private var showRating = false
     @State private var showInformation = false
+    @State private var showCineMind = false
     @State private var checkInMessage: String?
     @State private var confirmRemoveHistory = false
     @State private var headerState = CompactHeaderState()
@@ -69,8 +70,6 @@ struct TitleDetailView: View {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
                                 if store.viewingFrozenServerCopy { frozenCopyNotice }
-                                // Ask Gemini about this title (spoiler-safe to where you are).
-                                CineMindButton(title: title).padding(.horizontal, 16).padding(.top, -8)
                                 progressPanel(title).padding(.top, -8)
                                 if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -120,6 +119,7 @@ struct TitleDetailView: View {
                                 ToolbarItem(placement: .topBarTrailing) {
                                     Menu {
                                         Button("Sentiments", systemImage: "info.circle") { showInformation = true }.accessibilityIdentifier("title-information")
+                                        Button("Ask CineMind", systemImage: "sparkle") { showCineMind = true }.accessibilityIdentifier("title-cinemind")
                                         Button(title.favorite ? "Remove from Favourites" : "Add to Favourites", systemImage: title.favorite ? "heart.slash" : "heart") {
                                             Task { await store.patch(title, values: ["favorite": !title.favorite]) }
                                         }.disabled(store.writesBlocked).accessibilityIdentifier("title-favorite")
@@ -202,6 +202,7 @@ struct TitleDetailView: View {
             }
             .sheet(isPresented: $showNotes) { notesSheet(title) }
             .sheet(isPresented: $showLocation) { locationsSheet(title) }
+            .cineMind(isPresented: $showCineMind, title: title)
             .sheet(isPresented: $showInformation) {
                 CommunityInformationSheet(name: title.name, artwork: title.backdrop ?? title.poster, identity: CommunityIdentity(kind: title.isSeries ? .tv : .movie, id: title.tmdbId))
             }

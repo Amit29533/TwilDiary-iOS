@@ -140,7 +140,7 @@ struct PersonProfilePage<Content: View>: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) { Image(systemName: fact.icon).font(.system(size: 12)); Text(fact.label) }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
                         Text(fact.value).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
-                    }.padding(.vertical, 11).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
+                    }.padding(.vertical, 9).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
                 }.padding(.top, heroFacts.isEmpty ? 0 : 8)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
@@ -341,9 +341,10 @@ struct ProfileHeroFit {
         var chosen: [Int] = []
         for (index, fact) in facts.enumerated() where !largeText && chosen.count < 4 {
             let valueLines = CGFloat(min(2, lines(fact.value, size: 19)))
-            let height = 18 + 4 + valueLines * 24 + 22
-            // A little past the photo's bottom is fine; a fact that would sit far below it isn't.
-            guard used + height <= photoHeight + 18 else { continue }
+            let height = 17 + 4 + valueLines * 23 + 18
+            // The column fills the space beside the photo, and may run a little past its bottom;
+            // a fact that would sit far below it goes to the card underneath instead.
+            guard used + height <= photoHeight + 40 else { continue }
             used += height; chosen.append(index)
         }
         beside = chosen

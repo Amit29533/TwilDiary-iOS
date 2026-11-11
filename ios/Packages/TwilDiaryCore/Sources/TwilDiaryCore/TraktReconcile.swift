@@ -93,6 +93,7 @@ public struct TraktWritePlan: Equatable, Sendable {
             guard let title = byID[event.titleId], let titleRef = ref(title) else { plan.skippedPlays += 1; continue }
             let episode = event.episodeId.flatMap { episodes[$0] }
             if title.isSeries && episode == nil { plan.skippedPlays += 1; continue }
+            if episode?.season == 0, !can.keepsSpecials { continue }
             let slot = key(titleRef.movie, titleRef.tmdbId) + (episode.map { "|s\($0.season)e\($0.number)" } ?? "")
             if except.contains("play|" + slot) { continue }
             guard let when = DiaryDate.parse(event.watchedAt) else { plan.skippedPlays += 1; continue }

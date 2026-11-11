@@ -100,13 +100,18 @@ struct ConnectionsView: View {
 
     // MARK: Trackers
 
+    /// Signed in (whether or not sync is on).
     private func connected(_ tracker: MainTracker) -> Bool {
         switch tracker {
         case .trakt: store.traktSignedInOnPhone || trakt?.status?.connected == true
-        case .simkl: store.providerSettings.simkl.enabled && store.providerSettings.simkl.isAuthenticated
-        case .mdblist: store.providerSettings.mdblist.enabled && store.providerSettings.mdblist.isAuthenticated
-        case .wetrakr: store.providerSettings.wetrakr.enabled && store.providerSettings.wetrakr.isAuthenticated
+        case .simkl: store.providerSettings.simkl.isAuthenticated
+        case .mdblist: store.providerSettings.mdblist.isAuthenticated
+        case .wetrakr: store.providerSettings.wetrakr.isAuthenticated
         }
+    }
+    /// Signed in and syncing (Trakt always syncs once signed in).
+    private func syncing(_ tracker: MainTracker) -> Bool {
+        tracker == .trakt ? connected(.trakt) : connected(tracker) && store.providerSettings.config(for: tracker.provider).enabled
     }
     /// "Connected", "Not connected", "Reconnect"… (Trakt's from your server).
     private func badge(_ tracker: MainTracker) -> String {
@@ -150,7 +155,8 @@ struct ConnectionsView: View {
         let destination: AppDestination = switch tracker { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
         let profile = on ? profiles.account(tracker) : nil
         let checked = checkedAt(tracker).map { $0.formatted(.relative(presentation: .named)) }
-        let detail = on ? [profile?.name ?? account(tracker), checked].compactMap { $0 }.joined(separator: " · ") : ""
+        let sync = syncing(tracker)
+        let detail = on ? [profile?.name ?? account(tracker), sync ? checked : "Sync off"].compactMap { $0 }.joined(separator: " · ") : ""
         // A connection that needs attention says so (in amber), instead of looking healthy.
         let status = badge(tracker), problem = ["Reconnect", "Unavailable"].contains(status)
         return HStack(spacing: 4) {
@@ -173,7 +179,7 @@ struct ConnectionsView: View {
                             }
                         }.lineLimit(1)
                         HStack(spacing: 6) {
-                            if on && !problem { Circle().fill(Color(webHex: "#7fe0b5")).frame(width: 6, height: 6) }
+                            if on && !problem { Circle().fill(sync ? Color(webHex: "#7fe0b5") : Color(webHex: "#8e8e9c")).frame(width: 6, height: 6) }
                             Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: 12))
                                 .foregroundStyle(problem ? Color(webHex: "#f5c26b") : HomeStyle.secondary).lineLimit(1)
                         }
@@ -221,7 +227,12 @@ struct ConnectionsView: View {
         ZStack {
             Circle().fill(Color(webHex: "#2a2a31"))
             Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(Color(webHex: "#8e8e9c"))
-            if let path { Artwork(path: path, title: "", initialsOnly: false).clipShape(Circle()) }
+            // Account pictures live on each service's own host (not TMDB's), so they load directly.
+            if let path, let url = URL(string: path), url.scheme == "https" {
+                AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
+                }.clipShape(Circle())
+            }
         }.frame(width: 46, height: 46)
     }
     private func signIn(_ tracker: MainTracker) async {

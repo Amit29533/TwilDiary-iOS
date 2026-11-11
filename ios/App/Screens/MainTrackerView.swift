@@ -14,8 +14,11 @@ struct MainTrackerView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Choose the service that holds your diary. Whatever it can’t keep stays in your Cloudflare backup, along with file locations, tags and people you’ve hearted.")
-                    .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Text("Where your diary lives").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    SettingsInfoButton(text: "The service you pick holds your diary. What it can’t keep (tags, notes, file locations, favourite people) stays on this iPhone and in your backups.")
+                }
                 VStack(spacing: 0) {
                     ForEach(Array(MainTracker.allCases.enumerated()), id: \.element) { index, option in
                         if index > 0 { Divider().padding(.leading, 62) }
@@ -60,8 +63,7 @@ struct MainTrackerView: View {
             Toggle(isOn: $store.diaryFromTrakt) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show my diary from Trakt").font(.subheadline.weight(.semibold))
-                    Text("Every screen shows your Trakt watches, ratings, Planned, favourites and dropped, with posters, tags, notes and files from your server. Your edits go to Trakt; notes, tags, Queue and Trash stay on your server.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Your edits go straight to Trakt").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }.accessibilityIdentifier("diary-from-trakt")
             if store.diaryFromTrakt {
@@ -77,8 +79,7 @@ struct MainTrackerView: View {
             Toggle(isOn: Binding(get: { store.diaryFromTracker == tracker }, set: { store.diaryFromTracker = $0 ? tracker : nil })) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show my diary from \(tracker.name)").font(.subheadline.weight(.semibold))
-                    Text("Every screen shows your \(tracker.name) watches, ratings, Planned and dropped, with posters, tags, notes, favourites and files from your server. Your edits go to \(tracker.name); notes, tags, favourites, Queue and Trash stay on your server.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Your edits go straight to \(tracker.name)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }.accessibilityIdentifier("diary-from-" + tracker.rawValue)
             if store.diaryFromTracker == tracker {
@@ -207,7 +208,7 @@ struct TrackerPreviewPanel: View {
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-pending")
                 }
                 if tracker == .trakt { matchSection } else if holdsDiary {
-                    Text("\(tracker.name) holds your diary, so nothing is sent to it from here. The differences above are against your old server copy (kept read-only), for reference.")
+                    Text("\(tracker.name) holds your diary; nothing is sent from here.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
                 } else { trackerMatchSection }
                 Button {
@@ -239,8 +240,7 @@ struct TrackerPreviewPanel: View {
         })) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Send my edits to Trakt as I make them").font(.subheadline.weight(.semibold))
-                Text("Watches (at their exact time), ratings, Planned, favourites and dropped shows go straight to Trakt.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text("Watches, ratings and lists").font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }.disabled(savingWriteThrough).accessibilityIdentifier("trakt-write-through")
         if let writeThroughError { Text(writeThroughError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }

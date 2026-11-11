@@ -51,6 +51,32 @@ import TwilDiaryCore
 
     func forget() { known = [:]; BackgroundFiles.cancel(file); try? FileManager.default.removeItem(at: file) }
 
+    /// A service's library with the TMDB id filled in for titles it lists without one (Simkl's
+    /// anime often has only its own id) when this phone already matched that id once, so they
+    /// line up with the diary instead of showing as missing on both sides.
+    func filledIn(_ library: TraktLibrary) -> TraktLibrary {
+        var bySimkl: [Int: String] = [:], byWeTrakr: [Int: String] = [:]
+        for (key, entry) in known {
+            if let id = entry.simkl { bySimkl[id] = key }
+            if let id = entry.wetrakr { byWeTrakr[id] = key }
+        }
+        guard !bySimkl.isEmpty || !byWeTrakr.isEmpty else { return library }
+        func fill(_ ref: TraktTitleRef) -> TraktTitleRef {
+            guard ref.tmdbId == nil, let key = ref.simklId.flatMap({ bySimkl[$0] }) ?? ref.weTrakrId.flatMap({ byWeTrakr[$0] }),
+                  let tmdb = Int(key.split(separator: ":").last ?? "") else { return ref }
+            return TraktTitleRef(kind: key.hasPrefix("movie:") ? .movie : .show, traktId: ref.traktId, tmdbId: tmdb, imdbId: ref.imdbId, tvdbId: ref.tvdbId,
+                                 name: ref.name, year: ref.year, simklId: ref.simklId, weTrakrId: ref.weTrakrId)
+        }
+        var filled = library
+        filled.plays = library.plays.map { TraktPlay(historyId: $0.historyId, title: fill($0.title), season: $0.season, episode: $0.episode, watchedAt: $0.watchedAt, remoteId: $0.remoteId) }
+        filled.ratings = library.ratings.map { TraktRating(title: fill($0.title), rating: $0.rating, ratedAt: $0.ratedAt) }
+        filled.watchlist = library.watchlist.map { TraktListed(title: fill($0.title), listedAt: $0.listedAt) }
+        filled.favorites = library.favorites.map { TraktListed(title: fill($0.title), listedAt: $0.listedAt) }
+        filled.dropped = library.dropped.map { TraktListed(title: fill($0.title), listedAt: $0.listedAt) }
+        filled.notes = library.notes.map { TraktNote(id: $0.id, title: $0.title.map(fill), text: $0.text, updatedAt: $0.updatedAt) }
+        return filled
+    }
+
     /// The write with every title's ids filled in for `provider`. Titles the service doesn't have
     /// are left out and returned (by name), to be reported as not found.
     func prepare(_ body: Data, for provider: SyncProviderKind, config: ExternalProviderConfig, client: DirectProviderClient) async -> (body: Data, missing: [[String: Any]], movies: Int, shows: Int) {

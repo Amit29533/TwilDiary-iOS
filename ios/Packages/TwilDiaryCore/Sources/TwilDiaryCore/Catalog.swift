@@ -156,7 +156,7 @@ public enum PublicRatingSource: String, CaseIterable, Identifiable, Sendable {
         }
     }
 }
-public struct PublicRating: Decodable, Sendable {
+public struct PublicRating: Codable, Sendable {
     public let score: Double?
     public let state: String
     public init(score: Double?, state: String) { self.score = score; self.state = state }

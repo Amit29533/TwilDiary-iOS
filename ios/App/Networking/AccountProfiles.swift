@@ -28,7 +28,8 @@ import TwilDiaryCore
     /// Reads the account again when it's older than six hours (or `force`).
     func refresh(_ tracker: MainTracker, store: DiaryStore, force: Bool = false) async {
         guard !store.isPreview, !reading.contains(tracker) else { return }
-        if !force, let saved = accounts[tracker.rawValue], Date.now.timeIntervalSince(saved.readAt) < 6 * 3600 { return }
+        // A read that came back without a picture is tried again sooner (ten minutes).
+        if !force, let saved = accounts[tracker.rawValue], Date.now.timeIntervalSince(saved.readAt) < (saved.avatar == nil ? 600 : 6 * 3600) { return }
         reading.insert(tracker)
         defer { reading.remove(tracker) }
         do {

@@ -103,11 +103,9 @@ struct SearchLabView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { filters = Self.blank; tagQuery = ""; foundTags = []; allGenres = false } label: { Text("Reset").lineLimit(1).fixedSize() }
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                        .padding(.horizontal, 16).frame(height: 40).background(HomeStyle.chip, in: Capsule())
-                        .buttonStyle(.plain).disabled(filters == Self.blank).opacity(filters == Self.blank ? 0.55 : 1)
+                        .font(.system(size: 15, weight: .semibold)).disabled(filters == Self.blank)
                         .accessibilityIdentifier("search-lab-reset")
-                }.sharedBackgroundVisibility(.hidden)
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 NavigationLink(value: SearchLabResultsRoute(filters: filters)) {
@@ -404,10 +402,9 @@ struct SearchLabResultsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                            .frame(width: 44, height: 44).background(HomeStyle.chip, in: Circle())
-                    }.buttonStyle(.plain).accessibilityLabel("Edit filters").accessibilityIdentifier("search-lab-edit")
-                }.sharedBackgroundVisibility(.hidden)
+                        Image(systemName: "slider.horizontal.3").font(.system(size: 16, weight: .semibold))
+                    }.accessibilityLabel("Edit filters").accessibilityIdentifier("search-lab-edit")
+                }
             }
             .task(id: filters) { await load() }
     }

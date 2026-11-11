@@ -1132,6 +1132,7 @@ enum ServiceRemovals {
             // Signed out while reading: the previous account's lists are dropped, not saved.
             guard session == generation else { return }
             if edits != editsAtStart { refreshSoon(tracker, store: store, after: 2); return }
+            library = ServiceIDs.shared.filledIn(library)
             libraries[tracker] = library
             save(library, tracker)
             ServiceIDs.shared.learn(from: library)

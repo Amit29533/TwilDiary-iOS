@@ -101,14 +101,14 @@ struct NotificationsSettingsView: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
                 SettingsGroup(label: "Alerts") {
-                    SettingsLine(title: "New episodes", subtitle: "The day a show you watch has a new episode") {
+                    SettingsLine(title: "New episodes", subtitle: "New episodes of shows you watch") {
                         Toggle("", isOn: Binding(get: { episodeAlerts }, set: { on in
                             if on { Task { if await !EpisodeNotifications.enable(store: store) { notice = "Allow notifications for TwilDiary in the Settings app." } } }
                             else { EpisodeNotifications.disable() }
                         })).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-episode-alerts")
                     SettingsDivider()
-                    SettingsLine(title: "Releases", subtitle: "A Planned movie out to stream, a new season of a show you finished, a show you watch coming back") {
+                    SettingsLine(title: "Releases", subtitle: "Releases, new seasons and returns") {
                         Toggle("", isOn: Binding(get: { releaseAlerts }, set: { on in
                             releaseAlerts = on
                             Task { if await !ReleaseAlerts.setEnabled(on, store: store) { releaseAlerts = false; notice = "Allow notifications for TwilDiary in the Settings app." } }
@@ -162,14 +162,14 @@ struct SyncBackupView: View {
                     ServerBackups.SchedulePicker().padding(.horizontal, 16).frame(minHeight: 60)
                 }
                 SettingsGroup(label: "Extra backup") {
-                    SettingsLine(title: "Back up to Files", subtitle: "A daily copy in Files → On My iPhone → TwilDiary") {
+                    SettingsLine(title: "Back up to Files", subtitle: "A daily copy in the Files app") {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-backup-files")
                     SettingsDivider()
                     GoogleDriveRow()
                     SettingsDivider()
                     Button { importing = true } label: {
-                        SettingsLine(title: "Import from another app", subtitle: "Letterboxd, IMDb or TV Time: watches, ratings and watchlist") {
+                        SettingsLine(title: "Import from another app", subtitle: "Letterboxd, IMDb, TV Time") {
                             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                         }
                     }.buttonStyle(.plain).accessibilityIdentifier("sync-import")
