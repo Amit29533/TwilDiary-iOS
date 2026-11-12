@@ -1,10 +1,13 @@
 # Unsigned iPhone IPA for owner phone testing, built on the Namespace Apple Silicon runner
-# (profile "mac"). Compile and package only: no tests, no release, no deploy. Run it from the
-# Actions tab or `gh workflow run ios-namespace-ipa.yml --ref <branch>`; the IPA is the run's artifact.
+# (profile "mac"). Compile and package only: no tests, no release, no deploy. Start it by pushing a
+# tag (`git tag namespace-ipa-<short sha> && git push origin namespace-ipa-<short sha>`), which works
+# from any branch, or from the Actions tab once this file is on main. The IPA is the run's artifact.
 name: iOS IPA (Namespace)
 run-name: namespace ipa ${{ github.ref_name }}
 
 on:
+  push:
+    tags: ['namespace-ipa-*']
   workflow_dispatch:
 
 # A second dispatch waits for the one already building instead of cancelling it.
