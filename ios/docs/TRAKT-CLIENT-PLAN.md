@@ -164,6 +164,7 @@ add-to-list, add-ratings); MDBList paths from the open-source mdblist-mcp client
   removes Trakt history) and "Send my edits to Trakt as I make them" (the delivery queue with the
   server's token). The incoming worker links a Trakt play to the diary watch with the same time, so
   these never come back as copies.
+- **Phone extras on the server (deployed 2026-11-13, version 38ed7e4e, table phone_extras):** `GET/PUT /api/phone-extras` keeps the phone's extras file (tags, Queue, full notes, statuses, Jellyfin folders, favourite people, Trash) for a diary on Trakt alone, one row. The Worker creates the table on first use (remote D1 queries from the build machine returned Cloudflare API 7403); migration 0027 is `IF NOT EXISTS`, so applying it later changes nothing.
 - **Phase 3 done (deployed, version c86e2766, migration 0026):** `/api/helpers` (extras by TMDB id)
   and backups (`/api/backups`, Profile → Backups).
 - **Phase 4a/4b done (not yet tried on the phone):** "Show my diary from Trakt" builds the diary from
