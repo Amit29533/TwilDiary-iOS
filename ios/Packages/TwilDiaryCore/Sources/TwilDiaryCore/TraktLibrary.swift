@@ -256,6 +256,9 @@ public struct TraktComparison: Equatable, Sendable {
     public var droppedDifferences: [Difference] = []
     /// Trakt titles without a TMDB id, which the diary cannot match.
     public var unmatchedTraktTitles = 0
+    /// Titles shown by their key ("movie:100068"): neither side gave a name (WeTrakr sends none for
+    /// some), so the caller can look them up and pass them in `names` next time.
+    public var unnamedKeys: Set<String> = []
     public var matches: Bool {
         onlyOnTrakt.isEmpty && onlyInDiary.isEmpty && ratingDifferences.isEmpty && plannedDifferences.isEmpty
             && favoriteDifferences.isEmpty && droppedDifferences.isEmpty
@@ -268,7 +271,7 @@ public struct TraktComparison: Equatable, Sendable {
     /// that copy has and the service lacks altogether is a difference (the same rules as
     /// `TraktWritePlan.make(fillOnly:)`, skipping `except`); anything newer on the service is the diary.
     public static func compare(_ library: TraktLibrary, with workspace: Workspace, tracker: MainTracker = .trakt,
-                               oneWay: Bool = false, except: Set<String> = []) -> TraktComparison {
+                               oneWay: Bool = false, except: Set<String> = [], names: [String: String] = [:]) -> TraktComparison {
         var result = TraktComparison()
         let service = tracker.name, can = tracker.capabilities
         let titles = workspace.activeTitles
@@ -277,10 +280,14 @@ public struct TraktComparison: Equatable, Sendable {
         let titleKey = Dictionary(titles.compactMap { title in title.tmdbId.map { (title.id, (title.isSeries ? "tv:" : "movie:") + String($0)) } }, uniquingKeysWith: { first, _ in first })
         let episodes = Dictionary(workspace.episodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func name(_ key: String) -> String { byKey[key]?.name ?? key }
-        /// The diary's name for a title, else the service's (WeTrakr sometimes sends none), else its key.
+        /// The diary's name for a title, else the service's (WeTrakr sometimes sends none), else one
+        /// looked up (`names`), else its key.
         func label(_ key: String, _ service: String) -> String {
             if let known = byKey[key]?.name, !known.isEmpty { return known }
-            return service.isEmpty ? key : service
+            if !service.isEmpty { return service }
+            if let looked = names[key], !looked.isEmpty { return looked }
+            result.unnamedKeys.insert(key)
+            return key
         }
 
         // Plays: how many times each movie or episode was watched, on each side.
@@ -341,7 +348,9 @@ public struct TraktComparison: Equatable, Sendable {
             let title = byKey[key]
             let listedName = (library.watchlist + library.favorites + library.dropped).first { $0.title.diaryKey == key }?.title.name
             let ratedName = library.ratings.first { $0.title.diaryKey == key }?.title.name
-            let label: String = [title?.name, ratedName, listedName].compactMap { $0 }.first { !$0.isEmpty } ?? key
+            let label: String = [title?.name, ratedName, listedName, names[key]].compactMap { $0 }.first { !$0.isEmpty } ?? {
+                result.unnamedKeys.insert(key); return key
+            }()
             let score = title?.score.map { Int($0.rounded()) }
             if score != ratings[key], !except.contains("rating|" + key) {
                 result.ratingDifferences.append(Difference(title: label, detail: "diary \(score.map(String.init) ?? "none"), \(service) \(ratings[key].map(String.init) ?? "none")"))

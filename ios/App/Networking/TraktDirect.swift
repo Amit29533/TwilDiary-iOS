@@ -524,6 +524,19 @@ enum ServiceRemovals {
         if let report { self.report = Report(seconds: report.seconds, requests: report.requests, fetched: report.fetched, unavailable: report.unavailable, skipped: report.skipped, comparison: refreshed.comparison) }
         self.plan = refreshed.plan
     }
+    /// One Force Match call to Trakt (your diary's service, from another service as the source),
+    /// paced like every Trakt write.
+    func forcePost(_ path: String, body: Data, store: DiaryStore) async throws -> Data {
+        if token?.usable != true { token = try await store.traktToken() }
+        guard let token else { throw APIError.message("Trakt isn’t signed in. Reconnect it in Connections.") }
+        try await pace()
+        return try await TraktDirectClient(token: token).post(path, body: body)
+    }
+    /// Trakt read again in full after a Force Match (its change stamps can lag its writes).
+    func rereadAfterForce(store: DiaryStore) async {
+        library?.activities = nil
+        await check(store: store)
+    }
     /// "Try them again" for Trakt as a mirror.
     func retryLedger(store: DiaryStore) async {
         MatchLedger.clear(.trakt)
@@ -1247,19 +1260,40 @@ enum ServiceRemovals {
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
                                      skipped: library.skipped, comparison: analysed.comparison)
             plans[tracker] = analysed.plan
+            nameUnnamed(tracker, analysed.comparison.unnamedKeys, store: store)
         } catch {
             if !Task.isCancelled, session == generation { errors[tracker] = error.localizedDescription }
         }
     }
+    /// Titles the comparison could only show by key ("movie:100068": WeTrakr sends no name for
+    /// some, and they aren't in the diary): looked up on TMDB (24 at a time, kept in the phone's
+    /// catalog), then the comparison is worked out again with their names.
+    private func nameUnnamed(_ tracker: MainTracker, _ keys: Set<String>, store: DiaryStore) {
+        guard !keys.isEmpty, naming == nil else { return }
+        let session = generation
+        naming = Task {
+            defer { naming = nil }
+            let wanted = keys.sorted()
+            for _ in 0..<10 {
+                let known = PhoneCatalog.shared.titles
+                guard wanted.contains(where: { known[$0] == nil }), await PhoneCatalog.shared.fill(wanted, store: store) else { break }
+                if PhoneCatalog.shared.titles.count == known.count { break }
+            }
+            guard session == generation, let analysed = await analyse(tracker, store: store), let report = reports[tracker] else { return }
+            reports[tracker] = .init(seconds: report.seconds, requests: report.requests, fetched: report.fetched, unavailable: report.unavailable,
+                                     skipped: report.skipped, comparison: analysed.comparison)
+        }
+    }
+    @ObservationIgnored private var naming: Task<Void, Never>?
 
     /// The comparison and the plan, worked out in the background, leaving out what the ledger
     /// holds (sent before and not kept by the service).
     private func analyse(_ tracker: MainTracker, store: DiaryStore) async -> (comparison: TraktComparison, plan: TraktWritePlan?)? {
         guard let read = libraries[tracker] else { return nil }
         let diary = store.diaryToMatch, planned = store.diaryService != tracker && store.serverRecord != tracker
-        let ledger = MatchLedger.tokens(tracker)
+        let ledger = MatchLedger.tokens(tracker), names = PhoneCatalog.shared.titles.mapValues(\.name)
         return await Task.detached(priority: .utility) {
-            (TraktComparison.compare(read, with: diary, tracker: tracker, except: ledger),
+            (TraktComparison.compare(read, with: diary, tracker: tracker, except: ledger, names: names),
              planned ? TraktWritePlan.make(library: read, workspace: diary, tracker: tracker, except: ledger) : nil)
         }.value
     }
@@ -1627,6 +1661,242 @@ enum ServiceRemovals {
                                      skipped: report.skipped, comparison: analysed.comparison)
         }
         plans[tracker] = analysed.plan
+    }
+
+    // MARK: Force Match: one side made exactly like the other
+
+    /// Which side wins: the diary, or this service.
+    enum ForceSource: String, CaseIterable, Identifiable { case diary, service; var id: Self { self } }
+    /// Can the diary be made like this service? Only when the diary lives on a service of its own.
+    func canForceIntoDiary(_ tracker: MainTracker, store: DiaryStore) -> Bool {
+        guard let home = store.diaryService, home != tracker else { return false }
+        return home == .trakt || home == .simkl || home == .mdblist || home == .wetrakr
+    }
+    /// Reads both sides afresh, then works out what Force Match would add and take off.
+    func forcePlan(_ tracker: MainTracker, source: ForceSource, store: DiaryStore) async -> ForceMatchPlan? {
+        guard writing == nil, running == nil else { return nil }
+        return await freshForcePlan(tracker, source: source, store: store, full: false)
+    }
+    /// `full`: both sides read in full, not just what their change stamps say moved (after a send).
+    private func freshForcePlan(_ tracker: MainTracker, source: ForceSource, store: DiaryStore, full: Bool) async -> ForceMatchPlan? {
+        if full { libraries[tracker]?.activities = nil }
+        await check(tracker, store: store)
+        guard errors[tracker] == nil, let service = libraries[tracker] else { return nil }
+        switch source {
+        case .diary:
+            let diary = store.diaryToMatch
+            let holds = (store.diaryService ?? .trakt).capabilities
+            return await Task.detached(priority: .userInitiated) {
+                ForceMatchPlan.make(target: service, tracker: tracker, source: diary, sourceHolds: holds,
+                                    keep: ForceMatchPlan.keepTokens(diary.activeTitles))
+            }.value
+        case .service:
+            guard canForceIntoDiary(tracker, store: store), let home = store.diaryService else { return nil }
+            if home == .trakt {
+                if full { await TraktDirectStore.shared.rereadAfterForce(store: store) } else { await TraktDirectStore.shared.check(store: store) }
+            } else {
+                if full { libraries[home]?.activities = nil }
+                await check(home, store: store)
+            }
+            guard let target = home == .trakt ? TraktDirectStore.shared.library : libraries[home] else { return nil }
+            let catalog = PhoneCatalog.shared.titles
+            return await Task.detached(priority: .userInitiated) {
+                let refs = service.plays.map(\.title) + service.ratings.map(\.title) + service.watchlist.map(\.title)
+                    + service.favorites.map(\.title) + service.dropped.map(\.title)
+                return ForceMatchPlan.make(target: target, tracker: home, source: TraktDiary.build(library: service, server: Workspace(), tracker: tracker, catalog: catalog),
+                                           sourceHolds: tracker.capabilities, keep: ForceMatchPlan.keepTokens(refs))
+            }.value
+        }
+    }
+
+    /// What a failed Force Match call means for it.
+    private enum ForceFailure { case retry, uncertain, refused, signIn }
+    private static func classify(_ error: Error) -> ForceFailure {
+        func status(_ code: Int) -> ForceFailure {
+            switch code { case 401, 403: return .signIn; case 408, 425, 429, 500...: return .retry; default: return .refused }
+        }
+        if let error = error as? TraktWriteError { return status(error.status) }
+        if let error = error as? APIError {
+            switch error {
+            case .rejected(let code, _): return status(code)
+            case .signIn: return .signIn
+            case .transport: return .uncertain
+            case .message(let text):
+                let lower = text.lowercased()
+                if lower.contains("sign-in") || lower.contains("reconnect") || lower.contains("connect ") { return .signIn }
+                if lower.contains("busy") || lower.contains("slow down") || lower.contains("try again") { return .retry }
+                return .refused
+            default: return .refused
+            }
+        }
+        if error is DirectProviderClient.DeliveryUnconfirmed { return .uncertain }
+        guard (error as NSError).domain == NSURLErrorDomain else { return .refused }
+        // Never left the phone: safe to ask again. Otherwise the answer was lost on the way.
+        return TraktDelivery.of(error) == .notSent ? .retry : .uncertain
+    }
+    /// What happened to a Force Match, for its report.
+    private struct ForceRun {
+        var tally = TraktDirectStore.ReplyTally()
+        var names: [String: String] = [:]
+        /// Titles the service refused, with why: not sent again.
+        var refused: [String: String] = [:]
+        /// Answers lost on the way, and calls still failing after three tries: checked, then sent again once.
+        var uncertain = Set<String>(), exhausted = Set<String>()
+        var waits = 0, splits = 0, passes = 0
+        var stopped: String?
+        /// What still differed after the last check, and the titles cleared to be sent fresh.
+        var lastFresh: ForceMatchPlan?
+        var cleared = Set<String>()
+    }
+
+    /// Force Match in one tap, with nothing more to answer: both sides read, the plan worked out and
+    /// sent, each failure dealt with by what it means (see `sendForce`), what landed checked, and
+    /// what failed for a passing reason sent once more. Titles still different after that are
+    /// cleared off the target altogether and sent again fresh from the source of truth, so nothing
+    /// half-matched stays behind.
+    func forceRun(_ tracker: MainTracker, source: ForceSource, store: DiaryStore) async {
+        guard writing == nil, running == nil else { return }
+        if store.isPreview { errors[tracker] = "Force Match needs real connections."; return }
+        writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
+        writeProgress = "Reading both sides…"
+        let session = generation
+        defer { if session == generation { writing = nil; writeProgress = nil } }
+        guard let plan = await freshForcePlan(tracker, source: source, store: store, full: false), session == generation else {
+            if session == generation, errors[tracker] == nil { errors[tracker] = "Force Match couldn’t read both sides. Try again in a moment." }
+            return
+        }
+        guard !plan.isEmpty else {
+            writeResults[tracker] = "Force Match: \(plan.tracker.name) already matches, within what both sides keep."
+            return
+        }
+        // Everything is sent again, what didn't stick before included.
+        MatchLedger.clear(tracker)
+        var run = ForceRun(), current = plan
+        do {
+            while run.passes < 2, !current.isEmpty {
+                run.passes += 1
+                run.names.merge(current.names) { first, _ in first }
+                run.uncertain = []; run.exhausted = []
+                try await sendForce(current, run: &run, store: store)
+                guard session == generation, run.stopped == nil else { break }
+                // What actually landed: both sides read in full, what's still different worked out afresh.
+                writeProgress = "Checking what landed…"
+                guard let fresh = await freshForcePlan(tracker, source: source, store: store, full: true), session == generation else { break }
+                run.lastFresh = fresh
+                run.names.merge(fresh.names) { first, _ in first }
+                guard !run.uncertain.isEmpty || !run.exhausted.isEmpty else { break }
+                current = fresh.without(Set(run.refused.keys))
+            }
+            // The last step: whatever still differs is cleared off the target and sent again fresh.
+            if session == generation, run.stopped == nil, let left = run.lastFresh, !left.isEmpty {
+                let keys = Set(left.names.keys)
+                run.cleared = keys
+                writeProgress = "Clearing \(keys.count.counted("title", "titles")) on \(plan.tracker.name) to send them fresh…"
+                let target = (plan.tracker == .trakt ? TraktDirectStore.shared.library : libraries[plan.tracker]) ?? TraktLibrary()
+                let wipe = ForceMatchPlan.wipe(keys, target: target, tracker: plan.tracker)
+                run.refused = [:]
+                if !wipe.isEmpty { try await sendForce(wipe, run: &run, store: store) }
+                // Refusals while clearing are things that weren't there to take off.
+                run.refused = [:]
+                if session == generation, run.stopped == nil {
+                    writeProgress = "Sending them again…"
+                    if let fresh = await freshForcePlan(tracker, source: source, store: store, full: true), session == generation {
+                        let again = fresh.only(keys)
+                        if !again.isEmpty { try await sendForce(again, run: &run, store: store) }
+                        writeProgress = "Checking what landed…"
+                        run.lastFresh = await freshForcePlan(tracker, source: source, store: store, full: true)
+                        if let last = run.lastFresh { run.names.merge(last.names) { first, _ in first } }
+                    }
+                }
+            }
+        } catch { return }
+        guard session == generation else { return }
+        writing = nil; writeProgress = nil
+        if run.stopped != nil { await check(tracker, store: store) }
+        writeResults[tracker] = forceReport(plan, run, source: source, tracker: tracker)
+    }
+    /// One pass: each call, one a second, each failure dealt with by what it means.
+    private func sendForce(_ plan: ForceMatchPlan, run: inout ForceRun, store: DiaryStore) async throws {
+        let session = generation
+        let config: ExternalProviderConfig? = plan.tracker == .trakt ? nil : await store.freshProviderConfig(plan.tracker.provider)
+        var queue = plan.requests()
+        var done = 0, total = queue.count
+        let pass = run.passes > 1 ? " (checking again)" : ""
+        while !queue.isEmpty {
+            let request = queue.removeFirst()
+            done += 1
+            var tries = 0
+            attempts: while true {
+                writeProgress = "Changing \(done) of \(total)\(pass): \(request.count) \(request.summary)…"
+                do {
+                    let reply: Data
+                    if let config {
+                        try await pace()
+                        guard session == generation else { throw CancellationError() }
+                        if request.method == "DELETE" { reply = try await store.directClient.read(config, path: request.path, method: "DELETE") }
+                        else { reply = try await store.directClient.write(config, path: request.path, body: request.body ?? Data()) }
+                    } else {
+                        reply = try await TraktDirectStore.shared.forcePost(request.path, body: request.body ?? Data(), store: store)
+                    }
+                    run.tally.add(reply)
+                    break attempts
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    guard session == generation else { throw CancellationError() }
+                    // Taking off something that's already gone: done.
+                    if request.method == "DELETE", case .rejected(404, _)? = error as? APIError { break attempts }
+                    let keys = plan.keys(of: request)
+                    switch Self.classify(error) {
+                    case .signIn:
+                        run.stopped = error.localizedDescription
+                        return
+                    case .retry where tries < 3:
+                        let wait = [5, 15, 45][tries]
+                        tries += 1; run.waits += 1
+                        writeProgress = "\(plan.tracker.name) is busy; asking again in \(wait) s…"
+                        try await Task.sleep(for: .seconds(wait))
+                        guard session == generation else { throw CancellationError() }
+                        continue attempts
+                    case .retry:
+                        run.exhausted.formUnion(keys)
+                    case .uncertain:
+                        run.uncertain.formUnion(keys)
+                    case .refused:
+                        if let halves = request.halves() {
+                            queue.insert(contentsOf: halves, at: 0)
+                            total += halves.count; run.splits += 1
+                        } else {
+                            for key in keys { run.refused[key] = error.localizedDescription }
+                        }
+                    }
+                    break attempts
+                }
+            }
+        }
+    }
+    private func forceReport(_ plan: ForceMatchPlan, _ run: ForceRun, source: ForceSource, tracker: MainTracker) -> String {
+        func titles(_ keys: [String]) -> String {
+            let list = keys.map { run.names[$0] ?? $0 }.sorted()
+            return list.prefix(5).joined(separator: ", ") + (list.count > 5 ? " and \(list.count - 5) more" : "")
+        }
+        let target = plan.tracker.name, winner = source == .diary ? "your diary" : tracker.name
+        var text = "Force Match (\(winner) won), on \(target): " + plan.summary.joined(separator: "; ") + "."
+        let replies = run.tally.text(service: target)
+        if !replies.isEmpty { text += " " + replies }
+        if run.waits > 0 { text += " \(target) was busy \(run.waits == 1 ? "once" : "\(run.waits) times"); waited and asked again." }
+        if run.passes > 1 { text += " Checked what landed and sent the rest once more." }
+        if let stopped = run.stopped { text += " Stopped: \(stopped)" }
+        if !run.cleared.isEmpty { text += " Cleared and sent again fresh: \(titles(Array(run.cleared)))." }
+        if !run.refused.isEmpty {
+            text += " \(target) refused \(titles(Array(run.refused.keys))): \(run.refused.values.first ?? "")."
+        }
+        if let still = run.lastFresh, !still.isEmpty, run.stopped == nil {
+            text += " Still different after clearing and sending again: \(titles(Array(still.names.keys))). \(target) doesn’t keep them as sent (a title it can’t find, or one it numbers its own way)."
+        } else if run.stopped == nil {
+            text += " Both sides now match."
+        }
+        return text
     }
 
     /// WeTrakr, the way its sync guide describes: the first time (or when the journal can't place

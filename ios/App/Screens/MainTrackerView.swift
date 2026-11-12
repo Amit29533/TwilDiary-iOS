@@ -131,6 +131,8 @@ struct TrackerPreviewPanel: View {
     /// This service is the diary: there's nothing to make it match.
     private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker || store.serverRecord == tracker) }
     @State private var confirmMatch = false
+    /// Force Match: which side wins.
+    @State private var forceSource = TrackerPreviewStore.ForceSource.diary
     @State private var copiedReport = false
     @State private var clearedLetters = 0
     @State private var writeThroughError: String?
@@ -322,8 +324,34 @@ struct TrackerPreviewPanel: View {
                          + "\n\nNothing is removed from your \(tracker.name) history. \(tracker.name) keeps one watch per episode, so the first is sent and rewatches stay in your diary.")
                 }
         }
+        forceMatchSection
     }
 
+    /// Force Match: one side made exactly like the other, after a preview of what's added and taken off.
+    @ViewBuilder private var forceMatchSection: some View {
+        let intoDiary = others.canForceIntoDiary(tracker, store: store)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Source of truth").font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Picker("Source of truth", selection: $forceSource) {
+                    Text("Diary").tag(TrackerPreviewStore.ForceSource.diary)
+                    if intoDiary { Text(tracker.name).tag(TrackerPreviewStore.ForceSource.service) }
+                }.pickerStyle(.menu).accessibilityIdentifier(tracker.rawValue + "-force-source")
+            }
+            Text(forceSource == .diary
+                 ? "One tap makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, failures are retried, and anything still different is cleared and sent again. Nothing to confirm; it can’t be undone."
+                 : "One tap makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, failures are retried, and anything still different is cleared and sent again. Nothing to confirm; it can’t be undone.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button {
+                let source = forceSource
+                Task { await others.forceRun(tracker, source: source, store: store) }
+            } label: {
+                Label(others.writing == tracker ? "Force matching…" : "Force Match", systemImage: "equal.circle").frame(maxWidth: .infinity)
+            }.buttonStyle(SettingsWideButtonStyle()).disabled(running || others.writing != nil)
+                .accessibilityIdentifier(tracker.rawValue + "-force-match")
+        }.onChange(of: intoDiary) { _, can in if !can { forceSource = .diary } }
+    }
     private var intro: String {
         switch tracker {
         case .trakt: "Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed."
