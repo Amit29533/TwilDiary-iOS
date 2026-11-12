@@ -79,11 +79,12 @@ actor PublicArtworkCache {
     nonisolated func cached(_ request: PublicArtworkRequest) -> PublicArtworkBitmap? {
         resident.values.object(forKey: request.key as NSString)
     }
-    func image(_ request: PublicArtworkRequest) async -> PublicArtworkBitmap? {
+    /// `retrying`: asked again after a failure (the short wait after a failure is skipped).
+    func image(_ request: PublicArtworkRequest, retrying: Bool = false) async -> PublicArtworkBitmap? {
         guard !Task.isCancelled else { return nil }
         if let value = cached(request) { return value }
         if let active = pending[request] { return await active.value }
-        if let retry = failedUntil[request], retry > .now { return nil }
+        if !retrying, let retry = failedUntil[request], retry > .now { return nil }
         let session = session
         // Task inherits this decoding actor, never the UI actor. A recycled cell
         // cancels only its observation; shared work continues for other cells.

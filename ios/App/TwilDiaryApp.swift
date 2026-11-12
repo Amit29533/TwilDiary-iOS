@@ -155,6 +155,11 @@ struct SavedTitleRoute: Hashable {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         selectedTab = tab; paths[tab, default: NavigationPath()].append(id)
     }
+    /// A show or movie by its TMDB page (yours, if it's in your diary), in the tab you're on.
+    func openCatalog(_ route: CatalogRoute) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        paths[selectedTab, default: NavigationPath()].append(route)
+    }
     func replaceTitle(_ id: String, tab: AppTab) {
         selectedTab = tab
         if paths[tab, default: NavigationPath()].count > 0 { paths[tab, default: NavigationPath()].removeLast() }

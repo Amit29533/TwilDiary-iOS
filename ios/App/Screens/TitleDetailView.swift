@@ -125,7 +125,8 @@ struct TitleDetailView: View {
                                         }.disabled(store.writesBlocked).accessibilityIdentifier("title-favorite")
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         checkInButton(title)
-                                        removeHistoryButton(title)
+                                        // Move to Trash does what Remove from watch history did (every watch off
+                                        // the service), then takes the title out; there's no separate item.
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
                                         Divider()

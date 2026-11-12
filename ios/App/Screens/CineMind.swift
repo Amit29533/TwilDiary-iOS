@@ -21,7 +21,7 @@ struct CineMindButton: View {
         }.buttonStyle(.springPress).accessibilityLabel("Ask CineMind about " + title.name).accessibilityIdentifier("cinemind-open")
             .sheet(isPresented: $open) {
                 CineMindView(title: title).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
-                    .presentationBackground(Color(webHex: "#0d0c13"))
+
             }
     }
 }
@@ -32,7 +32,7 @@ extension View {
         sheet(isPresented: isPresented) {
             if let title {
                 CineMindView(title: title).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
-                    .presentationBackground(Color(webHex: "#0d0c13"))
+
             }
         }
     }
@@ -133,6 +133,7 @@ struct CineMindMark: View {
 struct CineMindView: View {
     let title: MediaTitle
     @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     @State private var messages: [Message] = []
     @State private var draft = ""
@@ -159,7 +160,6 @@ struct CineMindView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 26) {
                         if !hasKey { keyCard }
-                        else if messages.isEmpty { welcome }
                         ForEach(messages) { message in bubble(message).id(message.id) }
                         if thinking { ThinkingRow().id("thinking").transition(.opacity) }
                     }.padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 16)
@@ -169,21 +169,17 @@ struct CineMindView: View {
                 .onChange(of: messages.count) { _, _ in withAnimation(.smooth) { proxy.scrollTo(messages.last?.id, anchor: .top) } }
                 .onChange(of: thinking) { _, now in if now { withAnimation(.smooth) { proxy.scrollTo("thinking", anchor: .bottom) } } }
             }
-            // One header in both sheet heights: the mark, the title and where you are, the
-            // spoiler switch and New chat. The answers scroll softly under it.
-            .safeAreaInset(edge: .top, spacing: 0) { header }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // One header in both sheet heights, and the input at the bottom, as the system's own
+            // glass bars: the answers scroll softly under them instead of showing through.
+            .safeAreaBar(edge: .top, spacing: 0) { header }
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     if let followups = messages.last(where: { !$0.fromYou })?.followups, !followups.isEmpty, !thinking { followupChips(followups) }
                     inputBar
-                }.background(alignment: .top) {
-                    LinearGradient(colors: [Self.page.opacity(0), Self.page], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35))
-                        .padding(.top, -24).ignoresSafeArea().allowsHitTesting(false)
                 }
             }
-            .background(Self.page)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0) }
             .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         }
     }
@@ -218,10 +214,6 @@ struct CineMindView: View {
                 .accessibilityLabel("New chat").accessibilityIdentifier("cinemind-new")
         }
         .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
-        .background(alignment: .top) {
-            LinearGradient(colors: [Self.page, Self.page, Self.page.opacity(0)], startPoint: .top, endPoint: .bottom)
-                .padding(.bottom, -18).allowsHitTesting(false)
-        }
     }
     private var subtitle: String {
         if spoilerSafe, let progress { return title.name + " · spoiler-safe to " + progress.short }
@@ -241,36 +233,6 @@ struct CineMindView: View {
             }.padding(14).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
         }.buttonStyle(.springPress).padding(.top, 8).accessibilityIdentifier("cinemind-add-key")
-    }
-    private var welcome: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Ask me anything about").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary)
-                Text(title.name).font(.system(size: 22, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).lineLimit(2)
-            }.padding(.top, 10)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(starters, id: \.text) { starter in
-                    Button { ask(starter.text) } label: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: starter.icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(Self.accent)
-                            Text(starter.text).font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary)
-                                .multilineTextAlignment(.leading).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 0)
-                        }.padding(14).frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-                            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
-                            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-                    }.buttonStyle(.springPress)
-                }
-            }
-        }.frame(maxWidth: .infinity, alignment: .leading)
-    }
-    private var starters: [(icon: String, text: String)] {
-        if title.isSeries {
-            return [("clock.arrow.circlepath", "Recap the story so far"), ("person.2", "Who is in the cast?"),
-                    ("sparkles.tv", "What should I watch instead?"), ("questionmark.bubble", "Is it worth finishing?")]
-        }
-        return [("text.alignleft", "What is it about, without spoilers?"), ("person.2", "Who is in the cast?"),
-                ("sparkles.tv", "What should I watch next?"), ("questionmark.bubble", "Is it worth watching?")]
     }
     @ViewBuilder private func bubble(_ message: Message) -> some View {
         if message.fromYou {
@@ -317,7 +279,7 @@ struct CineMindView: View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
                 ForEach(matches) { match in
-                    NavigationLink(value: match.item.route) {
+                    Button { dismiss(); router.openCatalog(match.item.route) } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false)
                                 .frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -351,6 +313,20 @@ struct CineMindView: View {
     }
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            if typing {
+                Button { typing = false } label: {
+                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        .frame(width: 48, height: 48).glassEffect(.regular.interactive(), in: Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Hide keyboard").accessibilityIdentifier("cinemind-hide-keyboard")
+                    .transition(.scale.combined(with: .opacity))
+            }
+            inputField
+        }
+        .animation(.snappy(duration: 0.2), value: typing)
+        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10)
+    }
+    private var inputField: some View {
+        HStack(alignment: .bottom, spacing: 8) {
             TextField(messages.isEmpty ? "Ask about \(title.name)" : "Ask a follow-up", text: $draft, axis: .vertical)
                 .font(.system(size: 14)).lineLimit(1...5).focused($typing).submitLabel(.send).onSubmit { send() }
                 .padding(.leading, 16).padding(.vertical, 12)
@@ -363,10 +339,7 @@ struct CineMindView: View {
             }.buttonStyle(.plain).disabled(!canSend).padding(.trailing, 6).padding(.bottom, 6)
                 .accessibilityLabel("Send").accessibilityIdentifier("cinemind-send")
         }
-        .background(Color(webHex: "#17161f"), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(typing ? Self.accent.opacity(0.6) : HomeStyle.cardBorder, lineWidth: typing ? 1 : HomeStyle.hairline))
-        .animation(.easeOut(duration: 0.15), value: typing)
-        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
     private var canSend: Bool { hasKey && !thinking && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 

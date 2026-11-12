@@ -288,6 +288,9 @@ struct PageHeader: View {
             // The original Liquid Glass logo (owner's choice): the mark in the theme's accent on glass.
             BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
                 .frame(width: 44, height: 44)
+                // A steady dark face over the glass: the lens otherwise shows a moving, upside-down
+                // slice of the artwork behind it, which flickered as you pulled to refresh.
+                .background(Circle().fill(Color(webHex: "#16141c").opacity(0.72)))
                 // Held to the dark look: over bright artwork (pulling to refresh) plain glass flips
                 // between light and dark and the logo flashes.
                 .glassEffect(.regular.tint(.black.opacity(0.32)).interactive(), in: Circle())
@@ -454,7 +457,16 @@ struct Artwork: View {
                 guard fixtureImage(path) == nil else { return }
                 guard let request else { loadedArtwork = nil; loadedRequest = nil; return }
                 if let saved = PublicArtworkCache.shared.cached(request) { loadedRequest = request; loadedArtwork = saved; return }
-                let bitmap = await PublicArtworkCache.shared.image(request)
+                var bitmap = await PublicArtworkCache.shared.image(request)
+                // A load that failed (often the first one right after launch, while the network
+                // wakes up) is asked again a few times before the placeholder stays: Home's hero
+                // was left without its artwork after a cold start.
+                for wait in [2.0, 6.0, 15.0] where bitmap == nil {
+                    guard !Task.isCancelled else { return }
+                    try? await Task.sleep(for: .seconds(wait))
+                    guard !Task.isCancelled else { return }
+                    bitmap = await PublicArtworkCache.shared.image(request, retrying: true)
+                }
                 guard !Task.isCancelled else { return }
                 loadedRequest = request; loadedArtwork = bitmap
             }
