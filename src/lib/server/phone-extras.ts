@@ -7,7 +7,19 @@ import { ApiError } from './api.ts';
 const ROW = 'owner';
 export const PHONE_EXTRAS_LIMIT = 4 * 1024 * 1024;
 
+/** The table, made the first time it's used in this isolate (the same as migration 0027, which
+ * is safe to apply after it): the endpoint needs no separate migration step to start working. */
+let ensured = false;
+async function ensureTable(db: D1Database): Promise<void> {
+  if (ensured) return;
+  await db
+    .prepare('CREATE TABLE IF NOT EXISTS phone_extras (id text PRIMARY KEY NOT NULL, body text NOT NULL, updated_at text NOT NULL)')
+    .run();
+  ensured = true;
+}
+
 export async function readPhoneExtras(db: D1Database): Promise<{ body: string | null; updatedAt: string | null }> {
+  await ensureTable(db);
   const row = await db
     .prepare('SELECT body, updated_at AS updatedAt FROM phone_extras WHERE id = ?')
     .bind(ROW)
@@ -26,6 +38,7 @@ export async function savePhoneExtras(db: D1Database, input: unknown, now = new 
     throw new ApiError(400, 'invalid_input', 'The extras are not a JSON object.');
   }
   const updatedAt = now.toISOString();
+  await ensureTable(db);
   await db
     .prepare(
       'INSERT INTO phone_extras (id, body, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at'
