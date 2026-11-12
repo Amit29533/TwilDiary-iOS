@@ -80,4 +80,17 @@ import TwilDiaryCore
         XCTAssertTrue(ProviderDeliveryPlanner.notFound(reply), "a title the service lacks is reported, not silently dropped")
         XCTAssertEqual(TraktDirectStore.notFoundCount(reply), 1)
     }
+
+    /// Cinopsys merges unsent changes to the same setting of the same title; plays never merge.
+    func testOnlyStateChangesToOneTitleMerge() {
+        let movie: [String: Any] = ["movies": [["ids": ["tmdb": 603]]]]
+        XCTAssertEqual(PendingMerge.key("/sync/ratings", movie), PendingMerge.key("/sync/ratings/remove", movie))
+        XCTAssertEqual(PendingMerge.key("/sync/watchlist", movie), "watchlist|movies:603")
+        XCTAssertNotEqual(PendingMerge.key("/sync/watchlist", movie), PendingMerge.key("/sync/favorites", movie))
+        XCTAssertNil(PendingMerge.key("/sync/history", movie), "A play is an event")
+        XCTAssertNil(PendingMerge.key("/sync/tracking", ["movies": [["ids": ["tmdb": 603], "status": "watched"]]]))
+        XCTAssertEqual(PendingMerge.key("/sync/tracking", ["movies": [["ids": ["tmdb": 603], "status": "planning"]]]), "tracking|movies:603")
+        XCTAssertNil(PendingMerge.key("/sync/ratings", ["movies": [["ids": ["tmdb": 1]], ["ids": ["tmdb": 2]]]]), "Only one title's change merges")
+    }
 }
+

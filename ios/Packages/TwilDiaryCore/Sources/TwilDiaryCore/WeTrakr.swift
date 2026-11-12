@@ -33,6 +33,16 @@ public enum WeTrakrWrite {
         }
         return item
     }
+    /// The same write with every allow_rewatch turned off: sent again after a lost answer, it can't
+    /// log a play twice.
+    public static func withoutRewatch(_ body: Data) -> Data {
+        guard var root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return body }
+        for slot in ["movies", "shows"] {
+            guard let items = root[slot] as? [[String: Any]] else { continue }
+            root[slot] = items.map { item in var item = item; if item["allow_rewatch"] != nil { item["allow_rewatch"] = false }; return item }
+        }
+        return (try? JSONSerialization.data(withJSONObject: root)) ?? body
+    }
     /// The token exchange: JSON with the app key, the code and the PKCE verifier.
     public static func codeBody(code: String, clientId: String, verifier: String, redirect: String) -> Data {
         (try? JSONSerialization.data(withJSONObject: ["client_id": clientId, "code": code, "code_verifier": verifier, "redirect_uri": redirect], options: [.sortedKeys])) ?? Data()

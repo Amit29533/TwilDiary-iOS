@@ -88,7 +88,26 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         var components = URLComponents(string: base + delivery.path)!
         if config.provider == .mdblist, !mdblistAuth(config).query.isEmpty { components.queryItems = mdblistAuth(config).query }
+        if config.provider == .trakt, delivery.key == "history-remove-timed" {
+            // The play is looked up in Trakt's history at its time (a minute either side) and
+            // removed by its own id; not there means there's nothing to remove.
+            let body = try JSONSerialization.data(withJSONObject: delivery.body)
+            let wanted = TraktDirectStore.requestedPlays(body)
+            let times = wanted.compactMap(\.when)
+            guard let first = times.min(), let last = times.max() else { return }
+            let format = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+            var lookup = URLComponents(string: base + "/sync/history")!
+            lookup.queryItems = [URLQueryItem(name: "start_at", value: format.format(first.addingTimeInterval(-60))),
+                                 URLQueryItem(name: "end_at", value: format.format(last.addingTimeInterval(60))), URLQueryItem(name: "limit", value: "1000")]
+            let found = try TraktDecode.history(from: try await send(url: lookup.url!, method: "GET", headers: headers)).items
+            let ids = TraktDirectStore.historyIDs(for: wanted, in: found)
+            guard !ids.isEmpty else { return }
+            let data = try await send(url: components.url!, method: "POST", headers: headers, rawBody: try JSONSerialization.data(withJSONObject: ["ids": ids]))
+            guard ProviderDeliveryPlanner.confirms(data) else { throw DeliveryUnconfirmed(history: false) }
+            return
+        }
         let prepared = await ServiceIDs.shared.prepare(try JSONSerialization.data(withJSONObject: delivery.body), for: config.provider, config: config, client: self)
+        if prepared.waiting > 0 { throw APIError.rejected(503, "WeTrakr couldn’t be asked for this title’s own id yet; it’s sent once WeTrakr answers.") }
         let data: Data
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty {
             data = ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing)
@@ -99,9 +118,14 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         guard ProviderDeliveryPlanner.confirms(data) else {
             // A title the service can't find is set aside (said once), not retried forever.
             if ProviderDeliveryPlanner.notFound(data) { throw APIError.rejected(404, "\(config.provider.displayName) couldn’t find this title by its TMDB id, so it wasn’t changed there.") }
-            throw APIError.message("The provider did not confirm this item; the edit remains pending.")
+            // Answered, with nothing added and nothing refused: usually it was already that way.
+            throw DeliveryUnconfirmed(history: delivery.history)
         }
     }
+
+    /// The service answered a write with nothing added and nothing refused (Simkl's reply for a
+    /// watch it already had). A watch is checked against the service before it counts as done.
+    struct DeliveryUnconfirmed: Error { let history: Bool }
 
     /// A read for the main-tracker preview (Simkl or MDBList): GET with the service's own sign-in.
     func read(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:], method: String = "GET") async throws -> Data {
@@ -129,7 +153,9 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     /// A write for "Make Simkl / MDBList match the diary": POST of a ready JSON body, returning the reply.
     func write(_ config: ExternalProviderConfig, path: String, body: Data) async throws -> Data {
         let name = config.provider.displayName
-        guard config.enabled, config.isAuthenticated else { throw APIError.message("Connect \(name) first, in Connections.") }
+        // The service holding your diary (and a match you asked for) only needs the sign-in: the
+        // "Send my edits" switch governs the other services, not the diary's own.
+        guard config.isAuthenticated else { throw APIError.message("Connect \(name) first, in Connections.") }
         let base: String, headers: [String: String]
         var items: [URLQueryItem] = []
         switch config.provider {
@@ -147,6 +173,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         // Each title named by the service's own id too (looked up once when unknown); titles the
         // service doesn't have are left out and reported as not found.
         let prepared = await ServiceIDs.shared.prepare(body, for: config.provider, config: config, client: self)
+        if prepared.waiting > 0 { throw APIError.rejected(503, "WeTrakr couldn’t be asked for this title’s own id yet; it’s sent once WeTrakr answers.") }
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
         let sending = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
         do {

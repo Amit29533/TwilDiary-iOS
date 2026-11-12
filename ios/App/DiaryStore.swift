@@ -28,14 +28,19 @@ import TwilDiaryCore
         await controller.finishSuspendingTransfer()
         if !controller.busy { await controller.refresh(); await controller.resumeApprovedApply() }
     }
+    /// Any edit still on its way anywhere: your server's queue, the queue for the other services,
+    /// or the service diary's own (Trakt, Simkl, MDBList, WeTrakr).
+    var hasWaitingEdits: Bool {
+        !outbox.isEmpty || !TraktDirectStore.shared.pending.isEmpty || TrackerPreviewStore.shared.pending.values.contains { !$0.isEmpty }
+    }
     func suspendTraktForBackground() {
         retainedTraktController?.suspendForBackground()
-        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: !outbox.isEmpty)
+        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: hasWaitingEdits)
     }
     /// Requests a background execution window on iOS while updating the Dynamic Island Live Activity,
     /// suspending cleanly when the OS background time expires.
     func continueSyncInBackground() {
-        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: !outbox.isEmpty)
+        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: hasWaitingEdits)
         BackgroundSyncCoordinator.shared.beginBackgroundExecution { [weak self] in
             self?.suspendTraktForBackground()
         }
@@ -280,10 +285,12 @@ import TwilDiaryCore
             needsSignIn = self.api.credential == nil
             if needsSignIn, TraktDirectStore.shared.localOnly {
                 phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
+                loadPhoneOutbox()
                 if diarySource != "trakt" { UserDefaults.standard.set("trakt", forKey: Self.diarySourceKey); diarySource = "trakt" }
                 applyDiarySource()
             } else if needsSignIn, let tracker = Self.savedPhoneOnly, tracker == .trakt ? traktSignedInOnPhone : providerSettings.config(for: tracker.provider).isAuthenticated {
                 phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
+                loadPhoneOutbox()
                 if diarySource != tracker.rawValue { UserDefaults.standard.set(tracker.rawValue, forKey: Self.diarySourceKey); diarySource = tracker.rawValue }
                 applyDiarySource()
             }
@@ -325,10 +332,21 @@ import TwilDiaryCore
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         phoneOnly = true; error = nil
         confirmedWorkspace = Workspace(); hasLoadedWorkspace = true
+        loadPhoneOutbox()
         if diarySource != "trakt" { diarySource = "trakt" } else { applyDiarySource() }
         needsSignIn = false
     }
     var onThisPhone: Bool { phoneOnly && TraktDirectStore.shared.localOnly }
+    /// Where the queue of edits for the other services is kept: your server sign-in's, or with no
+    /// server this iPhone's own (as Cinopsys keeps its queue on the device), so edits made in the
+    /// Trakt-only diary still reach Simkl, MDBList and WeTrakr.
+    var outboxScope: String? { api.credential?.cacheScope ?? (phoneOnly ? "phone" : nil) }
+    /// With no server: the phone's queue, loaded when the phone-only diary starts.
+    private func loadPhoneOutbox() {
+        guard api.credential == nil, let scope = outboxScope else { return }
+        outbox = outboxStore.load(scope: scope)
+        Task { await self.flushDirectProviders() }
+    }
     func startPhoneOnly(_ tracker: MainTracker = .trakt) async {
         if TraktDirectStore.shared.localOnly { TraktDirectStore.shared.useLocal(false) }
         if tracker == .trakt { await PendingTraktSignIn.adopt(store: self) }
@@ -338,6 +356,7 @@ import TwilDiaryCore
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         phoneOnly = true; error = nil
         confirmedWorkspace = Workspace(); hasLoadedWorkspace = true
+        loadPhoneOutbox()
         if diarySource != tracker.rawValue { diarySource = tracker.rawValue } else { applyDiarySource() }
         UserDefaults.standard.set(tracker.rawValue, forKey: MainTrackerView.key)
         needsSignIn = false
@@ -947,7 +966,7 @@ import TwilDiaryCore
         return entry
     }
     func acknowledgeOutbox(_ entryID: String, provider: SyncProviderKind) throws {
-        guard let scope = api.credential?.cacheScope else { throw APIError.signIn }
+        guard let scope = outboxScope else { throw APIError.signIn }
         var next = outbox
         next.acknowledge(entryID: entryID, provider: provider)
         try outboxStore.save(next, scope: scope)
@@ -1199,7 +1218,7 @@ import TwilDiaryCore
         let activeProviders = providerSettings.activeDirectLoggingProviders.intersection(providers ?? providerSettings.activeDirectLoggingProviders)
             .filter { ProviderDeliveryPlanner.carries(mutation, provider: $0, isSeries: isSeries) }
         guard !activeProviders.isEmpty, !outbox.pending(for: .cloudflare).contains(where: { $0.mutation.titleId == mutation.titleId }) else { return }
-        guard let scope = api.credential?.cacheScope else { return }
+        guard let scope = outboxScope else { return }
         if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
            status == nil, score == nil, !clearScore, favorite == nil, queued == nil { return }
         var next = outbox
@@ -1240,10 +1259,27 @@ import TwilDiaryCore
                         }
                         if delivery.history { try persistDelivery(entryID: entry.id, key: key, confirmed: false) }
                         do { try await directClient.deliver(delivery, entry: entry, config: config) }
+                        catch let unconfirmed as DirectProviderClient.DeliveryUnconfirmed {
+                            guard session == sessionGeneration, !Task.isCancelled else { return }
+                            // Nothing added, nothing refused. A rating or list change: it was already
+                            // so. A watch: the service is read to see it's there before counting it.
+                            if unconfirmed.history {
+                                switch await lostWriteArrived(provider, entry.mutation) {
+                                case true?: break
+                                case false?: throw OutboxDeadLetter(reason: "\(provider.displayName) answered but didn’t keep this watch.")
+                                case nil: throw APIError.message("\(provider.displayName) couldn’t be read to check this watch; it’s tried again later.")
+                                }
+                            }
+                        }
                         catch APIError.rejected(let status, let message) {
                             guard session == sessionGeneration, !Task.isCancelled else { return }
                             // Busy (429) or timed out (408): kept for later, as Cinopsys leaves the batch queued.
-                            if (400..<500).contains(status), status != 429, status != 408 { try persistDelivery(entryID: entry.id, key: key, confirmed: false, rejected: true) }
+                            // A sign-in problem stops this service until it's reconnected; any other
+                            // refusal is final for this edit (set aside with its reason, the rest go on).
+                            if (400..<500).contains(status), status != 429, status != 408 {
+                                try persistDelivery(entryID: entry.id, key: key, confirmed: false, rejected: true)
+                                if status != 401, status != 403 { throw OutboxDeadLetter(reason: message) }
+                            }
                             throw APIError.rejected(status, message)
                         }
                         guard session == sessionGeneration, !Task.isCancelled else { return }
@@ -1261,12 +1297,24 @@ import TwilDiaryCore
                     var updated = providerSettings.config(for: provider)
                     updated.lastSyncedAt = now.ISO8601Format()
                     updateProviderConfig(updated, syncVault: false)
+                } catch let deadLetter as OutboxDeadLetter {
+                    // Cinopsys's dead letter: the service won't take it, so it's set aside where you can
+                    // see why, and the edits behind it carry on.
+                    guard session == sessionGeneration else { return }
+                    setAside(entry, provider: provider, reason: deadLetter.reason)
+                    continue
                 } catch {
                     guard session == sessionGeneration else { return }
                     BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: completed, total: pending.count, phase: .failed)
+                    // A finite retry budget (as Cinopsys has): one that keeps failing is set aside
+                    // instead of holding up every edit behind it.
+                    if entry.attempts + 1 >= Self.outboxRetryBudget {
+                        setAside(entry, provider: provider, reason: error.localizedDescription)
+                        continue
+                    }
                     var next = outbox
                     next.recordFailure(entryID: entry.id, error: error.localizedDescription)
-                    if let scope = api.credential?.cacheScope {
+                    if let scope = outboxScope {
                         do { try outboxStore.save(next, scope: scope); outbox = next }
                         catch { self.error = error.localizedDescription }
                     }
@@ -1280,8 +1328,15 @@ import TwilDiaryCore
             }
         }
     }
+    /// Tries an edit gets before it's set aside.
+    static let outboxRetryBudget = 8
+    /// An edit a service won't take: off its queue, and listed (with why) on its page.
+    private func setAside(_ entry: SyncOutboxEntry, provider: SyncProviderKind, reason: String) {
+        try? acknowledgeOutbox(entry.id, provider: provider)
+        DeadLetters.add(provider, title: title(entry.mutation.titleId)?.name ?? entry.mutation.titleId, reason: reason)
+    }
     private func persistDelivery(entryID: String, key: String, confirmed: Bool, rejected: Bool = false) throws {
-        guard let scope = api.credential?.cacheScope else { throw APIError.signIn }
+        guard let scope = outboxScope else { throw APIError.signIn }
         var next = outbox
         next.recordDelivery(entryID: entryID, key: key, confirmed: confirmed, rejected: rejected)
         try outboxStore.save(next, scope: scope)

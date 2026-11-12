@@ -254,7 +254,22 @@ private func diary() throws -> Workspace {
     let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: "2025-01-01T00:00:00.000Z")])
     let plan = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .wetrakr)
     #expect(!plan.plays.contains { $0.title.tmdbId == 284172 && $0.episode == 11 })
-    #expect(plan.plays.contains { $0.title.tmdbId == 284172 && $0.episode == 12 })
+    #expect(plan.plays.contains { $0.title.tmdbId == 284172 && $0.episode == 12 && !$0.rewatch }, "A first watch: WeTrakr isn't asked to log another play")
+    let body = String(decoding: try #require(plan.requests().first { $0.path == "/sync/tracking" }).body, as: UTF8.self)
+    #expect(body.contains("\"allow_rewatch\":false") && !body.contains("\"allow_rewatch\":true"))
+}
+
+@Test func whatDidntStickIsNeitherResentNorADifference() throws {
+    // The ledger (sent once, not kept by the service) is left out of the plan and the differences.
+    let library = TraktLibrary()
+    let full = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .simkl)
+    let stuck = Set(full.tokens.filter { $0.hasPrefix("play|") }.prefix(1))
+    #expect(!stuck.isEmpty)
+    let again = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .simkl, except: stuck)
+    #expect(again.tokens.isDisjoint(with: stuck) && again.plays.count == full.plays.count - 1)
+    let before = TraktComparison.compare(library, with: try diary(), tracker: .simkl).onlyInDiary.count
+    let after = TraktComparison.compare(library, with: try diary(), tracker: .simkl, except: stuck).onlyInDiary.count
+    #expect(after == before - 1)
 }
 
 // MARK: Phase 5: Simkl and MDBList match the diary

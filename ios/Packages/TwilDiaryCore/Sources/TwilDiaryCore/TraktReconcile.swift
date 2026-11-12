@@ -24,6 +24,8 @@ public struct TraktWritePlan: Equatable, Sendable {
         public let episode: Int?
         /// The diary's watch time, ISO 8601 with milliseconds (Trakt's own format).
         public let watchedAt: String
+        /// Another play of something the service already has: only then may WeTrakr log it again.
+        public var rewatch = false
     }
     public struct Rating: Hashable, Sendable {
         public let title: Ref
@@ -88,10 +90,12 @@ public struct TraktWritePlan: Equatable, Sendable {
         // or every match would log it again (WeTrakr had films twice that way).
         var traktTimes: [String: [Date]] = [:]
         var unmatched: [String: [Play]] = [:], slotOrder: [String] = []
+        var allServiceSlots: [String: Int] = [:]
         for play in library.plays {
             guard let diaryKey = play.title.diaryKey else { continue }
             let slot = diaryKey + (play.season.map { "|s\($0)e\(play.episode ?? 0)" } ?? "")
             traktTimes[slot, default: []].append(play.watchedAt.flatMap(DiaryDate.parse) ?? .distantPast)
+            allServiceSlots[slot, default: 0] += 1
         }
         for event in workspace.activeEvents.sorted(by: { ($0.watchedAt ?? "") < ($1.watchedAt ?? "") }) {
             guard let title = byID[event.titleId], let titleRef = ref(title) else { plan.skippedPlays += 1; continue }
@@ -120,7 +124,14 @@ public struct TraktWritePlan: Equatable, Sendable {
         // of the rest are sent.
         for slot in slotOrder {
             let waiting = unmatched[slot] ?? [], kept = traktTimes[slot]?.count ?? 0
-            plan.plays.append(contentsOf: waiting.suffix(max(0, waiting.count - kept)))
+            let sending = Array(waiting.suffix(max(0, waiting.count - kept)))
+            // The first play of something the service has none of is a first watch; the rest are rewatches.
+            let serviceHasIt = (allServiceSlots[slot] ?? 0) > 0
+            for (index, play) in sending.enumerated() {
+                var play = play
+                play.rewatch = serviceHasIt || index > 0
+                plan.plays.append(play)
+            }
         }
 
         // Title facts.
@@ -131,12 +142,12 @@ public struct TraktWritePlan: Equatable, Sendable {
         for (diaryKey, title) in byKey.sorted(by: { $0.key < $1.key }) {
             guard let titleRef = ref(title) else { continue }
             if let score = title.score, score.isFinite, (1...10).contains(score), traktRatings[diaryKey] != Int(score.rounded()),
-               !fillOnly || (traktRatings[diaryKey] == nil && !except.contains("rating|" + diaryKey)) {
+               !fillOnly || traktRatings[diaryKey] == nil, !except.contains("rating|" + diaryKey) {
                 plan.ratings.append(Rating(title: titleRef, rating: Int(score.rounded())))
             }
             let planned = title.status == "planned"
             if planned && !watchlist.contains(diaryKey),
-               !fillOnly || (!played.contains(diaryKey) && !except.contains("planned|" + diaryKey)) { plan.watchlistAdd.append(titleRef) }
+               !fillOnly || !played.contains(diaryKey), !except.contains("planned|" + diaryKey) { plan.watchlistAdd.append(titleRef) }
             var moved = false
             if !fillOnly && !planned && watchlist.contains(diaryKey) {
                 if tracker == .simkl {
@@ -208,7 +219,22 @@ public struct TraktWritePlan: Equatable, Sendable {
                 return ["ids": ["tmdb": id], "seasons": entry.seasons.keys.sorted().map { ["number": $0, "episodes": entry.seasons[$0]!] }]
             }
             if tracker == .wetrakr {
-                add(historyPath, ["movies": movies.map { WeTrakrWrite.watched($0, rewatch: true) }, "shows": showBodies.map { WeTrakrWrite.watched($0, rewatch: true) }], "plays", batch.count)
+                // First watches and rewatches go apart: only a rewatch may log another play.
+                for rewatch in [false, true] {
+                    let part = batch.filter { $0.rewatch == rewatch }
+                    guard !part.isEmpty else { continue }
+                    var partMovies: [[String: Any]] = [], partShows: [Int: [Int: [[String: Any]]]] = [:]
+                    for play in part {
+                        if play.title.movie { partMovies.append(["ids": ["tmdb": play.title.tmdbId], "watched_at": play.watchedAt]) }
+                        else if let season = play.season, let episode = play.episode {
+                            partShows[play.title.tmdbId, default: [:]][season, default: []].append(["number": episode, "watched_at": play.watchedAt])
+                        }
+                    }
+                    let bodies: [[String: Any]] = partShows.keys.sorted().map { id in
+                        ["ids": ["tmdb": id], "seasons": partShows[id]!.keys.sorted().map { ["number": $0, "episodes": partShows[id]![$0]!] }]
+                    }
+                    add(historyPath, ["movies": partMovies.map { WeTrakrWrite.watched($0, rewatch: rewatch) }, "shows": bodies.map { WeTrakrWrite.watched($0, rewatch: rewatch) }], "plays", part.count)
+                }
             } else { add(historyPath, ["movies": movies, "shows": showBodies], "plays", batch.count) }
         }
         for batch in batches(ratings) {

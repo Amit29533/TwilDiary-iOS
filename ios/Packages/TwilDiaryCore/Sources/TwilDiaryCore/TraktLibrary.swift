@@ -308,7 +308,8 @@ public struct TraktComparison: Equatable, Sendable {
             let cap = can.keepsRewatches ? Int.max : 1
             let onTrakt = min(trakt[key] ?? 0, cap), inDiary = min(diary[key] ?? 0, cap)
             result.matchingPlays += min(onTrakt, inDiary)
-            if oneWay && except.contains("play|" + key) { continue }
+            // What was already tried and didn't stick (the ledger) isn't a difference to act on.
+            if except.contains("play|" + key) { continue }
             if onTrakt > inDiary && !oneWay { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on \(service), \(inDiary) in the diary")) }
             if inDiary > onTrakt { result.onlyInDiary.append(Difference(title: labels[key] ?? key, detail: "\(inDiary) in the diary, \(onTrakt) on \(service)")) }
         }
@@ -342,16 +343,16 @@ public struct TraktComparison: Equatable, Sendable {
             let ratedName = library.ratings.first { $0.title.diaryKey == key }?.title.name
             let label: String = [title?.name, ratedName, listedName].compactMap { $0 }.first { !$0.isEmpty } ?? key
             let score = title?.score.map { Int($0.rounded()) }
-            if score != ratings[key] {
+            if score != ratings[key], !except.contains("rating|" + key) {
                 result.ratingDifferences.append(Difference(title: label, detail: "diary \(score.map(String.init) ?? "none"), \(service) \(ratings[key].map(String.init) ?? "none")"))
             }
-            if (title?.status == "planned") != watchlist.contains(key) {
+            if (title?.status == "planned") != watchlist.contains(key), !except.contains("planned|" + key) {
                 result.plannedDifferences.append(Difference(title: label, detail: watchlist.contains(key) ? "on the \(service) watchlist, not Planned in the diary" : "Planned in the diary, not on the \(service) watchlist"))
             }
             if can.holdsFavourites, (title?.favorite == true) != favorites.contains(key) {
                 result.favoriteDifferences.append(Difference(title: label, detail: favorites.contains(key) ? "a \(service) favourite, not in the diary" : "a diary favourite, not on \(service)"))
             }
-            if can.holdsDropped, (title?.status == "dropped") != dropped.contains(key) {
+            if can.holdsDropped, (title?.status == "dropped") != dropped.contains(key), !except.contains("dropped|" + key) {
                 result.droppedDifferences.append(Difference(title: label, detail: dropped.contains(key) ? "dropped on \(service), not in the diary" : "dropped in the diary, not on \(service)"))
             }
         }

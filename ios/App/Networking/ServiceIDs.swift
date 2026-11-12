@@ -79,10 +79,12 @@ import TwilDiaryCore
 
     /// The write with every title's ids filled in for `provider`. Titles the service doesn't have
     /// are left out and returned (by name), to be reported as not found.
-    func prepare(_ body: Data, for provider: SyncProviderKind, config: ExternalProviderConfig, client: DirectProviderClient) async -> (body: Data, missing: [[String: Any]], movies: Int, shows: Int) {
+    func prepare(_ body: Data, for provider: SyncProviderKind, config: ExternalProviderConfig, client: DirectProviderClient) async -> (body: Data, missing: [[String: Any]], movies: Int, shows: Int, waiting: Int) {
         guard [.simkl, .wetrakr, .mdblist].contains(provider),
-              var root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return (body, [], 0, 0) }
-        var missing: [[String: Any]] = [], lookups = 0, kept = (movies: 0, shows: 0)
+              var root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { return (body, [], 0, 0, 0) }
+        // WeTrakr is only ever written by its own id (as Cinopsys does): a title whose id couldn't
+        // be looked up yet makes the write wait, rather than go by TMDB id.
+        var missing: [[String: Any]] = [], lookups = 0, kept = (movies: 0, shows: 0), waiting = 0
         let service = provider.rawValue
         for slot in ["movies", "shows"] {
             guard let items = root[slot] as? [[String: Any]] else { continue }
@@ -113,6 +115,8 @@ import TwilDiaryCore
                     }
                     if let native {
                         if provider == .simkl { ids["simkl"] = native } else { item["id"] = native }
+                    } else if provider == .wetrakr, entry.missing[service] == nil {
+                        waiting += 1
                     } else if entry.missing[service] != nil {
                         // The service doesn't have it: not sent (and said), as Cinopsys drops it.
                         missing.append(["ids": ["tmdb": tmdb], "slot": slot])
@@ -126,7 +130,7 @@ import TwilDiaryCore
             if slot == "movies" { kept.movies = next.count } else { kept.shows = next.count }
         }
         if lookups > 0 { BackgroundFiles.save(known, to: file) }
-        return ((try? JSONSerialization.data(withJSONObject: root)) ?? body, missing, kept.movies, kept.shows)
+        return ((try? JSONSerialization.data(withJSONObject: root)) ?? body, missing, kept.movies, kept.shows, waiting)
     }
 
     /// A look-up's answer: the service's id, a clear "not here", or no answer (try again later).

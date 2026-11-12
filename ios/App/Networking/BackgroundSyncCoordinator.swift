@@ -207,6 +207,12 @@ import BackgroundTasks
         let work = Task { @MainActor in
             await store.flushOutbox()
             guard !Task.isCancelled else { return }
+            // Edits waiting for the service your diary is on (sent before it's read) and for the
+            // other services, so they go out without opening the app (Cinopsys's periodic worker).
+            await store.readDiaryServiceIfDue(olderThan: 0)
+            guard !Task.isCancelled else { return }
+            await store.flushDirectProviders()
+            guard !Task.isCancelled else { return }
             await store.refreshOnForeground()
             if includeTransfer, !Task.isCancelled { await store.resumeTraktOnForeground() }
             if !Task.isCancelled { await ServerBackups.runIfDue(store: store) }
@@ -217,8 +223,8 @@ import BackgroundTasks
             Task { @MainActor in store.suspendTraktForBackground() }
         }
         await work.value
-        task.setTaskCompleted(success: !work.isCancelled && store.outbox.isEmpty)
-        scheduleBackgroundTasks(hasPendingOutbox: !store.outbox.isEmpty)
+        task.setTaskCompleted(success: !work.isCancelled && !store.hasWaitingEdits)
+        scheduleBackgroundTasks(hasPendingOutbox: store.hasWaitingEdits)
     }
     #endif
 }

@@ -72,7 +72,8 @@ private func data(_ text: String) -> Data { Data(text.utf8) }
     let plan = ProviderDeliveryPlanner.plan(watch, provider: .wetrakr, in: base)
     #expect(plan.blocked.isEmpty && plan.deliveries.first?.path == "/sync/tracking")
     let item = try #require((plan.deliveries.first?.body["movies"] as? [[String: Any]])?.first)
-    #expect(item["status"] as? String == "watched" && item["tracked_at"] as? String == "2026-09-10T21:14:00Z" && item["allow_rewatch"] as? Bool == true)
+    #expect(item["status"] as? String == "watched" && item["tracked_at"] as? String == "2026-09-10T21:14:00Z" && item["allow_rewatch"] as? Bool == false,
+            "A first watch: WeTrakr isn't asked to log another play")
     let planned = SyncOutboxEntry(createdAt: "x", mutation: .patchTitle(titleId: movie.id, expectedVersion: 1, status: "planned", score: nil, clearScore: false,
         favorite: true, queued: nil, notes: nil), pendingProviders: [.wetrakr])
     let edits = ProviderDeliveryPlanner.plan(planned, provider: .wetrakr, in: base).deliveries

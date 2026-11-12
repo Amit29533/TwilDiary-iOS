@@ -58,7 +58,9 @@ import TwilDiaryTestSupport
     let trakt = plan(revokeTrakt, .trakt)
     #expect(trakt.deliveries.map(\.path) == ["/sync/history/remove"] && (trakt.deliveries[0].body["ids"] as? [Int64]) == [42])
     let revokeLocal = OptimisticMutation.revokeWatch(eventId: "local-7", titleId: movie.id, expectedVersion: 1, revokedAt: "2026-11-07T00:00:00Z")
-    #expect(plan(revokeLocal, .trakt).deliveries.isEmpty && !plan(revokeLocal, .trakt).blocked.isEmpty, "no Trakt id: never a blanket removal")
+    // No Trakt id: never a blanket removal. The play is found in Trakt's history at its time
+    // and removed by its own id (Cinopsys's way).
+    #expect(plan(revokeLocal, .trakt).deliveries.map(\.key) == ["history-remove-timed"] && plan(revokeLocal, .trakt).blocked.isEmpty)
     let wetrakr = plan(revokeLocal, .wetrakr)
     let item = try #require((wetrakr.deliveries.first?.body["movies"] as? [[String: Any]])?.first)
     #expect(wetrakr.deliveries.first?.path == "/sync/tracking/remove" && item["tracked_at"] as? String == "2026-11-06T20:00:00.000Z" && item["allow_rewatch"] == nil)

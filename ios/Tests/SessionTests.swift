@@ -2028,7 +2028,7 @@ extension SessionTests {
         XCTAssertEqual(store.workspace.titles, workspace.titles)
         let title = try XCTUnwrap(store.workspace.titles.first)
         store.providerSettings = ProviderConnectionSettings(simkl: ExternalProviderConfig(provider: .simkl, enabled: true, loggingMethod: .directAPIOnly, clientId: "fixture-client", accessToken: "fixture-token"))
-        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: nil, score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil), providers: [.simkl])
+        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: nil, queued: nil, notes: nil), providers: [.simkl])
         XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
         XCTAssertEqual(store.workspace.titles.first?.tmdbId, 123)
         StubProtocol.state.reset { request in

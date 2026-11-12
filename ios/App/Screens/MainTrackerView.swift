@@ -132,6 +132,7 @@ struct TrackerPreviewPanel: View {
     private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker || store.serverRecord == tracker) }
     @State private var confirmMatch = false
     @State private var copiedReport = false
+    @State private var clearedLetters = 0
     @State private var writeThroughError: String?
     @State private var savingWriteThrough = false
 
@@ -222,6 +223,33 @@ struct TrackerPreviewPanel: View {
                     Button { UIPasteboard.general.string = log; copiedReport = true } label: {
                         Label(copiedReport ? "Copied" : "Copy last sync report", systemImage: copiedReport ? "checkmark" : "doc.on.doc")
                     }.buttonStyle(SettingsWideButtonStyle()).accessibilityIdentifier(id + "-report")
+                }
+                let ledger = MatchLedger.tokens(tracker)
+                if !ledger.isEmpty {
+                    // Sent before and not kept by the service: not resent on every match.
+                    HStack(spacing: 8) {
+                        Label("\(ledger.count) didn’t stick on \(tracker.name)", systemImage: "arrow.uturn.backward.circle")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button("Try them again") {
+                            Task { if tracker == .trakt { await trakt.retryLedger(store: store) } else { await others.retryLedger(tracker, store: store) }; clearedLetters += 1 }
+                        }.font(.subheadline.weight(.semibold))
+                    }.id("ledger-\(clearedLetters)").accessibilityIdentifier(id + "-ledger")
+                }
+                let setAside = DeadLetters.list(tracker.provider)
+                if !setAside.isEmpty {
+                    // Edits the service refused or kept failing on: off its queue so the rest go on.
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(setAside, id: \.self) { line in
+                                Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Button("Clear this list", role: .destructive) { DeadLetters.clear(tracker.provider); clearedLetters += 1 }.font(.caption.weight(.semibold))
+                        }.padding(.top, 6)
+                    } label: {
+                        Label("\(setAside.count) \(setAside.count == 1 ? "edit" : "edits") set aside", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Color(webHex: "#f5c26b"))
+                    }.id(clearedLetters).accessibilityIdentifier(id + "-set-aside")
                 }
             }.padding(15).modifier(SettingsCard())
                 .smoothChange(of: report?.comparison.matchingPlays ?? -1)

@@ -103,18 +103,32 @@ extension DiaryStore {
         var item = try serviceRef(title)
         let when = stamp(date)
         let path = service == .mdblist ? "/sync/watched" : service == .wetrakr ? "/sync/tracking" : "/sync/history"
-        // WeTrakr: status "watched" with tracked_at; a rewatch is a new play, as on Trakt.
-        func shaped(_ watch: [String: Any]) -> [String: Any] { service == .wetrakr ? WeTrakrWrite.watched(watch, rewatch: true) : watch }
+        // What the diary already had watched: those are rewatches (Cinopsys's is_rewatch).
+        let watchedBefore = Set(workspace.activeEvents.filter { $0.titleId == title.id }.compactMap { event -> String? in
+            guard let id = event.episodeId else { return "movie" }
+            return workspace.episodes.first { $0.id == id }.map { "\($0.season)|\($0.number)" }
+        })
+        // WeTrakr: status "watched" with tracked_at; only a rewatch may log another play.
+        func shaped(_ watch: [String: Any], rewatch: Bool) -> [String: Any] { service == .wetrakr ? WeTrakrWrite.watched(watch, rewatch: rewatch) : watch }
         if title.isSeries {
             guard !episodes.isEmpty else { throw APIError.message("No episode is ready to mark.") }
-            let seasons = Set(episodes.map { $0.season }).sorted().map { season in
-                ["number": season, "episodes": episodes.filter { $0.season == season }.map { ["number": $0.number, "watched_at": when] }] as [String: Any]
+            func showItem(_ part: [(season: Int, number: Int)]) -> [String: Any] {
+                var value = item
+                value["seasons"] = Set(part.map { $0.season }).sorted().map { season in
+                    ["number": season, "episodes": part.filter { $0.season == season }.map { ["number": $0.number, "watched_at": when] }] as [String: Any]
+                }
+                return value
             }
-            item["seasons"] = seasons
-            try send(path, ["shows": [shaped(item)]])
+            let again = episodes.filter { watchedBefore.contains("\($0.season)|\($0.number)") }
+            let first = episodes.filter { !watchedBefore.contains("\($0.season)|\($0.number)") }
+            if service == .wetrakr, !again.isEmpty, !first.isEmpty {
+                try send(path, ["shows": [shaped(showItem(first), rewatch: false), shaped(showItem(again), rewatch: true)]])
+            } else {
+                try send(path, ["shows": [shaped(showItem(episodes), rewatch: first.isEmpty)]])
+            }
         } else {
             item["watched_at"] = when
-            try send(path, ["movies": [shaped(item)]])
+            try send(path, ["movies": [shaped(item, rewatch: watchedBefore.contains("movie"))]])
         }
         let ref = titleRef(title)
         let oneEach = !service.capabilities.keepsRewatches
@@ -137,10 +151,11 @@ extension DiaryStore {
             for episode in episodes {
                 let id = workspace.episodes.first { $0.titleId == title.id && $0.season == episode.season && $0.number == episode.number }?.id
                     ?? "\(title.id)|s\(episode.season)e\(episode.number)"
-                mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: id, watchedAt: when, recordedAt: when, rewatch: false))
+                mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: id, watchedAt: when, recordedAt: when,
+                                  rewatch: watchedBefore.contains("\(episode.season)|\(episode.number)")))
             }
         } else {
-            mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: nil, watchedAt: when, recordedAt: when, rewatch: false))
+            mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: nil, watchedAt: when, recordedAt: when, rewatch: watchedBefore.contains("movie")))
         }
         refreshCopySoon()
         return when

@@ -78,3 +78,30 @@ import TwilDiaryTestSupport
     let event = try #require(merged.activeEvents.first { $0.titleId == movie.id })
     #expect(event.watchedAt == nil)
 }
+
+/// Cinopsys's way: only a real rewatch asks WeTrakr to log another play; Queue isn't a watchlist;
+/// a play from another service is removed from Trakt by finding it at its time.
+@Test func rewatchQueueAndForeignPlaysFollowCinopsys() throws {
+    var base = try SampleWorkspace.mapped()
+    let movie = try #require(base.titles.first { !$0.isSeries && $0.tmdbId != nil })
+    func watch(_ rewatch: Bool) -> SyncOutboxEntry {
+        SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .markWatch(operationId: rewatch ? "r" : "f", titleId: movie.id, episodeId: nil,
+            watchedAt: "2026-11-05T00:00:00.000Z", recordedAt: "2026-11-05T00:00:00.000Z", rewatch: rewatch), pendingProviders: [.wetrakr])
+    }
+    func allowed(_ entry: SyncOutboxEntry) -> Bool? {
+        (ProviderDeliveryPlanner.plan(entry, provider: .wetrakr, in: base).deliveries.first?.body["movies"] as? [[String: Any]])?.first?["allow_rewatch"] as? Bool
+    }
+    #expect(allowed(watch(false)) == false)
+    #expect(allowed(watch(true)) == true)
+    let queued = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: nil, queued: true, notes: nil)
+    for provider in [SyncProviderKind.trakt, .simkl, .mdblist, .wetrakr] { #expect(!ProviderDeliveryPlanner.carries(queued, provider: provider, isSeries: false)) }
+    // A play read from Simkl: its id isn't Trakt's.
+    base.events.append(WatchEvent(id: "trakt-777", operationId: "trakt-777", titleId: movie.id, episodeId: nil, watchedAt: "2026-11-01T10:00:00.000Z",
+                                  recordedAt: "2026-11-01T10:00:00.000Z", origin: "simkl"))
+    let removal = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .revokeWatch(eventId: "trakt-777", titleId: movie.id, expectedVersion: 1, revokedAt: "2026-11-05T00:00:00.000Z"), pendingProviders: [.trakt])
+    let planned = ProviderDeliveryPlanner.plan(removal, provider: .trakt, in: base)
+    #expect(planned.deliveries.map(\.key) == ["history-remove-timed"])
+    let rewatchOff = WeTrakrWrite.withoutRewatch(Data(#"{"movies":[{"ids":{"tmdb":1},"allow_rewatch":true}]}"#.utf8))
+    #expect(String(decoding: rewatchOff, as: UTF8.self).contains("\"allow_rewatch\":false"))
+}
+
