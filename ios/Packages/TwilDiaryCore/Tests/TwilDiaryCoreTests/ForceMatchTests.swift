@@ -164,3 +164,23 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
     let plan = ForceMatchPlan.make(target: library, tracker: .mdblist, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
     #expect(plan.plays.isEmpty, "nothing counted as taken off that the call can't name")
 }
+
+@Test func simklKeepsTheDiarysTitlesItFilesItsOwnWay() throws {
+    // Simkl: Perfect Blue as a one-episode show (its OVA way), once with the film's kind but an
+    // episode number, once as "tv:10494"; and a season Simkl files as its own entry (tv:999) of
+    // Frieren's TVDB series. None of it is taken off: on Simkl they are the diary's own titles.
+    let ova = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 10494, name: "Perfect Blue")
+    let season = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 999, tvdbId: 555, name: "Frieren Season 2")
+    let frierenTVDB = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 209867, tvdbId: 555, name: "Frieren")
+    let library = TraktLibrary(
+        plays: [TraktPlay(historyId: 1, title: blue, season: 1, episode: 1, watchedAt: "2026-01-01T20:00:00Z"),
+                TraktPlay(historyId: 2, title: ova, season: 1, episode: 1, watchedAt: "2026-01-01T20:00:00Z"),
+                TraktPlay(historyId: 3, title: frierenTVDB, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00Z"),
+                TraktPlay(historyId: 4, title: frierenTVDB, season: 1, episode: 2, watchedAt: "2026-02-02T20:00:00Z"),
+                TraktPlay(historyId: 5, title: season, season: 2, episode: 1, watchedAt: "2026-03-01T20:00:00Z")],
+        ratings: [TraktRating(title: ova, rating: 8, ratedAt: nil)])
+    let plan = ForceMatchPlan.make(target: library, tracker: .simkl, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
+    #expect(plan.plays.isEmpty, "no watch of the diary's titles is taken off")
+    #expect(plan.titles.isEmpty, "neither the OVA entry nor the season entry is cleared whole")
+    #expect(plan.ratings.isEmpty)
+}

@@ -186,6 +186,12 @@ public struct ForceMatchPlan: Equatable, Sendable {
             sourceTimes[slot, default: []].append(DiaryDate.parse(event.watchedAt) ?? .distantPast)
         }
 
+        // The same TMDB id as the other kind ("tv:37910" on the service, "movie:37910" in the
+        // source): one title the service types its own way (Simkl files OVAs as shows). Never
+        // taken off: on the service it's the very title the source has.
+        func otherKind(_ k: String) -> String { k.hasPrefix("tv:") ? "movie:" + k.dropFirst(3) : "tv:" + k.dropFirst(6) }
+        func typedOtherwise(_ k: String) -> Bool { byKey[k] == nil && byKey[otherKind(k)] != nil }
+
         // Titles getting plays: a title also losing other episodes is renumbered, not different.
         let sending = Set(plan.send.plays.map { ($0.title.movie ? "movie:" : "tv:") + String($0.title.tmdbId) })
         // Simkl takes a title off whole when the source doesn't have it at all.
@@ -198,6 +204,10 @@ public struct ForceMatchPlan: Equatable, Sendable {
             // Only a movie or an episode can be taken off on its own; a show or season row would
             // be counted as taken off and never sent.
             guard play.isMovieOrEpisode || tracker == .trakt || tracker == .wetrakr else { continue }
+            // A film with an episode number (a service's one-episode entry for it): taking it off
+            // would take the film's whole watch off, so it's left alone.
+            if play.title.kind == .movie, play.season != nil { continue }
+            if typedOtherwise(k) { continue }
             if play.season == 0, !specials { continue }
             let slot = k + (play.season.map { "|s\($0)e\(play.episode ?? 0)" } ?? "")
             if targetPlays[slot] == nil { order.append(slot) }
@@ -249,22 +259,30 @@ public struct ForceMatchPlan: Equatable, Sendable {
         }
         func item(_ k: String) -> Item? { refs[k].flatMap { ref in ref.tmdbId.map { Item(ref, tmdb: $0) } } }
         if wholeTitles {
-            for k in refs.keys.sorted() where byKey[k] == nil { if let item = item(k) { plan.titles.append(item) } }
+            // A season Simkl files as its own entry (its own TMDB id) of a show the source has, the
+            // same TVDB series, is never cleared whole: Simkl files the source's episodes of that
+            // season there, so clearing it took off what had just been sent.
+            let seriesHeld = Set(refs.compactMap { k, ref in byKey[k] != nil ? ref.tvdbId : nil })
+            for k in refs.keys.sorted() where byKey[k] == nil {
+                if let tvdb = refs[k]?.tvdbId, seriesHeld.contains(tvdb) { continue }
+                if typedOtherwise(k) { continue }
+                if let item = item(k) { plan.titles.append(item) }
+            }
         }
         let gone = Set(plan.titles.map { ($0.movie ? "movie:" : "tv:") + String($0.tmdbId) })
         func keys(_ list: [TraktListed]) -> [String] { Array(Set(list.compactMap(\.title.diaryKey))).sorted() }
         for rating in target.ratings {
-            guard let k = rating.title.diaryKey, !gone.contains(k), refs[k] != nil else { continue }
+            guard let k = rating.title.diaryKey, !gone.contains(k), refs[k] != nil, !typedOtherwise(k) else { continue }
             let score = byKey[k]?.score.flatMap { $0.isFinite && (1...10).contains($0) ? Int($0.rounded()) : nil }
             if score == nil, let item = item(k), !plan.ratings.contains(item) { plan.ratings.append(item) }
         }
         // Watchlist entries of titles the source has are already moved or taken off by `send`.
-        for k in keys(target.watchlist) where byKey[k] == nil && !gone.contains(k) { if let item = item(k) { plan.watchlist.append(item) } }
+        for k in keys(target.watchlist) where byKey[k] == nil && !gone.contains(k) && !typedOtherwise(k) { if let item = item(k) { plan.watchlist.append(item) } }
         if favourites {
-            for k in keys(target.favorites) where byKey[k]?.favorite != true && !gone.contains(k) { if let item = item(k) { plan.favourites.append(item) } }
+            for k in keys(target.favorites) where byKey[k]?.favorite != true && !gone.contains(k) && !typedOtherwise(k) { if let item = item(k) { plan.favourites.append(item) } }
         }
         if droppedToo {
-            for k in keys(target.dropped) where byKey[k]?.status != "dropped" && !gone.contains(k) {
+            for k in keys(target.dropped) where byKey[k]?.status != "dropped" && !gone.contains(k) && !typedOtherwise(k) {
                 // Simkl moves a title the source has to the list for its status instead.
                 if tracker == .simkl, let title = byKey[k], let list = TraktWritePlan.simklList(title), let item = item(k) {
                     plan.send.moves.append(TraktWritePlan.Move(title: TraktWritePlan.Ref(movie: item.movie, tmdbId: item.tmdbId, name: item.name), to: list))

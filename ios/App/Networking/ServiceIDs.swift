@@ -91,7 +91,15 @@ import TwilDiaryCore
                                  name: ref.name, year: ref.year, simklId: ref.simklId, weTrakrId: ref.weTrakrId)
         }
         var filled = library
-        filled.plays = library.plays.map { TraktPlay(historyId: $0.historyId, title: fill($0.title), season: $0.season, episode: $0.episode, watchedAt: $0.watchedAt, remoteId: $0.remoteId) }
+        filled.plays = library.plays.map { play in
+            let title = fill(play.title)
+            // Simkl files anime OVAs and ONAs as one-episode shows: found to be the diary's film,
+            // the watch is the film's, with no episode number. Kept as "film S1E1" it matched no
+            // diary watch, so Force Match took the film's watch off Simkl right after sending it.
+            let film = title.kind == .movie && play.title.kind != .movie
+            return TraktPlay(historyId: play.historyId, title: title, season: film ? nil : play.season, episode: film ? nil : play.episode,
+                             watchedAt: play.watchedAt, remoteId: play.remoteId)
+        }
         filled.ratings = library.ratings.map { TraktRating(title: fill($0.title), rating: $0.rating, ratedAt: $0.ratedAt) }
         filled.watchlist = library.watchlist.map { TraktListed(title: fill($0.title), listedAt: $0.listedAt) }
         filled.favorites = library.favorites.map { TraktListed(title: fill($0.title), listedAt: $0.listedAt) }
