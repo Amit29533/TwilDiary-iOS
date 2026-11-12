@@ -427,11 +427,17 @@ struct Artwork: View {
         GeometryReader { proxy in
           let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale),
                                              width: Double(proxy.size.width * displayScale), prefersOriginal: prefersOriginal)
+          // A size change keeps the previous bitmap of the same image until the new size is decoded.
+          let bitmap: PublicArtworkBitmap? = request.flatMap { request in
+              (loadedRequest == request ? loadedArtwork : nil) ?? PublicArtworkCache.shared.cached(request) ?? (loadedRequest?.url == request.url ? loadedArtwork : nil)
+          }
           ZStack {
-            // A fitted image leaves the spare space clear for whatever is behind it.
+            // A fitted image leaves the spare space clear for whatever is behind it. The gradient is
+            // drawn only while there's no image over it: under a loaded poster it was two more
+            // layers per tile composited on every frame of a scroll (eight per Canvas list card).
             if contentMode == .fit { Color.clear }
-            else if initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
-            else {
+            else if bitmap == nil, initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
+            else if bitmap == nil {
                 LinearGradient(colors: [Color(webHex: "#243638"), Color(webHex: "#17151e"), Color(webHex: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
                 RadialGradient(colors: [theme.placeholderGlow, .clear], center: UnitPoint(x: 0.8, y: 0.05), startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.7)
             }
@@ -440,11 +446,8 @@ struct Artwork: View {
             else if let request {
                 // While loading, only the gradient shows: the named placeholder appears
                 // only after a load failed, so new cells no longer flash title text
-                // before their poster. A size change keeps the previous bitmap of the
-                // same image until the new size is decoded.
-                let current = loadedRequest == request ? loadedArtwork : nil
-                let sameImage = loadedRequest?.url == request.url ? loadedArtwork : nil
-                if let bitmap = current ?? PublicArtworkCache.shared.cached(request) ?? sameImage {
+                // before their poster.
+                if let bitmap {
                     // High-quality resampling: small sources (AniList's 230 px portraits) stay smooth when enlarged.
                     Image(decorative: bitmap.image, scale: displayScale).resizable().interpolation(.high).aspectRatio(contentMode: contentMode)
                         .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped()
