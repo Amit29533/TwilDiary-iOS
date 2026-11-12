@@ -288,12 +288,9 @@ struct PageHeader: View {
             // The original Liquid Glass logo (owner's choice): the mark in the theme's accent on glass.
             BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
                 .frame(width: 44, height: 44)
-                // A steady dark face over the glass: the lens otherwise shows a moving, upside-down
-                // slice of the artwork behind it, which flickered as you pulled to refresh.
-                .background(Circle().fill(Color(webHex: "#16141c").opacity(0.72)))
-                // Held to the dark look: over bright artwork (pulling to refresh) plain glass flips
-                // between light and dark and the logo flashes.
-                .glassEffect(.regular.tint(.black.opacity(0.32)).interactive(), in: Circle())
+                // See-through glass, as the other header buttons (owner's choice over a dark face);
+                // held to the dark look so it doesn't flip between light and dark over bright artwork.
+                .glassEffect(.regular.interactive(), in: Circle())
                 .environment(\.colorScheme, .dark)
                 // The tap shape sits outside the glass; otherwise the interactive glass takes the tap.
                 .frame(width: 44, height: 44).contentShape(Circle())
