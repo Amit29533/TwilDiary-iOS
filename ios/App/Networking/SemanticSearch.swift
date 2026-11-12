@@ -41,7 +41,7 @@ import TwilDiaryCore
         return value.split(whereSeparator: { $0 == "," || $0.isWhitespace }).map(String.init).filter { seen.insert($0).inserted }
     }
     /// Any key at all (Gemini, Groq or Requesty): AI search and CineMind can answer.
-    static var key: String? { keys.first ?? groqRequestKeys.first ?? requestyKeys.first }
+    static var key: String? { keys.first ?? groqRequestKeys.first ?? requestyRequestKeys.first }
     static var hasOwnKey: Bool { !ownKeys.isEmpty }
 
     /// The AI services, each with its own keys.
@@ -84,6 +84,13 @@ import TwilDiaryCore
     /// (a shared daily allowance), and a paid account can name any model or routing policy.
     /// Asked after Gemini and Groq.
     static var requestyKeys: [String] { list(Service.requesty.account) }
+    /// The Requesty keys requests use: your own, else the ones built into this copy of the app.
+    static var requestyRequestKeys: [String] {
+        let own = requestyKeys
+        if !own.isEmpty { return own }
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "TwilDiaryRequestyKey") as? String, !value.hasPrefix("$(") else { return [] }
+        return builtInKeys(value)
+    }
     /// Your choice of model or policy ("policy/…"), tried before the free ones.
     static var requestyModel: String? {
         get { UserDefaults.standard.string(forKey: "requesty.model").flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } }
@@ -213,7 +220,7 @@ import TwilDiaryCore
             if advancing { UserDefaults.standard.set((start + 1) % list.count, forKey: counter) }
             return Array(list[start...] + list[..<start])
         }
-        let gemini = turn(keys, rotationKey), groq = turn(groqRequestKeys, Service.groq.rotation), requesty = turn(requestyKeys, Service.requesty.rotation)
+        let gemini = turn(keys, rotationKey), groq = turn(groqRequestKeys, Service.groq.rotation), requesty = turn(requestyRequestKeys, Service.requesty.rotation)
         var geminiModels = [fallbackModel]
         if model != fallbackModel { geminiModels.append(model) }
         let requestyModels = (requestyModel.map { [$0] } ?? []) + requestyFreeModels

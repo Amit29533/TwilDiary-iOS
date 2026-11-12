@@ -23,6 +23,8 @@
 	<string>$(TWILDIARY_GEMINI_KEY)</string>
 	<key>TwilDiaryGroqKey</key>
 	<string>$(TWILDIARY_GROQ_KEY)</string>
+	<key>TwilDiaryRequestyKey</key>
+	<string>$(TWILDIARY_REQUESTY_KEY)</string>
 	<key>TwilDiaryGoogleClientID</key>
 	<string>$(TWILDIARY_GOOGLE_CLIENT_ID)</string>
 	<key>TwilDiaryWeTrakrClientID</key>
