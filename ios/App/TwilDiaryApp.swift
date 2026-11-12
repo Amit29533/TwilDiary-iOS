@@ -273,6 +273,8 @@ struct RootView: View {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
                     // No server: tags, Queue, notes, files, favourite people and Trash from Drive.
                     await PhoneDriveSync.pullIfDue(store: store)
+                    // And from your server, when you keep them there too.
+                    await PhoneServerSync.shared.pullIfDue(store: store)
                     // Backups and alerts can wait: they start once the app has settled.
                     try? await Task.sleep(for: .seconds(4))
                     guard !Task.isCancelled else { return }

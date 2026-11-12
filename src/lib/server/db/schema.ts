@@ -712,3 +712,12 @@ export const backups = sqliteTable(
   (t) => [index('backups_created').on(t.createdAt)]
 );
 
+
+/** The phone's extras (tags, Queue, full notes, statuses a service can't keep, Jellyfin folders,
+ * favourite people, the phone's Trash) when the diary lives on Trakt alone: one row, the newest
+ * copy, the same JSON the phone keeps on Google Drive. */
+export const phoneExtras = sqliteTable('phone_extras', {
+  id: text('id').primaryKey(),
+  body: text('body').notNull(),
+  updatedAt: text('updated_at').notNull()
+});

@@ -22,6 +22,44 @@ struct SettingsLine<Trailing: View>: View {
     }
 }
 
+/// Where tags, Queue, full notes and the other extras Trakt can't keep live besides this iPhone:
+/// Google Drive, your server, or both at once (owner's choice). The phone always has its own copy.
+struct ExtrasStorageGroup: View {
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(ExtrasStorage.driveKey) private var drive = true
+    @AppStorage(ExtrasStorage.serverKey) private var server = false
+    @AppStorage(GoogleDrive.connectedKey) private var driveConnected = false
+    private var sync: PhoneServerSync { PhoneServerSync.shared }
+    var body: some View {
+        SettingsGroup(label: "Where extras live") {
+            SettingsLine(title: "On this iPhone", subtitle: "Tags, Queue, full notes, statuses Trakt can't keep, file folders, favourite people, Trash") {
+                Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
+            }
+            SettingsDivider()
+            SettingsLine(title: "Google Drive", subtitle: driveConnected ? "Kept in step through TwilDiary's Drive folder" : "Connect Google Drive below to keep them there") {
+                Toggle("", isOn: $drive).labelsHidden().tint(theme.accent)
+            }.accessibilityIdentifier("extras-drive")
+            SettingsDivider()
+            SettingsLine(title: "Your server", subtitle: serverSubtitle) {
+                if sync.running { ProgressView().controlSize(.small).accessibilityLabel("Syncing with your server") }
+                else { Toggle("", isOn: $server).labelsHidden().tint(theme.accent) }
+            }.accessibilityIdentifier("extras-server")
+        }
+        .onChange(of: drive) { _, on in if on { Task { await PhoneDriveSync.pullIfDue(store: store, force: true) } } }
+        .onChange(of: server) { _, on in
+            if on { Task { await sync.pullIfDue(store: store, force: true) } } else { sync.forget() }
+        }
+        .task { sync.store = store }
+    }
+    private var serverSubtitle: String {
+        guard server else { return "Your TwilDiary server on Cloudflare, reached with your Trakt sign-in" }
+        if let problem = sync.problem { return problem }
+        if let at = sync.lastSynced { return "In step · " + at.formatted(.relative(presentation: .named)) }
+        return "Getting in step…"
+    }
+}
+
 // MARK: Language & region
 
 struct LanguageRegionView: View {
@@ -163,6 +201,7 @@ struct SyncBackupView: View {
                     ServerBackups.SchedulePicker().padding(.horizontal, 16).frame(minHeight: 60)
                 }
                 }
+                if store.phoneOnly, !store.onThisPhone { ExtrasStorageGroup() }
                 SettingsGroup(label: store.phoneOnly ? "Backup" : "Extra backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in the Files app") {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)

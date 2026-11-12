@@ -60,7 +60,7 @@ import TwilDiaryCore
     }
     private func save(push: Bool = true) {
         BackgroundFiles.save(Saved(entries: entries, locations: locations, changed: changed), to: Self.file)
-        if push { PhoneDriveSync.soon() }
+        if push { PhoneDriveSync.soon(); PhoneServerSync.shared.soon() }
     }
     /// Favourite people or the phone's Trash changed (sent to Drive in a moment).
     func touch(_ part: Part) { changed[part.rawValue] = .now; save() }
@@ -190,7 +190,7 @@ extension PhoneExtras {
     private(set) static var synced = false
     /// Saves to Drive a few seconds after the last change (a run of edits goes once).
     static func soon() {
-        guard GoogleDrive.connected else { return }
+        guard GoogleDrive.connected, ExtrasStorage.drive else { return }
         pending?.cancel()
         pending = Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
@@ -202,7 +202,7 @@ extension PhoneExtras {
     /// missing something. Reading first means a new, empty install never overwrites Drive's copy.
     /// Returns whether the phone's copy changed. Quietly does nothing without Drive.
     @discardableResult static func run() async throws -> Bool {
-        guard GoogleDrive.connected, !running else { return false }
+        guard GoogleDrive.connected, ExtrasStorage.drive, !running else { return false }
         running = true; defer { running = false }
         let extras = PhoneExtras.shared
         let file = try await GoogleDrive.latest(PhoneExtras.driveName)

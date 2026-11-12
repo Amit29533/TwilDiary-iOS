@@ -483,7 +483,7 @@ import TwilDiaryCore
         needsMutationRefresh = false
         Task { await PublicArtworkCache.shared.removeAll() }
         URLCache.shared.removeAllCachedResponses()
-        TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget()
+        TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget(); PhoneServerSync.shared.forget()
         adoptedTraktKeys = []; adoptionRetry = [:]
         api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
         showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
