@@ -47,9 +47,7 @@ struct TrashView: View {
                     }.font(.system(size: 18, weight: .bold))
                     Spacer(minLength: 0)
                     if selecting {
-                        Button(selected.count == min(shown.count, CollectionRequest.limit) ? "Select none" : "Select all") {
-                            selected = selected.count == min(shown.count, CollectionRequest.limit) ? [] : Set(shown.prefix(CollectionRequest.limit).map(\.id))
-                        }.buttonStyle(SettingsPillButtonStyle(outlined: true)).disabled(shown.isEmpty)
+                        Button(allSelected ? "Select none" : "Select all") { toggleAll() }.buttonStyle(SettingsPillButtonStyle(outlined: true)).disabled(shown.isEmpty)
                     } else {
                         Menu {
                             Picker("Trash order", selection: $sort) {
@@ -120,6 +118,12 @@ struct TrashView: View {
     private var archived: [MediaTitle] {
         // No server: the phone's own Trash.
         store.phoneOnly ? PhoneTrash.shared.titles : store.workspace.titles.filter { $0.deletedAt != nil }
+    }
+    /// Every title that can be picked at once (up to the limit) is picked.
+    private var allSelected: Bool { selected.count == min(shown.count, CollectionRequest.limit) }
+    private func toggleAll() {
+        let ids: Set<String> = allSelected ? [] : Set(shown.prefix(CollectionRequest.limit).map(\.id))
+        selected = ids
     }
     private var shown: [MediaTitle] {
         var query = LibraryQuery()

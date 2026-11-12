@@ -31,12 +31,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Choose the newest installed Xcode 26
+      - name: Choose Xcode 26.6 (the version the other CI builds use)
         run: |
           set -euo pipefail
           ls -d /Applications/Xcode*.app 2>/dev/null || true
           dev=""
-          for app in $(ls -d /Applications/Xcode_26*.app /Applications/Xcode-26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
+          for app in /Applications/Xcode_26.6.app $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
             if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then dev="$app/Contents/Developer"; break; fi
           done
           [ -n "$dev" ] || dev="$(xcode-select -p)"
