@@ -120,6 +120,27 @@ enum TraktDelivery: Equatable, Sendable {
     /// Trakt refused this edit (other 4xx, account limit): sending it again won't help.
     case rejected
 
+    /// Our own pause after the service asked for one (see `ProviderCooldowns`): nothing was sent, and
+    /// nothing is wrong with the edit, so it never counts against the edit's tries.
+    static func paused(_ error: Error) -> Bool {
+        if let error = error as? APIError, case .message(let text) = error { return text.contains("slow down") }
+        return false
+    }
+    /// A failure that says nothing about the edit itself: never sent (offline), a pause the service
+    /// asked for, or a sign-in to renew. The edit waits; it isn't used up and set aside.
+    static func keepsWaiting(_ error: Error) -> Bool {
+        if paused(error) { return true }
+        if let error = error as? APIError {
+            switch error {
+            case .rejected(let status, _): return status == 401 || status == 403
+            case .signIn: return true
+            case .message(let text): return text.contains("Reconnect") || text.contains("sign-in")
+            default: return false
+            }
+        }
+        if let error = error as? TraktWriteError { return error.status == 401 || error.status == 403 }
+        return of(error) == .notSent
+    }
     static func of(_ error: Error) -> TraktDelivery {
         // Our own cool-down after the service asked us to slow down: nothing was sent.
         if let error = error as? APIError, case .message(let text) = error, text.contains("slow down") { return .retryLater }
@@ -198,6 +219,10 @@ enum ServiceRemovals {
     /// Changes on sign-out. Reads and sends compare it after every wait, so work started for the
     /// previous account can't save, show or send anything once it's gone.
     @ObservationIgnored private var generation = UUID()
+    /// Goes up each time a read of Trakt comes back and replaces the copy here. A `check` can end
+    /// without one (another read under way, edits still waiting, an edit made meanwhile); Force
+    /// Match plans only from a copy it knows was just read.
+    @ObservationIgnored private(set) var readCount = 0
     private var file: URL
     private let traktFile: URL
     /// "On this phone" (no account): the same diary and edits as Trakt's, kept in its own file and
@@ -281,6 +306,8 @@ enum ServiceRemovals {
             // your edit and Trakt is read again in a moment (with the edit on it).
             if edits != editsAtStart { refreshSoon(store: store, after: 2); return }
             self.library = library
+            // Every list was read (one Trakt wouldn't give keeps its old copy, which isn't fresh).
+            if unavailable.allSatisfy({ $0 == .notes }) { readCount += 1 }
             save(library)
             ServiceIDs.shared.learn(from: library)
             if store.traktHoldsDiary { rememberSeen(library) }
@@ -593,7 +620,9 @@ enum ServiceRemovals {
             } else if !kept.isEmpty {
                 let slot = title.kind == .movie ? "movie" : "show"
                 let body: [String: Any] = [slot: ["ids": ["tmdb": title.tmdbId ?? 0]], "notes": kept, "privacy": "private", "spoiler": false]
-                pending.append(PendingWrite(path: "/notes", body: try JSONSerialization.data(withJSONObject: body), owner: token?.username))
+                // An answer lost on the way: Trakt may have the note already (checked before it's sent again).
+                pending.append(PendingWrite(path: "/notes", body: try JSONSerialization.data(withJSONObject: body), owner: token?.username,
+                                            uncertain: TraktDelivery.of(error) == .uncertain ? true : nil))
             }
             update(store: store) { library in
                 library.notes.removeAll { $0.title?.diaryKey == title.diaryKey }
@@ -785,6 +814,10 @@ enum ServiceRemovals {
                     }
                 }
                 else if next.uncertain == true, next.path == "/sync/history" { body = try await missingPlays(next.body, client: client) }
+                // A new note whose answer was lost: sent again only when Trakt doesn't have it.
+                else if next.uncertain == true, next.path == "/notes", next.method == nil {
+                    if try await noteAlreadySaved(next.body, client: client) { body = nil }
+                }
             } catch { return false }
             do {
                 guard session == generation else { return false }
@@ -800,7 +833,7 @@ enum ServiceRemovals {
             } catch {
                 guard session == generation, !Task.isCancelled else { return false }
                 let kind = TraktDelivery.of(error)
-                if kind == .retryLater || kind == .uncertain, let index = pending.firstIndex(where: { $0.id == next.id }) {
+                if kind == .retryLater || kind == .uncertain, !TraktDelivery.paused(error), let index = pending.firstIndex(where: { $0.id == next.id }) {
                     // A finite budget: one Trakt keeps failing on is set aside so the rest go on.
                     let tries = (pending[index].attempts ?? 0) + 1
                     pending[index].attempts = tries; pending[index].lastError = error.localizedDescription
@@ -831,6 +864,15 @@ enum ServiceRemovals {
         }
         retries = 0
         return true
+    }
+    /// Whether Trakt already has the note a queued "new note" would add (the same title and text).
+    private func noteAlreadySaved(_ body: Data, client: TraktDirectClient) async throws -> Bool {
+        guard let root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any], let text = root["notes"] as? String else { return false }
+        let movie = root["movie"] != nil
+        guard let media = (root[movie ? "movie" : "show"] as? [String: Any])?["ids"] as? [String: Any],
+              let tmdb = (media["tmdb"] as? NSNumber)?.intValue else { return false }
+        let notes = try await pages(client, "/users/me/notes", decode: TraktDecode.notes).0
+        return notes.contains { $0.title?.tmdbId == tmdb && ($0.title?.kind == .movie) == movie && $0.text == text }
     }
     /// A change Trakt refused or couldn't place: you're told, and the screen goes back to what
     /// Trakt has (each list an edit touched is read again).
@@ -1119,6 +1161,8 @@ enum ServiceRemovals {
     private(set) var plans: [MainTracker: TraktWritePlan] = [:]
     /// Changes on sign-out (see `TraktDirectStore.generation`).
     @ObservationIgnored private var generation = UUID()
+    /// Reads that came back and replaced the copy here (see `TraktDirectStore.readCount`).
+    @ObservationIgnored private var readCounts: [MainTracker: Int] = [:]
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
@@ -1253,6 +1297,7 @@ enum ServiceRemovals {
             if edits != editsAtStart { refreshSoon(tracker, store: store, after: 2); return }
             library = ServiceIDs.shared.filledIn(library)
             libraries[tracker] = library
+            readCounts[tracker, default: 0] += 1
             save(library, tracker)
             ServiceIDs.shared.learn(from: library)
             if store.diaryFromTracker == tracker { store.applyDiarySource() }
@@ -1321,7 +1366,9 @@ enum ServiceRemovals {
         let wait = slot.timeIntervalSinceNow
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
     }
-    @ObservationIgnored private var refresh: Task<Void, Never>?
+    /// One per service: an edit goes to several at once, and a single shared re-read would leave
+    /// all but the last showing the phone's guess until the next sync.
+    @ObservationIgnored private var refreshes: [MainTracker: Task<Void, Never>] = [:]
     // MARK: Edits waiting for the service (as Cinopsys keeps them)
 
     struct PendingWrite: Codable, Equatable {
@@ -1410,6 +1457,10 @@ enum ServiceRemovals {
                 let reply = try await store.directClient.write(config, path: next.path, body: next.body)
                 guard session == generation else { return false }
                 pending[tracker]?.removeAll { $0.id == next.id }
+                // Simkl and MDBList answered without saying anything changed: the phone already
+                // shows the edit, and their change stamps won't move for one they didn't apply, so
+                // the next read is a full one (otherwise the phone's guess would stay for good).
+                if tracker == .simkl || tracker == .mdblist, !ProviderDeliveryPlanner.confirms(reply) { libraries[tracker]?.activities = nil }
                 if TraktDirectStore.notFoundCount(reply) > 0 {
                     refused(tracker, "\(tracker.name) couldn’t find a title by its TMDB id, so it wasn’t changed there.", store: store)
                 }
@@ -1433,7 +1484,7 @@ enum ServiceRemovals {
                     // A finite budget (Cinopsys's retry_count): offline doesn't count; an edit the
                     // service keeps failing is set aside (listed on its page) so the rest, and the
                     // reads, carry on.
-                    guard TraktDelivery.of(error) != .notSent, let index = pending[tracker]?.firstIndex(where: { $0.id == next.id }) else { return false }
+                    guard TraktDelivery.of(error) != .notSent, !TraktDelivery.paused(error), let index = pending[tracker]?.firstIndex(where: { $0.id == next.id }) else { return false }
                     let tries = (pending[tracker]?[index].attempts ?? 0) + 1
                     pending[tracker]?[index].attempts = tries
                     pending[tracker]?[index].lastError = error.localizedDescription
@@ -1562,9 +1613,9 @@ enum ServiceRemovals {
     }
     /// A quiet re-read a few seconds after an edit.
     func refreshSoon(_ tracker: MainTracker, store: DiaryStore, after seconds: Double = 10) {
-        refresh?.cancel()
+        refreshes[tracker]?.cancel()
         let session = generation
-        refresh = Task { [weak self] in
+        refreshes[tracker] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard let self, !Task.isCancelled, session == self.generation else { return }
             await self.check(tracker, store: store)
@@ -1600,7 +1651,7 @@ enum ServiceRemovals {
                 writeProgress = "Adding \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
                 try await pace()
                 guard session == generation else { throw CancellationError() }
-                tally.add(try await store.directClient.write(config, path: request.path, body: request.body))
+                tally.add(try await store.directClient.write(config, path: request.path, body: request.body, partial: true))
                 sent += request.count
             }
         } catch {
@@ -1636,7 +1687,7 @@ enum ServiceRemovals {
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
                 try await pace()
                 guard session == generation else { return }
-                let reply = try await store.directClient.write(config, path: request.path, body: request.body)
+                let reply = try await store.directClient.write(config, path: request.path, body: request.body, partial: true)
                 sent += request.count
                 tally.add(reply)
             }
@@ -1685,13 +1736,57 @@ enum ServiceRemovals {
         return await freshForcePlan(tracker, source: source, store: store, full: false)
     }
     /// `full`: both sides read in full, not just what their change stamps say moved (after a send).
+    /// Reads a service now and says whether a new copy actually came back. `check` can end quietly
+    /// with the old copy (another read under way, edits still waiting, an edit made meanwhile), and
+    /// a plan from an old copy takes off or sends the wrong things; so a read under way is waited
+    /// for, and a quiet ending is tried once more before giving up.
+    private func readFresh(_ tracker: MainTracker, store: DiaryStore, full: Bool) async -> Bool {
+        let session = generation
+        for attempt in 0..<2 {
+            var waited = 0
+            while running != nil, waited < 200, session == generation { try? await Task.sleep(for: .milliseconds(300)); waited += 1 }
+            guard session == generation else { return false }
+            if full { libraries[tracker]?.activities = nil }
+            let before = readCounts[tracker, default: 0]
+            await check(tracker, store: store)
+            guard session == generation, errors[tracker] == nil else { return false }
+            if readCounts[tracker, default: 0] != before { return true }
+            if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
+        }
+        errors[tracker] = "\(tracker.name) couldn’t be read afresh just now (another change was on its way). Try again in a moment."
+        return false
+    }
+    /// The same for Trakt, which has its own store. `note`: the service whose panel shows why not.
+    private func readTraktFresh(store: DiaryStore, full: Bool, note tracker: MainTracker) async -> Bool {
+        let trakt = TraktDirectStore.shared
+        // The on-this-phone diary is its own record: there's nothing to read.
+        if trakt.localOnly { return true }
+        let session = generation
+        for attempt in 0..<2 {
+            var waited = 0
+            while trakt.running, waited < 200, session == generation { try? await Task.sleep(for: .milliseconds(300)); waited += 1 }
+            guard session == generation else { return false }
+            let before = trakt.readCount
+            if full { await trakt.rereadAfterForce(store: store) } else { await trakt.check(store: store) }
+            guard session == generation else { return false }
+            if let failure = trakt.error { errors[tracker] = "Trakt couldn’t be read: " + failure; return false }
+            if trakt.readCount != before { return true }
+            if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
+        }
+        errors[tracker] = "Trakt couldn’t be read in full just now (a change was on its way, or Trakt didn’t give its favourites or dropped shows). Try again in a moment."
+        return false
+    }
     private func freshForcePlan(_ tracker: MainTracker, source: ForceSource, store: DiaryStore, full: Bool) async -> ForceMatchPlan? {
-        if full { libraries[tracker]?.activities = nil }
-        await check(tracker, store: store)
-        guard errors[tracker] == nil, let service = libraries[tracker] else { return nil }
+        guard await readFresh(tracker, store: store, full: full), let service = libraries[tracker] else { return nil }
         switch source {
         case .diary:
             let diary = store.diaryToMatch
+            // An empty source would take everything off the other side: far more likely a diary
+            // that hasn't loaded than one you emptied on purpose.
+            guard !diary.activeTitles.isEmpty else {
+                errors[tracker] = "Your diary is empty here, so Force Match would take everything off \(tracker.name). Nothing was changed."
+                return nil
+            }
             let holds = (store.diaryService ?? .trakt).capabilities
             return await Task.detached(priority: .userInitiated) {
                 ForceMatchPlan.make(target: service, tracker: tracker, source: diary, sourceHolds: holds,
@@ -1699,28 +1794,48 @@ enum ServiceRemovals {
             }.value
         case .service:
             guard canForceIntoDiary(tracker, store: store), let home = store.diaryService else { return nil }
+            guard !service.plays.isEmpty || !service.ratings.isEmpty || !service.watchlist.isEmpty || !service.favorites.isEmpty || !service.dropped.isEmpty else {
+                errors[tracker] = "\(tracker.name) has nothing on it, so Force Match would take everything off your diary. Nothing was changed."
+                return nil
+            }
+            // The side being changed is read afresh too: a failed or skipped read would leave the
+            // copy from before the last send, and everything just sent would look still missing.
             if home == .trakt {
-                if full { await TraktDirectStore.shared.rereadAfterForce(store: store) } else { await TraktDirectStore.shared.check(store: store) }
+                guard await readTraktFresh(store: store, full: full, note: tracker) else { return nil }
             } else {
-                if full { libraries[home]?.activities = nil }
-                await check(home, store: store)
+                guard await readFresh(home, store: store, full: full) else {
+                    if errors[tracker] == nil { errors[tracker] = errors[home].map { "\(home.name) couldn’t be read: " + $0 } }
+                    return nil
+                }
             }
             guard let target = home == .trakt ? TraktDirectStore.shared.library : libraries[home] else { return nil }
             let catalog = PhoneCatalog.shared.titles
             return await Task.detached(priority: .userInitiated) {
                 let refs = service.plays.map(\.title) + service.ratings.map(\.title) + service.watchlist.map(\.title)
                     + service.favorites.map(\.title) + service.dropped.map(\.title)
-                return ForceMatchPlan.make(target: target, tracker: home, source: TraktDiary.build(library: service, server: Workspace(), tracker: tracker, catalog: catalog),
+                return ForceMatchPlan.make(target: target, tracker: home, source: TraktDiary.forceSource(library: service, tracker: tracker, catalog: catalog),
                                            sourceHolds: tracker.capabilities, keep: ForceMatchPlan.keepTokens(refs))
             }.value
         }
     }
 
     /// What a failed Force Match call means for it.
-    private enum ForceFailure { case retry, uncertain, refused, signIn }
+    /// `retry`: a passing failure of this call (asked again, then left for the check). `busy`: the
+    /// service is limiting us (asked again, then the run stops: the calls after it would only wait
+    /// the same way). `stop`: the service said when to come back, or the account is at its limit.
+    /// `refused`: something in the body, so it's halved to find which title. `rejected`: the call
+    /// itself, which halving can't help.
+    private enum ForceFailure { case retry, busy, uncertain, refused, rejected, signIn, stop }
     private static func classify(_ error: Error) -> ForceFailure {
         func status(_ code: Int) -> ForceFailure {
-            switch code { case 401, 403: return .signIn; case 408, 425, 429, 500...: return .retry; default: return .refused }
+            switch code {
+            case 401, 403: return .signIn
+            case 420: return .stop
+            case 429: return .busy
+            case 408, 425, 500...: return .retry
+            case 400, 404, 409, 422: return .refused
+            default: return .rejected
+            }
         }
         if let error = error as? TraktWriteError { return status(error.status) }
         if let error = error as? APIError {
@@ -1730,8 +1845,10 @@ enum ServiceRemovals {
             case .transport: return .uncertain
             case .message(let text):
                 let lower = text.lowercased()
+                // Our own pause after the service asked for one: it says until when.
+                if lower.contains("slow down") { return .stop }
                 if lower.contains("sign-in") || lower.contains("reconnect") || lower.contains("connect ") { return .signIn }
-                if lower.contains("busy") || lower.contains("slow down") || lower.contains("try again") { return .retry }
+                if lower.contains("busy") || lower.contains("try again") { return .busy }
                 return .refused
             default: return .refused
             }
@@ -1751,16 +1868,17 @@ enum ServiceRemovals {
         var uncertain = Set<String>(), exhausted = Set<String>()
         var waits = 0, splits = 0, passes = 0
         var stopped: String?
-        /// What still differed after the last check, and the titles cleared to be sent fresh.
+        /// What still differed at the last check; nil when that check couldn't read both sides.
         var lastFresh: ForceMatchPlan?
-        var cleared = Set<String>()
+        /// Sent and answered, and still not there at the check: into the ledger.
+        var stuck = 0
     }
 
-    /// Force Match in one tap, with nothing more to answer: both sides read, the plan worked out and
-    /// sent, each failure dealt with by what it means (see `sendForce`), what landed checked, and
-    /// what failed for a passing reason sent once more. Titles still different after that are
-    /// cleared off the target altogether and sent again fresh from the source of truth, so nothing
-    /// half-matched stays behind.
+    /// Force Match: both sides read, the plan worked out and sent, each failure dealt with by what
+    /// it means (see `sendForce`), what landed checked, and what failed for a passing reason sent
+    /// once more. Titles still different after that are left as they are and named in the report:
+    /// they're ones the service can't find or numbers its own way, and clearing them to send again
+    /// would lose what the source can't hold (rewatches, specials, favourites) for the same result.
     func forceRun(_ tracker: MainTracker, source: ForceSource, store: DiaryStore) async {
         guard writing == nil, running == nil else { return }
         if store.isPreview { errors[tracker] = "Force Match needs real connections."; return }
@@ -1792,38 +1910,30 @@ enum ServiceRemovals {
                 guard session == generation, run.stopped == nil else { break }
                 // What actually landed: both sides read in full, what's still different worked out afresh.
                 writeProgress = "Checking what landed…"
+                // A check that can't read both sides leaves nothing to go by (never the plan from
+                // before the send, which would show everything just sent as still missing).
+                run.lastFresh = nil
                 guard let fresh = await freshForcePlan(tracker, source: source, store: store, full: true), session == generation else { break }
                 run.lastFresh = fresh
                 run.names.merge(fresh.names) { first, _ in first }
                 guard !run.uncertain.isEmpty || !run.exhausted.isEmpty else { break }
                 current = fresh.without(Set(run.refused.keys))
             }
-            // The last step: whatever still differs is cleared off the target and sent again fresh.
-            if session == generation, run.stopped == nil, let left = run.lastFresh, !left.isEmpty {
-                let keys = Set(left.names.keys)
-                run.cleared = keys
-                writeProgress = "Clearing \(keys.count.counted("title", "titles")) on \(plan.tracker.name) to send them fresh…"
-                let target = (plan.tracker == .trakt ? TraktDirectStore.shared.library : libraries[plan.tracker]) ?? TraktLibrary()
-                let wipe = ForceMatchPlan.wipe(keys, target: target, tracker: plan.tracker)
-                run.refused = [:]
-                if !wipe.isEmpty { try await sendForce(wipe, run: &run, store: store) }
-                // Refusals while clearing are things that weren't there to take off.
-                run.refused = [:]
-                if session == generation, run.stopped == nil {
-                    writeProgress = "Sending them again…"
-                    if let fresh = await freshForcePlan(tracker, source: source, store: store, full: true), session == generation {
-                        let again = fresh.only(keys)
-                        if !again.isEmpty { try await sendForce(again, run: &run, store: store) }
-                        writeProgress = "Checking what landed…"
-                        run.lastFresh = await freshForcePlan(tracker, source: source, store: store, full: true)
-                        if let last = run.lastFresh { run.names.merge(last.names) { first, _ in first } }
-                    }
-                }
-            }
         } catch { return }
         guard session == generation else { return }
         writing = nil; writeProgress = nil
         if run.stopped != nil { await check(tracker, store: store) }
+        // Sent, answered, and still not there: into the ledger, as a match does, so the ordinary
+        // match doesn't keep sending what this service doesn't keep ("Try them again" clears it).
+        if source == .diary, run.stopped == nil, let left = run.lastFresh {
+            let stuck = plan.send.tokens.intersection(left.send.tokens)
+            if !stuck.isEmpty {
+                MatchLedger.add(tracker, stuck)
+                run.stuck = stuck.count
+                await retryLedgerless(tracker, store: store)
+                guard session == generation else { return }
+            }
+        }
         writeResults[tracker] = forceReport(plan, run, source: source, tracker: tracker)
     }
     /// One pass: each call, one a second, each failure dealt with by what it means.
@@ -1850,7 +1960,7 @@ enum ServiceRemovals {
                         try await pace()
                         guard session == generation else { throw CancellationError() }
                         if request.method == "DELETE" { reply = try await store.directClient.read(config, path: request.path, method: "DELETE") }
-                        else { reply = try await store.directClient.write(config, path: request.path, body: request.body ?? Data()) }
+                        else { reply = try await store.directClient.write(config, path: request.path, body: request.body ?? Data(), partial: true) }
                     } else {
                         reply = try await TraktDirectStore.shared.forcePost(request.path, body: request.body ?? Data(), store: store)
                     }
@@ -1864,16 +1974,21 @@ enum ServiceRemovals {
                     if request.method == "DELETE", case .rejected(404, _)? = error as? APIError { break attempts }
                     let keys = plan.keys(of: request)
                     switch Self.classify(error) {
-                    case .signIn:
+                    case .signIn, .stop:
+                        // The sign-in, the account's limit, or a pause the service asked for: the
+                        // calls after this one would fail the same way.
                         run.stopped = error.localizedDescription
                         return
-                    case .retry where tries < 3:
+                    case .retry where tries < 3, .busy where tries < 3:
                         let wait = [5, 15, 45][tries]
                         tries += 1; run.waits += 1
                         writeProgress = "\(plan.tracker.name) is busy; asking again in \(wait) s…"
                         try await Task.sleep(for: .seconds(wait))
                         guard session == generation else { throw CancellationError() }
                         continue attempts
+                    case .busy:
+                        run.stopped = "\(plan.tracker.name) is still limiting requests after three waits. Run Force Match again in a while; it sends only what’s still different."
+                        return
                     case .retry:
                         run.exhausted.formUnion(keys)
                     case .uncertain:
@@ -1882,9 +1997,15 @@ enum ServiceRemovals {
                         if let halves = request.halves() {
                             queue.insert(contentsOf: halves, at: 0)
                             total += halves.count; run.splits += 1
+                        } else if keys.isEmpty {
+                            run.refused[request.summary] = error.localizedDescription
                         } else {
                             for key in keys { run.refused[key] = error.localizedDescription }
                         }
+                    case .rejected:
+                        // The call itself (a path or method the service doesn't take): not halved.
+                        if keys.isEmpty { run.refused[request.summary] = error.localizedDescription }
+                        for key in keys { run.refused[key] = error.localizedDescription }
                     }
                     break attempts
                 }
@@ -1903,14 +2024,19 @@ enum ServiceRemovals {
         if run.waits > 0 { text += " \(target) was busy \(run.waits == 1 ? "once" : "\(run.waits) times"); waited and asked again." }
         if run.passes > 1 { text += " Checked what landed and sent the rest once more." }
         if let stopped = run.stopped { text += " Stopped: \(stopped)" }
-        if !run.cleared.isEmpty { text += " Cleared and sent again fresh: \(titles(Array(run.cleared)))." }
         if !run.refused.isEmpty {
             text += " \(target) refused \(titles(Array(run.refused.keys))): \(run.refused.values.first ?? "")."
         }
-        if let still = run.lastFresh, !still.isEmpty, run.stopped == nil {
-            text += " Still different after clearing and sending again: \(titles(Array(still.names.keys))). \(target) doesn’t keep them as sent (a title it can’t find, or one it numbers its own way)."
-        } else if run.stopped == nil {
-            text += " Both sides now match."
+        guard run.stopped == nil else { return text }
+        if let still = run.lastFresh {
+            if still.isEmpty {
+                text += " Both sides now match."
+            } else {
+                text += " Still different: \(titles(Array(still.names.keys))). \(target) doesn’t keep them as sent (a title it can’t find, or one it numbers its own way), so they were left as they are; nothing was cleared."
+                if run.stuck > 0 { text += " \(run.stuck) of those won’t be sent again on their own." }
+            }
+        } else {
+            text += " What landed couldn’t be checked, because both sides couldn’t be read again. Tap Check now to see where they stand."
         }
         return text
     }
@@ -1995,7 +2121,8 @@ enum ServiceRemovals {
     /// Anything already running for this account can no longer save or show its results.
     func forget() {
         generation = UUID()
-        refresh?.cancel(); refresh = nil
+        for task in refreshes.values { task.cancel() }
+        refreshes = [:]
         running = nil; writing = nil; writeProgress = nil
         libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]; pending = [:]
         for tracker in [MainTracker.simkl, .mdblist, .wetrakr] { MatchLedger.clear(tracker) }

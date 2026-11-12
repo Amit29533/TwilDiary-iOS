@@ -81,8 +81,8 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
                 TraktPlay(historyId: 0, title: loveReset, watchedAt: nil)],
         watchlist: [TraktListed(title: TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 5, name: "Panchayat"), listedAt: nil)])
     let plan = ForceMatchPlan.make(target: library, tracker: .simkl, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
-    #expect(plan.send.plays.map { "\($0.title.tmdbId) s\($0.season ?? 0)e\($0.episode ?? 0)" } == ["209867 s1e2"])
-    #expect(plan.renumbered == ["Frieren"] && plan.plays.isEmpty, "Frieren's S2E1 stays: it's the E2 being sent")
+    #expect(plan.renumbered == ["Frieren"] && plan.plays.isEmpty, "Frieren's S2E1 stays: it's the diary's E2 under Simkl's number")
+    #expect(plan.send.plays.isEmpty, "Left as it is: E2 isn't sent either, or the show would never stop looking different")
     #expect(plan.titles.map(\.name).sorted() == ["Love Reset", "Panchayat"], "Titles the diary lacks go whole")
     let removal = try #require(plan.requests().first { $0.summary == "titles taken off" })
     #expect(removal.path == "/sync/history/remove")
@@ -124,4 +124,30 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
     let plan = ForceMatchPlan.make(target: library, tracker: .mdblist, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
     let again = plan.only(["tv:209867"])
     #expect(!again.send.plays.isEmpty && again.send.plays.allSatisfy { $0.title.tmdbId == 209867 } && again.plays.isEmpty && again.ratings.isEmpty)
+}
+
+@Test func titlesWithoutANameNeverShareAKeepToken() throws {
+    // WeTrakr and MDBList send some titles without a name: one of them without a TMDB id on the
+    // source must not keep every nameless title on the target.
+    let nameless = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: nil, name: "")
+    #expect(ForceMatchPlan.keepTokens([nameless]).isEmpty)
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 7, title: TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, name: ""), watchedAt: nil)])
+    let plan = ForceMatchPlan.make(target: library, tracker: .trakt, source: try diary(), sourceHolds: MainTracker.trakt.capabilities,
+                                   keep: ForceMatchPlan.keepTokens([nameless]))
+    #expect(plan.plays.map(\.historyId) == [7], "The nameless title the diary lacks still goes")
+}
+
+@Test func aServiceAsTheSourceDoesNotPutRatedOnlyTitlesOnTheWatchlist() throws {
+    // Simkl: Frieren watched, Love Reset only rated, Perfect Blue on Plan to Watch.
+    let simkl = TraktLibrary(plays: [TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z")],
+                             ratings: [TraktRating(title: loveReset, rating: 8, ratedAt: nil)],
+                             watchlist: [TraktListed(title: blue, listedAt: nil)])
+    let source = TraktDiary.forceSource(library: simkl, tracker: .simkl)
+    #expect(source.titles.first { $0.tmdbId == 1100 }?.status == "none")
+    #expect(source.titles.first { $0.tmdbId == 10494 }?.status == "planned")
+    let plan = ForceMatchPlan.make(target: TraktLibrary(), tracker: .trakt, source: source, sourceHolds: MainTracker.simkl.capabilities)
+    #expect(plan.send.watchlistAdd.map(\.name) == ["Perfect Blue"], "Only what Simkl has on Plan to Watch")
+    #expect(plan.send.ratings.map(\.title.name) == ["Love Reset"])
+    // On no list at the source: never moved to Simkl's Completed.
+    #expect(TraktWritePlan.simklList(status: "none", isSeries: false) == nil)
 }

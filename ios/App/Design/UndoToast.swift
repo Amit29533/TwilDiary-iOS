@@ -1,7 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// A short, readable Undo window. Repeated actions and active recovery restart its lifetime.
+/// A short notice of what was just saved. It no longer offers Undo: a watch logged by mistake is
+/// taken off with "Undo last watch" or from the title's history, which reach every service.
+/// Repeated actions and active recovery restart its lifetime.
 struct UndoToast: View {
     /// UI tests run on shared CI machines where a save can take seconds: the toast stays 8 s there,
     /// as it does for VoiceOver, so tests reach Undo before it expires.
@@ -28,11 +30,8 @@ struct UndoToast: View {
             DiaryIcon(name: "check", size: 15).foregroundStyle(Color(webHex: "#79d8bc"))
             Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
                 .lineLimit(1).layoutPriority(1)
-            Button("Undo") { Task { await store.undo() } }
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
-                .frame(minWidth: 44, minHeight: 44).disabled(store.writesBlocked).accessibilityIdentifier("undo-action")
             Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 13).frame(width: 36, height: 44) }
-                .foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Dismiss undo")
+                .foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Dismiss notice")
         // No spacer, so the row hugs its content: a small pill, not a bar across the screen.
         }.buttonStyle(.plain).padding(.leading, 12).padding(.trailing, 2).frame(height: 40)
             .background(.black.opacity(0.3), in: Capsule())

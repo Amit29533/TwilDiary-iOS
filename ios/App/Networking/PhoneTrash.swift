@@ -37,8 +37,9 @@ extension DiaryStore {
             try await servicePatch(title, values: ["status": title.isSeries ? "watching" : "completed", "score": NSNull(), "favorite": false])
             PhoneTrash.shared.add(title)
             applyDiarySource()
+            // Said, with no Undo: the title comes back from Trash itself.
+            dismissUndo()
             undoLabel = "Moved to Trash"
-            setUndo([title.id]) { [weak self] in try await self?.restoreOnPhone(title) }
             return true
         } catch {
             self.error = error.localizedDescription

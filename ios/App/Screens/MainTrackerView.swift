@@ -133,7 +133,11 @@ struct TrackerPreviewPanel: View {
     @State private var confirmMatch = false
     /// Force Match: which side wins.
     @State private var forceSource = TrackerPreviewStore.ForceSource.diary
-    @State private var warnForceIntoDiary = false
+    /// Force Match asks first, with what it would add and take off (both sides read for it).
+    @State private var forcePreview: ForceMatchPlan?
+    @State private var forcePreviewSource = TrackerPreviewStore.ForceSource.diary
+    @State private var readingForForce = false
+    @State private var confirmForce = false
     @State private var copiedReport = false
     @State private var clearedLetters = 0
     @State private var writeThroughError: String?
@@ -341,26 +345,48 @@ struct TrackerPreviewPanel: View {
                 }.pickerStyle(.menu).accessibilityIdentifier(tracker.rawValue + "-force-source")
             }
             Text(forceSource == .diary
-                 ? "One tap makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, failures are retried, and anything still different is cleared and sent again. No confirmation; it can’t be undone."
-                 : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, failures are retried, and anything still different is cleared and sent again. You’ll be asked first; it can’t be undone.")
+                 ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
+                 : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button {
-                // Your diary is the record: changing it to match a service asks first.
-                if forceSource == .service { warnForceIntoDiary = true }
-                else { Task { await others.forceRun(tracker, source: .diary, store: store) } }
+                // Both sides are read and the changes shown before anything is sent.
+                let source = forceSource
+                readingForForce = true
+                Task {
+                    let plan = await others.forcePlan(tracker, source: source, store: store)
+                    readingForForce = false
+                    // A read that failed says why in the panel.
+                    guard let plan else { return }
+                    // Nothing to change: the run says so itself.
+                    if plan.isEmpty { await others.forceRun(tracker, source: source, store: store); return }
+                    forcePreview = plan; forcePreviewSource = source; confirmForce = true
+                }
             } label: {
-                Label(others.writing == tracker ? "Force matching…" : "Force Match", systemImage: "equal.circle").frame(maxWidth: .infinity)
-            }.buttonStyle(SettingsWideButtonStyle()).disabled(running || others.writing != nil)
+                Label(others.writing == tracker ? "Force matching…" : readingForForce ? "Reading both sides…" : "Force Match", systemImage: "equal.circle").frame(maxWidth: .infinity)
+            }.buttonStyle(SettingsWideButtonStyle()).disabled(running || others.writing != nil || readingForForce)
                 .accessibilityIdentifier(tracker.rawValue + "-force-match")
-                .alert("Change your diary to match \(tracker.name)?", isPresented: $warnForceIntoDiary) {
-                    Button("Change my diary", role: .destructive) { Task { await others.forceRun(tracker, source: .service, store: store) } }
+                .alert(forcePreviewSource == .service ? "Change your diary to match \(tracker.name)?" : "Make \(tracker.name) match your diary?", isPresented: $confirmForce) {
+                    Button(forcePreviewSource == .service ? "Change my diary" : "Force Match", role: .destructive) {
+                        let source = forcePreviewSource
+                        Task { await others.forceRun(tracker, source: source, store: store) }
+                    }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("\(tracker.name) becomes the source of truth. Watches, ratings and lists on \((store.diaryService ?? .trakt).name) that \(tracker.name) doesn’t have are taken off your diary, and titles that still differ are cleared and sent again from \(tracker.name)."
-                         + (tracker.capabilities.keepsRewatches ? "" : " \(tracker.name) keeps one watch per episode, so rewatches of those titles are lost.")
-                         + " This can’t be undone.")
+                    Text(forceConfirmation)
                 }
         }.onChange(of: intoDiary) { _, can in if !can { forceSource = .diary } }
+    }
+    /// What the previewed Force Match would do, one line per kind of change.
+    private var forceConfirmation: String {
+        guard let plan = forcePreview else { return "" }
+        // Some lines name every title; in an alert they're cut to a line or two.
+        let lines = plan.summary.map { "• " + ($0.count > 140 ? String($0.prefix(140)) + "…" : $0) }
+        var text = lines.joined(separator: "\n")
+        if plan.removalCount > 0 { text += "\n\n\(plan.removalCount.formatted()) taken off \(plan.tracker.name) in all." }
+        if forcePreviewSource == .service, !tracker.capabilities.keepsRewatches {
+            text += "\n\n\(tracker.name) keeps one watch per episode; rewatches already in your diary stay."
+        }
+        return text + "\n\nThis can’t be undone."
     }
     private var intro: String {
         switch tracker {

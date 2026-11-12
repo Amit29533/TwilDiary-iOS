@@ -36,16 +36,46 @@ import TwilDiaryTestSupport
     let moved = ProviderDeliveryPlanner.plan(completed, provider: .simkl, in: base)
     #expect(moved.blocked.isEmpty && moved.deliveries.map(\.path) == ["/sync/add-to-list"])
     #expect((moved.deliveries[0].body["movies"] as? [[String: Any]])?.first?["to"] as? String == "completed")
-    // Favourites go to Trakt only; a status MDBList takes from the watches isn't queued for it.
+    // Favourites go to Trakt only.
     let favourite = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: true, queued: nil, notes: nil)
     #expect(ProviderDeliveryPlanner.carries(favourite, provider: .trakt, isSeries: false))
     #expect(!ProviderDeliveryPlanner.carries(favourite, provider: .simkl, isSeries: false) && !ProviderDeliveryPlanner.carries(favourite, provider: .mdblist, isSeries: false))
     let traktFavourite = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: favourite, pendingProviders: [.trakt]), provider: .trakt, in: base)
     #expect(traktFavourite.blocked.isEmpty && traktFavourite.deliveries.map(\.path) == ["/sync/favorites"])
     let done = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "completed", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
-    #expect(!ProviderDeliveryPlanner.carries(done, provider: .mdblist, isSeries: false) && ProviderDeliveryPlanner.carries(done, provider: .simkl, isSeries: false))
+    // MDBList keeps no Completed, but leaving Planned takes the title off its watchlist.
+    #expect(ProviderDeliveryPlanner.carries(done, provider: .mdblist, isSeries: false) && ProviderDeliveryPlanner.carries(done, provider: .simkl, isSeries: false))
+    let offList = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: done, pendingProviders: [.mdblist]), provider: .mdblist, in: base)
+    #expect(offList.blocked.isEmpty && offList.deliveries.map(\.path) == ["/watchlist/items/remove"])
     let dropped = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "dropped", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
-    #expect(ProviderDeliveryPlanner.carries(dropped, provider: .trakt, isSeries: true) && !ProviderDeliveryPlanner.carries(dropped, provider: .trakt, isSeries: false))
+    #expect(ProviderDeliveryPlanner.carries(dropped, provider: .trakt, isSeries: true) && ProviderDeliveryPlanner.carries(dropped, provider: .trakt, isSeries: false))
+    // A dropped movie: Trakt drops only shows, so just the watchlist removal goes.
+    let droppedMovie = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: dropped, pendingProviders: [.trakt]), provider: .trakt, in: base)
+    #expect(droppedMovie.deliveries.map(\.path) == ["/sync/watchlist/remove"])
+}
+
+/// A watch taken off a diary that lives on a service reaches the mirrors without the diary: the
+/// removal carries the title, episode and time itself.
+@Test func aRemovalFromAServiceDiaryReachesTheMirrorsWithoutLookingTheWatchUp() throws {
+    let watch = DetachedWatch(tmdbId: 209867, movie: false, season: 1, number: 2, watchedAt: "2026-02-02T20:00:00.000Z", othersRemain: false)
+    #expect(DetachedWatch(eventID: watch.eventID) == watch && DetachedWatch(eventID: "trakt-777") == nil)
+    func plan(_ value: DetachedWatch, _ provider: SyncProviderKind) -> ProviderDeliveryPlan {
+        let entry = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .revokeWatch(eventId: value.eventID, titleId: "tv:209867", expectedVersion: 1, revokedAt: "2026-11-05T00:00:00.000Z"), pendingProviders: [provider])
+        // An empty diary: the title and its episode are already gone from it.
+        return ProviderDeliveryPlanner.plan(entry, provider: provider, in: Workspace())
+    }
+    let trakt = plan(watch, .trakt)
+    #expect(trakt.blocked.isEmpty && trakt.deliveries.map(\.key) == ["history-remove-timed"])
+    #expect(String(describing: trakt.deliveries[0].body).contains("2026-02-02T20:00:00.000Z"))
+    #expect(plan(watch, .simkl).deliveries.map(\.path) == ["/sync/history/remove"] && plan(watch, .mdblist).deliveries.map(\.path) == ["/sync/watched/remove"])
+    let wetrakr = plan(watch, .wetrakr)
+    #expect(wetrakr.deliveries.map(\.path) == ["/sync/tracking/remove"] && !String(describing: wetrakr.deliveries[0].body).contains("allow_rewatch"))
+    // Another play of the episode is still in the diary: Simkl's one watch stays; Trakt loses just that play.
+    let rewatch = DetachedWatch(tmdbId: 209867, movie: false, season: 1, number: 2, watchedAt: "2026-02-02T20:00:00.000Z", othersRemain: true)
+    #expect(plan(rewatch, .simkl).deliveries.isEmpty && plan(rewatch, .simkl).blocked.isEmpty && plan(rewatch, .trakt).deliveries.count == 1)
+    // No time: Trakt can't tell which play, so it's said rather than every play taken off.
+    let undated = DetachedWatch(tmdbId: 10494, movie: true, season: nil, number: nil, watchedAt: nil, othersRemain: false)
+    #expect(plan(undated, .trakt).deliveries.isEmpty && !plan(undated, .trakt).blocked.isEmpty && plan(undated, .simkl).deliveries.count == 1)
 }
 
 @Test func providerDeliveryProgressSurvivesEncodingAndCannotBeCoalesced() throws {

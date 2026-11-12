@@ -85,6 +85,9 @@ import TwilDiaryCore
         // WeTrakr is only ever written by its own id (as Cinopsys does): a title whose id couldn't
         // be looked up yet makes the write wait, rather than go by TMDB id.
         var missing: [[String: Any]] = [], lookups = 0, kept = (movies: 0, shows: 0), waiting = 0
+        // Look-ups that got no answer in a row: after three the service isn't answering (or is
+        // limiting us), and the rest of this write's look-ups wait for next time.
+        var unanswered = 0
         let service = provider.rawValue
         for slot in ["movies", "shows"] {
             guard let items = root[slot] as? [[String: Any]] else { continue }
@@ -99,24 +102,32 @@ import TwilDiaryCore
                 if provider != .mdblist {
                     var native = provider == .simkl ? entry.simkl : entry.wetrakr
                     let gaveUp = entry.missing[service].map { Date.now.timeIntervalSince($0) < 7 * 86_400 } ?? false
-                    if native == nil, !gaveUp, lookups < lookupsPerWrite {
+                    if native == nil, !gaveUp, lookups < lookupsPerWrite, unanswered < 3 {
+                        // Spaced out: a write of a hundred new titles is a hundred look-ups, and
+                        // sent all at once they trip the service's limit before the write itself.
+                        if lookups > 0 { try? await Task.sleep(for: .milliseconds(250)) }
                         lookups += 1
                         switch await lookUp(provider, tmdb: tmdb, show: slot == "shows", config: config, client: client) {
                         case .found(let id):
-                            native = id
+                            native = id; unanswered = 0
                             if provider == .simkl { entry.simkl = id } else { entry.wetrakr = id }
                             entry.missing[service] = nil
                         case .absent:
-                            entry.missing[service] = .now
+                            entry.missing[service] = .now; unanswered = 0
                         case .failed:
-                            break  // Couldn't ask: sent by TMDB id as before, asked again next time.
+                            unanswered += 1  // Couldn't ask: Simkl gets it by TMDB id as before; asked again next time.
                         }
                         known[key] = entry
                     }
                     if let native {
                         if provider == .simkl { ids["simkl"] = native } else { item["id"] = native }
                     } else if provider == .wetrakr, entry.missing[service] == nil {
+                        // Not looked up yet: left out of this write (counted in `waiting`, and
+                        // answered as not found this time), so one title WeTrakr can't be asked
+                        // about doesn't hold back the others in the same call.
                         waiting += 1
+                        missing.append(["ids": ["tmdb": tmdb], "slot": slot])
+                        continue
                     } else if entry.missing[service] != nil {
                         // The service doesn't have it: not sent (and said), as Cinopsys drops it.
                         missing.append(["ids": ["tmdb": tmdb], "slot": slot])
@@ -152,12 +163,20 @@ import TwilDiaryCore
             do {
                 let data = try await client.read(config, path: "/media/external/tmdb/\(tmdb)", query: ["type": show ? "show" : "movie"])
                 if let id = TrackerPreviewStore.weTrakrMatch(data, show: show) { return .found(id) }
-                return ((try? JSONSerialization.jsonObject(with: data)) as? [Any])?.isEmpty == true ? .absent : .failed
+                return Self.weTrakrHasNone(data) ? .absent : .failed
             } catch APIError.rejected(let status, _) where status == 404 { return .absent }
             catch { return .failed }
         default:
             return .failed
         }
+    }
+    /// WeTrakr's look-up answered with no matches: an empty list, bare or under the key it lists
+    /// them by. (Anything else unreadable stays "no answer" and is asked again.)
+    nonisolated static func weTrakrHasNone(_ data: Data) -> Bool {
+        let root = try? JSONSerialization.jsonObject(with: data)
+        if let list = root as? [Any] { return list.isEmpty }
+        guard let object = root as? [String: Any] else { return false }
+        return ["data", "results", "matches", "items"].contains { (object[$0] as? [Any])?.isEmpty == true }
     }
     /// Simkl's search/id answer: a list of matches (empty: Simkl doesn't have it), each with ids.simkl.
     nonisolated static func simklLookUp(_ data: Data) -> LookUp {

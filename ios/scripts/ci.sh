@@ -90,7 +90,7 @@ PY
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeExploreReturnsByBackActiveHomeTabAndFullContentSwipe \
       -only-testing:TwilDiaryUITests/LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchUpdatesTheEpisodePiecesAndMovieHistory \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped \
       -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/RepairGate.xcresult" \
       2>&1 | tee "$ARTIFACTS/logs/repair-tests.log"
@@ -98,8 +98,8 @@ PY
   test-progress)
     xcodebuild test-without-building "${COMMON[@]}" -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$SIM_ARCH" \
       -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 360 \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatchAndPreservesUndo \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchUpdatesTheEpisodePiecesAndMovieHistory \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatch \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeExploreReturnsByBackActiveHomeTabAndFullContentSwipe \

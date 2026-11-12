@@ -7,8 +7,8 @@ import Foundation
 /// Only within what both sides can hold: when either keeps one watch per episode, rewatches are never
 /// taken off; when either drops specials, specials are left alone; favourites and dropped only when
 /// both keep them. A title whose episodes are missing on one side and extra on the other is left as
-/// it is: the two services number its episodes differently (anime seasons), and removing the "extra"
-/// episodes would take off the very watches just sent.
+/// it is (no episodes sent, none taken off): the two services number its episodes differently
+/// (anime seasons), and removing the "extra" episodes would take off the very watches just sent.
 public struct ForceMatchPlan: Equatable, Sendable {
     /// A title on the target, by the ids the target itself gave it.
     public struct Item: Hashable, Sendable {
@@ -80,8 +80,9 @@ public struct ForceMatchPlan: Equatable, Sendable {
     public var titles: [Item] = []
     /// Titles left as they are because the two sides number their episodes differently.
     public var renumbered: [String] = []
-    /// The last step for titles that still differ: cleared off the target altogether (every play,
-    /// its rating, watchlist, dropped and favourite), to be sent again fresh from the source.
+    /// Titles cleared off the target altogether (every play, its rating, watchlist, dropped and
+    /// favourite). Never part of a Force Match run: clearing loses what the source can't hold
+    /// (rewatches, specials, favourites), so it's only for a reset you ask for, title by title.
     public var wipe: [Item] = []
     public var removalCount: Int { plays.count + ratings.count + watchlist.count + dropped.count + favourites.count + titles.count + wipe.count }
     public var isEmpty: Bool { send.isEmpty && removalCount == 0 }
@@ -158,7 +159,7 @@ public struct ForceMatchPlan: Equatable, Sendable {
         plan.tracker = tracker
         func kept(_ ref: TraktTitleRef) -> Bool {
             if let imdb = ref.imdbId, keep.contains("imdb:" + imdb) { return true }
-            return keep.contains(Self.nameToken(ref.name, ref.year))
+            return Self.nameToken(ref.name, ref.year).map(keep.contains) ?? false
         }
         plan.send = TraktWritePlan.make(library: target, workspace: source, tracker: tracker)
         // Favourites only on one side are taken off the target below, not copied into the source.
@@ -223,13 +224,19 @@ public struct ForceMatchPlan: Equatable, Sendable {
                 PlayRemoval(title: item, season: $0.season, episode: $0.episode, watchedAt: $0.watchedAt, historyId: $0.historyId, remoteId: $0.remoteId)
             }
         }
+        var renumberedKeys = Set<String>()
         for (k, plays) in removing.sorted(by: { $0.key < $1.key }) {
             // Missing episodes and extra ones of the same show: numbered differently on the two sides.
             if k.hasPrefix("tv:"), sending.contains(k), plays.contains(where: { $0.season != nil }) {
-                plan.renumbered.append(plays[0].title.name); continue
+                plan.renumbered.append(plays[0].title.name); renumberedKeys.insert(k); continue
             }
             if wholeTitles, byKey[k] == nil { continue }
             plan.plays += plays
+        }
+        // Left as it is means its episodes aren't sent either: the target would file them under its
+        // own numbers again (or drop them), and the show would never stop looking different.
+        if !renumberedKeys.isEmpty {
+            plan.send.plays.removeAll { renumberedKeys.contains(Self.key(movie: $0.title.movie, $0.title.tmdbId)) }
         }
 
         // Title facts: ratings, watchlist, favourites and dropped the source doesn't have.
@@ -271,15 +278,18 @@ public struct ForceMatchPlan: Equatable, Sendable {
         var tokens = Set<String>()
         for ref in refs where ref.tmdbId == nil {
             if let imdb = ref.imdbId { tokens.insert("imdb:" + imdb) }
-            tokens.insert(nameToken(ref.name, ref.year))
+            if let token = nameToken(ref.name, ref.year) { tokens.insert(token) }
         }
         return tokens
     }
     public static func keepTokens(_ titles: [MediaTitle]) -> Set<String> {
-        Set(titles.filter { $0.tmdbId == nil }.map { nameToken($0.name, $0.year) })
+        Set(titles.filter { $0.tmdbId == nil }.compactMap { nameToken($0.name, $0.year) })
     }
-    static func nameToken(_ name: String, _ year: Int?) -> String {
-        "name:" + name.lowercased().filter { $0.isLetter || $0.isNumber } + "|" + (year.map(String.init) ?? "")
+    /// nil for a title with no name to go by (WeTrakr and MDBList send some without one): every
+    /// nameless title would otherwise share one token and be kept together.
+    static func nameToken(_ name: String, _ year: Int?) -> String? {
+        let letters = name.lowercased().filter { $0.isLetter || $0.isNumber }
+        return letters.isEmpty ? nil : "name:" + letters + "|" + (year.map(String.init) ?? "")
     }
 
     /// The sends first (as a match), then the removals, at most 100 items per call.

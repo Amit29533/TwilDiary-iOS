@@ -144,14 +144,12 @@ import UIKit
         app.tabBars.buttons["Glance"].tap()
         let count = app.descendants(matching: .any)["watch-progress-again"]
         wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 5)
-        // Cards keep their own buttons: the mark button logs exactly one watch and
-        // Undo restores it on the same tab.
+        // Cards keep their own buttons: the mark button logs exactly one watch, on the same tab.
         app.buttons["progress-next-again"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E9 of 16'"), evaluatedWith: count)], timeout: 8)
         XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected, "Marking a watch must not change tabs")
-        app.buttons["Undo"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 8)
-        capture("Glance mark and Undo stay on the Glance tab")
+        XCTAssertFalse(app.buttons["Undo"].exists, "The notice no longer offers Undo")
+        capture("Glance mark stays on the Glance tab")
     }
     func testApprovedLargeTraktImportKeepsRunningAcrossNativeTabsAndOffersPause() {
         let app = launch(traktScenario: "large-import")
@@ -1473,7 +1471,7 @@ import UIKit
         XCTAssertTrue(app.navigationBars["Files & drives"].waitForExistence(timeout: 5))
         capture("Universal Search preserves the previous Profile destination")
     }
-    func testGlanceSwipeLogsExactlyOneWatchAndUndoPreservesTheCardPosition() {
+    func testGlanceMarkLogsExactlyOneWatchAndRemovingItPreservesTheCardPosition() {
         let app = launch(mutations: true)
         let count = app.descendants(matching: .any)["watch-progress-again"], mark = app.buttons["progress-next-again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
@@ -1482,17 +1480,14 @@ import UIKit
         mark.tap()
         wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E9 of 16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertEqual(mark.frame.minY, originalY, accuracy: 1, "Release must not reflow the page")
-        app.buttons["Undo"].tap()
+        // A watch logged by mistake comes off from the card's menu (the notice has no Undo).
+        app.buttons["progress-menu-again"].tap(); app.buttons["Undo last watch"].tap()
         wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertEqual(mark.frame.minY, originalY, accuracy: 1)
-        app.buttons["progress-menu-again"].tap(); app.buttons["Undo last watch"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E7 of 16'"), evaluatedWith: count)], timeout: 10)
-        app.buttons["Undo"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 10)
         XCTAssertTrue(app.tabBars.buttons["Glance"].isSelected); XCTAssertTrue(count.isHittable)
-        capture("Glance Undo restored")
+        capture("Glance last watch removed")
     }
-    func testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatchAndPreservesUndo() {
+    func testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatch() {
         let app = launch(mutations: true, refreshFailure: true)
         app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].waitAndTap()
         let progress = app.sliders["episode-progress"]
@@ -1503,41 +1498,25 @@ import UIKit
         mark.tap()
         XCTAssertTrue(app.staticTexts["confirmed-write-notice"].waitForExistence(timeout: 10))
         XCTAssertFalse(mark.isEnabled)
-        XCTAssertTrue(app.buttons["Undo"].exists); XCTAssertFalse(app.buttons["Undo"].isEnabled)
         capture("Confirmed watch refresh pending")
         app.buttons["confirmed-write-refresh"].tap()
-        let undo = app.buttons["Undo"]
-        // Touch within the short user-facing deadline; final count proves one watch + Undo.
-        wait(for: [expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: undo)], timeout: 10)
-        undo.tap()
-        wait(for: [expectation(for: NSPredicate(format: "value == '8 of 16 episodes watched'"), evaluatedWith: progress)], timeout: 10)
-        capture("Confirmed watch recovery undone")
+        // The final count proves exactly one watch was saved.
+        waitForProgress("9 of 16 episodes watched", slider: progress)
+        capture("Confirmed watch recovered")
     }
-    func testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory() {
+    func testTitleWatchUpdatesTheEpisodePiecesAndMovieHistory() {
         let app = launch(mutations: true); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].waitAndTap()
         let progress = app.sliders["episode-progress"]
         XCTAssertTrue(progress.waitForExistence(timeout: 5)); XCTAssertEqual(progress.value as? String, "8 of 16 episodes watched")
         let mark = app.buttons["mark-title-watch"]
         if !mark.isHittable { app.swipeUp() }
-        mark.tap()
-        // On Intel, extra value/frame queries can exhaust the real4.5s Undo
-        // window before XCTest synthesizes the touch. Undo first, then check
-        // the result; observe intermediate values in separate actual edits.
-        tapVisibleUndo(app)
-        waitForProgress("8 of 16 episodes watched", slider: progress)
-        let start = progress.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: progress.coordinate(withNormalizedOffset: CGVector(dx: 0.625, dy: 0.5)))
-        tapVisibleUndo(app)
-        waitForProgress("8 of 16 episodes watched", slider: progress)
         mark.tap(); waitForProgress("9 of 16 episodes watched", slider: progress)
         progress.coordinate(withNormalizedOffset: CGVector(dx: 0.5625, dy: 0.5)).press(forDuration: 0.05, thenDragTo: progress.coordinate(withNormalizedOffset: CGVector(dx: 0.625, dy: 0.5)))
         waitForProgress("10 of 16 episodes watched", slider: progress)
         app.navigationBars.buttons.element(boundBy: 0).tap(); app.buttons["title-quiet-orbit"].tap()
         let movieMark = app.buttons["mark-title-watch"]
         XCTAssertTrue(movieMark.waitForExistence(timeout: 5)); movieMark.tap()
-        tapVisibleUndo(app)
-        XCTAssertTrue(app.buttons["Log a watch"].waitForExistence(timeout: 5)); capture("Movie watch undone")
-        movieMark.tap(); XCTAssertTrue(app.buttons["Rewatch"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Rewatch"].waitForExistence(timeout: 10)); capture("Movie watch logged")
     }
     func testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs() {
         executionTimeAllowance = 240
@@ -1867,29 +1846,6 @@ import UIKit
         let condition = NSPredicate { _, _ in (slider.value as? String) == value }
         wait(for: [expectation(for: condition, evaluatedWith: "episode progress")], timeout: 10)
     }
-    private func tapVisibleUndo(_ app: XCUIApplication) {
-        // The floating toast is already onscreen. A semantic tap can ask XCTest
-        // to scroll its gesture-containing ancestor, consuming the short window.
-        // Touch the actual action's current bounds instead; never extend expiry.
-        // Every XCTest query costs 0.3–1.8 s on Intel runners and the 4.5 s window
-        // (production behaviour, kept) starts as soon as the write is confirmed —
-        // often while XCTest is still waiting out the previous action's animation.
-        // So no separate existence check and no settle delay: each poll is one
-        // snapshot (existence, enabled state and frame together), then tap at once.
-        // The action's own idle wait has already covered the toast's slide-in.
-        let undo = app.buttons["undo-action"]
-        let deadline = Date().addingTimeInterval(4)
-        var target: CGRect?
-        while target == nil, Date() < deadline {
-            if let snapshot = try? undo.snapshot(), snapshot.isEnabled, !snapshot.frame.isEmpty {
-                target = snapshot.frame
-            } else {
-                Thread.sleep(forTimeInterval: 0.05)
-            }
-        }
-        guard let bounds = target else { XCTFail("The Undo action never appeared enabled"); return }
-        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: bounds.midX, dy: bounds.midY)).tap()
-    }
     private func completeContentBack(_ app: XCUIApplication, beside anchor: XCUIElement,
                                      from fraction: CGFloat = 0.12, velocity: XCUIGestureVelocity = .slow) {
         XCTAssertTrue(anchor.waitForExistence(timeout: 5))
@@ -1911,13 +1867,13 @@ import UIKit
             XCTAssertGreaterThanOrEqual(control.frame.height, 43.5)
         }
         mark.tap()
-        let toast = app.otherElements["undo-toast"]
-        XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5))
+        let toast = app.otherElements["undo-toast"], dismiss = app.buttons["Dismiss notice"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Undo"].exists, "The notice no longer offers Undo")
         if toast.exists { XCTAssertLessThanOrEqual(toast.frame.height, 48); XCTAssertLessThanOrEqual(toast.frame.width, 330) }
         capture("Compact watch toast")
         // UI-test runs keep the toast 8 s (slow CI machines); it still expires on its own.
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["Undo"])], timeout: 14)
-        XCTAssertFalse(app.buttons["Dismiss undo"].exists)
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: dismiss)], timeout: 14)
         app.buttons["progress-menu-again"].tap()
         XCTAssertTrue(app.buttons["Favorite"].exists); XCTAssertTrue(app.buttons["Dropped"].exists)
         XCTAssertFalse(app.buttons["Open title"].exists)
@@ -1968,23 +1924,20 @@ import UIKit
         app.buttons["category-movies"].tap(); app.buttons["category-anime"].tap()
         XCTAssertTrue(otherCount.label.hasPrefix("S1 · E13 of 28")); capture("Glance cached category counts")
     }
-    func testGlanceCurrentSeasonCompletionAndUndoPreserveTheUnwatchedLaterSeason() {
+    func testGlanceCurrentSeasonCompletionPreservesTheUnwatchedLaterSeason() {
         let app = launch(mutations: true, upcoming: true)
         let count = app.descendants(matching: .any)["watch-progress-again"]
         XCTAssertTrue(count.waitForExistence(timeout: 5))
         wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 5)
         app.buttons["progress-menu-again"].tap(); app.buttons["Complete Season 1"].tap()
-        // Undo first (project rule: never spend the real 4.5 s window on slow value
-        // reads). A semantic tap tried to scroll the toast's ancestor and missed it.
-        // The helper waits for Undo to be enabled, i.e. the completion was saved.
-        tapVisibleUndo(app)
-        wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 10)
+        // The card moving on from episode 8 means the completion was saved.
+        wait(for: [expectation(for: NSPredicate(format: "NOT (label BEGINSWITH 'S1 · E8 of 16')"), evaluatedWith: count)], timeout: 10)
         app.buttons["progress-title-again"].tap()
         let season = app.buttons["title-season"]
         XCTAssertTrue(season.waitForExistence(timeout: 5)); season.tap(); app.buttons["Season 2"].tap()
         let progress = app.sliders["episode-progress"]
         wait(for: [expectation(for: NSPredicate(format: "value == '0 of 3 episodes watched'"), evaluatedWith: progress)], timeout: 10)
-        capture("Glance complete Undo preserves later season")
+        capture("Glance season completion preserves later season")
     }
     func testTitleArtworkScrollsAwayBeforeTheEpisodeAndNotesContent() {
         let app = launch(); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].waitAndTap()
@@ -2153,17 +2106,6 @@ import UIKit
         XCTAssertEqual(app.tabBars.count, 1)
         app.tabBars.buttons["Library"].tap(); XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
         capture("Glass navigation cancelled and tap restored")
-    }
-    func testHoldingTheUndoToastPausesItsShortExpiryUntilTheTouchFinishes() {
-        let app = launch(mutations: true)
-        let count = app.descendants(matching: .any)["watch-progress-again"]
-        XCTAssertTrue(count.waitForExistence(timeout: 5))
-        app.buttons["progress-next-again"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E9 of 16'"), evaluatedWith: count)], timeout: 10)
-        let undo = app.buttons["Undo"]
-        undo.press(forDuration: 3)
-        wait(for: [expectation(for: NSPredicate(format: "label BEGINSWITH 'S1 · E8 of 16'"), evaluatedWith: count)], timeout: 10)
-        capture("Undo survives held touch")
     }
     private func sample(_ image: CGImage, at point: CGPoint, scale: CGFloat) -> [Int] {
         guard let pixel = image.cropping(to: CGRect(x: floor(point.x * scale), y: floor(point.y * scale), width: 1, height: 1)) else { XCTFail("Missing pixel sample"); return [0, 0, 0, 0] }

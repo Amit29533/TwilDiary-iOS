@@ -202,8 +202,24 @@ extension DiaryStore {
             let path = service == .mdblist ? "/sync/watched/remove" : service == .wetrakr ? "/sync/tracking/remove" : "/sync/history/remove"
             try send(path, try playsBody(events, timed: service == .wetrakr))
         }
+        mirrorRemovals(events)
         updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) } }
         refreshCopySoon()
+    }
+    /// The mirrors lose the same plays. Called before the phone's copy changes: the diary is rebuilt
+    /// from that copy, so afterwards the watch (and perhaps its episode or title) isn't there to
+    /// look up; each removal carries what the mirrors need itself (`DetachedWatch`).
+    private func mirrorRemovals(_ events: [WatchEvent]) {
+        let going = Set(events.map(\.id)), when = stamp(now)
+        for event in events {
+            guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { continue }
+            let episode = event.episodeId.flatMap { id in workspace.episodes.first { $0.id == id } }
+            if title.isSeries && episode == nil { continue }
+            let others = workspace.activeEvents.contains { $0.titleId == event.titleId && $0.episodeId == event.episodeId && !going.contains($0.id) }
+            let watch = DetachedWatch(tmdbId: tmdb, movie: !title.isSeries, season: episode?.season, number: episode?.number,
+                                      watchedAt: event.watchedAt, othersRemain: others)
+            mirror(.revokeWatch(eventId: watch.eventID, titleId: title.id, expectedVersion: 1, revokedAt: when))
+        }
     }
     /// Watches as the service's body (movies; shows > seasons > episodes), with each play's time
     /// when `timed`. WeTrakr's shape: status "watched" and tracked_at.
@@ -249,6 +265,7 @@ extension DiaryStore {
             try send("/sync/history/remove", [title.isSeries ? "shows" : "movies": [try serviceRef(title)]])
         }
         let ids = Set(plays.compactMap(servicePlayID)), key = titleRef(title).diaryKey
+        mirrorRemovals(plays)
         updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) || (key != nil && $0.title.diaryKey == key) } }
         refreshCopySoon()
     }

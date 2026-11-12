@@ -13,10 +13,93 @@ public struct ProviderDeliveryPlan {
     public let blocked: [String]
 }
 
+/// A watch taken off a diary that lives on a service. That diary is rebuilt from the service, so by
+/// the time the other services are told, the watch (and sometimes its episode, or the whole title)
+/// is no longer in it to look up. Everything they need travels in the removal's event id instead.
+public struct DetachedWatch: Codable, Equatable, Sendable {
+    public let tmdbId: Int
+    public let movie: Bool
+    public let season: Int?
+    public let number: Int?
+    public let watchedAt: String?
+    /// The diary still has another play of this movie or episode: Simkl and MDBList, which keep one
+    /// watch for all of them, are then left as they are.
+    public let othersRemain: Bool
+    public init(tmdbId: Int, movie: Bool, season: Int?, number: Int?, watchedAt: String?, othersRemain: Bool) {
+        self.tmdbId = tmdbId; self.movie = movie; self.season = season; self.number = number
+        self.watchedAt = watchedAt; self.othersRemain = othersRemain
+    }
+    static let prefix = "detached:"
+    /// The event id a `.revokeWatch` carries for this watch.
+    public var eventID: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return Self.prefix + ((try? encoder.encode(self))?.base64EncodedString() ?? "")
+    }
+    public init?(eventID: String) {
+        guard eventID.hasPrefix(Self.prefix), let data = Data(base64Encoded: String(eventID.dropFirst(Self.prefix.count))),
+              let value = try? JSONDecoder().decode(DetachedWatch.self, from: data) else { return nil }
+        self = value
+    }
+}
+
 /// Plans only operations with an explicit transport contract. Unsupported edits stay pending.
 public enum ProviderDeliveryPlanner {
+    /// Taking one play off a mirror, from what the removal itself carries (see `DetachedWatch`):
+    /// Trakt and WeTrakr that very play, by its time; Simkl and MDBList their one watch, unless the
+    /// diary still has another play of it.
+    static func detachedRemoval(_ watch: DetachedWatch, provider: SyncProviderKind) -> ProviderDeliveryPlan {
+        let slot = watch.movie ? "movies" : "shows"
+        func item(timed: Bool) -> [String: Any]? {
+            var value: [String: Any] = ["ids": ["tmdb": watch.tmdbId]]
+            var time: String?
+            if timed {
+                guard let at = watch.watchedAt else { return nil }
+                time = at
+            }
+            if watch.movie {
+                if let time { value["watched_at"] = time }
+            } else {
+                guard let season = watch.season, season >= 0, let number = watch.number, number > 0 else { return nil }
+                var episode: [String: Any] = ["number": number]
+                if let time { episode["watched_at"] = time }
+                let seasons: [[String: Any]] = [["number": season, "episodes": [episode]]]
+                value["seasons"] = seasons
+            }
+            return value
+        }
+        func one(_ key: String, _ path: String, _ body: [String: Any]) -> ProviderDeliveryPlan {
+            ProviderDeliveryPlan(deliveries: [ProviderDelivery(key: key, path: path, body: [slot: [body]], history: false)], blocked: [])
+        }
+        switch provider {
+        case .trakt:
+            guard let body = item(timed: true) else {
+                return ProviderDeliveryPlan(deliveries: [], blocked: ["Remove this play on Trakt itself: it has no time or episode here."])
+            }
+            return one("history-remove-timed", "/sync/history/remove", body)
+        case .wetrakr:
+            guard let timed = item(timed: true) else {
+                return ProviderDeliveryPlan(deliveries: [], blocked: ["WeTrakr removes one play by its time, and this watch has none."])
+            }
+            var body = WeTrakrWrite.watched(timed, rewatch: false)
+            body.removeValue(forKey: "allow_rewatch")
+            return one("history-remove", "/sync/tracking/remove", body)
+        case .simkl, .mdblist:
+            if watch.othersRemain { return ProviderDeliveryPlan(deliveries: [], blocked: []) }
+            guard let body = item(timed: false) else {
+                return ProviderDeliveryPlan(deliveries: [], blocked: ["A mapped episode is required before this removal can sync."])
+            }
+            return one("history-remove", provider == .mdblist ? "/sync/watched/remove" : "/sync/history/remove", body)
+        case .cloudflare:
+            return ProviderDeliveryPlan(deliveries: [], blocked: [])
+        }
+    }
+
     public static func plan(_ entry: SyncOutboxEntry, provider: SyncProviderKind, in workspace: Workspace) -> ProviderDeliveryPlan {
         guard provider != .cloudflare, !entry.pendingProviders.contains(.cloudflare) else { return ProviderDeliveryPlan(deliveries: [], blocked: ["Waiting for diary confirmation."]) }
+        if case .revokeWatch(let eventID, _, _, _) = entry.mutation, let detached = DetachedWatch(eventID: eventID) {
+            return detachedRemoval(detached, provider: provider)
+        }
         guard let title = workspace.titles.first(where: { $0.id == entry.mutation.titleId }), let tmdb = title.tmdbId, tmdb > 0 else {
             return ProviderDeliveryPlan(deliveries: [], blocked: ["A TMDB mapping is required before this edit can sync."])
         }
@@ -83,6 +166,9 @@ public enum ProviderDeliveryPlanner {
                 watch.removeValue(forKey: "allow_rewatch")
                 add("history-remove", "/sync/tracking/remove", watch)
             case .simkl, .mdblist:
+                // Their one watch stands for every play of it: while the diary still has another
+                // play of this movie or episode, taking one off leaves the service as it is.
+                if workspace.events.contains(where: { $0.id != eventID && $0.titleId == title.id && $0.episodeId == event.episodeId && $0.revokedAt == nil }) { break }
                 guard let watch = watchItem(event.episodeId, event.watchedAt ?? entry.createdAt) else {
                     blocked.append("A mapped episode is required before this removal can sync."); break
                 }
@@ -108,6 +194,14 @@ public enum ProviderDeliveryPlanner {
                 default: add("watchlist", "/sync/watchlist")
                 }
             }
+            // Leaving Planned takes the title off the watchlist too, or it stays listed there for
+            // good (a match only ever adds). Asked whatever it was before: taking off something
+            // that isn't listed changes nothing. Simkl moves it to its list below instead; WeTrakr
+            // is left to the match, since its removal call isn't confirmed to touch only Planning.
+            if let status, status != "planned" {
+                if provider == .trakt { add("watchlist-remove", "/sync/watchlist/remove") }
+                else if provider == .mdblist { add("watchlist-remove", "/watchlist/items/remove") }
+            }
             // A status the service doesn't keep (watching and completed come from the watches
             // themselves on Trakt and MDBList) and favourites outside Trakt stay in the diary.
             if let status, status != "planned", statusCarried(status, provider: provider, isSeries: title.isSeries) {
@@ -131,6 +225,8 @@ public enum ProviderDeliveryPlanner {
         guard case .patchTitle(_, _, let status, let score, let clearScore, let favorite, _, _, _) = mutation else { return true }
         if provider == .cloudflare || score != nil || clearScore { return true }
         if let status, statusCarried(status, provider: provider, isSeries: isSeries) { return true }
+        // Any other status still takes the title off Trakt's and MDBList's watchlist.
+        if status != nil, provider == .trakt || provider == .mdblist { return true }
         return favorite != nil && (provider == .trakt || provider == .wetrakr)
     }
     static func statusCarried(_ status: String, provider: SyncProviderKind, isSeries: Bool) -> Bool {

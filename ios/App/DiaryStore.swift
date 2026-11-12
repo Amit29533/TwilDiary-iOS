@@ -1359,6 +1359,10 @@ import TwilDiaryCore
                 } catch {
                     guard session == sessionGeneration else { return }
                     BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: completed, total: pending.count, phase: .failed)
+                    // Offline, a pause the service asked for, or a sign-in to renew: the edit waits
+                    // and isn't counted. (Counted, a few edits made offline used up the first
+                    // one's tries and set it aside before it was ever sent.)
+                    if TraktDelivery.keepsWaiting(error) { break }
                     // A finite retry budget (as Cinopsys has): one that keeps failing is set aside
                     // instead of holding up every edit behind it.
                     if entry.attempts + 1 >= Self.outboxRetryBudget {
@@ -1777,10 +1781,13 @@ import TwilDiaryCore
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST")
         }
     }
-    /// Undo for a watch added to the service the diary comes from (see `serviceUndoPlays`).
+    /// A watch added to the service the diary comes from: said, with no Undo. Undoing it there
+    /// raced the send (the watch could be on its way, or already on the other services), so a
+    /// watch logged by mistake is taken off with "Undo last watch" or from the title's history,
+    /// which reach every service.
     func offerServiceUndo(_ title: MediaTitle, at when: String) {
+        undoAction = nil
         undoLabel = "Watch marked"
-        undoAction = { try await self.serviceUndoPlays(title, at: when) }
     }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
         if diaryFromService {

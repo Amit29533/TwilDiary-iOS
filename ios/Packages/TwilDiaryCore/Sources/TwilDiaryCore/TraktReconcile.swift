@@ -183,6 +183,8 @@ public struct TraktWritePlan: Equatable, Sendable {
     public static func simklList(status: String, isSeries: Bool) -> String? {
         switch status {
         case "planned": return "plantowatch"
+        // On no list at the source (only rated there, see `TraktDiary.forceSource`): never marked watched.
+        case "none": return nil
         case "dropped": return isSeries ? "dropped" : nil
         case "paused", "on_hold", "hold": return isSeries ? "hold" : nil
         case "watching": return isSeries ? "watching" : "completed"

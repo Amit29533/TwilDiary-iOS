@@ -65,3 +65,16 @@ private final class ControlledProviderSecrets: ProviderSecretStoring, @unchecked
     try store.save(ProviderConnectionSettings())
     #expect(try store.load().customTmdbToken == nil)
 }
+
+@Test func weTrakrTokensStayOutOfPreferences() throws {
+    let suiteName = "twildiary.secure-test.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = UserDefaultsProviderSettingsStore(defaults: defaults, key: "settings", secrets: ControlledProviderSecrets())
+    let wetrakr = ExternalProviderConfig(provider: .wetrakr, enabled: true, clientId: "app", accessToken: "synthetic-wetrakr-access", refreshToken: "synthetic-wetrakr-refresh")
+    try store.save(ProviderConnectionSettings(wetrakr: wetrakr))
+    let raw = String(decoding: defaults.data(forKey: "settings") ?? Data(), as: UTF8.self)
+    #expect(!raw.contains("synthetic-wetrakr-access") && !raw.contains("synthetic-wetrakr-refresh"))
+    let loaded = try store.load().wetrakr
+    #expect(loaded.accessToken == "synthetic-wetrakr-access" && loaded.refreshToken == "synthetic-wetrakr-refresh")
+}

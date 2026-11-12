@@ -319,7 +319,7 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
     private static func stripped(_ settings: ProviderConnectionSettings) -> ProviderConnectionSettings {
         var value = settings
         value.customTmdbToken = nil
-        for provider in [SyncProviderKind.trakt, .simkl, .mdblist] {
+        for provider in [SyncProviderKind.trakt, .simkl, .mdblist, .wetrakr] {
             var config = value.config(for: provider)
             config.accessToken = nil; config.apiKey = nil; config.refreshToken = nil
             value.setConfig(config)

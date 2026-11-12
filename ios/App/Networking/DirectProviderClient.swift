@@ -151,7 +151,10 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     }
 
     /// A write for "Make Simkl / MDBList match the diary": POST of a ready JSON body, returning the reply.
-    func write(_ config: ExternalProviderConfig, path: String, body: Data) async throws -> Data {
+    /// `partial`: a bulk send (a match, a restore, Force Match) goes ahead without the titles WeTrakr
+    /// couldn't be asked about yet; they come back as not found and are asked about next time. One
+    /// of your own edits waits whole instead, so no part of it is dropped.
+    func write(_ config: ExternalProviderConfig, path: String, body: Data, partial: Bool = false) async throws -> Data {
         let name = config.provider.displayName
         // The service holding your diary (and a match you asked for) only needs the sign-in: the
         // "Send my edits" switch governs the other services, not the diary's own.
@@ -173,7 +176,9 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         // Each title named by the service's own id too (looked up once when unknown); titles the
         // service doesn't have are left out and reported as not found.
         let prepared = await ServiceIDs.shared.prepare(body, for: config.provider, config: config, client: self)
-        if prepared.waiting > 0 { throw APIError.rejected(503, "WeTrakr couldn’t be asked for this title’s own id yet; it’s sent once WeTrakr answers.") }
+        if prepared.waiting > 0, !partial || prepared.movies + prepared.shows == 0 {
+            throw APIError.rejected(503, "WeTrakr couldn’t be asked for this title’s own id yet; it’s sent once WeTrakr answers.")
+        }
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
         let sending = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
         do {

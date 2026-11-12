@@ -86,6 +86,21 @@ public enum TraktDiary {
         return Workspace(titles: titles, episodes: episodes, events: events, locations: server.locations)
     }
 
+    /// A service's library as the source of truth for Force Match: the diary built from it alone.
+    /// A title the service only rates or favourites (no watch, not on its watchlist, not dropped)
+    /// has no list of its own there; `build` would leave it "planned", and Force Match would then
+    /// add it to the target's watchlist, which the source never had. Here its status is "none".
+    public static func forceSource(library: TraktLibrary, tracker: MainTracker, catalog: [String: MediaTitle] = [:]) -> Workspace {
+        var diary = build(library: library, server: Workspace(), tracker: tracker, catalog: catalog)
+        let listed = Set(library.watchlist.compactMap(\.title.diaryKey))
+        for index in diary.titles.indices where diary.titles[index].status == "planned" {
+            let title = diary.titles[index]
+            guard let tmdb = title.tmdbId, !listed.contains((title.isSeries ? "tv:" : "movie:") + String(tmdb)) else { continue }
+            diary.titles[index].status = "none"
+        }
+        return diary
+    }
+
     /// A title as the phone knows it from TMDB (no server record): its key ("tv:1399") as id,
     /// name, year, poster and backdrop, genres, runtime, score, seasons and category (anime when
     /// TMDB says Japanese animation), the same facts the server stores when a title is added.

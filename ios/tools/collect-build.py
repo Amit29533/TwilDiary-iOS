@@ -55,8 +55,8 @@ if progress_log.exists():
     if '** TEST EXECUTE SUCCEEDED **' not in value or re.search(r'Test Case .* failed', value):
         raise SystemExit('Progress drag/Undo preflight did not pass.')
     expected_progress = {
-        'testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory',
-        'testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatchAndPreservesUndo',
+        'testTitleWatchUpdatesTheEpisodePiecesAndMovieHistory',
+        'testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatch',
         'testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory',
         'testManualTitleYearValidationStatusRatingAndSavedNavigation',
         'testNativeExploreReturnsByBackActiveHomeTabAndFullContentSwipe' if int(args.build) >= 35 else 'testNativeExploreReturnsByDoneActiveHomeTabAndFullContentSwipe',
