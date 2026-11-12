@@ -262,7 +262,7 @@ struct CanvasMosaic: View {
             .overlay(alignment: .bottomLeading) {
                 if wide {
                     Text(item.name).font(.system(size: width * 0.5 > 150 && item == items.first ? 26 : 18, weight: .bold)).tracking(-0.4)
-                        .foregroundStyle(.white).lineLimit(1).truncationMode(.tail).shadow(color: .black.opacity(0.6), radius: 6, y: 1).padding(16)
+                        .foregroundStyle(.white).lineLimit(1).truncationMode(.tail).padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
                 }

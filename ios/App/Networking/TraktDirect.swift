@@ -1146,6 +1146,13 @@ enum ServiceRemovals {
     }
 }
 
+/// Work on a service's reply away from the main thread: a whole Simkl library is megabytes of
+/// JSON, and decoding it (or MDBList's and WeTrakr's pages) on the main thread froze scrolling for
+/// a few hundred milliseconds at a time while the checks ran after the app opened.
+private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+    try await Task.detached(priority: .userInitiated) { try work() }.value
+}
+
 /// The same read-and-compare preview for Simkl and MDBList as the main tracker. Trakt keeps its own
 /// store above (its lists are fetched one by one); these two are read whole when anything changed.
 @MainActor @Observable final class TrackerPreviewStore {
@@ -1206,7 +1213,8 @@ enum ServiceRemovals {
                 // the diary (TMDB) numbers them; plain `full` numbers every anime season entry from 1.
                 let fullQuery = ["extended": "full_anime_seasons", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
                 func fullPull() async throws {
-                    library = try TrackerDecode.simklLibrary(from: try await client.read(config, path: "/sync/all-items/", query: fullQuery))
+                    let data = try await client.read(config, path: "/sync/all-items/", query: fullQuery)
+                    library = try await offMain { try TrackerDecode.simklLibrary(from: data) }
                     requests += 1
                     fetched = [.history, .ratings, .watchlist, .dropped, .notes]
                 }
@@ -1219,7 +1227,8 @@ enum ServiceRemovals {
                     if items {
                         var query = fullQuery; query["date_from"] = since
                         let data = try await client.read(config, path: "/sync/all-items/", query: query)
-                        library = SimklSync.merge(try TrackerDecode.simklLibrary(from: data), touched: (try? TrackerDecode.simklIDs(from: data)) ?? [], into: library)
+                        let base = library
+                        library = try await offMain { SimklSync.merge(try TrackerDecode.simklLibrary(from: data), touched: (try? TrackerDecode.simklIDs(from: data)) ?? [], into: base) }
                         requests += 1
                         fetched += [.history, .watchlist, .dropped, .notes]
                     }
@@ -1257,7 +1266,9 @@ enum ServiceRemovals {
                     do {
                         for _ in 0..<20 {
                             let query = cursor.map { ["cursor": $0, "limit": "1000"] } ?? ["since": since, "limit": "1000"]
-                            let result = try MDBListJournal.apply(try await client.read(config, path: "/sync/journal", query: query), to: &copy)
+                            let data = try await client.read(config, path: "/sync/journal", query: query), before = copy
+                            let (result, after) = try await offMain { var next = before; let result = try MDBListJournal.apply(data, to: &next); return (result, next) }
+                            copy = after
                             requests += 1
                             if result.needsFullRead { break }
                             guard let next = result.nextCursor else { complete = true; break }
@@ -2064,7 +2075,13 @@ enum ServiceRemovals {
                 do { data = try await client.read(config, path: "/sync/journal", query: ["from_date": mark, "limit": "1000", "page": String(page)]) }
                 catch APIError.rejected(let status, _) where (400..<500).contains(status) && status != 429 { mustReadAll = true; break }  // JOURNAL_EXPIRED and the like
                 requests += 1
-                let result = try WeTrakrDecode.applyJournal(data, to: &library, seen: &seen)
+                let before = library, seenBefore = seen
+                let (result, after, seenAfter) = try await offMain {
+                    var next = before, marks = seenBefore
+                    let result = try WeTrakrDecode.applyJournal(data, to: &next, seen: &marks)
+                    return (result, next, marks)
+                }
+                library = after; seen = seenAfter
                 if result.needsFullRead { mustReadAll = true; break }
                 nextMark = result.mark ?? nextMark
                 if result.entries < 1000 { break }
@@ -2085,15 +2102,25 @@ enum ServiceRemovals {
                 return pages
             }
             var skipped = 0, fresh = TraktLibrary()
+            // Each list's pages are decoded away from the main thread.
+            func decoded<T: Sendable>(_ pages: [Data], _ decode: @escaping @Sendable (Data, inout Int) throws -> [T]) async throws -> [T] {
+                let (items, count) = try await offMain { () throws -> ([T], Int) in
+                    var count = 0, items: [T] = []
+                    for page in pages { items += try decode(page, &count) }
+                    return (items, count)
+                }
+                skipped += count
+                return items
+            }
             for path in ["/sync/tracking/watched/history/movies", "/sync/tracking/watched/history/episodes"] {
-                for page in try await all(path) { fresh.plays += try WeTrakrDecode.plays(from: page, skipped: &skipped) }
+                fresh.plays += try await decoded(try await all(path)) { try WeTrakrDecode.plays(from: $0, skipped: &$1) }
             }
             for target in ["movies", "shows"] {
-                for page in try await all("/sync/tracking/planning/" + target) { fresh.watchlist += try WeTrakrDecode.listed(from: page, skipped: &skipped) }
-                for page in try await all("/sync/tracking/dropped/" + target) { fresh.dropped += try WeTrakrDecode.listed(from: page, skipped: &skipped) }
-                for page in try await all("/sync/favorites/" + target) { fresh.favorites += try WeTrakrDecode.listed(from: page, skipped: &skipped) }
+                fresh.watchlist += try await decoded(try await all("/sync/tracking/planning/" + target)) { try WeTrakrDecode.listed(from: $0, skipped: &$1) }
+                fresh.dropped += try await decoded(try await all("/sync/tracking/dropped/" + target)) { try WeTrakrDecode.listed(from: $0, skipped: &$1) }
+                fresh.favorites += try await decoded(try await all("/sync/favorites/" + target)) { try WeTrakrDecode.listed(from: $0, skipped: &$1) }
             }
-            for page in try await all("/sync/ratings/all") { fresh.ratings += try WeTrakrDecode.ratings(from: page, skipped: &skipped) }
+            fresh.ratings += try await decoded(try await all("/sync/ratings/all")) { try WeTrakrDecode.ratings(from: $0, skipped: &$1) }
             library.plays = fresh.plays; library.watchlist = fresh.watchlist; library.dropped = fresh.dropped
             library.favorites = fresh.favorites; library.ratings = fresh.ratings; library.skipped = skipped
             // Everything up to here is in; the journal carries on from how far it could be read.
@@ -2113,7 +2140,8 @@ enum ServiceRemovals {
         repeat {
             var query = ["limit": "1000"]
             if let cursor { query["cursor"] = cursor }
-            let page = try TrackerDecode.mdblistPage(from: try await client.read(config, path: path, query: query))
+            let data = try await client.read(config, path: path, query: query)
+            let page = try await offMain { try TrackerDecode.mdblistPage(from: data) }
             items += page.items; skipped += page.skipped; calls += 1
             cursor = page.next == cursor ? nil : page.next
         } while cursor != nil && calls < 50
