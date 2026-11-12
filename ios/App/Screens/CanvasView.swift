@@ -292,29 +292,34 @@ struct CanvasListCard: View {
     let list: CanvasList
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Plain rows of fixed squares (one layout pass), not a Grid of aspect-filled tiles,
-            // which measured each of the four posters several times per card while scrolling.
-            VStack(spacing: 2) {
-                ForEach(0..<2, id: \.self) { row in
-                    HStack(spacing: 2) {
-                        ForEach(0..<2, id: \.self) { column in
-                            let index = row * 2 + column
-                            Color.clear.aspectRatio(1, contentMode: .fit)
-                                .overlay { Artwork(path: index < list.posters.count ? CatalogTools.image(list.posters[index], size: "w185") : nil, title: list.name) }
-                                .clipped()
-                        }
+            // Owner's layout: three posters fanned left to right, the first on top and each next one
+            // tucked behind the one before. A thin dark edge parts them (a shadow would be an extra
+            // offscreen pass on every frame of a scroll).
+            Color.clear.aspectRatio(1.48, contentMode: .fit)
+                .overlay {
+                    GeometryReader { proxy in
+                        let height = proxy.size.height, width = min(proxy.size.width * 0.46, height * 2 / 3)
+                        let step = max(0, (proxy.size.width - width) / 2)
+                        ZStack(alignment: .topLeading) {
+                            ForEach([2, 1, 0], id: \.self) { index in
+                                Artwork(path: index < list.posters.count ? CatalogTools.image(list.posters[index], size: "w185") : nil, title: list.name)
+                                    .frame(width: width, height: height)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.black.opacity(0.6), lineWidth: 1.5))
+                                    .offset(x: step * CGFloat(index))
+                            }
+                        }.frame(width: proxy.size.width, height: height, alignment: .topLeading)
                     }
                 }
-            }.clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
                 .padding([.horizontal, .top], 10)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(list.name).font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    .lineLimit(2, reservesSpace: true).truncationMode(.tail).multilineTextAlignment(.leading)
                 Text("by " + list.user).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
-            }.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 14)
-        }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-            .contentShape(RoundedRectangle(cornerRadius: 18)).accessibilityElement(children: .combine)
+            }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
+        }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+            .contentShape(RoundedRectangle(cornerRadius: 20)).accessibilityElement(children: .combine)
     }
 }
 
