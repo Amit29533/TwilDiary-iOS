@@ -670,7 +670,8 @@ private struct CatalogSeasonPreview: View {
         revealed.insert(next.number)
         swipeForward = forward
         Task { await controller.load(selected, reveal: true) }
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { selectedEpisode = next.number }
+        // The sheet has already slid to it; animating this too re-animated the whole page behind.
+        selectedEpisode = next.number
     }
 }
 

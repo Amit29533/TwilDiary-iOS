@@ -437,7 +437,8 @@ struct EpisodesPage: View {
         revealed.insert(next.id)
         if details.episodes[next.id] == nil { Task { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
         self.forward = forward
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selected = next }
+        // The sheet has already slid to it; animating this too re-animated the whole page behind.
+        selected = next
     }
 }
 
@@ -650,7 +651,7 @@ struct PreviewEpisodesPage: View {
         revealed.insert(next.number)
         Task { await controller?.load(season, reveal: true) }
         self.forward = forward
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selected = next.number }
+        selected = next.number
     }
 }
 

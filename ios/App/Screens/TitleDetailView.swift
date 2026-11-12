@@ -624,7 +624,8 @@ struct TitleDetailView: View {
         revealedEpisodeIDs.insert(next.id)
         if episodeDetails.episodes[next.id] == nil { Task { await revealSeason(title) } }
         episodeForward = forward
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.32)) { selectedEpisode = next }
+        // The sheet has already slid to it; animating this too re-animated the whole page behind.
+        selectedEpisode = next
     }
     private func prepareSeason(_ title: MediaTitle, force: Bool = false) async {
         if store.isPreview && !store.canMutate { return }

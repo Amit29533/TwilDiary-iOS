@@ -33,14 +33,28 @@ struct EpisodeInfoSheet: View {
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The page on screen. Set before the first frame, so the sheet opens on the tapped episode
+    /// instead of drawing the first one and jumping.
     @State private var position: String?
     @State private var expanded = Set<String>()
     @State private var myRatings: [String: Int?] = [:]
+    /// Ratings saved on this iPhone, read once (not from UserDefaults on every draw of every page).
+    @State private var savedRatings: [String: Int]
+
+    init(title: MediaTitle, season: Int, episodes: [Episode], episode: Episode, page: @escaping (Episode) -> Page,
+         onToggleWatched: @escaping (Episode) -> Void, onNeighbour: @escaping (_ forward: Bool) -> Void,
+         onNote: @escaping () -> Void, onClose: @escaping () -> Void, inDiary: Bool = true) {
+        self.title = title; self.season = season; self.episodes = episodes; self.episode = episode; self.page = page
+        self.onToggleWatched = onToggleWatched; self.onNeighbour = onNeighbour; self.onNote = onNote; self.onClose = onClose
+        self.inDiary = inDiary
+        _position = State(initialValue: episode.id)
+        _savedRatings = State(initialValue: EpisodeRatings.all)
+    }
     @State private var ratingError: String?
     @State private var rating = false
 
     private var myRating: Int? { myRating(episode) }
-    private func myRating(_ item: Episode) -> Int? { myRatings[item.id] ?? EpisodeRatings.all[item.id] }
+    private func myRating(_ item: Episode) -> Int? { myRatings[item.id] ?? savedRatings[item.id] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,7 +79,6 @@ struct EpisodeInfoSheet: View {
                     if myRating != nil { Button("Remove rating", role: .destructive) { rate(nil) } }
                 } message: { Text("Saved to Trakt.") }
         }.background(HomeStyle.round.ignoresSafeArea())
-            .onAppear { position = episode.id }
             .onChange(of: episode.id) { _, id in if position != id { position = id } }
             .task(id: episode.id) { ratingError = nil }
             .accessibilityAction(named: "Next episode") { go(true) }
