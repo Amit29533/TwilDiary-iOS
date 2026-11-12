@@ -1654,6 +1654,23 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertTrue(store.workspace.events.filter { $0.titleId == "movie:603" && $0.revokedAt == nil }.isEmpty)
         XCTAssertEqual(store.title("movie:603")?.status, "planned")
     }
+    /// Signed in with Trakt alone after a server sign-in: the server's (one Cloudflare Access now
+    /// refuses) is dropped at launch instead of being tried first and asking to sign in again.
+    func testAPhoneOnlyChoiceDropsALeftoverServerSignInAtLaunch() async throws {
+        StubProtocol.state.reset { _ in .init(500, "should not be called", contentType: "text/plain") }
+        let storage = MemorySessionStorage(); storage.credential = credential
+        UserDefaults.standard.set("trakt", forKey: DiaryStore.phoneOnlyKey)
+        defer { UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey) }
+        let store = makeStore(api: api(storage))
+        XCTAssertNil(storage.credential, "the leftover server sign-in is gone")
+        XCTAssertFalse(store.phoneOnly, "no Trakt sign-in on this phone in the test, so the sign-in page shows")
+        XCTAssertTrue(store.needsSignIn)
+        // Without a phone-only choice, a server sign-in stays.
+        UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        let kept = MemorySessionStorage(); kept.credential = credential
+        let signedIn = makeStore(api: api(kept))
+        XCTAssertNotNil(kept.credential); XCTAssertFalse(signedIn.needsSignIn)
+    }
     func testPublicRatingProviderFailureDoesNotExpireThePrivateSession() async throws {
         StubProtocol.state.reset { _ in .init(503, "Provider unavailable", contentType: "text/plain") }
         let storage = MemorySessionStorage(); storage.credential = credential

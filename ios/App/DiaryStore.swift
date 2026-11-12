@@ -308,6 +308,12 @@ import TwilDiaryCore
         }
         #endif
         if !isPreview {
+            // A Trakt-only (or On this phone) diary chosen after a server sign-in: the server's
+            // sign-in is dropped. It used to be tried first on every launch; Cloudflare Access had
+            // refused it (its own date hadn't passed, so it was kept), so each launch asked to sign
+            // in again. A server sign-in always clears the phone-only choice, so both are saved
+            // only when the server's is the leftover.
+            if self.api.credential != nil, Self.savedPhoneOnly != nil || TraktDirectStore.shared.localOnly { self.api.signOut() }
             needsSignIn = self.api.credential == nil
             if needsSignIn, TraktDirectStore.shared.localOnly {
                 phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
@@ -353,6 +359,8 @@ import TwilDiaryCore
     /// "On this phone": no account at all. The diary lives in a file on this iPhone and every edit
     /// is made there; connect Trakt or your server later from Connections.
     func startOnThisPhone() async {
+        // No server from here on: a sign-in kept from before would be tried first at every launch.
+        if api.credential != nil { api.signOut() }
         TraktDirectStore.shared.useLocal(true)
         UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey)
         sessionGeneration = UUID(); snapshotGeneration = UUID()
@@ -378,6 +386,9 @@ import TwilDiaryCore
         if tracker == .trakt { await PendingTraktSignIn.adopt(store: self) }
         let signedIn = tracker == .trakt ? traktSignedInOnPhone : providerSettings.config(for: tracker.provider).isAuthenticated
         guard signedIn else { error = "\(tracker.name) didn’t finish signing in. Try again."; return }
+        // The service is the sign-in now: a server sign-in kept from before (one Cloudflare Access
+        // refuses) would be tried first at every launch and ask to sign in again.
+        if api.credential != nil { api.signOut() }
         UserDefaults.standard.set(tracker.rawValue, forKey: Self.phoneOnlyKey)
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         phoneOnly = true; error = nil
@@ -412,6 +423,8 @@ import TwilDiaryCore
         do {
             try await api.authenticate(credential)
             guard generation == sessionGeneration else { return }
+            // Signed in to the server: the phone-only choice is over (launch prefers it otherwise).
+            UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey)
             // Reads started while authentication still used the previous
             // credential must not survive under the newly authenticated owner.
             invalidateDiscovery()
