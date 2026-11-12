@@ -689,7 +689,10 @@ struct ProgressCard: View {
     /// happens for a moment each time Home appears or refreshes) never replaces real progress:
     /// the last real one stays until real numbers come back, so the buttons don't jump.
     private var card: WatchCard? {
-        let candidates = [loadedCard, store.cachedCard(title)].compactMap { $0 }
+        var candidates = [loadedCard, store.cachedCard(title)].compactMap { $0 }
+        // A diary kept on the phone works its card out at once: a page the carousel turns to
+        // shows its progress straight away instead of "Checking progress…" first.
+        if candidates.isEmpty, store.diarySource != "server" { candidates = [store.localCard(title)] }
         guard title.isSeries else { return candidates.first }
         return candidates.first { $0.progress.total > 0 } ?? Self.lastReal[title.id] ?? candidates.first
     }
@@ -1065,8 +1068,16 @@ struct ProgressCard: View {
     private var remaining: Int? {
         guard let card else { return nil }
         if !title.isSeries { return title.runtimeMinutes.map { card.progress.watched == 0 ? $0 : 0 } }
-        return store.seasonProgress(title, season: card.season?.number ?? 1).remainingMinutes
+        // The time left needs the season's runtimes, which can arrive a moment after the card:
+        // the last known time (for the same progress) stays meanwhile, so "about 4h 48m" doesn't
+        // drop out and come back when Home opens.
+        let season = card.season?.number ?? 1, key = title.id + "#" + String(season)
+        let value = store.seasonProgress(title, season: season).remainingMinutes
+        if let value, value > 0 { Self.lastRemaining[key] = (card.progress.watched, value); return value }
+        if let kept = Self.lastRemaining[key], kept.watched == card.progress.watched { return kept.minutes }
+        return value
     }
+    @MainActor private static var lastRemaining: [String: (watched: Int, minutes: Int)] = [:]
     private func loadCard() async {
         guard !store.needsSignIn, !Task.isCancelled else { return }
         do {

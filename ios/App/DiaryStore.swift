@@ -615,10 +615,24 @@ import TwilDiaryCore
             builtFromService = true
             workspace = make(); fillServiceOnlyTitles(); return
         }
+        // Later builds (every pull to refresh reads the service again) are built, compared and
+        // indexed off the main thread: an unchanged diary is not published again, and a changed
+        // one no longer re-indexes on the main thread while the page bounces back, which made
+        // Home stutter for a moment on each pull.
+        let current = workspace, revision = homeWorkspaceRevision
         diaryBuild = Task { [weak self] in
-            let built = await Task.detached(priority: .userInitiated) { make() }.value
+            let (built, same) = await Task.detached(priority: .userInitiated) { () -> (Workspace, Bool) in
+                let built = make()
+                let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+                let same = (try? encoder.encode(built)).map { $0 == (try? encoder.encode(current)) } ?? false
+                return (built, same)
+            }.value
             guard let self, !Task.isCancelled, ticket == self.diaryBuildTicket else { return }
-            self.workspace = built
+            if !(same && revision == self.homeWorkspaceRevision) {
+                let indexed = await self.buildIndex(built)
+                guard !Task.isCancelled, ticket == self.diaryBuildTicket else { return }
+                self.publishIndexed(built, indexed)
+            }
             self.fillServiceOnlyTitles()
         }
     }

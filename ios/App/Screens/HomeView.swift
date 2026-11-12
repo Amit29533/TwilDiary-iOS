@@ -200,8 +200,12 @@ struct HomeView: View {
                     LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
                                            .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
                 }
-                .modifier(PullStretch(lift: Self.artLift)).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
-            }.allowsHitTesting(false).accessibilityHidden(true)
+                .modifier(PullStretch(lift: Self.artLift)).id(current.id).transition(.opacity)
+            }
+            // On the container (outside the art's identity), so switching titles cross-fades
+            // instead of cutting from one picture to the next.
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+            .allowsHitTesting(false).accessibilityHidden(true)
         }
     }
     /// Recently watched titles that TMDB knows, newest first, each once.
