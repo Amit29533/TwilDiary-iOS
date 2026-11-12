@@ -28,13 +28,17 @@ import TwilDiaryCore
         }
         return list
     }
-    /// The keys requests use: your own, else the one built into this copy of the app.
+    /// The keys requests use: your own, else the ones built into this copy of the app (several,
+    /// separated by commas, taken in turn like your own).
     static var keys: [String] {
         let own = ownKeys
         if !own.isEmpty { return own }
-        guard let value = (Bundle.main.object(forInfoDictionaryKey: "TwilDiaryGeminiKey") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty, !value.hasPrefix("$(") else { return [] }
-        return [value]
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "TwilDiaryGeminiKey") as? String, !value.hasPrefix("$(") else { return [] }
+        return builtInKeys(value)
+    }
+    static func builtInKeys(_ value: String) -> [String] {
+        var seen = Set<String>()
+        return value.split(whereSeparator: { $0 == "," || $0.isWhitespace }).map(String.init).filter { seen.insert($0).inserted }
     }
     /// Any key at all (Gemini, Groq or Requesty): AI search and CineMind can answer.
     static var key: String? { keys.first ?? groqKeys.first ?? requestyKeys.first }
