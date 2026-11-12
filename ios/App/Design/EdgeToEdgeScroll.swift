@@ -34,16 +34,21 @@ struct EdgeToEdgeScroll<Content: View>: View {
     var body: some View {
         let pastDistance = scrolledPast?.distance ?? .infinity
         GeometryReader { geometry in
+            // How far the page has scrolled is measured from its own top margin, not the scroll
+            // view's reported inset: the pull-to-refresh spinner adds to that inset the moment the
+            // refresh starts (the haptic), which read as "scrolled" for a frame and flashed the dark
+            // header band over the top of the page.
+            let top = geometry.safeAreaInsets.top
             ScrollView { content }
                 .contentMargins(.top, geometry.safeAreaInsets.top, for: .scrollContent)
                 .contentMargins(.bottom, geometry.safeAreaInsets.bottom, for: .scrollContent)
                 .ignoresSafeArea(.container, edges: .vertical)
                 .scrollEdgeEffectHidden(true, for: .top)
                 .onScrollGeometryChange(for: CGFloat.self, of: { value in
-                    (min(1, max(0, (value.contentOffset.y + value.contentInsets.top) / 48)) * 32).rounded() / 32
+                    (min(1, max(0, (value.contentOffset.y + top) / 48)) * 32).rounded() / 32
                 }) { _, progress in header.update(progress) }
                 .onScrollGeometryChange(for: Bool.self, of: { value in
-                    value.contentOffset.y + value.contentInsets.top > pastDistance
+                    value.contentOffset.y + top > pastDistance
                 }) { _, past in if let scrolledPast, scrolledPast.value.wrappedValue != past { scrolledPast.value.wrappedValue = past } }
                 .overlay(alignment: .top) {
                     if geometry.safeAreaInsets.top > 0 {

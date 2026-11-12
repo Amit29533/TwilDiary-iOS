@@ -183,13 +183,13 @@ struct HomeView: View {
             // higher, which enlarged a 16:9 backdrop about 2x and cut off half of it; with only the
             // status bar's height it is enlarged about 1.7x, so more of the picture shows.
             GeometryReader { proxy in
-            Artwork(path: current.backdrop ?? current.poster, title: current.name)
-                .task(id: titles.map { $0.backdrop ?? $0.poster ?? "" } + [String(Int(proxy.size.width))]) {
+            Artwork(path: heroArtwork(current), title: current.name)
+                .task(id: titles.map { heroArtwork($0) ?? "" } + [String(Int(proxy.size.width))]) {
                     // The same size Artwork asks for (its frame here), so each is already decoded.
                     let pixels = Double(max(proxy.size.width, proxy.size.height + Self.artLift) * displayScale)
                     for title in titles where title.id != current.id {
                         guard !Task.isCancelled else { return }
-                        if let request = PublicArtworkRequest(path: title.backdrop ?? title.poster, pixels: pixels) {
+                        if let request = PublicArtworkRequest(path: heroArtwork(title), pixels: pixels) {
                             _ = await PublicArtworkCache.shared.image(request)
                         }
                     }
@@ -214,6 +214,16 @@ struct HomeView: View {
         for entry in recent where entry.title.tmdbId != nil && seen.insert(entry.title.id).inserted { seeds.append(entry.title) }
         return seeds
     }
+    /// The picture Home's hero shows for a title: the first backdrop it showed this session.
+    /// Each refresh rebuilds the diary, and a title could come back for a moment without its
+    /// backdrop (the poster then filled in) or with another copy of it: the hero flashed.
+    private func heroArtwork(_ title: MediaTitle) -> String? {
+        if let kept = Self.heroArt[title.id] { return kept }
+        guard let backdrop = title.backdrop else { return title.poster }
+        Self.heroArt[title.id] = backdrop
+        return backdrop
+    }
+    @MainActor private static var heroArt: [String: String] = [:]
     /// Just enough to reach under the status bar; pulling down stretches the art instead of revealing a gap.
     private static let artLift: CGFloat = 64
     private func discoverButton(_ name: String, icon: String) -> some View {
