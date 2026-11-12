@@ -64,6 +64,14 @@ import TwilDiaryTestSupport
     let wetrakr = plan(revokeLocal, .wetrakr)
     let item = try #require((wetrakr.deliveries.first?.body["movies"] as? [[String: Any]])?.first)
     #expect(wetrakr.deliveries.first?.path == "/sync/tracking/remove" && item["tracked_at"] as? String == "2026-11-06T20:00:00.000Z" && item["allow_rewatch"] == nil)
+    // Simkl and MDBList keep one watch for every play: while the diary still has another play of
+    // this movie, taking one off leaves them as they are…
+    #expect(plan(revokeLocal, .mdblist).deliveries.isEmpty && plan(revokeLocal, .mdblist).blocked.isEmpty)
+    #expect(plan(revokeLocal, .simkl).deliveries.isEmpty && plan(revokeLocal, .simkl).blocked.isEmpty)
+    // …and the last play takes their watch off.
+    for index in base.events.indices where base.events[index].titleId == movie.id && base.events[index].id != "local-7" {
+        base.events[index].revokedAt = "2026-11-06T00:00:00Z"
+    }
     #expect(plan(revokeLocal, .mdblist).deliveries.map(\.path) == ["/sync/watched/remove"])
     #expect(plan(revokeLocal, .simkl).deliveries.map(\.path) == ["/sync/history/remove"])
     let restore = OptimisticMutation.restoreWatch(eventId: "local-7", titleId: movie.id, expectedVersion: 2)
