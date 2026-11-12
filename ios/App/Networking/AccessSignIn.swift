@@ -276,6 +276,12 @@ enum SignInNavigationPolicy {
                 if let phoneOnly { phoneOnly(.trakt); return }
                 PendingTraktSignIn.waiting = nil
                 let message = (json?["error"] as? [String: Any])?["message"] as? String
+                if message == nil, json == nil {
+                    // Not the TwilDiary server answering at all (Cloudflare Access's own page, or no
+                    // answer): Trakt can't get past it, so the account was never even checked.
+                    webError = "Your server is behind Cloudflare Access, which a Trakt sign-in can’t get through. Use Google or email to sign in to it."
+                    return
+                }
                 webError = message ?? "Your server didn’t accept this Trakt account. Use the Trakt account linked to your diary, or Continue with Google or email."
                 return
             }

@@ -1588,7 +1588,12 @@ import TwilDiaryCore
         }
         if isPreview { throw APIError.message("The browsing fixture is read-only.") }
         #endif
-        if phoneOnly { throw APIError.message(Self.needsServer) }
+        if phoneOnly {
+            // Details, cast, lists and discovery come from TMDB on the phone when it has a key; the
+            // server is only their backup. Without a key, the key is the fix, not a server.
+            let tmdbBacked = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search"].contains { path.hasPrefix($0) }
+            throw APIError.message(tmdbBacked && TMDBDirect.token(self) == nil ? Self.needsTMDB : Self.needsServer)
+        }
         let generation = sessionGeneration
         do {
             if let mutation = queuedMutation(path, method: method, body: body),
@@ -2180,6 +2185,7 @@ import TwilDiaryCore
     }
     private static let targetedRefreshLimit = 50
     static let needsServer = "This needs your TwilDiary server. Connect it in Profile → Connections → Server sign-in."
+    static let needsTMDB = "This needs TMDB. Add your TMDB key in Profile → Connections → TMDB, or sign in to your TwilDiary server."
     private func fail(_ cause: Error) {
         if case APIError.signIn = cause, !phoneOnly {
             retainedTraktController?.invalidateSession(); retainedTraktController = nil
