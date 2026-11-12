@@ -144,9 +144,14 @@ public enum TrackerDecode {
                 for case let season as [String: Any] in (item["seasons"] as? [Any]) ?? [] {
                     for case let episode as [String: Any] in (season["episodes"] as? [Any]) ?? [] {
                         let tvdb = object(episode["tvdb"])
-                        // No TVDB place from Simkl: the entry's own episode, placed through Anime-Lists
-                        // (a season Simkl files under its own TMDB id lands on the diary's show).
-                        if tvdb == nil, let anime, let anidb, let own = int(episode["number"]), let placed = anime.show(anidb: anidb, episode: own) {
+                        // The entry's own episode placed through Anime-Lists, in TMDB's numbering (the
+                        // diary's) whenever Anime-Lists has it, even over Simkl's TVDB place: a long
+                        // series TVDB splits into seasons (Simkl's TVDB S3E1 is the diary's S1E39), or a
+                        // season Simkl files under its own TMDB id, lands where the diary has it. With
+                        // only TVDB's numbering known, Simkl's own TVDB place stands.
+                        let own = int(episode["number"])
+                        let placed = anidb.flatMap { anidb in own.flatMap { anime?.show(anidb: anidb, episode: $0) } }
+                        if let placed, placed.tmdb != nil || tvdb == nil {
                             let target = placed.tmdb.flatMap { $0 == title.tmdbId ? nil : $0 }.map {
                                 TraktTitleRef(kind: .show, traktId: title.traktId, tmdbId: $0, imdbId: nil, tvdbId: placed.tvdb ?? title.tvdbId,
                                               name: title.name, year: title.year, simklId: title.simklId)

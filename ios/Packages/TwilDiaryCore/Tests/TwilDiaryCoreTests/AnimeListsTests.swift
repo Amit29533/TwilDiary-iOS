@@ -92,3 +92,22 @@ private let sample = Data("""
     let plain = try TrackerDecode.simklLibrary(from: Data(#"{"anime":[{"show":{"title":"x","ids":{"simkl":1066341,"tmdb":"274822","anidb":"14444"}},"seasons":[{"number":1,"episodes":[{"number":3}]}]}]}"#.utf8))
     #expect(plain.plays.first?.title.tmdbId == 274822 && plain.plays.first?.episode == 3)
 }
+
+@Test func tmdbsNumberingWinsOverSimklsTVDBPlaceWhenAnimeListsHasIt() throws {
+    // A long series TVDB splits into seasons and TMDB keeps as one: this entry is TVDB's season 3
+    // and TMDB's season 1 from episode 39.
+    let index = AnimeListIndex.parse(Data("""
+    <anime-list>
+      <anime anidbid="500" tvdbid="305089" defaulttvdbseason="3" episodeoffset="" tmdbtv="65942" tmdbseason="1" tmdboffset="38" tmdbid="" imdbid=""><name>Long series part 3</name></anime>
+    </anime-list>
+    """.utf8))
+    let library = try TrackerDecode.simklLibrary(from: Data("""
+    {"anime":[{"show":{"title":"Long series","ids":{"simkl":7,"tmdb":"65942","tvdb":"305089","anidb":"500"}},"anime_type":"tv",
+               "seasons":[{"number":1,"episodes":[{"number":1,"tvdb":{"season":3,"episode":1}}]}]}]}
+    """.utf8), anime: index)
+    let play = try #require(library.plays.first)
+    #expect(play.title.tmdbId == 65942 && play.season == 1 && play.episode == 39, "the diary's TMDB numbering, not TVDB's S3E1")
+    // Sending goes the other way: the diary's S1E39 is that entry's episode 1.
+    let sent = index.anidb(tmdb: 65942, tvdb: 305089, season: 1, episode: 39)
+    #expect(sent?.anidb == 500 && sent?.episode == 1)
+}

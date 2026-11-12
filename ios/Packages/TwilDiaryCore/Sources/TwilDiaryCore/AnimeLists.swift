@@ -60,6 +60,11 @@ public struct AnimeListIndex: Sendable, Equatable {
     /// when the entry lists TMDB, else TVDB's).
     public func show(anidb: Int, episode: Int) -> (tmdb: Int?, tvdb: Int?, season: Int, episode: Int)? {
         guard episode > 0, let entry = byAniDB[anidb] else { return nil }
+        // TMDB numbers this entry its own way (the diary's numbering): TMDB's season and offset, not
+        // TVDB's per-episode mappings.
+        if let tmdb = entry.tmdb, let season = entry.tmdbSeason, !entry.tmdbMirrorsTVDB, episode + entry.tmdbOffset > 0 {
+            return (tmdb, entry.tvdb, season, episode + entry.tmdbOffset)
+        }
         for mapping in entry.mappings where mapping.anidbSeason == 1 {
             var target: Int?
             if let mapped = mapping.pairs[episode] { target = mapped }
