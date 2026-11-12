@@ -33,19 +33,23 @@ import TwilDiaryCore
     /// Learns the ids a service's library carries.
     func learn(from library: TraktLibrary) {
         var changed = false
+        let refs = library.plays.map(\.title) + library.ratings.map(\.title) + (library.watchlist + library.favorites + library.dropped).map(\.title)
+        // Two Simkl entries for one diary title (a season Simkl files as its own entry, placed on
+        // the diary's show through Anime-Lists): neither is learned, so the show keeps the Simkl id
+        // it had and writes for it don't go to that season's entry.
+        var simklIDs: [String: Set<Int>] = [:]
+        for ref in refs { if let key = ref.diaryKey, let id = ref.simklId { simklIDs[key, default: []].insert(id) } }
         func take(_ ref: TraktTitleRef) {
             guard let key = ref.diaryKey else { return }
             var entry = known[key] ?? Known()
             let before = entry
-            if let id = ref.simklId { entry.simkl = id; entry.missing["simkl"] = nil }
+            if let id = ref.simklId, (simklIDs[key]?.count ?? 0) <= 1 { entry.simkl = id; entry.missing["simkl"] = nil }
             if let id = ref.weTrakrId { entry.wetrakr = id; entry.missing["wetrakr"] = nil }
             if entry.imdb == nil, let id = ref.imdbId, !id.isEmpty { entry.imdb = id }
             if entry.tvdb == nil, let id = ref.tvdbId { entry.tvdb = id }
             if entry != before { known[key] = entry; changed = true }
         }
-        library.plays.forEach { take($0.title) }
-        library.ratings.forEach { take($0.title) }
-        (library.watchlist + library.favorites + library.dropped).forEach { take($0.title) }
+        refs.forEach(take)
         if changed { BackgroundFiles.save(known, to: file) }
     }
 

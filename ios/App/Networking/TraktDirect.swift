@@ -1214,7 +1214,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 let fullQuery = ["extended": "full_anime_seasons", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
                 func fullPull() async throws {
                     let data = try await client.read(config, path: "/sync/all-items/", query: fullQuery)
-                    library = try await offMain { try TrackerDecode.simklLibrary(from: data) }
+                    let anime = await AnimeListsStore.shared.index()
+                    library = try await offMain { try TrackerDecode.simklLibrary(from: data, anime: anime) }
                     requests += 1
                     fetched = [.history, .ratings, .watchlist, .dropped, .notes]
                 }
@@ -1227,8 +1228,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                     if items {
                         var query = fullQuery; query["date_from"] = since
                         let data = try await client.read(config, path: "/sync/all-items/", query: query)
-                        let base = library
-                        library = try await offMain { SimklSync.merge(try TrackerDecode.simklLibrary(from: data), touched: (try? TrackerDecode.simklIDs(from: data)) ?? [], into: base) }
+                        let base = library, anime = await AnimeListsStore.shared.index()
+                        library = try await offMain { SimklSync.merge(try TrackerDecode.simklLibrary(from: data, anime: anime), touched: (try? TrackerDecode.simklIDs(from: data)) ?? [], into: base) }
                         requests += 1
                         fetched += [.history, .watchlist, .dropped, .notes]
                     }

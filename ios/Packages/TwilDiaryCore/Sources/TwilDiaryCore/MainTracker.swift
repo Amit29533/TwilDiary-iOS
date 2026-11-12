@@ -104,7 +104,9 @@ public enum TrackerDecode {
 
     /// `GET /sync/all-items/?extended=full&episode_watched_at=yes&memos=yes&include_all_episodes=yes`:
     /// movies, shows and anime with their status, rating, memo and watched episodes.
-    public static func simklLibrary(from data: Data) throws -> TraktLibrary {
+    /// `anime`: Anime-Lists, to place an anime episode Simkl gives no TVDB place for (its entry's
+    /// own number) by the entry's AniDB id.
+    public static func simklLibrary(from data: Data, anime: AnimeListIndex? = nil) throws -> TraktLibrary {
         let parsed = try JSONSerialization.jsonObject(with: data)
         // An empty library is `{}` (or, from some clients, `null`).
         guard let root = parsed as? [String: Any] else {
@@ -138,9 +140,21 @@ public enum TrackerDecode {
                 // `extended=full_anime_seasons` each episode says where it is in TVDB's numbering
                 // (closest to TMDB's), and the entry which TVDB seasons it covers.
                 let mapped = ((item["mapped_tvdb_seasons"] as? [Any]) ?? []).compactMap { int($0) }
+                let anidb = int(object(block["ids"])?["anidb"])
                 for case let season as [String: Any] in (item["seasons"] as? [Any]) ?? [] {
                     for case let episode as [String: Any] in (season["episodes"] as? [Any]) ?? [] {
                         let tvdb = object(episode["tvdb"])
+                        // No TVDB place from Simkl: the entry's own episode, placed through Anime-Lists
+                        // (a season Simkl files under its own TMDB id lands on the diary's show).
+                        if tvdb == nil, let anime, let anidb, let own = int(episode["number"]), let placed = anime.show(anidb: anidb, episode: own) {
+                            let target = placed.tmdb.flatMap { $0 == title.tmdbId ? nil : $0 }.map {
+                                TraktTitleRef(kind: .show, traktId: title.traktId, tmdbId: $0, imdbId: nil, tvdbId: placed.tvdb ?? title.tvdbId,
+                                              name: title.name, year: title.year, simklId: title.simklId)
+                            } ?? title
+                            library.plays.append(TraktPlay(historyId: playID("simkl|e|\(target.tmdbId ?? 0)|\(title.name)|\(placed.season)|\(placed.episode)"),
+                                                           title: target, season: placed.season, episode: placed.episode, watchedAt: date(episode["watched_at"])))
+                            continue
+                        }
                         guard let number = int(tvdb?["episode"]) ?? int(episode["number"]) else { library.skipped += 1; continue }
                         // An episode without its own mapping, in an entry that covers one TVDB season: that season.
                         let seasonNumber = tvdb.flatMap { int($0["season"]) } ?? (mapped.count == 1 ? mapped[0] : nil) ?? int(season["number"]) ?? 1

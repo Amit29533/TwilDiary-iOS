@@ -184,7 +184,17 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         do {
             let reply = try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending)
             SyncReport.record(config.provider, path: path, body: sending, reply: reply)
-            return ServiceIDs.reply(reply, adding: prepared.missing)
+            var answered = reply
+            // Simkl couldn't place some episodes by TVDB numbering: sent once more by their AniDB
+            // entry and its own episode numbers (Anime-Lists), and the two answers combined.
+            if config.provider == .simkl, path == "/sync/history" || path == "/sync/history/remove",
+               SimklAnimeFallback.hasMissingEpisodes(reply), let index = await AnimeListsStore.shared.index(),
+               let retry = SimklAnimeFallback.retry(sent: sending, reply: reply, index: index) {
+                let second = try? await send(url: components.url!, method: "POST", headers: headers, rawBody: retry.body)
+                SyncReport.record(config.provider, path: path + " (by AniDB entry)", body: retry.body, reply: second ?? Data("No answer.".utf8))
+                answered = SimklAnimeFallback.merge(reply: reply, retry: retry, retryReply: second)
+            }
+            return ServiceIDs.reply(answered, adding: prepared.missing)
         }
         catch APIError.rejected(let status, let message) where status != 429 && !(config.provider == .simkl && status == 400 && message.contains("rate_limit")) {
             SyncReport.record(config.provider, path: path, body: sending, reply: Data("HTTP \(status): \(message)".utf8))
