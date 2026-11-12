@@ -87,7 +87,9 @@ public enum WeTrakrDecode {
                 guard let title = ref(kind: .movie, id: row["id"], ids: row["ids"], name: row["title"]) else { skipped += 1; return nil }
                 return TraktPlay(historyId: TrackerDecode.playID("wetrakr|" + playID), title: title, watchedAt: date, remoteId: playID)
             }
-            guard let show = ref(kind: .show, id: row["show_id"], ids: row["show_ids"]),
+            // The show's name, where WeTrakr gives it (otherwise the compare lists it nameless).
+            let showName = row["show_title"] ?? row["show_name"] ?? (object(row["show"])?["title"])
+            guard let show = ref(kind: .show, id: row["show_id"], ids: row["show_ids"], name: showName),
                   let season = int(row["season_number"]) ?? (row["season_number"] as? Int), let number = int(row["number"]) else { skipped += 1; return nil }
             return TraktPlay(historyId: TrackerDecode.playID("wetrakr|" + playID), title: show, season: season, episode: number, watchedAt: date, remoteId: playID)
         }

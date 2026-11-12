@@ -247,6 +247,16 @@ private func diary() throws -> Workspace {
     #expect(TraktWritePlan.make(library: done, workspace: try diary()).isEmpty)
 }
 
+@Test func aWatchKeptAtAnotherTimeIsNotSentAgain() throws {
+    // WeTrakr (rewatches kept) has E11 at another time: it stands for the diary's one, so nothing
+    // is logged twice; a second diary watch of it would still go.
+    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love")
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: "2025-01-01T00:00:00.000Z")])
+    let plan = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .wetrakr)
+    #expect(!plan.plays.contains { $0.title.tmdbId == 284172 && $0.episode == 11 })
+    #expect(plan.plays.contains { $0.title.tmdbId == 284172 && $0.episode == 12 })
+}
+
 // MARK: Phase 5: Simkl and MDBList match the diary
 
 @Test func simklAndMDBListGetOneWatchPerEpisodeAndTheirOwnEndpoints() throws {

@@ -131,6 +131,7 @@ struct TrackerPreviewPanel: View {
     /// This service is the diary: there's nothing to make it match.
     private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker || store.serverRecord == tracker) }
     @State private var confirmMatch = false
+    @State private var copiedReport = false
     @State private var writeThroughError: String?
     @State private var savingWriteThrough = false
 
@@ -216,6 +217,12 @@ struct TrackerPreviewPanel: View {
                 } label: {
                     Label(running ? "Reading \(tracker.name)…" : "Check now", systemImage: "arrow.clockwise")
                 }.buttonStyle(SettingsWideButtonStyle()).disabled(running || trakt.writing || others.writing != nil).accessibilityIdentifier(id + "-check")
+                if tracker != .trakt, let log = SyncReport.text(tracker.provider) {
+                    // What the last match sent and what came back, to see why something didn't land.
+                    Button { UIPasteboard.general.string = log; copiedReport = true } label: {
+                        Label(copiedReport ? "Copied" : "Copy last sync report", systemImage: copiedReport ? "checkmark" : "doc.on.doc")
+                    }.buttonStyle(SettingsWideButtonStyle()).accessibilityIdentifier(id + "-report")
+                }
             }.padding(15).modifier(SettingsCard())
                 .smoothChange(of: report?.comparison.matchingPlays ?? -1)
         }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")

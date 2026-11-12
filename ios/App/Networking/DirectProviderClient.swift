@@ -149,7 +149,18 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         let prepared = await ServiceIDs.shared.prepare(body, for: config.provider, config: config, client: self)
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
         let sending = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
-        do { return ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending), adding: prepared.missing) }
+        do {
+            let reply = try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending)
+            SyncReport.record(config.provider, path: path, body: sending, reply: reply)
+            return ServiceIDs.reply(reply, adding: prepared.missing)
+        }
+        catch APIError.rejected(let status, let message) where status != 429 && !(config.provider == .simkl && status == 400 && message.contains("rate_limit")) {
+            SyncReport.record(config.provider, path: path, body: sending, reply: Data("HTTP \(status): \(message)".utf8))
+            if status == 401 || status == 403 {
+                throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
+            }
+            throw APIError.rejected(status, message)
+        }
         catch APIError.rejected(let status, _) where status == 401 || status == 403 {
             throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
         } catch APIError.rejected(let status, let message) where status == 429 || (config.provider == .simkl && status == 400 && message.contains("rate_limit")) {

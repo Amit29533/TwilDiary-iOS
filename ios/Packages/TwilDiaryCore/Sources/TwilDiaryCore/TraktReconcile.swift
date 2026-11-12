@@ -82,8 +82,12 @@ public struct TraktWritePlan: Equatable, Sendable {
         let byID = Dictionary(titles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let episodes = Dictionary(workspace.episodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        // Plays: each diary watch that Trakt doesn't have at the same time (within a minute).
+        // Plays: each diary watch that Trakt doesn't have at the same time (within a minute). A
+        // watch the service keeps at another time (it rounds or shifts times) still counts: a
+        // movie or episode gets new plays only when the diary has more of them than the service,
+        // or every match would log it again (WeTrakr had films twice that way).
         var traktTimes: [String: [Date]] = [:]
+        var unmatched: [String: [Play]] = [:], slotOrder: [String] = []
         for play in library.plays {
             guard let diaryKey = play.title.diaryKey else { continue }
             let slot = diaryKey + (play.season.map { "|s\($0)e\(play.episode ?? 0)" } ?? "")
@@ -103,9 +107,20 @@ public struct TraktWritePlan: Equatable, Sendable {
                 sentSlots.insert(slot)
             } else if let index = traktTimes[slot]?.firstIndex(where: { abs($0.timeIntervalSince(when)) <= 60 }) {
                 traktTimes[slot]?.remove(at: index); continue
+            } else {
+                if unmatched[slot] == nil { slotOrder.append(slot) }
+                unmatched[slot, default: []].append(Play(title: titleRef, season: episode?.season, episode: episode?.number,
+                                                         watchedAt: Date.ISO8601FormatStyle(includingFractionalSeconds: true).format(when)))
+                continue
             }
             plan.plays.append(Play(title: titleRef, season: episode?.season, episode: episode?.number,
                                    watchedAt: Date.ISO8601FormatStyle(includingFractionalSeconds: true).format(when)))
+        }
+        // The service's other plays (at other times) stand for that many of these; the newest
+        // of the rest are sent.
+        for slot in slotOrder {
+            let waiting = unmatched[slot] ?? [], kept = traktTimes[slot]?.count ?? 0
+            plan.plays.append(contentsOf: waiting.suffix(max(0, waiting.count - kept)))
         }
 
         // Title facts.
