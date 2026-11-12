@@ -53,8 +53,8 @@ import BackgroundTasks
                 await Self.shared.handleOutboxProcessing(task: wrapped.value, store: store)
             }
         }
-        // Force Match and the other matches, kept going in the background (a Live Activity shows them).
-        MatchInBackground.shared.register()
+        // Force Match and the other matches register their own background task when they start
+        // (see MatchInBackground.begin).
         #endif
     }
 
