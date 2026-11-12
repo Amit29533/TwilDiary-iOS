@@ -21,9 +21,11 @@ struct APIsView: View {
             // Design (board 10): one line with ⓘ, then each service: its name, its keys in one card.
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 8) {
-                    Text("Keys are stored encrypted.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    Text(store.phoneOnly ? "Keys stay on this iPhone." : "Keys are stored encrypted.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                     Spacer(minLength: 0)
-                    SettingsInfoButton(text: "Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
+                    SettingsInfoButton(text: store.phoneOnly
+                        ? "Keys are kept in this iPhone’s Keychain and sent only to their own service. Only their last four characters are ever shown."
+                        : "Keys are sent to the server once and stored encrypted. Only their last four characters are ever shown. Removing a key goes back to the one set on the server.")
                 }.padding(.leading, 4)
                 if store.phoneOnly {
                     // No server sign-in: the keys this iPhone uses.
@@ -52,7 +54,7 @@ struct APIsView: View {
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
                 if !store.phoneOnly { aiSection(.gemini); aiSection(.groq); aiSection(.requesty) }
                 jellyfin
-                server
+                if !store.phoneOnly { server }
             }.padding(16).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("APIs").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .refreshable { await model?.load() }

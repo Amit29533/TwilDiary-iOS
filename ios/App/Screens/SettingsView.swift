@@ -418,7 +418,14 @@ struct TMDBConnectionView: View {
             return
         }
         do {
-            if !store.isPreview { let _: EmptyResponse = try await store.read("/api/metadata/status") }
+            if store.isPreview {
+            } else if store.phoneOnly {
+                // No server: the key built into the app is checked with TMDB itself.
+                guard let token = TMDBDirect.builtIn else { throw APIError.message("Add your own TMDB key below.") }
+                _ = try await TMDBDirect.object("configuration", query: [:], token: token)
+            } else {
+                let _: EmptyResponse = try await store.read("/api/metadata/status")
+            }
             verified = true
         } catch {
             verified = false

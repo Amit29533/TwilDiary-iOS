@@ -212,7 +212,7 @@ struct TrackerPreviewPanel: View {
                     Label(trakt.pending.count.counted("change", "changes") + " waiting for a connection; sent on their own when you’re back online.", systemImage: "icloud.and.arrow.up")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-pending")
                 }
-                if tracker == .trakt { matchSection } else if holdsDiary {
+                if tracker == .trakt { if !store.phoneOnly { matchSection } } else if holdsDiary {
                     Text("\(tracker.name) holds your diary; nothing is sent from here.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
                 } else { trackerMatchSection }

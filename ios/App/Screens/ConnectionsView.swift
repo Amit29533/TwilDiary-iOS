@@ -48,9 +48,11 @@ struct ConnectionsView: View {
                                  store.phoneOnly ? "Not connected. Optional: tags, notes, files and Trash stay on this phone and Google Drive" : "How this iPhone signs in to your TwilDiary server",
                                  value: store.phoneOnly ? "Connect" : nil)
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
-                    divider
-                    row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "Copies of your diary kept on your server",
-                        value: nil, destination: .backups, id: "connections-backups")
+                    if !store.phoneOnly {
+                        divider
+                        row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "Copies of your diary kept on your server",
+                            value: nil, destination: .backups, id: "connections-backups")
+                    }
                 }
                 VStack(alignment: .leading, spacing: 12) {
                     SettingsGroup(label: "Keys") {
