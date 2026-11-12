@@ -15,10 +15,16 @@ struct PublicArtworkRequest: Hashable, Sendable {
     let pixels: Int
     let fallbackURL: URL?
     var key: String { url.absoluteString + "#" + String(pixels) }
-    init?(path: String?, pixels: Double, prefersOriginal: Bool = false) {
+    /// `pixels`: the longest side on screen (what the bitmap is decoded to). `width`: the width on
+    /// screen, which picks TMDB's rendition (its sizes are widths: "w500" is 500 px wide). Going by
+    /// the longest side, a 3-across poster (taller than wide) fetched and decoded w780 for a ~350 px
+    /// wide cell.
+    init?(path: String?, pixels: Double, width: Double? = nil, prefersOriginal: Bool = false) {
         guard let path, let url = URL(string: path), Self.publicArtwork(url), pixels.isFinite, pixels > 0 else { return nil }
-        let bucket = pixels <= 256 ? 256 : pixels <= 512 ? 512 : pixels <= 1024 ? 1024 : 1536
-        let requested = prefersOriginal ? Self.originalPortrait(url) : Self.sharper(url, pixels: bucket)
+        func bucketed(_ value: Double) -> Int { value <= 256 ? 256 : value <= 512 ? 512 : value <= 1024 ? 1024 : 1536 }
+        let bucket = bucketed(pixels)
+        let across = width.flatMap { $0.isFinite && $0 > 0 ? bucketed($0) : nil } ?? bucket
+        let requested = prefersOriginal ? Self.originalPortrait(url) : Self.sharper(url, pixels: across)
         self.url = requested
         self.pixels = bucket
         self.fallbackURL = prefersOriginal && requested != url ? url : nil

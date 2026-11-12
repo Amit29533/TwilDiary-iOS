@@ -425,7 +425,8 @@ struct Artwork: View {
     @State private var loadedRequest: PublicArtworkRequest?
     var body: some View {
         GeometryReader { proxy in
-          let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale), prefersOriginal: prefersOriginal)
+          let request = PublicArtworkRequest(path: path, pixels: Double(max(proxy.size.width, proxy.size.height) * displayScale),
+                                             width: Double(proxy.size.width * displayScale), prefersOriginal: prefersOriginal)
           ZStack {
             // A fitted image leaves the spare space clear for whatever is behind it.
             if contentMode == .fit { Color.clear }

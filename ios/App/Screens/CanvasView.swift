@@ -24,6 +24,7 @@ private struct CanvasContent: View {
     let store: DiaryStore
     @Binding var tab: CanvasTab
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.displayScale) private var displayScale
     @State private var results: DiscoveryResults
     @State private var recommendations: DiscoveryRecommendations
     @State private var lists: CanvasListsLoader
@@ -191,7 +192,18 @@ private struct CanvasContent: View {
                             try? await Task.sleep(for: .milliseconds(500))
                             guard !Task.isCancelled, !store.isPreview else { return }
                             let loader = CanvasListItemsLoader.shared(store: store, id: list.id)
-                            Task { await loader.load() }
+                            // Columns as the list's grid draws them (14 pt margins, 12 pt gaps, 3 across, 2:3).
+                            let cell = max(1, (pageWidth - 28 - 24) / 3), scale = displayScale
+                            Task {
+                                await loader.load()
+                                // Its first posters too, so they're there when the list opens.
+                                let requests = loader.items.prefix(12).compactMap {
+                                    PublicArtworkRequest(path: $0.artwork, pixels: Double(cell * 1.5 * scale), width: Double(cell * scale))
+                                }
+                                await withTaskGroup(of: Void.self) { group in
+                                    for request in requests { group.addTask { _ = await PublicArtworkCache.shared.image(request) } }
+                                }
+                            }
                         }
                         .onAppear { if list.id == lists.lists.last?.id { Task { await lists.load(sort: listSort, kind: listKind, more: true) } } }
                 }
