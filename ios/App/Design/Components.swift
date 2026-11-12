@@ -685,7 +685,16 @@ struct ProgressCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(DiaryStore.self) private var store
     @State private var loadedCard: WatchCard?
-    private var card: WatchCard? { loadedCard ?? store.cachedCard(title) }
+    /// The card shown. A show's card read before its episodes are (an empty "E0 of 0", which
+    /// happens for a moment each time Home appears or refreshes) never replaces real progress:
+    /// the last real one stays until real numbers come back, so the buttons don't jump.
+    private var card: WatchCard? {
+        let candidates = [loadedCard, store.cachedCard(title)].compactMap { $0 }
+        guard title.isSeries else { return candidates.first }
+        return candidates.first { $0.progress.total > 0 } ?? Self.lastReal[title.id] ?? candidates.first
+    }
+    /// Each show's last card with real progress, kept across the card being rebuilt.
+    @MainActor private static var lastReal: [String: WatchCard] = [:]
     @State private var watchFeedback = 0
     /// New watches only (not removals): the mark button throws a star burst.
     @State private var sparks = 0
@@ -1060,7 +1069,11 @@ struct ProgressCard: View {
     }
     private func loadCard() async {
         guard !store.needsSignIn, !Task.isCancelled else { return }
-        do { let result = try await store.card(title); guard !Task.isCancelled else { return }; loadedCard = result }
+        do {
+            let result = try await store.card(title); guard !Task.isCancelled else { return }
+            if !title.isSeries || result.progress.total > 0 { Self.lastReal[title.id] = result }
+            loadedCard = result
+        }
         catch is CancellationError { }
         catch { if !Task.isCancelled { store.error = error.localizedDescription } }
     }

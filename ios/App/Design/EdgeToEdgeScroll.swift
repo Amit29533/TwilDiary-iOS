@@ -26,9 +26,13 @@ struct FeatheredHeaderBackdrop: View {
 struct EdgeToEdgeScroll<Content: View>: View {
     /// Keep the top bar frosted even at the top (for pages with a title or switcher in the bar).
     var frosted = false
+    /// Set once the page has scrolled past its first `scrolledPast.distance` points (Canvas puts
+    /// the chosen tab's name in the top bar once its big tab words are under it).
+    var scrolledPast: (distance: CGFloat, value: Binding<Bool>)? = nil
     @ViewBuilder let content: Content
     @State private var header = CompactHeaderState()
     var body: some View {
+        let pastDistance = scrolledPast?.distance ?? .infinity
         GeometryReader { geometry in
             ScrollView { content }
                 .contentMargins(.top, geometry.safeAreaInsets.top, for: .scrollContent)
@@ -38,6 +42,9 @@ struct EdgeToEdgeScroll<Content: View>: View {
                 .onScrollGeometryChange(for: CGFloat.self, of: { value in
                     (min(1, max(0, (value.contentOffset.y + value.contentInsets.top) / 48)) * 32).rounded() / 32
                 }) { _, progress in header.update(progress) }
+                .onScrollGeometryChange(for: Bool.self, of: { value in
+                    value.contentOffset.y + value.contentInsets.top > pastDistance
+                }) { _, past in if let scrolledPast, scrolledPast.value.wrappedValue != past { scrolledPast.value.wrappedValue = past } }
                 .overlay(alignment: .top) {
                     if geometry.safeAreaInsets.top > 0 {
                         FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top, always: frosted)

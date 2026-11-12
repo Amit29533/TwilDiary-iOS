@@ -584,6 +584,24 @@ import XCTest
         }
     }
 
+    /// Home's hero from a cold open, then pulled to refresh (slow, held, and a quick flick),
+    /// recorded from outside the test (mac-record.sh) to look for a jump frame by frame.
+    func testHomeHeroPull() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", "home"]
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 5)
+        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        top.press(forDuration: 0.05, thenDragTo: low, withVelocity: .slow, thenHoldForDuration: 0.6)
+        Thread.sleep(forTimeInterval: 4)
+        top.press(forDuration: 0.05, thenDragTo: low, withVelocity: .fast, thenHoldForDuration: 0)
+        Thread.sleep(forTimeInterval: 4)
+        let mid = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        top.press(forDuration: 0.05, thenDragTo: mid, withVelocity: .slow, thenHoldForDuration: 0)
+        Thread.sleep(forTimeInterval: 3)
+    }
     private func capture(tab: String, name: String, pages: Int, extra: [String] = [], open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab] + extra

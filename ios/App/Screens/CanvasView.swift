@@ -35,6 +35,8 @@ private struct CanvasContent: View {
     @State private var anime = false
     @State private var showGenres = false
     @State private var pageWidth: CGFloat = 390
+    /// The big Movies · Shows · Lists words have scrolled under the top bar: it shows the chosen one.
+    @State private var tabsHidden = false
     @State private var network: Int?
     @State private var year = ""
     @State private var minimum = "0"
@@ -79,14 +81,14 @@ private struct CanvasContent: View {
     var body: some View {
         // Movies · Shows · Lists as large words at the top of the page (owner's layout); they
         // scroll away with it, leaving the art the whole screen.
-        EdgeToEdgeScroll {
+        EdgeToEdgeScroll(scrolledPast: (40, $tabsHidden)) {
             VStack(alignment: .leading, spacing: 14) {
                 tabs
                 pills
                 Group { if tab == .lists { listsContent } else { titlesContent } }
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
-        }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }.diaryScreenBackground().navigationTitle(tabsHidden ? tab.label : "").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
             .sheet(isPresented: $showGenres) {
                 CanvasGenreSheet(names: DiscoveryGenre.names(type: kind.rawValue), genres: $genres, anime: $anime)
