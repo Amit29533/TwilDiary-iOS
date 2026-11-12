@@ -16,6 +16,19 @@ import TwilDiaryCore
     private struct Episodes: Codable, Sendable { let list: [CatalogEpisodeFact]; let fetchedAt: Date }
     private let episodesFile = URL.applicationSupportDirectory.appending(path: "Trackers/episodes.json")
     private lazy var episodeEntries: [String: Episodes] = (try? Data(contentsOf: episodesFile)).flatMap { try? JSONDecoder().decode([String: Episodes].self, from: $0) } ?? [:]
+    /// Once a launch: details of titles no longer in the diary (looked up for names, lists and
+    /// Force Match) go when a month old, so the file doesn't keep growing. Diary titles stay.
+    func prune(keeping keys: Set<String>, olderThan age: TimeInterval = 30 * 86_400) {
+        guard !pruned else { return }
+        pruned = true
+        let cutoff = Date.now.addingTimeInterval(-age)
+        let before = entries.count, episodesBefore = episodeEntries.count
+        entries = entries.filter { keys.contains($0.key) || $0.value.fetchedAt > cutoff }
+        episodeEntries = episodeEntries.filter { keys.contains($0.key) || $0.value.fetchedAt > cutoff }
+        if entries.count != before { BackgroundFiles.save(entries, to: file) }
+        if episodeEntries.count != episodesBefore { BackgroundFiles.save(episodeEntries, to: episodesFile) }
+    }
+    private var pruned = false
     /// Episode lists by show key, for `TraktDiary.addingCatalogEpisodes`.
     var episodes: [String: [CatalogEpisodeFact]] { episodeEntries.mapValues(\.list) }
 

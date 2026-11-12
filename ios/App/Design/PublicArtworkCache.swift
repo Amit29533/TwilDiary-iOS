@@ -63,8 +63,9 @@ actor PublicArtworkCache {
         config.httpShouldSetCookies = false; config.httpCookieAcceptPolicy = .never
         config.httpMaximumConnectionsPerHost = 6
         config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 25
-        // A larger disk copy keeps a big library's artwork across launches instead of downloading it again.
-        config.urlCache = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 256 * 1024 * 1024, directory: nil)
+        // Downloads are kept as the app's own files (`folder`, pruned to a size), so the URL cache
+        // no longer keeps a second copy of each on disk.
+        config.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: 0, directory: nil)
         config.requestCachePolicy = .useProtocolCachePolicy
         session = URLSession(configuration: config)
     }
@@ -81,6 +82,26 @@ actor PublicArtworkCache {
     /// Downloaded artwork kept as files (public TMDB and AniList images only), so opening the app
     /// shows posters and Home's hero at once instead of downloading them again.
     nonisolated static let folder = URL.cachesDirectory.appending(path: "Artwork", directoryHint: .isDirectory)
+    /// The kept files stay under `limit` (300 MB): anything unused for 60 days goes, then the least
+    /// recently used (a file's date moves each time it's shown again). Run once a launch, in the
+    /// background, as Cinopsys prunes its own caches.
+    nonisolated static func prune(limit: Int = 300 * 1024 * 1024, unusedFor: TimeInterval = 60 * 86_400) {
+        let manager = FileManager.default
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey]
+        guard let urls = try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return }
+        let cutoff = Date.now.addingTimeInterval(-unusedFor)
+        var kept: [(url: URL, used: Date, size: Int)] = [], total = 0
+        for url in urls {
+            guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+            let used = values.contentModificationDate ?? .distantPast, size = values.totalFileAllocatedSize ?? 0
+            if used < cutoff { try? manager.removeItem(at: url) } else { kept.append((url, used, size)); total += size }
+        }
+        guard total > limit else { return }
+        for file in kept.sorted(by: { $0.used < $1.used }) {
+            guard total > limit * 8 / 10 else { break }
+            try? manager.removeItem(at: file.url); total -= file.size
+        }
+    }
     nonisolated static func file(_ url: URL) -> URL {
         folder.appending(path: SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined())
     }
@@ -113,7 +134,12 @@ actor PublicArtworkCache {
             for url in request.fallbackURL.map({ [request.url, $0] }) ?? [request.url] {
               guard !Task.isCancelled else { return nil }
               // Kept from before: decoded from the file, no download.
-              if let data = try? Data(contentsOf: Self.file(url)), let bitmap = Self.decode(data, pixels: request.pixels) { return bitmap }
+              let saved = Self.file(url)
+              if let data = try? Data(contentsOf: saved), let bitmap = Self.decode(data, pixels: request.pixels) {
+                  // Shown again: it counts as recently used when the folder is pruned.
+                  try? FileManager.default.setAttributes([.modificationDate: Date.now], ofItemAtPath: saved.path)
+                  return bitmap
+              }
               do {
                 let (data, response) = try await session.data(from: url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,

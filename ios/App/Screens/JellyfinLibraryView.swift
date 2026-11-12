@@ -28,7 +28,7 @@ struct JellyfinLibraryView: View {
             .refreshable { await load() }
     }
     /// The saved list, matched against the diary as it is now.
-    private var entries: [JellyfinEntry] { JellyfinShelf.matched(shelf.entries, diary: store.workspace.activeTitles) }
+    private var entries: [JellyfinEntry] { JellyfinShelf.matched(shelf.entries, diary: store.activeTitles) }
     @ViewBuilder private var content: some View {
         Text(summary)
             .font(.system(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-summary")

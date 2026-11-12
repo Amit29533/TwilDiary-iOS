@@ -86,10 +86,13 @@ public struct LibraryShelf: Identifiable, Equatable, Sendable {
     public let genre: String, titles: [MediaTitle]
     public static func make(_ titles: [MediaTitle]) -> [Self] {
         var groups: [String: [MediaTitle]] = [:], unclassified: [MediaTitle] = []
+        // Which titles each shelf already has, so a title listed twice is shelved once without
+        // scanning the shelf for every title (that grew with the square of the library).
+        var shelved: [String: Set<String>] = [:]
         for title in titles {
             let names = Set(title.genres.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
             if names.isEmpty { unclassified.append(title) }
-            for name in names where groups[name]?.contains(where: { $0.id == title.id }) != true { groups[name, default: []].append(title) }
+            for name in names where shelved[name, default: []].insert(title.id).inserted { groups[name, default: []].append(title) }
         }
         var result = groups.map { Self(genre: $0.key, titles: $0.value) }.sorted {
             $0.titles.count == $1.titles.count ? LibraryQuery.nameBefore($0.genre, $1.genre) : $0.titles.count > $1.titles.count

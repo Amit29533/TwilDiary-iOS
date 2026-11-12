@@ -21,6 +21,19 @@ public struct SeasonAdjustment: Sendable {
     }
     public static func validDay(_ day: String) -> Bool {
         guard day.utf8.enumerated().allSatisfy({ index, byte in index == 4 || index == 7 ? byte == 45 : (48...57).contains(byte) }) else { return false }
+        // The usual case by arithmetic: this runs once per episode in every progress card, and a
+        // calendar and a date for each call showed up in the profile. Old dates (where the
+        // calendar switches to the Julian rules) still go the long way below.
+        let bytes = Array(day.utf8)
+        if bytes.count == 10 {
+            func number(_ range: Range<Int>) -> Int { range.reduce(0) { $0 * 10 + Int(bytes[$1] - 48) } }
+            let year = number(0..<4), month = number(5..<7), date = number(8..<10)
+            if year >= 1600 {
+                guard (1...12).contains(month), date >= 1 else { return false }
+                let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+                return date <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+            }
+        }
         let fields = day.split(separator: "-", omittingEmptySubsequences: false)
         guard day.count == 10, fields.count == 3, fields[0].count == 4, fields[1].count == 2, fields[2].count == 2,
               let year = Int(fields[0]), let month = Int(fields[1]), let date = Int(fields[2]), year >= 1 else { return false }

@@ -53,6 +53,8 @@ import BackgroundTasks
                 await Self.shared.handleOutboxProcessing(task: wrapped.value, store: store)
             }
         }
+        // Force Match and the other matches, kept going in the background (a Live Activity shows them).
+        MatchInBackground.shared.register()
         #endif
     }
 
@@ -135,6 +137,9 @@ import BackgroundTasks
         )
         applyLiveActivityState(state)
     }
+
+    /// A match (Force Match, or Make … match the diary) in the same Live Activity as a sync.
+    func showMatch(_ state: SyncLiveActivityState) { applyLiveActivityState(state) }
 
     func endLiveActivity() {
         let finalState = currentActivityState

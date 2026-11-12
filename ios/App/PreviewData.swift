@@ -42,6 +42,26 @@ enum PreviewData {
         object["titles"] = titles; object["episodes"] = episodes
         return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
+    /// Profiling (`--ui-large-diary`): the diary copied until it has about `events` watches, as big as
+    /// a real one, each copy with its own ids (and its titles numbered).
+    static func scaled(_ workspace: Workspace, events target: Int = 4_000) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        let titles = object["titles"] as? [[String: Any]] ?? [], episodes = object["episodes"] as? [[String: Any]] ?? []
+        let events = object["events"] as? [[String: Any]] ?? []
+        let copies = max(1, target / max(1, events.count))
+        var allTitles = titles, allEpisodes = episodes, allEvents = events
+        for copy in 1..<copies {
+            let suffix = "-x\(copy)"
+            func renamed(_ value: Any?) -> Any? { (value as? String).map { $0 + suffix } ?? value }
+            allTitles += titles.map { var title = $0; title["id"] = renamed(title["id"]); title["name"] = (title["name"] as? String ?? "") + " \(copy + 1)"; return title }
+            allEpisodes += episodes.map { var episode = $0; episode["id"] = renamed(episode["id"]); episode["titleId"] = renamed(episode["titleId"]); return episode }
+            allEvents += events.map { var event = $0
+                for key in ["id", "operationId", "titleId", "episodeId"] where event[key] is String { event[key] = renamed(event[key]) }
+                return event }
+        }
+        object["titles"] = allTitles; object["episodes"] = allEpisodes; object["events"] = allEvents
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
     /// Design screenshots (`--ui-design-data`): TMDB ids so Recommended has a seed, and new
     /// episodes airing in the next days so every Home section has something to draw.
     static var designWorkspace: Workspace {

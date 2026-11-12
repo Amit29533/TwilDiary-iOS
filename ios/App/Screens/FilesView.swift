@@ -30,7 +30,7 @@ struct FilesView: View {
         }.diaryScreenBackground().diaryPageNavigation("Files & drives")
 
     }
-    private var activeLocations: [FileLocation] { let ids = Set(store.workspace.activeTitles.map(\.id)); return store.workspace.locations.filter { ids.contains($0.titleId) } }
+    private var activeLocations: [FileLocation] { let ids = Set(store.activeTitles.map(\.id)); return store.workspace.locations.filter { ids.contains($0.titleId) } }
     private var locations: [FileLocation] { activeLocations.filter { selected == "all" || $0.diskKey == selected || (selected.hasPrefix("drive:") && $0.driveLetter.uppercased() == String(selected.dropFirst(6))) } }
     private func diskButton(_ disk: DiskSummary) -> some View {
         Button { selected = selected == disk.key ? "all" : disk.key } label: {

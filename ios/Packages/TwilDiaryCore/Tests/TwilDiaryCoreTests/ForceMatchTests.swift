@@ -33,14 +33,20 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
                 TraktPlay(historyId: 0, title: blue, watchedAt: "2026-01-01T20:00:30.000Z", remoteId: "p2"),
                 TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z", remoteId: "p3"),
                 TraktPlay(historyId: 0, title: frieren, season: 1, episode: 2, watchedAt: "2026-02-02T20:00:00.000Z", remoteId: "p4"),
-                TraktPlay(historyId: 0, title: loveReset, watchedAt: "2026-03-01T20:00:00.000Z", remoteId: "p5")],
+                TraktPlay(historyId: 0, title: loveReset, watchedAt: "2026-03-01T20:00:00.000Z", remoteId: "p5"),
+                TraktPlay(historyId: 0, title: blue, watchedAt: nil, remoteId: "p6")],
         ratings: [TraktRating(title: frieren, rating: 9, ratedAt: nil), TraktRating(title: loveReset, rating: 9, ratedAt: nil)])
     let plan = ForceMatchPlan.make(target: library, tracker: .wetrakr, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
     #expect(plan.send.isEmpty, "WeTrakr already has everything the diary has")
-    #expect(plan.plays.compactMap(\.remoteId).sorted() == ["p2", "p5"], "One copy of Perfect Blue stays; Love Reset goes")
+    #expect(plan.plays.compactMap(\.remoteId).sorted() == ["p2", "p5", "p6"], "One copy of Perfect Blue stays; Love Reset goes")
     #expect(plan.ratings.map(\.name) == ["Love Reset"])
     let requests = plan.requests()
-    #expect(requests.filter { $0.method == "DELETE" }.map(\.path).sorted() == ["/sync/tracklogs/p2", "/sync/tracklogs/p5"])
+    // Timed plays go together, each by its time (only that play); one without a time by its play_id.
+    let batch = try #require(requests.first { $0.path == "/sync/tracking/remove" })
+    let body = String(decoding: batch.body ?? Data(), as: UTF8.self)
+    #expect(batch.count == 2 && body.contains("2026-01-01T20:00:30.000Z") && body.contains("2026-03-01T20:00:00.000Z") && !body.contains("allow_rewatch"))
+    #expect(Set(plan.keys(of: batch)) == ["movie:10494", "movie:1100"])
+    #expect(requests.filter { $0.method == "DELETE" }.map(\.path) == ["/sync/tracklogs/p6"])
     #expect(requests.contains { $0.path == "/sync/ratings/remove" })
     #expect(plan.summary.contains { $0.contains("taken off WeTrakr history") })
 }

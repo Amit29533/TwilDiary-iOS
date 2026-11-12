@@ -20,20 +20,18 @@ import TwilDiaryCore
         }
     }
 
-    /// Poster, backdrop, name and year from TMDB for each entry (one read each, all at once).
+    /// Poster, backdrop, name and year from TMDB for each entry (one read each, all at once), read
+    /// and kept away from the main thread: Canvas's Lists stuttered while 30-odd TMDB replies a
+    /// page were read on it, and again every time the tab came back.
     static func artwork(_ entries: [Entry], token: String) async -> [CanvasListItem] {
-        struct Art: Sendable { let name: String?; let date: String?; let poster: String?; let backdrop: String? }
-        // All at once (each waits on the network), then read in order.
-        let reads = entries.map { entry in
-            Task { @MainActor () -> Art? in
-                guard let object = try? await TMDBDirect.object((entry.kind == .movie ? "movie/" : "tv/") + String(entry.tmdb), query: [:], token: token) else { return nil }
-                return Art(name: (object["title"] as? String) ?? (object["name"] as? String),
-                           date: (object["release_date"] as? String) ?? (object["first_air_date"] as? String),
-                           poster: object["poster_path"] as? String, backdrop: object["backdrop_path"] as? String)
+        let found = await withTaskGroup(of: (Int, CanvasArt?).self) { group in
+            for (index, entry) in entries.enumerated() {
+                group.addTask { (index, await CanvasArtCache.shared.art(entry.kind, entry.tmdb, token: token)) }
             }
+            var all: [Int: CanvasArt] = [:]
+            for await (index, art) in group { if let art { all[index] = art } }
+            return all
         }
-        var found: [Int: Art] = [:]
-        for (index, read) in reads.enumerated() { if let art = await read.value { found[index] = art } }
         return entries.enumerated().map { index, entry in
             let art = found[index]
             return CanvasListItem(tmdbId: entry.tmdb, mediaType: entry.kind, name: art?.name.flatMap { $0.isEmpty ? nil : $0 } ?? entry.name,
@@ -91,5 +89,36 @@ import TwilDiaryCore
         for row in rows { if let rating = row.rating { ratings[row.kind.rawValue + ":" + String(row.tmdb)] = rating } }
         let items = await artwork(rows, token: token)
         return (CanvasListItemsPage(items: items, page: page, totalPages: min(max(reply.pageCount, 1), 50)), ratings)
+    }
+}
+
+/// TMDB's name, date, poster and backdrop for one title.
+struct CanvasArt: Sendable { let name: String?; let date: String?; let poster: String?; let backdrop: String? }
+
+/// TMDB details for Canvas, read and parsed off the main thread and kept for the session, so a
+/// list (or a title on another list) seen once shows at once.
+actor CanvasArtCache {
+    static let shared = CanvasArtCache()
+    private var values: [String: CanvasArt] = [:]
+    func art(_ kind: MediaKind, _ tmdb: Int, token: String) async -> CanvasArt? {
+        let path = (kind == .movie ? "movie/" : "tv/") + String(tmdb)
+        if let known = values[path] { return known }
+        var components = URLComponents(string: "https://api.themoviedb.org/3/" + path)!
+        // A 32-character v3 key goes in api_key; a v4 read token in the Authorization header.
+        let apiKey = token.count == 32 && token.allSatisfy(\.isHexDigit)
+        if apiKey { components.queryItems = [URLQueryItem(name: "api_key", value: token)] }
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if !apiKey { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        let art = CanvasArt(name: (object["title"] as? String) ?? (object["name"] as? String),
+                            date: (object["release_date"] as? String) ?? (object["first_air_date"] as? String),
+                            poster: object["poster_path"] as? String, backdrop: object["backdrop_path"] as? String)
+        if values.count >= 3_000 { values.removeAll(keepingCapacity: true) }
+        values[path] = art
+        return art
     }
 }

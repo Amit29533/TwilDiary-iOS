@@ -44,6 +44,10 @@ import TwilDiaryCore
             }
         }
         #endif
+        // TMDB's replies may be kept about two hours and then rechecked by ETag; iOS's default cache
+        // (512 KB in memory, 10 MB on disk) held almost none, so pages read the same details again.
+        URLCache.shared = URLCache(memoryCapacity: 32 * 1024 * 1024, diskCapacity: 200 * 1024 * 1024)
+        Task.detached(priority: .background) { PublicArtworkCache.prune() }
         let diaryStore = DiaryStore()
         _store = State(initialValue: diaryStore)
         BackgroundSyncCoordinator.shared.registerBackgroundTasksIfNeeded(store: diaryStore)
@@ -219,7 +223,7 @@ struct RootView: View {
                     }
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
             } else {
-                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent),
+                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent), syncing: syncing,
                                pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }) { tab in
@@ -281,6 +285,12 @@ struct RootView: View {
                 }
                 else { store.suspendTraktForBackground() }
             }
+    }
+    /// A sync of any kind is running: reading or refreshing the diary, sending edits, or reading or
+    /// matching a service (Force Match included). The Profile tab turns a ring meanwhile.
+    private var syncing: Bool {
+        let trakt = TraktDirectStore.shared, others = TrackerPreviewStore.shared
+        return store.loading || store.busy || store.replayingOutbox || trakt.running || trakt.writing || others.running != nil || others.writing != nil
     }
     @ViewBuilder private func tabPage(_ tab: AppTab) -> some View {
         switch tab {

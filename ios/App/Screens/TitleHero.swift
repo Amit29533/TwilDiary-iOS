@@ -57,7 +57,7 @@ struct TitleHero<Ratings: View>: View {
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
                     Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per ep" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).padding(.top, 6)
-                    TitleMetaChips(genres: genres, extras: extras).padding(.top, 6)
+                    TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime")).padding(.top, 6)
                     if !ratingsBelow { ratings.padding(.top, 14) }
                 }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
             }

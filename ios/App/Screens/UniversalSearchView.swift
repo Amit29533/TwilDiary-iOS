@@ -239,7 +239,7 @@ struct SearchJellyfinView: View {
     @Environment(DiaryStore.self) private var store
     private var shelf: JellyfinShelf { .shared }
     var body: some View {
-        let items = JellyfinShelf.matched(shelf.entries, diary: store.workspace.activeTitles).filter { $0.name.localizedCaseInsensitiveContains(query) }
+        let items = JellyfinShelf.matched(shelf.entries, diary: store.activeTitles).filter { $0.name.localizedCaseInsensitiveContains(query) }
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("On Jellyfin").font(.headline)

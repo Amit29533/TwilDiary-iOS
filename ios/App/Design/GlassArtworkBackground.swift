@@ -138,7 +138,7 @@ struct DiaryScreenBackground: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var bitmap: GlassArtworkBitmap?
-    private var candidate: MediaTitle? { store.workspace.activeTitles.first { $0.status == "watching" && ($0.backdrop != nil || $0.poster != nil) } ?? store.workspace.activeTitles.first }
+    private var candidate: MediaTitle? { store.activeTitles.first { $0.status == "watching" && ($0.backdrop != nil || $0.poster != nil) } ?? store.activeTitles.first }
     // An explicitly named title without artwork must not borrow another show's
     // background. Library fallback is reserved for the general app surfaces.
     private var artwork: String? { path ?? (name.isEmpty ? candidate?.backdrop ?? candidate?.poster : nil) }

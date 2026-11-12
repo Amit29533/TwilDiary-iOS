@@ -602,6 +602,35 @@ import XCTest
         top.press(forDuration: 0.05, thenDragTo: mid, withVelocity: .slow, thenHoldForDuration: 0)
         Thread.sleep(forTimeInterval: 3)
     }
+    /// Every main screen opened and scrolled quickly, for a Time Profiler trace taken from outside
+    /// (it checks nothing): the five tabs, a title page, and Canvas with its Lists.
+    func testScrollEveryScreen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-large-diary", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", "home"]
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 3)
+        func scroll() {
+            for _ in 0..<3 { app.swipeUp(velocity: .fast) }
+            for _ in 0..<3 { app.swipeDown(velocity: .fast) }
+        }
+        for tab in ["Home", "Library", "Glance", "Search", "Profile"] {
+            let button = app.tabBars.buttons[tab]
+            guard button.waitForExistence(timeout: 5) else { continue }
+            button.tap(); Thread.sleep(forTimeInterval: 1.5)
+            scroll()
+        }
+        app.tabBars.buttons["Home"].tap(); Thread.sleep(forTimeInterval: 1)
+        let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+        if title.waitForExistence(timeout: 5) { title.tap(); Thread.sleep(forTimeInterval: 2); scroll(); app.navigationBars.buttons.element(boundBy: 0).tap() }
+        Thread.sleep(forTimeInterval: 1)
+        let canvas = app.buttons["canvas-shortcut"]
+        if canvas.waitForExistence(timeout: 5) {
+            canvas.tap(); Thread.sleep(forTimeInterval: 2); scroll()
+            let lists = app.buttons["canvas-tab-lists"]
+            if lists.waitForExistence(timeout: 3) { lists.tap(); Thread.sleep(forTimeInterval: 2); scroll() }
+        }
+    }
     private func capture(tab: String, name: String, pages: Int, extra: [String] = [], open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab] + extra

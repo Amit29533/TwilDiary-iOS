@@ -519,7 +519,7 @@ import TwilDiaryCore
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func scanStages(_ run: TraktSync.Run) -> TraktScanStages {
-        TraktScanStages(run: run, localPlays: store.workspace.activeEvents.count, localTitles: store.workspace.activeTitles.count)
+        TraktScanStages(run: run, localPlays: store.activeEvents.count, localTitles: store.activeTitles.count)
     }
     /// Changes when the scan or the apply moves; each change adds a pace sample.
     private var paceKey: String {

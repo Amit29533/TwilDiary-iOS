@@ -387,14 +387,19 @@ import TwilDiaryCore
                     let missing = kind == .tv ? names.compactMap { SearchLabData.tvGenreKeywords[$0] }.map(String.init) : []
                     if !missing.isEmpty { params["with_keywords"] = ([params["with_keywords"] ?? ""] + missing).filter { !$0.isEmpty }.joined(separator: ",") }
                 }
-                if let rating = q["certification"], !rating.isEmpty, kind == .movie { params["certification_country"] = "US"; params["certification"] = rating }
+                // US ratings, for films (G … NC-17) and shows (TV-Y … TV-MA) alike.
+                if let rating = q["certification"], !rating.isEmpty { params["certification_country"] = "US"; params["certification"] = rating }
                 if let from = q["yearFrom"], !from.isEmpty { params[dateField + ".gte"] = from + "-01-01" }
                 if let to = q["yearTo"], !to.isEmpty { params[dateField + ".lte"] = to + "-12-31" }
                 if kind == .tv, let status = q["status"], let code = ["returning": "0", "production": "2", "ended": "3", "canceled": "4"][status] { params["with_status"] = code }
                 if let language = q["language"], !language.isEmpty { params["with_original_language"] = language }
                 if kind == .tv, let network = q["network"], !network.isEmpty { params["with_networks"] = network }
                 if let year = q["year"], !year.isEmpty { params[kind == .movie ? "primary_release_year" : "first_air_date_year"] = year }
-                params["vote_count.gte"] = sort == "rating" ? "200" : "20"
+                // A tag, network or studio browses everything that has it: niche tags (anime, smaller
+                // films) mostly have few votes, and a 20-vote floor hid about two thirds of them. By
+                // rating, a few votes still can't put a title first.
+                let browsing = keyword != nil || !keywords.isEmpty || !(q["company"] ?? "").isEmpty || !(q["network"] ?? "").isEmpty
+                params["vote_count.gte"] = sort == "rating" ? (browsing ? "50" : "200") : (browsing ? "0" : "20")
                 if minimum > 0 { params["vote_average.gte"] = q["minimum"] }
                 let today = Date.now.formatted(.iso8601.year().month().day())
                 if (params[dateField + ".lte"] ?? "9999") > today { params[dateField + ".lte"] = today }

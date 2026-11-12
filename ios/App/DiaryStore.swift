@@ -75,6 +75,31 @@ import TwilDiaryCore
     @ObservationIgnored private var cachedActiveEventCount: Int?
     /// Library asks for its list, its status counts and its genre counts on every update; keep a few.
     @ObservationIgnored private var cachedLibrary: [(query: LibraryQuery, source: PublicRatingSource, value: [MediaTitle])] = []
+    /// The diary's titles and watches outside Trash, and the watches newest first, worked out once
+    /// per diary change: screens read them on every redraw, and each read used to filter the whole
+    /// diary again (and Profile sorted every watch).
+    @ObservationIgnored private var cachedActive: (titles: [MediaTitle], events: [WatchEvent])?
+    @ObservationIgnored private var cachedNewestFirst: [WatchEvent]?
+    var activeTitles: [MediaTitle] { active.titles }
+    var activeEvents: [WatchEvent] { active.events }
+    var activeEventsNewestFirst: [WatchEvent] {
+        // Read the diary's revision so a screen showing these is redrawn when the diary changes.
+        _ = homeWorkspaceRevision
+        if let cachedNewestFirst { return cachedNewestFirst }
+        let value = active.events.sorted { ($0.watchedAt ?? $0.recordedAt) > ($1.watchedAt ?? $1.recordedAt) }
+        cachedNewestFirst = value
+        return value
+    }
+    private var active: (titles: [MediaTitle], events: [WatchEvent]) {
+        _ = homeWorkspaceRevision
+        if let cachedActive { return cachedActive }
+        let titles = workspace.activeTitles, ids = Set(titles.map(\.id))
+        let value = (titles, workspace.events.filter { $0.revokedAt == nil && ids.contains($0.titleId) })
+        cachedActive = value
+        return value
+    }
+    /// Library's genre shelves per query, kept like its titles: they were worked out on every redraw.
+    @ObservationIgnored private var cachedShelves: [(query: LibraryQuery, source: PublicRatingSource, value: [LibraryShelf])] = []
     @ObservationIgnored private var catalogLookup: (active: [String: Int], tmdb: [String: Int])?
     @ObservationIgnored private var cachedPersonSections: (person: Int, credits: Int, value: PersonSections)?
     private var titleIndex: [String: MediaTitle] = [:]
@@ -268,6 +293,7 @@ import TwilDiaryCore
             if ProcessInfo.processInfo.arguments.contains("--ui-upcoming") { workspace = PreviewData.upcomingWorkspace }
             if ProcessInfo.processInfo.arguments.contains("--ui-design-data") { workspace = PreviewData.designWorkspace; FavouritesStore.shared.seedForDesign(); error = nil }
             if ProcessInfo.processInfo.arguments.contains("--ui-many-titles") { workspace = PreviewData.withManyTitles(workspace) }
+            if ProcessInfo.processInfo.arguments.contains("--ui-large-diary") { workspace = PreviewData.scaled(workspace) }
             if ProcessInfo.processInfo.arguments.contains("--ui-old-watches") { workspace = PreviewData.withOldWatches(workspace) }
             if ProcessInfo.processInfo.arguments.contains("--ui-on-this-day") { workspace = PreviewData.withAnniversaries(workspace, now: now) }
             if ProcessInfo.processInfo.arguments.contains("--ui-profile-repairs") { workspace = PreviewData.profileRepairWorkspace }
@@ -443,6 +469,7 @@ import TwilDiaryCore
         communityCache.reset()
         needsMutationRefresh = false
         Task { await PublicArtworkCache.shared.removeAll() }
+        URLCache.shared.removeAllCachedResponses()
         TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget()
         adoptedTraktKeys = []; adoptionRetry = [:]
         api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
@@ -643,6 +670,7 @@ import TwilDiaryCore
     /// Titles only on the service get their details on the phone (TMDB, with your key) instead of
     /// being copied into the server diary; without a key they still join the server, as before.
     private func fillServiceOnlyTitles() {
+        PhoneCatalog.shared.prune(keeping: Set(workspace.titles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }))
         let missing = workspace.titles.filter { isServiceOnly($0) && $0.poster == nil }.map(\.id)
         // Episode lists for the shows in the diary, from TMDB on the phone.
         if phoneHoldsDiary {
@@ -808,7 +836,7 @@ import TwilDiaryCore
         apply(built.index, changed: built.changed)
     }
     private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
-        cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; catalogLookup = nil; cachedPersonSections = nil
+        cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; cachedShelves = []; cachedActive = nil; cachedNewestFirst = nil; catalogLookup = nil; cachedPersonSections = nil
         titleIndex = index.titles
         progressIndex = index.progress
         seasonProgressIndex = index.seasonProgress
@@ -861,6 +889,17 @@ import TwilDiaryCore
         if cacheable, let saved = cachedLibrary.first(where: { $0.query == query && $0.source == source }) { return saved.value }
         let value = query.titles(in: snapshot) { self.publicScore($0, source: source) }
         if cacheable { cachedLibrary = [(query, source, value)] + cachedLibrary.prefix(3) }
+        return value
+    }
+    /// The query's titles grouped by genre (`LibraryShelf.make`), kept until the diary changes.
+    func libraryShelves(_ base: LibraryQuery, source: PublicRatingSource) -> [LibraryShelf] {
+        var query = base
+        query.ignoreArticles = UserDefaults.standard.bool(forKey: "ignoreTitleArticles")
+        let cacheable = query.sort != .score || source == .tmdb
+        _ = homeWorkspaceRevision
+        if cacheable, let saved = cachedShelves.first(where: { $0.query == query && $0.source == source }) { return saved.value }
+        let value = LibraryShelf.make(libraryTitles(base, source: source))
+        if cacheable { cachedShelves = [(query, source, value)] + cachedShelves.prefix(3) }
         return value
     }
     /// Same answer as `CatalogTools.libraryIdentity` (the first active title, in snapshot

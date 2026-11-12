@@ -299,7 +299,7 @@ struct PersonalProfileView: View {
         return ""
     }
     private var header: some View {
-        let art = store.workspace.activeEvents.max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) }.flatMap { store.title($0.titleId) }
+        let art = store.activeEvents.max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) }.flatMap { store.title($0.titleId) }
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .bottom) {
                 Button { showAvatarPicker = true } label: {
@@ -393,7 +393,7 @@ struct PersonalProfileView: View {
         let today = calendar.startOfDay(for: store.now)
         let monday = calendar.date(byAdding: .day, value: -((calendar.component(.weekday, from: today) + 5) % 7), to: today) ?? today
         var minutes: [Date: Int] = [:]
-        for event in store.workspace.activeEvents {
+        for event in store.activeEvents {
             guard let date = DiaryDate.parse(event.watchedAt), date >= monday, let title = store.title(event.titleId) else { continue }
             minutes[calendar.startOfDay(for: date), default: 0] += max(0, title.runtimeMinutes ?? 0)
         }
@@ -489,7 +489,7 @@ struct PersonalProfileView: View {
     }
     private var historyCard: some View {
         var seen = Set<String>()
-        let recent = store.workspace.activeEvents.sorted { ($0.watchedAt ?? $0.recordedAt) > ($1.watchedAt ?? $1.recordedAt) }
+        let recent = store.activeEventsNewestFirst
             .compactMap { store.title($0.titleId) }.filter { seen.insert($0.id).inserted }.prefix(6)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -513,7 +513,7 @@ struct PersonalProfileView: View {
     }
     private var collectionTiles: some View {
         let favourites = FavouritesStore.shared.items.count
-        let planned = store.workspace.activeTitles.filter { $0.status == "planned" }.count
+        let planned = store.activeTitles.filter { $0.status == "planned" }.count
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             Button { router.library("planned") } label: { collection("bookmark", "Watchlist", (trakt?.watchlist ?? planned).counted("title", "titles")) }.buttonStyle(.plain)
             Button { router.library("all") } label: { collection("archivebox", "Collection", (trakt?.collected ?? 0).counted("title", "titles")) }.buttonStyle(.plain)

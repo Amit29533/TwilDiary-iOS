@@ -45,25 +45,64 @@ struct SeeAllLink<Value: Hashable>: View {
 /// A small rounded label: genres, age rating, status, network.
 struct MetaChip: View {
     let text: String
-    var warning = false
-    /// Age rating, status and network: bolder and brighter than genres (design).
+    /// Each kind of chip in its own colour (see `ChipTint`): text in it, a soft fill and edge.
+    var tint: Color = HomeStyle.soft
+    /// Age rating, status and network: bolder than genres (design).
     var fact = false
     var body: some View {
-        // Design: genres 11 pt semibold #d8d4e6 on #17171d (radius 9, #26262e hairline); facts 11 pt
-        // bold #f5f5f7 on #26262e (radius 8, #34343e); a cancelled/ended status #ff5a36 on #3a1a12.
         let radius: CGFloat = fact ? 8 : 9
         Text(text).font(.system(size: 11, weight: fact ? .bold : .semibold)).lineLimit(1)
-            .foregroundStyle(warning ? Color(webHex: "#ff5a36") : fact ? HomeStyle.primary : HomeStyle.soft)
+            .foregroundStyle(tint)
             .padding(.horizontal, 9).frame(height: 24)
-            .background(warning ? Color(webHex: "#3a1a12") : fact ? Color(webHex: "#26262e") : HomeStyle.round, in: RoundedRectangle(cornerRadius: radius))
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(warning ? Color(webHex: "#6b2b1c") : fact ? Color(webHex: "#34343e") : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(tint.opacity(0.32), lineWidth: HomeStyle.hairline))
     }
 }
 
+/// The chips' colours: a genre its own hue; an age rating by how grown-up it is (green for
+/// everyone, yellow, orange, red for adults); a status by what it means (green still going, blue
+/// coming, grey ended, red cancelled); a network in teal.
+enum ChipTint {
+    static func genre(_ name: String) -> Color {
+        let hues: [String: String] = [
+            "action": "#ff8a65", "adventure": "#ffb454", "action & adventure": "#ff9a5c", "animation": "#ff7ad9",
+            "comedy": "#ffd166", "crime": "#ff6b81", "documentary": "#8bd3dd", "drama": "#8fb0ff", "family": "#9be89b",
+            "fantasy": "#c39bff", "history": "#d8b38a", "horror": "#ff5c5c", "kids": "#7ee8b8", "music": "#ff9ff3",
+            "mystery": "#a99bff", "news": "#9ec5ff", "reality": "#ffc6a8", "romance": "#ff8fab", "science fiction": "#5ad1ff",
+            "sci-fi & fantasy": "#7cc8ff", "soap": "#f7a8d0", "talk": "#a0e7e5", "thriller": "#ff9a4d", "tv movie": "#c0bccc",
+            "war": "#c9b98f", "war & politics": "#c2b280", "western": "#e0a96d", "anime": "#b9a6ff"
+        ]
+        if let hex = hues[name.lowercased()] { return Color(webHex: hex) }
+        let fallback = ["#8fb0ff", "#ff8fab", "#9be89b", "#ffd166", "#c39bff", "#5ad1ff", "#ffb454"]
+        return Color(webHex: fallback[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % fallback.count])
+    }
+    static func rating(_ value: String) -> Color {
+        let rating = value.uppercased()
+        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6"].contains(rating) { return Color(webHex: "#6ee7a8") }
+        if ["PG", "TV-PG", "12", "12A", "PG-12", "7", "10"].contains(rating) { return Color(webHex: "#ffd166") }
+        if ["PG-13", "TV-14", "13", "14", "15", "16", "M", "R15+"].contains(rating) { return Color(webHex: "#ffa94d") }
+        if ["R", "NC-17", "TV-MA", "18", "R18+", "MA15+", "X"].contains(rating) { return Color(webHex: "#ff6b6b") }
+        return Color(webHex: "#c0bccc")
+    }
+    static func status(_ raw: String?) -> Color {
+        switch raw {
+        case "Returning Series": Color(webHex: "#6ee7a8")
+        case "In Production", "Post Production", "Planned", "Pilot", "Rumored": Color(webHex: "#7aa2ff")
+        case "Canceled", "Cancelled": Color(webHex: "#ff5a36")
+        default: Color(webHex: "#b4b0c2")
+        }
+    }
+    static let network = Color(webHex: "#5ad1c4")
+}
+
 /// Genres on one line, then age rating, status and network, all trimmed to fit (never wrapping).
+/// Each opens its titles: the genre's (of this kind, anime kept anime), the age rating's, the
+/// status's (shows), and the network's.
 struct TitleMetaChips: View {
     let genres: [String]
     let extras: TitleExtras?
+    var series = true
+    var anime = false
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !genres.isEmpty {
@@ -74,24 +113,92 @@ struct TitleMetaChips: View {
                 }.accessibilityIdentifier("title-hero-genres")
             }
             if let extras {
-                let facts = [extras.certification, extras.statusLabel, extras.networks.first?.name].compactMap { $0 }
+                let facts = facts(extras)
                 if !facts.isEmpty {
                     ViewThatFits(in: .horizontal) {
-                        factRow(facts, extras: extras)
-                        factRow(Array(facts.prefix(2)), extras: extras)
-                        factRow(Array(facts.prefix(1)), extras: extras)
+                        factRow(facts)
+                        factRow(Array(facts.prefix(2)))
+                        factRow(Array(facts.prefix(1)))
                     }.accessibilityIdentifier("title-hero-facts")
                 }
             }
         }
     }
+    private var kind: String { series ? "tv" : "movie" }
     private func chips(_ values: [String]) -> some View {
-        HStack(spacing: 6) { ForEach(values, id: \.self) { MetaChip(text: $0) } }.fixedSize()
-    }
-    private func factRow(_ values: [String], extras: TitleExtras) -> some View {
         HStack(spacing: 6) {
-            ForEach(values, id: \.self) { value in MetaChip(text: value, warning: extras.statusIsWarning && value == extras.statusLabel, fact: true) }
+            ForEach(values, id: \.self) { genre in
+                NavigationLink(value: SearchLabResultsRoute(filters: genreFilters(genre))) {
+                    MetaChip(text: genre, tint: ChipTint.genre(genre))
+                }.buttonStyle(.springPress).accessibilityHint("Shows more \(genre) titles")
+            }
         }.fixedSize()
+    }
+    private struct Fact: Identifiable {
+        let id: String
+        let text: String
+        let tint: Color
+        var search: SearchLabResultsRoute? = nil
+        var explore: ExploreSectionRoute? = nil
+    }
+    private func facts(_ extras: TitleExtras) -> [Fact] {
+        var result: [Fact] = []
+        if let rating = extras.certification {
+            // TMDB filters by US ratings only: another country's rating is shown, not linked.
+            let us = ["G", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA"].contains(rating.uppercased())
+            var filters = DiscoveryFilters(section: .genres)
+            filters.type = kind; filters.certification = rating; filters.label = rating
+            if anime { filters.language = "ja" }
+            result.append(Fact(id: "rating", text: rating, tint: ChipTint.rating(rating), search: us ? SearchLabResultsRoute(filters: filters) : nil))
+        }
+        if let label = extras.statusLabel {
+            // Statuses are a shows' filter; a film's "Released" just says so.
+            var route: SearchLabResultsRoute?
+            if series, let status = Self.statusFilter(extras.status) {
+                var filters = DiscoveryFilters(section: .genres)
+                filters.type = "tv"; filters.showStatus = status; filters.label = label + (anime ? " anime" : " shows")
+                if anime { filters.language = "ja" }
+                route = SearchLabResultsRoute(filters: filters)
+            }
+            result.append(Fact(id: "status", text: label, tint: ChipTint.status(extras.status), search: route))
+        }
+        if let network = extras.networks.first {
+            result.append(Fact(id: "network", text: network.name, tint: ChipTint.network,
+                               explore: CompanyRoutes.explore(network, kind: series ? .tv : .movie)))
+        }
+        return result
+    }
+    /// TMDB's status as Search Lab's filter.
+    static func statusFilter(_ status: String?) -> String? {
+        switch status {
+        case "Returning Series": "returning"
+        case "Ended": "ended"
+        case "Canceled", "Cancelled": "canceled"
+        case "In Production", "Post Production", "Planned", "Pilot": "production"
+        default: nil
+        }
+    }
+    private func factRow(_ values: [Fact]) -> some View {
+        HStack(spacing: 6) {
+            ForEach(values) { fact in
+                if let route = fact.search {
+                    NavigationLink(value: route) { MetaChip(text: fact.text, tint: fact.tint, fact: true) }
+                        .buttonStyle(.springPress).accessibilityHint("Shows more titles like this")
+                } else if let route = fact.explore {
+                    NavigationLink(value: route) { MetaChip(text: fact.text, tint: fact.tint, fact: true) }
+                        .buttonStyle(.springPress).accessibilityHint("Shows this network's titles")
+                } else {
+                    MetaChip(text: fact.text, tint: fact.tint, fact: true)
+                }
+            }
+        }.fixedSize()
+    }
+    private func genreFilters(_ genre: String) -> DiscoveryFilters {
+        var value = DiscoveryFilters(section: .genres)
+        value.type = kind
+        value.genres = [genre]; value.label = genre
+        if anime { value.language = "ja" }
+        return value
     }
 }
 

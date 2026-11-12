@@ -202,7 +202,7 @@ struct SettingsView: View {
     /// "Your diary": its state, what it holds, when it was last updated and what it's
     /// connected to. Tapping refreshes it from the server.
     private var diaryCard: some View {
-        let titles = store.workspace.activeTitles.count, watches = store.workspace.activeEvents.count
+        let titles = store.activeTitles.count, watches = store.activeEvents.count
         let state = store.phoneOnly ? phoneDiaryState : store.loading ? "Refreshing…" : store.pendingDiaryEdits > 0 ? "Pending sync" : store.busy ? "Saving…" : store.quotaBlockedUntil != nil ? "Paused" : store.showingCachedSnapshot ? "Saved copy" : "Synced"
         let tint: Color = state == "Synced" || state == "On this phone" ? Color(webHex: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
         return VStack(alignment: .leading, spacing: 0) {

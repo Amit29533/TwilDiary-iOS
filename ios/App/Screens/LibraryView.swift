@@ -214,7 +214,7 @@ struct LibraryView: View {
                     switch selecting ? (layout == .shelves ? .grid : layout) : layout {
                     case .shelves:
                         LazyVStack(alignment: .leading, spacing: 22) {
-                            ForEach(LibraryShelf.make(filtered)) { shelf in
+                            ForEach(shelves) { shelf in
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack(spacing: 8) {
                                         Text(shelf.genre).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
@@ -275,7 +275,7 @@ struct LibraryView: View {
                 Spacer()
                 SectionMoreButton(label: "All genres", identifier: "library-all-genres") { genreRows = true; list = false }
             }.padding(.top, 12)
-            ForEach(LibraryShelf.make(filtered).filter { $0.genre != "Without a genre" }) { shelf in
+            ForEach(shelves.filter { $0.genre != "Without a genre" }) { shelf in
                 Button { genres = [shelf.genre] } label: {
                     HStack {
                         Text(shelf.genre).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
@@ -513,7 +513,7 @@ struct LibraryView: View {
     }
     private var filterScope: String { [category.rawValue, status, genresRaw, tag, drive, String(favoritesOnly), String(minScore), sort.rawValue].joined(separator: "\n") }
     private var collectionTags: [String] { Array(Set(collection.flatMap { $0.tags ?? [] })).sorted() }
-    private var collection: [MediaTitle] { store.workspace.activeTitles }
+    private var collection: [MediaTitle] { store.activeTitles }
     private var trashCount: Int { store.phoneOnly ? PhoneTrash.shared.titles.count : store.workspace.titles.count { $0.deletedAt != nil } }
     private var activeFilterCount: Int { genres.count + (tag.isEmpty ? 0 : 1) + (drive.isEmpty ? 0 : 1) + (favoritesOnly ? 1 : 0) + (minScore > 0 ? 1 : 0) }
     private var activeFilterNames: [String] {
@@ -538,7 +538,7 @@ struct LibraryView: View {
     }
     /// Genres in the current category and status, most common first.
     private var genreCounts: [(String, Int)] {
-        let diary = LibraryShelf.make(query(status: status, genres: [], drive: "", favorites: false)).filter { $0.genre != "Without a genre" }.map { ($0.genre, $0.titles.count) }
+        let diary = store.libraryShelves(libraryQuery(status: status, genres: [], drive: "", favorites: false), source: ratingSource).filter { $0.genre != "Without a genre" }.map { ($0.genre, $0.titles.count) }
         guard status == "jellyfin" else { return diary }
         // The Jellyfin chip also counts the Jellyfin titles not in the diary.
         var counts = Dictionary(diary, uniquingKeysWith: +)
@@ -578,7 +578,12 @@ struct LibraryView: View {
         visibleLimit += 48
     }
     private var filtered: [MediaTitle] { query(status: status, genres: genres, drive: drive, favorites: favoritesOnly) }
+    /// The current list grouped by genre, from the store's cache (not regrouped on each redraw).
+    private var shelves: [LibraryShelf] { store.libraryShelves(libraryQuery(status: status, genres: genres, drive: drive, favorites: favoritesOnly), source: ratingSource) }
     private func query(status: String, genres: Set<String>, drive: String, favorites: Bool) -> [MediaTitle] {
+        store.libraryTitles(libraryQuery(status: status, genres: genres, drive: drive, favorites: favorites), source: ratingSource)
+    }
+    private func libraryQuery(status: String, genres: Set<String>, drive: String, favorites: Bool) -> LibraryQuery {
         var query = LibraryQuery()
         query.category = categoryKey
         query.tag = tag
@@ -588,7 +593,7 @@ struct LibraryView: View {
         query.disk = diskKey(drive)
         query.minScore = minScore > 0 ? Double(minScore) : nil
         query.sort = sort
-        return store.libraryTitles(query, source: ratingSource)
+        return query
     }
     private func initializeStorage() {
         guard !initializedStorage else { return }
@@ -713,7 +718,7 @@ struct GlanceView: View {
     }
     var body: some View {
         // One pass over the library per update instead of three.
-        let watching = store.workspace.activeTitles.filter { $0.status == "watching" }
+        let watching = store.activeTitles.filter { $0.status == "watching" }
         let titles = watching.filter { category.includes($0) }
         let ordered = order(titles)
         // True full screen: the header and filters scroll with the cards; nothing stays pinned.
@@ -741,7 +746,7 @@ struct GlanceView: View {
                 }
                 // The title you logged last (or first in the chosen order) gets the large card; the rest
                 // split into Continue (started) and Not started, each with its count.
-                let started = Set(store.workspace.activeEvents.map(\.titleId))
+                let started = Set(store.activeEvents.map(\.titleId))
                 let rest = Array(ordered.dropFirst())
                 let continuing = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
                 VStack(alignment: .leading, spacing: 8) {

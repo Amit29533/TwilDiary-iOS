@@ -29,7 +29,7 @@ struct SavedFilter: Codable, Identifiable, Equatable, Sendable {
         query.genres = Set(genres)
         query.favorites = favorites
         query.jellyfin = status == "jellyfin"
-        query.jellyfinTitles = status == "jellyfin" ? JellyfinShelf.shared.titleIDs(diary: store.workspace.activeTitles) : []
+        query.jellyfinTitles = status == "jellyfin" ? JellyfinShelf.shared.titleIDs(diary: store.activeTitles) : []
         query.disk = Self.diskKey(drive)
         query.minScore = minScore.flatMap { $0 > 0 ? Double($0) : nil }
         query.sort = LibraryQuery.Sort(rawValue: sort) ?? .added

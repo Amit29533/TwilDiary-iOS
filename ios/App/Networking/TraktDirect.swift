@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import BackgroundTasks
 import TwilDiaryCore
 
 // Trakt-first plan, phase 1 (ios/docs/TRAKT-CLIENT-PLAN.md): the app reads Trakt directly
@@ -1112,7 +1113,7 @@ enum ServiceRemovals {
     private(set) var running: MainTracker?
     var errors: [MainTracker: String] = [:]
     private(set) var writing: MainTracker?
-    private(set) var writeProgress: String?
+    private(set) var writeProgress: String? { didSet { if let writeProgress { MatchInBackground.shared.update(writeProgress) } } }
     private(set) var writeResults: [MainTracker: String] = [:]
     /// Each service's plan from its last read (see `TraktDirectStore.plan`).
     private(set) var plans: [MainTracker: TraktWritePlan] = [:]
@@ -1619,13 +1620,19 @@ enum ServiceRemovals {
         guard writing == nil, running == nil, let plan = matchPlan(tracker, store: store), !plan.isEmpty else { return }
         if store.isPreview { errors[tracker] = "Writing to \(tracker.name) needs a real \(tracker.name) connection."; return }
         writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
+        MatchInBackground.shared.begin("Matching \(tracker.name)", provider: tracker.provider)
         var sent = 0, tally = TraktDirectStore.ReplyTally()
         let session = generation
-        defer { if session == generation { writing = nil; writeProgress = nil } }
+        defer {
+            if session == generation { writing = nil; writeProgress = nil }
+            MatchInBackground.shared.end(writeResults[tracker] ?? errors[tracker], success: errors[tracker] == nil)
+        }
         do {
             let config = await store.freshProviderConfig(tracker.provider)
             let requests = plan.requests()
             for (index, request) in requests.enumerated() {
+                if MatchInBackground.shared.expired { throw APIError.message("iOS stopped it while TwilDiary was in the background. Open TwilDiary and match again; only what's still missing is sent.") }
+                MatchInBackground.shared.count(index, of: requests.count)
                 writeProgress = "Sending \(index + 1) of \(requests.count): \(request.count) \(request.summary)…"
                 try await pace()
                 guard session == generation else { return }
@@ -1758,9 +1765,13 @@ enum ServiceRemovals {
         guard writing == nil, running == nil else { return }
         if store.isPreview { errors[tracker] = "Force Match needs real connections."; return }
         writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
+        MatchInBackground.shared.begin("Force Match · \(tracker.name)", provider: tracker.provider)
         writeProgress = "Reading both sides…"
         let session = generation
-        defer { if session == generation { writing = nil; writeProgress = nil } }
+        defer {
+            if session == generation { writing = nil; writeProgress = nil }
+            MatchInBackground.shared.end(writeResults[tracker] ?? errors[tracker], success: errors[tracker] == nil)
+        }
         guard let plan = await freshForcePlan(tracker, source: source, store: store, full: false), session == generation else {
             if session == generation, errors[tracker] == nil { errors[tracker] = "Force Match couldn’t read both sides. Try again in a moment." }
             return
@@ -1823,8 +1834,13 @@ enum ServiceRemovals {
         var done = 0, total = queue.count
         let pass = run.passes > 1 ? " (checking again)" : ""
         while !queue.isEmpty {
+            if MatchInBackground.shared.expired {
+                run.stopped = "iOS stopped it while TwilDiary was in the background. Open TwilDiary and run Force Match again; it sends only what's still different."
+                return
+            }
             let request = queue.removeFirst()
             done += 1
+            MatchInBackground.shared.count(done - 1, of: total)
             var tries = 0
             attempts: while true {
                 writeProgress = "Changing \(done) of \(total)\(pass): \(request.count) \(request.summary)…"
@@ -2073,5 +2089,91 @@ struct TraktAccountLimit: Identifiable, Hashable, Sendable {
         case "item_count": return thing == "List" ? "Items per list" : thing + " items"
         default: return thing + " · " + name.replacingOccurrences(of: "_", with: " ")
         }
+    }
+}
+
+// MARK: Matches that keep going in the background
+
+/// A match you start keeps running when you leave the app, as an iOS 26 continued processing
+/// task: iOS shows it as a Live Activity with its progress (Lock Screen and Dynamic Island) and
+/// keeps the app working until it's done. If iOS has to stop it, the match stops cleanly and says
+/// so; running it again sends only what's still different.
+@MainActor final class MatchInBackground {
+    static let shared = MatchInBackground()
+    private static let prefix = (Bundle.main.bundleIdentifier ?? "com.amit29533.TwilDiary") + ".match"
+    private var registered = false
+    private var task: BGContinuedProcessingTask?
+    private var title = "", subtitle = "Starting…"
+    private var done: Int64 = 0, total: Int64 = 1
+    /// The service being matched, for TwilDiary's own Live Activity ("Syncing with WeTrakr · 5 of 40").
+    private var provider: SyncProviderKind?
+    /// iOS stopped the background work: the match stops at the next call.
+    private(set) var expired = false
+
+    /// Registered at launch with the app's other background tasks (and here if not yet).
+    func register() {
+        guard !registered else { return }
+        registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.prefix + ".*", using: .main) { task in
+            MainActor.assumeIsolated { MatchInBackground.shared.attach(task) }
+        }
+    }
+    func begin(_ title: String, provider: SyncProviderKind) {
+        end(nil)
+        self.title = title; subtitle = "Starting…"; done = 0; total = 1; expired = false
+        self.provider = provider
+        show(.syncingProvider)
+        register()
+        let request = BGContinuedProcessingTaskRequest(identifier: Self.prefix + "." + UUID().uuidString, title: title, subtitle: subtitle)
+        request.strategy = .fail
+        // Without it the match still runs, as long as the app is open.
+        try? BGTaskScheduler.shared.submit(request)
+    }
+    private func attach(_ raw: BGTask) {
+        guard let task = raw as? BGContinuedProcessingTask, !title.isEmpty else { raw.setTaskCompleted(success: false); return }
+        self.task = task
+        task.expirationHandler = { Task { @MainActor in MatchInBackground.shared.expire() } }
+        task.progress.totalUnitCount = total
+        task.progress.completedUnitCount = done
+        task.updateTitle(title, subtitle: subtitle)
+    }
+    /// What it's doing now, shown under the Live Activity's title.
+    func update(_ text: String) {
+        guard !title.isEmpty, text != subtitle else { return }
+        subtitle = text
+        task?.updateTitle(title, subtitle: text)
+    }
+    /// How far along: calls sent of calls to send.
+    func count(_ done: Int, of total: Int) {
+        self.done = Int64(max(0, done)); self.total = Int64(max(1, total))
+        task?.progress.totalUnitCount = self.total
+        task?.progress.completedUnitCount = min(self.done, self.total)
+        show(.syncingProvider)
+    }
+    /// TwilDiary's own designed Live Activity: the service, how far along, then done or needs you.
+    private func show(_ phase: SyncLiveActivityState.Phase, note: String? = nil) {
+        guard let provider else { return }
+        // While it runs: "12 of 40". Done or stuck: what happened (the ring shows full, or amber).
+        let running = phase != .completed && phase != .failed && done > 0
+        BackgroundSyncCoordinator.shared.showMatch(SyncLiveActivityState(
+            provider: provider, phase: phase, title: title, subtitle: note ?? subtitle,
+            completedCount: running ? Int(min(done, total)) : 0, totalCount: running ? Int(total) : 0, isBackgrounded: task != nil))
+    }
+    /// Done: the Live Activity shows how it went, and the app may go to sleep.
+    func end(_ summary: String?, success: Bool = true) {
+        if provider != nil {
+            show(success ? .completed : .failed, note: summary.map { String($0.prefix(80)) })
+            provider = nil
+        }
+        if let task {
+            if let summary { task.updateTitle(title, subtitle: String(summary.prefix(120))) }
+            task.progress.completedUnitCount = task.progress.totalUnitCount
+            task.setTaskCompleted(success: success)
+        }
+        task = nil; title = ""
+    }
+    private func expire() {
+        expired = true
+        task?.setTaskCompleted(success: false)
+        task = nil
     }
 }

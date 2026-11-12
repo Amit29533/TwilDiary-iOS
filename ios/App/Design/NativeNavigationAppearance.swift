@@ -49,8 +49,10 @@ import OSLog
             applyTabBarVisibility(animated: animated)
         }
         private func applyTabBarVisibility(animated: Bool) {
-            guard let tabs = tabBarController, let selected = tabs.selectedViewController,
-                  view.isDescendant(of: selected.view), tabs.isTabBarHidden != detail else { return }
+            // The cheap check first: the bar is almost always already right, and walking the view
+            // tree on every page update (it runs while scrolling) showed up in the profile.
+            guard let tabs = tabBarController, tabs.isTabBarHidden != detail, let selected = tabs.selectedViewController,
+                  view.isDescendant(of: selected.view) else { return }
             let previous = tabs.isTabBarHidden
             tabs.setTabBarHidden(detail, animated: animated)
             _ = transitionCoordinator?.animate(alongsideTransition: nil) { context in

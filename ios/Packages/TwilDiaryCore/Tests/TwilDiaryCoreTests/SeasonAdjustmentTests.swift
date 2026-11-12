@@ -33,4 +33,9 @@ import TwilDiaryTestSupport
     #expect(!SeasonAdjustment.validDay("+123-02-01"))
     #expect(SeasonAdjustment.validDay("2024-02-29"))
     #expect(!SeasonAdjustment.validDay("2025-02-29"))
+    // The arithmetic path agrees with the calendar on month lengths and century leap years.
+    #expect(SeasonAdjustment.validDay("2000-02-29") && !SeasonAdjustment.validDay("1900-02-29") && !SeasonAdjustment.validDay("2100-02-29"))
+    #expect(SeasonAdjustment.validDay("2026-04-30") && !SeasonAdjustment.validDay("2026-04-31") && SeasonAdjustment.validDay("2026-12-31"))
+    #expect(!SeasonAdjustment.validDay("2026-00-10") && !SeasonAdjustment.validDay("2026-13-01") && !SeasonAdjustment.validDay("2026-01-00"))
+    #expect(!SeasonAdjustment.validDay("2026-01-011") && !SeasonAdjustment.validDay("0000-01-01"))
 }

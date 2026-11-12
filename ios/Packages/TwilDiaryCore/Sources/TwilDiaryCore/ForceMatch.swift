@@ -307,15 +307,29 @@ public struct ForceMatchPlan: Equatable, Sendable {
         case .trakt:
             for batch in batches(plays) { add("/sync/history/remove", ["ids": batch.map(\.historyId)], "plays taken off", batch.count) }
         case .wetrakr:
-            // One play by its own play_id; one without falls back to its time.
-            for play in plays {
+            // A hundred plays a call, each by its time (WeTrakr then takes off only that play): its
+            // writes are limited per minute and per day, so one call per play could run out. A play
+            // without a time goes on its own, by its play_id.
+            let timed = plays.filter { $0.watchedAt != nil }
+            for batch in batches(timed) {
+                var movies: [[String: Any]] = [], shows: [Int: (item: Item, seasons: [Int: [[String: Any]]])] = [:]
+                for play in batch {
+                    guard let date = play.watchedAt else { continue }
+                    if play.title.movie { movies.append(ids(play.title).merging(["status": "watched", "tracked_at": date]) { $1 }) }
+                    else if let season = play.season {
+                        shows[play.title.tmdbId, default: (play.title, [:])].seasons[season, default: []].append(["number": play.episode ?? 0, "tracked_at": date])
+                    }
+                }
+                let showBodies: [[String: Any]] = shows.keys.sorted().map { id in
+                    let entry = shows[id]!
+                    return ids(entry.item).merging(["status": "watched",
+                                                    "seasons": entry.seasons.keys.sorted().map { ["number": $0, "episodes": entry.seasons[$0]!] }]) { $1 }
+                }
+                add("/sync/tracking/remove", ["movies": movies, "shows": showBodies], "plays taken off", batch.count)
+            }
+            for play in plays where play.watchedAt == nil {
                 if let id = play.remoteId, let escaped = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
                     result.append(Request(method: "DELETE", path: "/sync/tracklogs/" + escaped, body: nil, summary: "play taken off", count: 1))
-                } else if let date = play.watchedAt {
-                    var item = ids(play.title); item["status"] = "watched"
-                    if let season = play.season { item["seasons"] = [["number": season, "episodes": [["number": play.episode ?? 0, "tracked_at": date]]]] }
-                    else { item["tracked_at"] = date }
-                    add("/sync/tracking/remove", [play.title.movie ? "movies" : "shows": [item]], "play taken off", 1)
                 }
             }
         case .simkl, .mdblist:

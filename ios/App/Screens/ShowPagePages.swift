@@ -928,7 +928,7 @@ struct CompaniesPage: View {
             .task(id: route) { await load() }
     }
     private var animated: Bool {
-        guard let saved = store.workspace.activeTitles.first(where: { $0.tmdbId == route.id && $0.isSeries == (route.kind == .tv) }) else { return false }
+        guard let saved = store.activeTitles.first(where: { $0.tmdbId == route.id && $0.isSeries == (route.kind == .tv) }) else { return false }
         return saved.genres.contains("Animation") || saved.category.hasPrefix("anime")
     }
     private func load() async {

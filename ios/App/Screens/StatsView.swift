@@ -308,7 +308,7 @@ struct StatsView: View {
     /// Days with a dated watch: all of them, since the first, and this year.
     private var activeDays: (all: Int, elapsed: Int, year: Int) {
         let calendar = DiaryDate.calendar()
-        let days = Set(store.workspace.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { calendar.startOfDay(for: $0) } })
+        let days = Set(store.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { calendar.startOfDay(for: $0) } })
         guard let first = days.min() else { return (0, 0, 0) }
         let elapsed = (calendar.dateComponents([.day], from: first, to: calendar.startOfDay(for: clock)).day ?? 0) + 1
         let year = calendar.component(.year, from: clock)
@@ -317,7 +317,7 @@ struct StatsView: View {
     /// The first month with a dated watch (where Monthly can go back to).
     private var earliestMonth: Date {
         let calendar = DiaryDate.calendar()
-        let first = store.workspace.activeEvents.compactMap { DiaryDate.parse($0.watchedAt) }.min() ?? clock
+        let first = store.activeEvents.compactMap { DiaryDate.parse($0.watchedAt) }.min() ?? clock
         return calendar.date(from: calendar.dateComponents([.year, .month], from: first)) ?? first
     }
 
@@ -407,8 +407,8 @@ struct StatsView: View {
     /// The genre shares for All (from the stats) or for movies or shows only (counted here).
     private func genreMix(_ value: StatsOverview.Genres) -> (total: Int, items: [(genre: String, count: Int, share: Double)], otherCount: Int, otherShare: Double) {
         if genreKind == 0 { return (value.total, value.items.map { ($0.genre, $0.count, $0.share) }, value.otherCount, value.otherShare) }
-        let watched = Set(store.workspace.activeEvents.map(\.titleId))
-        let titles = store.workspace.activeTitles.filter { watched.contains($0.id) && $0.isSeries == (genreKind == 2) }
+        let watched = Set(store.activeEvents.map(\.titleId))
+        let titles = store.activeTitles.filter { watched.contains($0.id) && $0.isSeries == (genreKind == 2) }
         var counts: [String: Int] = [:]
         for title in titles { for genre in Set(title.genres) { counts[genre, default: 0] += 1 } }
         let total = max(1, titles.count)

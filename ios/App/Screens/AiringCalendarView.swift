@@ -389,7 +389,7 @@ struct AiringCalendarView: View {
     /// Episodes of the show that have aired, and how many of those you've watched.
     private func watchedProgress(_ title: MediaTitle) -> (watched: Int, aired: Int) {
         let today = DiaryDate.day(store.now)
-        let watched = Set(store.workspace.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
+        let watched = Set(store.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
         let aired = store.workspace.episodes.filter { $0.titleId == title.id && $0.season > 0 && $0.skipped != true && ($0.airedOn.map { $0 <= today } ?? false) }
         return (aired.filter { watched.contains($0.id) }.count, aired.count)
     }
@@ -447,7 +447,7 @@ struct AiringCalendarView: View {
         guard !syncingDates else { return }
         syncingDates = true
         Task {
-            let activeSeries = store.workspace.activeTitles.filter { $0.isSeries && ($0.status == "watching" || $0.status == "planned") }.prefix(10)
+            let activeSeries = store.activeTitles.filter { $0.isSeries && ($0.status == "watching" || $0.status == "planned") }.prefix(10)
             for series in activeSeries { await store.refreshTitleMetadata(series) }
             syncingDates = false
         }

@@ -6,6 +6,8 @@ import UIKit
 @MainActor struct NativeTabShell: UIViewControllerRepresentable {
     @Binding var selection: AppTab
     let accent: UIColor
+    /// Something is syncing: the Profile tab's icon turns a ring (as Cinopsys shows it).
+    var syncing = false
     /// Every value `page` captures besides the observed store and router. Pages observe
     /// those themselves, so the five roots are rebuilt only when this key changes.
     let pageKey: String
@@ -45,6 +47,7 @@ import UIKit
         coordinator.selection = $selection; coordinator.canPage = canPage
         coordinator.onReselect = onReselect
         controller.tabBar.tintColor = accent
+        coordinator.showSync(syncing, in: controller, accent: accent)
         // Reassigning a root re-diffs that whole tab. Doing all five on every root update
         // (opening Surprise me, any state the root body read) rebuilt every screen.
         if coordinator.renderedPageKey != pageKey {
@@ -60,10 +63,92 @@ import UIKit
     static func dismantleUIViewController(_ controller: UITabBarController, coordinator: Coordinator) {
         controller.view.removeGestureRecognizer(coordinator.pan)
         coordinator.scrollUp.detach(from: controller)
+        coordinator.stopSpinner()
         controller.delegate = nil
     }
 
     final class Coordinator: NSObject, UITabBarControllerDelegate, UIGestureRecognizerDelegate {
+        // MARK: Syncing ring on the Profile tab
+
+        private var spinLink: CADisplayLink?
+        private var spinFrames: (normal: [UIImage], selected: [UIImage]) = ([], [])
+        private var spinIndex = 0
+        private var spinStarted = Date.distantPast
+        private var spinAccent: UIColor?
+        private var spinStop: Task<Void, Never>?
+        private weak var spinItem: UITabBarItem?
+        private static let spinSteps = 24
+
+        /// On: the ring turns (once a second). Off: it stays a moment at least, so a quick sync
+        /// doesn't flicker, then the plain icon comes back.
+        func showSync(_ on: Bool, in controller: UITabBarController, accent: UIColor) {
+            guard let index = AppTab.allCases.firstIndex(of: .more), let host = controller.viewControllers?[index] else { return }
+            if on {
+                spinStop?.cancel(); spinStop = nil
+                guard spinLink == nil || spinAccent != accent else { return }
+                startSpinner(host.tabBarItem, bar: controller.tabBar, accent: accent)
+            } else if spinLink != nil, spinStop == nil {
+                let wait = max(0, 0.9 - Date.now.timeIntervalSince(spinStarted))
+                spinStop = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(wait))
+                    guard !Task.isCancelled else { return }
+                    self?.stopSpinner()
+                }
+            }
+        }
+        private func startSpinner(_ item: UITabBarItem, bar: UITabBar, accent: UIColor) {
+            spinLink?.invalidate()
+            let icon = UIColor.label.resolvedColor(with: bar.traitCollection)
+            spinFrames = (Self.ringFrames(icon: icon, ring: accent), Self.ringFrames(icon: accent, ring: accent))
+            spinItem = item; spinAccent = accent; spinIndex = 0; spinStarted = .now
+            item.accessibilityValue = "Syncing"
+            let link = CADisplayLink(target: self, selector: #selector(spinTick))
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 24)
+            link.add(to: .main, forMode: .common)
+            spinLink = link
+            spinTick()
+        }
+        @objc private func spinTick() {
+            guard let item = spinItem, !spinFrames.normal.isEmpty else { stopSpinner(); return }
+            // A turn a second, whatever the frame rate.
+            let step = Int(Date.now.timeIntervalSince(spinStarted) * Double(Self.spinSteps)) % Self.spinSteps
+            guard step != spinIndex || item.image !== spinFrames.normal[step] else { return }
+            spinIndex = step
+            item.image = spinFrames.normal[step]
+            item.selectedImage = spinFrames.selected[step]
+        }
+        func stopSpinner() {
+            spinStop?.cancel(); spinStop = nil
+            spinLink?.invalidate(); spinLink = nil
+            if let item = spinItem {
+                item.image = UIImage(systemName: AppTab.more.systemIcon)
+                item.selectedImage = UIImage(systemName: AppTab.more.systemIcon)
+                item.accessibilityValue = nil
+            }
+            spinItem = nil; spinAccent = nil; spinFrames = ([], [])
+        }
+        /// The Profile icon inside a faint ring, with an arc in the accent at each step of a turn.
+        private static func ringFrames(icon: UIColor, ring: UIColor) -> [UIImage] {
+            let side: CGFloat = 30, radius: CGFloat = 13.6
+            let glyph = UIImage(systemName: AppTab.more.systemIcon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))?
+                .withTintColor(icon, renderingMode: .alwaysOriginal)
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+            let center = CGPoint(x: side / 2, y: side / 2)
+            return (0..<spinSteps).map { step in
+                renderer.image { _ in
+                    let track = UIBezierPath(arcCenter: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+                    track.lineWidth = 2; icon.withAlphaComponent(0.22).setStroke(); track.stroke()
+                    let start = CGFloat(step) / CGFloat(spinSteps) * .pi * 2 - .pi / 2
+                    let arc = UIBezierPath(arcCenter: center, radius: radius, startAngle: start, endAngle: start + .pi * 0.6, clockwise: true)
+                    arc.lineWidth = 2.4; arc.lineCapStyle = .round; ring.setStroke(); arc.stroke()
+                    if let glyph {
+                        let size = glyph.size
+                        glyph.draw(in: CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height))
+                    }
+                }.withRenderingMode(.alwaysOriginal)
+            }
+        }
+
         var selection: Binding<AppTab>
         var canPage: @MainActor (AppTab) -> Bool
         var onReselect: @MainActor (AppTab) -> Void

@@ -385,13 +385,13 @@ struct StatsStudiosCard: View {
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 36)
                 }.buttonStyle(.plain)
             }
-        }.task(id: store.workspace.activeTitles.count) { await load() }
+        }.task(id: store.activeTitles.count) { await load() }
     }
     private func load() async {
         // The 40 titles you've watched most, so a large diary stays a handful of cached reads.
         var plays: [String: Int] = [:]
-        for event in store.workspace.activeEvents { plays[event.titleId, default: 0] += 1 }
-        let titles = store.workspace.activeTitles.filter { $0.tmdbId != nil && plays[$0.id] != nil }
+        for event in store.activeEvents { plays[event.titleId, default: 0] += 1 }
+        let titles = store.activeTitles.filter { $0.tmdbId != nil && plays[$0.id] != nil }
             .sorted { (plays[$0.id] ?? 0) > (plays[$1.id] ?? 0) }.prefix(40)
         var counts: [String: (company: TitleCompany, count: Int, movie: Bool)] = [:]
         for title in titles {

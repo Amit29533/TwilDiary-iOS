@@ -218,9 +218,11 @@ struct HomeView: View {
     /// Each refresh rebuilds the diary, and a title could come back for a moment without its
     /// backdrop (the poster then filled in) or with another copy of it: the hero flashed.
     private func heroArtwork(_ title: MediaTitle) -> String? {
-        if let kept = Self.heroArt[title.id] { return kept }
+        // Kept per TMDB entry too: a title fixed to another entry shows its new backdrop at once.
+        let key = title.id + "|" + (title.tmdbId.map(String.init) ?? "")
+        if let kept = Self.heroArt[key] { return kept }
         guard let backdrop = title.backdrop else { return title.poster }
-        Self.heroArt[title.id] = backdrop
+        Self.heroArt[key] = backdrop
         return backdrop
     }
     @MainActor private static var heroArt: [String: String] = [:]
