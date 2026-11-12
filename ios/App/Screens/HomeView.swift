@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TwilDiaryCore
 
 /// Owner's Home design: a full-bleed Continue watching backdrop behind the header, a wide
@@ -183,7 +184,11 @@ struct HomeView: View {
             // higher, which enlarged a 16:9 backdrop about 2x and cut off half of it; with only the
             // status bar's height it is enlarged about 1.7x, so more of the picture shows.
             GeometryReader { proxy in
-            Artwork(path: heroArtwork(current), title: current.name)
+            PullStretchArt(content: Artwork(path: heroArtwork(current), title: current.name).overlay {
+                    // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
+                    LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
+                                           .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                })
                 .task(id: titles.map { heroArtwork($0) ?? "" } + [String(Int(proxy.size.width))]) {
                     // The same size Artwork asks for (its frame here), so each is already decoded.
                     let pixels = Double(max(proxy.size.width, proxy.size.height + Self.artLift) * displayScale)
@@ -195,12 +200,7 @@ struct HomeView: View {
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
-                .overlay {
-                    // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
-                    LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
-                                           .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
-                }
-                .modifier(PullStretch(lift: Self.artLift)).id(current.id).transition(.opacity)
+                .offset(y: -Self.artLift).id(current.id).transition(.opacity)
             }
             // On the container (outside the art's identity), so switching titles cross-fades
             // instead of cutting from one picture to the next.
@@ -273,18 +273,62 @@ struct HomeView: View {
     }
 }
 
-/// The hero art reaches `lift` above its section. Pulling the page down to refresh zooms it from its
-/// bottom edge by exactly the gap that opens above it, so its top stays at the top of the screen.
-/// The gap is read from where the art is drawn in that same frame (not from the scroll view's
-/// reported offset, which during a refresh can be a frame behind and made the poster jump).
-private struct PullStretch: ViewModifier {
-    let lift: CGFloat
-    func body(content: Content) -> some View {
-        content.visualEffect { view, proxy in
-            let frame = proxy.frame(in: .global)
-            let gap = max(0, frame.minY - lift)
-            return view.scaleEffect(1 + gap / max(1, frame.height), anchor: .bottom).offset(y: -lift)
+/// Home's hero art. Pulling the page down to refresh zooms it from its bottom edge by exactly the
+/// gap that opens above it, so its top stays at the top of the screen.
+///
+/// The zoom is set by UIKit, from the scroll view itself, in the same moment the scroll view moves:
+/// SwiftUI-side versions (a remembered resting position, the scroll geometry, the drawn position)
+/// could be a frame early or late when a refresh starts (the haptic, as the spinner's room is added),
+/// and the poster flashed at the wrong zoom for that frame.
+private struct PullStretchArt<Content: View>: UIViewRepresentable {
+    let content: Content
+    func makeUIView(context: Context) -> PullStretchHost<Content> { PullStretchHost(content) }
+    func updateUIView(_ view: PullStretchHost<Content>, context: Context) { view.host.rootView = content }
+}
+
+private final class PullStretchHost<Content: View>: UIView {
+    let host: UIHostingController<Content>
+    private var observation: NSKeyValueObservation?
+    private weak var scrollView: UIScrollView?
+    init(_ content: Content) {
+        host = UIHostingController(rootView: content)
+        host.safeAreaRegions = []
+        host.view.backgroundColor = .clear
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        addSubview(host.view)
+    }
+    required init?(coder: NSCoder) { nil }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        observation = nil; scrollView = nil
+        var view = superview
+        while let current = view, !(current is UIScrollView) { view = current.superview }
+        guard window != nil, let scroll = view as? UIScrollView else { return }
+        scrollView = scroll
+        // Called by UIKit on the main thread, inside the same change that moves the page.
+        weak let target = self
+        observation = scroll.observe(\.contentOffset, options: [.new]) { _, _ in
+            MainActor.assumeIsolated { target?.stretch() }
         }
+        stretch()
+    }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        host.view.bounds = CGRect(origin: .zero, size: bounds.size)
+        host.view.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        stretch()
+    }
+    private func stretch() {
+        guard let window, let scrollView, bounds.height > 0 else { return }
+        let top = convert(CGPoint.zero, to: window).y
+        let edge = scrollView.superview?.convert(scrollView.frame, to: window).minY ?? 0
+        let gap = max(0, top - edge)
+        let scale = 1 + gap / bounds.height
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        // Scaled about the middle, then raised by half the growth: the bottom edge stays put.
+        host.view.transform = CGAffineTransform(translationX: 0, y: -gap / 2).scaledBy(x: scale, y: scale)
+        CATransaction.commit()
     }
 }
 
