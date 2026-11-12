@@ -1,0 +1,74 @@
+# Unsigned iPhone IPA for owner phone testing, built on the Namespace Apple Silicon runner
+# (profile "mac"). Compile and package only: no tests, no release, no deploy. Run it from the
+# Actions tab or `gh workflow run ios-namespace-ipa.yml --ref <branch>`; the IPA is the run's artifact.
+name: iOS IPA (Namespace)
+run-name: namespace ipa ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+
+# A second dispatch waits for the one already building instead of cancelling it.
+concurrency:
+  group: ios-namespace-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 60
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Choose the newest installed Xcode 26
+        run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          dev=""
+          for app in $(ls -d /Applications/Xcode_26*.app /Applications/Xcode-26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
+            if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then dev="$app/Contents/Developer"; break; fi
+          done
+          [ -n "$dev" ] || dev="$(xcode-select -p)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          mkdir -p ios/.artifacts/logs
+          { sw_vers; DEVELOPER_DIR="$dev" xcodebuild -version; DEVELOPER_DIR="$dev" swift --version; } | tee ios/.artifacts/toolchain.txt
+      - name: Cache Swift packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.spm
+          key: spm-namespace-${{ runner.arch }}-${{ hashFiles('ios/**/Package.resolved', 'ios/**/Package.swift', 'ios/project.yml') }}
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Compile unsigned physical iPhone application (warnings are errors)
+        env:
+          # Optional repository secrets; without them the app asks for its own keys.
+          TWILDIARY_TMDB_KEY: ${{ secrets.TWILDIARY_TMDB_KEY }}
+          TWILDIARY_GEMINI_KEY: ${{ secrets.TWILDIARY_GEMINI_KEY }}
+        run: bash ios/scripts/ci.sh build-device
+      - name: Package unsigned IPA
+        run: bash ios/scripts/ci.sh package
+      - name: Upload IPA
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-namespace-ipa
+          path: |
+            ios/.artifacts/TwilDiary-unsigned.ipa
+            ios/.artifacts/TwilDiary-unsigned.ipa.sha256
+            ios/.artifacts/toolchain.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-namespace-logs
+          path: ios/.artifacts/logs
+          retention-days: 7
