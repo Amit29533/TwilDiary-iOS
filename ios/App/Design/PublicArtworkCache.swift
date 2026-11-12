@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import CoreGraphics
+import CryptoKit
 
 /// Public, immutable bitmaps only. Private diary responses and credentials never
 /// enter this cache. NSCache supports concurrent lookups from rendering/decoding.
@@ -75,6 +76,24 @@ actor PublicArtworkCache {
         failedUntil.removeAll()
         resident.values.removeAllObjects()
         session.configuration.urlCache?.removeAllCachedResponses()
+        try? FileManager.default.removeItem(at: Self.folder)
+    }
+    /// Downloaded artwork kept as files (public TMDB and AniList images only), so opening the app
+    /// shows posters and Home's hero at once instead of downloading them again.
+    nonisolated static let folder = URL.cachesDirectory.appending(path: "Artwork", directoryHint: .isDirectory)
+    nonisolated static func file(_ url: URL) -> URL {
+        folder.appending(path: SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined())
+    }
+    nonisolated static func decode(_ data: Data, pixels: Int) -> PublicArtworkBitmap? {
+        guard data.count <= 12 * 1024 * 1024,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: pixels,
+                kCGImageSourceShouldCacheImmediately: true
+              ] as CFDictionary) else { return nil }
+        return PublicArtworkBitmap(image)
     }
     nonisolated func cached(_ request: PublicArtworkRequest) -> PublicArtworkBitmap? {
         resident.values.object(forKey: request.key as NSString)
@@ -93,6 +112,8 @@ actor PublicArtworkCache {
             // existing resized image. Both attempts use the same public-host checks.
             for url in request.fallbackURL.map({ [request.url, $0] }) ?? [request.url] {
               guard !Task.isCancelled else { return nil }
+              // Kept from before: decoded from the file, no download.
+              if let data = try? Data(contentsOf: Self.file(url)), let bitmap = Self.decode(data, pixels: request.pixels) { return bitmap }
               do {
                 let (data, response) = try await session.data(from: url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -105,6 +126,8 @@ actor PublicArtworkCache {
                         kCGImageSourceThumbnailMaxPixelSize: request.pixels,
                         kCGImageSourceShouldCacheImmediately: true
                       ] as CFDictionary) else { continue }
+                try? FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
+                try? data.write(to: Self.file(url), options: .atomic)
                 return PublicArtworkBitmap(image)
               } catch { continue }
             }

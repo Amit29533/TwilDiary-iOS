@@ -692,6 +692,9 @@ struct ProgressCard: View {
     @State private var suppressNavigationUntil = Date.distantPast
     /// Notes open as their own sheet over the card, not the whole title page.
     @State private var showNotes = false
+    @State private var waitedForProgress = false
+    /// Progress worth showing: a card, and for a show its episode count.
+    private var progressKnown: Bool { card.map { !title.isSeries || $0.progress.total > 0 } ?? false }
     @Environment(AppRouter.self) private var router
     var body: some View {
         ZStack(alignment: .leading) {
@@ -737,9 +740,12 @@ struct ProgressCard: View {
                 Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(webHex: "#f5f5f7"))
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
             }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-            // Its row fades in once progress is known, instead of one row flashing into the other.
+            // Its row fades in once progress is known, instead of one row flashing into the other:
+            // an empty card ("E0 of 0", episodes not read yet) counts as not known (at most 2 s).
             Group { if notStarted { startRow } else { progressRow } }
-                .opacity(card == nil ? 0 : 1).animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: card == nil)
+                .opacity(progressKnown || waitedForProgress ? 1 : 0)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: progressKnown || waitedForProgress)
+                .task { try? await Task.sleep(for: .seconds(2)); waitedForProgress = true }
         }.padding(.horizontal, 8).frame(height: 196)
     }
     private var progressRow: some View {

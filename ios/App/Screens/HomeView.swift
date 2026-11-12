@@ -9,7 +9,9 @@ struct HomeView: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     @State private var clock = Date.now
+    @State private var pull = HomePull()
     @State private var upcomingLimit = 3
     /// Changes only when vertical scrolling starts or settles, never per frame.
     @State private var scrolling = false
@@ -159,6 +161,12 @@ struct HomeView: View {
             }
         }
         .contentMargins(.bottom, 90, for: .scrollContent)
+        // How far the page is pulled down past its top, straight from the scroll view (the hero's
+        // stretch follows it; a remembered resting position used to be lost for a frame as the
+        // refresh bounce ended, and the poster jumped).
+        .onScrollGeometryChange(for: CGFloat.self, of: { geometry in
+            max(0, -(geometry.contentOffset.y + geometry.contentInsets.top)).rounded()
+        }) { _, amount in if pull.amount != amount { pull.amount = amount } }
         .onScrollPhaseChange { _, phase in
             // The automatic carousel step must not animate mid-fling under the finger.
             let active = phase != .idle
@@ -183,13 +191,23 @@ struct HomeView: View {
             // status bar's height it is enlarged about 1.7x, so more of the picture shows.
             GeometryReader { proxy in
             Artwork(path: current.backdrop ?? current.poster, title: current.name)
+                .task(id: titles.map { $0.backdrop ?? $0.poster ?? "" } + [String(Int(proxy.size.width))]) {
+                    // The same size Artwork asks for (its frame here), so each is already decoded.
+                    let pixels = Double(max(proxy.size.width, proxy.size.height + Self.artLift) * displayScale)
+                    for title in titles where title.id != current.id {
+                        guard !Task.isCancelled else { return }
+                        if let request = PublicArtworkRequest(path: title.backdrop ?? title.poster, pixels: pixels) {
+                            _ = await PublicArtworkCache.shared.image(request)
+                        }
+                    }
+                }
                 .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
                 .overlay {
                     // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
                     LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
                                            .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
                 }
-                .offset(y: -Self.artLift).modifier(StretchOnPull()).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+                .offset(y: -Self.artLift).modifier(PullStretch(pull: pull)).id(current.id).transition(.opacity).animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
             }.allowsHitTesting(false).accessibilityHidden(true)
         }
     }
@@ -248,20 +266,18 @@ struct HomeView: View {
     }
 }
 
+/// How far Home is pulled down past its top (read from the scroll view itself).
+@MainActor @Observable final class HomePull { var amount: CGFloat = 0 }
+
 /// Pulling the page down to refresh zooms the artwork from its bottom edge: it grows by exactly the
 /// pull, so its top stays at the top of the screen instead of sliding down and leaving a gap.
-private struct StretchOnPull: ViewModifier {
-    @State private var restingY: CGFloat?
+private struct PullStretch: ViewModifier {
+    let pull: HomePull
     func body(content: Content) -> some View {
-        let rest = restingY
-        content
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView(axis: .vertical)).minY } action: { y in if restingY == nil { restingY = y } }
-            .visualEffect { view, proxy in
-                let height = proxy.size.height
-                guard let rest, height > 0 else { return view.scaleEffect(1, anchor: .bottom) }
-                let pull = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY - rest)
-                return view.scaleEffect(1 + pull / height, anchor: .bottom)
-            }
+        let amount = pull.amount
+        content.visualEffect { view, proxy in
+            view.scaleEffect(1 + amount / max(1, proxy.size.height), anchor: .bottom)
+        }
     }
 }
 

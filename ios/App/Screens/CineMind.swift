@@ -48,15 +48,15 @@ struct AnswerText: View {
             ForEach(Array(Self.blocks(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let line):
-                    Text(CineMindView.markdown(line)).font(.system(size: 14)).lineSpacing(4.5).foregroundStyle(HomeStyle.soft)
+                    Text(CineMindView.markdown(line)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(HomeStyle.soft)
                         .tint(HomeStyle.chipText).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 case .heading(let line):
-                    Text(CineMindView.markdown(line)).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).padding(.top, 4)
+                    Text(CineMindView.markdown(line)).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).padding(.top, 4)
                 case .bullet(let marker, let line):
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        if let marker { Text(marker).font(.system(size: 13, weight: .semibold)).foregroundStyle(accent).monospacedDigit().frame(minWidth: 14, alignment: .trailing) }
+                        if let marker { Text(marker).font(.system(size: 15, weight: .semibold)).foregroundStyle(accent).monospacedDigit().frame(minWidth: 14, alignment: .trailing) }
                         else { Circle().fill(accent.opacity(0.9)).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0[.bottom] }.frame(width: 14) }
-                        Text(CineMindView.markdown(line)).font(.system(size: 14)).lineSpacing(4.5).foregroundStyle(HomeStyle.soft)
+                        Text(CineMindView.markdown(line)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(HomeStyle.soft)
                             .tint(HomeStyle.chipText).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -174,6 +174,7 @@ struct CineMindView: View {
             .safeAreaBar(edge: .top, spacing: 0) { header }
             .safeAreaBar(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
+                    if messages.isEmpty, hasKey, !thinking { suggestions }
                     if let followups = messages.last(where: { !$0.fromYou })?.followups, !followups.isEmpty, !thinking { followupChips(followups) }
                     inputBar
                 }
@@ -215,6 +216,26 @@ struct CineMindView: View {
         }
         .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
     }
+    /// Questions to start with, stacked above the input as glass pills (like Siri's).
+    private var suggestions: some View {
+        let items: [(icon: String, text: String)] = [
+            ("sparkles.tv", "Recommend similar titles"),
+            ("person.2.fill", "Who is the main cast?"),
+            ("text.alignleft", title.isSeries ? "What is this show about?" : "What is this movie about?"),
+        ]
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(items, id: \.text) { item in
+                Button { ask(item.text) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: item.icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(Self.accent).frame(width: 24)
+                        Text(item.text).font(.system(size: 17, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    }.padding(.horizontal, 18).frame(height: 52)
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                }.buttonStyle(.plain).accessibilityIdentifier("cinemind-suggestion")
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 4)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
     private var subtitle: String {
         if spoilerSafe, let progress { return title.name + " · spoiler-safe to " + progress.short }
         return title.name + (spoilerSafe ? " · spoiler-safe" : "")
@@ -238,7 +259,7 @@ struct CineMindView: View {
         if message.fromYou {
             HStack {
                 Spacer(minLength: 56)
-                Text(message.text).font(.system(size: 14, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 9)
+                Text(message.text).font(.system(size: 16, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 15).padding(.vertical, 10)
                     .background(LinearGradient(colors: [Color(webHex: "#7b5cf2"), Color(webHex: "#5b3fd6")], startPoint: .topLeading, endPoint: .bottomTrailing),
                                 in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
             }
@@ -302,7 +323,7 @@ struct CineMindView: View {
                     Button { ask(item) } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "sparkle").font(.system(size: 10, weight: .bold)).foregroundStyle(Self.accent)
-                            Text(item).font(.system(size: 13, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            Text(item).font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         }.padding(.horizontal, 13).frame(height: 34)
                             .background(Self.accent.opacity(0.12), in: Capsule())
                             .overlay(Capsule().strokeBorder(Self.accent.opacity(0.35), lineWidth: 0.75))
@@ -328,7 +349,7 @@ struct CineMindView: View {
     private var inputField: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField(messages.isEmpty ? "Ask about \(title.name)" : "Ask a follow-up", text: $draft, axis: .vertical)
-                .font(.system(size: 14)).lineLimit(1...5).focused($typing).submitLabel(.send).onSubmit { send() }
+                .font(.system(size: 16)).lineLimit(1...5).focused($typing).submitLabel(.send).onSubmit { send() }
                 .padding(.leading, 16).padding(.vertical, 12)
                 .accessibilityIdentifier("cinemind-field")
             Button { send() } label: {
