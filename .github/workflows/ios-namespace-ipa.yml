@@ -60,6 +60,9 @@ jobs:
           TWILDIARY_GROQ_KEY: ${{ secrets.TWILDIARY_GROQ_KEY }},${{ secrets.TWILDIARY_GROQ_KEY_2 }},${{ secrets.TWILDIARY_GROQ_KEY_3 }},${{ secrets.TWILDIARY_GROQ_KEY_4 }}
           # Up to four Requesty keys, the same way.
           TWILDIARY_REQUESTY_KEY: ${{ secrets.TWILDIARY_REQUESTY_KEY }},${{ secrets.TWILDIARY_REQUESTY_KEY_2 }},${{ secrets.TWILDIARY_REQUESTY_KEY_3 }},${{ secrets.TWILDIARY_REQUESTY_KEY_4 }}
+          # Cloudflare Access service token for your server (optional).
+          TWILDIARY_CF_ACCESS_CLIENT_ID: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_ID }}
+          TWILDIARY_CF_ACCESS_CLIENT_SECRET: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_SECRET }}
         run: bash ios/scripts/ci.sh build-device
       - name: Package unsigned IPA
         run: bash ios/scripts/ci.sh package

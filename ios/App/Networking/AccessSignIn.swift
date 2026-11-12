@@ -247,6 +247,7 @@ enum SignInNavigationPolicy {
         struct Check: Decodable { let traktClientId: String? }
         var request = URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/auth"), timeoutInterval: 15)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        AppConfiguration.passAccess(&request)
         guard let (data, _) = try? await URLSession.shared.data(for: request),
               let id = (try? JSONDecoder().decode(Check.self, from: data))?.traktClientId else { return nil }
         ProviderAppIDs.remember([.trakt: id])
@@ -266,6 +267,7 @@ enum SignInNavigationPolicy {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             if let host = authURL.host { request.setValue("\(authURL.scheme ?? "https")://\(host)", forHTTPHeaderField: "Origin") }
             request.httpBody = try JSONSerialization.data(withJSONObject: ["method": "provider", "provider": "trakt", "accessToken": tokens.accessToken, "clientId": clientId])
+            AppConfiguration.passAccess(&request)
             let reply = try? await URLSession.shared.data(for: request)
             let json = reply.flatMap { (try? JSONSerialization.jsonObject(with: $0.0)) as? [String: Any] }
             guard let http = reply?.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
@@ -339,6 +341,7 @@ enum SignInNavigationPolicy {
                 request.setValue(origin.absoluteString, forHTTPHeaderField: "Origin")
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            AppConfiguration.passAccess(&request)
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 formError = "Could not reach the diary server."

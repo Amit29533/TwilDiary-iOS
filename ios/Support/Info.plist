@@ -25,6 +25,10 @@
 	<string>$(TWILDIARY_GROQ_KEY)</string>
 	<key>TwilDiaryRequestyKey</key>
 	<string>$(TWILDIARY_REQUESTY_KEY)</string>
+	<key>TwilDiaryAccessClientID</key>
+	<string>$(TWILDIARY_CF_ACCESS_CLIENT_ID)</string>
+	<key>TwilDiaryAccessClientSecret</key>
+	<string>$(TWILDIARY_CF_ACCESS_CLIENT_SECRET)</string>
 	<key>TwilDiaryGoogleClientID</key>
 	<string>$(TWILDIARY_GOOGLE_CLIENT_ID)</string>
 	<key>TwilDiaryWeTrakrClientID</key>

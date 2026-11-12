@@ -4,8 +4,38 @@ import Security
 import TwilDiaryCore
 
 enum AppConfiguration {
-    // No credentials are compiled into the app or supplied to CI.
     static let backend = BackendEndpoint.production
+    /// A Cloudflare Access service token for your server (Zero Trust → Access → Service auth), built
+    /// in when the build sets one. It only gets the app's requests past Access, without its browser
+    /// sign-in; your server still checks the diary sign-in itself. Revoke it in Cloudflare any time.
+    struct AccessServiceToken: Sendable { let id: String; let secret: String }
+    static let accessServiceToken: AccessServiceToken? = {
+        func value(_ key: String) -> String? {
+            guard let text = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty, !text.hasPrefix("$(") else { return nil }
+            return text
+        }
+        guard let id = value("TwilDiaryAccessClientID"), let secret = value("TwilDiaryAccessClientSecret") else { return nil }
+        return AccessServiceToken(id: id, secret: secret)
+    }()
+    /// Adds the service token's headers to a request for your server (nothing when there's none).
+    static func passAccess(_ request: inout URLRequest) {
+        guard let token = accessServiceToken else { return }
+        request.setValue(token.id, forHTTPHeaderField: "CF-Access-Client-Id")
+        request.setValue(token.secret, forHTTPHeaderField: "CF-Access-Client-Secret")
+    }
+    /// A sign-in Cloudflare Access issued (its JWT comes from `<team>.cloudflareaccess.com`), as
+    /// opposed to one your server issued after a Trakt, passcode or token sign-in.
+    static func isAccessSignIn(_ token: String) -> Bool {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return false }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while payload.count % 4 != 0 { payload += "=" }
+        guard let data = Data(base64Encoded: payload),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let issuer = claims["iss"] as? String else { return false }
+        return issuer.contains("cloudflareaccess.com")
+    }
 }
 
 struct AccessCredential: Codable {
@@ -148,7 +178,14 @@ final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable
         if let timeout { request.timeoutInterval = timeout }
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("CF_Authorization=\(credential.token)", forHTTPHeaderField: "Cookie")
+        AppConfiguration.passAccess(&request)
+        if AppConfiguration.accessServiceToken != nil, !AppConfiguration.isAccessSignIn(credential.token) {
+            // Past Access with the service token: your server's own sign-in goes as a bearer token
+            // (as Access's cookie, Access would refuse a sign-in it didn't issue).
+            request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
+        } else {
+            request.setValue("CF_Authorization=\(credential.token)", forHTTPHeaderField: "Cookie")
+        }
         if let tmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines), !tmdbToken.isEmpty {
             request.setValue(tmdbToken, forHTTPHeaderField: "X-TMDB-Read-Token")
         }
