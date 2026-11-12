@@ -288,6 +288,13 @@ private struct PullStretchArt<Content: View>: UIViewRepresentable {
     func updateUIView(_ view: PullStretchHost<Content>, context: Context) { view.host.rootView = content }
 }
 
+/// The host, weakly, for UIKit's observation callback (which Swift sees as able to run anywhere;
+/// UIKit calls it on the main thread, and the host is only touched there).
+private final class WeakHost<Host: AnyObject>: @unchecked Sendable {
+    weak var value: Host?
+    init(_ value: Host) { self.value = value }
+}
+
 private final class PullStretchHost<Content: View>: UIView {
     let host: UIHostingController<Content>
     private var observation: NSKeyValueObservation?
@@ -309,9 +316,9 @@ private final class PullStretchHost<Content: View>: UIView {
         guard window != nil, let scroll = view as? UIScrollView else { return }
         scrollView = scroll
         // Called by UIKit on the main thread, inside the same change that moves the page.
-        weak let target = self
+        let target = WeakHost(self)
         observation = scroll.observe(\.contentOffset, options: [.new]) { _, _ in
-            MainActor.assumeIsolated { target?.stretch() }
+            MainActor.assumeIsolated { target.value?.stretch() }
         }
         stretch()
     }

@@ -350,9 +350,13 @@ private func diary() throws -> Workspace {
     func activities(_ json: String) throws -> TraktActivities { try TraktDecode.activities(from: data(json)) }
     let saved = try activities(#"{"all":"2026-11-01T00:00:00Z","tv_shows":{"all":"2026-11-01T00:00:00Z","watching":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","removed_from_list":"2026-09-01T00:00:00Z"}}"#)
     let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love", simklId: 1)
-    let library = TraktLibrary(activities: saved, plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 1, watchedAt: nil)], fetchedAt: "2026-11-01T00:00:00Z")
+    let library = TraktLibrary(activities: SimklSync.marked(saved), plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 1, watchedAt: nil)], fetchedAt: "2026-11-01T00:00:00Z")
     #expect(SimklSync.step(previous: nil, now: saved) == .full)
     #expect(SimklSync.step(previous: library, now: saved) == .none)
+    // A copy read before anime came in TVDB's numbering is read in full once.
+    var unnumbered = library
+    unnumbered.activities = saved
+    #expect(SimklSync.step(previous: unnumbered, now: saved) == .full)
     let watched = try activities(#"{"all":"2026-11-05T00:00:00Z","tv_shows":{"all":"2026-11-05T00:00:00Z","watching":"2026-11-05T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","removed_from_list":"2026-09-01T00:00:00Z"}}"#)
     #expect(SimklSync.step(previous: library, now: watched) == .delta(items: true, ratings: false, removals: false, since: "2026-11-01T00:00:00Z"))
     let rated = try activities(#"{"all":"2026-11-05T00:00:00Z","tv_shows":{"all":"2026-11-05T00:00:00Z","watching":"2026-11-01T00:00:00Z","rated_at":"2026-11-05T00:00:00Z","removed_from_list":"2026-11-05T00:00:00Z"}}"#)
@@ -477,4 +481,17 @@ private func diary() throws -> Workspace {
     server.notes = "Old note"
     diary = TraktDiary.build(library: library, server: Workspace(titles: [server]))
     #expect(diary.titles.first { $0.id == "m1" }?.notes == String(long.prefix(500)), "a different note on Trakt is the newer word")
+}
+
+/// Simkl's own example (`extended=full_anime_seasons`): "Shingeki no Kyojin Season 2" is its own
+/// entry numbered from season 1, under TMDB's one show; its episodes land in TVDB season 2, the
+/// diary's numbering. An episode without its own mapping takes the entry's one TVDB season.
+@Test func simklAnimeSeasonEntriesUseTVDBNumbering() throws {
+    let library = try TrackerDecode.simklLibrary(from: data("""
+    {"anime":[{"show":{"title":"Shingeki no Kyojin Season 2","ids":{"simkl":439744,"tmdb":"1429"}},"anime_type":"tv","mapped_tvdb_seasons":[2],
+               "seasons":[{"number":1,"episodes":[{"number":1,"tvdb":{"season":2,"episode":1},"watched_at":"2026-01-01T00:00:00Z"},{"number":2}]}]},
+              {"show":{"title":"Shingeki no Kyojin","ids":{"simkl":38636,"tmdb":"1429"}},"anime_type":"tv",
+               "seasons":[{"number":1,"episodes":[{"number":1}]}]}]}
+    """))
+    #expect(library.plays.map { "\($0.title.tmdbId ?? 0) s\($0.season ?? -1)e\($0.episode ?? -1)" } == ["1429 s2e1", "1429 s2e2", "1429 s1e1"])
 }

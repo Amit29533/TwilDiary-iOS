@@ -15,9 +15,20 @@ public enum SimklSync {
         case delta(items: Bool, ratings: Bool, removals: Bool, since: String)
     }
 
+    /// Kept among a copy's activities once it was read with Simkl's TVDB numbering for anime
+    /// (`extended=full_anime_seasons`). A copy without it numbered each anime season entry from
+    /// season 1 (Simkl's own way) and is read in full once. Not one of Simkl's lists, so never
+    /// seen as a change.
+    public static let animeSeasonsMark = "twildiary.anime_tvdb_seasons"
+    public static func marked(_ activities: TraktActivities) -> TraktActivities {
+        var stamps = activities.stamps
+        stamps[animeSeasonsMark] = "1"
+        return TraktActivities(all: activities.all, stamps: stamps)
+    }
+
     public static func step(previous: TraktLibrary?, now: TraktActivities) -> Step {
         guard let previous, previous.fetchedAt != nil, let saved = previous.activities, let since = saved.all,
-              now.all != nil, hasSimklIDs(previous) else { return .full }
+              now.all != nil, hasSimklIDs(previous), saved.stamps[animeSeasonsMark] != nil else { return .full }
         if now.all == since { return .none }
         var items = false, ratings = false, removals = false
         for key in Set(now.stamps.keys).union(saved.stamps.keys) where now.stamps[key] != saved.stamps[key] {

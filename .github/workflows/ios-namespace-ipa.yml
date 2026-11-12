@@ -75,3 +75,27 @@ jobs:
           name: TwilDiary-namespace-logs
           path: ios/.artifacts/logs
           retention-days: 7
+
+  # Alongside the IPA (never holding it back): the core calculations' tests.
+  core-tests:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test core calculations and catalog contracts
+        run: |
+          set -euo pipefail
+          if [ -d /Applications/Xcode_26.6.app ]; then export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer; fi
+          swift test --package-path ios/Packages/TwilDiaryCore 2>&1 | tee core-tests.log
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-namespace-core-tests
+          path: core-tests.log
+          retention-days: 7

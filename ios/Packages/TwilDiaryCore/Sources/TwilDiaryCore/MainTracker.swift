@@ -134,12 +134,16 @@ public enum TrackerDecode {
                     }
                     continue
                 }
+                // Anime: Simkl files each season as its own entry numbered from season 1. With
+                // `extended=full_anime_seasons` each episode says where it is in TVDB's numbering
+                // (closest to TMDB's), and the entry which TVDB seasons it covers.
+                let mapped = ((item["mapped_tvdb_seasons"] as? [Any]) ?? []).compactMap { int($0) }
                 for case let season as [String: Any] in (item["seasons"] as? [Any]) ?? [] {
                     for case let episode as [String: Any] in (season["episodes"] as? [Any]) ?? [] {
-                        // Anime: TVDB numbering (closest to TMDB's) when Simkl gives it.
                         let tvdb = object(episode["tvdb"])
                         guard let number = int(tvdb?["episode"]) ?? int(episode["number"]) else { library.skipped += 1; continue }
-                        let seasonNumber = tvdb.flatMap { int($0["season"]) } ?? int(season["number"]) ?? 1
+                        // An episode without its own mapping, in an entry that covers one TVDB season: that season.
+                        let seasonNumber = tvdb.flatMap { int($0["season"]) } ?? (mapped.count == 1 ? mapped[0] : nil) ?? int(season["number"]) ?? 1
                         let watched = date(episode["watched_at"])
                         library.plays.append(TraktPlay(historyId: playID("simkl|e|\(title.tmdbId ?? 0)|\(title.name)|\(seasonNumber)|\(number)"),
                                                        title: title, season: seasonNumber, episode: number, watchedAt: watched))

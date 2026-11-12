@@ -1202,7 +1202,9 @@ enum ServiceRemovals {
                 library = library.naming { ref in ref.diaryKey.flatMap { names[$0] } }
             } else if tracker == .simkl {
                 // Simkl's sync rules: the whole library once, then only what changed.
-                let fullQuery = ["extended": "full", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
+                // `full_anime_seasons`: `full` plus each anime episode's TVDB season and number, which is how
+                // the diary (TMDB) numbers them; plain `full` numbers every anime season entry from 1.
+                let fullQuery = ["extended": "full_anime_seasons", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
                 func fullPull() async throws {
                     library = try TrackerDecode.simklLibrary(from: try await client.read(config, path: "/sync/all-items/", query: fullQuery))
                     requests += 1
@@ -1241,7 +1243,7 @@ enum ServiceRemovals {
                         }
                     }
                 }
-                library.activities = activities
+                library.activities = SimklSync.marked(activities)
             } else if MDBListJournal.unmarked(library.activities) != activities || library.fetchedAt == nil {
                 // MDBList: only the lists whose time moved (all of them on the first read).
                 let previous = library.fetchedAt == nil ? nil : MDBListJournal.unmarked(library.activities)
