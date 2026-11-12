@@ -195,6 +195,9 @@ public struct ForceMatchPlan: Equatable, Sendable {
         var targetPlays: [String: [TraktPlay]] = [:], order: [String] = []
         for play in target.plays {
             guard let k = play.title.diaryKey, play.title.tmdbId != nil, !kept(play.title) else { continue }
+            // Only a movie or an episode can be taken off on its own; a show or season row would
+            // be counted as taken off and never sent.
+            guard play.isMovieOrEpisode || tracker == .trakt || tracker == .wetrakr else { continue }
             if play.season == 0, !specials { continue }
             let slot = k + (play.season.map { "|s\($0)e\(play.episode ?? 0)" } ?? "")
             if targetPlays[slot] == nil { order.append(slot) }

@@ -28,6 +28,9 @@ public struct TraktTitleRef: Codable, Hashable, Sendable {
 
 /// One play in Trakt's history: its own history id, so a later Undo removes exactly this play.
 public struct TraktPlay: Codable, Hashable, Sendable {
+    /// A movie, or one episode. MDBList's watched list also has show and season rows (a show or
+    /// season it counts as finished); they aren't plays and can't be taken off one by one.
+    public var isMovieOrEpisode: Bool { title.kind == .movie || (season != nil && episode != nil) }
     public let historyId: Int64
     public let title: TraktTitleRef
     public let season: Int?

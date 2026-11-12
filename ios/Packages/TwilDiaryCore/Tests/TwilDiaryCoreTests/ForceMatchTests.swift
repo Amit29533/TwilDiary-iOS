@@ -151,3 +151,16 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
     // On no list at the source: never moved to Simkl's Completed.
     #expect(TraktWritePlan.simklList(status: "none", isSeries: false) == nil)
 }
+
+@Test func mdblistShowAndSeasonRowsAreNotWatchesToTakeOff() throws {
+    // MDBList lists Frieren as finished (a show row and a season row) beside its two episodes.
+    let library = TraktLibrary(
+        plays: [TraktPlay(historyId: 1, title: blue, watchedAt: "2026-01-01T20:00:00Z"),
+                TraktPlay(historyId: 2, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00Z"),
+                TraktPlay(historyId: 3, title: frieren, season: 1, episode: 2, watchedAt: "2026-02-02T20:00:00Z"),
+                TraktPlay(historyId: 4, title: frieren, watchedAt: "2026-02-02T20:00:00Z"),
+                TraktPlay(historyId: 5, title: frieren, season: 1, watchedAt: "2026-02-02T20:00:00Z")])
+    #expect(library.plays.filter(\.isMovieOrEpisode).map(\.historyId) == [1, 2, 3])
+    let plan = ForceMatchPlan.make(target: library, tracker: .mdblist, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
+    #expect(plan.plays.isEmpty, "nothing counted as taken off that the call can't name")
+}

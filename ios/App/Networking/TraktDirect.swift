@@ -1167,7 +1167,10 @@ enum ServiceRemovals {
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
         for tracker in [MainTracker.simkl, .mdblist, .wetrakr] {
-            libraries[tracker] = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
+            var saved = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
+            // MDBList copies saved before its show and season rows were left out.
+            if tracker == .mdblist { saved?.plays.removeAll { !$0.isMovieOrEpisode } }
+            libraries[tracker] = saved
         }
     }
     private func file(_ tracker: MainTracker) -> URL { folder.appending(path: tracker.rawValue + ".json") }
@@ -1266,7 +1269,8 @@ enum ServiceRemovals {
                 }
                 if lists.contains(.history) {
                     let watched = try await mdblistPages(client, config, "/sync/watched")
-                    library.plays = watched.items.map { item in
+                    // Show and season rows ("finished") aren't plays, as in MDBList's journal.
+                    library.plays = watched.items.filter { $0.title.kind == .movie || ($0.season != nil && $0.episode != nil) }.map { item in
                         TraktPlay(historyId: TrackerDecode.playID("mdblist|\(item.title.kind.rawValue)|\(item.title.tmdbId ?? 0)|\(item.title.name)|\(item.season ?? -1)|\(item.episode ?? -1)"),
                                   title: item.title, season: item.season, episode: item.episode, watchedAt: item.date)
                     }

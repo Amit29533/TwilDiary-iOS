@@ -60,9 +60,32 @@ import TwilDiaryCore
             if let id = entry.simkl { bySimkl[id] = key }
             if let id = entry.wetrakr { byWeTrakr[id] = key }
         }
-        guard !bySimkl.isEmpty || !byWeTrakr.isEmpty else { return library }
+        // Simkl files anime under its own entries (one per season, each with its own Simkl id) and
+        // often gives no TMDB id for them, only IMDb's or TVDB's. Those are matched through the ids
+        // another service gave for the same title; otherwise every watch of them looks missing on
+        // Simkl, is sent again on each match and never sticks. Only an id that names one title here.
+        var byIMDb: [String: String] = [:], byTVDB: [Int: String] = [:]
+        var sharedIMDb = Set<String>(), sharedTVDB = Set<Int>()
+        for (key, entry) in known {
+            if let id = entry.imdb, !id.isEmpty {
+                if let other = byIMDb[id], other != key { sharedIMDb.insert(id) } else { byIMDb[id] = key }
+            }
+            if let id = entry.tvdb, key.hasPrefix("tv:") {
+                if let other = byTVDB[id], other != key { sharedTVDB.insert(id) } else { byTVDB[id] = key }
+            }
+        }
+        for id in sharedIMDb { byIMDb[id] = nil }
+        for id in sharedTVDB { byTVDB[id] = nil }
+        guard !bySimkl.isEmpty || !byWeTrakr.isEmpty || !byIMDb.isEmpty || !byTVDB.isEmpty else { return library }
+        func otherIDs(_ ref: TraktTitleRef) -> String? {
+            // The kind must agree: an anime film and its series can share nothing but a name.
+            let prefix = ref.kind == .movie ? "movie:" : "tv:"
+            if let key = ref.imdbId.flatMap({ byIMDb[$0] }), key.hasPrefix(prefix) { return key }
+            if ref.kind == .show, let key = ref.tvdbId.flatMap({ byTVDB[$0] }) { return key }
+            return nil
+        }
         func fill(_ ref: TraktTitleRef) -> TraktTitleRef {
-            guard ref.tmdbId == nil, let key = ref.simklId.flatMap({ bySimkl[$0] }) ?? ref.weTrakrId.flatMap({ byWeTrakr[$0] }),
+            guard ref.tmdbId == nil, let key = ref.simklId.flatMap({ bySimkl[$0] }) ?? ref.weTrakrId.flatMap({ byWeTrakr[$0] }) ?? otherIDs(ref),
                   let tmdb = Int(key.split(separator: ":").last ?? "") else { return ref }
             return TraktTitleRef(kind: key.hasPrefix("movie:") ? .movie : .show, traktId: ref.traktId, tmdbId: tmdb, imdbId: ref.imdbId, tvdbId: ref.tvdbId,
                                  name: ref.name, year: ref.year, simklId: ref.simklId, weTrakrId: ref.weTrakrId)
