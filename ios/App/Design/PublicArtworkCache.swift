@@ -126,9 +126,11 @@ actor PublicArtworkCache {
         if let active = pending[request] { return await active.value }
         if !retrying, let retry = failedUntil[request], retry > .now { return nil }
         let session = session
-        // Task inherits this decoding actor, never the UI actor. A recycled cell
-        // cancels only its observation; shared work continues for other cells.
-        let task = Task { () -> PublicArtworkBitmap? in
+        // Detached: the file read, download and decode run side by side for every poster on
+        // screen, never on the UI actor and not one at a time on this actor (a Task would inherit
+        // it, and a screen of Canvas list cards then filled in one poster after another). A
+        // recycled cell cancels only its observation; shared work continues for other cells.
+        let task = Task.detached(priority: .userInitiated) { () -> PublicArtworkBitmap? in
             // A missing/oversized original must not leave a profile without its
             // existing resized image. Both attempts use the same public-host checks.
             for url in request.fallbackURL.map({ [request.url, $0] }) ?? [request.url] {

@@ -98,7 +98,7 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
     }
     static func shared(store: DiaryStore, id: Int) -> CanvasListItemsLoader {
         if let kept = recent[id], Date.now.timeIntervalSince(kept.created) < 900, kept.error == nil { return kept }
-        if recent.count >= 12, let oldest = recent.min(by: { $0.value.created < $1.value.created })?.key { recent[oldest] = nil }
+        if recent.count >= 24, let oldest = recent.min(by: { $0.value.created < $1.value.created })?.key { recent[oldest] = nil }
         let loader = CanvasListItemsLoader(store: store, id: id)
         recent[id] = loader
         return loader

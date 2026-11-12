@@ -183,6 +183,16 @@ private struct CanvasContent: View {
                 ForEach(lists.lists) { list in
                     NavigationLink(value: CanvasListRoute(id: list.id, name: list.name, user: list.user)) { CanvasListCard(list: list) }
                         .buttonStyle(.plain).accessibilityIdentifier("canvas-list-\(list.id)")
+                        // A card that stays on screen for half a second starts reading its list's first
+                        // page, so opening it shows the titles at once (it used to wait on Trakt and 24
+                        // TMDB reads). Scrolled past sooner, nothing is read. Once started, the read
+                        // finishes even if the card leaves the screen (opening the list does that).
+                        .task {
+                            try? await Task.sleep(for: .milliseconds(500))
+                            guard !Task.isCancelled, !store.isPreview else { return }
+                            let loader = CanvasListItemsLoader.shared(store: store, id: list.id)
+                            Task { await loader.load() }
+                        }
                         .onAppear { if list.id == lists.lists.last?.id { Task { await lists.load(sort: listSort, kind: listKind, more: true) } } }
                 }
             }
@@ -270,15 +280,20 @@ struct CanvasListCard: View {
     let list: CanvasList
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Grid(horizontalSpacing: 2, verticalSpacing: 2) {
+            // Plain rows of fixed squares (one layout pass), not a Grid of aspect-filled tiles,
+            // which measured each of the four posters several times per card while scrolling.
+            VStack(spacing: 2) {
                 ForEach(0..<2, id: \.self) { row in
-                    GridRow { ForEach(0..<2, id: \.self) { column in
-                        let index = row * 2 + column
-                        Artwork(path: index < list.posters.count ? CatalogTools.image(list.posters[index], size: "w185") : nil, title: list.name)
-                            .aspectRatio(1, contentMode: .fill).frame(minWidth: 0, maxWidth: .infinity).clipped()
-                    } }
+                    HStack(spacing: 2) {
+                        ForEach(0..<2, id: \.self) { column in
+                            let index = row * 2 + column
+                            Color.clear.aspectRatio(1, contentMode: .fit)
+                                .overlay { Artwork(path: index < list.posters.count ? CatalogTools.image(list.posters[index], size: "w185") : nil, title: list.name) }
+                                .clipped()
+                        }
+                    }
                 }
-            }.aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 10))
+            }.clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
                 .padding([.horizontal, .top], 10)
             VStack(alignment: .leading, spacing: 3) {

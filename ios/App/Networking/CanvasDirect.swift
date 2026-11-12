@@ -5,11 +5,14 @@ import TwilDiaryCore
 /// posters from TMDB with your TMDB key, the way the server's /api/canvas routes build them.
 /// nil when either connection is missing, so the server can still answer then.
 @MainActor enum CanvasDirect {
-    static let listsPerPage = 8, previewPosters = 4, itemsPerPage = 24
+    nonisolated static let listsPerPage = 8, previewPosters = 4, itemsPerPage = 24
 
     /// Movies and shows on a Trakt list page, in its order, with TMDB ids and Trakt's rating.
     struct Entry: Sendable { let kind: MediaKind; let tmdb: Int; let name: String; let year: Int?; let rating: Double? }
-    static func entries(_ data: Data) -> [Entry] {
+    /// Parsed away from the main thread (a nonisolated async function runs on the shared pool),
+    /// so a page landing while you scroll doesn't hold up a frame.
+    nonisolated static func parsedEntries(_ data: Data) async -> [Entry] { entries(data) }
+    nonisolated static func entries(_ data: Data) -> [Entry] {
         guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
         return rows.compactMap { row in
             let type = row["type"] as? String
@@ -54,21 +57,13 @@ import TwilDiaryCore
             path = "\(type)s/\(trakt)/lists/\(kind)/\(sort)"
         }
         let reply = try await client.get(path, query: ["page": String(page), "limit": String(listsPerPage)])
-        let rows = (try? JSONSerialization.jsonObject(with: reply.data) as? [[String: Any]]) ?? []
-        let found: [(id: Int, name: String, user: String, count: Int, likes: Int)] = rows.prefix(listsPerPage).compactMap { row in
-            // Trending and popular wrap each list; a title's lists are the list objects themselves.
-            let list = row["list"] as? [String: Any] ?? row
-            guard let id = (list["ids"] as? [String: Any])?["trakt"] as? Int, id > 0,
-                  let name = list["name"] as? String, !name.isEmpty, list["privacy"] as? String != "private" else { return nil }
-            let user = list["user"] as? [String: Any]
-            return (id, name, (user?["username"] as? String) ?? (user?["name"] as? String) ?? "", list["item_count"] as? Int ?? 0, list["likes"] as? Int ?? 0)
-        }
+        let found = await listRows(reply.data)
         // A failed preview leaves the card without posters rather than failing the page.
         let posters = await withTaskGroup(of: (Int, [String]).self) { group in
             for list in found {
                 group.addTask {
                     guard let items = try? await client.get("lists/\(list.id)/items/movie,show", query: ["page": "1", "limit": String(previewPosters)]) else { return (list.id, []) }
-                    let art = await artwork(Array(entries(items.data).prefix(previewPosters)), token: token)
+                    let art = await artwork(Array(await parsedEntries(items.data).prefix(previewPosters)), token: token)
                     return (list.id, art.compactMap(\.posterPath))
                 }
             }
@@ -80,11 +75,26 @@ import TwilDiaryCore
         return CanvasListsPage(lists: lists, page: page, totalPages: min(max(reply.pageCount, 1), 50))
     }
 
+    struct ListRow: Sendable { let id: Int; let name: String; let user: String; let count: Int; let likes: Int }
+    /// A page of lists from Trakt, parsed away from the main thread.
+    nonisolated static func listRows(_ data: Data) async -> [ListRow] {
+        let rows = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+        return rows.prefix(listsPerPage).compactMap { row in
+            // Trending and popular wrap each list; a title's lists are the list objects themselves.
+            let list = row["list"] as? [String: Any] ?? row
+            guard let id = (list["ids"] as? [String: Any])?["trakt"] as? Int, id > 0,
+                  let name = list["name"] as? String, !name.isEmpty, list["privacy"] as? String != "private" else { return nil }
+            let user = list["user"] as? [String: Any]
+            return ListRow(id: id, name: name, user: (user?["username"] as? String) ?? (user?["name"] as? String) ?? "",
+                           count: list["item_count"] as? Int ?? 0, likes: list["likes"] as? Int ?? 0)
+        }
+    }
+
     /// One page of a list's titles, with Trakt's rating for each from the same read.
     static func items(list: Int, page: Int, store: DiaryStore) async throws -> (page: CanvasListItemsPage, ratings: [String: Double])? {
         guard let token = TMDBDirect.token(store), let client = try? await TraktDirectStore.shared.client(store: store) else { return nil }
         let reply = try await client.get("lists/\(list)/items/movie,show", query: ["page": String(page), "limit": String(itemsPerPage), "extended": "full"])
-        let rows = Array(entries(reply.data).prefix(itemsPerPage))
+        let rows = Array(await parsedEntries(reply.data).prefix(itemsPerPage))
         var ratings: [String: Double] = [:]
         for row in rows { if let rating = row.rating { ratings[row.kind.rawValue + ":" + String(row.tmdb)] = rating } }
         let items = await artwork(rows, token: token)
