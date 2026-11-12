@@ -40,6 +40,8 @@ targets:
         TWILDIARY_TMDB_KEY: ''
         # Gemini key for search by description: never in git either (TWILDIARY_GEMINI_KEY=… when building).
         TWILDIARY_GEMINI_KEY: ''
+        # Groq keys (the AI backup), the same way: TWILDIARY_GROQ_KEY=… when building, commas between several.
+        TWILDIARY_GROQ_KEY: ''
         TWILDIARY_WETRAKR_CLIENT_ID: '91c4eb76647493ae988793b9f3b62a53'
         TWILDIARY_GOOGLE_CLIENT_ID: '727001532186-pv7dsdmdplgeipmvei3pgscun46jf8u9.apps.googleusercontent.com'
         MARKETING_VERSION: '2.0.0'

@@ -56,6 +56,8 @@ jobs:
           TWILDIARY_TMDB_KEY: ${{ secrets.TWILDIARY_TMDB_KEY }}
           # Up to four Gemini keys, taken in turn by the app (empty ones are skipped).
           TWILDIARY_GEMINI_KEY: ${{ secrets.TWILDIARY_GEMINI_KEY }},${{ secrets.TWILDIARY_GEMINI_KEY_2 }},${{ secrets.TWILDIARY_GEMINI_KEY_3 }},${{ secrets.TWILDIARY_GEMINI_KEY_4 }}
+          # Up to four Groq keys (the AI backup), the same way.
+          TWILDIARY_GROQ_KEY: ${{ secrets.TWILDIARY_GROQ_KEY }},${{ secrets.TWILDIARY_GROQ_KEY_2 }},${{ secrets.TWILDIARY_GROQ_KEY_3 }},${{ secrets.TWILDIARY_GROQ_KEY_4 }}
         run: bash ios/scripts/ci.sh build-device
       - name: Package unsigned IPA
         run: bash ios/scripts/ci.sh package
