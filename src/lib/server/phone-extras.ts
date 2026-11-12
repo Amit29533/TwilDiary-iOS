@@ -1,4 +1,5 @@
-import { ApiError } from '#lib/server/api.ts';
+import type { D1Database } from '@cloudflare/workers-types';
+import { ApiError } from './api.ts';
 
 /** The phone's extras while the diary lives on Trakt alone (see `phoneExtras` in the schema): the
  * app reads the newest copy, merges it with its own (newer change wins) and saves the result.
