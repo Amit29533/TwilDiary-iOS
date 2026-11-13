@@ -176,8 +176,10 @@ export const POST: RequestHandler = async (event) => {
       }
       if (clientId.length > 512) throw new ApiError(400, 'invalid_input', 'Provide a valid Trakt client ID.');
       const verifyRes = await fetch('https://api.trakt.tv/users/settings', {
+        // Trakt refuses requests without a User-Agent (every other Trakt call here sends one).
         headers: {
           Accept: 'application/json',
+          'User-Agent': 'TwilDiary/2.0.0',
           'trakt-api-version': '2',
           'trakt-api-key': clientId,
           Authorization: `Bearer ${accessToken}`

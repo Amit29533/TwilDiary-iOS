@@ -199,6 +199,15 @@ struct SyncBackupView: View {
                 }
                 }
                 if store.phoneOnly, !store.onThisPhone { ExtrasStorageGroup() }
+                else if !store.phoneOnly {
+                    // Signed in to your server: the extras are part of the diary there (nothing to
+                    // choose), said here so the section doesn't seem to vanish (owner's question).
+                    SettingsGroup(label: "Where extras live") {
+                        SettingsLine(title: "Your TwilDiary server", subtitle: "Tags, Queue, full notes, statuses, file folders, favourite people and Trash are saved with your diary there, and in its backups") {
+                            Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
+                        }.accessibilityIdentifier("extras-on-server")
+                    }
+                }
                 SettingsGroup(label: store.phoneOnly ? "Backup" : "Extra backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in the Files app") {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)
