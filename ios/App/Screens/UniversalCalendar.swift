@@ -52,39 +52,64 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
     }
     private static func dayText(_ date: Date) -> String { DiaryDate.day(date) }
 
-    /// TMDB's discover: shows with an episode airing in the window, most popular first; each one's
-    /// next (or just-aired) episode from its details, for the day and the episode number.
+    /// TMDB's discover, one request per day: the shows with an episode that day, most popular first
+    /// (owner's request: fewer requests than asking each show for its next episode). A weekly show
+    /// is listed on each day it airs. The episode number is read only for rows you scroll to.
     private static func shows(token: String, from start: Date, to end: Date, genres: Set<String>, skipAnime: Bool) async throws -> [UniversalRelease] {
-        let first = dayText(start), last = dayText(end)
-        var results: [[String: Any]] = []
-        for page in 1...2 {
-            var query = ["air_date.gte": first, "air_date.lte": last, "sort_by": "popularity.desc", "page": String(page), "include_null_first_air_dates": "false"]
-            if let genre = ids(genres, movie: false) { query["with_genres"] = genre }
-            let reply = try await TMDBDirect.object("discover/tv", query: query, token: token)
-            results += reply["results"] as? [[String: Any]] ?? []
+        var days: [String] = []
+        var date = start
+        while date < end, days.count < 31 {
+            days.append(dayText(date))
+            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? end
         }
-        // With anime shown from AniList, Japanese animation from TMDB would be listed twice.
-        if skipAnime { results.removeAll { ($0["original_language"] as? String) == "ja" && (($0["genre_ids"] as? [Int]) ?? []).contains(16) } }
-        let picked = Array(results.prefix(40))
+        let genre = ids(genres, movie: false)
         var found: [UniversalRelease] = []
-        await withTaskGroup(of: UniversalRelease?.self) { group in
-            for item in picked {
-                guard let id = item["id"] as? Int, let catalog = TMDBDirect.catalogItem(item, kind: .tv) else { continue }
-                let popularity = item["popularity"] as? Double ?? 0
+        var failure: Error?
+        await withTaskGroup(of: Result<[UniversalRelease], Error>.self) { group in
+            for day in days {
                 group.addTask { @MainActor in
-                    guard let details = try? await TMDBDirect.object("tv/\(id)", query: [:], token: token) else { return nil }
-                    let episodes = [details["next_episode_to_air"], details["last_episode_to_air"]].compactMap { $0 as? [String: Any] }
-                    guard let episode = episodes.first(where: { ($0["air_date"] as? String).map { $0 >= first && $0 < last } ?? false }),
-                          let day = episode["air_date"] as? String else { return nil }
-                    let season = episode["season_number"] as? Int ?? 0, number = episode["episode_number"] as? Int ?? 0
-                    return UniversalRelease(id: "tv:\(id):\(season):\(number)", kind: .show, name: catalog.name, poster: catalog.artwork, day: day,
-                                            time: nil, detail: season == 0 ? "Special \(number)" : "S\(season) E\(number)",
-                                            route: CatalogRoute(kind: .tv, id: id), anime: nil, genres: catalog.genres ?? [], popularity: popularity)
+                    do {
+                        var query = ["air_date.gte": day, "air_date.lte": day, "sort_by": "popularity.desc", "page": "1", "include_null_first_air_dates": "false"]
+                        if let genre { query["with_genres"] = genre }
+                        var results = try await TMDBDirect.object("discover/tv", query: query, token: token)["results"] as? [[String: Any]] ?? []
+                        // With anime shown from AniList, Japanese animation from TMDB would be listed twice.
+                        if skipAnime { results.removeAll { ($0["original_language"] as? String) == "ja" && (($0["genre_ids"] as? [Int]) ?? []).contains(16) } }
+                        return .success(results.prefix(15).compactMap { item in
+                            guard let id = item["id"] as? Int, let catalog = TMDBDirect.catalogItem(item, kind: .tv) else { return nil }
+                            return UniversalRelease(id: "tv:\(id):\(day)", kind: .show, name: catalog.name, poster: catalog.artwork, day: day, time: nil,
+                                                    detail: "New episode", route: CatalogRoute(kind: .tv, id: id), anime: nil,
+                                                    genres: catalog.genres ?? [], popularity: item["popularity"] as? Double ?? 0)
+                        })
+                    } catch { return .failure(error) }
                 }
             }
-            for await item in group { if let item { found.append(item) } }
+            for await result in group {
+                switch result {
+                case .success(let items): found += items
+                case .failure(let error): failure = failure ?? error
+                }
+            }
         }
+        // Every day refused (offline, a bad key): said, rather than an empty calendar.
+        if found.isEmpty, let failure { throw failure }
         return found
+    }
+
+    /// The episode a show airs on `day` ("S2 E5"), from its details, asked once per show and kept:
+    /// only rows on screen ask.
+    private static var episodeCache: [Int: [String: String]] = [:]
+    static func episode(show id: Int, day: String, store: DiaryStore) async -> String? {
+        if let known = episodeCache[id] { return known[day] }
+        guard let token = TMDBDirect.token(store), let details = try? await TMDBDirect.object("tv/\(id)", query: [:], token: token) else { return nil }
+        var byDay: [String: String] = [:]
+        for episode in [details["last_episode_to_air"], details["next_episode_to_air"]].compactMap({ $0 as? [String: Any] }) {
+            guard let date = episode["air_date"] as? String else { continue }
+            let season = episode["season_number"] as? Int ?? 0, number = episode["episode_number"] as? Int ?? 0
+            byDay[date] = season == 0 ? "Special \(number)" : "S\(season) E\(number)"
+        }
+        if episodeCache.count > 300 { episodeCache.removeAll() }
+        episodeCache[id] = byDay
+        return byDay[day]
     }
 
     /// TMDB's discover: movies first released in the window, most popular first.
@@ -201,7 +226,7 @@ struct UniversalCalendarSection: View {
             Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
-                Text(subtitle(item)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                ReleaseSubtitle(item: item)
             }
             Spacer(minLength: 8)
             if saved {
@@ -215,12 +240,6 @@ struct UniversalCalendarSection: View {
             AnimeAppearanceButton(appearance: anime) { label }.buttonStyle(.plain).accessibilityIdentifier("everything-" + item.id)
         }
     }
-    private func subtitle(_ item: UniversalRelease) -> String {
-        let kind = item.kind == .anime ? "Anime" : item.kind == .movie ? "Movie" : "Show"
-        var parts = [item.kind == .movie ? kind : kind + " · " + item.detail]
-        if let time = item.time { parts.append(time.formatted(date: .omitted, time: .shortened)) }
-        return parts.joined(separator: " · ")
-    }
     static func heading(_ day: String, now: Date = .now) -> String {
         let today = DiaryDate.day(now)
         if day == today { return "Today" }
@@ -228,5 +247,30 @@ struct UniversalCalendarSection: View {
         let parser = DateFormatter(); parser.calendar = Calendar(identifier: .gregorian); parser.dateFormat = "yyyy-MM-dd"
         guard let date = parser.date(from: day) else { return day }
         return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+}
+
+/// "Show · S2 E5", "Movie", "Anime · Episode 7 · 9:30 PM". A show's episode number is read when
+/// its row comes on screen (one small request per show, kept), so opening the tab stays light.
+private struct ReleaseSubtitle: View {
+    let item: UniversalRelease
+    @Environment(DiaryStore.self) private var store
+    @State private var episode: String?
+    var body: some View {
+        Text(text).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            .task(id: item.id) {
+                guard item.kind == .show, episode == nil, let id = item.route?.id else { return }
+                episode = await UniversalReleases.episode(show: id, day: item.day, store: store)
+            }
+    }
+    private var text: String {
+        switch item.kind {
+        case .movie: return "Movie"
+        case .show: return "Show · " + (episode ?? item.detail)
+        case .anime:
+            var parts = ["Anime", item.detail]
+            if let time = item.time { parts.append(time.formatted(date: .omitted, time: .shortened)) }
+            return parts.joined(separator: " · ")
+        }
     }
 }
