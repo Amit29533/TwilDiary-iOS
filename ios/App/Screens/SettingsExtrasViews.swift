@@ -164,6 +164,7 @@ struct NotificationsSettingsView: View {
     @AppStorage(EpisodeNotifications.enabledKey) private var episodeAlerts = false
     @State private var releaseAlerts = ReleaseAlerts.enabled
     @State private var notice: String?
+    @State private var summary: String?
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
@@ -182,10 +183,15 @@ struct NotificationsSettingsView: View {
                         })).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-release-alerts")
                 }
+                if episodeAlerts || releaseAlerts, let summary { SettingsFootnote(text: summary) }
                 SettingsFootnote(text: "A check-in also tells you when its watch is logged, while alerts are allowed.")
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
         }.diaryScreenBackground().diaryPageNavigation("Notifications")
+        .task(id: "\(episodeAlerts)|\(releaseAlerts)") {
+            await EpisodeNotifications.reschedule(store: store)
+            summary = await EpisodeNotifications.summary()
+        }
     }
 }
 

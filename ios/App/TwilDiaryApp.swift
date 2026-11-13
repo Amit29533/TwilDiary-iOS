@@ -52,6 +52,7 @@ import TwilDiaryCore
         _store = State(initialValue: diaryStore)
         BackgroundSyncCoordinator.shared.registerBackgroundTasksIfNeeded(store: diaryStore)
         diaryStore.observeConnectivity()
+        EpisodeNotifications.showWhileOpen()
     }
     var body: some Scene {
         // No app-wide glass button style: it turned every text link, toolbar item and
@@ -255,6 +256,14 @@ struct RootView: View {
                 askAlerts = !Task.isCancelled
             }
             .sheet(isPresented: $askAlerts) { EpisodeAlertsPrompt() }
+            // Alerts follow the diary: once it has loaded, and again after a change.
+            .task(id: "\(store.hasLoadedWorkspace)|\(store.homeWorkspaceRevision)") {
+                guard store.hasLoadedWorkspace else { return }
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                await EpisodeNotifications.reschedule(store: store)
+                await ReleaseAlerts.refresh(store: store)
+            }
             .overlay {
                 if showSplash {
                     SplashView { splashPlayed = true; liftSplash() }
@@ -267,6 +276,8 @@ struct RootView: View {
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
+                    // Alerts first: quick, on this phone, and not held up by the syncs below.
+                    await EpisodeNotifications.reschedule(store: store)
                     // No server: tags, Queue, notes, files, favourite people and Trash from Drive.
                     await PhoneDriveSync.pullIfDue(store: store)
                     // And from your server, when you keep them there too.
@@ -277,7 +288,6 @@ struct RootView: View {
                     await LocalBackups.write(store: store)
                     await ServerBackups.runIfDue(store: store)
                     await GoogleDrive.runIfDue(store: store)
-                    await EpisodeNotifications.reschedule(store: store)
                     await ReleaseAlerts.refresh(store: store)
                     await store.keepDiaryServiceCurrent()
                 }

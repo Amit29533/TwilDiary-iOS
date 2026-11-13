@@ -50,7 +50,7 @@ import TwilDiaryCore
     static func refresh(store: DiaryStore) async {
         guard enabled, !store.isPreview, store.hasLoadedWorkspace, let token = TMDBDirect.token(store) else { return }
         let center = UNUserNotificationCenter.current()
-        guard await center.notificationSettings().authorizationStatus == .authorized else { return }
+        guard await EpisodeNotifications.allowed() else { return }
         let region = (UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US").uppercased()
         let today = DiaryDate.day(store.now)
         var cache = (UserDefaults.standard.data(forKey: cacheKey)).flatMap { try? JSONDecoder().decode([String: Found].self, from: $0) } ?? [:]
@@ -144,10 +144,12 @@ import TwilDiaryCore
         }
         let live = Set(releases.map(\.id))
         UserDefaults.standard.set(Array(seen.intersection(live)), forKey: seenKey)
-        let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) && !$0.hasSuffix("|heads") }
-        center.removePendingNotificationRequests(withIdentifiers: pending)
+        let ids = await center.pendingNotificationRequests().map(\.identifier)
+        center.removePendingNotificationRequests(withIdentifiers: ids.filter { $0.hasPrefix(prefix) && !$0.hasSuffix("|heads") })
+        // A show's new-episode alert that day already says it.
+        let episodeDays = Set(ids.filter { $0.hasPrefix("episode|") })
         let calendar = DiaryDate.calendar()
-        for release in releases.filter(\.alertOnDay).sorted(by: { $0.day < $1.day }).prefix(20) {
+        for release in releases.filter({ $0.alertOnDay && !episodeDays.contains("episode|\($0.titleId)|\($0.day)") }).sorted(by: { $0.day < $1.day }).prefix(20) {
             let parts = release.day.split(separator: "-").compactMap { Int($0) }
             guard parts.count == 3 else { continue }
             var when = DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 9)

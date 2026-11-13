@@ -94,8 +94,8 @@ import TwilDiaryTestSupport
     #expect(rows[1].titles == 2 && rows[1].plays == 31)
 }
 
-/// New-episode alerts: shows you're watching, episodes airing in the next two weeks, one alert
-/// per show per day; skipped episodes, specials, past days and shows you're not watching are left out.
+/// New-episode alerts: the calendar's shows (any not dropped), episodes airing in the next two weeks,
+/// one alert per show per day; skipped episodes, specials, past days and dropped shows are left out.
 @Test func episodeAlertsCoverTheNextTwoWeeksOfShowsYouWatch() throws {
     func show(_ id: String, _ status: String) -> MediaTitle {
         MediaTitle(id: id, name: id.capitalized, category: "show", year: nil, overview: "", poster: nil, backdrop: nil, communityScore: nil, tmdbId: 1,
@@ -112,7 +112,8 @@ import TwilDiaryTestSupport
                                          episode("frieren", 2, 7, "2026-11-20", skipped: true), episode("planned", 1, 1, "2026-11-12"), episode("dropped", 1, 1, "2026-11-12")],
                               events: [])
     let alerts = EpisodeAlerts.upcoming(workspace, today: "2026-11-11")
-    #expect(alerts.map(\.day) == ["2026-11-12", "2026-11-19"])
+    #expect(alerts.map(\.day) == ["2026-11-12", "2026-11-12", "2026-11-19"])
     #expect(alerts[0].title == "Frieren" && alerts[0].body == "S2 E3–E4 are out today." && alerts[0].id == "episode|frieren|2026-11-12")
-    #expect(alerts[1].body == "S2 E5 is out today.")
+    #expect(alerts[1].title == "Planned" && alerts[1].body == "S1 E1 is out today.")
+    #expect(alerts[2].body == "S2 E5 is out today.")
 }

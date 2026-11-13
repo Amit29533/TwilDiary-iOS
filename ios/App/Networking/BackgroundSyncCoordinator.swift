@@ -194,6 +194,8 @@ import BackgroundTasks
             await store.flushDirectProviders()
             guard !Task.isCancelled else { return }
             await store.refreshOnForeground()
+            // Alerts kept current without opening the app (a new date learned in the background).
+            if !Task.isCancelled { await EpisodeNotifications.reschedule(store: store) }
             if includeTransfer, !Task.isCancelled { await store.resumeTraktOnForeground() }
             if !Task.isCancelled { await ServerBackups.runIfDue(store: store) }
             if !Task.isCancelled { await GoogleDrive.runIfDue(store: store) }
