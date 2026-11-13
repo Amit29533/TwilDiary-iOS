@@ -123,7 +123,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
         switch mutation {
         case .markWatch(_, let titleId, let episodeId, let watchedAt, _, let rewatch):
             // Simkl keeps one watched state per episode or movie: a rewatch is already there.
-            guard !rewatch, let title = store.title(titleId), let tmdb = title.tmdbId else { return [] }
+            guard !rewatch, let title = resolvedTitle(titleId, store: store), let tmdb = title.tmdbId else { return [] }
             var job = SimklJob(kind: .watch, tmdb: tmdb, movie: !title.isSeries, anime: title.category == "anime", name: title.name, year: title.year, watchedAt: watchedAt)
             if title.isSeries {
                 guard let place = episode(episodeId, of: title, store: store) else { return [] }
@@ -133,11 +133,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
         case .revokeWatch(let eventId, let titleId, _, _):
             // Another play of it is still in the diary: Simkl keeps it watched.
             guard let watch = DetachedWatch(eventID: eventId), !watch.othersRemain else { return [] }
-            let title = store.title(titleId)
+            let title = resolvedTitle(titleId, store: store)
             return [SimklJob(kind: .unwatch, tmdb: watch.tmdbId, movie: watch.movie, anime: title?.category == "anime", name: title?.name ?? "TMDB \(watch.tmdbId)",
                              year: title?.year, season: watch.season, number: watch.number, watchedAt: watch.watchedAt)]
         case .patchTitle(let titleId, _, let status, let score, let clearScore, _, _, _, _):
-            guard let title = store.title(titleId), let tmdb = title.tmdbId else { return [] }
+            guard let title = resolvedTitle(titleId, store: store), let tmdb = title.tmdbId else { return [] }
             let base = SimklJob(kind: .rate, tmdb: tmdb, movie: !title.isSeries, anime: title.category == "anime", name: title.name, year: title.year)
             var jobs: [SimklJob] = []
             if let score { var job = base; job.rating = min(10, max(1, Int(score.rounded()))); jobs.append(job) }
@@ -147,6 +147,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
         default:
             return []
         }
+    }
+    /// The title, also one added a moment ago: adding a title rebuilds the diary in the background,
+    /// so the phone's catalog has it before the diary does (Add to Planned from a title's page).
+    private static func resolvedTitle(_ id: String, store: DiaryStore) -> MediaTitle? {
+        store.title(id) ?? PhoneCatalog.shared.titles[id]
     }
     /// Simkl's list for a diary status (movies: planned, completed or dropped).
     static func list(for status: String, movie: Bool) -> String? {
