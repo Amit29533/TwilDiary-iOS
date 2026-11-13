@@ -144,9 +144,12 @@ struct PersonPhotoViewer: View {
         HStack {
             Button { dismiss() } label: { circle("xmark") }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("photo-close")
             Spacer(minLength: 8)
-            Text("\(index + 1) / \(photos.count)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
-                .padding(.horizontal, 18).frame(height: 40).background(Color(webHex: "#2b2727").opacity(0.88), in: Capsule())
-                .accessibilityLabel("Photo \(index + 1) of \(photos.count)")
+            // One picture (a poster, a cover, character art): no "1 / 1".
+            if photos.count > 1 {
+                Text("\(index + 1) / \(photos.count)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
+                    .padding(.horizontal, 18).frame(height: 40).background(Color(webHex: "#2b2727").opacity(0.88), in: Capsule())
+                    .accessibilityLabel("Photo \(index + 1) of \(photos.count)")
+            }
             Spacer(minLength: 8)
             menu
         }.padding(.horizontal, 16).padding(.top, 8)

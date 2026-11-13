@@ -159,6 +159,17 @@ import TwilDiaryCore
 }
 
 extension PersonPhoto {
+    /// Any artwork link as a photo for the viewer. A sized TMDB link ("…/t/p/w185/abc.jpg") becomes
+    /// its TMDB path, so the viewer shows a large copy and Download saves the original.
+    static func viewing(_ link: String) -> PersonPhoto {
+        let prefix = "https://image.tmdb.org/t/p/"
+        var path = link
+        if link.hasPrefix(prefix), let slash = link.dropFirst(prefix.count).firstIndex(of: "/") {
+            let tmdbPath = String(link[slash...])
+            if CatalogTools.image(tmdbPath, size: "w780") != nil { path = tmdbPath }
+        }
+        return PersonPhoto(path: path, kind: "artwork", aspectRatio: 2.0 / 3.0, title: nil)
+    }
     /// A TMDB path at `size`, or a full link (AniList, MyAnimeList, Commons) as it is.
     func link(size: String) -> String? {
         path.hasPrefix("https://") ? path : CatalogTools.image(path, size: size)

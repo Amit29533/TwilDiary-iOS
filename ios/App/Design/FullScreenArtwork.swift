@@ -1,9 +1,12 @@
 import SwiftUI
 import UIKit
+import TwilDiaryCore
 
 /// Press and hold artwork (a poster, a cover, a portrait): it pops up as a large card with its title
 /// while the page blurs behind it (iOS's own peek, as in Photos or Instagram). Tap the card to open
-/// it full screen; the menu under it has View full screen and Share.
+/// it full screen; the menu under it has View full screen and Share. Full screen is the same photo
+/// viewer as a person's Photos (owner's request: one viewer everywhere): zoom, drag down to close,
+/// and ••• with Save, Share, Download, Open full size and Copy link.
 private struct FullScreenArtworkModifier: ViewModifier {
     let path: String?
     let title: String
@@ -19,7 +22,7 @@ private struct FullScreenArtworkModifier: ViewModifier {
                 .accessibilityAction(named: "View full screen") { open() }
                 // No slide up from the bottom: the cover appears at once and the viewer zooms in itself.
                 .fullScreenCover(isPresented: $shown) {
-                    FullScreenArtwork(path: path, title: title).presentationBackground(.clear)
+                    PersonPhotoViewer(name: title, photos: [PersonPhoto.viewing(path)], start: 0).presentationBackground(.clear)
                 }
         } else {
             content
@@ -120,72 +123,5 @@ extension View {
     /// Press and hold for a peek of `path` (with View full screen and Share).
     func fullScreenArtwork(_ path: String?, title: String, aspect: CGFloat = 2.0 / 3.0, onTap: (() -> Void)? = nil) -> some View {
         modifier(FullScreenArtworkModifier(path: path, title: title, aspect: aspect, onTap: onTap))
-    }
-}
-
-/// The whole image on black: pinch or double-tap to zoom, drag to look around when zoomed,
-/// swipe down (or the close button) to go back.
-struct FullScreenArtwork: View {
-    let path: String?
-    let title: String
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var scale: CGFloat = 1
-    @State private var settledScale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-    @State private var settledOffset: CGSize = .zero
-    /// Zooms and fades in from the middle on open, and back out on close (no slide from below).
-    @State private var appeared = false
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.opacity(appeared ? (scale > 1 ? 1 : max(0.35, 1 - Double(offset.height) / 500)) : 0).ignoresSafeArea()
-            Artwork(path: path, title: title, contentMode: .fit, prefersOriginal: true)
-                .scaleEffect(scale * (appeared ? 1 : 0.94))
-                .opacity(appeared ? 1 : 0)
-                .offset(offset)
-                .ignoresSafeArea()
-                .gesture(MagnifyGesture()
-                    .onChanged { value in scale = min(5, max(1, settledScale * value.magnification)) }
-                    .onEnded { _ in
-                        settledScale = scale
-                        if scale <= 1 { reset() }
-                    })
-                .simultaneousGesture(DragGesture()
-                    .onChanged { value in
-                        if scale > 1 {
-                            offset = CGSize(width: settledOffset.width + value.translation.width,
-                                            height: settledOffset.height + value.translation.height)
-                        } else {
-                            offset = CGSize(width: 0, height: max(0, value.translation.height))
-                        }
-                    }
-                    .onEnded { value in
-                        if scale > 1 { settledOffset = offset }
-                        else if value.translation.height > 120 { close() }
-                        else { withAnimation(reduceMotion ? nil : .snappy) { offset = .zero } }
-                    })
-                .onTapGesture(count: 2) {
-                    withAnimation(reduceMotion ? nil : .snappy) {
-                        if scale > 1 { reset() } else { scale = 2.5; settledScale = 2.5 }
-                    }
-                }
-                .accessibilityLabel(title)
-                .accessibilityAddTraits(.isImage)
-            Button { close() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 44, height: 44).background(.black.opacity(0.55), in: Circle())
-            }.padding(16).accessibilityLabel("Close").accessibilityIdentifier("full-screen-artwork-close")
-                .opacity(appeared ? 1 : 0)
-        }.statusBarHidden()
-            .accessibilityIdentifier("full-screen-artwork")
-            .onAppear { withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .snappy(duration: 0.16)) { appeared = true } }
-    }
-    private func reset() { scale = 1; settledScale = 1; offset = .zero; settledOffset = .zero }
-    private func close() {
-        withAnimation(.easeOut(duration: 0.12)) { appeared = false } completion: {
-            var instant = Transaction(); instant.disablesAnimations = true
-            withTransaction(instant) { dismiss() }
-        }
     }
 }
