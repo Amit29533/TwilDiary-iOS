@@ -91,16 +91,21 @@ import TwilDiaryCore
         guard let file = await saved(poster) else { return content }
         if let picture = attachment(file) { content.attachments = [picture] }
         guard let data = try? Data(contentsOf: file) else { return content }
-        let image = INImage(imageData: data)
-        let sender = INPerson(personHandle: INPersonHandle(value: conversation, type: .unknown), nameComponents: nil, displayName: name,
-                              image: image, contactIdentifier: nil, customIdentifier: conversation)
-        let intent = INSendMessageIntent(recipients: nil, outgoingMessageType: .outgoingMessageText, content: content.body, speakableGroupName: nil,
-                                         conversationIdentifier: conversation, serviceName: nil, sender: sender, attachments: nil)
-        intent.setImage(image, forParameterNamed: \.sender)
-        let interaction = INInteraction(intent: intent, response: nil)
+        let body = content.body
+        // One message for iOS's record of it, one for the alert (each built from plain values).
+        func message() -> INSendMessageIntent {
+            let image = INImage(imageData: data)
+            let sender = INPerson(personHandle: INPersonHandle(value: conversation, type: .unknown), nameComponents: nil, displayName: name,
+                                  image: image, contactIdentifier: nil, customIdentifier: conversation)
+            let intent = INSendMessageIntent(recipients: nil, outgoingMessageType: .outgoingMessageText, content: body, speakableGroupName: nil,
+                                             conversationIdentifier: conversation, serviceName: nil, sender: sender, attachments: nil)
+            intent.setImage(image, forParameterNamed: \.sender)
+            return intent
+        }
+        let interaction = INInteraction(intent: message(), response: nil)
         interaction.direction = .incoming
-        interaction.donate(completion: nil)
-        return (try? content.updating(from: intent)) ?? content
+        try? await interaction.donate()
+        return (try? content.updating(from: message())) ?? content
     }
     /// The poster on the phone (downloaded the first time).
     private static func saved(_ poster: String?) async -> URL? {
