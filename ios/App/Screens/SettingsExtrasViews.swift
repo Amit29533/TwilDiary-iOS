@@ -216,7 +216,7 @@ struct SyncBackupView: View {
                     SettingsDivider()
                     SettingsLine(title: "Confirm deletions", subtitle: "Ask before removing titles") { Toggle("", isOn: $confirmDeletions).labelsHidden().tint(theme.accent) }
                 }
-                if !store.phoneOnly {
+                if ServerBackups.available(store) {
                 SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
                         SettingsLine(title: "Server backups", subtitle: lastServerBackup.map { "Last: " + $0.formatted(.dateTime.day().month(.abbreviated).hour().minute()) } ?? "Copies of your diary kept on your server") {
@@ -229,7 +229,7 @@ struct SyncBackupView: View {
                 }
                 if store.phoneOnly, !store.onThisPhone { ExtrasStorageGroup() }
                 else if !store.phoneOnly { ServerExtrasGroup() }
-                SettingsGroup(label: store.phoneOnly ? "Backup" : "Extra backup") {
+                SettingsGroup(label: ServerBackups.available(store) ? "Extra backup" : "Backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in the Files app") {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)
                     }.accessibilityIdentifier("sync-backup-files")
@@ -248,7 +248,7 @@ struct SyncBackupView: View {
             .sheet(isPresented: $importing) { ImportHistoryView() }
             .task {
                 refresh = UIApplication.shared.backgroundRefreshStatus
-                if !store.isPreview, !store.phoneOnly, let list: BackupList = try? await store.read("/api/backups") {
+                if !store.isPreview, ServerBackups.available(store), let list: BackupList = try? await ServerBackups.read(store, "/api/backups") {
                     lastServerBackup = list.backups.compactMap { DiaryDate.parse($0.createdAt) }.max()
                     ServerBackups.noteLatest(lastServerBackup)
                 }

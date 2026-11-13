@@ -56,8 +56,8 @@ enum SignInNavigationPolicy {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 10) {
                     BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
-                    Text(phoneOnly == nil ? "Sign in to your diary" : "How should we keep your library?").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
-                    Text(phoneOnly == nil ? "Sign in to your TwilDiary server." : "Pick where your library lives. You can add more later.")
+                    Text(phoneOnly == nil ? "Sign in to your server" : "Sign in to TwilDiary").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                    Text(phoneOnly == nil ? "Google, email or your Trakt account." : "Pick an account. You decide where things are kept in Settings.")
                         .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 // The ways in, as rows (as Cinopsys lists them): Trakt first, then your server's own
@@ -89,7 +89,7 @@ enum SignInNavigationPolicy {
                         } action: { onThisPhone() }
                     }
                     optionRow(busy: webSigningIn, id: "sign-in-web", title: phoneOnly == nil ? "Google or email" : "Your TwilDiary server",
-                              detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email, for backups") {
+                              detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email") {
                         // Your server runs on Cloudflare, behind Cloudflare Access: its mark, as in Settings.
                         BrandLogo(service: .cloudflare, size: 40)
                     } action: { Task { await webSignIn() } }
@@ -205,7 +205,10 @@ enum SignInNavigationPolicy {
         webError = nil; webSigningIn = true
         defer { webSigningIn = false }
         do {
-            let start = AppConfiguration.backend.appendingPathComponent("api/session/app")
+            // With the service token past Cloudflare Access, ask for the diary's own 30-day session
+            // instead of Access's short one (you'd otherwise sign in again every day or so).
+            var start = AppConfiguration.backend.appendingPathComponent("api/session/app")
+            if AppConfiguration.accessServiceToken != nil { start.append(queryItems: [URLQueryItem(name: "session", value: "diary")]) }
             let callback = try await webAuthenticationSession.authenticate(using: start, callbackURLScheme: ProviderWebSignIn.callbackScheme)
             let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false)
             guard parts?.host == "auth", parts?.path == "/diary",
@@ -261,6 +264,13 @@ enum SignInNavigationPolicy {
         defer { traktSigningIn = false }
         do {
             guard let tokens = try await ServiceSignIn.tokens(.trakt, clientId: clientId, using: webAuthenticationSession, client: DirectProviderClient()) else { return }
+            // The first sign-in screen: Trakt signs in to Trakt only (owner's choice). Your server is
+            // its own, optional sign-in (its row here, or Connections → Server sign-in later).
+            if let phoneOnly {
+                PendingTraktSignIn.waiting = (clientId, tokens)
+                phoneOnly(.trakt)
+                return
+            }
             let authURL = AppConfiguration.backend.appendingPathComponent("api/auth")
             var request = URLRequest(url: authURL)
             request.httpMethod = "POST"

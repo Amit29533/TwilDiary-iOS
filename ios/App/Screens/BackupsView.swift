@@ -116,7 +116,7 @@ struct BackupsView: View {
         if store.isPreview { backups = []; return }
         #endif
         do {
-            backups = (try await store.read("/api/backups") as BackupList).backups; failure = nil
+            backups = (try await ServerBackups.read(store, "/api/backups") as BackupList).backups; failure = nil
             ServerBackups.noteLatest(backups?.compactMap { DiaryDate.parse($0.createdAt) }.max())
         }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
@@ -134,7 +134,7 @@ struct BackupsView: View {
         working = "Restoring…"; message = nil; failure = nil
         defer { working = nil }
         do {
-            let snapshot: Snapshot = try await store.read("/api/backups/" + backup.id, timeout: 60)
+            let snapshot: Snapshot = try await ServerBackups.read(store, "/api/backups/" + backup.id, timeout: 60)
             // Restore goes where your diary lives: into Trakt when Trakt holds it (the server's
             // copy is read-only then, and changing it wouldn't change what you see).
             message = try await ServerBackups.restore(snapshot.diary, phone: snapshot.phone, store: store)
@@ -142,7 +142,7 @@ struct BackupsView: View {
     }
     private func delete(_ backup: Summary) async {
         struct Deleted: Decodable { let deleted: Bool }
-        do { _ = try await store.read("/api/backups/" + backup.id, method: "DELETE") as Deleted; await load() }
+        do { _ = try await ServerBackups.read(store, "/api/backups/" + backup.id, method: "DELETE") as Deleted; await load() }
         catch { failure = error.localizedDescription }
     }
 }
@@ -203,14 +203,28 @@ struct BackupsView: View {
     }
     @discardableResult static func save(store: DiaryStore, label: String) async throws -> BackupsView.Summary {
         let body = try await snapshot(store: store, label: label)
-        let saved: BackupsView.Summary = try await store.read("/api/backups", method: "POST", body: body, timeout: 60)
+        let saved: BackupsView.Summary = try await read(store, "/api/backups", method: "POST", body: body, timeout: 60)
         noteLatest(DiaryDate.parse(saved.createdAt) ?? .now)
         return saved
     }
 
+    /// With no server diary (Trakt only), backups still go to your server when "Your server" is on
+    /// under Where extras live, with that same sign-in (owner's choice: the server is optional, for
+    /// signing in, backups and extras).
+    static func usesPhoneSession(_ store: DiaryStore) -> Bool { store.phoneOnly && !store.onThisPhone && ExtrasStorage.server }
+    /// Whether server backups can be made now.
+    static func available(_ store: DiaryStore) -> Bool { !store.phoneOnly || usesPhoneSession(store) }
+    /// A backups call: with the diary's server sign-in, or the extras one with no server diary.
+    static func read<T: Decodable>(_ store: DiaryStore, _ path: String, method: String = "GET", body: [String: Any]? = nil,
+                                   timeout: TimeInterval? = nil) async throws -> T {
+        guard usesPhoneSession(store) else { return try await store.read(path, method: method, body: body, timeout: timeout) }
+        let data = try body.map { try JSONSerialization.data(withJSONObject: $0) }
+        return try JSONDecoder().decode(T.self, from: try await PhoneServerSync.shared.send(path, method: method, body: data, store: store))
+    }
+
     /// Saves an automatic backup when one is due.
     static func runIfDue(store: DiaryStore, now: Date = .now) async {
-        guard !store.isPreview, !store.needsSignIn, store.hasLoadedWorkspace, !store.workspace.titles.isEmpty,
+        guard !store.isPreview, !store.needsSignIn, store.hasLoadedWorkspace, !store.workspace.titles.isEmpty, available(store),
               schedule.isDue(last: last, now: now) else { return }
         let attempted = UserDefaults.standard.double(forKey: attemptKey)
         guard now.timeIntervalSince1970 - attempted > 6 * 3_600 else { return }

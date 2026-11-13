@@ -103,6 +103,11 @@ enum ExtrasStorage {
         }
     }
 
+    /// Any call to your server with this session (server backups use it with no server diary).
+    func send(_ path: String, method: String, body: Data? = nil, store: DiaryStore) async throws -> Data {
+        self.store = store
+        return try await request(path, method: method, body: body)
+    }
     /// A request to your server with the extras session (a fresh one once when it's refused).
     private func request(_ path: String, method: String, body: Data? = nil, retried: Bool = false) async throws -> Data {
         let token = try await session(fresh: retried)
