@@ -123,6 +123,9 @@ struct PersonPhotoViewer: View {
                     ZoomablePhoto(path: photo.link(size: "w780"), name: name, active: offset == index, zoomed: $zoomed,
                                   onTap: { withAnimation(.easeInOut(duration: 0.2)) { controls.toggle() } },
                                   onPull: { pulled = $0 }, onClose: { dismiss() })
+                        // Each page fills the whole screen (not just the safe area), so a zoomed
+                        // photo reaches the edges instead of being clipped to an inner box.
+                        .frame(maxWidth: .infinity, maxHeight: .infinity).ignoresSafeArea()
                         .tag(offset)
                 }
             }.tabViewStyle(.page(indexDisplayMode: .never)).scrollDisabled(zoomed).ignoresSafeArea()
@@ -176,6 +179,14 @@ struct PersonPhotoViewer: View {
             .frame(width: 44, height: 44).background(Color(webHex: "#1c1a1e").opacity(0.85), in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67)).contentShape(Circle())
     }
+    /// Photos runs the change on its own queue: written in this (main-actor) view, the block was
+    /// main-actor isolated and Swift 6 stopped the app when Photos ran it there (the crash on
+    /// Download). Here it isn't tied to any actor.
+    nonisolated private static func addToPhotos(_ data: Data) async throws {
+        try await PHPhotoLibrary.shared().performChanges { @Sendable in
+            PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+        }
+    }
     /// Saves the full-size picture to Photos (asking once for permission to add).
     private func download() async {
         guard let original else { return }
@@ -184,9 +195,7 @@ struct PersonPhotoViewer: View {
             let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
             guard status == .authorized || status == .limited else { message = "Allow TwilDiary to add photos in Settings to download."; return }
             let (data, _) = try await URLSession.shared.data(from: original)
-            try await PHPhotoLibrary.shared().performChanges {
-                PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
-            }
+            try await Self.addToPhotos(data)
             message = "Saved to Photos."
         } catch { message = error.localizedDescription }
     }

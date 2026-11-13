@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProfileFact: Identifiable {
     let id: String
@@ -128,16 +129,42 @@ struct ProfileSourceNote: View {
     }
 }
 
+/// "Also known as" on cast, voice actor and character pages: a card in the facts box's style with
+/// each name as a chip (the first eight, then "+N more"), instead of a run-on sentence of up to
+/// twenty names in several scripts (owner's request). Hold a name to copy it.
 struct ProfileAliases: View {
     let values: [String]
     var excluding: [String] = []
     @State private var expanded = false
+    private static let shown = 8
     var body: some View {
         let aliases = ProfileText.aliases(values, excluding: excluding)
         if !aliases.isEmpty {
-            ProfileBiography(text: AttributedString("Also known as: " + aliases.joined(separator: " · ")), expanded: $expanded,
-                             identifier: "profile-aliases", collapsedLines: 2, style: .subheadline,
-                             moreLabel: "More names", lessLabel: "Fewer names")
+            let visible = expanded ? aliases : Array(aliases.prefix(Self.shown))
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ALSO KNOWN AS").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(webHex: "#a9a7b6"))
+                InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                    ForEach(visible, id: \.self) { name in
+                        Text(name).font(.subheadline).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(.white.opacity(0.06), in: Capsule())
+                            .overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+                            .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = name } }
+                    }
+                    if aliases.count > Self.shown {
+                        Button(expanded ? "Fewer" : "+\(aliases.count - Self.shown) more") {
+                            withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                        }.font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.chipText)
+                            .padding(.horizontal, 12).padding(.vertical, 6).background(HomeStyle.chip, in: Capsule())
+                            .buttonStyle(.plain).accessibilityIdentifier("profile-aliases-more")
+                    }
+                }
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(webHex: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .accessibilityElement(children: .contain).accessibilityLabel("Also known as")
+            .accessibilityIdentifier("profile-aliases")
         }
     }
 }
