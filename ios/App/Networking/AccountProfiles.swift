@@ -59,13 +59,20 @@ import TwilDiaryCore
             for key in keys { if let value = object[key] as? String, !value.isEmpty { return value } }
             return nil
         }
-        let name = text(user, ["username", "name", "slug", "display_name"]) ?? text(root, ["username", "name"])
+        // WeTrakr keeps the name under info (info.username, info.display_name).
+        let info = user["info"] as? [String: Any] ?? [:]
+        let name = text(user, ["username", "name", "slug", "display_name"]) ?? text(info, ["username", "display_name"]) ?? text(root, ["username", "name"])
             ?? ((root["account"] as? [String: Any])?["id"]).map { "\($0)" }
         var avatar: String?
         if let images = user["images"] as? [String: Any], let picture = images["avatar"] as? [String: Any] { avatar = text(picture, ["full", "medium"]) }
+        // WeTrakr: images.avatar is just the file name on its storage.
+        if avatar == nil, let images = user["images"] as? [String: Any] { avatar = text(images, ["avatar"]) }
         if avatar == nil, let picture = user["avatar"] as? [String: Any] { avatar = text(picture, ["full", "large", "medium", "url"]) }
         if avatar == nil { avatar = text(user, ["avatar", "avatar_url", "image", "picture"]) ?? text(root, ["avatar", "avatar_url"]) }
         if let found = avatar, found.hasPrefix("//") { avatar = "https:" + found }
+        if let found = avatar, tracker == .wetrakr, !found.contains("://") {
+            avatar = "https://api.wetrakr.com/uploads/avatars/" + (found.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? found)
+        }
         var plan: String?
         if let vip = (user["vip"] as? Bool) ?? (root["vip"] as? Bool) { plan = vip ? "VIP" : "Free" }
         if plan == nil, let type = ((root["account"] as? [String: Any])?["type"] as? String) ?? (user["type"] as? String) ?? (user["plan"] as? String) {
