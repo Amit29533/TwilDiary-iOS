@@ -32,7 +32,7 @@ struct ExtrasStorageGroup: View {
     @AppStorage(GoogleDrive.connectedKey) private var driveConnected = false
     private var sync: PhoneServerSync { PhoneServerSync.shared }
     var body: some View {
-        SettingsGroup(label: "Where extras live", info: "Tags, Queue, full notes, statuses Trakt can’t keep, file folders, favourite people and Trash. The iPhone always has a copy; turn on Google Drive or your server to keep one there too.") {
+        SettingsGroup(label: "Where extras live", info: "Tags, Queue, full notes, statuses Trakt can’t keep, file folders, favourite people and Trash. The iPhone always has a copy; turn on Google Drive here, or your server in Connections, to keep one there too.") {
             SettingsLine(title: "On this iPhone", subtitle: "Tags, Queue, notes, folders and more") {
                 Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
             }
@@ -41,17 +41,17 @@ struct ExtrasStorageGroup: View {
                 Toggle("", isOn: $drive).labelsHidden().tint(theme.accent)
             }.accessibilityIdentifier("extras-drive")
             SettingsDivider()
+            // The switch lives in Connections only (owner's request: one switch, one place).
             SettingsLine(title: "Your server", subtitle: serverSubtitle) {
                 if sync.running { ProgressView().controlSize(.small).accessibilityLabel("Syncing with your server") }
-                else { Toggle("", isOn: $server).labelsHidden().tint(theme.accent) }
+                else { Text(server ? "On" : "Off").font(.system(size: 14, weight: .semibold)).foregroundStyle(server ? theme.accent : HomeStyle.secondary) }
             }.accessibilityIdentifier("extras-server")
         }
         .onChange(of: drive) { _, on in if on { Task { await PhoneDriveSync.pullIfDue(store: store, force: true) } } }
-        .onChange(of: server) { _, on in ExtrasStorage.switched(on, store: store) }
         .task { sync.store = store }
     }
     private var serverSubtitle: String {
-        guard server else { return "Your TwilDiary server on Cloudflare" }
+        guard server else { return "Turn it on in Connections" }
         if let problem = sync.problem { return problem }
         if let at = sync.lastSynced { return "In step · " + at.formatted(.relative(presentation: .named)) }
         return "Getting in step…"
