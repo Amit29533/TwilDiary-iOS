@@ -93,6 +93,12 @@ struct SearchLandingView: View {
                         NavigationLink(value: item.route) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 124, height: 176).clipShape(RoundedRectangle(cornerRadius: 14))
+                                    // TMDB's score (or the diary's for a title in your library), as on the anime row below.
+                                    .overlay(alignment: .bottomLeading) {
+                                        if let score = item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), score > 0 {
+                                            RatingBadge(score: score, source: "TMDB").padding(5)
+                                        }
+                                    }
                                 Text("No. \(index + 1) today").font(.system(size: 14)).foregroundStyle(.secondary)
                             }.frame(width: 124, alignment: .leading)
                         }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-" + item.key)
