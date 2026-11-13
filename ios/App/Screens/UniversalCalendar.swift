@@ -89,23 +89,26 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
         return found
     }
 
-    /// TMDB's discover for each day, side by side, entirely off the main actor: plain values in, raw
-    /// replies out (read on the main actor afterwards). The group used to run from main-actor code,
-    /// and a crash report showed task memory overwritten while the Everything tab loaded.
-    nonisolated private static func discoverDays(_ days: [String], genre: String?, token: String) async -> [(day: String, reply: Data?, error: String?)] {
-        await withTaskGroup(of: (day: String, reply: Data?, error: String?).self) { group in
+    /// TMDB's discover for each day, side by side, with no Swift child tasks: plain URLSession
+    /// requests whose replies are gathered under a lock and handed back once. The owner's phone
+    /// (iOS 27 beta) crashed here twice inside Swift's task completion while the day requests ran
+    /// as a task group, which the simulator never reproduced.
+    nonisolated static func discoverDays(_ days: [String], genre: String?, token: String, session: URLSession = .shared) async -> [(day: String, reply: Data?, error: String?)] {
+        guard !days.isEmpty else { return [] }
+        return await withCheckedContinuation { continuation in
+            let replies = DayReplies(count: days.count) { continuation.resume(returning: $0) }
             for day in days {
                 var query = ["air_date.gte": day, "air_date.lte": day, "sort_by": "popularity.desc", "page": "1", "include_null_first_air_dates": "false"]
                 if let genre { query["with_genres"] = genre }
-                let request = query
-                group.addTask {
-                    do { return (day, try await TMDBDirect.data("discover/tv", query: request, token: token), nil) }
-                    catch { return (day, nil, error.localizedDescription) }
+                guard let request = try? TMDBDirect.request("discover/tv", query: query, token: token) else {
+                    replies.add((day, nil, "Invalid TMDB request.")); continue
                 }
+                session.dataTask(with: request) { data, response, error in
+                    if let error { replies.add((day, nil, error.localizedDescription)); return }
+                    do { replies.add((day, try TMDBDirect.checked(data ?? Data(), response), nil)) }
+                    catch { replies.add((day, nil, error.localizedDescription)) }
+                }.resume()
             }
-            var collected: [(day: String, reply: Data?, error: String?)] = []
-            for await reply in group { collected.append(reply) }
-            return collected
         }
     }
 
@@ -169,6 +172,25 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
                                     detail: "Episode \(slot.episode)", route: nil, anime: slot.appearance, genres: slot.genres,
                                     popularity: Double(slot.popularity))
         }
+    }
+}
+
+/// Collects one reply per day from URLSession's own threads and hands them over once, when the last arrives.
+private final class DayReplies: @unchecked Sendable {
+    typealias Reply = (day: String, reply: Data?, error: String?)
+    private let lock = NSLock()
+    private var collected: [Reply] = []
+    private let count: Int
+    private var finish: (([Reply]) -> Void)?
+    init(count: Int, finish: @escaping @Sendable ([Reply]) -> Void) { self.count = count; self.finish = finish }
+    func add(_ reply: Reply) {
+        lock.lock()
+        collected.append(reply)
+        let done = collected.count == count ? finish : nil
+        if done != nil { finish = nil }
+        let all = collected
+        lock.unlock()
+        done?(all)
     }
 }
 

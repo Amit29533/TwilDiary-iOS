@@ -422,6 +422,10 @@ import TwilDiaryCore
     /// The same request, off the main actor, as raw JSON: several can run side by side (a task
     /// group), with the replies read afterwards.
     nonisolated static func data(_ path: String, query: [String: String], token: String) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(for: try request(path, query: query, token: token))
+        return try checked(data, response)
+    }
+    nonisolated static func request(_ path: String, query: [String: String], token: String) throws -> URLRequest {
         var components = URLComponents(string: "https://api.themoviedb.org/3/" + path)!
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         let apiKey = token.count == 32 && token.allSatisfy(\.isHexDigit)
@@ -432,7 +436,10 @@ import TwilDiaryCore
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if !apiKey { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        return request
+    }
+    /// TMDB's reply, or the reason it refused.
+    nonisolated static func checked(_ data: Data, _ response: URLResponse?) throws -> Data {
         guard let http = response as? HTTPURLResponse else { throw APIError.message("TMDB didn't answer.") }
         guard (200..<300).contains(http.statusCode) else {
             throw APIError.message(http.statusCode == 401 ? "TMDB didn't accept your key. Check it in Settings → TMDB." : "TMDB is unavailable right now (\(http.statusCode)).")
