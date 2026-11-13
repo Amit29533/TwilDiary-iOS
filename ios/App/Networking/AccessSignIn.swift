@@ -90,8 +90,8 @@ enum SignInNavigationPolicy {
                     }
                     optionRow(busy: webSigningIn, id: "sign-in-web", title: phoneOnly == nil ? "Google or email" : "Your TwilDiary server",
                               detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email, for backups") {
-                        Image(systemName: "globe").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                            .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                        // Your server runs on Cloudflare, behind Cloudflare Access: its mark, as in Settings.
+                        BrandLogo(service: .cloudflare, size: 40)
                     } action: { Task { await webSignIn() } }
                     Text("Opens the sign-in page and comes straight back.")
                         .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)

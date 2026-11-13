@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The animated splash: TwilDiary's star springs in and turns, on its own with no glow or
-/// sparkles (about 0.65 s). It follows the black launch
+/// The animated splash: TwilDiary's star springs in and turns, on its own with no glow,
+/// sparkles or words (owner's choice; about 0.65 s). It follows the black launch
 /// screen without a seam, stays (gently breathing) only while the diary is still opening, then
 /// lifts away. Reduce Motion: a plain fade.
 struct SplashView: View {
@@ -12,7 +12,6 @@ struct SplashView: View {
     @State private var turned = false
     @State private var glow = false
     @State private var burst = false
-    @State private var taglineIn = false
     @State private var breathing = false
     private let violet = Color(red: 0.69, green: 0.60, blue: 1.0)
 
@@ -29,8 +28,6 @@ struct SplashView: View {
                         .scaleEffect(markIn ? (breathing ? 1.04 : 1) : 0.2)
                         .opacity(markIn ? 1 : 0)
                 }.frame(width: 200, height: 120)
-                Text("Your watch diary").font(.system(size: 15, weight: .medium)).foregroundStyle(.white.opacity(0.55))
-                    .opacity(taglineIn ? 1 : 0).offset(y: taglineIn ? 0 : 6)
             }.offset(y: -10)
         }
         .accessibilityIdentifier("splash")
@@ -39,7 +36,7 @@ struct SplashView: View {
 
     private func play() async {
         if reduceMotion {
-            withAnimation(.easeOut(duration: 0.25)) { markIn = true; turned = true; glow = true; taglineIn = true }
+            withAnimation(.easeOut(duration: 0.25)) { markIn = true; turned = true; glow = true }
             try? await Task.sleep(for: .milliseconds(350))
             onFinished(); return
         }
@@ -48,9 +45,7 @@ struct SplashView: View {
         withAnimation(.easeOut(duration: 0.45)) { glow = true }
         try? await Task.sleep(for: .milliseconds(150))
         withAnimation(.easeOut(duration: 0.5)) { burst = true }
-        try? await Task.sleep(for: .milliseconds(100))
-        withAnimation(.easeOut(duration: 0.3)) { taglineIn = true }
-        try? await Task.sleep(for: .milliseconds(400))
+        try? await Task.sleep(for: .milliseconds(500))
         onFinished()
         // Still opening: breathe until the diary is ready and the splash lifts away.
         withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) { breathing = true }
