@@ -82,6 +82,7 @@ struct AiringCalendarView: View {
             .onChange(of: tab) { _, _ in selectedDate = nil }
             // Everything has its own list: your shows' schedules wait until you're back on their tabs.
             .task(id: scheduleKey) { if tab != .everything { await computeSchedules() } }
+            .task { await TraktAirTimes.shared.refresh(store: store) }
     }
 
     // MARK: Header pieces
@@ -237,6 +238,10 @@ struct AiringCalendarView: View {
     private func away(_ days: Int) -> String { days == 0 ? "Today" : days == 1 ? "Tomorrow" : days < 0 ? "\(-days)d ago" : "In \(days)d" }
     private func episodeLine(_ item: UpcomingSchedule.Item) -> String { item.title.categoryName + " · S\(item.episode.season) E\(item.episode.number)" }
 
+    /// The hour from Trakt's calendar, when Trakt is signed in on this iPhone.
+    private func airTime(_ item: UpcomingSchedule.Item) -> String {
+        TraktAirTimes.shared.time(for: item).map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""
+    }
     private func upcomingRow(_ item: UpcomingSchedule.Item) -> some View {
         let summary = hideSpoilers ? item.title.overview : (item.episode.overview.isEmpty ? item.title.overview : item.episode.overview)
         return HStack(alignment: .top, spacing: 14) {
@@ -246,7 +251,7 @@ struct AiringCalendarView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .center, spacing: 6) {
                             HStack(spacing: 0) {
-                                Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) + " · ").foregroundStyle(HomeStyle.secondary)
+                                Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) + airTime(item) + " · ").foregroundStyle(HomeStyle.secondary)
                                 Text(away(item.daysAway)).foregroundStyle(HomeStyle.chipText).fontWeight(.semibold)
                             }.font(.system(size: 13)).lineLimit(1)
                             Spacer(minLength: 4)

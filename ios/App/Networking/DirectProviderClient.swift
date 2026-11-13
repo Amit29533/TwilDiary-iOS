@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import TwilDiaryCore
 
 struct DeviceCodeAuthSession: Equatable, Sendable {
@@ -89,7 +90,9 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty {
             data = ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing)
         } else {
-            data = ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: prepared.body), adding: prepared.missing)
+            var sendHeaders = headers
+            if config.provider == .wetrakr { sendHeaders["Idempotency-Key"] = Self.idempotencyKey(entry.operationId + "-" + delivery.key, body: prepared.body) }
+            data = ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: sendHeaders, rawBody: prepared.body), adding: prepared.missing)
         }
         guard ProviderDeliveryPlanner.confirms(data) else {
             // A title the service can't find is set aside (said once), not retried forever.
@@ -129,7 +132,13 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     /// `partial`: a bulk send (a match, a restore, Force Match) goes ahead without the titles WeTrakr
     /// couldn't be asked about yet; they come back as not found and are asked about next time. One
     /// of your own edits waits whole instead, so no part of it is dropped.
-    func write(_ config: ExternalProviderConfig, path: String, body: Data, partial: Bool = false) async throws -> Data {
+    /// WeTrakr applies a write once per Idempotency-Key (as Cinopsys sends it): the key is the
+    /// edit's own id and the exact body, so a resend after a lost answer can't apply twice, and a
+    /// changed body (a title's id found meanwhile) is a new request rather than a reused key.
+    nonisolated static func idempotencyKey(_ id: String, body: Data) -> String {
+        id + "-" + SHA256.hash(data: body).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+    func write(_ config: ExternalProviderConfig, path: String, body: Data, partial: Bool = false, idempotency: String? = nil) async throws -> Data {
         let name = config.provider.displayName
         // The service holding your diary (and a match you asked for) only needs the sign-in: the
         // "Send my edits" switch governs the other services, not the diary's own.
@@ -155,6 +164,8 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
         let sending = prepared.body
+        var headers = headers
+        if config.provider == .wetrakr, let idempotency { headers["Idempotency-Key"] = Self.idempotencyKey(idempotency, body: sending) }
         do {
             let reply = try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending)
             SyncReport.record(config.provider, path: path, body: sending, reply: reply)

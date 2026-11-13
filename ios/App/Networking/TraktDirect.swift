@@ -189,13 +189,6 @@ enum PendingMerge {
     }
 }
 
-/// Whether something removed on the service holding your diary is removed from the diary too
-/// (on, the default) or put back from your diary on the next sync (off). Cinopsys asks the same.
-enum ServiceRemovals {
-    static let key = "applyServiceRemovals"
-    static var apply: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
-}
-
 /// The last direct read of Trakt and how it compares with the diary (Trakt page → Direct from Trakt).
 @MainActor @Observable final class TraktDirectStore {
     static let shared = TraktDirectStore()

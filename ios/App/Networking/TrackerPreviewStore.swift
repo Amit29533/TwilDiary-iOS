@@ -281,7 +281,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             do {
                 try await pace()
                 guard session == generation else { return false }
-                let reply = try await store.directClient.write(config, path: next.path, body: next.body)
+                let reply = try await store.directClient.write(config, path: next.path, body: next.body, idempotency: tracker == .wetrakr ? next.id : nil)
                 guard session == generation else { return false }
                 pending[tracker]?.removeAll { $0.id == next.id }
                 // MDBList answered without saying anything changed: the phone already
@@ -293,11 +293,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 }
             } catch {
                 guard session == generation, !Task.isCancelled else { return false }
-                // The answer was lost: WeTrakr may have logged it. Sent again as a first watch, which
-                // WeTrakr won't log twice (a lost rewatch may then need logging again by hand).
-                if tracker == .wetrakr, TraktDelivery.of(error) == .uncertain, let index = pending[tracker]?.firstIndex(where: { $0.id == next.id }) {
-                    pending[tracker]?[index].body = WeTrakrWrite.withoutRewatch(next.body)
-                }
+                // The answer was lost: WeTrakr may have logged it. Sent again unchanged, with the same
+                // Idempotency-Key, so WeTrakr applies it once (a rewatch stays a rewatch).
                 switch Self.delivery(error) {
                 case .rejected:
                     pending[tracker]?.removeAll { $0.id == next.id }
@@ -931,6 +928,12 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 fresh.favorites += try await decoded(try await all("/sync/favorites/" + target)) { try WeTrakrDecode.listed(from: $0, skipped: &$1) }
             }
             fresh.ratings += try await decoded(try await all("/sync/ratings/all")) { try WeTrakrDecode.ratings(from: $0, skipped: &$1) }
+            // A full read with far fewer watches than the phone has (a quarter or more gone, 20 or
+            // more) is held: your diary stays as it was until the next full read gives the same
+            // answer, so a glitch on WeTrakr can't wipe watches (Cinopsys's held removals).
+            if Self.holdsDrop(previous: library.plays.count, fresh: fresh.plays.count) {
+                throw APIError.message("WeTrakr sent \(fresh.plays.count) watches where the phone has \(library.plays.count). Your diary is kept as it was; if the next read agrees, those removals go through.")
+            }
             library.plays = fresh.plays; library.watchlist = fresh.watchlist; library.dropped = fresh.dropped
             library.favorites = fresh.favorites; library.ratings = fresh.ratings; library.skipped = skipped
             // Everything up to here is in; the journal carries on from how far it could be read.
@@ -941,6 +944,17 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         library.activities = TraktActivities(all: activities.all, stamps: stamps)
         if fetched.isEmpty { fetched = [] }
         return (requests, fetched)
+    }
+
+    private static let heldDropKey = "wetrakr.heldDrop"
+    /// Whether a full read's drop in watches waits for a second read (see `readWeTrakr`).
+    static func holdsDrop(previous: Int, fresh: Int, defaults: UserDefaults = .standard) -> Bool {
+        let lost = previous - fresh
+        guard previous > 0, lost >= 20, Double(lost) / Double(previous) >= 0.25 else { defaults.removeObject(forKey: heldDropKey); return false }
+        // The same answer twice: the removals are real.
+        if defaults.object(forKey: heldDropKey) as? Int == fresh { defaults.removeObject(forKey: heldDropKey); return false }
+        defaults.set(fresh, forKey: heldDropKey)
+        return true
     }
 
     /// Follows MDBList's cursor, 1,000 items a page, at most 50 pages.
