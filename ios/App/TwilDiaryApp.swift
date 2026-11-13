@@ -236,8 +236,6 @@ struct RootView: View {
                     .overlay(alignment: .bottom) { RootNoticeBanner() }
                     // A check-in running: its banner above the tab bar (time left, Cancel).
                     .overlay(alignment: .bottom) { CheckInBanner() }
-                    // Milestones (a season or show finished, round watch counts) get a starfall over everything.
-                    .overlay { CelebrationOverlay() }
             }
         }.accessibilityHidden(router.randomPick != nil).allowsHitTesting(router.randomPick == nil)
             .overlay {
