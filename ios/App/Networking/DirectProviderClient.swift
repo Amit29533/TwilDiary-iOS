@@ -450,8 +450,42 @@ enum ProviderCooldowns {
         guard let host = url.host else { return }
         var headers: [String: String] = [:]
         for (key, value) in response.allHeaderFields { if let key = key as? String, let value = value as? String { headers[key] = value } }
+        ProviderQuota.record(host: host, headers: headers, now: now)
         guard let until = ProviderCooldown.until(status: response.statusCode, headers: headers, now: now) else { return }
         let key = prefix + host
         UserDefaults.standard.set(max(UserDefaults.standard.double(forKey: key), until.timeIntervalSince1970), forKey: key)
+    }
+}
+
+/// A service's daily request allowance as its own replies state it, kept per host for the
+/// account limits page. Only headers that are explicitly daily count: WeTrakr's X-Quota-Limit,
+/// -Remaining and -Reset (seconds to midnight UTC). (MDBList's X-RateLimit-* may describe its
+/// five-minute window, so its daily count comes from /user instead.)
+enum ProviderQuota {
+    struct Daily: Codable, Equatable, Sendable {
+        let used: Int
+        let limit: Int
+        let resetsAt: Date?
+        let readAt: Date
+    }
+    private static let prefix = "providerQuota."
+    static func record(host: String, headers: [String: String], now: Date = .now) {
+        guard let daily = parse(headers, now: now), let data = try? JSONEncoder().encode(daily) else { return }
+        UserDefaults.standard.set(data, forKey: prefix + host)
+    }
+    /// The last count for `host`; once its reset time has passed it's a new day (nothing used yet).
+    static func daily(host: String, now: Date = .now) -> Daily? {
+        guard let data = UserDefaults.standard.data(forKey: prefix + host),
+              let saved = try? JSONDecoder().decode(Daily.self, from: data) else { return nil }
+        if let reset = saved.resetsAt, reset <= now { return Daily(used: 0, limit: saved.limit, resetsAt: nil, readAt: saved.readAt) }
+        return saved
+    }
+    static func parse(_ headers: [String: String], now: Date) -> Daily? {
+        var lower: [String: String] = [:]
+        for (key, value) in headers { lower[key.lowercased()] = value.trimmingCharacters(in: .whitespaces) }
+        guard let limit = lower["x-quota-limit"].flatMap({ Int($0) }), limit > 0,
+              let remaining = lower["x-quota-remaining"].flatMap({ Int($0) }) else { return nil }
+        let resets = lower["x-quota-reset"].flatMap { Double($0) }.map { now.addingTimeInterval($0) }
+        return Daily(used: max(0, limit - remaining), limit: limit, resetsAt: resets, readAt: now)
     }
 }

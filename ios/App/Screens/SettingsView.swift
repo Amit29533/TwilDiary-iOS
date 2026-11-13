@@ -511,6 +511,12 @@ struct ExternalProviderConnectionView: View {
                 connectCard
                 if currentConfig.isAuthenticated || pendingOutboxCount > 0 { sendEditsCard }
                 if currentConfig.isAuthenticated, let tracker { TrackerPreviewPanel(tracker: tracker) }
+                if currentConfig.isAuthenticated, let tracker, tracker != .trakt {
+                    NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
+                        SettingsRow(title: "Account limits", subtitle: "Daily requests and what your plan allows") { SettingsChevron() }
+                            .modifier(SettingsCard())
+                    }.buttonStyle(.plain).accessibilityIdentifier("\(tracker.rawValue)-account-limits")
+                }
                 ownKeySection
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }

@@ -301,8 +301,8 @@ import TwilDiaryCore
                         .accessibilityIdentifier("trakt-force-sync")
                 }
                 SettingsDivider()
-                NavigationLink { TraktAccountLimitsView() } label: {
-                    SettingsRow(title: "Account limits", subtitle: "Trakt caps on your plan") { SettingsChevron() }
+                NavigationLink { ServiceLimitsView(tracker: .trakt) } label: {
+                    SettingsRow(title: "Account limits", subtitle: "What your plan allows and what you use") { SettingsChevron() }
                 }.buttonStyle(.plain).accessibilityIdentifier("trakt-account-limits")
             }
             VStack(alignment: .leading, spacing: 12) {
@@ -762,37 +762,4 @@ import TwilDiaryCore
         return DiaryDate.parse(value).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Unknown date"
     }
     private var coolingDown: Bool { controller.cooldownUntil > clock }
-}
-
-/// Settings → Trakt → Account limits: what Trakt allows this account, read from Trakt.
-struct TraktAccountLimitsView: View {
-    @Environment(DiaryStore.self) private var store
-    @State private var limits: [TraktAccountLimit]?
-    @State private var failure: String?
-    var body: some View {
-        EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 14) {
-                if let limits {
-                    SettingsGroup(label: limits.first?.vip == true ? "Trakt VIP" : "Free plan") {
-                        if limits.isEmpty { SettingsRow(title: "No limits reported") { EmptyView() } }
-                        ForEach(Array(limits.enumerated()), id: \.element.id) { index, limit in
-                            if index > 0 { SettingsDivider() }
-                            SettingsRow(title: limit.label) {
-                                Text(limit.value.formatted()).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.chipText)
-                            }
-                        }
-                    }
-                    SettingsFootnote(text: "Trakt sets these per account. VIP raises them.")
-                } else if let failure {
-                    RetryNotice(message: failure) { Task { await load() } }
-                } else { DiaryLoadingPlaceholder(height: 200, label: "Reading Trakt") }
-            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
-        }.diaryScreenBackground().navigationTitle("Account limits").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .task { await load() }
-    }
-    private func load() async {
-        failure = nil
-        do { limits = try await TraktDirectStore.shared.accountLimits(store: store) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
-    }
 }

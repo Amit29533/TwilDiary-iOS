@@ -43,6 +43,16 @@ import TwilDiaryCore
                        "a cool-down never drops an edit")
     }
 
+    func testDailyQuotaComesFromWeTrakrsQuotaHeadersOnly() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let daily = ProviderQuota.parse(["X-Quota-Limit": "500", "X-Quota-Remaining": "494", "X-Quota-Reset": "3600"], now: now)
+        XCTAssertEqual(daily?.used, 6); XCTAssertEqual(daily?.limit, 500)
+        XCTAssertEqual(daily?.resetsAt, now.addingTimeInterval(3600))
+        XCTAssertEqual(ProviderQuota.parse(["x-quota-limit": "1000", "x-quota-remaining": "1000"], now: now)?.used, 0, "header names in any case")
+        XCTAssertNil(ProviderQuota.parse(["X-RateLimit-Limit": "1000", "X-RateLimit-Remaining": "10"], now: now),
+                     "a rate window isn't a daily allowance")
+    }
+
     func testWeTrakrLookUpReadsItsOwnId() throws {
         func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
         XCTAssertEqual(TrackerPreviewStore.weTrakrMatch(try data([["id": 7, "type": "movie"], ["id": 9, "type": "show"]]), show: true), 9)
