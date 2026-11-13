@@ -1,0 +1,48 @@
+# Checks the live server the way the app reaches it for backups and extras: with the app's built-in
+# Cloudflare Access service token alone (owner's choice: no extra sign-in). Read-only GETs; only
+# each status code and the reply's size are printed, never the token or your data. Start it by
+# pushing a tag `server-check-<anything>`, or from the Actions tab.
+name: Server service-token check
+run-name: server check ${{ github.ref_name }}
+
+on:
+  push:
+    tags: ['server-check-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read extras and backups with the service token only
+        env:
+          CLIENT_ID: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_SECRET }}
+          SERVER: https://twildiary-v2.amit29533.workers.dev
+        run: |
+          set -u
+          if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then echo "The service token secrets aren't set."; exit 1; fi
+          failed=0
+          for path in /api/phone-extras /api/backups; do
+            status=$(curl -s -o reply.json -w '%{http_code}' --max-time 30 \
+              -H "CF-Access-Client-Id: $CLIENT_ID" -H "CF-Access-Client-Secret: $CLIENT_SECRET" \
+              -H "Accept: application/json" "$SERVER$path")
+            size=$(wc -c < reply.json | tr -d ' ')
+            kind=$(head -c 1 reply.json)
+            echo "$path -> HTTP $status ($size bytes)"
+            if [ "$status" != "200" ] || { [ "$kind" != "{" ] && [ "$kind" != "[" ]; }; then
+              failed=1
+              # The server's own error message only (never a data reply).
+              [ "$status" != "200" ] && head -c 300 reply.json | tr -d '\n' && echo
+            fi
+            rm -f reply.json
+          done
+          # Without the token the server must still refuse.
+          status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "Accept: application/json" "$SERVER/api/phone-extras")
+          echo "/api/phone-extras without the token -> HTTP $status"
+          case "$status" in 401|403|302) ;; *) failed=1; echo "Expected a refusal without the token." ;; esac
+          exit $failed
