@@ -6,7 +6,8 @@ import TwilDiaryCore
 /// while AniList gives each season or part its own entry, so a name-and-year search misses later
 /// seasons. Profile pages ask once for all their anime, so a tap usually opens at once.
 /// Public data: a request carries only AniList ids, nothing from the diary. Answers, including
-/// "no link", are kept for the session.
+/// "no link", are kept on this iPhone for 14 days (owner's report: opening a trending anime took
+/// 3–4 s, most of it this query), and lists of anime are asked about ahead of a tap.
 actor WikidataAnime {
     static let shared = WikidataAnime()
     struct Anime: Hashable, Sendable {
@@ -18,9 +19,38 @@ actor WikidataAnime {
         let anime: Int
         var show: Int? = nil, film: Int? = nil, seriesShow: Int? = nil
     }
-    private var known: [Int: CatalogRoute?] = [:]
+    private var known: [Int: CatalogRoute?]
     private let session: URLSession
-    init(session: URLSession = .shared) { self.session = session }
+    private let remembers: Bool
+    private static let storeKey = "wikidataAnime.routes", storedAtKey = "wikidataAnime.savedAt"
+    /// `remembers`: keeps answers on this iPhone (off for tests).
+    init(session: URLSession = .shared, remembers: Bool = true) {
+        self.session = session; self.remembers = remembers
+        known = remembers ? Self.load() : [:]
+    }
+    /// Saved answers ("tv:1429", "movie:372058", "" for no link), dropped after 14 days so new
+    /// Wikidata links are picked up.
+    private static func load() -> [Int: CatalogRoute?] {
+        let defaults = UserDefaults.standard
+        guard Date.now.timeIntervalSince1970 - defaults.double(forKey: storedAtKey) < 14 * 86_400,
+              let saved = defaults.dictionary(forKey: storeKey) as? [String: String] else { return [:] }
+        var result: [Int: CatalogRoute?] = [:]
+        for (key, value) in saved {
+            guard let id = Int(key) else { continue }
+            let parts = value.split(separator: ":")
+            if parts.count == 2, let tmdb = Int(parts[1]) { result[id] = .some(CatalogRoute(kind: parts[0] == "movie" ? .movie : .tv, id: tmdb)) }
+            else { result[id] = .some(nil) }
+        }
+        return result
+    }
+    private func save() {
+        guard remembers else { return }
+        let defaults = UserDefaults.standard
+        var saved: [String: String] = [:]
+        for (id, route) in known { saved[String(id)] = route.map { ($0.kind == .movie ? "movie:" : "tv:") + String($0.id) } ?? "" }
+        defaults.set(saved, forKey: Self.storeKey)
+        if defaults.double(forKey: Self.storedAtKey) == 0 { defaults.set(Date.now.timeIntervalSince1970, forKey: Self.storedAtKey) }
+    }
 
     func route(_ anime: Anime) async -> CatalogRoute? { await routes([anime])[anime.id] }
     /// The known TMDB routes for these anime; one request covers the ones not asked about before.
@@ -30,6 +60,7 @@ actor WikidataAnime {
         if !ask.isEmpty, let url = Self.url(ask.map(\.id)), let rows = await fetch(url) {
             let found = Self.routes(rows, for: Array(ask))
             for item in ask { known.updateValue(found[item.id], forKey: item.id) }
+            save()
         }
         return anime.reduce(into: [:]) { result, item in
             if let route = known[item.id] ?? nil { result[item.id] = route }

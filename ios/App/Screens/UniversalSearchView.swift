@@ -138,6 +138,8 @@ struct SearchLandingView: View {
         if store.isPreview { return }
         #endif
         guard anime.isEmpty, let found = try? await AniListClient.shared.trendingAnime(), !Task.isCancelled else { return }
+        // One Wikidata request for the whole row, ahead of a tap, so opening one doesn't wait on it.
+        Task.detached(priority: .utility) { await WikidataAnime.shared.routes(found.map { WikidataAnime.Anime(id: $0.id, format: $0.format) }) }
         anime = found
     }
     private func load() async {

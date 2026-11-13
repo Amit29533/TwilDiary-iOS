@@ -110,7 +110,10 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
     /// or Adventure, "Sci-fi & fantasy" → Sci-Fi or Fantasy).
     private static func anime(from start: Date, to end: Date, genres: Set<String>) async throws -> [UniversalRelease] {
         let words = Set(genres.flatMap { $0.lowercased().components(separatedBy: " & ") })
-        return try await AniListClient.shared.airing(from: start, to: end).compactMap { slot in
+        let slots = try await AniListClient.shared.airing(from: start, to: end)
+        // Their TMDB links in one request, ahead of a tap.
+        Task.detached(priority: .utility) { await WikidataAnime.shared.routes(slots.map { WikidataAnime.Anime(id: $0.appearance.id, format: $0.appearance.format) }) }
+        return slots.compactMap { slot in
             if !words.isEmpty, !slot.genres.contains(where: { words.contains($0.lowercased()) }) { return nil }
             return UniversalRelease(id: "anime:\(slot.appearance.id):\(slot.episode)", kind: .anime, name: slot.appearance.title,
                                     poster: slot.appearance.cover, day: dayText(slot.airsAt), time: slot.airsAt,
