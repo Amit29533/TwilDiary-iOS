@@ -180,6 +180,17 @@ enum AniListError: LocalizedError {
     }
 }
 
+/// "Anime titles in English" (Settings → Language & region): AniList's English title when it's on,
+/// its romaji title otherwise, each standing in for the other when AniList has only one.
+/// (Diary titles come from TMDB, which names most anime in English already.)
+enum AnimeTitleChoice {
+    static let key = "animeEnglishTitles"
+    static func pick(english: String?, romaji: String?) -> String {
+        let english = english.flatMap { $0.isEmpty ? nil : $0 }, romaji = romaji.flatMap { $0.isEmpty ? nil : $0 }
+        return (UserDefaults.standard.bool(forKey: key) ? english ?? romaji : romaji ?? english) ?? "Untitled"
+    }
+}
+
 actor AniListClient {
     static let shared = AniListClient()
     private var characterLists: [String: [AniCharacter]] = [:]
@@ -193,6 +204,9 @@ actor AniListClient {
     private var mediaKinds: [String: MediaKind] = [:]
     private var tmdbTitles: [Int: CatalogRoute] = [:]
     private var tmdbPeople: [Int: Int] = [:]
+    /// The anime names already read, dropped when the title language setting changes so they're
+    /// read again in the chosen language.
+    func forgetTitles() { details = [:]; voiceActors = [:]; firstSeasons = [:]; trending = nil; mediaDetails = [:] }
     func tmdbTitle(_ id: Int) -> CatalogRoute? { tmdbTitles[id] }
     func tmdbPerson(_ id: Int) -> Int? { tmdbPeople[id] }
     func staffID(forTMDB id: Int) -> Int? { tmdbPeople.first { $0.value == id }?.key }
@@ -233,7 +247,7 @@ actor AniListClient {
         }
         let found = first.flatMap { node -> AniAppearance? in
             guard node.id != id else { return nil }
-            return AniAppearance(id: node.id, title: node.title.english ?? node.title.romaji ?? "Untitled", cover: node.coverImage?.large,
+            return AniAppearance(id: node.id, title: AnimeTitleChoice.pick(english: node.title.english, romaji: node.title.romaji), cover: node.coverImage?.large,
                                  year: node.startDate?.year, role: nil, voiceActor: nil, format: node.format,
                                  alternateTitles: [node.title.english, node.title.romaji].compactMap { $0 })
         }
@@ -296,7 +310,7 @@ actor AniListClient {
         }
         let reply: Reply = try await query("query { Page(perPage: 15) { media(sort: [TRENDING_DESC, POPULARITY_DESC], type: ANIME, isAdult: false) { id format averageScore title { english romaji } coverImage { large } startDate { year } } } }", [:])
         let items = reply.Page.media.map { m in
-            AniAppearance(id: m.id, title: m.title.english ?? m.title.romaji ?? "Untitled", cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+            AniAppearance(id: m.id, title: AnimeTitleChoice.pick(english: m.title.english, romaji: m.title.romaji), cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
         }
         trending = (Date(), items)
         return items
@@ -312,7 +326,7 @@ actor AniListClient {
         }
         let reply: Reply = try await query("query($id: Int) { Media(id: $id, type: ANIME) { id format averageScore title { english romaji } coverImage { large } startDate { year } } }", ["id": id])
         let m = reply.Media
-        let value = AniAppearance(id: m.id, title: m.title.english ?? m.title.romaji ?? "Untitled", cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+        let value = AniAppearance(id: m.id, title: AnimeTitleChoice.pick(english: m.title.english, romaji: m.title.romaji), cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
         if mediaDetails.count >= 100 { mediaDetails.removeAll() }
         mediaDetails[id] = value
         return value
@@ -338,7 +352,7 @@ actor AniListClient {
             image: node.image?.large, description: node.description ?? "", gender: node.gender, age: node.age,
             birthday: node.dateOfBirth?.text, bloodType: node.bloodType, favourites: node.favourites,
             appearances: node.media.edges.map { edge in
-                AniAppearance(id: edge.node.id, title: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled", cover: edge.node.coverImage?.large,
+                AniAppearance(id: edge.node.id, title: AnimeTitleChoice.pick(english: edge.node.title.english, romaji: edge.node.title.romaji), cover: edge.node.coverImage?.large,
                               year: edge.node.startDate?.year, role: edge.characterRole,
                               voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) },
                               format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 }, rating: edge.node.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil },
@@ -371,7 +385,7 @@ actor AniListClient {
         let roles = node.characterMedia.edges.filter { $0.node.type == nil || $0.node.type == "ANIME" }.flatMap { edge in
             edge.characters.compactMap { $0 }.map { character in
                 AniRole(character: AniPerson(id: character.id, name: character.name.full ?? "Unknown", image: character.image?.large),
-                        animeID: edge.node.id, anime: edge.node.title.english ?? edge.node.title.romaji ?? "Untitled",
+                        animeID: edge.node.id, anime: AnimeTitleChoice.pick(english: edge.node.title.english, romaji: edge.node.title.romaji),
                         cover: edge.node.coverImage?.large, year: edge.node.startDate?.year, role: edge.characterRole,
                         format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 }, rating: edge.node.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil },
                         banner: edge.node.bannerImage ?? edge.node.coverImage?.extraLarge)

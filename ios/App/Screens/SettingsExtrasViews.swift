@@ -66,7 +66,7 @@ struct LanguageRegionView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("streamingRegion") private var region = Locale.current.region?.identifier ?? "US"
     @AppStorage("use24HourTime") private var use24Hour = false
-    @AppStorage("animeEnglishTitles") private var animeEnglish = false
+    @AppStorage(AnimeTitleChoice.key) private var animeEnglish = false
     @AppStorage("ignoreTitleArticles") private var ignoreArticles = false
     @Environment(\.openURL) private var openURL
     static let regions = ["AU", "BR", "CA", "DE", "ES", "FR", "GB", "IN", "IT", "JP", "KR", "MX", "NL", "SE", "US"]
@@ -91,7 +91,8 @@ struct LanguageRegionView: View {
                     row("clock", "24-hour time", subtitle: "Instead of AM/PM") { Toggle("", isOn: $use24Hour).labelsHidden().tint(theme.accent) }
                 }
                 SettingsGroup(label: "Titles") {
-                    SettingsLine(title: "Anime titles in English", subtitle: "Instead of romaji") { Toggle("", isOn: $animeEnglish).labelsHidden().tint(theme.accent) }
+                    SettingsLine(title: "Anime titles in English", subtitle: "Instead of romaji, for anime names from AniList") { Toggle("", isOn: $animeEnglish).labelsHidden().tint(theme.accent) }
+                        .onChange(of: animeEnglish) { _, _ in Task { await AniListClient.shared.forgetTitles() } }
                     SettingsDivider()
                     SettingsLine(title: "Ignore \u{201C}A\u{201D}, \u{201C}An\u{201D}, \u{201C}The\u{201D}", subtitle: "When sorting titles") { Toggle("", isOn: $ignoreArticles).labelsHidden().tint(theme.accent) }
                 }
