@@ -178,12 +178,16 @@ final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable
         if let timeout { request.timeoutInterval = timeout }
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        AppConfiguration.passAccess(&request)
         if AppConfiguration.accessServiceToken != nil, !AppConfiguration.isAccessSignIn(credential.token) {
-            // Past Access with the service token: your server's own sign-in goes as a bearer token
-            // (as Access's cookie, Access would refuse a sign-in it didn't issue).
+            // Your server's own sign-in (Trakt, passcode, token): past Access with the service
+            // token, and the sign-in as a bearer token (as Access's cookie, Access would refuse a
+            // sign-in it didn't issue).
+            AppConfiguration.passAccess(&request)
             request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
         } else {
+            // A Cloudflare Access sign-in goes alone, as its cookie. With the service token beside
+            // it, Access let the request in as the token (no email) and the server refused it as
+            // not the owner, so a Google or email sign-in couldn't load the diary.
             request.setValue("CF_Authorization=\(credential.token)", forHTTPHeaderField: "Cookie")
         }
         if let tmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines), !tmdbToken.isEmpty {

@@ -159,12 +159,15 @@ public extension TraktDiary {
         var index: [String: Int] = [:]
         for (position, episode) in diary.episodes.enumerated() { index["\(episode.titleId)|\(episode.season)|\(episode.number)"] = position }
         let watched = Set(diary.events.filter { $0.revokedAt == nil }.compactMap(\.episodeId))
-        for title in diary.titles where title.isSeries {
+        for (position, title) in diary.titles.enumerated() where title.isSeries {
             guard let tmdb = title.tmdbId, let facts = catalog["tv:" + String(tmdb)] else { continue }
+            // Every regular episode TMDB lists (announced ones included) watched: finished.
+            var anyRegular = false, allSeen = true
             for fact in facts {
                 let slot = "\(title.id)|\(fact.season)|\(fact.number)"
                 let id = index[slot].map { diary.episodes[$0].id } ?? "\(title.id)|s\(fact.season)e\(fact.number)"
                 let seen = watched.contains(id)
+                if fact.season > 0 { anyRegular = true; if !seen { allSeen = false } }
                 let episode = Episode(id: id, titleId: title.id, season: fact.season, number: fact.number,
                                       name: seen ? fact.name : "", overview: seen ? fact.overview : "", airedOn: fact.airedOn,
                                       still: seen ? CatalogTools.image(fact.stillPath) : nil, hidden: !seen,
@@ -183,6 +186,11 @@ public extension TraktDiary {
                     result.episodes.append(episode)
                 }
             }
+            // Trakt has no Completed, so a show with watches read as Watching for good and finished
+            // shows stayed in Glance. Every episode TMDB lists, announced ones included, watched:
+            // Completed (a new season puts it back to Watching on the next build). A status you set
+            // yourself (Paused, Dropped, Completed) is left as it is.
+            if anyRegular, allSeen, title.status == "watching" { result.titles[position].status = "completed" }
         }
         return result
     }

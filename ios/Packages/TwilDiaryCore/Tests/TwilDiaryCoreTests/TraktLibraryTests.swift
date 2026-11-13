@@ -463,6 +463,23 @@ private func diary() throws -> Workspace {
     #expect(second.id == "tv:209867|s1e2" && second.name.isEmpty && second.still == nil && second.hidden == true && second.airedOn == "2023-10-02")
 }
 
+/// Trakt has no Completed: a show whose every listed episode is watched reads as Completed (so it
+/// leaves Glance); one announced episode still unwatched keeps it Watching; a chosen status stays.
+@Test func showsWithEveryEpisodeWatchedReadAsCompleted() throws {
+    let show = TraktTitleRef(kind: .show, traktId: 1, tmdbId: 209867, name: "Frieren")
+    let plays = (1...2).map { TraktPlay(historyId: Int64($0), title: show, season: 1, episode: $0, watchedAt: "2026-11-0\($0)T20:00:00Z") }
+    let built = TraktDiary.build(library: TraktLibrary(plays: plays), server: Workspace())
+    func facts(_ count: Int) -> [CatalogEpisodeFact] {
+        (1...count).map { CatalogEpisodeFact(season: 1, number: $0, name: "", overview: "", airedOn: nil, stillPath: nil, communityScore: nil) }
+            + [CatalogEpisodeFact(season: 0, number: 1, name: "Special", overview: "", airedOn: nil, stillPath: nil, communityScore: nil)]
+    }
+    #expect(TraktDiary.addingCatalogEpisodes(built, catalog: ["tv:209867": facts(2)]).titles.first?.status == "completed", "specials don't count")
+    #expect(TraktDiary.addingCatalogEpisodes(built, catalog: ["tv:209867": facts(3)]).titles.first?.status == "watching", "an episode still to watch")
+    var paused = built
+    paused.titles[0].status = "paused"
+    #expect(TraktDiary.addingCatalogEpisodes(paused, catalog: ["tv:209867": facts(2)]).titles.first?.status == "paused")
+}
+
 /// Trakt's notes show on their titles; a longer note the server keeps in full stays in full.
 @Test func traktNotesShowInTheTraktDiary() {
     let movie = TraktTitleRef(kind: .movie, traktId: 1, tmdbId: 603, name: "The Matrix")

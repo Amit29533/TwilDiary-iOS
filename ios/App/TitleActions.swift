@@ -186,6 +186,17 @@ extension DiaryStore {
 
     func revealedSeason(_ title: MediaTitle, number: Int) async throws -> [RevealedEpisode] {
         if isPreview { return workspace.episodes.filter { $0.titleId == title.id && $0.season == number }.map(RevealedEpisode.init) }
+        // No server (a diary on Trakt alone): the season from TMDB, matched to the diary's episodes
+        // by number. It said "This needs your TwilDiary server" instead.
+        if phoneOnly {
+            guard let tmdb = title.tmdbId, title.isSeries else { return [] }
+            let page = try await catalogEpisodes(CatalogRoute(kind: .tv, id: tmdb), season: number, reveal: true)
+            let byNumber = Dictionary(page.items.map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
+            return workspace.episodes.filter { $0.titleId == title.id && $0.season == number }.compactMap { episode in
+                byNumber[episode.number].map { RevealedEpisode(id: episode.id, number: episode.number, name: $0.name, overview: $0.overview,
+                                                               stillPath: $0.stillPath, communityScore: $0.communityScore) }
+            }
+        }
         var result: [RevealedEpisode] = [], after: Int?, visited = Set<Int>()
         repeat {
             let path = CatalogTools.apiPath("/api/titles/\(title.id)/seasons/\(number)", query: ["reveal": "1", "limit": "100", "after": String(after ?? 0)])
@@ -210,6 +221,10 @@ struct RevealedEpisode: Decodable, Identifiable, Sendable {
     init(_ episode: Episode) {
         id = episode.id; number = episode.number; name = episode.name; overview = episode.overview
         stillPath = episode.still; communityScore = episode.communityScore
+    }
+    init(id: String, number: Int, name: String?, overview: String?, stillPath: String?, communityScore: Double?) {
+        self.id = id; self.number = number; self.name = name; self.overview = overview
+        self.stillPath = stillPath; self.communityScore = communityScore
     }
     var artwork: String? { stillPath.flatMap { $0.hasPrefix("/") ? CatalogTools.image($0) : $0 } }
 }

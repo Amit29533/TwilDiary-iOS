@@ -99,6 +99,11 @@ extension DiaryStore {
     func prepareSavedSeason(_ title: MediaTitle, number: Int, force: Bool = false) async throws {
         guard (0...999).contains(number) else { throw APIError.message("Choose a valid season.") }
         guard force || SeasonMetadata.needsPreparation(title: title, workspace: workspace, season: number, now: now) else { return }
+        // No server: the phone's catalog reads the show's seasons from TMDB and the diary is rebuilt.
+        if phoneOnly {
+            if let tmdb = title.tmdbId, title.isSeries { await PhoneCatalog.shared.fillEpisodes(["tv:\(tmdb)"], store: self) }
+            return
+        }
         let _: EmptyResponse = try await read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST", body: [:])
         // Season metadata only changes this title's rows; refresh just this title.
         try Task.checkCancellation(); try await refreshAfterWrite([title.id])
