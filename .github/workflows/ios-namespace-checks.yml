@@ -118,6 +118,26 @@ jobs:
           bash ios/scripts/ci.sh build-simulator
       - name: App unit tests
         run: bash ios/scripts/ci.sh test-unit
+      # A focused set of UI tests on preview data (tabs, title navigation, search, profiles,
+      # Settings, Canvas, Connections). Reported, but a UI flake doesn't hide the unit results.
+      - name: UI smoke tests
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          tests=(NativeScreensTests/testNativeTabsAndTitleNavigation
+                 NativeScreensTests/testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu
+                 NativeScreensTests/testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped
+                 NativeScreensTests/testCatalogSearchReviewAndCastProfile
+                 NativeScreensTests/testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs
+                 NativeScreensTests/testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks
+                 NativeScreensTests/testToastExpiresAndCardCoverAndUsefulMenuWork
+                 NativeScreensTests/testNativeBackReturnsFromEverySettingsDestination
+                 NativeScreensTests/testCanvasShowsAMosaicForTitlesAndCollagesForTraktLists
+                 ArenaIntegrationUITests/testConnectionsListTheTrackersWithTheMainOneTicked
+                 ArenaIntegrationUITests/testEveryServiceOffersSignInOrYourOwnKey)
+          only=(); for t in "${tests[@]}"; do only+=("-only-testing:TwilDiaryUITests/$t"); done
+          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary -clonedSourcePackagesDirPath "$PWD/ios/.spm"             CODE_SIGNING_ALLOWED=NO -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)"             -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 360             "${only[@]}" -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath ios/.artifacts/UISmoke.xcresult             2>&1 | tee ios/.artifacts/logs/ui-smoke.log
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -126,5 +146,6 @@ jobs:
           path: |
             ios/.artifacts/logs
             ios/.artifacts/UnitTests.xcresult
+            ios/.artifacts/UISmoke.xcresult
           include-hidden-files: true
           retention-days: 7
