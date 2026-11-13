@@ -18,12 +18,6 @@ extension DiaryStore {
         await ServerExtrasMove.runOnce(store: self)
         await PhoneServerSync.shared.pullIfDue(store: self, force: true)
     }
-    /// A server sign-in kept from before, when the diary lived on the server: it becomes the
-    /// session for backups and extras, and the diary moves to the phone. At launch.
-    func leaveServerDiary() async {
-        guard !isPreview, !phoneOnly, let credential = api.credential else { return }
-        await signInWithServer(credential)
-    }
 }
 
 /// Once: your server's old copy of the diary gives the phone what it doesn't have yet. What's on

@@ -355,6 +355,12 @@ import TwilDiaryCore
         needsSignIn = false
     }
     var onThisPhone: Bool { phoneOnly && TraktDirectStore.shared.localOnly }
+    /// A server sign-in kept from before, when the diary lived on the server: it becomes the
+    /// session for backups and extras, and the diary moves to the phone. At launch.
+    func leaveServerDiary() async {
+        guard !isPreview, !phoneOnly, let credential = api.credential else { return }
+        await signInWithServer(credential)
+    }
     /// Where the queue of edits for the other services is kept: your server sign-in's, or with no
     /// server this iPhone's own (as Cinopsys keeps its queue on the device), so edits made in the
     /// Trakt-only diary still reach MDBList and WeTrakr.
