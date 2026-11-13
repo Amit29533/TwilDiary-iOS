@@ -10,7 +10,7 @@ import UIKit
         XCTAssertTrue(row.isHittable); row.tap()
         XCTAssertTrue(app.navigationBars["Statistics"].waitForExistence(timeout: 5))
     }
-    private func launch(mutations: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
+    private func launch(mutations: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]
         if mutations { app.launchArguments.append("--ui-mutations") }
         if ratingsUnavailable { app.launchArguments.append("--ui-ratings-unavailable") }
@@ -21,7 +21,6 @@ import UIKit
         if slowWrites { app.launchArguments.append("--ui-slow-writes") }
         if slowMetadata { app.launchArguments.append("--ui-slow-metadata") }
         if communityUnavailable { app.launchArguments.append("--ui-community-unavailable") }
-        if cachedSnapshot { app.launchArguments.append("--ui-cached-snapshot") }
         if longEpisodes { app.launchArguments.append("--ui-long-episodes") }
         if automaticCarousel { app.launchArguments.append("--ui-automatic-carousel") }
         if animeNavigation { app.launchArguments.append("--ui-anime-navigation") }
@@ -33,23 +32,6 @@ import UIKit
         let home = app.tabBars.buttons["Home"]
         if !home.waitForExistence(timeout: 15) { print("Native tab launch hierarchy: " + String(app.debugDescription.prefix(18000))) }
         XCTAssertTrue(home.exists); return app
-    }
-    func testCachedDiaryStatusDoesNotCoverScreensAndRemainsAvailableInSettings() {
-        let app = launch(cachedSnapshot: true)
-        let warning = "Your diary is loaded, but its protected offline copy could not be updated."
-        for tab in ["Home", "Library", "Glance", "Search"] {
-            app.tabBars.buttons[tab].tap()
-            XCTAssertFalse(app.staticTexts["Saved diary"].exists)
-            XCTAssertFalse(app.staticTexts[warning].exists)
-        }
-        app.tabBars.buttons["Glance"].tap(); capture("Glance without saved-diary status overlay")
-        app.tabBars.buttons["Profile"].tap()
-        let storage = app.buttons["settings-refresh-diary"]
-        for _ in 0..<10 { if storage.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(storage.isHittable)
-        XCTAssertTrue(storage.label.contains("Saved copy"))
-        XCTAssertTrue(app.staticTexts["settings-cache-warning"].exists)
-        capture("Cache information contained in Settings")
     }
     func testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu() {
         let app = launch()

@@ -1012,7 +1012,7 @@ extension DiaryStore {
     }
     /// What the mirrors are compared with and made to match: the diary you see when it comes
     /// from a service, else your server's.
-    var diaryToMatch: Workspace { diaryFromService ? workspace : serverDiary }
+    var diaryToMatch: Workspace { workspace }
     /// Trakt-first phase 2: your edits go to Trakt as you make them (watches with their exact time,
     /// ratings, Planned), through the same delivery queue as MDBList and WeTrakr, with the token your
     /// server hands out. The diary on your server stays the record until the switch-over.

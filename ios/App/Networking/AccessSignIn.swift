@@ -367,7 +367,7 @@ enum SignInNavigationPolicy {
                 }
                 completion(AccessCredential(token: issuedToken, expires: expiry))
             } else if mode == .token, let rawToken = payload["token"], AccessCookiePolicy.validToken(rawToken) {
-                // Allow direct bearer/cookie validation through DiaryAPI.authenticate if /api/auth is not used
+                // A session token pasted as is: kept for your server's backups and extras.
                 completion(AccessCredential(token: rawToken, expires: nil))
             } else {
                 let errObj = json?["error"] as? [String: Any]

@@ -185,7 +185,7 @@ struct RootView: View {
     /// a half-built page that then jumps into place; 2.5 s at most.
     private var readyToShow: Bool {
         if store.needsSignIn { return true }
-        guard store.hasLoadedWorkspace || !(store.loading || store.restoringCache) else { return false }
+        guard store.hasLoadedWorkspace || !store.loading else { return false }
         return store.homeProjection != nil || !store.hasLoadedWorkspace || splashWaited
     }
     @State private var splashWaited = false
@@ -211,8 +211,8 @@ struct RootView: View {
             } else if !store.hasLoadedWorkspace {
                 VStack(spacing: 22) {
                     BrandMark().fill(.tint).frame(width: 48, height: 48)
-                    Text(store.loading || store.restoringCache ? "Opening your diary" : "Your diary is temporarily unavailable").font(.title2.bold())
-                    if store.loading || store.restoringCache { ProgressView() }
+                    Text(store.loading ? "Opening your diary" : "Your diary is temporarily unavailable").font(.title2.bold())
+                    if store.loading { ProgressView() }
                     else {
                         Text(store.error ?? "You’re signed in. Retry to load your diary.").foregroundStyle(.secondary).multilineTextAlignment(.center)
                         Button("Retry") { Task { await store.refresh() } }.buttonStyle(.diaryPrimary).controlSize(.large)
@@ -300,7 +300,7 @@ struct RootView: View {
     /// matching a service (Force Match included). The Profile tab turns a ring meanwhile.
     private var syncing: Bool {
         let trakt = TraktDirectStore.shared, others = TrackerPreviewStore.shared
-        return store.loading || store.busy || store.replayingOutbox || trakt.running || trakt.writing || others.running != nil || others.writing != nil
+        return store.loading || store.busy || trakt.running || trakt.writing || others.running != nil || others.writing != nil
     }
     @ViewBuilder private func tabPage(_ tab: AppTab) -> some View {
         switch tab {
@@ -404,13 +404,6 @@ private struct RootNoticeBanner: View {
                 Button("Refresh") { Task { await store.refresh() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
                     .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
             }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).fixedSize().padding(.bottom, 140)
-        } else if store.pendingDiaryEdits > 0 {
-            HStack(spacing: 10) {
-                Text("Saved on device · \(store.pendingDiaryEdits) pending sync").font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                Button("Retry") { Task { await store.flushOutbox() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
-                    .disabled(store.replayingOutbox || store.busy)
-            }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).padding(.horizontal, 20).padding(.bottom, 140)
-                .accessibilityIdentifier("pending-sync-notice")
         } else if let error = store.error {
             HStack(spacing: 8) { Text(error).font(.system(size: 12)).lineLimit(2); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly).frame(minWidth: 36, minHeight: 40) }
                 .padding(.leading, 14).padding(.trailing, 4).glassEffect(.regular, in: Capsule()).padding(.horizontal, 24).padding(.bottom, 140)

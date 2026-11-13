@@ -6,7 +6,6 @@ import TwilDiaryCore
 @MainActor struct TraktView: View {
     let store: DiaryStore
     @State private var controller: TraktController
-    @State private var showSignIn = false
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ServiceRemovals.key) private var applyRemovals = true
     init(store: DiaryStore) {
@@ -29,17 +28,6 @@ import TwilDiaryCore
             .task { if !onPhone && controller.status == nil { await controller.refresh() } }
             .refreshable { if !onPhone { await controller.refresh() } }
             .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy && !onPhone { Task { await controller.refresh() } } }
-            .sheet(isPresented: $showSignIn) {
-                if let credential = store.browserCredential() {
-                    NavigationStack {
-                        TraktSignIn(credential: credential) { result in
-                            showSignIn = false
-                            switch result { case .success: store.invalidateDiscovery(); Task { await controller.refresh() }; case .failure(let error): controller.error = error.localizedDescription }
-                        }.navigationTitle("Connect Trakt").navigationBarTitleDisplayMode(.inline)
-                            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showSignIn = false } } }
-                    }
-                }
-            }
     }
     @ViewBuilder private var page: some View {
         // Signed in on this iPhone: the state is read here, never from the server.
@@ -52,15 +40,8 @@ import TwilDiaryCore
                               subtitle: synced ?? (!onPhone && controller.loading ? "Checking connection…" : connected ? "Connected" : "Your watches, together"),
                               badge: reconnect ? ("Reconnect", .missing) : connected ? (username.map { "@" + $0 } ?? "Connected", .good) : nil) {
             Text(connected ? (store.traktHoldsDiary ? "Trakt holds your diary. Your edits go straight to Trakt." : "Signed in on this iPhone.")
-                 : onPhone ? "Sign in to Trakt in Profile → Connections." : "Connect Trakt and your diary lives there.")
+                 : "Sign in to Trakt in Profile → Connections.")
                 .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
-            if onPhone { EmptyView() }
-            else if reconnect || (!connected && controller.status?.configured == true) {
-                Button { showSignIn = true } label: { Label(reconnect ? "Reconnect Trakt" : "Connect Trakt", systemImage: "globe") }
-                    .buttonStyle(SettingsPrimaryButtonStyle()).disabled(controller.busy)
-            } else if !connected && controller.status != nil {
-                Text("Add a Trakt Client ID on your server first.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
-            }
         }
         if connected {
             TrackerPreviewPanel(tracker: .trakt)

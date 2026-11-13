@@ -13,8 +13,6 @@ struct SettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmSignOut = false
-    @State private var confirmDiscardPending = false
-    @State private var reviewProviderConflict = false
     @State private var summary: TraktController?
     @State private var showExport = false
     @State private var showImport = false
@@ -36,33 +34,6 @@ struct SettingsView: View {
                         }.padding(15).modifier(SettingsCard()).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-personal-profile")
                     diaryCard
-                    if let warning = store.cacheWarning {
-                        Text(warning).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 4).accessibilityIdentifier("settings-cache-warning")
-                    }
-                    if let notice = store.providerVaultNotice, !store.phoneOnly {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(notice).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            Button("Review provider settings sync") { reviewProviderConflict = true }.font(.subheadline)
-                                .disabled(store.providerVaultBusy).accessibilityIdentifier("settings-review-vault")
-                        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
-                    }
-                    if store.pendingDiaryEdits > 0 {
-                        settingsSection("PENDING SYNC") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(store.outboxNotice ?? "Saved on this device · \(store.pendingDiaryEdits) pending sync")
-                                    .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                                ForEach(store.outbox.pending(for: .cloudflare)) { entry in
-                                    Text(store.title(entry.mutation.titleId)?.name ?? "Removed title").font(.subheadline)
-                                }
-                                HStack {
-                                    Button("Retry sync") { Task { await store.flushOutbox() } }.disabled(store.replayingOutbox || store.busy)
-                                    Spacer()
-                                    Button("Discard pending edits", role: .destructive) { confirmDiscardPending = true }.disabled(store.replayingOutbox || store.busy)
-                                }.font(.subheadline)
-                            }.padding(14)
-                        }.accessibilityIdentifier("settings-pending-sync")
-                    }
                     settingsSection("LIBRARY") {
                         HStack(spacing: 12) {
                             tile("star.fill", .purple)
@@ -145,24 +116,14 @@ struct SettingsView: View {
                 }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); await summary?.refresh() }
         }
-        .alert(store.pendingDiaryEdits + TraktDirectStore.shared.pending.count > 0 ? "Sign out? Pending edits on this device, including any still waiting for Trakt, will be removed. Your hosted diary stays saved." : "Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
-        .alert("Which provider settings should this device keep? Only your pending fields will change.", isPresented: $reviewProviderConflict) {
-            Button("Keep this device’s settings") { Task { await store.resolveProviderVaultConflict(keepDevice: true) } }
-            Button("Use saved online settings") { Task { await store.resolveProviderVaultConflict(keepDevice: false) } }
-            Button("Cancel", role: .cancel) {}
-        }
-        .alert("Discard all pending edits on this device? The latest hosted diary will be loaded first.", isPresented: $confirmDiscardPending) {
-            Button("Discard pending edits", role: .destructive) { Task { await store.discardPendingEdits() } }
-            Button("Cancel", role: .cancel) {}
-        }
+        .alert(TraktDirectStore.shared.pending.count > 0 ? "Sign out? Edits still waiting for Trakt on this device will be removed." : "Sign out on this device?", isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
             .task(id: store.sessionRevision) {
                 summary = TraktController(service: makeTraktService(store: store))
                 await summary?.refresh()
-                await store.pullProviderVaultFromServer()
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
-            .fileImporter(isPresented: $showImport, allowedContentTypes: [.json, .commaSeparatedText]) { result in
+            .fileImporter(isPresented: $showImport, allowedContentTypes: [.json]) { result in
                 switch result {
                 case .success(let url):
                     Task {
@@ -170,7 +131,7 @@ struct SettingsView: View {
                         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
                         do {
                             let data = try Data(contentsOf: url)
-                            if store.phoneOnly, url.pathExtension.lowercased() == "json" {
+                            if url.pathExtension.lowercased() == "json" {
                                 // No server: a TwilDiary backup goes where the diary lives, its phone extras onto the phone.
                                 struct Copy: Decodable { let phone: PhoneExtras.Backup? }
                                 let archive = try DiaryExport.decoded(from: data)
@@ -179,9 +140,7 @@ struct SettingsView: View {
                                 backupNotice = "Restored"
                                 return
                             }
-                            if store.phoneOnly { throw APIError.message("CSV files are read by your TwilDiary server. Without it, import a TwilDiary backup (.json).") }
-                            let summary = try await store.importDiaryArchive(data)
-                            backupNotice = "Imported \(summary.titles)"
+                            throw APIError.message("Import a TwilDiary backup (.json).")
                         } catch {
                             store.error = error.localizedDescription
                         }
@@ -203,7 +162,7 @@ struct SettingsView: View {
     /// connected to. Tapping refreshes it from the server.
     private var diaryCard: some View {
         let titles = store.activeTitles.count, watches = store.activeEvents.count
-        let state = store.phoneOnly ? phoneDiaryState : store.loading ? "Refreshing…" : store.pendingDiaryEdits > 0 ? "Pending sync" : store.busy ? "Saving…" : store.quotaBlockedUntil != nil ? "Paused" : store.showingCachedSnapshot ? "Saved copy" : "Synced"
+        let state = store.phoneOnly ? phoneDiaryState : store.loading ? "Refreshing…" : store.busy ? "Saving…" : "Synced"
         let tint: Color = state == "Synced" || state == "On this phone" ? Color(webHex: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
         return VStack(alignment: .leading, spacing: 0) {
             Button { Task { if store.phoneOnly { await store.readDiaryServiceIfDue(olderThan: 0) } else { await store.refresh() } } } label: {
@@ -219,9 +178,6 @@ struct SettingsView: View {
                         statTile(titles, "titles")
                         statTile(watches, "watches")
                         statTile(driveCount, driveCount == 1 ? "drive" : "drives")
-                    }
-                    if let reset = store.quotaBlockedUntil {
-                        Text("Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again.").font(.caption).foregroundStyle(.secondary)
                     }
                 }.foregroundStyle(HomeStyle.primary).padding(17).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }.disabled(store.loading || store.busy).accessibilityIdentifier("settings-refresh-diary").accessibilityHint("Refresh your diary from the server")

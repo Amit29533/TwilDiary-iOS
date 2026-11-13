@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Candidate cookies are still validated by DiaryAPI.authenticate before Keychain.
+/// A session token's shape: what's safe to keep and send as a header.
 enum AccessCookiePolicy {
     static func validToken(_ token: String) -> Bool {
         !token.isEmpty && token.utf8.count <= 16_384

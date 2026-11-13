@@ -198,8 +198,7 @@ struct BackupsView: View {
         if let service = store.diaryService {
             throw APIError.message("Restoring a backup isn’t available yet while \(service.name) holds your diary.")
         }
-        let result = try await store.importDiaryArchive(try archive.encoded())
-        return "Restored to your server diary: \(result.titles.counted("title", "titles")) and \(result.events.counted("watch", "watches")) merged. What was already there was kept."
+        throw APIError.message("Sign in to Trakt, MDBList or WeTrakr, or choose On this phone, to restore a backup.")
     }
     @discardableResult static func save(store: DiaryStore, label: String) async throws -> BackupsView.Summary {
         let body = try await snapshot(store: store, label: label)

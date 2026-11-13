@@ -175,7 +175,7 @@ import BackgroundTasks
 
     private func run(task: BGTask, store: DiaryStore, includeTransfer: Bool) async {
         let work = Task { @MainActor in
-            await store.flushOutbox()
+            await store.flushDirectProviders()
             guard !Task.isCancelled else { return }
             // Edits waiting for the service your diary is on (sent before it's read) and for the
             // other services, so they go out without opening the app (Cinopsys's periodic worker).

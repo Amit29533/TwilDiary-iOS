@@ -14,11 +14,10 @@ import TwilDiaryCore
     }
     func resumeTraktOnForeground() async {
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
-        await flushOutbox()
-        await pushProviderVaultToServer()
+        await flushDirectProviders()
     }
-    /// Any edit still on its way anywhere: your server's queue, the queue for the other services,
-    /// or the service diary's own (Trakt, MDBList, WeTrakr).
+    /// Any edit still on its way anywhere: the queue for the other services, or the service
+    /// diary's own (Trakt, MDBList, WeTrakr).
     var hasWaitingEdits: Bool {
         !outbox.isEmpty || !TraktDirectStore.shared.pending.isEmpty || TrackerPreviewStore.shared.pending.values.contains { !$0.isEmpty }
     }
@@ -126,7 +125,7 @@ import TwilDiaryCore
     /// Why the read after a saved change failed ("HTTP 503", "offline"), shown on the notice.
     private(set) var mutationRefreshReason: String?
     @ObservationIgnored private var mutationRefreshRetry: Task<Void, Never>?
-    var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh }
+    var writesBlocked: Bool { busy || needsMutationRefresh }
     /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
     /// Titles only on Trakt already sent to the server diary this session (each tried once).
@@ -169,14 +168,11 @@ import TwilDiaryCore
     var error: String?
     private(set) var undoNoticeID = UUID()
     var undoLabel: String? { didSet { undoNoticeID = UUID() } }
-    private(set) var showingCachedSnapshot = false
-    private(set) var lastRefreshedAt: Date?
-    private(set) var cacheWarning: String?
     private var undoAction: (() async throws -> Void)? { didSet { undoTitles = nil } }
     /// Titles an Undo changes, so it refreshes just those; nil means a complete diary read.
     private var undoTitles: Set<String>?
-    private let api: DiaryAPI
-    private let cache: any WorkspaceCaching
+    /// A server sign-in kept from when the diary lived on the server (moved to the phone at launch).
+    private let sessionStorage: any SessionStoring
     private let outboxStore: any SyncOutboxStoring
     /// Token renewals under way, one per service.
     @ObservationIgnored private var renewals: [SyncProviderKind: Task<ExternalProviderConfig, Never>] = [:]
@@ -184,25 +180,10 @@ import TwilDiaryCore
     private(set) var outbox = SyncOutboxQueue()
     private var confirmedWorkspace = Workspace()
     /// The server's diary with pending edits, whichever diary is on screen (comparisons use this).
-    var serverDiary: Workspace { diarySource != "server" ? outbox.project(onto: confirmedWorkspace) : workspace }
     @ObservationIgnored private var connectivityMonitor: NWPathMonitor?
-    private(set) var replayingOutbox = false
-    private(set) var outboxNotice: String?
-    private var savedLocallyInAction = false
     @ObservationIgnored private var directFlushActive = false
-    var pendingDiaryEdits: Int { outbox.pending(for: .cloudflare).count }
-    struct VaultDirtyField: Codable { let baseline: String; let generation: UUID }
-    private var vaultDirty: [String: VaultDirtyField] = [:]
-    private let vaultStateDefaults: UserDefaults?
-    @ObservationIgnored private var vaultSyncTask: Task<Void, Never>?
-    private var vaultSending = false
-    private var vaultResolving = false
-    var providerVaultBusy: Bool { vaultSending || vaultResolving }
-    private(set) var providerVaultNotice: String?
     var providerSettings = ProviderConnectionSettings()
     @ObservationIgnored let directClient: DirectProviderClient
-    @ObservationIgnored private var cacheRestoration: Task<Void, Never>?
-    private(set) var restoringCache = false
     private var sessionGeneration = UUID() {
         didSet { clearHomeProjection() }
     }
@@ -210,14 +191,9 @@ import TwilDiaryCore
     private var snapshotGeneration = UUID()
     private var lastForegroundRead: Date?
     /// The server's diary revision read just before the last complete foreground download.
-    @ObservationIgnored private var knownWorkspaceRevision: (token: String, at: Date)?
-    @ObservationIgnored private var knownDeltaCursor: String?
-    @ObservationIgnored private var completeReads = 0
     /// Unconfirmed watch requests and their operation IDs. Saved on the phone (the app's own store
     /// only), so retrying after a restart reuses the ID and the server can't log the watch twice.
-    private var pendingWatches: [String: [String: Any]] = [:] { didSet { savePendingWatches() } }
-    @ObservationIgnored private var persistsPendingWatches = false
-    private static let pendingWatchesKey = "pendingWatches.v1"
+    private var pendingWatches: [String: [String: Any]] = [:]
     private var pendingProgress: [String: [String: Any]] = [:]
     private var pendingRemovals: [String: WatchCard.Previous] = [:]
     var pendingSeasonAdjustments: [String: SeasonEditTransaction] = [:]
@@ -227,7 +203,7 @@ import TwilDiaryCore
     private var failNextFixtureRefresh = false
     #endif
     var canMutate: Bool {
-        guard !needsMutationRefresh, !replayingOutbox else { return false }
+        guard !needsMutationRefresh else { return false }
         #if DEBUG
         if isPreview { return fixture != nil }
         #endif
@@ -235,8 +211,7 @@ import TwilDiaryCore
     }
     var now: Date { isPreview ? DiaryDate.parse("2026-10-23T12:00:00Z")! : .now }
     init(
-        api: DiaryAPI? = nil,
-        cache: (any WorkspaceCaching)? = nil,
+        sessionStorage: (any SessionStoring)? = nil,
         outboxStore: (any SyncOutboxStoring)? = nil,
         providerSettingsStore: (any ProviderSettingsStoring)? = nil,
         directClient: DirectProviderClient? = nil
@@ -247,14 +222,10 @@ import TwilDiaryCore
         #else
         self.isPreview = false
         #endif
-        self.api = api ?? DiaryAPI()
-        self.vaultStateDefaults = api == nil ? .standard : nil
+        self.sessionStorage = sessionStorage ?? KeychainSessionStorage()
         self.directClient = directClient ?? DirectProviderClient()
-        if let cache { self.cache = cache }
-        else if api == nil { self.cache = ProtectedWorkspaceCache() }
-        else { self.cache = MemoryWorkspaceCache() }
         if let outboxStore { self.outboxStore = outboxStore }
-        else if api == nil { self.outboxStore = FileSyncOutboxStore() }
+        else if sessionStorage == nil { self.outboxStore = FileSyncOutboxStore() }
         else { self.outboxStore = MemorySyncOutboxStore() }
         #if DEBUG
         // UI tests run unsigned in the simulator, where the Keychain refuses writes; keep provider
@@ -265,8 +236,6 @@ import TwilDiaryCore
         #endif
         do { self.providerSettings = try self.providerSettingsStore.load() }
         catch { self.providerSettings = ProviderConnectionSettings(); self.error = error.localizedDescription }
-        self.api.customTmdbToken = self.providerSettings.customTmdbToken
-        self.api.customMdblistApiKey = self.providerSettings.mdblist.apiKey
         if !isPreview { removeSimkl() }
         #if DEBUG
         if isPreview {
@@ -283,22 +252,14 @@ import TwilDiaryCore
             if ProcessInfo.processInfo.arguments.contains("--ui-profile-repairs") { workspace = PreviewData.profileRepairWorkspace }
             if ProcessInfo.processInfo.arguments.contains("--ui-arena"), let index = workspace.titles.firstIndex(where: { $0.deletedAt == nil }) { workspace.titles[index].tags = ["Weekend"] }
             if ProcessInfo.processInfo.arguments.contains("--ui-long-episodes") { workspace = PreviewData.withLongEpisodeSummaries(workspace) }
-            if ProcessInfo.processInfo.arguments.contains("--ui-cached-snapshot") {
-                showingCachedSnapshot = true; lastRefreshedAt = now.addingTimeInterval(-600)
-                cacheWarning = "Your diary is loaded, but its protected offline copy could not be updated."
-            }
             if ProcessInfo.processInfo.arguments.contains("--ui-signed-out") { needsSignIn = true; hasLoadedWorkspace = false }
             if ProcessInfo.processInfo.arguments.contains("--ui-mutations") { fixture = FixtureDiaryBackend(workspace: workspace) }
         }
         #endif
         if !isPreview {
-            // A Trakt-only (or On this phone) diary chosen after a server sign-in: the server's
-            // sign-in is dropped. It used to be tried first on every launch; Cloudflare Access had
-            // refused it (its own date hadn't passed, so it was kept), so each launch asked to sign
-            // in again. A server sign-in always clears the phone-only choice, so both are saved
-            // only when the server's is the leftover.
-            if self.api.credential != nil, Self.savedPhoneOnly != nil || TraktDirectStore.shared.localOnly { self.api.signOut() }
-            needsSignIn = self.api.credential == nil
+            // Opens on the diary you keep: on this phone, or the service signed in on it. A server
+            // sign-in kept from before moves the same way at launch (`leaveServerDiary`).
+            needsSignIn = true
             if needsSignIn, TraktDirectStore.shared.localOnly {
                 phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
                 loadPhoneOutbox()
@@ -310,33 +271,8 @@ import TwilDiaryCore
                 if diarySource != tracker.rawValue { UserDefaults.standard.set(tracker.rawValue, forKey: Self.diarySourceKey); diarySource = tracker.rawValue }
                 applyDiarySource()
             }
-            if let scope = self.api.credential?.cacheScope {
-                outbox = self.outboxStore.load(scope: scope)
-            }
-            if let scope = self.api.credential?.cacheScope,
-               let data = vaultStateDefaults?.data(forKey: "providerVault.pending." + scope),
-               let pending = try? JSONDecoder().decode([String: VaultDirtyField].self, from: data) { vaultDirty = Self.validVaultDirty(pending) }
-            restoreCachedWorkspace()
-            if api == nil { persistsPendingWatches = true; restorePendingWatches() }
         }
         indexWorkspace()
-    }
-    private func savePendingWatches() {
-        guard persistsPendingWatches else { return }
-        guard let scope = api.credential?.cacheScope, !pendingWatches.isEmpty,
-              let data = try? JSONSerialization.data(withJSONObject: ["scope": scope, "items": pendingWatches] as [String: Any]) else {
-            UserDefaults.standard.removeObject(forKey: Self.pendingWatchesKey); return
-        }
-        UserDefaults.standard.set(data, forKey: Self.pendingWatchesKey)
-    }
-    /// Only the signed-in diary's own requests, and none older than a week.
-    private func restorePendingWatches() {
-        guard let data = UserDefaults.standard.data(forKey: Self.pendingWatchesKey),
-              let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              saved["scope"] as? String == api.credential?.cacheScope,
-              let items = saved["items"] as? [String: [String: Any]] else { pendingWatches = [:]; return }
-        let cutoff = now.addingTimeInterval(-7 * 86_400)
-        pendingWatches = items.filter { (DiaryDate.parse($0.value["watchedAt"] as? String) ?? .distantPast) > cutoff }
     }
     /// Opens the app on Trakt alone: after a Trakt sign-in when your server can't be reached
     /// (Cloudflare Access in front of it), or by choice. Nothing is read from the server.
@@ -344,7 +280,7 @@ import TwilDiaryCore
     /// is made there; connect Trakt or your server later from Connections.
     func startOnThisPhone() async {
         // No server from here on: a sign-in kept from before would be tried first at every launch.
-        if api.credential != nil { api.signOut() }
+        sessionStorage.delete()
         TraktDirectStore.shared.useLocal(true)
         UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey)
         sessionGeneration = UUID(); snapshotGeneration = UUID()
@@ -358,16 +294,16 @@ import TwilDiaryCore
     /// A server sign-in kept from before, when the diary lived on the server: it becomes the
     /// session for backups and extras, and the diary moves to the phone. At launch.
     func leaveServerDiary() async {
-        guard !isPreview, !phoneOnly, let credential = api.credential else { return }
+        guard !isPreview, !phoneOnly, let credential = sessionStorage.read() else { return }
         await signInWithServer(credential)
     }
     /// Where the queue of edits for the other services is kept: your server sign-in's, or with no
     /// server this iPhone's own (as Cinopsys keeps its queue on the device), so edits made in the
     /// Trakt-only diary still reach MDBList and WeTrakr.
-    var outboxScope: String? { api.credential?.cacheScope ?? (phoneOnly ? "phone" : nil) }
+    var outboxScope: String? { phoneOnly ? "phone" : nil }
     /// With no server: the phone's queue, loaded when the phone-only diary starts.
     private func loadPhoneOutbox() {
-        guard api.credential == nil, let scope = outboxScope else { return }
+        guard let scope = outboxScope else { return }
         outbox = outboxStore.load(scope: scope)
         Task { await self.flushDirectProviders() }
     }
@@ -378,7 +314,7 @@ import TwilDiaryCore
         guard signedIn else { error = "\(tracker.name) didn’t finish signing in. Try again."; return }
         // The service is the sign-in now: a server sign-in kept from before (one Cloudflare Access
         // refuses) would be tried first at every launch and ask to sign in again.
-        if api.credential != nil { api.signOut() }
+        sessionStorage.delete()
         UserDefaults.standard.set(tracker.rawValue, forKey: Self.phoneOnlyKey)
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         phoneOnly = true; error = nil
@@ -399,46 +335,6 @@ import TwilDiaryCore
     /// Tests: the phone-only state without a real Trakt sign-in.
     func enterPhoneOnlyForTesting() { phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true }
     #endif
-    func connect(_ credential: AccessCredential) async {
-        if phoneOnly { phoneOnly = false; UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey); hasLoadedWorkspace = false }
-        if TraktDirectStore.shared.localOnly { TraktDirectStore.shared.useLocal(false) }
-        vaultSyncTask?.cancel(); vaultSyncTask = nil
-        cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
-        let previousScope = api.credential?.cacheScope
-        retainedTraktController?.invalidateSession(); retainedTraktController = nil
-        let generation = UUID(); sessionGeneration = generation; snapshotGeneration = UUID()
-        lastForegroundRead = nil; knownWorkspaceRevision = nil; knownDeltaCursor = nil
-        invalidateDiscovery()
-        communityCache.reset()
-        do {
-            try await api.authenticate(credential)
-            guard generation == sessionGeneration else { return }
-            // Signed in to the server: the phone-only choice is over (launch prefers it otherwise).
-            UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey)
-            // Reads started while authentication still used the previous
-            // credential must not survive under the newly authenticated owner.
-            invalidateDiscovery()
-            communityCache.reset()
-            communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters()
-            if previousScope != credential.cacheScope {
-                clearHomeProjection()
-                workspace = Workspace(); hasLoadedWorkspace = false; showingCachedSnapshot = false; lastRefreshedAt = nil; cacheWarning = nil
-                needsMutationRefresh = false
-                outbox = outboxStore.load(scope: credential.cacheScope)
-                vaultDirty = [:]
-                if let data = vaultStateDefaults?.data(forKey: "providerVault.pending." + credential.cacheScope),
-                   let pending = try? JSONDecoder().decode([String: VaultDirtyField].self, from: data) { vaultDirty = Self.validVaultDirty(pending) }
-                pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); pendingSeasonAdjustments.removeAll()
-                undoLabel = nil; undoAction = nil
-            }
-            loading = false; busy = false
-            needsSignIn = false; error = nil; restoreCachedWorkspace()
-            // Signed in with Trakt on the sign-in page: that sign-in is this iPhone's Trakt connection too.
-            await PendingTraktSignIn.adopt(store: self)
-            await ProviderAppIDs.refresh(store: self)
-            await refresh()
-        } catch { if generation == sessionGeneration { fail(error) } }
-    }
     func signOut() {
         if phoneOnly, TraktDirectStore.shared.localOnly {
             // On this phone: leaving keeps the diary (choose On this phone again to come back).
@@ -458,15 +354,13 @@ import TwilDiaryCore
         }
         BackgroundSyncCoordinator.shared.endLiveActivity()
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
-        vaultSyncTask?.cancel(); vaultSyncTask = nil; vaultDirty = [:]; providerVaultNotice = nil
-        cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
         #if DEBUG
         fixture = nil
         failNextFixtureRefresh = false
         #endif
         sessionGeneration = UUID(); snapshotGeneration = UUID()
-        lastForegroundRead = nil; knownWorkspaceRevision = nil; knownDeltaCursor = nil
+        lastForegroundRead = nil
         invalidateDiscovery()
         communityCache.reset()
         needsMutationRefresh = false
@@ -474,11 +368,9 @@ import TwilDiaryCore
         URLCache.shared.removeAllCachedResponses()
         TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget(); PhoneServerSync.shared.forget()
         adoptedTraktKeys = []; adoptionRetry = [:]
-        api.signOut(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
-        showingCachedSnapshot = false; lastRefreshedAt = nil; loading = false; busy = false
-        do { try cache.removeAll(); cacheWarning = nil }
-        catch { cacheWarning = "The saved diary could not be removed. It remains encrypted on this device." }
-        confirmedWorkspace = Workspace(); outboxNotice = nil
+        sessionStorage.delete(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
+        loading = false; busy = false
+        confirmedWorkspace = Workspace()
         outbox = SyncOutboxQueue(); try? outboxStore.removeAll()
         pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); undoAction = nil; undoLabel = nil
         pendingSeasonAdjustments.removeAll()
@@ -491,7 +383,6 @@ import TwilDiaryCore
             await readService()
             return
         }
-        api.retryQuota()
         #if DEBUG
         if isPreview && fixture == nil { return }
         #else
@@ -499,79 +390,32 @@ import TwilDiaryCore
         #endif
         let session = sessionGeneration
         loading = true; defer { if session == sessionGeneration { loading = false } }
-        await cacheRestoration?.value
         guard session == sessionGeneration, !needsSignIn, !Task.isCancelled else { return }
         do { try await reload(); if session == sessionGeneration { error = nil } }
         catch is CancellationError { }
         catch { if session == sessionGeneration { fail(error) } }
     }
-    /// No background polling on the phone. Coalesce rapid scene changes and
-    /// wait for in-flight write receipts before reading the scheduled D1 result.
+    /// Coming back to the app: the diary's service is read again (rapid scene changes coalesce).
     func refreshOnForeground(at date: Date = .now) async {
-        if phoneOnly, !needsSignIn { await refresh(); return }
-        guard !needsSignIn, !api.isQuotaBlocked, lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
-        let session = sessionGeneration
-        while busy && session == sessionGeneration && !Task.isCancelled {
-            await withCheckedContinuation { mutationWaiters.append($0) }
-        }
-        guard session == sessionGeneration, !Task.isCancelled, !api.isQuotaBlocked,
-              lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
+        guard !needsSignIn else { return }
+        if phoneOnly { await refresh(); return }
+        guard lastForegroundRead.map({ date.timeIntervalSince($0) >= 10 }) ?? true else { return }
         lastForegroundRead = date
-        defer { if Task.isCancelled, session == sessionGeneration, lastForegroundRead == date { lastForegroundRead = nil } }
-        // One primary-key read decides whether the multi-page diary download is needed.
-        let canUseDelta = hasLoadedWorkspace && !showingCachedSnapshot && !needsMutationRefresh
-        let freshKnown = canUseDelta ? knownWorkspaceRevision.flatMap({ date.timeIntervalSince($0.at) < Self.revisionTrust ? $0 : nil }) : nil
-        if let known = freshKnown, let cursor = knownDeltaCursor,
-           await applyWorkspaceChanges(since: cursor, known: known.token, at: date) { return }
-        let revision = await readWorkspaceRevision(known: freshKnown?.token)
-        guard session == sessionGeneration, !Task.isCancelled else { return }
-        if let revision, let known = knownWorkspaceRevision, known.token == revision.revision,
-           date.timeIntervalSince(known.at) < Self.revisionTrust,
-           canUseDelta { return }
-        if let revision, canUseDelta, freshKnown != nil,
-           let changedIds = revision.changedTitleIds, !changedIds.isEmpty, changedIds.count <= Self.targetedRefreshLimit {
-            if let _ = try? await reloadTitles(Set(changedIds)) {
-                guard session == sessionGeneration else { return }
-                knownWorkspaceRevision = (token: revision.revision, at: date)
-                error = nil
-                return
-            }
-        }
-        let reads = completeReads
         await refresh()
-        // Remember the revision read before this download. A write that landed during it
-        // changes the server's token, so the next resume downloads again.
-        guard session == sessionGeneration else { return }
-        knownWorkspaceRevision = completeReads != reads ? revision.map { (token: $0.revision, at: date) } : nil
-    }
-    /// Trust a matching revision for at most this long; then download in full anyway.
-    private static let revisionTrust: TimeInterval = 6 * 3600
-    private struct WorkspaceRevision: Decodable {
-        let revision: String
-        let changedTitleIds: [String]?
-        let cursor: String?
-    }
-    /// nil when the check is unavailable (an older backend, offline, an unexpected reply):
-    /// the caller then makes the complete download it always made.
-    private func readWorkspaceRevision(since: Date? = nil, known: String? = nil) async -> WorkspaceRevision? {
-        #if DEBUG
-        if isPreview { return nil }
-        #endif
-        var path = "/api/workspace/revision"
-        if let since {
-            let stamp = since.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
-            var query: [String: String] = ["since": stamp]
-            if let known { query["known"] = known }
-            path = CatalogTools.apiPath(path, query: query)
-        }
-        guard let value: WorkspaceRevision = try? await read(path),
-              value.revision.count == 32,
-              value.revision.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
-        knownDeltaCursor = value.cursor
-        return value
     }
     func reload() async throws {
-        try await reloadFromServer()
+        #if DEBUG
+        if let fixture {
+            if failNextFixtureRefresh {
+                failNextFixtureRefresh = false
+                throw APIError.message("Synthetic refresh outage")
+            }
+            // The test diary: kept as the confirmed copy too, or applyDiarySource() (which shows
+            // pending edits on top of the confirmed copy) would show an empty diary.
+            confirmedWorkspace = fixture.workspace
+            workspace = fixture.workspace; hasLoadedWorkspace = true; needsMutationRefresh = false
+        }
+        #endif
         applyDiarySource()
     }
     /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
@@ -604,8 +448,6 @@ import TwilDiaryCore
             }
         } else {
             workspace = outbox.project(onto: confirmedWorkspace)
-            // Back to the server's diary after a trimmed read: fetch its full copy (watches included).
-            if trimmedSnapshot, !phoneHoldsDiary { trimmedSnapshot = false; Task { await self.refresh() } }
         }
     }
     /// Builds the diary from the service's copy away from the main thread (it reads every play),
@@ -661,139 +503,9 @@ import TwilDiaryCore
             Task { await self.adoptServiceOnlyTitles() }
         }
     }
-    private func reloadFromServer() async throws {
-        #if DEBUG
-        if let fixture {
-            if failNextFixtureRefresh {
-                failNextFixtureRefresh = false
-                throw APIError.message("Synthetic refresh outage")
-            }
-            // The fixture is the "server": keep it as the confirmed copy too, or applyDiarySource()
-            // (which shows pending edits on top of the confirmed copy) would show an empty diary.
-            confirmedWorkspace = fixture.workspace
-            workspace = fixture.workspace; hasLoadedWorkspace = true; needsMutationRefresh = false
-            return
-        }
-        #endif
-        let session = sessionGeneration, revision = UUID()
-        snapshotGeneration = revision
-        // Publish only a complete snapshot. A failed page cannot replace good data with a partial diary.
-        let snapshot: Workspace
-        do { snapshot = try await readWorkspaceSnapshot() }
-        catch WorkspaceIntegrityError.incompleteSnapshot {
-            try Task.checkCancellation()
-            guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-            // A scheduled import may land between section reads. Retry GETs
-            // once; persistent inconsistency preserves the last complete diary.
-            snapshot = try await readWorkspaceSnapshot()
-        }
-        try await publish(snapshot, session: session, revision: revision)
-        completeReads &+= 1
-    }
-    /// Re-read only the titles a write touched and merge them into the current snapshot.
-    /// One small consistent request replaces a full multi-page diary download, so the
-    /// tapped card is confirmed in roughly one round trip instead of dozens.
-    private func reloadTitles(_ ids: Set<String>) async throws {
-        #if DEBUG
-        if fixture != nil { try await reload(); return }
-        #endif
-        let session = sessionGeneration, revision = UUID()
-        snapshotGeneration = revision
-        let base = confirmedWorkspace
-        var query = URLComponents(); query.queryItems = [URLQueryItem(name: "ids", value: ids.sorted().joined(separator: ","))]
-        let refresh: WorkspaceTitleRefresh = try await read("/api/workspace/titles?" + (query.percentEncodedQuery ?? ""))
-        try Task.checkCancellation()
-        guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-        guard Set(refresh.ids) == ids else { throw WorkspaceIntegrityError.incompleteSnapshot }
-        let merging = Task.detached(priority: .userInitiated) { try refresh.merged(into: base) }
-        let snapshot = try await merging.value
-        try await publish(snapshot, session: session, revision: revision)
-    }
-    private func publish(_ snapshot: Workspace, session: UUID, revision: UUID) async throws {
-        try Task.checkCancellation()
-        guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-        let built = await buildIndex(snapshot)
-        try Task.checkCancellation()
-        guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-        confirmedWorkspace = snapshot
-        let projected = outbox.project(onto: snapshot)
-        let projectedIndex = outbox.pending(for: .cloudflare).isEmpty ? built : await buildIndex(projected)
-        publishIndexed(projected, projectedIndex)
-        hasLoadedWorkspace = true; showingCachedSnapshot = false; lastRefreshedAt = .now
-        needsMutationRefresh = false
-        // A service holds the diary: show its diary (saved on the phone) again at once, in the same
-        // update, rather than the server's copy until the next service read lands.
-        if diarySource != "server" { applyDiarySource() }
-        if let scope = api.credential?.cacheScope {
-            var cacheFailure: Error?
-            do { try await cache.saveAsynchronously(snapshot, scope: scope, at: .now) }
-            catch { cacheFailure = error }
-            guard session == sessionGeneration, revision == snapshotGeneration, !needsSignIn else { throw CancellationError() }
-            if let cacheFailure {
-                if !(cacheFailure is CancellationError) { cacheWarning = "Your diary is loaded, but its protected offline copy could not be updated." }
-            } else { cacheWarning = nil }
-        }
-    }
-    /// Trakt holds the diary and the phone reads it (signed in here, with a TMDB key): the server
-    /// sends only what Trakt can't hold. Titles (your notes, tags, Queue, Trash and status choices),
-    /// file locations, and the episodes you marked; watches come from Trakt and episode lists from
-    /// TMDB on the phone. A server without the marked filter just sends every episode, which also works.
+    /// Trakt holds the diary and the phone reads it (signed in here, with a TMDB key): episode
+    /// lists come from TMDB on the phone.
     var phoneHoldsDiary: Bool { diaryFromTrakt && traktSignedInOnPhone && TMDBDirect.token(self) != nil }
-    /// The last server read left out watches and episode lists (see `phoneHoldsDiary`).
-    @ObservationIgnored private var trimmedSnapshot = false
-    private func readWorkspaceSnapshot() async throws -> Workspace {
-        trimmedSnapshot = phoneHoldsDiary
-        if phoneHoldsDiary {
-            async let titles = api.allPages("titles", as: MediaTitle.self)
-            async let marked = api.allPages("episodes", as: Episode.self, marked: true)
-            async let locations = api.allPages("locations", as: FileLocation.self)
-            let values = try await (titles, marked, locations)
-            try Task.checkCancellation()
-            let validating = Task.detached(priority: .userInitiated) {
-                try Workspace(titles: values.0, episodes: values.1, events: [], locations: values.2).validatingIdentities()
-            }
-            return try await validating.value
-        }
-        async let titles = api.allPages("titles", as: MediaTitle.self)
-        async let episodes = api.allPages("episodes", as: Episode.self)
-        async let events = api.allPages("events", as: WatchEvent.self)
-        async let locations = api.allPages("locations", as: FileLocation.self)
-        let values = try await (titles, episodes, events, locations)
-        try Task.checkCancellation()
-        // Identity validation builds sets over every row; keep it off the main actor.
-        let validating = Task.detached(priority: .userInitiated) {
-            try Workspace(titles: values.0, episodes: values.1, events: values.2, locations: values.3).validatingIdentities()
-        }
-        return try await validating.value
-    }
-    private func restoreCachedWorkspace() {
-        guard let credential = api.credential, credential.isValid, !hasLoadedWorkspace else { return }
-        if let snapshot = cache.residentSnapshot(scope: credential.cacheScope) {
-            confirmedWorkspace = snapshot.workspace
-            workspace = outbox.project(onto: snapshot.workspace); hasLoadedWorkspace = true
-            showingCachedSnapshot = true; lastRefreshedAt = snapshot.savedAt
-            // Launch: the service's diary saved on the phone, not the server's older copy.
-            if diarySource != "server" { applyDiarySource() }
-            return
-        }
-        let session = sessionGeneration, revision = snapshotGeneration, scope = credential.cacheScope
-        restoringCache = true
-        cacheRestoration = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { if session == self.sessionGeneration { self.restoringCache = false } }
-            guard let snapshot = try? await self.cache.loadAsynchronously(scope: scope),
-                  !Task.isCancelled, session == self.sessionGeneration, revision == self.snapshotGeneration,
-                  !self.needsSignIn, !self.hasLoadedWorkspace, self.api.credential?.cacheScope == scope else { return }
-            self.confirmedWorkspace = snapshot.workspace
-            let projected = self.outbox.project(onto: snapshot.workspace)
-            let built = await self.buildIndex(projected)
-            guard !Task.isCancelled, session == self.sessionGeneration, revision == self.snapshotGeneration,
-                  !self.needsSignIn, !self.hasLoadedWorkspace, self.api.credential?.cacheScope == scope else { return }
-            self.publishIndexed(projected, built); self.hasLoadedWorkspace = true
-            self.showingCachedSnapshot = true; self.lastRefreshedAt = snapshot.savedAt
-            if self.diarySource != "server" { self.applyDiarySource() }
-        }
-    }
     private func indexWorkspace() { apply(WorkspaceIndex(workspace), changed: nil) }
     /// Derived lookups for a snapshot are computed on a background executor. Card
     /// revision diffs are computed there too, against the inputs current at start;
@@ -981,21 +693,6 @@ import TwilDiaryCore
     func localCard(_ title: MediaTitle, season: Int? = nil) -> WatchCard {
         cachedCard(title, season: season) ?? WatchCard.calculate(title: title, in: workspace, day: DiaryDate.day(now), season: season)
     }
-    /// Persist first: a failed disk write must never look like a saved local edit.
-    @discardableResult
-    func enqueueOptimistic(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind> = [.cloudflare], uncertain: Bool = false) throws -> SyncOutboxEntry {
-        guard let scope = api.credential?.cacheScope else { throw APIError.signIn }
-        var next = outbox
-        let entry = next.enqueue(SyncOutboxEntry(operationId: operationId, createdAt: now.ISO8601Format(), mutation: mutation, pendingProviders: providers, attempts: uncertain ? 1 : 0))
-        try outboxStore.save(next, scope: scope)
-        outbox = next
-        // Apply just the new intent; a coalesced entry must not replay its old watch effects.
-        workspace = outbox.project(onto: confirmedWorkspace)
-        indexWorkspace()
-        if diarySource != "server" { applyDiarySource() }
-        outboxNotice = "Saved on this device · \(pendingDiaryEdits) pending sync"
-        return entry
-    }
     /// Simkl support was removed (owner's choice, 2026-11-13). Once: the provider settings are saved
     /// again (they're read without Simkl's entry, so its sign-in leaves the Keychain), along with the
     /// older per-field Keychain items; it's no longer the main tracker, the phone-only service or the
@@ -1033,232 +730,15 @@ import TwilDiaryCore
         stageVaultChanges(from: previous, to: next)
         return true
     }
-    @discardableResult func updateProviderConfig(_ config: ExternalProviderConfig, syncVault: Bool = true) -> Bool {
-        let previous = providerSettings
-        var next = previous; next.setConfig(config)
-        guard persistProviderSettings(next) else { return false }
-        if syncVault { stageVaultChanges(from: previous, to: next) }
-        return true
+    @discardableResult func updateProviderConfig(_ config: ExternalProviderConfig) -> Bool {
+        var next = providerSettings; next.setConfig(config)
+        return persistProviderSettings(next)
     }
     private func persistProviderSettings(_ next: ProviderConnectionSettings) -> Bool {
         do { try providerSettingsStore.save(next) }
         catch { self.error = error.localizedDescription; return false }
         providerSettings = next
-        api.customTmdbToken = next.customTmdbToken
-        api.customMdblistApiKey = next.mdblist.apiKey
         return true
-    }
-    struct ProviderVaultResponse: Decodable {
-        struct Entry: Decodable {
-            let enabled: Bool?
-            let clientId: String?
-            let accessToken: String?
-            let apiKey: String?
-            let username: String?
-            let loggingMethod: WatchLoggingMethod?
-        }
-        struct Payload: Decodable {
-            let customTmdbToken: String?
-            let trakt: Entry?
-            let mdblist: Entry?
-            func entry(_ key: String) -> Entry? {
-                switch key { case "trakt": trakt; case "mdblist": mdblist; default: nil }
-            }
-        }
-        let protocolVersion: Int?
-        let synced: Bool
-        let revision: String?
-        let settings: Payload?
-    }
-    private static let vaultPaths = ["customTmdbToken"] + ["trakt", "mdblist"].flatMap { provider in
-        ["enabled", "clientId", "accessToken", "apiKey", "username", "loggingMethod"].map { provider + "." + $0 }
-    }
-    private static func validVaultDirty(_ fields: [String: VaultDirtyField]) -> [String: VaultDirtyField] {
-        fields.filter { vaultPaths.contains($0.key) && $0.value.baseline.count == 64 && $0.value.baseline.allSatisfy { $0.isHexDigit } }
-    }
-    private func vaultValue(_ path: String, settings: ProviderConnectionSettings) -> Any {
-        if path == "customTmdbToken" { return settings.customTmdbToken as Any? ?? NSNull() }
-        let parts = path.split(separator: ".").map(String.init)
-        guard parts.count == 2, let provider = SyncProviderKind(rawValue: parts[0]) else { return NSNull() }
-        let cfg = settings.config(for: provider)
-        switch parts[1] {
-        case "enabled": return cfg.enabled
-        case "clientId": return cfg.clientId as Any? ?? NSNull()
-        case "accessToken": return cfg.accessToken as Any? ?? NSNull()
-        case "apiKey": return cfg.apiKey as Any? ?? NSNull()
-        case "username": return cfg.username as Any? ?? NSNull()
-        case "loggingMethod": return cfg.loggingMethod.rawValue
-        default: return NSNull()
-        }
-    }
-    private func vaultValue(_ path: String, remote: ProviderVaultResponse.Payload?) -> Any {
-        if path == "customTmdbToken" { return remote?.customTmdbToken as Any? ?? NSNull() }
-        let parts = path.split(separator: ".").map(String.init)
-        guard parts.count == 2 else { return NSNull() }
-        let entry = remote?.entry(parts[0])
-        switch parts[1] {
-        case "enabled": return entry?.enabled ?? false
-        case "clientId": return entry?.clientId as Any? ?? NSNull()
-        case "accessToken": return entry?.accessToken as Any? ?? NSNull()
-        case "apiKey": return entry?.apiKey as Any? ?? NSNull()
-        case "username": return entry?.username as Any? ?? NSNull()
-        case "loggingMethod": return (entry?.loggingMethod ?? .serverAndDirectAPI).rawValue
-        default: return NSNull()
-        }
-    }
-    private func vaultHash(_ value: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: [value], options: [.sortedKeys]) else { return "invalid" }
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-    private func saveVaultDirty() {
-        guard let scope = api.credential?.cacheScope, let data = try? JSONEncoder().encode(vaultDirty) else { return }
-        vaultStateDefaults?.set(data, forKey: "providerVault.pending." + scope)
-    }
-    private func stageVaultChanges(from previous: ProviderConnectionSettings, to next: ProviderConnectionSettings) {
-        // Signed in with Trakt alone: no server to copy settings to.
-        guard !isPreview, !phoneOnly, api.credential != nil else { return }
-        for path in Self.vaultPaths where vaultHash(vaultValue(path, settings: previous)) != vaultHash(vaultValue(path, settings: next)) {
-            vaultDirty[path] = VaultDirtyField(baseline: vaultDirty[path]?.baseline ?? vaultHash(vaultValue(path, settings: previous)), generation: UUID())
-        }
-        saveVaultDirty()
-        guard vaultSyncTask == nil else { return }
-        vaultSyncTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.pushProviderVaultToServer()
-            self.vaultSyncTask = nil
-        }
-    }
-    func pushProviderVaultToServer() async {
-        if phoneOnly { providerVaultNotice = nil; return }
-        guard !isPreview, !needsSignIn, !vaultSending, !vaultResolving else { return }
-        vaultSending = true; defer { vaultSending = false }
-        let session = sessionGeneration
-        while !vaultDirty.isEmpty, session == sessionGeneration, !Task.isCancelled {
-            let pending = vaultDirty
-            let desired = providerSettings
-            do {
-                let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
-                guard remote.protocolVersion == 2 else { throw APIError.message("Online settings sync requires an updated diary server. Device settings are unchanged.") }
-                if remote.revision != nil && !remote.synced { throw APIError.message("Saved provider settings could not be decrypted. They have been preserved.") }
-                var changes: [String: Any] = [:]
-                for (path, field) in pending {
-                    let wanted = vaultValue(path, settings: desired)
-                    let remoteHash = vaultHash(vaultValue(path, remote: remote.settings))
-                    guard remoteHash == field.baseline || remoteHash == vaultHash(wanted) else {
-                        throw APIError.message("Provider settings changed on another device. Review which settings to keep.")
-                    }
-                    if path == "customTmdbToken" { changes[path] = wanted }
-                    else {
-                        let parts = path.split(separator: ".").map(String.init)
-                        var entry = changes[parts[0]] as? [String: Any] ?? [:]
-                        entry[parts[1]] = wanted; changes[parts[0]] = entry
-                    }
-                }
-                let receipt: ProviderVaultResponse = try await read("/api/providers/vault/v2", method: "PUT", body: ["expectedRevision": remote.revision as Any? ?? NSNull(), "changes": changes])
-                guard receipt.protocolVersion == 2, receipt.synced, receipt.revision != nil else { throw APIError.message("Online settings returned no confirmation. Sync remains pending.") }
-                guard session == sessionGeneration else { return }
-                for (path, field) in pending where vaultDirty[path]?.generation == field.generation { vaultDirty.removeValue(forKey: path) }
-                saveVaultDirty(); providerVaultNotice = nil
-            } catch {
-                guard session == sessionGeneration else { return }
-                providerVaultNotice = "Provider settings are saved on this device; online sync is pending. " + error.localizedDescription
-                return
-            }
-        }
-    }
-    private func applyingVault(_ remote: ProviderVaultResponse.Payload?, paths: Set<String>, to original: ProviderConnectionSettings) -> ProviderConnectionSettings {
-        var result = original
-        for path in paths {
-            let value = vaultValue(path, remote: remote)
-            if path == "customTmdbToken" { result.customTmdbToken = value as? String; continue }
-            let parts = path.split(separator: ".").map(String.init)
-            guard parts.count == 2, let provider = SyncProviderKind(rawValue: parts[0]) else { continue }
-            var config = result.config(for: provider)
-            switch parts[1] {
-            case "enabled": config.enabled = value as? Bool ?? false
-            case "clientId": config.clientId = value as? String
-            case "accessToken": config.accessToken = value as? String
-            case "apiKey": config.apiKey = value as? String
-            case "username": config.username = value as? String
-            case "loggingMethod": config.loggingMethod = (value as? String).flatMap(WatchLoggingMethod.init(rawValue:)) ?? .serverAndDirectAPI
-            default: break
-            }
-            result.setConfig(config)
-        }
-        return result
-    }
-    func pullProviderVaultFromServer() async {
-        // No server sign-in (Trakt-only, On this phone): the settings live on this iPhone only.
-        if phoneOnly { providerVaultNotice = nil; return }
-        guard !isPreview, !needsSignIn else { return }
-        do {
-            let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
-            guard remote.synced else { return }
-            // Existing local credentials are never replaced implicitly; dirty clears are never resurrected.
-            let paths = Set(Self.vaultPaths.filter { path in
-                guard vaultDirty[path] == nil else { return false }
-                if path == "customTmdbToken" { return providerSettings.customTmdbToken == nil }
-                let parts = path.split(separator: ".").map(String.init)
-                guard parts.count == 2, let provider = SyncProviderKind(rawValue: parts[0]) else { return false }
-                let current = providerSettings.config(for: provider)
-                if !current.hasCredentials, !vaultDirty.keys.contains(where: { $0.hasPrefix(parts[0] + ".") }) { return true }
-                if current.clientId != remote.settings?.entry(parts[0])?.clientId { return false }
-                return vaultValue(path, settings: providerSettings) is NSNull
-            })
-            _ = persistProviderSettings(applyingVault(remote.settings, paths: paths, to: providerSettings))
-            if !vaultDirty.isEmpty { await pushProviderVaultToServer() }
-        } catch { providerVaultNotice = "Online provider settings are unavailable" + (Self.shortReason(error).map { " (" + $0 + ")" } ?? "") + ". Device settings are unchanged." }
-    }
-    func resolveProviderVaultConflict(keepDevice: Bool) async {
-        guard !needsSignIn, !isPreview, !vaultSending, !vaultResolving else { return }
-        vaultResolving = true; defer { vaultResolving = false }
-        let selected = vaultDirty, session = sessionGeneration
-        var shouldFlush = false
-        do {
-            let remote: ProviderVaultResponse = try await read("/api/providers/vault/v2")
-            guard session == sessionGeneration else { return }
-            guard remote.protocolVersion == 2 else { throw APIError.message("Update the diary server before syncing provider settings.") }
-            guard remote.revision == nil || remote.synced else { throw APIError.message("Saved provider settings could not be decrypted.") }
-            let paths = Set(selected.keys.filter { vaultDirty[$0]?.generation == selected[$0]?.generation })
-            if keepDevice {
-                for path in paths { vaultDirty[path] = VaultDirtyField(baseline: vaultHash(vaultValue(path, remote: remote.settings)), generation: UUID()) }
-                saveVaultDirty(); shouldFlush = true
-            } else {
-                guard persistProviderSettings(applyingVault(remote.settings, paths: paths, to: providerSettings)) else { return }
-                for path in paths { vaultDirty.removeValue(forKey: path) }
-                saveVaultDirty(); providerVaultNotice = nil; shouldFlush = !vaultDirty.isEmpty
-            }
-        } catch { if session == sessionGeneration { providerVaultNotice = error.localizedDescription } }
-        vaultResolving = false
-        if shouldFlush { await pushProviderVaultToServer() }
-    }
-    /// Hosted imports publish only after the server confirms the merge. Offline imports never claim success.
-    @discardableResult
-    func importDiaryArchive(_ data: Data) async throws -> (titles: Int, events: Int) {
-        guard !busy, !replayingOutbox, pendingDiaryEdits == 0 else { throw APIError.message("Sync pending edits before importing a diary.") }
-        let session = sessionGeneration
-        busy = true; defer { if session == sessionGeneration { busy = false } }
-        let body: [String: Any]
-        if let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") {
-            guard !isPreview else { throw APIError.message("CSV import requires your online diary server.") }
-            body = ["csv": text, "timeZone": TimeZone.current.identifier]
-        } else {
-            let archive = try await Task.detached(priority: .userInitiated) { try DiaryExport.decoded(from: data) }.value
-            guard session == sessionGeneration, !Task.isCancelled else { throw CancellationError() }
-            if isPreview {
-                workspace = try archive.merged(into: workspace); indexWorkspace()
-                return (archive.titles.count, archive.events.count)
-            }
-            let encoded = try archive.encoded()
-            guard let decoded = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else { throw APIError.message("This diary archive is invalid.") }
-            body = decoded
-        }
-        struct ImportReceipt: Decodable { let importedTitles: Int; let importedEvents: Int }
-        let receipt: ImportReceipt = try await read("/api/workspace/import", method: "POST", body: body)
-        do { try await reload() }
-        catch { if session == sessionGeneration { needsMutationRefresh = true } }
-        guard session == sessionGeneration else { throw CancellationError() }
-        return (receipt.importedTitles, receipt.importedEvents)
     }
     /// Records a watch or title mutation for any enabled direct providers (`trakt`, `mdblist`, `wetrakr`)
     /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
@@ -1345,7 +825,7 @@ import TwilDiaryCore
                     BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: completed, total: pending.count, phase: completed == pending.count ? .completed : .flushingOutbox)
                     var updated = providerSettings.config(for: provider)
                     updated.lastSyncedAt = now.ISO8601Format()
-                    updateProviderConfig(updated, syncVault: false)
+                    updateProviderConfig(updated)
                 } catch let deadLetter as OutboxDeadLetter {
                     // Cinopsys's dead letter: the service won't take it, so it's set aside where you can
                     // see why, and the edits behind it carry on.
@@ -1436,7 +916,7 @@ import TwilDiaryCore
         renewed.refreshToken = tokens.refreshToken ?? refresh
         renewed.tokenExpiresAt = tokens.expiresAt
         // A renewed token stays on this iPhone; only a new sign-in changes what other devices see.
-        return updateProviderConfig(renewed, syncVault: false) ? renewed : config
+        return updateProviderConfig(renewed) ? renewed : config
     }
     /// Whether a watch whose answer was lost is on the service: true when its fresh copy shows the
     /// play, false when it doesn't, nil when the service couldn't be read just now.
@@ -1535,8 +1015,6 @@ import TwilDiaryCore
     }
     func libraryProgress(_ title: MediaTitle) -> Double { progressIndex[title.id] ?? 0 }
     func hasPresentLocation(_ titleID: String) -> Bool { presentTitleIDs.contains(titleID) }
-    func browserCredential() -> AccessCredential? { api.credential }
-    var quotaBlockedUntil: Date? { api.isQuotaBlocked ? api.quotaBlockedUntil : nil }
     func read<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {
         #if DEBUG
         if let fixture {
@@ -1567,28 +1045,8 @@ import TwilDiaryCore
             let tmdbBacked = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search", "/api/stats"].contains { path.hasPrefix($0) }
             throw APIError.message(tmdbBacked && TMDBDirect.token(self) == nil ? Self.needsTMDB : Self.needsServer)
         }
-        let generation = sessionGeneration
-        do {
-            if let mutation = queuedMutation(path, method: method, body: body),
-               outbox.pending(for: .cloudflare).contains(where: { $0.mutation.titleId == mutation.titleId }) {
-                return try localReceipt(mutation)
-            }
-            if method != "GET", pendingDiaryEdits > 0 {
-                throw APIError.message("Sync your pending edits before making this change.")
-            }
-            let value: T = try await api.request(path, method: method, body: body, timeout: timeout)
-            guard generation == sessionGeneration else { throw CancellationError() }
-            return value
-        }
-        catch {
-            guard generation == sessionGeneration else { throw CancellationError() }
-            if case APIError.transport = error, hasLoadedWorkspace,
-               let mutation = queuedMutation(path, method: method, body: body) {
-                return try localReceipt(mutation, uncertain: true)
-            }
-            if case APIError.signIn = error { fail(error) }
-            throw error
-        }
+        // No diary on a server: nothing else asks it.
+        throw APIError.message(Self.needsServer)
     }
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
         // No server: Trash is kept on the phone (the watches and the title leave the service).
@@ -1743,7 +1201,6 @@ import TwilDiaryCore
         guard !needsSignIn, !Task.isCancelled else { throw CancellationError() }
         if diarySource != "server" { return localCard(title, season: season) }
         let key = CardKey(titleID: title.id, revision: cardRevisions[title.id] ?? snapshotGeneration, session: sessionGeneration, season: season, day: DiaryDate.day(now))
-        if pendingDiaryEdits > 0 { return localCard(title, season: season) }
         // The key changes with the title's episodes and watches (revision) and with the day, so a card stays
         // right for longer than the old 2 minutes; returning to Glance no longer refetches every card.
         if !fresh, let cached = cachedCards[key], Date.now.timeIntervalSince(cached.at) < 900 { return cached.value }
@@ -2115,16 +1572,10 @@ import TwilDiaryCore
         }
         guard generation == sessionGeneration, !Task.isCancelled, !needsSignIn, !busy, canMutate else { return false }
         snapshotGeneration = UUID()
-        savedLocallyInAction = false
         busy = true; defer { if generation == sessionGeneration { busy = false } }
         do {
             try await action()
             guard generation == sessionGeneration else { return false }
-            if savedLocallyInAction {
-                undoLabel = "Saved on this device · waiting to sync"
-                error = nil
-                return true
-            }
             // The action's receipt confirms the write. A later read failure cannot undo that fact.
             do {
                 try await refreshAfterWrite(scoped)
@@ -2147,22 +1598,8 @@ import TwilDiaryCore
             return false
         }
     }
-    /// Title-scoped writes refresh just those titles; anything else, or any doubt about
-    /// the targeted read, falls back to the complete snapshot read.
-    func refreshAfterWrite(_ titleIDs: Set<String>?) async throws {
-        guard let titleIDs, !titleIDs.isEmpty, titleIDs.count <= Self.targetedRefreshLimit else { return try await reload() }
-        do { try await reloadTitles(titleIDs) }
-        catch let failure as APIError {
-            // Sign-in, quota and connectivity failures would fail the full read too.
-            // A rejected targeted read (for example an older backend without the
-            // endpoint) still gets the complete snapshot read.
-            guard case .rejected = failure else { throw failure }
-            try await reload()
-        }
-        catch is CancellationError { throw CancellationError() }
-        catch { try await reload() }
-    }
-    private static let targetedRefreshLimit = 50
+    /// After a write: the diary is read again.
+    func refreshAfterWrite(_ titleIDs: Set<String>?) async throws { try await reload() }
     /// The change was saved but the read after it failed: tried again a few times on its own
     /// (owner's report: the notice stayed up), so a brief failure clears without a tap.
     private func retryMutationRefreshSoon() {
@@ -2214,85 +1651,8 @@ import TwilDiaryCore
     }
 }
 
-// Kept beside the store so private session and persistence guards cannot be bypassed.
 extension DiaryStore {
-    private func queuedMutation(_ path: String, method: String, body: [String: Any]?) -> OptimisticMutation? {
-        let parts = path.split(separator: "/").map(String.init)
-        guard parts.first == "api", let body else { return nil }
-        if parts.count >= 3, parts[1] == "titles", let title = title(parts[2]), title.deletedAt == nil {
-            if parts.count == 3, method == "PATCH",
-               Set(body.keys).isSubset(of: ["expectedVersion", "status", "score", "favorite", "queued", "notes", "tags"]),
-               body["expectedVersion"] as? Int != nil {
-                return .patchTitle(titleId: title.id, expectedVersion: body["expectedVersion"] as? Int,
-                    status: body["status"] as? String, score: body["score"] as? Double,
-                    clearScore: body["score"] is NSNull, favorite: body["favorite"] as? Bool,
-                    queued: body["queued"] as? Bool, notes: body["notes"] as? String, tags: body["tags"] as? [String])
-            }
-            if parts.count == 4, parts[3] == "watches", method == "POST",
-               let operation = body["operationId"] as? String, !operation.isEmpty,
-               let watchedAt = body["watchedAt"] as? String, DiaryDate.parse(watchedAt) != nil {
-                return .markWatch(operationId: operation, titleId: title.id, episodeId: body["episodeId"] as? String,
-                    watchedAt: watchedAt, recordedAt: now.ISO8601Format(), rewatch: body["rewatch"] as? Bool ?? false)
-            }
-        }
-        if parts.count == 3, parts[1] == "watch-events", method == "PATCH",
-           let event = workspace.events.first(where: { $0.id == parts[2] }),
-           let version = body["expectedVersion"] as? Int {
-            if body["action"] as? String == "revoke" {
-                return .revokeWatch(eventId: event.id, titleId: event.titleId, expectedVersion: version, revokedAt: now.ISO8601Format())
-            }
-            if body["action"] as? String == "restore" {
-                return .restoreWatch(eventId: event.id, titleId: event.titleId, expectedVersion: version)
-            }
-        }
-        return nil
-    }
-
-    private struct WorkspaceChangesReceipt: Decodable {
-        let revision: String
-        let cursor: String
-        let fullRefreshRequired: Bool
-        let ids: [String]
-        let titles: [MediaTitle]
-        let episodes: [Episode]
-        let events: [WatchEvent]
-        let locations: [FileLocation]
-    }
-    private func applyWorkspaceChanges(since: String, known: String, at date: Date) async -> Bool {
-        let session = sessionGeneration
-        do {
-            let value: WorkspaceChangesReceipt = try await read(CatalogTools.apiPath("/api/workspace/changes", query: ["since": since, "known": known]))
-            guard !value.fullRefreshRequired, value.ids.count <= Self.targetedRefreshLimit,
-                  value.revision.count == 32, value.revision.allSatisfy({ "0123456789abcdef".contains($0) }),
-                  DiaryDate.parse(value.cursor) != nil, session == sessionGeneration, !Task.isCancelled else { return false }
-            if !value.ids.isEmpty {
-                let delta = WorkspaceTitleRefresh(ids: value.ids, titles: value.titles, episodes: value.episodes, events: value.events, locations: value.locations)
-                let snapshot = try delta.merged(into: confirmedWorkspace)
-                let revision = UUID(); snapshotGeneration = revision
-                try await publish(snapshot, session: session, revision: revision)
-            }
-            knownWorkspaceRevision = (token: value.revision, at: date)
-            knownDeltaCursor = value.cursor
-            error = nil
-            return true
-        } catch { return false } // Existing revision/full snapshot path supports older deployments.
-    }
-
-    func discardPendingEdits() async {
-        guard !busy, !replayingOutbox, let scope = api.credential?.cacheScope else { return }
-        let session = sessionGeneration
-        replayingOutbox = true; defer { replayingOutbox = false }
-        do {
-            let snapshot = try await readWorkspaceSnapshot()
-            guard session == sessionGeneration, !Task.isCancelled else { return }
-            let next = SyncOutboxQueue(entries: outbox.entries.filter { !$0.pendingProviders.contains(.cloudflare) })
-            try outboxStore.save(next, scope: scope)
-            outbox = next
-            let revision = UUID(); snapshotGeneration = revision
-            try await publish(snapshot, session: session, revision: revision)
-            outboxNotice = nil
-        } catch { if session == sessionGeneration { fail(error) } }
-    }
+    /// Back online: what waits for the other services (MDBList, WeTrakr, Trakt) goes.
     func observeConnectivity() {
         guard connectivityMonitor == nil, !isPreview else { return }
         let monitor = NWPathMonitor()
@@ -2300,115 +1660,11 @@ extension DiaryStore {
             guard path.status == .satisfied else { return }
             Task { @MainActor in
                 guard UIApplication.shared.applicationState == .active else { return }
-                await self?.flushOutbox()
+                await self?.flushDirectProviders()
             }
         }
         monitor.start(queue: DispatchQueue(label: "com.amit29533.TwilDiary.connectivity", qos: .utility))
         connectivityMonitor = monitor
-    }
-    private struct LocalWriteReceipt: Encodable { let title: MediaTitle?; let event: WatchEvent?; let added: Bool }
-    private func localReceipt<T: Decodable>(_ mutation: OptimisticMutation, uncertain: Bool = false) throws -> T {
-        let operation: String
-        if case .markWatch(let id, _, _, _, _, _) = mutation { operation = id }
-        else { operation = UUID().uuidString }
-        // Never extend an ambiguous write by coalescing another patch into it.
-        _ = try enqueueOptimistic(mutation, operationId: operation,
-            providers: providerSettings.activeDirectLoggingProviders.union([.cloudflare]), uncertain: uncertain)
-        let event: WatchEvent?
-        switch mutation {
-        case .markWatch(let id, let title, let episode, _, _, _):
-            event = workspace.events.first { $0.operationId == id } ?? workspace.events.first { $0.titleId == title && $0.episodeId == episode && $0.revokedAt == nil }
-        case .revokeWatch(let id, _, _, _), .restoreWatch(let id, _, _): event = workspace.events.first { $0.id == id }
-        default: event = nil
-        }
-        let data = try JSONEncoder().encode(LocalWriteReceipt(title: title(mutation.titleId), event: event, added: event?.operationId == operation))
-        let value = try JSONDecoder().decode(T.self, from: data)
-        savedLocallyInAction = true
-        return value
-    }
-
-    private func deliveryRequest(_ mutation: OptimisticMutation) throws -> (path: String, method: String, body: [String: Any]) {
-        switch mutation {
-        case .markWatch(let operation, let title, let episode, let watchedAt, _, let rewatch):
-            return ("/api/titles/\(title)/watches", "POST", ["operationId": operation, "episodeId": episode as Any? ?? NSNull(), "watchedAt": watchedAt, "rewatch": rewatch])
-        case .patchTitle(let title, let version, let status, let score, let clear, let favorite, let queued, let notes, let tags):
-            var body: [String: Any] = [:]
-            body["expectedVersion"] = version
-            body["status"] = status; body["score"] = score; body["favorite"] = favorite
-            body["queued"] = queued; body["notes"] = notes; body["tags"] = tags
-            if clear { body["score"] = NSNull() }
-            return ("/api/titles/\(title)", "PATCH", body)
-        case .revokeWatch(let event, _, let version, _):
-            return ("/api/watch-events/\(event)", "PATCH", ["action": "revoke", "expectedVersion": version])
-        case .restoreWatch(let event, _, let version):
-            return ("/api/watch-events/\(event)", "PATCH", ["action": "restore", "expectedVersion": version])
-        default: throw APIError.message("This pending edit requires a newer app to sync.")
-        }
-    }
-
-    /// Server delivery is serialized with UI writes. A conflict stops the chain without rebasing over another device.
-    func flushOutbox() async {
-        guard !replayingOutbox, !busy, !needsSignIn, !isPreview, !api.isQuotaBlocked,
-              let scope = api.credential?.cacheScope else { return }
-        let session = sessionGeneration
-        replayingOutbox = true
-        defer { replayingOutbox = false }
-        while let entry = outbox.pending(for: .cloudflare).first {
-            guard session == sessionGeneration, !Task.isCancelled else { return }
-            do {
-                let request = try deliveryRequest(entry.mutation)
-                struct Receipt: Decodable { let title: TitleReceipt.Identity; let event: WatchEvent? }
-                let receipt: Receipt?
-                do { receipt = try await api.request(request.path, method: request.method, body: request.body) }
-                catch APIError.rejected(let status, _) where status == 409 { receipt = nil }
-                guard session == sessionGeneration, !Task.isCancelled else { return }
-                let delta: WorkspaceTitleRefresh = try await api.request(CatalogTools.apiPath("/api/workspace/titles", query: ["ids": entry.mutation.titleId]))
-                let authoritative = try delta.merged(into: confirmedWorkspace)
-                guard let remote = authoritative.titles.first(where: { $0.id == entry.mutation.titleId }),
-                      let version = remote.version else { throw APIError.message("This title changed on another device. Review the pending edit.") }
-                if receipt == nil, !entry.mutation.isSatisfied(in: authoritative) {
-                    throw APIError.message("This title changed on another device. Your pending edits are kept on this device; review them before retrying.")
-                }
-                let event = receipt?.event ?? authoritative.events.first { $0.operationId == entry.operationId }
-                let next = outbox.confirming(entry, titleVersion: receipt?.title.version ?? version, event: event)
-                guard session == sessionGeneration, !Task.isCancelled else { return }
-                try outboxStore.save(next, scope: scope)
-                outbox = next
-                let revision = UUID(); snapshotGeneration = revision
-                try await publish(authoritative, session: session, revision: revision)
-                outboxNotice = pendingDiaryEdits > 0 ? "Saved on this device · \(pendingDiaryEdits) pending sync" : nil
-            } catch APIError.rejected(let status, _) where status == 423 {
-                // Phase 4c: the server keeps a read-only copy now. A watch or a title change goes to
-                // the service holding the diary instead; anything else it can't take is dropped.
-                guard session == sessionGeneration else { return }
-                var target: SyncProviderKind?
-                switch entry.mutation {
-                case .markWatch, .patchTitle:
-                    switch diaryService {
-                    case .trakt: target = .trakt
-                    case .mdblist: target = .mdblist
-                    case .wetrakr: target = .wetrakr
-                    case nil: target = nil
-                    }
-                default: target = nil
-                }
-                var next = outbox
-                next.handOver(entryID: entry.id, to: target)
-                do { try outboxStore.save(next, scope: scope); outbox = next }
-                catch { outboxNotice = "Pending edits are kept on this device. Their sync status could not be saved."; return }
-                outboxNotice = target == nil ? "An edit made offline couldn’t be kept: your server’s diary is read-only now." : nil
-            } catch {
-                guard session == sessionGeneration else { return }
-                var next = outbox
-                next.recordFailure(entryID: entry.id, error: error.localizedDescription)
-                do { try outboxStore.save(next, scope: scope); outbox = next }
-                catch { outboxNotice = "Pending edits are kept on this device. Their sync status could not be saved."; return }
-                outboxNotice = "\(pendingDiaryEdits) pending sync · \(error.localizedDescription)"
-                if case APIError.signIn = error { fail(error) }
-                return
-            }
-        }
-        await flushDirectProviders()
     }
 }
 
@@ -2456,40 +1712,6 @@ private struct WorkspaceIndex: Sendable {
     }
 }
 
-/// `GET /api/workspace/titles?ids=` — every row of the requested titles, read in one
-/// consistent server batch. A requested ID that is absent was permanently deleted.
-private struct WorkspaceTitleRefresh: Decodable, Sendable {
-    let ids: [String]
-    let titles: [MediaTitle]
-    let episodes: [Episode]
-    let events: [WatchEvent]
-    let locations: [FileLocation]
-    /// Replace exactly the requested titles' rows, keeping SQLite's BINARY id order
-    /// (byte order) that complete snapshots use, then re-run the identity checks.
-    func merged(into base: Workspace) throws -> Workspace {
-        let requested = Set(ids)
-        func merge<Row: Identifiable>(_ current: [Row], _ fresh: [Row], owner: (Row) -> String) -> [Row] where Row.ID == String {
-            let kept = current.filter { !requested.contains(owner($0)) }
-            let added = fresh.sorted { $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) }
-            var result: [Row] = []; result.reserveCapacity(kept.count + added.count)
-            var i = 0, j = 0
-            while i < kept.count && j < added.count {
-                if added[j].id.utf8.lexicographicallyPrecedes(kept[i].id.utf8) { result.append(added[j]); j += 1 }
-                else { result.append(kept[i]); i += 1 }
-            }
-            result.append(contentsOf: kept[i...]); result.append(contentsOf: added[j...])
-            return result
-        }
-        guard titles.allSatisfy({ requested.contains($0.id) }),
-              episodes.allSatisfy({ requested.contains($0.titleId) }),
-              events.allSatisfy({ requested.contains($0.titleId) }),
-              locations.allSatisfy({ requested.contains($0.titleId) }) else { throw WorkspaceIntegrityError.incompleteSnapshot }
-        return try Workspace(titles: merge(base.titles, titles, owner: \.id),
-                             episodes: merge(base.episodes, episodes, owner: \.titleId),
-                             events: merge(base.events, events, owner: \.titleId),
-                             locations: merge(base.locations, locations, owner: \.titleId)).validatingIdentities()
-    }
-}
 
 #if DEBUG
 /// UI tests: provider settings kept in memory (unsigned simulator test builds have no Keychain access).
