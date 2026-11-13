@@ -211,7 +211,27 @@ actor AniListClient {
     private var staffByName: [String: AniPerson?] = [:]
     private var mediaIDs: [String: Int] = [:]
     private var mediaKinds: [String: MediaKind] = [:]
-    private var tmdbTitles: [Int: CatalogRoute] = [:]
+    /// AniList anime → its TMDB title, however it was found (Wikidata, a search, a tap), kept on this
+    /// iPhone so opening that anime again doesn't look it up again.
+    private var tmdbTitles: [Int: CatalogRoute] = AniListClient.loadTitles() {
+        didSet { AniListClient.saveTitles(tmdbTitles) }
+    }
+    private static let titlesKey = "aniList.tmdbTitles"
+    private static func loadTitles() -> [Int: CatalogRoute] {
+        var result: [Int: CatalogRoute] = [:]
+        for (key, value) in (UserDefaults.standard.dictionary(forKey: titlesKey) as? [String: String]) ?? [:] {
+            let parts = value.split(separator: ":")
+            guard let id = Int(key), parts.count == 2, let tmdb = Int(parts[1]) else { continue }
+            result[id] = CatalogRoute(kind: parts[0] == "movie" ? .movie : .tv, id: tmdb)
+        }
+        return result
+    }
+    private static func saveTitles(_ titles: [Int: CatalogRoute]) {
+        let kept = titles.count > 600 ? Dictionary(uniqueKeysWithValues: titles.prefix(600).map { ($0.key, $0.value) }) : titles
+        var saved: [String: String] = [:]
+        for (id, route) in kept { saved[String(id)] = (route.kind == .movie ? "movie:" : "tv:") + String(route.id) }
+        UserDefaults.standard.set(saved, forKey: titlesKey)
+    }
     private var tmdbPeople: [Int: Int] = [:]
     /// The anime names already read, dropped when the title language setting changes so they're
     /// read again in the chosen language.

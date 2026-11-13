@@ -42,7 +42,9 @@ struct AnimeAppearanceButton<Label: View>: View {
                 case .saved(let id)?:
                     guard let title = store.title(id), title.deletedAt == nil else { throw APIError.message("This title is no longer available in your library.") }
                     router.openTitle(id, tab: tab)
-                case .catalog(let route)?: router.paths[tab, default: NavigationPath()].append(route)
+                case .catalog(let route)?:
+                    await AniListClient.shared.rememberTitle(appearance.id, route: route)
+                    router.paths[tab, default: NavigationPath()].append(route)
                 case nil:
                     guard !found.page.library.isEmpty || !found.page.online.isEmpty else {
                         throw APIError.message("No matching TMDB title was found. Please try again later.")

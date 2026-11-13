@@ -53,6 +53,15 @@ import TwilDiaryCore
                      "a rate window isn't a daily allowance")
     }
 
+    func testEverythingCalendarListsEachReleaseOnce() {
+        func release(_ id: String) -> UniversalRelease {
+            UniversalRelease(id: id, kind: .movie, name: id, poster: nil, day: "2026-11-14", time: nil, detail: "Movie",
+                             route: CatalogRoute(kind: .movie, id: 1), anime: nil, genres: [], popularity: 1)
+        }
+        // TMDB's second page repeating a movie from the first: listed once (a repeated id stops the app).
+        XCTAssertEqual(UniversalReleases.unique([release("movie:1"), release("movie:2"), release("movie:1")]).map(\.id), ["movie:1", "movie:2"])
+    }
+
     func testWeTrakrLookUpReadsItsOwnId() throws {
         func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
         XCTAssertEqual(TrackerPreviewStore.weTrakrMatch(try data([["id": 7, "type": "movie"], ["id": 9, "type": "show"]]), show: true), 9)

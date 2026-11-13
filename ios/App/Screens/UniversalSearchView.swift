@@ -138,9 +138,16 @@ struct SearchLandingView: View {
         if store.isPreview { return }
         #endif
         guard anime.isEmpty, let found = try? await AniListClient.shared.trendingAnime(), !Task.isCancelled else { return }
-        // One Wikidata request for the whole row, ahead of a tap, so opening one doesn't wait on it.
-        Task.detached(priority: .utility) { await WikidataAnime.shared.routes(found.map { WikidataAnime.Anime(id: $0.id, format: $0.format) }) }
         anime = found
+        // Each one's TMDB title worked out ahead of a tap (owner's report: still 3–4 s): one Wikidata
+        // request for the row, then the same look-up a tap makes, for any still unknown, remembered.
+        await WikidataAnime.shared.routes(found.map { WikidataAnime.Anime(id: $0.id, format: $0.format) })
+        for item in found {
+            guard !Task.isCancelled else { return }
+            if await AniListClient.shared.tmdbTitle(item.id) != nil { continue }
+            guard let result = try? await store.animeNavigation.title(item, service: store) else { continue }
+            if case .catalog(let route)? = result.destination { await AniListClient.shared.rememberTitle(item.id, route: route) }
+        }
     }
     private func load() async {
         guard !loading else { return }; loading = true; failure = nil

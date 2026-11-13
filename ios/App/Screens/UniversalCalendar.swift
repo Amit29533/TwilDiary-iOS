@@ -40,12 +40,19 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
         if filter == .all || filter == .shows { items += try await shows(token: token, from: start, to: end, genres: genres, skipAnime: filter == .all) }
         if filter == .all || filter == .movies { items += try await movies(token: token, from: start, to: end, genres: genres) }
         if filter == .all || filter == .anime { items += (try? await anime(from: start, to: end, genres: genres)) ?? [] }
+        items = unique(items)
         items.sort { ($0.day, -$0.popularity) < ($1.day, -$1.popularity) }
         if cache.count > 12 { cache.removeAll() }
         cache[key] = (Date(), items)
         return items
     }
 
+    /// Each release once: TMDB's two pages of a list can repeat a title, and the lazy list showing
+    /// them stops the app when two rows share an id (owner's report: Everything crashed).
+    nonisolated static func unique(_ items: [UniversalRelease]) -> [UniversalRelease] {
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.id).inserted }
+    }
     private static func ids(_ genres: Set<String>, movie: Bool) -> String? {
         let ids = TMDBDirect.genreNames.filter { genres.contains($0.name) }.compactMap { movie ? $0.movie : $0.tv }
         return ids.isEmpty ? nil : ids.map(String.init).joined(separator: "|")

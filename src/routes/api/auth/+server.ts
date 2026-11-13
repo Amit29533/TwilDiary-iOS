@@ -175,6 +175,7 @@ export const POST: RequestHandler = async (event) => {
         );
       }
       if (clientId.length > 512) throw new ApiError(400, 'invalid_input', 'Provide a valid Trakt client ID.');
+      let fetchFailure = 'no answer';
       const verifyRes = await fetch('https://api.trakt.tv/users/settings', {
         // Trakt refuses requests without a User-Agent (every other Trakt call here sends one).
         headers: {
@@ -186,9 +187,21 @@ export const POST: RequestHandler = async (event) => {
         },
         redirect: 'error',
         signal: AbortSignal.timeout(15000)
-      }).catch(() => null);
+      }).catch((error: unknown) => {
+        fetchFailure = error instanceof Error ? error.message.slice(0, 120) : 'no answer';
+        return null;
+      });
       if (!verifyRes || !verifyRes.ok) {
-        throw new ApiError(401, 'invalid_credentials', 'Could not verify Trakt account token.');
+        // Say what Trakt answered (its status; no token or body goes back to the app), and log a
+        // short excerpt, so a refusal can be traced (owner's report: still refused after the fix).
+        const status = verifyRes?.status ?? 0;
+        const excerpt = verifyRes ? (await verifyRes.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160) : fetchFailure;
+        console.warn('trakt_verify_failed', { status, excerpt });
+        throw new ApiError(
+          401,
+          'invalid_credentials',
+          `Could not verify Trakt account token (Trakt answered ${status ? 'HTTP ' + status : 'nothing'}).`
+        );
       }
       const profile = (await verifyRes.json().catch(() => null)) as {
         user?: { username?: string; ids?: { slug?: string; uuid?: string } };
