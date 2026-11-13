@@ -15,7 +15,7 @@ final class NoServerContractTests: XCTestCase {
     static let serverDiary = ["/api/workspace", "/api/titles", "/api/watch-events", "/api/glance", "/api/progress/status", "/api/trash",
                               "/api/library/ratings", "/api/trakt/sync", "/api/favourites"]
     static let phoneFirst = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search",
-                             "/api/stats/cast", "/api/trakt/community"]
+                             "/api/stats", "/api/trakt/community"]
 
     func testEveryServerCallIsReviewed() throws {
         let app = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("App")
