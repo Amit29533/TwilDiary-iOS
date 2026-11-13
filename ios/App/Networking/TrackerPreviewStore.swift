@@ -1010,29 +1010,8 @@ extension DiaryStore {
             await others.check(tracker, store: self)
         }
     }
-    /// What the mirrors are compared with and made to match: the diary you see when it comes
-    /// from a service, else your server's.
+    /// What the mirrors are compared with and made to match: the diary you see.
     var diaryToMatch: Workspace { workspace }
-    /// Trakt-first phase 2: your edits go to Trakt as you make them (watches with their exact time,
-    /// ratings, Planned), through the same delivery queue as MDBList and WeTrakr, with the token your
-    /// server hands out. The diary on your server stays the record until the switch-over.
-    var traktWriteThrough: Bool {
-        let config = providerSettings.config(for: .trakt)
-        return config.enabled && config.connection == .signIn && config.loggingMethod.includesDirectAPI && config.isAuthenticated
-    }
-    func setTraktWriteThrough(_ on: Bool) async throws {
-        var config = providerSettings.config(for: .trakt)
-        if on {
-            let token: TraktDirectToken = try await read("/api/trakt/token")
-            config.clientId = token.clientId; config.accessToken = token.accessToken
-            config.tokenExpiresAt = Date(timeIntervalSince1970: token.expiresAt / 1000).ISO8601Format()
-            config.username = token.username; config.connection = .signIn
-            config.enabled = true; config.loggingMethod = .serverAndDirectAPI
-        } else {
-            config.enabled = false
-        }
-        guard updateProviderConfig(config) else { throw APIError.message(error ?? "The Trakt setting couldn’t be saved.") }
-    }
 }
 
 /// One of Trakt's caps for an account, from /users/settings ("list" · "item_count" · 100).

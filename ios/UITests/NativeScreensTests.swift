@@ -10,7 +10,7 @@ import UIKit
         XCTAssertTrue(row.isHittable); row.tap()
         XCTAssertTrue(app.navigationBars["Statistics"].waitForExistence(timeout: 5))
     }
-    private func launch(ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, upcoming: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
+    private func launch(ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, upcoming: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]
         if ratingsUnavailable { app.launchArguments.append("--ui-ratings-unavailable") }
         if titleMetadata { app.launchArguments.append("--ui-title-metadata") }
@@ -23,7 +23,6 @@ import UIKit
         if animeNavigation { app.launchArguments.append("--ui-anime-navigation") }
         if profileRepairs { app.launchArguments.append("--ui-profile-repairs") }
         if favouritesGallery { app.launchArguments.append("--ui-favourites-gallery") }
-        if let traktScenario { app.launchArguments.append("--ui-trakt=" + traktScenario) }
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         let home = app.tabBars.buttons["Home"]
@@ -488,17 +487,6 @@ import UIKit
         }
         XCTAssertGreaterThan(seen.count, 12, "Scrolling must reveal the next twelve watches")
         capture("History expanded page")
-    }
-
-    func testMoreTraktSummaryUsesConnectionAndScanStateInsteadOfStaleCounts() {
-        for (scenario, badge) in [("disconnected", "Not connected"), ("reconnect", "Reconnect"), ("scanning", "Connected"), ("unavailable", "Unavailable")] {
-            let app = launch(traktScenario: scenario); app.tabBars.buttons["Profile"].tap(); openConnections(app)
-            let row = app.buttons["settings-trakt"]
-            XCTAssertTrue(row.waitForExistence(timeout: 5))
-            wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", badge), evaluatedWith: row)], timeout: 5)
-            XCTAssertFalse(app.staticTexts["8 changes to review"].exists)
-            capture("More Trakt " + scenario); app.terminate()
-        }
     }
 
 

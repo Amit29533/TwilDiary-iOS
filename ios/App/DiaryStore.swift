@@ -5,13 +5,6 @@ import CryptoKit
 import TwilDiaryCore
 
 @MainActor @Observable final class DiaryStore {
-    @ObservationIgnored private var retainedTraktController: TraktController?
-    var traktController: TraktController {
-        if let retainedTraktController { return retainedTraktController }
-        let controller = TraktController(service: makeTraktService(store: self))
-        retainedTraktController = controller
-        return controller
-    }
     func resumeTraktOnForeground() async {
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
         await flushDirectProviders()
@@ -325,7 +318,6 @@ import TwilDiaryCore
         }
         BackgroundSyncCoordinator.shared.endLiveActivity()
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
-        retainedTraktController?.invalidateSession(); retainedTraktController = nil
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         lastForegroundRead = nil
         invalidateDiscovery()
@@ -832,18 +824,6 @@ import TwilDiaryCore
     }
     private func renewProviderConfig(_ provider: SyncProviderKind) async -> ExternalProviderConfig {
         let config = providerSettings.config(for: provider)
-        // Trakt through TwilDiary's server (signed in before phone sign-in existed): the server
-        // keeps the refresh token and hands out a current one.
-        let traktExpiry = config.tokenExpiresAt.flatMap { try? Date($0, strategy: .iso8601) }
-        let traktDue = traktExpiry.map { $0.timeIntervalSince(now) < 86_400 } ?? true
-        if provider == .trakt, config.connection == .signIn, config.refreshToken == nil, traktDue,
-           let token: TraktDirectToken = try? await read("/api/trakt/token") {
-            guard providerSettings.config(for: provider) == config else { return providerSettings.config(for: provider) }
-            var renewed = config
-            renewed.clientId = token.clientId; renewed.accessToken = token.accessToken
-            renewed.tokenExpiresAt = Date(timeIntervalSince1970: token.expiresAt / 1000).ISO8601Format()
-            return updateProviderConfig(renewed) ? renewed : config
-        }
         guard config.needsRefresh(now: now), let clientId = config.clientId, let refresh = config.refreshToken else { return config }
         let tokens: ProviderDeviceSignIn.Tokens
         do { tokens = try await directClient.refreshSignIn(provider: provider, clientId: clientId, refreshToken: refresh) }
@@ -877,22 +857,18 @@ import TwilDiaryCore
         guard let library, let fetched = library.fetchedAt.flatMap({ DiaryDate.parse($0) }), fetched >= started else { return nil }
         return LostWriteCheck.delivered(mutation, in: workspace, library: library)
     }
-    /// Trakt signed in on this iPhone (its own refresh token in the Keychain), rather than through
-    /// TwilDiary's server.
+    /// Trakt signed in on this iPhone (its own refresh token in the Keychain).
     var traktSignedInOnPhone: Bool {
         let config = providerSettings.config(for: .trakt)
         return config.connection == .signIn && config.refreshToken != nil && config.isAuthenticated
     }
-    /// A current Trakt token: from this iPhone's own sign-in (renewed here when due), else from the
-    /// server's connection (`GET /api/trakt/token`) for a sign-in made before.
+    /// A current Trakt token, from this iPhone's own sign-in (renewed here when due).
     func traktToken() async throws -> TraktDirectToken {
-        if traktSignedInOnPhone {
-            let config = await freshProviderConfig(.trakt)
-            guard let clientId = config.clientId, let access = config.accessToken else { throw APIError.message("Trakt isn’t connected.") }
-            let expires = config.tokenExpiresAt.flatMap { try? Date($0, strategy: .iso8601) } ?? now.addingTimeInterval(3_600)
-            return TraktDirectToken(accessToken: access, expiresAt: expires.timeIntervalSince1970 * 1000, clientId: clientId, username: config.username ?? "")
-        }
-        return try await read("/api/trakt/token")
+        guard traktSignedInOnPhone else { throw APIError.message("Sign in to Trakt on this iPhone in Profile → Connections.") }
+        let config = await freshProviderConfig(.trakt)
+        guard let clientId = config.clientId, let access = config.accessToken else { throw APIError.message("Trakt isn’t connected.") }
+        let expires = config.tokenExpiresAt.flatMap { try? Date($0, strategy: .iso8601) } ?? now.addingTimeInterval(3_600)
+        return TraktDirectToken(accessToken: access, expiresAt: expires.timeIntervalSince1970 * 1000, clientId: clientId, username: config.username ?? "")
     }
     /// Saves a Trakt sign-in made on this iPhone: checks which account it is first (a sign-in whose
     /// account can't be read is withdrawn, not kept), then turns Trakt on. Another account than
@@ -1299,7 +1275,6 @@ import TwilDiaryCore
     static let needsDiary = "Sign in to Trakt, MDBList or WeTrakr, or choose On this phone."
     private func fail(_ cause: Error) {
         if case APIError.signIn = cause, !phoneOnly {
-            retainedTraktController?.invalidateSession(); retainedTraktController = nil
             needsSignIn = true
         }
         error = cause.localizedDescription

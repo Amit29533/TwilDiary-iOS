@@ -13,7 +13,6 @@ struct SettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmSignOut = false
-    @State private var summary: TraktController?
     @State private var showExport = false
     @State private var showImport = false
     @State private var backupNotice: String?
@@ -114,14 +113,9 @@ struct SettingsView: View {
                         }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
                     }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
                 }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)
-            }.refreshable { await store.refresh(); await summary?.refresh() }
+            }.refreshable { await store.refresh() }
         }
         .alert(TraktDirectStore.shared.pending.count > 0 ? "Sign out? Edits still waiting for Trakt on this device will be removed." : "Sign out on this device?", isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
-            .task(id: store.sessionRevision) {
-                summary = TraktController(service: makeTraktService(store: store))
-                await summary?.refresh()
-            }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
             .fileImporter(isPresented: $showImport, allowedContentTypes: [.json]) { result in
                 switch result {
@@ -198,7 +192,7 @@ struct SettingsView: View {
     /// "@amit29533": your AniList name, else your Trakt account.
     private var accountHandle: String {
         if !anilistUser.isEmpty { return "@" + anilistUser }
-        if let name = store.traktController.status?.username, !name.isEmpty { return "@" + name }
+        if store.traktSignedInOnPhone, let name = store.providerSettings.config(for: .trakt).username, !name.isEmpty { return "@" + name }
         return "Profile"
     }
     private var languageRegionSummary: String {
@@ -212,7 +206,7 @@ struct SettingsView: View {
     /// Trakt's state in a word for its row; the full sync controls live on the Trakt page.
     /// "Trakt · 2 connected": the main tracker and how many services are signed in.
     private var connectionsSummary: String {
-        let count = [store.traktController.status?.connected == true, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
+        let count = [store.traktSignedInOnPhone, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
         return count > 0 ? "\(count) on" : "Off"
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
@@ -557,7 +551,6 @@ struct ExternalProviderConnectionView: View {
                     let onPhone = store.traktSignedInOnPhone
                     let appId = appClientId ?? ProfileText.line(signInAppID)
                     Text(onPhone ? "Signed in on this iPhone\(currentConfig.username.map { " as @" + $0 } ?? "")."
-                         : store.traktController.status?.connected == true ? "Signed in through your server. Sign in here to keep Trakt on this iPhone only."
                          : "Sign in on Trakt and come straight back.")
                         .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("trakt-sign-in-state")

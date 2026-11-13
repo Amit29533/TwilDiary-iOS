@@ -13,7 +13,6 @@ struct ConnectionsView: View {
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @State private var showDiaryAccess = false
     /// Trakt's real state (Not connected, Reconnect…), from your server.
-    @State private var trakt: TraktController?
     @State private var traktDirect = TraktDirectStore.shared
     @State private var others = TrackerPreviewStore.shared
     @State private var profiles = AccountProfiles.shared
@@ -72,10 +71,6 @@ struct ConnectionsView: View {
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().diaryPageNavigation("Connections")
-            .task(id: store.sessionRevision) {
-                trakt = TraktController(service: makeTraktService(store: store))
-                await trakt?.refresh()
-            }
             .alert(matching.map { "Make \($0.name) match the diary?" } ?? "", isPresented: Binding(get: { matching != nil }, set: { if !$0 { matching = nil } })) {
                 if let tracker = matching {
                     Button("Send to \(tracker.name)") { Task { await match(tracker) } }
@@ -103,7 +98,7 @@ struct ConnectionsView: View {
     /// Signed in (whether or not sync is on).
     private func connected(_ tracker: MainTracker) -> Bool {
         switch tracker {
-        case .trakt: store.traktSignedInOnPhone || trakt?.status?.connected == true
+        case .trakt: store.traktSignedInOnPhone
         case .mdblist: store.providerSettings.mdblist.isAuthenticated
         case .wetrakr: store.providerSettings.wetrakr.isAuthenticated
         }
@@ -116,16 +111,14 @@ struct ConnectionsView: View {
     private func badge(_ tracker: MainTracker) -> String {
         switch tracker {
         case .trakt:
-            store.traktSignedInOnPhone ? "Connected"
-            : trakt?.error != nil ? "Unavailable"
-            : trakt?.status.map { $0.needsReconnect ? "Reconnect" : $0.connected ? "Connected" : "Not connected" } ?? "Checking…"
+            store.traktSignedInOnPhone ? "Connected" : "Not connected"
         case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
         case .wetrakr: connected(.wetrakr) ? "Connected" : "Not connected"
         }
     }
     private func account(_ tracker: MainTracker) -> String? {
         switch tracker {
-        case .trakt: store.traktSignedInOnPhone ? store.providerSettings.trakt.username : trakt?.status?.username
+        case .trakt: store.traktSignedInOnPhone ? store.providerSettings.trakt.username : nil
         case .mdblist: store.providerSettings.mdblist.username
         case .wetrakr: store.providerSettings.wetrakr.username
         }

@@ -278,8 +278,6 @@ struct FavouritesView: View {
             }
         }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .tint(Color(webHex: "#e6e2ec"))
-            .task { await favourites.sync(store: store) }
-            .refreshable { await favourites.sync(store: store) }
     }
     private var grid: Binding<Bool> {
         switch tab {

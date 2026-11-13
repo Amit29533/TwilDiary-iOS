@@ -1,44 +1,22 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Trakt: your sign-in, the Trakt diary's options and its limits. (The old server scan, review,
-/// incoming watches and watch-logging page are gone: Trakt holds the diary, edits go to it directly.)
+/// Trakt: your sign-in on this iPhone, the Trakt diary's options and its limits.
 @MainActor struct TraktView: View {
     let store: DiaryStore
-    @State private var controller: TraktController
-    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ServiceRemovals.key) private var applyRemovals = true
-    init(store: DiaryStore) {
-        self.store = store
-        _controller = State(initialValue: store.traktController)
-    }
     var body: some View {
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 16) {
-                page
-                if !onPhone, let error = controller.error {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(error).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Button("Retry") { Task { await controller.refresh() } }
-                            .buttonStyle(.diaryRowPrimary).disabled(controller.busy).accessibilityIdentifier("trakt-retry")
-                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).accessibilityIdentifier("trakt-error")
-                }
-            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+            VStack(alignment: .leading, spacing: 16) { page }
+                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("Trakt").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .task { if !onPhone && controller.status == nil { await controller.refresh() } }
-            .refreshable { if !onPhone { await controller.refresh() } }
-            .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy && !onPhone { Task { await controller.refresh() } } }
     }
     @ViewBuilder private var page: some View {
-        // Signed in on this iPhone: the state is read here, never from the server.
         let saved = store.providerSettings.trakt
-        let connected = onPhone ? store.traktSignedInOnPhone : controller.status?.connected == true
-        let reconnect = !onPhone && controller.status?.needsReconnect == true
-        let username = onPhone ? saved.username : controller.status?.username
-        let synced = DiaryDate.parse(onPhone ? saved.lastSyncedAt : controller.status?.lastSyncAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
-        SettingsServiceHeader(logo: .trakt, title: reconnect ? "Reconnect Trakt" : "Trakt",
-                              subtitle: synced ?? (!onPhone && controller.loading ? "Checking connection…" : connected ? "Connected" : "Your watches, together"),
-                              badge: reconnect ? ("Reconnect", .missing) : connected ? (username.map { "@" + $0 } ?? "Connected", .good) : nil) {
+        let connected = store.traktSignedInOnPhone
+        let synced = DiaryDate.parse(saved.lastSyncedAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
+        SettingsServiceHeader(logo: .trakt, title: "Trakt", subtitle: synced ?? (connected ? "Connected" : "Your watches, together"),
+                              badge: connected ? (saved.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
             Text(connected ? (store.traktHoldsDiary ? "Trakt holds your diary. Your edits go straight to Trakt." : "Signed in on this iPhone.")
                  : "Sign in to Trakt in Profile → Connections.")
                 .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
@@ -72,16 +50,7 @@ import TwilDiaryCore
                     SettingsRow(title: "Account limits", subtitle: "What your plan allows and what you use") { SettingsChevron() }
                 }.buttonStyle(.plain).accessibilityIdentifier("trakt-account-limits")
             }
-            if onPhone {
-                SettingsFootnote(text: "Sign out of Trakt in Profile → Connections.")
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    SettingsLabel(text: "Account") { EmptyView() }
-                    Button("Disconnect Trakt", role: .destructive) { Task { await controller.disconnect() } }
-                        .buttonStyle(SettingsDestructiveButtonStyle()).disabled(controller.busy).accessibilityIdentifier("trakt-disconnect")
-                    SettingsFootnote(text: "Your diary stays on Trakt. You can connect again any time.")
-                }
-            }
+            SettingsFootnote(text: "Sign out of Trakt in Profile → Connections.")
         }
     }
     private var traktDirect: TraktDirectStore { .shared }
@@ -91,6 +60,4 @@ import TwilDiaryCore
             Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
-    /// Trakt signed in on this iPhone, or no server at all: read here, never asked of the server.
-    private var onPhone: Bool { store.phoneOnly || store.traktSignedInOnPhone }
 }

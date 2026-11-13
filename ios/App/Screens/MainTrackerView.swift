@@ -130,8 +130,6 @@ struct TrackerPreviewPanel: View {
     @State private var confirmForce = false
     @State private var copiedReport = false
     @State private var clearedLetters = 0
-    @State private var writeThroughError: String?
-    @State private var savingWriteThrough = false
 
     var body: some View {
         if tracker == .trakt && store.traktHoldsDiary { traktSyncCard } else { previewCard }
@@ -187,7 +185,7 @@ struct TrackerPreviewPanel: View {
                     Label(trakt.pending.count.counted("change", "changes") + " waiting for a connection; sent on their own when you’re back online.", systemImage: "icloud.and.arrow.up")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-pending")
                 }
-                if tracker == .trakt { if !store.phoneOnly { matchSection } } else if holdsDiary {
+                if tracker == .trakt { EmptyView() } else if holdsDiary {
                     Text("\(tracker.name) holds your diary; nothing is sent from here.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
                 } else { trackerMatchSection }
@@ -234,41 +232,6 @@ struct TrackerPreviewPanel: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
     }
 
-    /// Phase 2: bring Trakt in line with the diary, after showing exactly what will be sent.
-    @ViewBuilder private var matchSection: some View {
-        let plan = report != nil ? trakt.plan : nil
-        Toggle(isOn: Binding(get: { store.traktWriteThrough }, set: { on in
-            savingWriteThrough = true; writeThroughError = nil
-            Task {
-                do { try await store.setTraktWriteThrough(on) } catch { writeThroughError = error.localizedDescription }
-                savingWriteThrough = false
-            }
-        })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Send my edits to Trakt as I make them").font(.subheadline.weight(.semibold))
-                Text("Watches, ratings and lists").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-        }.disabled(savingWriteThrough).accessibilityIdentifier("trakt-write-through")
-        if let writeThroughError { Text(writeThroughError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-        if let progress = trakt.writeProgress {
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
-        } else if let result = trakt.writeResult {
-            Label(result, systemImage: "checkmark").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("trakt-match-result")
-        }
-        if let plan, !plan.isEmpty, !trakt.writing {
-            Button { confirmMatch = true } label: {
-                Label("Make Trakt match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
-            }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier("trakt-make-match")
-                .confirmationDialog("Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
-                    Button("Send to Trakt") { Task { await trakt.makeTraktMatch(store: store) } }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(plan.summary.map { "• " + $0 }.joined(separator: "\n")
-                         + "\n\nNothing is removed from your Trakt history. Watches only on Trakt stay and come into the diary on their own.")
-                }
-        }
-    }
 
     /// Phase 5: the same for MDBList and WeTrakr, within what each keeps.
     @ViewBuilder private var trackerMatchSection: some View {

@@ -61,17 +61,10 @@ extension DiscoveryServing {
     func traktConnected() async throws -> Bool {
         guard !store.needsSignIn else { store.discoveryCache.reset(); throw APIError.signIn }
         if store.isPreview { return false }
-        // Signed in on this iPhone: nothing to ask the server.
-        if store.traktSignedInOnPhone {
-            store.discoveryCache.activateAccount(store.providerSettings.config(for: .trakt).username ?? "trakt")
-            return true
-        }
-        let revision = store.discoveryRevision
-        let status = try await store.discoveryCache.status(scope: revision) { [store] in try await store.read("/api/trakt/status") }
-        guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
-        let connected = status.connected && !status.needsReconnect
-        store.discoveryCache.activateAccount(connected ? status.username : nil)
-        return connected
+        // Trakt picks need Trakt signed in on this iPhone.
+        guard store.traktSignedInOnPhone else { store.discoveryCache.activateAccount(nil); return false }
+        store.discoveryCache.activateAccount(store.providerSettings.config(for: .trakt).username ?? "trakt")
+        return true
     }
     func cachedRecommendations(limit: Int) -> [CatalogItem]? {
         guard !store.needsSignIn, store.discoveryCache.account != nil else { return nil }

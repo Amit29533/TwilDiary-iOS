@@ -19,12 +19,11 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
     var id: String { kind.rawValue + ":" + String(ref) }
 }
 
-/// Favourites live on the diary server (so they survive a reinstall or a new phone); this keeps a
-/// copy for instant display. A heart changes the copy at once and saves in the background; a save
-/// the server refuses is undone, with the reason shown like any other failed change.
+/// Favourite people live on this phone, in its Drive and Files backups, and (with Google Drive or
+/// your server's extras switched on) in the extras copy that another iPhone reads.
 @MainActor @Observable final class FavouritesStore {
     static let shared = FavouritesStore()
-    static let storageKey = "favourites.v1", uploadedKey = "favourites.uploaded"
+    static let storageKey = "favourites.v1"
     /// Newest first.
     private(set) var items: [Favourite]
     private let defaults: UserDefaults
@@ -45,61 +44,13 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
     func items(_ kind: Favourite.Kind) -> [Favourite] { items.filter { $0.kind == kind } }
     func replace(_ restored: [Favourite]) { items = restored; save() }
     func toggle(_ kind: Favourite.Kind, ref: Int, name: String, image: String?, subtitle: String?, store: DiaryStore) {
-        defer { if store.phoneOnly { PhoneExtras.shared.touch(.favourites) } }
         if let existing = items.first(where: { $0.kind == kind && $0.ref == ref }) {
-            items.removeAll { $0.id == existing.id }; save()
-            Task {
-                guard await send(existing, removing: true, store: store) else { items.insert(existing, at: 0); items.sort { $0.savedAt > $1.savedAt }; save(); return }
-            }
+            items.removeAll { $0.id == existing.id }
         } else {
-            let added = Favourite(kind: kind, ref: ref, name: name, image: image, subtitle: subtitle, savedAt: .now)
-            items.insert(added, at: 0); save()
-            Task { guard await send(added, removing: false, store: store) else { items.removeAll { $0.id == added.id }; save(); return } }
+            items.insert(Favourite(kind: kind, ref: ref, name: name, image: image, subtitle: subtitle, savedAt: .now), at: 0)
         }
-    }
-    /// The server's list replaces the copy. The first time, hearts saved only on this phone (before
-    /// favourites synced) are uploaded with their original dates, so nothing is lost.
-    func sync(store: DiaryStore) async {
-        #if DEBUG
-        if store.isPreview { return }
-        #endif
-        // No server: the hearts live on this phone (and in its Drive and Files backups).
-        if store.phoneOnly { return }
-        struct Page: Decodable { let items: [Remote] }
-        struct Remote: Decodable { let kind: String; let ref: Int; let name: String; let image: String?; let subtitle: String?; let savedAt: String }
-        do {
-            if !defaults.bool(forKey: Self.uploadedKey) {
-                for item in items { guard await send(item, removing: false, store: store, quiet: true) else { return } }
-                defaults.set(true, forKey: Self.uploadedKey)
-            }
-            let page: Page = try await store.read("/api/favourites")
-            items = page.items.compactMap { remote in
-                guard let kind = Favourite.Kind(rawValue: remote.kind) else { return nil }
-                return Favourite(kind: kind, ref: remote.ref, name: remote.name, image: remote.image, subtitle: remote.subtitle,
-                                 savedAt: DiaryDate.parse(remote.savedAt) ?? .distantPast)
-            }
-            save()
-        } catch { /* Offline or an older server: the copy stands until the next sync. */ }
-    }
-    private func send(_ item: Favourite, removing: Bool, store: DiaryStore, quiet: Bool = false) async -> Bool {
-        #if DEBUG
-        if store.isPreview { return true }
-        #endif
-        if store.phoneOnly { return true }
-        struct Receipt: Decodable {}
-        do {
-            if removing { let _: Receipt = try await store.read("/api/favourites/" + item.id, method: "DELETE") }
-            else {
-                var body: [String: Any] = ["name": item.name, "savedAt": item.savedAt.formatted(.iso8601)]
-                if let image = item.image { body["image"] = image }
-                if let subtitle = item.subtitle { body["subtitle"] = subtitle }
-                let _: Receipt = try await store.read("/api/favourites/" + item.id, method: "PUT", body: body)
-            }
-            return true
-        } catch {
-            if !quiet { store.error = "Your favourite wasn’t saved. " + error.localizedDescription }
-            return false
-        }
+        save()
+        if store.phoneOnly { PhoneExtras.shared.touch(.favourites) }
     }
     private func save() { defaults.set(try? JSONEncoder().encode(items), forKey: Self.storageKey) }
     #if DEBUG
@@ -117,5 +68,5 @@ struct Favourite: Codable, Hashable, Sendable, Identifiable {
     }
     #endif
     /// UI tests start empty.
-    func reset() { items = []; defaults.removeObject(forKey: Self.storageKey); defaults.removeObject(forKey: Self.uploadedKey) }
+    func reset() { items = []; defaults.removeObject(forKey: Self.storageKey) }
 }

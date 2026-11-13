@@ -295,7 +295,7 @@ struct PersonalProfileView: View {
 
     private var handle: String {
         if !username.isEmpty { return "@" + username.trimmingCharacters(in: CharacterSet(charactersIn: "@")) }
-        if let name = store.traktController.status?.username, !name.isEmpty { return "@" + name }
+        if store.traktSignedInOnPhone, let name = store.providerSettings.config(for: .trakt).username, !name.isEmpty { return "@" + name }
         return ""
     }
     private var header: some View {

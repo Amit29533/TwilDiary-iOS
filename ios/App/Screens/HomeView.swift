@@ -32,7 +32,6 @@ struct HomeView: View {
         }
         .task(id: request) { await store.prepareHomeProjection(request) }
         // Favourites are kept on the server; one small read per session brings them up to date.
-        .task(id: store.sessionRevision) { await FavouritesStore.shared.sync(store: store) }
         .onChange(of: scenePhase) { _, phase in if phase == .active { clock = store.now } }
         .task {
             clock = store.now
@@ -165,7 +164,7 @@ struct HomeView: View {
             let active = phase != .idle
             if scrolling != active { scrolling = active }
         }
-        .refreshable { clock = store.now; await store.refresh(); await FavouritesStore.shared.sync(store: store) }
+        .refreshable { clock = store.now; await store.refresh() }
     }
     /// True full screen: the whole header scrolls away with the artwork.
     private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork) }

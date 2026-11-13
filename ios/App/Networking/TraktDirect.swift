@@ -3,12 +3,10 @@ import Observation
 import BackgroundTasks
 import TwilDiaryCore
 
-// Trakt-first plan, phase 1 (ios/docs/TRAKT-CLIENT-PLAN.md): the app reads Trakt directly
-// (api.trakt.tv) with the access token the Worker hands out, keeps the last read on this
-// iPhone, and compares it with the current diary. Read-only: nothing is written anywhere.
+// The app reads and writes Trakt directly (api.trakt.tv) with this iPhone's own Trakt sign-in,
+// and keeps the last read on the phone.
 
-/// A current Trakt access token: from this iPhone's own sign-in, or (signed in before that
-/// existed) `GET /api/trakt/token`, where the server keeps the refresh token.
+/// A current Trakt access token, from this iPhone's own sign-in.
 struct TraktDirectToken: Decodable, Sendable {
     let accessToken: String
     /// Milliseconds since 1970, as the Worker stores it.
@@ -312,9 +310,8 @@ enum ServiceRemovals {
             ServiceIDs.shared.learn(from: library)
             // The diary on screen first; the comparison follows.
             if store.diaryFromTrakt { store.applyDiarySource() }
-            // Compare with the server's diary (the record until the switch-over), not the Trakt view;
-            // after it, only what that old copy has and Trakt lacks altogether.
-            // The comparison and the plan read the whole library: worked out in the background.
+            // Compared with the diary (when Trakt mirrors another service's diary): worked out in
+            // the background, since it reads the whole library.
             let analysis = await analysis(library, store: store)
             guard session == generation else { return }
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
@@ -533,7 +530,7 @@ enum ServiceRemovals {
         }
     }
 
-    /// One write to Trakt with the server's token (one a second at most, waiting out 429s).
+    /// One write to Trakt (one a second at most, waiting out 429s).
     /// An edit that may still reach Trakt is kept and sent before the next read instead of failing
     /// (no connection, Trakt busy or down, sign-in to renew, or an answer lost on the way, which is
     /// checked against Trakt before anything is sent twice). Only a real refusal throws, and so
@@ -905,7 +902,7 @@ enum ServiceRemovals {
         root["movies"] = movies; root["shows"] = shows
         return try JSONSerialization.data(withJSONObject: root)
     }
-    /// A Trakt client with your server's token, for reads outside the library (community info).
+    /// A Trakt client with your sign-in, for reads outside the library (community info).
     func client(store: DiaryStore) async throws -> TraktDirectClient {
         if store.isPreview { throw APIError.message("Trakt reads need a real Trakt connection.") }
         if token?.usable != true { token = try await store.traktToken() }
