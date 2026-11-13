@@ -131,7 +131,6 @@ jobs:
                  NativeScreensTests/testCatalogSearchReviewAndCastProfile
                  NativeScreensTests/testProfileRepairsKeepNativeLinksWatchedRatingsAndHiddenTabs
                  NativeScreensTests/testCharacterAppearancesAndVoiceActorAnimeOpenTheirTitleAndKeepCharacterLinks
-                 NativeScreensTests/testToastExpiresAndCardCoverAndUsefulMenuWork
                  NativeScreensTests/testNativeBackReturnsFromEverySettingsDestination
                  NativeScreensTests/testCanvasShowsAMosaicForTitlesAndCollagesForTraktLists
                  ArenaIntegrationUITests/testConnectionsListTheTrackersWithTheMainOneTicked

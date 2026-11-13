@@ -519,7 +519,6 @@ struct TitleDetailView: View {
                         .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
                 }.buttonStyle(.springPress).accessibilityIdentifier("title-all-episodes")
             }
-            if let pending = store.pendingSeasonAdjustments[title.id + ":" + String(season)] { Button("Retry progress to episode \(pending.count)") { Task { await store.setSeasonProgress(title, season: season, count: pending.count, watchedAt: watchInstant); await loadCard(title) } }.disabled(store.writesBlocked) }
         }
     }
     /// Three around what's next (one before, two from it); Unwatched shows the next three.

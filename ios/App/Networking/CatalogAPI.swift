@@ -99,14 +99,9 @@ extension DiaryStore {
     func prepareSavedSeason(_ title: MediaTitle, number: Int, force: Bool = false) async throws {
         guard (0...999).contains(number) else { throw APIError.message("Choose a valid season.") }
         guard force || SeasonMetadata.needsPreparation(title: title, workspace: workspace, season: number, now: now) else { return }
-        // No server: the phone's catalog reads the show's seasons from TMDB and the diary is rebuilt.
-        if phoneOnly {
-            if let tmdb = title.tmdbId, title.isSeries { await PhoneCatalog.shared.fillEpisodes(["tv:\(tmdb)"], store: self) }
-            return
-        }
-        let _: EmptyResponse = try await read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST", body: [:])
-        // Season metadata only changes this title's rows; refresh just this title.
-        try Task.checkCancellation(); try await refreshAfterWrite([title.id])
+        // The phone's catalog reads the show's seasons from TMDB and the diary is rebuilt.
+        guard phoneOnly, let tmdb = title.tmdbId, title.isSeries else { return }
+        await PhoneCatalog.shared.fillEpisodes(["tv:\(tmdb)"], store: self)
     }
     func catalogEpisodes(_ route: CatalogRoute, season: Int, reveal: Bool) async throws -> CatalogEpisodesPage {
         guard route.kind == .tv, (0...999).contains(season) else { throw APIError.message("Choose a valid series season.") }
@@ -116,60 +111,13 @@ extension DiaryStore {
         if let token = TMDBDirect.token(self), let direct = try? await TMDBDirect.season(route.id, number: season, reveal: reveal, token: token) { return direct }
         return try await read(CatalogTools.apiPath("/api/metadata/season", query: ["type": route.kind.rawValue, "id": String(route.id), "season": String(season), "reveal": reveal ? "1" : "0"]))
     }
-    /// `sendToService`: also put it on the watchlist of the service that holds the diary (a title
-    /// you add); false when the title came from that service (joining the server diary).
-    func importTitle(_ details: CatalogDetails, category: String, sendToService: Bool = true) async -> String? {
-        // A title joining from the service is background work: it never holds "busy", which would
-        // turn away your own edits made meanwhile, and its failures stay quiet (it's retried).
-        let quiet = !sendToService
-        // No server (a service alone, or On this phone): the title goes on the service's watchlist
-        // (or the diary on the phone), with its details kept on the phone.
-        if phoneOnly {
-            guard sendToService else { return nil }
-            let title = PhoneCatalog.shared.add(details, category: category)
-            applyDiarySource()
-            do { try await servicePatch(title, values: ["status": "planned"]); error = nil; return title.id }
-            catch { self.error = error.localizedDescription; return nil }
-        }
-        guard quiet || !busy, canMutate else { return nil }
-        let revision = sessionRevision
-        if !quiet { busy = true }
-        defer { if !quiet, revision == sessionRevision { busy = false } }
-        var confirmed = false
-        do {
-            let result: ImportedTitle = try await read("/api/metadata/import", method: "POST", body: ["mediaType": details.mediaType.rawValue, "tmdbId": details.id, "category": category, "status": "planned", "score": NSNull()])
-            confirmed = true
-            try await refreshAfterWrite([result.title.id])
-            error = nil
-            // Trakt (or the service) holds the diary: what you add goes on its watchlist at once,
-            // instead of only into the server's copy, where nothing would send it on.
-            if sendToService, diaryFromService || traktHoldsDiary {
-                let name = diaryService?.name ?? "Trakt"
-                if let saved = title(result.title.id) {
-                    do { try await servicePatch(saved, values: ["status": "planned"]) }
-                    catch is CancellationError {}
-                    catch { self.error = "Added to your library, but it couldn’t go on your \(name) watchlist: " + error.localizedDescription }
-                } else {
-                    self.error = "Added to your library. Open it and set it to Planned to put it on your \(name) watchlist."
-                }
-            }
-            // On your Jellyfin already: a quiet Jellyfin sync saves its folders to the new title now,
-            // so they show without running Sync by hand (the title page shows Jellyfin meanwhile).
-            if sendToService, !isPreview, JellyfinSettings.configured,
-               JellyfinShelf.shared.entries.contains(where: { $0.tmdb == details.id && $0.movie == (details.mediaType == .movie) }) {
-                Task { await JellyfinSync(store: self).run() }
-            }
-            return result.title.id
-        } catch is CancellationError { return nil }
-        catch {
-            guard revision == sessionRevision, !quiet else { return nil }
-            if confirmed { self.error = "Added to your library, but the refresh failed. Refresh or try adding again to reopen it; a second copy will not be created." }
-            else { self.error = error.localizedDescription }
-            return nil
-        }
-    }
-    private struct ImportedTitle: Decodable {
-        struct Identity: Decodable { let id: String }
-        let title: Identity
+    /// A title you add goes on the watchlist of the service the diary lives on (or into the diary on
+    /// this phone), with its details kept on the phone.
+    func importTitle(_ details: CatalogDetails, category: String) async -> String? {
+        guard phoneOnly else { return nil }
+        let title = PhoneCatalog.shared.add(details, category: category)
+        applyDiarySource()
+        do { try await servicePatch(title, values: ["status": "planned"]); error = nil; return title.id }
+        catch { self.error = error.localizedDescription; return nil }
     }
 }

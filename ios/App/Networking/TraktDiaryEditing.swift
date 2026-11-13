@@ -27,7 +27,7 @@ extension DiaryStore {
         TraktTitleRef(kind: title.isSeries ? .show : .movie, traktId: nil, tmdbId: title.tmdbId, name: title.name, year: title.year)
     }
     private func stamp(_ date: Date) -> String { Date.ISO8601FormatStyle(includingFractionalSeconds: true).format(date) }
-    /// A title only on the service has no server record for notes, tags or files yet.
+    /// A title the diary knows only from the service (its details are read on the phone).
     func isServiceOnly(_ title: MediaTitle) -> Bool { title.id.hasPrefix("tv:") || title.id.hasPrefix("movie:") }
 
     // MARK: Talking to the service
@@ -287,45 +287,10 @@ extension DiaryStore {
         try await servicePatch(title, values: ["status": status])
     }
 
-    // MARK: Titles only on the service
-
-    /// Titles only on the service join your server diary (details, poster and episodes; then notes,
-    /// tags and Trash work too), a few at a time and once per title per session. Each import
-    /// refreshes the diary, and the service diary then finds the title on the server by its TMDB id.
-    func adoptServiceOnlyTitles() async {
-        guard diaryFromService, !adoptingTraktTitles, !isPreview else { return }
-        let now = Date.now, session = sessionRevision
-        let candidates = workspace.titles.filter { title in
-            isServiceOnly(title) && !adoptedTraktKeys.contains(title.id) && (adoptionRetry[title.id].map { $0.after <= now } ?? true)
-        }.prefix(8)
-        guard !candidates.isEmpty else { return }
-        adoptingTraktTitles = true
-        defer { adoptingTraktTitles = false }
-        // A title counts as done only once it's in the server diary (or found there already).
-        // A failed lookup or import waits 1, 2, 4… minutes (at most 30) and gives up after five
-        // tries this session; sign-out starts over.
-        func failed(_ id: String) {
-            let tries = (adoptionRetry[id]?.tries ?? 0) + 1
-            if tries >= 5 { adoptedTraktKeys.insert(id); adoptionRetry[id] = nil; return }
-            adoptionRetry[id] = (tries, Date.now.addingTimeInterval(min(1800, 60 * pow(2, Double(tries - 1)))))
-        }
-        for title in candidates {
-            guard diaryFromService, session == sessionRevision else { return }
-            guard let tmdb = title.tmdbId else { adoptedTraktKeys.insert(title.id); continue }
-            let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb)
-            guard let found = try? await browse(route) else { failed(title.id); continue }
-            guard session == sessionRevision else { return }
-            if found.libraryTitle != nil { adoptedTraktKeys.insert(title.id); adoptionRetry[title.id] = nil; continue }
-            if await importTitle(found.details, category: found.details.suggestedCategory, sendToService: false) != nil {
-                adoptedTraktKeys.insert(title.id); adoptionRetry[title.id] = nil
-            } else if session == sessionRevision { failed(title.id) }
-        }
-    }
-
     // MARK: Title facts
 
     /// Rating, Planned and dropped go to the service, and favourites to Trakt; everything else
-    /// (notes, tags, Queue, and what the service can't keep) to the server's record of the title.
+    /// (notes, tags, Queue, and what the service can't keep) stays on the phone (PhoneExtras).
     func servicePatch(_ title: MediaTitle, values: [String: Any]) async throws {
         let item = try serviceRef(title)
         let slot = title.isSeries ? "shows" : "movies"
@@ -417,37 +382,21 @@ extension DiaryStore {
         if score != nil || clearScore || status != nil || favourite != nil {
             mirror(.patchTitle(titleId: title.id, expectedVersion: nil, status: status, score: score, clearScore: clearScore, favorite: favourite, queued: nil, notes: nil))
         }
-        // The server keeps the rest: what the service can't hold (a dropped movie; favourites
-        // outside Trakt) and notes, tags and Queue.
+        // The phone keeps the rest: what the service can't hold (a dropped movie; favourites
+        // outside Trakt), a note's full text, tags and Queue.
         var rest = values.filter { !["score", "favorite", "status"].contains($0.key) }
-        // Notes: to Trakt (500 characters). Your server keeps the full text when it's connected and
-        // the note is longer, or already keeps this title's extras.
+        // Notes: to Trakt (500 characters); the phone keeps a longer note's full text.
         if service == .trakt, let text = values["notes"] as? String {
             try await TraktDirectStore.shared.setNote(text, for: titleRef(title), store: self)
-            let needsServer = text.count > 500 || !isServiceOnly(title)
-            // With no server, the phone keeps a longer note's full text (Trakt has its first 500).
-            if phoneOnly { rest["notes"] = text.count > 500 ? text : "" }
-            else if !needsServer { rest.removeValue(forKey: "notes") }
+            rest["notes"] = text.count > 500 ? text : ""
         }
         if let status, !serviceHolds || (!title.isSeries && title.status == "dropped" && service != .wetrakr) { rest["status"] = status }
         if let favourite, !favouritesHere { rest["favorite"] = favourite }
-        if phoneOnly {
-            // No server: the phone keeps the rest. A status the service holds clears the phone's.
-            if status != nil, rest["status"] == nil { rest["status"] = NSNull() }
-            if !rest.isEmpty {
-                PhoneExtras.shared.update(title, rest)
-                applyDiarySource()
-            }
-            return
-        }
-        // A title only on the service has no server record yet: its status follows the service
-        // until it joins (in a moment, on its own); notes, tags and Queue have to wait for that.
-        if isServiceOnly(title) { rest.removeValue(forKey: "status") }
+        // A status the service holds clears the phone's.
+        if status != nil, rest["status"] == nil { rest["status"] = NSNull() }
         if !rest.isEmpty {
-            // Notes, tags and Queue live on your server: a title only on the service joins it now.
-            let saved = try await joinServer(title)
-            rest["expectedVersion"] = saved.version
-            let _: EmptyResponse = try await read("/api/titles/\(saved.id)", method: "PATCH", body: rest)
+            PhoneExtras.shared.update(title, rest)
+            applyDiarySource()
         }
     }
 }

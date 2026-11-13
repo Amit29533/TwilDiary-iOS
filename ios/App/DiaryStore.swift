@@ -40,7 +40,7 @@ import TwilDiaryCore
     @ObservationIgnored private var preparedHome: (request: HomeProjectionRequest, workspace: Workspace)?
     @ObservationIgnored private var homeLoadID = UUID()
     @ObservationIgnored private var cachedStats: (day: String, zone: String, period: Period, year: Int?, value: StatsOverview)?
-    /// Assigning a snapshot directly indexes it synchronously (tests, fixtures, sign-out).
+    /// Assigning a snapshot directly indexes it synchronously (tests, sign-out).
     /// Network snapshots are indexed off the main actor first; see `publishIndexed`.
     var workspace = Workspace() {
         didSet {
@@ -87,24 +87,12 @@ import TwilDiaryCore
     private var presentTitleIDs = Set<String>()
     private var episodesBySeason: [String: [Int: [Episode]]] = [:]
     private var watchedEpisodesByTitle: [String: Set<String>] = [:]
-    private struct CardKey: Hashable {
-        let titleID: String
-        let revision: UUID
-        let session: UUID
-        let season: Int?
-        let day: String
-    }
     private var cardInputs: [String: WorkspaceCardInput] = [:] { didSet { cardInputsToken = UUID() } }
     @ObservationIgnored private var cardInputsToken = UUID()
     private var cardRevisions: [String: UUID] = [:]
-    // Not observed: every visible card read this dictionary, so one card's load
-    // re-rendered all of them. Cards keep their own loaded value; revisions stay observed.
-    @ObservationIgnored private var cachedCards: [CardKey: (at: Date, value: WatchCard)] = [:]
-    @ObservationIgnored private var cardReads: [CardKey: (id: UUID, task: Task<WatchCard, Error>)] = [:]
     func cardRevision(_ id: String) -> UUID? { cardRevisions[id] }
     private func clearCards() {
-        for read in cardReads.values { read.task.cancel() }
-        cardReads = [:]; cachedCards = [:]; cardInputs = [:]; cardRevisions = [:]
+        cardInputs = [:]; cardRevisions = [:]
     }
     let discoveryCache = DiscoveryCache()
     let communityCache = CommunityInformationCache()
@@ -128,11 +116,6 @@ import TwilDiaryCore
     var writesBlocked: Bool { busy || needsMutationRefresh }
     /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
-    /// Titles only on Trakt already sent to the server diary this session (each tried once).
-    @ObservationIgnored var adoptedTraktKeys = Set<String>()
-    /// Titles whose adoption failed: how many tries, and when the next may run.
-    @ObservationIgnored var adoptionRetry: [String: (tries: Int, after: Date)] = [:]
-    @ObservationIgnored var adoptingTraktTitles = false
     static let phoneOnlyKey = "phoneOnlyDiary"
     /// Signed in with Trakt only (as Cinopsys works): no TwilDiary server session. The diary is
     /// built on the phone from Trakt and TMDB; what Trakt can't hold (tags, Queue, full notes,
@@ -193,20 +176,9 @@ import TwilDiaryCore
     /// The server's diary revision read just before the last complete foreground download.
     /// Unconfirmed watch requests and their operation IDs. Saved on the phone (the app's own store
     /// only), so retrying after a restart reuses the ID and the server can't log the watch twice.
-    private var pendingWatches: [String: [String: Any]] = [:]
-    private var pendingProgress: [String: [String: Any]] = [:]
-    private var pendingRemovals: [String: WatchCard.Previous] = [:]
-    var pendingSeasonAdjustments: [String: SeasonEditTransaction] = [:]
     let isPreview: Bool
-    #if DEBUG
-    private var fixture: FixtureDiaryBackend?
-    private var failNextFixtureRefresh = false
-    #endif
     var canMutate: Bool {
         guard !needsMutationRefresh else { return false }
-        #if DEBUG
-        if isPreview { return fixture != nil }
-        #endif
         return !isPreview
     }
     var now: Date { isPreview ? DiaryDate.parse("2026-10-23T12:00:00Z")! : .now }
@@ -253,7 +225,6 @@ import TwilDiaryCore
             if ProcessInfo.processInfo.arguments.contains("--ui-arena"), let index = workspace.titles.firstIndex(where: { $0.deletedAt == nil }) { workspace.titles[index].tags = ["Weekend"] }
             if ProcessInfo.processInfo.arguments.contains("--ui-long-episodes") { workspace = PreviewData.withLongEpisodeSummaries(workspace) }
             if ProcessInfo.processInfo.arguments.contains("--ui-signed-out") { needsSignIn = true; hasLoadedWorkspace = false }
-            if ProcessInfo.processInfo.arguments.contains("--ui-mutations") { fixture = FixtureDiaryBackend(workspace: workspace) }
         }
         #endif
         if !isPreview {
@@ -355,10 +326,6 @@ import TwilDiaryCore
         BackgroundSyncCoordinator.shared.endLiveActivity()
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
-        #if DEBUG
-        fixture = nil
-        failNextFixtureRefresh = false
-        #endif
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         lastForegroundRead = nil
         invalidateDiscovery()
@@ -367,13 +334,11 @@ import TwilDiaryCore
         Task { await PublicArtworkCache.shared.removeAll() }
         URLCache.shared.removeAllCachedResponses()
         TraktDirectStore.shared.forget(); TrackerPreviewStore.shared.forget(); PhoneServerSync.shared.forget()
-        adoptedTraktKeys = []; adoptionRetry = [:]
         sessionStorage.delete(); workspace = Workspace(); communityRatings.reset(); cachedPeople = [:]; clearCards(); cardActions = [:]; resumeMutationWaiters(); hasLoadedWorkspace = false; error = nil
         loading = false; busy = false
         confirmedWorkspace = Workspace()
         outbox = SyncOutboxQueue(); try? outboxStore.removeAll()
-        pendingWatches.removeAll(); pendingProgress.removeAll(); pendingRemovals.removeAll(); undoAction = nil; undoLabel = nil
-        pendingSeasonAdjustments.removeAll()
+        undoAction = nil; undoLabel = nil
         needsSignIn = true
     }
     func refresh() async {
@@ -383,11 +348,7 @@ import TwilDiaryCore
             await readService()
             return
         }
-        #if DEBUG
-        if isPreview && fixture == nil { return }
-        #else
         if isPreview { return }
-        #endif
         let session = sessionGeneration
         loading = true; defer { if session == sessionGeneration { loading = false } }
         guard session == sessionGeneration, !needsSignIn, !Task.isCancelled else { return }
@@ -403,21 +364,7 @@ import TwilDiaryCore
         lastForegroundRead = date
         await refresh()
     }
-    func reload() async throws {
-        #if DEBUG
-        if let fixture {
-            if failNextFixtureRefresh {
-                failNextFixtureRefresh = false
-                throw APIError.message("Synthetic refresh outage")
-            }
-            // The test diary: kept as the confirmed copy too, or applyDiarySource() (which shows
-            // pending edits on top of the confirmed copy) would show an empty diary.
-            confirmedWorkspace = fixture.workspace
-            workspace = fixture.workspace; hasLoadedWorkspace = true; needsMutationRefresh = false
-        }
-        #endif
-        applyDiarySource()
-    }
+    func reload() async throws { applyDiarySource() }
     /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
     /// with the server's extras. Reads Trakt first when there's no Trakt read yet.
     func applyDiarySource() {
@@ -497,11 +444,8 @@ import TwilDiaryCore
             let shows = workspace.titles.filter { $0.isSeries && $0.deletedAt == nil }.compactMap { $0.tmdbId.map { "tv:" + String($0) } }
             Task { await PhoneCatalog.shared.fillEpisodes(shows, store: self) }
         }
-        guard !missing.isEmpty else { return }
-        if TMDBDirect.token(self) != nil { Task { await PhoneCatalog.shared.fill(missing, store: self) } }
-        else if workspace.titles.contains(where: { isServiceOnly($0) && !adoptedTraktKeys.contains($0.id) }) {
-            Task { await self.adoptServiceOnlyTitles() }
-        }
+        guard !missing.isEmpty, TMDBDirect.token(self) != nil else { return }
+        Task { await PhoneCatalog.shared.fill(missing, store: self) }
     }
     /// Trakt holds the diary and the phone reads it (signed in here, with a TMDB key): episode
     /// lists come from TMDB on the phone.
@@ -536,8 +480,6 @@ import TwilDiaryCore
         let changed = precomputed ?? index.changedTitles(since: cardInputs)
         for id in changed { cardRevisions[id] = inputs[id] == nil ? nil : UUID() }
         cardInputs = inputs
-        cachedCards = cachedCards.filter { cardRevisions[$0.key.titleID] == $0.key.revision }
-        for (key, read) in cardReads where cardRevisions[key.titleID] != key.revision { read.task.cancel(); cardReads.removeValue(forKey: key) }
         presentTitleIDs = index.presentTitleIDs
     }
     /// Every row belonging to one title, as a small Workspace. The TwilDiaryCore
@@ -684,14 +626,17 @@ import TwilDiaryCore
     func seasonProgress(_ title: MediaTitle, season: Int) -> SeasonProgress {
         seasonProgressIndex[title.id]?[season] ?? SeasonProgress.calculate(title: title, workspace: workspace, season: season)
     }
+    /// A title's card at once, from the diary on the phone (nil before it has loaded).
     func cachedCard(_ title: MediaTitle, season: Int? = nil) -> WatchCard? {
-        guard !needsSignIn, let revision = cardRevisions[title.id] else { return nil }
-        let key = CardKey(titleID: title.id, revision: revision, session: sessionGeneration, season: season, day: DiaryDate.day(now))
-        return cachedCards[key]?.value
+        #if DEBUG
+        if isPreview { return nil }
+        #endif
+        guard !needsSignIn, cardRevisions[title.id] != nil else { return nil }
+        return localCard(title, season: season)
     }
-    /// Returns a server-confirmed WatchCard if cached, or calculates it locally from `workspace` without a network request.
+    /// A title's card, worked out from the diary on the phone.
     func localCard(_ title: MediaTitle, season: Int? = nil) -> WatchCard {
-        cachedCard(title, season: season) ?? WatchCard.calculate(title: title, in: workspace, day: DiaryDate.day(now), season: season)
+        WatchCard.calculate(title: title, in: workspace, day: DiaryDate.day(now), season: season)
     }
     /// Simkl support was removed (owner's choice, 2026-11-13). Once: the provider settings are saved
     /// again (they're read without Simkl's entry, so its sign-in leaves the Keychain), along with the
@@ -1015,18 +960,6 @@ import TwilDiaryCore
     func hasPresentLocation(_ titleID: String) -> Bool { presentTitleIDs.contains(titleID) }
     func read<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {
         #if DEBUG
-        if let fixture {
-            let generation = sessionGeneration
-            if method != "GET", ProcessInfo.processInfo.arguments.contains("--ui-slow-writes") {
-                try await Task.sleep(for: .seconds(2))
-                guard generation == sessionGeneration else { throw CancellationError() }
-            }
-            let value: T = try fixture.request(path, method: method, body: body)
-            if method == "POST", path.hasSuffix("/watches"), ProcessInfo.processInfo.arguments.contains("--ui-refresh-failure") {
-                failNextFixtureRefresh = true
-            }
-            return value
-        }
         if isPreview { throw APIError.message("The browsing fixture is read-only.") }
         #endif
         if phoneOnly {
@@ -1046,49 +979,23 @@ import TwilDiaryCore
         // No diary on a server: nothing else asks it.
         throw APIError.message(Self.needsServer)
     }
+    /// Trash is kept on the phone (the watches and the title leave the service).
     @discardableResult func trash(_ title: MediaTitle) async -> Bool {
-        // No server: Trash is kept on the phone (the watches and the title leave the service).
-        if phoneOnly { return await trashOnPhone(title) }
-        // Everything "Remove from watch history" does comes first: the watches go too.
-        if workspace.events.contains(where: { $0.titleId == title.id && $0.revokedAt == nil }) { await removeWatchHistory(title) }
-        return await perform(refreshing: [title.id]) {
-            // Trash is kept on your server: a title only on the service joins it first.
-            let title = try await self.joinServer(title)
-            let result: TitleReceipt = try await self.read("/api/titles/\(title.id)", method: "DELETE", body: ["expectedVersion": title.version ?? 1])
-            // A service holds the diary: a Planned title leaves its watchlist too (Undo puts it back).
-            let onService = self.diaryFromService || self.traktHoldsDiary
-            if onService { try await self.serviceWatchlist([title], listed: false) }
-            self.undoLabel = "Moved to Trash"
-            self.undoAction = {
-                let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": result.title.version])
-                if onService { try await self.serviceWatchlist([title], listed: true) }
-            }
-            self.undoTitles = [title.id]
-        }
+        guard phoneOnly else { return false }
+        return await trashOnPhone(title)
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
-        if phoneOnly, PhoneTrash.shared.contains(title.id) {
-            do { try await restoreOnPhone(title); return true } catch { self.error = error.localizedDescription; return false }
-        }
-        return await perform(refreshing: [title.id]) {
-            let title = try await self.joinServer(title)
-            let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/restore", method: "POST", body: ["expectedVersion": title.version ?? 1])
-            if self.diaryFromService || self.traktHoldsDiary { try await self.serviceWatchlist([title], listed: true) }
-        }
+        guard phoneOnly, PhoneTrash.shared.contains(title.id) else { return false }
+        do { try await restoreOnPhone(title); return true } catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func refreshTitleMetadata(_ title: MediaTitle) async -> Bool {
-        guard let tmdb = title.tmdbId else { return false }
-        // No server: details and episodes from TMDB on the phone.
-        if phoneOnly {
-            guard TMDBDirect.token(self) != nil else { error = Self.needsTMDB; return false }
-            let key = (title.isSeries ? "tv:" : "movie:") + String(tmdb)
-            await PhoneCatalog.shared.fill([key], store: self, force: true)
-            if title.isSeries { await PhoneCatalog.shared.fillEpisodes([key], store: self, force: true) }
-            return true
-        }
-        return await perform(refreshing: [title.id]) {
-            let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/metadata", method: "POST")
-        }
+        // Details and episodes from TMDB on the phone.
+        guard phoneOnly, let tmdb = title.tmdbId else { return false }
+        guard TMDBDirect.token(self) != nil else { error = Self.needsTMDB; return false }
+        let key = (title.isSeries ? "tv:" : "movie:") + String(tmdb)
+        await PhoneCatalog.shared.fill([key], store: self, force: true)
+        if title.isSeries { await PhoneCatalog.shared.fillEpisodes([key], store: self, force: true) }
+        return true
     }
     let communityRatings = CommunityRatingsController(folder: ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? URL.cachesDirectory : nil, pause: 2)
     func publicScore(_ title: MediaTitle, source: PublicRatingSource) -> Double? {
@@ -1197,50 +1104,16 @@ import TwilDiaryCore
     }
     func card(_ title: MediaTitle, season: Int? = nil, fresh: Bool = false) async throws -> WatchCard {
         guard !needsSignIn, !Task.isCancelled else { throw CancellationError() }
-        if diarySource != "server" { return localCard(title, season: season) }
-        let key = CardKey(titleID: title.id, revision: cardRevisions[title.id] ?? snapshotGeneration, session: sessionGeneration, season: season, day: DiaryDate.day(now))
-        // The key changes with the title's episodes and watches (revision) and with the day, so a card stays
-        // right for longer than the old 2 minutes; returning to Glance no longer refetches every card.
-        if !fresh, let cached = cachedCards[key], Date.now.timeIntervalSince(cached.at) < 900 { return cached.value }
-        let flight: (id: UUID, task: Task<WatchCard, Error>)
-        if !fresh, let existing = cardReads[key] { flight = existing }
-        else {
-            flight = (UUID(), Task {
-                #if DEBUG
-                if self.isPreview { return PreviewData.card(title, workspace: self.workspace, season: season) }
-                #endif
-                var query = "?day=\(key.day)"
-                if let season { query += "&season=\(season)" }
-                return try await self.read("/api/glance/\(title.id)" + query)
-            })
-            cardReads[key] = flight
-        }
-        defer { if cardReads[key]?.id == flight.id { cardReads.removeValue(forKey: key) } }
-        let value: WatchCard
-        do { value = try await flight.task.value }
-        catch APIError.transport(_) where hasLoadedWorkspace { return localCard(title, season: season) }
-        catch {
-            guard key.session == sessionGeneration, key.revision == (cardRevisions[title.id] ?? snapshotGeneration) else { throw CancellationError() }
-            throw error
-        }
-        guard key.session == sessionGeneration, !needsSignIn,
-              key.revision == (cardRevisions[title.id] ?? snapshotGeneration) else { throw CancellationError() }
-        if cachedCards.count >= 128, let oldest = cachedCards.min(by: { $0.value.at < $1.value.at })?.key { cachedCards.removeValue(forKey: oldest) }
-        cachedCards[key] = (.now, value)
-        try Task.checkCancellation()
-        return value
+        #if DEBUG
+        if isPreview, !diaryFromService { return PreviewData.card(title, workspace: workspace, season: season) }
+        #endif
+        return localCard(title, season: season)
     }
     func loadSeason(_ title: MediaTitle, number: Int) async {
-        // No server: the phone's catalog reads the show's seasons from TMDB again.
-        if phoneOnly {
-            guard let tmdb = title.tmdbId, title.isSeries else { return }
-            guard TMDBDirect.token(self) != nil else { error = Self.needsTMDB; return }
-            await PhoneCatalog.shared.fillEpisodes(["tv:\(tmdb)"], store: self, force: true)
-            return
-        }
-        await perform(refreshing: [title.id]) {
-            let _: EmptyResponse = try await self.read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST")
-        }
+        // The phone's catalog reads the show's seasons from TMDB again.
+        guard phoneOnly, let tmdb = title.tmdbId, title.isSeries else { return }
+        guard TMDBDirect.token(self) != nil else { error = Self.needsTMDB; return }
+        await PhoneCatalog.shared.fillEpisodes(["tv:\(tmdb)"], store: self, force: true)
     }
     /// A watch added to the service the diary comes from: said, with no Undo. Undoing it there
     /// raced the send (the watch could be on its way, or already on the other services), so a
@@ -1251,148 +1124,41 @@ import TwilDiaryCore
         undoLabel = "Watch marked"
     }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
-        if diaryFromService {
-            await perform(cardID: title.id, cardAction: .mark) {
-                let card = self.localCard(title, season: season)
-                if title.isSeries {
-                    guard let next = card.next, let episode = self.workspace.episodes.first(where: { $0.id == next.id }) else {
-                        throw APIError.message("No aired episode is ready to mark. Load this season’s episodes or choose another season.")
-                    }
-                    let when = try await self.serviceAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
-                    self.offerServiceUndo(title, at: when)
-                } else {
-                    let when = try await self.serviceAddPlays(title, episodes: [], at: self.now)
-                    self.offerServiceUndo(title, at: when)
-                }
-            }
-            return
-        }
-        var confirmed: WatchEvent?
-        defer { if let confirmed { celebrate(confirmed, title: title) } }
+        guard diaryFromService else { return }
         await perform(cardID: title.id, cardAction: .mark) {
-            let key = title.id
-            if self.pendingWatches[key] == nil {
-                let card = try await self.card(title, season: season, fresh: true)
-                if let expectedEpisode, card.next?.id != expectedEpisode { throw APIError.message("Progress changed. Refresh this title before marking another episode.") }
-                if title.isSeries && card.next == nil { throw APIError.message("No aired episode is ready to mark. Load this season’s episodes or choose another season.") }
-                self.pendingWatches[key] = ["operationId": UUID().uuidString, "episodeId": card.next?.id as Any? ?? NSNull(), "watchedAt": self.now.ISO8601Format(), "rewatch": false]
-            }
-            let operation = self.pendingWatches[key]!
-            let result: WatchReceipt
-            do { result = try await self.read("/api/titles/\(title.id)/watches", method: "POST", body: operation) }
-            catch { if Self.definitivelyRejected(error) { self.pendingWatches.removeValue(forKey: key) }; throw error }
-            self.pendingWatches.removeValue(forKey: key)
-            let opID = (operation["operationId"] as? String) ?? result.event.id
-            self.recordDirectProviderMutation(
-                .markWatch(
-                    operationId: result.event.operationId,
-                    titleId: title.id,
-                    episodeId: result.event.episodeId,
-                    watchedAt: result.event.watchedAt ?? result.event.recordedAt,
-                    recordedAt: result.event.recordedAt,
-                    rewatch: false
-                ),
-                operationId: opID
-            )
-            // Do not undo somebody else's pre-existing watch returned by an idempotent server response.
-            if result.added || (result.event.operationId == operation["operationId"] as? String && result.event.version == 1 && result.event.revokedAt == nil) {
-                self.undoLabel = "Watch marked"
-                self.undoAction = { try await self.changeEvent(result.event, action: "revoke") }
-                self.undoTitles = [title.id]
-                confirmed = result.event
+            let card = self.localCard(title, season: season)
+            if title.isSeries {
+                guard let next = card.next, let episode = self.workspace.episodes.first(where: { $0.id == next.id }) else {
+                    throw APIError.message("No aired episode is ready to mark. Load this season’s episodes or choose another season.")
+                }
+                let when = try await self.serviceAddPlays(title, episodes: [(season: episode.season, number: episode.number)], at: self.now)
+                self.offerServiceUndo(title, at: when)
+            } else {
+                let when = try await self.serviceAddPlays(title, episodes: [], at: self.now)
+                self.offerServiceUndo(title, at: when)
             }
         }
     }
     func removeLatest(_ title: MediaTitle, season: Int? = nil, expected: WatchCard.Previous? = nil) async {
-        if diaryFromService {
-            await perform(cardID: title.id, cardAction: .remove) {
-                let event = expected.flatMap { previous in self.workspace.activeEvents.first { $0.id == previous.id } }
-                    ?? self.latestServiceEvent(titleID: title.id, any: true)
-                guard let event else { throw APIError.message("There’s no watch to remove.") }
-                try await self.serviceRemoveWatches([event])
-            }
-            return
-        }
+        guard diaryFromService else { return }
         await perform(cardID: title.id, cardAction: .remove) {
-            if self.pendingRemovals[title.id] == nil {
-                let card = try await self.card(title, season: season, fresh: true)
-                guard let previous = card.previous else { return }
-                if let expected, previous != expected { throw APIError.message("Watch history changed. Refresh this title before removing a watch.") }
-                self.pendingRemovals[title.id] = previous
-            }
-            let event = self.pendingRemovals[title.id]!
-            let result: EventReceipt
-            do { result = try await self.read("/api/watch-events/\(event.id)", method: "PATCH", body: ["action": "revoke", "expectedVersion": event.version]) }
-            catch { if Self.definitivelyRejected(error) { self.pendingRemovals.removeValue(forKey: title.id) }; throw error }
-            self.pendingRemovals.removeValue(forKey: title.id)
-            self.recordDirectProviderMutation(
-                .revokeWatch(
-                    eventId: result.event.id,
-                    titleId: title.id,
-                    expectedVersion: event.version,
-                    revokedAt: result.event.revokedAt ?? self.now.ISO8601Format()
-                )
-            )
-            self.undoLabel = "Watch removed"
-            self.undoAction = { try await self.changeEvent(result.event, action: "restore") }
-            self.undoTitles = [title.id]
+            let event = expected.flatMap { previous in self.workspace.activeEvents.first { $0.id == previous.id } }
+                ?? self.latestServiceEvent(titleID: title.id, any: true)
+            guard let event else { throw APIError.message("There’s no watch to remove.") }
+            try await self.serviceRemoveWatches([event])
         }
     }
-    private func changeEvent(_ event: WatchEvent, action: String) async throws {
-        let _: EventReceipt = try await read("/api/watch-events/\(event.id)", method: "PATCH", body: ["action": action, "expectedVersion": event.version ?? 1])
-    }
-    func pendingViewing(key: String, episode: String?, date: Date, rewatch: Bool) -> [String: Any] {
-        if pendingWatches[key] == nil { pendingWatches[key] = ["operationId": UUID().uuidString, "episodeId": episode as Any? ?? NSNull(), "watchedAt": date.ISO8601Format(), "rewatch": rewatch] }
-        return pendingWatches[key]!
-    }
-    func clearPendingViewing(key: String) { pendingWatches.removeValue(forKey: key) }
-    func rejectPendingViewing(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingWatches.removeValue(forKey: key) } }
-    func rejectPendingSeason(key: String, error: Error) { if Self.definitivelyRejected(error) { pendingSeasonAdjustments.removeValue(forKey: key) } }
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
-        if diaryFromService { return await perform(refreshing: [title.id]) { try await self.servicePatch(title, values: values) } }
-        return await perform(refreshing: [title.id]) {
-            var body = values; body["expectedVersion"] = expectedVersion ?? title.version
-            let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
-            self.recordDirectProviderMutation(
-                .patchTitle(
-                    titleId: title.id,
-                    expectedVersion: expectedVersion ?? title.version,
-                    status: values["status"] as? String,
-                    score: values["score"] as? Double,
-                    clearScore: values["score"] is NSNull,
-                    favorite: values["favorite"] as? Bool,
-                    queued: values["queued"] as? Bool,
-                    notes: values["notes"] as? String
-                )
-            )
-        }
+        guard diaryFromService else { return false }
+        return await perform(refreshing: [title.id]) { try await self.servicePatch(title, values: values) }
     }
     @discardableResult func patchCard(_ titleID: String, values: [String: Any]) async -> Bool {
-        if diaryFromService, let title = self.title(titleID) { return await perform(cardID: titleID) { try await self.servicePatch(title, values: values) } }
-        return await perform(cardID: titleID) {
-            guard let title = self.title(titleID), title.deletedAt == nil else { throw APIError.message("This title is no longer in your library.") }
-            var body = values; body["expectedVersion"] = title.version
-            let _: EmptyResponse = try await self.read("/api/titles/\(titleID)", method: "PATCH", body: body)
-            self.recordDirectProviderMutation(
-                .patchTitle(
-                    titleId: titleID,
-                    expectedVersion: title.version,
-                    status: values["status"] as? String,
-                    score: values["score"] as? Double,
-                    clearScore: values["score"] is NSNull,
-                    favorite: values["favorite"] as? Bool,
-                    queued: values["queued"] as? Bool,
-                    notes: values["notes"] as? String
-                )
-            )
-        }
+        guard diaryFromService, let title = self.title(titleID) else { return false }
+        return await perform(cardID: titleID) { try await self.servicePatch(title, values: values) }
     }
     @discardableResult func setStatus(_ title: MediaTitle, status: String, watchedAt: Date? = nil) async -> Bool {
-        if diaryFromService {
-            return await perform(refreshing: [title.id]) { try await self.serviceSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
-        }
-        if status != "planned" && status != "completed" { return await patch(title, values: ["status": status]) }
-        return await perform(refreshing: [title.id]) { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
+        guard diaryFromService else { return false }
+        return await perform(refreshing: [title.id]) { try await self.serviceSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
         // The phone's Trash: restore puts titles back, delete forever just forgets them here.
@@ -1427,94 +1193,11 @@ import TwilDiaryCore
                 break
             }
         }
-        // Trash, restore, delete and Queue are your server's: titles only on the service aren't there yet.
-        let selected = reviewed.count
-        let reviewed = diaryFromService ? reviewed.filter { !isServiceOnly($0) } : reviewed
-        guard !reviewed.isEmpty else { error = "These titles are only on \(diaryService?.name ?? "Trakt") so far. They join your server diary on their own in a moment."; return false }
-        let skipped = selected - reviewed.count
-        // Say plainly when only part of the selection changed (the rest join the server diary soon).
-        defer {
-            if skipped > 0, error == nil {
-                error = "\(reviewed.count) of \(selected) changed. \(skipped) \(skipped == 1 ? "is" : "are") only on \(diaryService?.name ?? "Trakt") so far and weren’t changed; they join your server diary on their own in a moment."
-            }
-        }
-        return await perform(refreshing: Set(reviewed.map(\.id))) {
-            let request = try CollectionRequest(titles: reviewed, change: change)
-            if case .status(let status) = change, ["planned", "completed"].contains(status) {
-                try await self.applyProgress(reviewed, status: status, watchedAt: self.now)
-            } else {
-                guard let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any] else { throw APIError.message("Invalid collection change.") }
-                let receipt: CollectionReceipt = try await self.read("/api/titles/bulk", method: "POST", body: body)
-                guard receipt.count == reviewed.count, Set(receipt.ids) == Set(reviewed.map(\.id)), receipt.action == change.action else { throw APIError.message("The selection response was incomplete. Refresh before trying again.") }
-                // A service holds the diary: Trash and Restore also update its watchlist.
-                if self.diaryFromService || self.traktHoldsDiary, change == .trash || change == .restore {
-                    try await self.serviceWatchlist(reviewed, listed: change == .restore)
-                }
-            }
-        }
+        return false
     }
     @discardableResult func emptyTrash() async -> Bool {
-        if phoneOnly { PhoneTrash.shared.removeAll(); return true }
-        return await perform { let _: EmptyResponse = try await self.read("/api/trash", method: "DELETE", body: ["confirmation": "EMPTY_TRASH"]) }
-    }
-    private func applyProgress(_ reviewed: [MediaTitle], status: String, watchedAt: Date) async throws {
-        let request = try CollectionRequest(titles: reviewed, change: .status(status))
-        let ids = Set(reviewed.map(\.id)), key = status + ":" + ids.sorted().joined(separator: ",")
-        if pendingProgress[key] == nil {
-            if status == "completed" { try await prepareSeasonsForCompletion(reviewed) }
-            pendingProgress[key] = ["operationId": UUID().uuidString, "items": request.items.map { ["id": $0.id, "expectedVersion": $0.expectedVersion] as [String: Any] }, "status": status, "watchedAt": watchedAt.ISO8601Format(), "today": DiaryDate.day(now)]
-        }
-        let receipt: ProgressReceipt
-        do { receipt = try await read("/api/progress/status", method: "POST", body: pendingProgress[key]) }
-        catch { if Self.definitivelyRejected(error) { pendingProgress.removeValue(forKey: key) }; throw error }
-        guard receipt.operationId == pendingProgress[key]?["operationId"] as? String else { throw APIError.message("The progress receipt did not match your request. Refresh before retrying.") }
-        pendingProgress.removeValue(forKey: key)
-        for id in ids {
-            pendingWatches = pendingWatches.filter { $0.key != id && !$0.key.hasPrefix("viewing:" + id + ":") }
-            pendingSeasonAdjustments = pendingSeasonAdjustments.filter { !$0.key.hasPrefix(id + ":") }; pendingRemovals.removeValue(forKey: id)
-        }
-        undoLabel = status == "planned" ? "Progress reset" : "Marked completed"
-        let undoBody: [String: Any] = ["operationId": UUID().uuidString, "undoOf": receipt.operationId]
-        undoAction = { let _: ProgressReceipt = try await self.read("/api/progress/status", method: "POST", body: undoBody) }
-        undoTitles = ids
-    }
-    /// Completing a show needs every regular season's episode list. Only seasons that
-    /// are missing, incomplete, in an old format, or possibly still airing with stale
-    /// metadata are reloaded, four at a time. Previously every season older than six
-    /// hours was reloaded one after another before the status request could start.
-    private func prepareSeasonsForCompletion(_ titles: [MediaTitle]) async throws {
-        let today = DiaryDate.day(now)
-        let recent = DiaryDate.day(now.addingTimeInterval(-21 * 24 * 60 * 60))
-        var needed: [(title: String, season: Int)] = []
-        for title in titles where title.isSeries {
-            for season in title.seasons ?? [] where season.number > 0 {
-                let rows = episodesForSeason(title.id, season: season.number)
-                let fresh = title.tmdbId == nil || ((season.metadataVersion ?? 1) >= 2 && (DiaryDate.parse(season.metadataLoadedAt).map { now.timeIntervalSince($0) < 6 * 60 * 60 } ?? false))
-                let incomplete = season.expectedEpisodes.map { rows.count < $0 } ?? true
-                let mayStillAir = rows.isEmpty || rows.contains { episode in
-                    guard let aired = episode.airedOn else { return true }
-                    return aired > today || aired >= recent
-                }
-                if season.metadataLoadedAt == nil || (!fresh && (incomplete || mayStillAir || (season.metadataVersion ?? 1) < 2)) {
-                    needed.append((title.id, season.number))
-                }
-            }
-        }
-        guard !needed.isEmpty else { return }
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            var queue = needed.makeIterator(), running = 0
-            while true {
-                while running < 4, let next = queue.next() {
-                    group.addTask {
-                        let _: EmptyResponse = try await self.read("/api/titles/\(next.title)/seasons/\(next.season)/metadata", method: "POST")
-                    }
-                    running += 1
-                }
-                if running == 0 { break }
-                _ = try await group.next()
-                running -= 1
-            }
-        }
+        guard phoneOnly else { return false }
+        PhoneTrash.shared.removeAll(); return true
     }
     // MARK: Delight
 
@@ -1538,23 +1221,9 @@ import TwilDiaryCore
         let titles = undoTitles
         await perform(refreshing: titles) {
             try await action(); self.undoAction = nil; self.undoLabel = nil
-            // An undone season edit is over: its unfinished rest must not be offered as a retry.
-            self.pendingSeasonAdjustments = self.pendingSeasonAdjustments.filter { entry in titles.map { !$0.contains { entry.key.hasPrefix($0 + ":") } } ?? false }
         }
     }
     func dismissUndo() { undoLabel = nil; undoAction = nil }
-    func installUndo(_ actions: [(event: WatchEvent, action: String)], label: String) {
-        guard !actions.isEmpty else { return }
-        undoLabel = label
-        var remaining = actions
-        undoAction = {
-            while let next = remaining.first {
-                try await self.changeEvent(next.event, action: next.action)
-                remaining.removeFirst()
-            }
-        }
-        undoTitles = Set(actions.map(\.event.titleId))
-    }
     @discardableResult func perform(cardID: String? = nil, cardAction: CardAction = .menu, refreshing titleIDs: Set<String>? = nil, _ action: () async throws -> Void) async -> Bool {
         let scoped: Set<String>? = titleIDs ?? cardID.map { Set([$0]) }
         let generation = sessionGeneration
@@ -1627,6 +1296,7 @@ import TwilDiaryCore
     }
     static let needsServer = "Your TwilDiary server does this, and it isn’t connected. Connect it in Profile → Connections if you want it."
     static let needsTMDB = "This needs your TMDB key. Add it in Profile → Connections → TMDB."
+    static let needsDiary = "Sign in to Trakt, MDBList or WeTrakr, or choose On this phone."
     private func fail(_ cause: Error) {
         if case APIError.signIn = cause, !phoneOnly {
             retainedTraktController?.invalidateSession(); retainedTraktController = nil
@@ -1634,19 +1304,7 @@ import TwilDiaryCore
         }
         error = cause.localizedDescription
     }
-    private static func definitivelyRejected(_ cause: Error) -> Bool {
-        guard let apiError = cause as? APIError, case .rejected(let status, _) = apiError else { return false }
-        return (400..<500).contains(status) && ![408, 425, 429].contains(status)
-    }
-    private struct WatchReceipt: Decodable { let event: WatchEvent; let added: Bool }
-    private struct EventReceipt: Decodable { let event: WatchEvent }
-    private struct ProgressReceipt: Decodable { let operationId: String }
-    private struct CollectionReceipt: Decodable { let ids: [String]; let action: String; let count: Int }
     private struct PublicRatingsPage: Decodable { let ratings: [String: PublicRating] }
-    private struct TitleReceipt: Decodable {
-        struct Identity: Decodable { let id: String; let version: Int }
-        let title: Identity
-    }
 }
 
 extension DiaryStore {

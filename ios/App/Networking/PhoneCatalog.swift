@@ -125,22 +125,3 @@ import TwilDiaryCore
         try? FileManager.default.removeItem(at: episodesFile)
     }
 }
-
-extension DiaryStore {
-    /// A title only on the service joins your server diary now, because you're giving it something
-    /// Trakt can't hold. Returns its server record.
-    func joinServer(_ title: MediaTitle) async throws -> MediaTitle {
-        guard isServiceOnly(title) else { return title }
-        guard let tmdb = title.tmdbId else { throw APIError.message("This title has no TMDB id, so it can’t join your server diary.") }
-        let found = try await browse(CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb))
-        let id: String
-        if let saved = found.libraryTitle { id = saved.id }
-        else if let added = await importTitle(found.details, category: title.category, sendToService: false) { id = added }
-        else { throw APIError.message(error ?? "This title couldn’t join your server diary. Try again.") }
-        adoptedTraktKeys.insert(title.id)
-        guard let joined = self.title(id) else {
-            throw APIError.message("This title joined your server diary; try again in a moment.")
-        }
-        return joined
-    }
-}
