@@ -107,7 +107,6 @@ import TwilDiaryCore
     private(set) var mutationRefreshReason: String?
     @ObservationIgnored private var mutationRefreshRetry: Task<Void, Never>?
     var writesBlocked: Bool { busy || needsMutationRefresh }
-    /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
     static let phoneOnlyKey = "phoneOnlyDiary"
     /// Signed in with Trakt only (as Cinopsys works): no TwilDiary server session. The diary is
@@ -120,7 +119,8 @@ import TwilDiaryCore
         if let name = value as? String { return MainTracker(rawValue: name) }
         return (value as? Bool) == true ? .trakt : nil
     }
-    /// Which diary is on screen: "server", "trakt", "mdblist" or "wetrakr".
+    /// Which diary is on screen: "trakt" (Trakt, or On this phone), "mdblist" or "wetrakr";
+    /// "server" (the old name) means none: signed out, or the read-only browsing preview.
     var diarySource = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) ?? "server" {
         didSet {
             UserDefaults.standard.set(diarySource, forKey: Self.diarySourceKey)
@@ -155,7 +155,6 @@ import TwilDiaryCore
     private let providerSettingsStore: any ProviderSettingsStoring
     private(set) var outbox = SyncOutboxQueue()
     private var confirmedWorkspace = Workspace()
-    /// The server's diary with pending edits, whichever diary is on screen (comparisons use this).
     @ObservationIgnored private var connectivityMonitor: NWPathMonitor?
     @ObservationIgnored private var directFlushActive = false
     var providerSettings = ProviderConnectionSettings()
@@ -166,9 +165,6 @@ import TwilDiaryCore
     var sessionRevision: UUID { sessionGeneration }
     private var snapshotGeneration = UUID()
     private var lastForegroundRead: Date?
-    /// The server's diary revision read just before the last complete foreground download.
-    /// Unconfirmed watch requests and their operation IDs. Saved on the phone (the app's own store
-    /// only), so retrying after a restart reuses the ID and the server can't log the watch twice.
     let isPreview: Bool
     var canMutate: Bool {
         guard !needsMutationRefresh else { return false }
@@ -261,8 +257,8 @@ import TwilDiaryCore
         guard !isPreview, !phoneOnly, let credential = sessionStorage.read() else { return }
         await signInWithServer(credential)
     }
-    /// Where the queue of edits for the other services is kept: your server sign-in's, or with no
-    /// server this iPhone's own (as Cinopsys keeps its queue on the device), so edits made in the
+    /// Where the queue of edits for the other services is kept: this iPhone's own (as Cinopsys keeps
+    /// its queue on the device), so edits made in the
     /// Trakt-only diary still reach MDBList and WeTrakr.
     var outboxScope: String? { phoneOnly ? "phone" : nil }
     /// With no server: the phone's queue, loaded when the phone-only diary starts.
@@ -357,8 +353,8 @@ import TwilDiaryCore
         await refresh()
     }
     func reload() async throws { applyDiarySource() }
-    /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
-    /// with the server's extras. Reads Trakt first when there's no Trakt read yet.
+    /// The diary on screen, built from the service (Trakt, MDBList or WeTrakr, or On this phone)
+    /// with the phone's extras. Reads the service first when there's no read yet.
     func applyDiarySource() {
         guard hasLoadedWorkspace else { return }
         if diaryFromTrakt {
@@ -426,8 +422,7 @@ import TwilDiaryCore
     @ObservationIgnored private var diaryBuildTicket = 0
     @ObservationIgnored private var builtFromService = false
     private static let runningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    /// Titles only on the service get their details on the phone (TMDB, with your key) instead of
-    /// being copied into the server diary; without a key they still join the server, as before.
+    /// Titles the diary knows only from the service get their details on the phone (TMDB, with your key).
     private func fillServiceOnlyTitles() {
         PhoneCatalog.shared.prune(keeping: Set(workspace.titles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }))
         let missing = workspace.titles.filter { isServiceOnly($0) && $0.poster == nil }.map(\.id)
@@ -676,12 +671,12 @@ import TwilDiaryCore
         return true
     }
     /// Records a watch or title mutation for any enabled direct providers (`trakt`, `mdblist`, `wetrakr`)
-    /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
+    /// and flushes pending direct provider batches in the background.
     func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind>? = nil) {
         let isSeries = title(mutation.titleId)?.isSeries ?? true
         let activeProviders = providerSettings.activeDirectLoggingProviders.intersection(providers ?? providerSettings.activeDirectLoggingProviders)
             .filter { ProviderDeliveryPlanner.carries(mutation, provider: $0, isSeries: isSeries) }
-        guard !activeProviders.isEmpty, !outbox.pending(for: .cloudflare).contains(where: { $0.mutation.titleId == mutation.titleId }) else { return }
+        guard !activeProviders.isEmpty else { return }
         guard let scope = outboxScope else { return }
         if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
            status == nil, score == nil, !clearScore, favorite == nil, queued == nil { return }
@@ -699,7 +694,7 @@ import TwilDiaryCore
         let activeProviders = providerSettings.activeDirectLoggingProviders
         guard !activeProviders.isEmpty else { return }
         for provider in activeProviders {
-            let pending = outbox.pending(for: provider).filter { !$0.pendingProviders.contains(.cloudflare) }
+            let pending = outbox.pending(for: provider)
             var completed = 0
             var blockedTitles = Set<String>()
             if !pending.isEmpty { BackgroundSyncCoordinator.shared.updateForProviderBatch(provider: provider, completed: 0, total: pending.count) }

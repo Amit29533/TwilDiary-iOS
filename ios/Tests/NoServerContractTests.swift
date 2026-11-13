@@ -3,19 +3,18 @@ import XCTest
 /// The app works without your server (owner's rule: the server is only for sign-in, backups and
 /// extras, and only if you choose it). Every server call in the app is reviewed here as one of:
 /// - optional: your server's own features, used only when you connect it;
-/// - server diary: the old diary-on-your-server path, never reached with no server (phone mode
-///   takes the phone or Trakt/MDBList/WeTrakr branch before it);
+/// - server diary: named only to refuse them (the diary is never on the server) and to copy your
+///   old server copy's extras onto the phone once;
 /// - phone first: TMDB, Trakt or AniList on the phone, the server only a fallback when you have one.
 /// A new server call fails this test until it's reviewed, so a screen can't quietly depend on
 /// the server again.
 final class NoServerContractTests: XCTestCase {
     static let optional = ["/api/session", "/api/backups", "/api/phone-extras", "/api/usage", "/api/settings/apis", "/api/providers",
-                           "/api/trakt/connect", "/api/trakt/status", "/api/trakt/disconnect", "/api/trakt/token",
                            "/api/jellyfin/library", "/api/files/jellyfin"]
     static let serverDiary = ["/api/workspace", "/api/titles", "/api/watch-events", "/api/glance", "/api/progress/status", "/api/trash",
-                              "/api/library/ratings", "/api/trakt/sync", "/api/favourites"]
+                              "/api/trakt/sync", "/api/favourites"]
     static let phoneFirst = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search",
-                             "/api/stats", "/api/trakt/community"]
+                             "/api/stats", "/api/trakt/community", "/api/library/ratings"]
 
     func testEveryServerCallIsReviewed() throws {
         let app = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("App")
