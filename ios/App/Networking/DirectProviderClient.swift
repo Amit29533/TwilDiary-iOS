@@ -164,10 +164,10 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
         let sending = prepared.body
-        var headers = headers
-        if config.provider == .wetrakr, let idempotency { headers["Idempotency-Key"] = Self.idempotencyKey(idempotency, body: sending) }
+        var writeHeaders = headers
+        if config.provider == .wetrakr, let idempotency { writeHeaders["Idempotency-Key"] = Self.idempotencyKey(idempotency, body: sending) }
         do {
-            let reply = try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending)
+            let reply = try await send(url: components.url!, method: "POST", headers: writeHeaders, rawBody: sending)
             SyncReport.record(config.provider, path: path, body: sending, reply: reply)
             return ServiceIDs.reply(reply, adding: prepared.missing)
         }
@@ -181,7 +181,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         catch APIError.rejected(let status, _) where status == 429 {
             // Too many requests: wait a moment and try once more.
             try await Task.sleep(for: .seconds(3))
-            do { return ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending), adding: prepared.missing) }
+            do { return ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: writeHeaders, rawBody: sending), adding: prepared.missing) }
             catch APIError.rejected(let again, _) where again == 429 {
                 throw APIError.message("\(name) is busy with another change right now. Try again in a minute.")
             }
