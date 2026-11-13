@@ -233,7 +233,7 @@ struct SyncBackupView: View {
                     ServerBackups.SchedulePicker().padding(.horizontal, 16).frame(minHeight: 60)
                 }
                 }
-                if store.phoneOnly, !store.onThisPhone { ExtrasStorageGroup() }
+                if store.phoneOnly { ExtrasStorageGroup() }
                 else if !store.phoneOnly { ServerExtrasGroup() }
                 SettingsGroup(label: ServerBackups.available(store) ? "Extra backup" : "Backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in the Files app") {

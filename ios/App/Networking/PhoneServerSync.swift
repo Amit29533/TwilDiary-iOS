@@ -39,7 +39,7 @@ enum ExtrasStorage {
     private struct Session: Codable { let token: String; let expires: Date? }
     private struct Copy: Decodable { let body: String?; let updatedAt: String? }
 
-    private var available: Bool { ExtrasStorage.server && (store?.phoneOnly ?? false) && !(store?.onThisPhone ?? true) }
+    private var available: Bool { ExtrasStorage.server && (store?.phoneOnly ?? false) }
 
     /// Saves to the server a few seconds after the last change (a run of edits goes once).
     func soon() {
@@ -56,6 +56,13 @@ enum ExtrasStorage {
         self.store = store
         guard available, force || Date.now.timeIntervalSince(lastPull ?? .distantPast) > 60 else { return }
         if (try? await run()) == true { store.applyDiarySource() }
+    }
+    /// A session from your server's own sign-in (Google or email), kept for backups and extras.
+    func adopt(token: String, expires: Date?) {
+        if let encoded = try? JSONEncoder().encode(Session(token: token, expires: expires)) {
+            _ = KeychainProviderSecretStore().writeSecret(String(decoding: encoded, as: UTF8.self), for: Self.sessionAccount)
+        }
+        problem = nil
     }
     /// Turning it off forgets the server session (the copy on the server stays).
     func forget() {
@@ -111,7 +118,13 @@ enum ExtrasStorage {
     /// A request to your server with the extras session (a fresh one once when it's refused).
     private func request(_ path: String, method: String, body: Data? = nil, retried: Bool = false) async throws -> Data {
         let token = try await session(fresh: retried)
-        var request = URLRequest(url: AppConfiguration.backend.appendingPathComponent(String(path.dropFirst())), timeoutInterval: 30)
+        // A query ("?section=titles") stays a query, not part of the path.
+        let parts = path.split(separator: "?", maxSplits: 1)
+        var url = AppConfiguration.backend.appendingPathComponent(String(parts[0].dropFirst()))
+        if parts.count == 2, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            components.percentEncodedQuery = String(parts[1]); url = components.url ?? url
+        }
+        var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -137,7 +150,7 @@ enum ExtrasStorage {
            (saved.expires ?? .distantFuture) > Date.now.addingTimeInterval(3_600) {
             return saved.token
         }
-        guard let store, store.traktSignedInOnPhone else { throw APIError.message("Sign in to Trakt on this iPhone first: your server checks that it's your diary's Trakt account.") }
+        guard let store, store.traktSignedInOnPhone else { throw APIError.message("Your server’s sign-in has ended. Sign in to it again in Profile → Connections.") }
         let trakt = try await store.traktToken()
         var request = URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/auth"), timeoutInterval: 30)
         request.httpMethod = "POST"

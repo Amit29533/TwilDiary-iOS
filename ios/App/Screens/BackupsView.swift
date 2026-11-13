@@ -211,7 +211,7 @@ struct BackupsView: View {
     /// With no server diary (Trakt only), backups still go to your server when "Your server" is on
     /// under Where extras live, with that same sign-in (owner's choice: the server is optional, for
     /// signing in, backups and extras).
-    static func usesPhoneSession(_ store: DiaryStore) -> Bool { store.phoneOnly && !store.onThisPhone && ExtrasStorage.server }
+    static func usesPhoneSession(_ store: DiaryStore) -> Bool { store.phoneOnly && ExtrasStorage.server }
     /// Whether server backups can be made now.
     static func available(_ store: DiaryStore) -> Bool { !store.phoneOnly || usesPhoneSession(store) }
     /// A backups call: with the diary's server sign-in, or the extras one with no server diary.

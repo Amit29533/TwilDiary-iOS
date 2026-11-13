@@ -90,7 +90,7 @@ struct ConnectionsView: View {
                 NavigationStack {
                     AccessSignIn { credential in
                         showDiaryAccess = false
-                        Task { await store.connect(credential) }
+                        Task { await store.signInWithServer(credential) }
                     }
                     .navigationTitle("Server sign-in").navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showDiaryAccess = false } } }

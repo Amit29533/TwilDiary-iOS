@@ -198,7 +198,7 @@ struct RootView: View {
         Group {
             if store.needsSignIn {
                 // The ways in, straight away (as Cinopsys opens): Trakt, then Google or email.
-                AccessSignIn(completion: { credential in Task { await store.connect(credential) } },
+                AccessSignIn(completion: { credential in Task { await store.signInWithServer(credential) } },
                              phoneOnly: { tracker in Task { await store.startPhoneOnly(tracker) } },
                              onThisPhone: { Task { await store.startOnThisPhone() } })
                     .safeAreaInset(edge: .bottom) {
@@ -256,6 +256,8 @@ struct RootView: View {
                 askAlerts = !Task.isCancelled
             }
             .sheet(isPresented: $askAlerts) { EpisodeAlertsPrompt() }
+            // A server sign-in from when the diary lived there: the diary moves to the phone.
+            .task { await store.leaveServerDiary() }
             // Alerts follow the diary: once it has loaded, and again after a change.
             .task(id: "\(store.hasLoadedWorkspace)|\(store.homeWorkspaceRevision)") {
                 guard store.hasLoadedWorkspace else { return }
