@@ -8,14 +8,7 @@ import TwilDiaryCore
     @ObservationIgnored private var retainedTraktController: TraktController?
     var traktController: TraktController {
         if let retainedTraktController { return retainedTraktController }
-        let checkpoint: any TraktApplyCheckpointStoring = isPreview ? MemoryTraktApplyCheckpoint() : PreferencesTraktApplyCheckpoint()
-        #if DEBUG
-        if isPreview, ProcessInfo.processInfo.arguments.contains("--ui-trakt=cold-quota") { checkpoint.runID = "reference-sync" }
-        #endif
-        let controller = TraktController(service: makeTraktService(store: self), checkpoint: checkpoint, onTransferFinished: { [weak self] in
-            guard let self, !self.needsSignIn, self.quotaBlockedUntil == nil else { return }
-            await self.refresh()
-        })
+        let controller = TraktController(service: makeTraktService(store: self))
         retainedTraktController = controller
         return controller
     }
@@ -23,10 +16,6 @@ import TwilDiaryCore
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
         await flushOutbox()
         await pushProviderVaultToServer()
-        guard retainedTraktController != nil || (!isPreview && PreferencesTraktApplyCheckpoint().runID != nil) else { return }
-        let controller = traktController
-        await controller.finishSuspendingTransfer()
-        if !controller.busy { await controller.refresh(); await controller.resumeApprovedApply() }
     }
     /// Any edit still on its way anywhere: your server's queue, the queue for the other services,
     /// or the service diary's own (Trakt, MDBList, WeTrakr).
@@ -34,7 +23,6 @@ import TwilDiaryCore
         !outbox.isEmpty || !TraktDirectStore.shared.pending.isEmpty || TrackerPreviewStore.shared.pending.values.contains { !$0.isEmpty }
     }
     func suspendTraktForBackground() {
-        retainedTraktController?.suspendForBackground()
         BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: hasWaitingEdits)
     }
     struct HomeProjection: Sendable {
@@ -467,7 +455,6 @@ import TwilDiaryCore
         vaultSyncTask?.cancel(); vaultSyncTask = nil; vaultDirty = [:]; providerVaultNotice = nil
         cacheRestoration?.cancel(); cacheRestoration = nil; restoringCache = false
         retainedTraktController?.invalidateSession(); retainedTraktController = nil
-        if !isPreview { PreferencesTraktApplyCheckpoint().runID = nil }
         #if DEBUG
         fixture = nil
         failNextFixtureRefresh = false

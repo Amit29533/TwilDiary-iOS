@@ -23,31 +23,3 @@ struct TraktTransferFailure: LocalizedError {
         return min(date, now.addingTimeInterval(86_400))
     }
 }
-
-struct TraktApplyProgress: Equatable {
-    let applied: Int
-    let skipped: Int
-    let remaining: Int
-    let failed: Int
-    let total: Int
-    var finished: Int { applied + skipped }
-    var fraction: Double { total > 0 ? min(1, Double(finished) / Double(total)) : 0 }
-    var percent: Int { Int((fraction * 100).rounded(.down)) }
-    init(_ sync: TraktSync) {
-        func count(_ key: String) -> Int { min(Int.max / 8, max(0, sync.counts[key] ?? 0)) }
-        applied = count("applied"); skipped = count("skipped")
-        remaining = count("pending") + count("failed") + count("uncertain")
-        failed = count("failed") + count("uncertain")
-        total = applied + skipped + remaining
-    }
-}
-
-@MainActor protocol TraktApplyCheckpointStoring: AnyObject { var runID: String? { get set } }
-@MainActor final class MemoryTraktApplyCheckpoint: TraktApplyCheckpointStoring { var runID: String? }
-@MainActor final class PreferencesTraktApplyCheckpoint: TraktApplyCheckpointStoring {
-    private let key = "trakt.approvedBulkRun"
-    var runID: String? {
-        get { UserDefaults.standard.string(forKey: key) }
-        set { if let newValue { UserDefaults.standard.set(newValue, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) } }
-    }
-}

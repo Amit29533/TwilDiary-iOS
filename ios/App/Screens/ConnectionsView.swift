@@ -117,7 +117,7 @@ struct ConnectionsView: View {
         switch tracker {
         case .trakt:
             store.traktSignedInOnPhone ? "Connected"
-            : TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
+            : TraktOverview(status: trakt?.status, sync: nil, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
         case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
         case .wetrakr: connected(.wetrakr) ? "Connected" : "Not connected"
         }

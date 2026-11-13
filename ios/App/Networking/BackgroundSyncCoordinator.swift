@@ -86,16 +86,6 @@ import BackgroundTasks
         UIApplication.shared.endBackgroundTask(id)
     }
 
-    /// Updates the Dynamic Island Live Activity from a `TraktSync` snapshot.
-    func updateFromTrakt(_ sync: TraktSync?, paused: Bool) {
-        guard let sync,
-              let state = SyncLiveActivityState.fromTrakt(sync, paused: paused, isBackgrounded: isBackgroundTaskActive) else {
-            endLiveActivity()
-            return
-        }
-        applyLiveActivityState(state)
-    }
-
     /// Updates the Dynamic Island Live Activity for a multi-provider sync or outbox batch (`Trakt`, `MDBList`, `WeTrakr`).
     func updateForProviderBatch(
         provider: SyncProviderKind,

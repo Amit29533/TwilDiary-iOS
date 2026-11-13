@@ -1211,24 +1211,6 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         XCTAssertTrue(store.error?.contains("history changed") == true)
         XCTAssertFalse(StubProtocol.state.recorded().contains { $0.httpMethod == "PATCH" })
     }
-    func testTraktWireContractCarriesEveryExplicitDirectionChoice() async throws {
-        let url = try XCTUnwrap(Bundle.main.url(forResource: "trakt-sync", withExtension: "json"))
-        let response = try String(contentsOf: url, encoding: .utf8)
-        StubProtocol.state.reset { _ in .init(response) }
-        let storage = MemorySessionStorage(); storage.credential = credential
-        let owner = makeStore(api: api(storage))
-        defer { withExtendedLifetime(owner) {} }
-        let service = LiveTraktService(store: owner)
-        for choice in [TraktChoice.apply, .local, .trakt, .skip] {
-            _ = try await service.apply(id: "fixture-run", change: "fixture-change", choice: choice)
-        }
-        let writes = StubProtocol.state.recorded()
-        XCTAssertEqual(writes.count, 4)
-        let bodies = try writes.map(bodyObject)
-        XCTAssertEqual(bodies.map { $0["choice"] as? String }, ["apply", "local", "trakt", "skip"])
-        XCTAssertTrue(writes.allSatisfy { $0.url?.path == "/api/trakt/sync/fixture-run/apply" && $0.httpMethod == "POST" })
-        XCTAssertTrue(bodies.allSatisfy { $0["changeId"] as? String == "fixture-change" })
-    }
     func testRetainedTraktControllerDoesNotKeepItsDiarySessionAlive() async {
         StubProtocol.state.reset { _ in .init(#"{"configured":true,"connected":true}"#) }
         let storage = MemorySessionStorage(); storage.credential = credential
