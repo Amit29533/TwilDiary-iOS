@@ -105,10 +105,8 @@ struct PersonView: View {
     // MARK: Text
 
     @ViewBuilder private var intro: some View {
-        if case .tmdb(let route) = start, let role = ProfileText.line(route.sourceRole), let title = ProfileText.line(route.sourceTitle) {
-            Button(role + " in " + title) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .topLeading).buttonStyle(.plain)
-                .foregroundStyle(.primary).accessibilityIdentifier("person-source-role")
+        if case .tmdb(let route) = start, let title = ProfileText.line(route.sourceTitle) {
+            ProfileSourceRow(title: title, role: route.sourceRole) { dismiss() }.accessibilityIdentifier("person-source-role")
         }
     }
 

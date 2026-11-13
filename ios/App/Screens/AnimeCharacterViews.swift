@@ -93,8 +93,8 @@ struct CharacterView: View {
                                   photos: ProfilePhotoSources.merge(character.image.map { [PersonPhoto(path: $0, kind: "portrait", aspectRatio: 2.0 / 3.0, title: nil)] } ?? [], morePhotos),
                                   backdrop: character.appearances.lazy.compactMap { $0.banner }.first ?? character.appearances.first(where: { $0.cover != nil })?.cover) {
                     VStack(alignment: .leading, spacing: 18) {
-                        if let source = route.sourceTitle {
-                            Button("In " + source) { dismiss() }.font(.subheadline).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(minHeight: 44, alignment: .leading).buttonStyle(.plain).foregroundStyle(.primary)
+                        if let source = ProfileText.line(route.sourceTitle) {
+                            ProfileSourceRow(title: source) { dismiss() }.accessibilityIdentifier("character-source")
                         }
                         Text("About").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                         details(character, biography: biography)

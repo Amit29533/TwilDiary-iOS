@@ -404,3 +404,51 @@ struct ProfileAwards: View {
         }
     }
 }
+
+/// Where you came to this profile from (owner's request: one consistent row on actor, voice actor
+/// and character pages, in the facts card's style): FROM, the title, and the role when it's known
+/// ("as Emma" with a Voice tag). Tapping goes back to that title.
+struct ProfileSourceRow: View {
+    let title: String
+    var role: String? = nil
+    let action: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    /// "Emma (voice)" → "Emma" and a Voice tag.
+    private var parts: (name: String, voice: Bool)? {
+        guard let role = ProfileText.line(role) else { return nil }
+        let voice = role.localizedCaseInsensitiveContains("(voice)")
+        let name = role.replacingOccurrences(of: "(voice)", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? nil : (name, voice)
+    }
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "play.rectangle").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+                    .frame(width: 36, height: 36).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("FROM").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(webHex: "#a9a7b6"))
+                    Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
+                        .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    if let parts {
+                        HStack(spacing: 6) {
+                            Text("as " + parts.name).font(.caption).foregroundStyle(Color(webHex: "#a9a7b6")).lineLimit(1)
+                            if parts.voice {
+                                Text("Voice").font(.system(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                    .padding(.horizontal, 6).padding(.vertical, 2).background(HomeStyle.chip, in: Capsule())
+                            }
+                        }
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.uturn.backward").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#a9a7b6"))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(webHex: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }.buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Goes back to \(title)")
+    }
+}
