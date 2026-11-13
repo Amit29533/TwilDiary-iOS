@@ -139,12 +139,8 @@ struct TrackerPreviewPanel: View {
 
     /// Trakt holds the diary: just whether everything is on Trakt, and what's still going there.
     private var traktSyncCard: some View {
-        let compared = report?.comparison
-        let waiting = [compared?.onlyInDiary, compared?.ratingDifferences, compared?.plannedDifferences,
-                       compared?.favoriteDifferences, compared?.droppedDifferences].compactMap { $0 }.flatMap { $0 }
-        let matched = report != nil && waiting.isEmpty && trakt.pending.isEmpty
+        let matched = report != nil && trakt.pending.isEmpty
         let headline = trakt.writeProgress ?? (running ? "Checking Trakt…" : matched ? "Everything is on Trakt"
-            : !waiting.isEmpty ? (waiting.count == 1 ? "1 change going to Trakt" : "\(waiting.count) changes going to Trakt")
             : !trakt.pending.isEmpty ? trakt.pending.count.counted("change", "changes") + " waiting to send" : "Not checked yet")
         let checked = library.flatMap { DiaryDate.parse($0.fetchedAt) }
         // Design (board 4): SYNC, then one card: the state with when it was checked, and Sync now.
@@ -163,24 +159,9 @@ struct TrackerPreviewPanel: View {
                     }
                     Spacer(minLength: 0)
                 }
-                if !waiting.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(waiting.prefix(5).enumerated()), id: \.offset) { _, item in
-                            Text(item.title).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                        }
-                        if waiting.count > 5 { Text("and \(waiting.count - 5) more").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
-                    }.padding(.leading, 48)
-                }
-                if !trakt.pending.isEmpty && !waiting.isEmpty {
-                    Label(trakt.pending.count.counted("change", "changes") + " waiting to send", systemImage: "icloud.and.arrow.up")
-                        .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("trakt-pending")
-                }
                 if let error { Text(error).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error") }
                 Button {
-                    Task {
-                        await trakt.check(store: store)
-                        if trakt.plan?.isEmpty == false { await trakt.makeTraktMatch(store: store) }
-                    }
+                    Task { await trakt.check(store: store) }
                 } label: {
                     Label(running || trakt.writing ? "Syncing…" : "Sync now", systemImage: "arrow.clockwise")
                 }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(running || trakt.writing).accessibilityIdentifier(id + "-check")
@@ -256,16 +237,6 @@ struct TrackerPreviewPanel: View {
     /// Phase 2: bring Trakt in line with the diary, after showing exactly what will be sent.
     @ViewBuilder private var matchSection: some View {
         let plan = report != nil ? trakt.plan : nil
-        let fill = store.traktHoldsDiary
-        if fill {
-            HStack(spacing: 4) {
-                Text(plan?.isEmpty == false ? "Trakt holds your diary. Some old items are still to copy." : "Trakt holds your diary.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                SettingsInfoButton(text: plan?.isEmpty == false
-                    ? "The list above is what your old server copy has and Trakt doesn’t. It’s copied in automatically once; if anything is still listed, tap below to try again. Anything newer on Trakt stays as it is."
-                    : "Trakt has everything from your old server copy.").padding(.vertical, -10)
-            }.accessibilityIdentifier(id + "-holds-diary")
-        } else {
         Toggle(isOn: Binding(get: { store.traktWriteThrough }, set: { on in
             savingWriteThrough = true; writeThroughError = nil
             Task {
@@ -279,7 +250,6 @@ struct TrackerPreviewPanel: View {
             }
         }.disabled(savingWriteThrough).accessibilityIdentifier("trakt-write-through")
         if let writeThroughError { Text(writeThroughError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-        }
         if let progress = trakt.writeProgress {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
         } else if let result = trakt.writeResult {
@@ -288,10 +258,9 @@ struct TrackerPreviewPanel: View {
         }
         if let plan, !plan.isEmpty, !trakt.writing {
             Button { confirmMatch = true } label: {
-                Label(fill ? "Copy what’s missing into Trakt" : "Make Trakt match the diary",
-                      systemImage: fill ? "square.and.arrow.down.on.square" : "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                Label("Make Trakt match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
             }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier("trakt-make-match")
-                .confirmationDialog(fill ? "Copy into Trakt?" : "Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
+                .confirmationDialog("Make Trakt match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
                     Button("Send to Trakt") { Task { await trakt.makeTraktMatch(store: store) } }
                     Button("Cancel", role: .cancel) {}
                 } message: {

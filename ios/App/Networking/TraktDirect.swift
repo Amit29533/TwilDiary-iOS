@@ -310,7 +310,6 @@ enum ServiceRemovals {
             if unavailable.allSatisfy({ $0 == .notes }) { readCount += 1 }
             save(library)
             ServiceIDs.shared.learn(from: library)
-            if store.traktHoldsDiary { rememberSeen(library) }
             // The diary on screen first; the comparison follows.
             if store.diaryFromTrakt { store.applyDiarySource() }
             // Compare with the server's diary (the record until the switch-over), not the Trakt view;
@@ -321,105 +320,9 @@ enum ServiceRemovals {
             report = Report(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: due, unavailable: unavailable,
                             skipped: skipped, comparison: analysis.comparison)
             plan = analysis.plan
-            autoFillIfNeeded(store: store)
         } catch {
             if !Task.isCancelled, session == generation { self.error = error.localizedDescription }
         }
-    }
-
-    /// Once Trakt holds the diary, what the old server copy has and Trakt lacks is copied in on its
-    /// own after each read (so on every open), with nothing to tap; something removed on Trakt
-    /// comes back only when your diary change is newer (see `settled`). Each item is tried on its
-    /// own once per app session: one Trakt can't take (a title it can't find) stays listed for
-    /// Sync now instead of being re-sent after every read, since the send itself reads Trakt again.
-    private func autoFillIfNeeded(store: DiaryStore) {
-        guard store.traktHoldsDiary, !store.isPreview, !writing, let plan, !plan.isEmpty else { return }
-        let fresh = plan.tokens.subtracting(autoTried)
-        guard !fresh.isEmpty else { return }
-        autoTried.formUnion(plan.tokens)
-        Task { await self.makeTraktMatch(store: store) }
-    }
-    @ObservationIgnored private var autoTried = Set<String>()
-    /// Everything Trakt has held (plays, ratings, watchlist, favourites, dropped), as plan tokens.
-    nonisolated static func tokens(_ library: TraktLibrary) -> Set<String> {
-        func key(_ ref: TraktTitleRef) -> String? { ref.tmdbId.map { (ref.kind == .movie ? "movie:" : "tv:") + String($0) } }
-        var result = Set<String>()
-        for play in library.plays {
-            guard let key = key(play.title) else { continue }
-            result.insert("play|" + key + (play.title.kind == .movie ? "" : play.season.map { "|s\($0)e\(play.episode ?? 0)" } ?? ""))
-        }
-        for item in library.ratings { if let key = key(item.title) { result.insert("rating|" + key) } }
-        for item in library.watchlist { if let key = key(item.title) { result.insert("planned|" + key) } }
-        for item in library.favorites { if let key = key(item.title) { result.insert("favourite|" + key) } }
-        for item in library.dropped { if let key = key(item.title) { result.insert("dropped|" + key) } }
-        return result
-    }
-    private var seenFile: URL { file.deletingLastPathComponent().appending(path: "seen.json") }
-    /// What Trakt has held since it took over the diary: a difference for one of these means it
-    /// was removed on Trakt, which stands.
-    @ObservationIgnored private var seenOnTrakt: Set<String> = []
-    @ObservationIgnored private var seenLoaded = false
-    private func loadSeen() {
-        guard !seenLoaded else { return }
-        seenLoaded = true
-        seenOnTrakt = (try? Data(contentsOf: seenFile)).flatMap { try? JSONDecoder().decode(Set<String>.self, from: $0) } ?? []
-    }
-    private func rememberSeen(_ library: TraktLibrary) {
-        loadSeen()
-        let merged = seenOnTrakt.union(Self.tokens(library))
-        guard merged.count != seenOnTrakt.count else { return }
-        seenOnTrakt = merged
-        try? JSONEncoder().encode(merged).write(to: seenFile, options: .atomic)
-    }
-    /// Left out of the differences and the copy: what Trakt held (or was sent) and no longer
-    /// has, unless your change in the diary is newer than Trakt's last change to that list (the
-    /// newer change wins). Without a time for the diary change, Trakt's removal stands.
-    private func settled(_ library: TraktLibrary, _ diary: Workspace) -> Set<String> {
-        loadSeen()
-        return Self.settled(library, diary, known: copied.union(seenOnTrakt), removals: ServiceRemovals.apply)
-    }
-    nonisolated static func settled(_ library: TraktLibrary, _ diary: Workspace, known: Set<String>, removals: Bool) -> Set<String> {
-        // Removals on Trakt switched off: the diary puts back what Trakt no longer has.
-        guard removals else { return [] }
-        let plan = TraktWritePlan.make(library: library, workspace: diary, fillOnly: true)
-        return plan.tokens.filter { token in
-            guard known.contains(token) else { return false }
-            guard let mine = diaryTime(token, diary), let theirs = traktTime(token, library) else { return true }
-            return mine <= theirs
-        }
-    }
-    /// When the diary last changed what a token sends: the title for ratings and lists, the
-    /// watch itself for a play.
-    nonisolated static func diaryTime(_ token: String, _ diary: Workspace) -> Date? {
-        let parts = token.split(separator: "|").map(String.init)
-        guard parts.count >= 2 else { return nil }
-        let ref = parts[1].split(separator: ":")
-        guard ref.count == 2, let tmdb = Int(ref[1]) else { return nil }
-        let series = ref[0] == "tv"
-        guard let title = diary.activeTitles.first(where: { $0.tmdbId == tmdb && $0.isSeries == series }) else { return nil }
-        guard parts[0] == "play" else { return DiaryDate.parse(title.updatedAt) }
-        var episodeID: String?
-        if parts.count > 2 {
-            let numbers = parts[2].dropFirst().split(separator: "e").compactMap { Int($0) }
-            guard numbers.count == 2 else { return nil }
-            episodeID = diary.episodes.first { $0.titleId == title.id && $0.season == numbers[0] && $0.number == numbers[1] }?.id
-            if episodeID == nil { return nil }
-        }
-        return diary.activeEvents.filter { $0.titleId == title.id && $0.episodeId == episodeID }
-            .compactMap { DiaryDate.parse($0.recordedAt) }.max()
-    }
-    /// Trakt's last change to the list a token belongs to (from its activity times).
-    nonisolated static func traktTime(_ token: String, _ library: TraktLibrary) -> Date? {
-        let domain: TraktDomain
-        switch token.split(separator: "|").first.map(String.init) {
-        case "play": domain = .history
-        case "rating": domain = .ratings
-        case "planned": domain = .watchlist
-        case "favourite": domain = .favorites
-        case "dropped": domain = .dropped
-        default: return nil
-        }
-        return domain.activityKeys.compactMap { library.activities?.stamps[$0] }.compactMap { DiaryDate.parse($0) }.max()
     }
 
     /// A paged list, up to 1,000 items a page (Trakt reports the page count), at most 100 pages.
@@ -469,28 +372,18 @@ enum ServiceRemovals {
     /// The plan from the last read, for the pages to show (worked out once per read, not on every
     /// redraw; sending always works it out afresh).
     private(set) var plan: TraktWritePlan?
-    /// What "Make Trakt match" would send, from the last read (nil before a read). Once Trakt
-    /// holds the diary: only what the old server copy has and Trakt lacks, each thing once.
+    /// What "Make Trakt match" would send, from the last read (nil before a read, and when Trakt
+    /// holds the diary: there's nothing to make it match).
     func matchPlan(store: DiaryStore) -> TraktWritePlan? {
-        let fill = store.traktHoldsDiary
-        return library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary, fillOnly: fill, except: fill ? settled($0, store.serverDiary) : MatchLedger.tokens(.trakt)) }
+        guard !store.traktHoldsDiary else { return nil }
+        return library.map { TraktWritePlan.make(library: $0, workspace: store.diaryToMatch, except: MatchLedger.tokens(.trakt)) }
     }
     /// The comparison with the diary and the plan for "Make Trakt match", away from the main thread.
     private func analysis(_ library: TraktLibrary, store: DiaryStore) async -> (comparison: TraktComparison, plan: TraktWritePlan) {
-        let fill = store.traktHoldsDiary, diary = store.serverDiary
-        loadSeen()
-        let known = copied.union(seenOnTrakt), removals = ServiceRemovals.apply, ledger = MatchLedger.tokens(.trakt)
+        let diary = store.diaryToMatch, except = MatchLedger.tokens(.trakt)
         return await Task.detached(priority: .utility) {
-            let except = fill ? Self.settled(library, diary, known: known, removals: removals) : ledger
-            return (TraktComparison.compare(library, with: diary, oneWay: fill, except: except),
-                    TraktWritePlan.make(library: library, workspace: diary, fillOnly: fill, except: except))
+            (TraktComparison.compare(library, with: diary, except: except), TraktWritePlan.make(library: library, workspace: diary, except: except))
         }.value
-    }
-    /// Things already copied from the old server copy into Trakt (never offered twice, so
-    /// something you later take off Trakt stays off).
-    private var copied: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: "trakt.copiedFromServer") ?? []) }
-        set { UserDefaults.standard.set(Array(newValue).sorted(), forKey: "trakt.copiedFromServer") }
     }
     /// Sends the plan to Trakt one request a second, marks Trakt-only favourites in the diary,
     /// then reads Trakt again so the comparison shows the result.
@@ -499,7 +392,7 @@ enum ServiceRemovals {
         if store.isPreview { error = "Writing to Trakt needs a real Trakt connection."; return }
         writing = true; error = nil; writeResult = nil
         defer { writing = false; writeProgress = nil }
-        var sent = 0, tally = ReplyTally(), notFound = Set<String>()
+        var sent = 0, tally = ReplyTally()
         let session = generation
         do {
             if token?.usable != true { token = try await store.traktToken() }
@@ -513,23 +406,11 @@ enum ServiceRemovals {
                 let reply = try await client.post(request.path, body: request.body)
                 sent += request.count
                 tally.add(reply)
-                notFound.formUnion(Self.notFoundKeys(reply))
             }
             guard session == generation else { return }
-            // Straight to the server's record of each title: the usual edit path would send a
-            // favourite to Trakt in the Trakt diary, and the comparison would never settle.
+            // Favourites only on Trakt join the diary.
             for id in plan.diaryFavourites {
-                if let title = store.serverDiary.titles.first(where: { $0.id == id }) {
-                    let _: EmptyResponse? = try? await store.read("/api/titles/\(title.id)", method: "PATCH", body: ["favorite": true, "expectedVersion": title.version ?? 1])
-                }
-            }
-            if !plan.diaryFavourites.isEmpty { try? await store.reload() }
-            // Only what Trakt accepted counts as copied: a title it couldn't find stays listed.
-            if store.traktHoldsDiary {
-                copied.formUnion(plan.tokens.filter { token in
-                    let parts = token.split(separator: "|")
-                    return parts.count < 2 || !notFound.contains(String(parts[1]))
-                })
+                if let title = store.workspace.activeTitles.first(where: { $0.id == id }) { await store.patch(title, values: ["favorite": true]) }
             }
             writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
@@ -539,7 +420,7 @@ enum ServiceRemovals {
         guard session == generation else { return }
         await check(store: store)
         // Trakt as a mirror: what was sent and still isn't there goes to the ledger (see MatchLedger).
-        guard session == generation, !store.traktHoldsDiary, error == nil, let stillMissing = matchPlan(store: store) else { return }
+        guard session == generation, error == nil, let stillMissing = matchPlan(store: store) else { return }
         let stuck = plan.tokens.intersection(stillMissing.tokens)
         guard !stuck.isEmpty else { return }
         MatchLedger.add(.trakt, stuck)
@@ -1092,18 +973,6 @@ enum ServiceRemovals {
         }
     }
 
-    /// The titles in a write reply's "not_found" lists, as "movie:603" / "tv:1399".
-    nonisolated static func notFoundKeys(_ data: Data) -> Set<String> {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let missing = root["not_found"] as? [String: Any] else { return [] }
-        var keys = Set<String>()
-        for (list, prefix) in [("movies", "movie:"), ("shows", "tv:")] {
-            for case let item as [String: Any] in (missing[list] as? [Any]) ?? [] {
-                if let tmdb = ((item["ids"] as? [String: Any])?["tmdb"] as? NSNumber)?.intValue { keys.insert(prefix + String(tmdb)) }
-            }
-        }
-        return keys
-    }
     /// Trakt's "not_found" lists in a write reply.
     nonisolated static func notFoundCount(_ data: Data) -> Int {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return 0 }
@@ -1127,9 +996,7 @@ enum ServiceRemovals {
         library = nil; report = nil; token = nil; error = nil; writeResult = nil; plan = nil; pending = []
         resetSender()
         BackgroundFiles.cancel(file)
-        seenOnTrakt = []; seenLoaded = true; autoTried = []
         // The on-this-phone diary is yours alone: leaving it never deletes it.
         if !localOnly { try? FileManager.default.removeItem(at: file) }
-        try? FileManager.default.removeItem(at: seenFile)
     }
 }
