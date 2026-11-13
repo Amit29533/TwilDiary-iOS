@@ -143,7 +143,10 @@ import TwilDiaryCore
     }
     /// Saves the diary (the same snapshot as a server backup), replacing the previous Drive copy.
     @discardableResult static func backUp(store: DiaryStore, automatic: Bool = false) async throws -> Int {
-        let body = try await ServerBackups.snapshot(store: store, label: "Google Drive backup")
+        var body = try await ServerBackups.snapshot(store: store, label: "Google Drive backup")
+        // The phone's part (favourite people above all) rides along with a server too, so this
+        // backup is enough to move to Trakt only without losing them.
+        if body["phone"] == nil, let phone = ServerBackups.phoneExtras() { body["phone"] = phone }
         let json = try JSONSerialization.data(withJSONObject: body)
         let packed = try (json as NSData).compressed(using: .zlib) as Data
         let file = try await latest()
