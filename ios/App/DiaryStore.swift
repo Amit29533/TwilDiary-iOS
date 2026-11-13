@@ -573,30 +573,6 @@ import TwilDiaryCore
     func reload() async throws {
         try await reloadFromServer()
         applyDiarySource()
-        if !checkedDiaryRecord { checkedDiaryRecord = true; Task { await self.checkDiaryRecord() } }
-    }
-    /// Phase 4c: the service your server says holds the diary (nil: your server), and until when
-    /// the server's own watches and ratings stay read-only.
-    private(set) var serverRecord: MainTracker?
-    private(set) var serverRecordReadOnlyUntil: Date?
-    @ObservationIgnored private var checkedDiaryRecord = false
-    private struct DiaryRecordStatus: Decodable { let record: String; let since: String?; let readOnlyUntil: String? }
-    /// Once a session: when a service holds the diary and the server's diary is on screen, the
-    /// diary is shown from that service instead (edits then go there).
-    func checkDiaryRecord() async {
-        guard !isPreview, !needsSignIn else { return }
-        // A server without this route answers 404: the diary is still the server's.
-        guard let status: DiaryRecordStatus = try? await read("/api/diary-record") else { return }
-        let record = MainTracker(rawValue: status.record)
-        serverRecord = record
-        serverRecordReadOnlyUntil = status.readOnlyUntil.flatMap { try? Date($0, strategy: .iso8601) }
-        if let record, diarySource == "server" {
-            UserDefaults.standard.set(record.rawValue, forKey: MainTrackerView.key)
-            diarySource = record.rawValue
-        }
-        // Edits the server no longer takes are handed to Trakt through the delivery queue, which
-        // needs Trakt as a delivery target (with your server's Trakt sign-in).
-        if record == .trakt, !traktWriteThrough { try? await setTraktWriteThrough(true) }
     }
     /// The diary on screen: the server's (with pending edits on top), or the one built from Trakt
     /// with the server's extras. Reads Trakt first when there's no Trakt read yet.
@@ -1839,7 +1815,6 @@ import TwilDiaryCore
         var confirmed: WatchEvent?
         defer { if let confirmed { celebrate(confirmed, title: title) } }
         await perform(cardID: title.id, cardAction: .mark) {
-            try self.requireWatchEdits()
             let key = title.id
             if self.pendingWatches[key] == nil {
                 let card = try await self.card(title, season: season, fresh: true)
@@ -1921,8 +1896,6 @@ import TwilDiaryCore
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {
         if diaryFromService { return await perform(refreshing: [title.id]) { try await self.servicePatch(title, values: values) } }
         return await perform(refreshing: [title.id]) {
-            // The old server copy can't take what the service holds: it would never reach the service.
-            if values["score"] != nil || values["status"] != nil || values["favorite"] != nil { try self.requireWatchEdits() }
             var body = values; body["expectedVersion"] = expectedVersion ?? title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)", method: "PATCH", body: body)
             self.recordDirectProviderMutation(
@@ -1942,7 +1915,6 @@ import TwilDiaryCore
     @discardableResult func patchCard(_ titleID: String, values: [String: Any]) async -> Bool {
         if diaryFromService, let title = self.title(titleID) { return await perform(cardID: titleID) { try await self.servicePatch(title, values: values) } }
         return await perform(cardID: titleID) {
-            if values["score"] != nil || values["status"] != nil || values["favorite"] != nil { try self.requireWatchEdits() }
             guard let title = self.title(titleID), title.deletedAt == nil else { throw APIError.message("This title is no longer in your library.") }
             var body = values; body["expectedVersion"] = title.version
             let _: EmptyResponse = try await self.read("/api/titles/\(titleID)", method: "PATCH", body: body)
@@ -1965,7 +1937,7 @@ import TwilDiaryCore
             return await perform(refreshing: [title.id]) { try await self.serviceSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
         }
         if status != "planned" && status != "completed" { return await patch(title, values: ["status": status]) }
-        return await perform(refreshing: [title.id]) { try self.requireWatchEdits(); try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
+        return await perform(refreshing: [title.id]) { try await self.applyProgress([title], status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
         // The phone's Trash: restore puts titles back, delete forever just forgets them here.
@@ -2012,7 +1984,6 @@ import TwilDiaryCore
             }
         }
         return await perform(refreshing: Set(reviewed.map(\.id))) {
-            switch change { case .status, .favorite: try self.requireWatchEdits(); default: break }
             let request = try CollectionRequest(titles: reviewed, change: change)
             if case .status(let status) = change, ["planned", "completed"].contains(status) {
                 try await self.applyProgress(reviewed, status: status, watchedAt: self.now)
@@ -2413,7 +2384,7 @@ extension DiaryStore {
                 var target: SyncProviderKind?
                 switch entry.mutation {
                 case .markWatch, .patchTitle:
-                    switch diaryService ?? serverRecord {
+                    switch diaryService {
                     case .trakt: target = .trakt
                     case .mdblist: target = .mdblist
                     case .wetrakr: target = .wetrakr

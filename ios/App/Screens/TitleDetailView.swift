@@ -69,7 +69,6 @@ struct TitleDetailView: View {
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
-                                if store.viewingFrozenServerCopy { frozenCopyNotice }
                                 progressPanel(title).padding(.top, -8)
                                 if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
@@ -404,7 +403,7 @@ struct TitleDetailView: View {
                     } } label: {
                         Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                             .font(.system(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
-                    }.buttonStyle(.diaryWatch).disabled(store.writesBlocked || store.viewingFrozenServerCopy || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
+                    }.buttonStyle(.diaryWatch).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
                         .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)
                 if DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
@@ -636,22 +635,6 @@ struct TitleDetailView: View {
     private var displayedWatched: Int { sliderDraft.map(Int.init) ?? card?.progress.watched ?? 0 }
     private var watchInstant: Date { let calendar = DiaryDate.calendar(); return calendar.isDate(watchDate, inSameDayAs: store.now) ? store.now : calendar.date(bySettingHour: 12, minute: 0, second: 0, of: watchDate) ?? watchDate }
     private var displayedPercent: Int { guard let total = card?.progress.total, total > 0 else { return 0 }; return Int((Double(displayedWatched) / Double(total) * 100).rounded()) }
-    /// Your old server copy is on screen while a service holds the diary: watches and ratings are
-    /// read-only here, with one tap back to the diary that takes them.
-    private var frozenCopyNotice: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lock").foregroundStyle(.secondary).padding(.top, 2)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(store.frozenCopyMessage).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if let record = store.serverRecord {
-                    Button("Show my diary from \(record.name)") { store.diarySource = record.rawValue }
-                        .font(.footnote.weight(.semibold))
-                }
-            }
-        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-            .accessibilityElement(children: .contain).accessibilityIdentifier("title-frozen-copy")
-    }
     private func ratingPanel(_ title: MediaTitle) -> some View {
         VStack(spacing: 12) {
             Divider()
@@ -677,7 +660,7 @@ struct TitleDetailView: View {
             if ratingField.isDirty && ratingField.submission != nil {
                 Button("Save rating") { Task { await saveRating(value: ratingField.draft) } }
             }
-        }.disabled(store.writesBlocked || !store.canMutate || store.viewingFrozenServerCopy).accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-panel")
+        }.disabled(store.writesBlocked || !store.canMutate).accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-panel")
     }
     private func saveRating(value: Double?) async {
         if value == 10 { perfectSparks += 1 }

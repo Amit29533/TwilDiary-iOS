@@ -87,7 +87,6 @@ extension DiaryStore {
         if let diaryService { skip.insert(providerKind(diaryService)) }
         // The service holding the diary gets your edits directly (one writer, one pace), also
         // while the old server copy is on screen; never a second copy through the mirrors.
-        if let serverRecord { skip.insert(providerKind(serverRecord)) }
         let targets = providers.subtracting(skip).intersection(providerSettings.activeDirectLoggingProviders)
         guard !targets.isEmpty, !isPreview else { return }
         recordDirectProviderMutation(mutation, providers: targets)

@@ -195,7 +195,7 @@ struct BackupsView: View {
         if let tracker = store.diaryFromTracker {
             return try await TrackerPreviewStore.shared.restore(tracker, try archive.merged(into: Workspace()), store: store)
         }
-        if let service = store.diaryService ?? store.serverRecord {
+        if let service = store.diaryService {
             throw APIError.message("Restoring a backup isn’t available yet while \(service.name) holds your diary.")
         }
         let result = try await store.importDiaryArchive(try archive.encoded())

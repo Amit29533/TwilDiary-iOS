@@ -39,22 +39,10 @@ struct MainTrackerView: View {
                 }
                 if tracker == .trakt { diarySource } else { trackerDiarySource }
                 TrackerPreviewPanel(tracker: tracker)
-                HStack(spacing: 4) {
-                    Text(store.serverRecord.map { "\($0.name) holds your diary." } ?? "Your diary is on your server.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    SettingsInfoButton(text: recordNote).padding(.vertical, -10)
-                }.accessibilityIdentifier("main-tracker-record")
+                Text(store.onThisPhone ? "Your diary is on this phone." : store.diaryService.map { "\($0.name) holds your diary." } ?? "Your diary is on this phone.")
+                    .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("main-tracker-record")
             }.padding(14).padding(.bottom, 40)
         }.diaryScreenBackground().navigationTitle("Main tracker").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-    }
-
-    /// Where the diary lives (phase 4c switches it from the server to a service).
-    private var recordNote: String {
-        guard let record = store.serverRecord else {
-            return "Your diary still lives on your server until the switch-over. Choosing here picks which service the preview reads and where “Make \(tracker.name) match the diary” writes."
-        }
-        let until = store.serverRecordReadOnlyUntil.map { " until " + $0.formatted(date: .abbreviated, time: .omitted) } ?? ""
-        return "\(record.name) holds your diary now. Your server keeps a read-only copy of its old watches and ratings\(until); notes, tags, favourites, Queue and files stay on your server."
     }
 
     /// Phase 4a: browse the whole app with the diary built from Trakt (plus your server's extras),
@@ -131,7 +119,7 @@ struct TrackerPreviewPanel: View {
     private var error: String? { tracker == .trakt ? trakt.error : others.errors[tracker] }
     private var running: Bool { tracker == .trakt ? trakt.running : others.running == tracker }
     /// This service is the diary: there's nothing to make it match.
-    private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker || store.serverRecord == tracker) }
+    private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker) }
     @State private var confirmMatch = false
     /// Force Match: which side wins.
     @State private var forceSource = TrackerPreviewStore.ForceSource.diary

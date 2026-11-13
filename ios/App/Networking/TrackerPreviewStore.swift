@@ -163,7 +163,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     /// holds (sent before and not kept by the service).
     private func analyse(_ tracker: MainTracker, store: DiaryStore) async -> (comparison: TraktComparison, plan: TraktWritePlan?)? {
         guard let read = libraries[tracker] else { return nil }
-        let diary = store.diaryToMatch, planned = store.diaryService != tracker && store.serverRecord != tracker
+        let diary = store.diaryToMatch, planned = store.diaryService != tracker
         let ledger = MatchLedger.tokens(tracker), names = PhoneCatalog.shared.titles.mapValues(\.name)
         return await Task.detached(priority: .utility) {
             (TraktComparison.compare(read, with: diary, tracker: tracker, except: ledger, names: names),
@@ -452,7 +452,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     // MARK: Phase 5: make MDBList / WeTrakr match the diary
 
     func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
-        guard store.diaryService != tracker, store.serverRecord != tracker else { return nil }
+        guard store.diaryService != tracker else { return nil }
         return libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.diaryToMatch, tracker: tracker, except: MatchLedger.tokens(tracker)) }
     }
     /// A backup or an import into MDBList or WeTrakr while it holds the diary: only what it
@@ -979,18 +979,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
 }
 
 extension DiaryStore {
-    /// Trakt holds the diary (your server says so, or the diary on screen comes from it).
-    var traktHoldsDiary: Bool { diaryFromTrakt || serverRecord == .trakt }
-    /// A service holds the diary but your old server copy is on screen: the server keeps it
-    /// read-only for watches, ratings and watch status (notes, tags and files still change).
-    var viewingFrozenServerCopy: Bool { serverRecord != nil && !diaryFromService }
-    var frozenCopyMessage: String {
-        "This is your old server copy, kept read-only for watches, ratings, statuses and favourites. Show your diary from \(serverRecord?.name ?? "your tracker") to change them."
-    }
-    /// Stops a watch, rating or status edit before it reaches the read-only server copy.
-    func requireWatchEdits() throws {
-        if viewingFrozenServerCopy { throw APIError.message(frozenCopyMessage) }
-    }
+    /// Trakt holds the diary (the diary on screen comes from it).
+    var traktHoldsDiary: Bool { diaryFromTrakt }
 
     /// Keeps the service your diary lives on current while the app is open: a read when you open or
     /// come back to the app (unless one ran in the last two minutes), then every ten minutes. Each
