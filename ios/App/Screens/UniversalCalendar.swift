@@ -96,8 +96,8 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
         return found
     }
 
-    /// The episode a show airs on `day` ("S2 E5"), from its details, asked once per show and kept:
-    /// only rows on screen ask.
+    /// The episode a show airs on `day` ("S2 E5"), from its details (and, for a later week, its
+    /// season's episode list), asked once per show and kept: only rows on screen ask.
     private static var episodeCache: [Int: [String: String]] = [:]
     static func episode(show id: Int, day: String, store: DiaryStore) async -> String? {
         if let known = episodeCache[id] { return known[day] }
@@ -107,6 +107,16 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
             guard let date = episode["air_date"] as? String else { continue }
             let season = episode["season_number"] as? Int ?? 0, number = episode["episode_number"] as? Int ?? 0
             byDay[date] = season == 0 ? "Special \(number)" : "S\(season) E\(number)"
+        }
+        // A later week of the season (TMDB's details name only the last and next episode): the
+        // season's whole episode list, once, so every row of this show gets its number.
+        if byDay[day] == nil,
+           let season = ((details["next_episode_to_air"] as? [String: Any]) ?? (details["last_episode_to_air"] as? [String: Any]))?["season_number"] as? Int,
+           let list = try? await TMDBDirect.object("tv/\(id)/season/\(season)", query: [:], token: token) {
+            for episode in list["episodes"] as? [[String: Any]] ?? [] {
+                guard let date = episode["air_date"] as? String, let number = episode["episode_number"] as? Int, byDay[date] == nil else { continue }
+                byDay[date] = season == 0 ? "Special \(number)" : "S\(season) E\(number)"
+            }
         }
         if episodeCache.count > 300 { episodeCache.removeAll() }
         episodeCache[id] = byDay
