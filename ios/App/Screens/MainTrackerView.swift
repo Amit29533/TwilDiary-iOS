@@ -347,10 +347,20 @@ struct TrackerPreviewPanel: View {
                  ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
                  : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.").padding(.vertical, -10)
                 Spacer(minLength: 8)
-                Picker("Source of truth", selection: $forceSource) {
-                    Text("Diary").tag(TrackerPreviewStore.ForceSource.diary)
-                    if intoDiary { Text(tracker.name).tag(TrackerPreviewStore.ForceSource.service) }
-                }.pickerStyle(.menu).accessibilityIdentifier(tracker.rawValue + "-force-source")
+                // The app's pill dropdown (as Automatic backups), not the system's plain menu picker.
+                Menu {
+                    Picker("Source of truth", selection: $forceSource) {
+                        Text("Diary").tag(TrackerPreviewStore.ForceSource.diary)
+                        if intoDiary { Text(tracker.name).tag(TrackerPreviewStore.ForceSource.service) }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(forceSource == .diary ? "Diary" : tracker.name)
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+                    }.font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
+                }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
+                    .accessibilityIdentifier(tracker.rawValue + "-force-source")
             }
             Button {
                 // Both sides are read and the changes shown before anything is sent.
