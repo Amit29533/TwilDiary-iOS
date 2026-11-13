@@ -72,7 +72,8 @@ import TwilDiaryCore
         cache = cache.filter { live.contains($0.key) }
         UserDefaults.standard.set(try? JSONEncoder().encode(cache), forKey: cacheKey)
         let releases = candidates.compactMap { title in cache[title.id].flatMap { release(for: title, $0, today: today) } }
-        await schedule(releases, today: today, center: center)
+        let posters = Dictionary(candidates.map { ($0.id, $0.poster) }, uniquingKeysWith: { first, _ in first })
+        await schedule(releases, today: today, center: center, posters: posters)
     }
 
     /// Turns what TMDB said into a release to tell you about (nil: nothing ahead).
@@ -130,7 +131,7 @@ import TwilDiaryCore
 
     /// Heads-ups for dates new since last time (none the very first time), then the day alerts
     /// for the nearest 20 (iOS keeps 64 alerts per app, shared with new-episode alerts).
-    private static func schedule(_ releases: [Release], today: String, center: UNUserNotificationCenter) async {
+    private static func schedule(_ releases: [Release], today: String, center: UNUserNotificationCenter, posters: [String: String?] = [:]) async {
         let first = UserDefaults.standard.object(forKey: seenKey) == nil
         var seen = Set(UserDefaults.standard.stringArray(forKey: seenKey) ?? [])
         var told = 0
@@ -140,6 +141,7 @@ import TwilDiaryCore
             told += 1
             let content = UNMutableNotificationContent()
             content.title = "Release date"; content.body = release.heads; content.threadIdentifier = release.titleId
+            if let picture = await NotificationArtwork.attachment(posters[release.titleId] ?? nil) { content.attachments = [picture] }
             try? await center.add(UNNotificationRequest(identifier: release.id + "|heads", content: content, trigger: nil))
         }
         let live = Set(releases.map(\.id))
@@ -157,6 +159,7 @@ import TwilDiaryCore
             if let date = calendar.date(from: when), date <= .now { continue }
             let content = UNMutableNotificationContent()
             content.title = release.heading; content.body = release.body; content.sound = .default; content.threadIdentifier = release.titleId
+            if let picture = await NotificationArtwork.attachment(posters[release.titleId] ?? nil) { content.attachments = [picture] }
             try? await center.add(UNNotificationRequest(identifier: release.id, content: content, trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
         }
     }

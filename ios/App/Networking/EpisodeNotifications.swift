@@ -58,6 +58,7 @@ import TwilDiaryCore
             let content = UNMutableNotificationContent()
             content.title = alert.title; content.body = alert.body; content.sound = .default
             content.threadIdentifier = alert.titleId
+            if let picture = await NotificationArtwork.attachment(store.title(alert.titleId)?.poster) { content.attachments = [picture] }
             do {
                 try await center.add(UNNotificationRequest(identifier: alert.id, content: content,
                                                            trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
@@ -76,6 +77,31 @@ import TwilDiaryCore
         }.min { $0.date < $1.date }
         guard let next else { return "No alert set: nothing you follow airs in the next two weeks." }
         return "Next: \(next.title), \(next.date.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))"
+    }
+}
+
+/// The show's or anime's poster on its alert (a thumbnail, and the full picture when you press and
+/// hold). Each poster is downloaded once and kept on the phone; iOS takes a copy for each alert.
+@MainActor enum NotificationArtwork {
+    private static let folder = URL.cachesDirectory.appending(path: "NotificationArt", directoryHint: .isDirectory)
+    static func attachment(_ poster: String?) async -> UNNotificationAttachment? {
+        guard let poster, let url = URL(string: poster), url.scheme == "https" else { return nil }
+        let ext = ["jpg", "jpeg", "png"].contains(url.pathExtension.lowercased()) ? url.pathExtension.lowercased() : "jpg"
+        let name = String(poster.unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }, radix: 16)
+        let saved = folder.appending(path: name + "." + ext)
+        if !FileManager.default.fileExists(atPath: saved.path) {
+            var request = URLRequest(url: url, timeoutInterval: 15)
+            request.cachePolicy = .returnCacheDataElseLoad
+            guard let reply = try? await URLSession.shared.data(for: request),
+                  (reply.1 as? HTTPURLResponse)?.statusCode == 200, !reply.0.isEmpty, reply.0.count < 3_000_000 else { return nil }
+            let data = reply.0
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            guard (try? data.write(to: saved, options: .atomic)) != nil else { return nil }
+        }
+        // iOS moves an attachment's file into its own store, so each alert gets a fresh copy.
+        let copy = URL.temporaryDirectory.appending(path: UUID().uuidString + "." + ext)
+        guard (try? FileManager.default.copyItem(at: saved, to: copy)) != nil else { return nil }
+        return try? UNNotificationAttachment(identifier: "poster", url: copy)
     }
 }
 
