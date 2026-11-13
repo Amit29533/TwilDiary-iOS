@@ -41,6 +41,7 @@ struct ConnectionsView: View {
                         SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
                     }
                 }
+                SimklConnectionsRow() // The Simkl add-on (App/Simkl).
                 SettingsGroup(label: "Your server") {
                     // No sign-in (owner's choice): the app reaches your server with its own key.
                     HStack(spacing: 14) {
