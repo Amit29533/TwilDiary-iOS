@@ -30,8 +30,10 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
     }
     private static var cache: [String: (at: Date, items: [UniversalRelease])] = [:]
 
-    static func load(store: DiaryStore, days: Int, filter: Filter, genres: Set<String>, now: Date = .now) async throws -> [UniversalRelease] {
-        let start = Calendar.current.startOfDay(for: now)
+    /// Releases from `offset` days after today, for `days` days.
+    static func load(store: DiaryStore, offset: Int = 0, days: Int, filter: Filter, genres: Set<String>, now: Date = .now) async throws -> [UniversalRelease] {
+        let today = Calendar.current.startOfDay(for: now)
+        let start = Calendar.current.date(byAdding: .day, value: offset, to: today) ?? today.addingTimeInterval(TimeInterval(offset) * 86_400)
         let end = Calendar.current.date(byAdding: .day, value: days, to: start) ?? start.addingTimeInterval(TimeInterval(days) * 86_400)
         let key = [DiaryDate.day(start), String(days), filter.rawValue, genres.sorted().joined(separator: ",")].joined(separator: "|")
         if let saved = cache[key], Date().timeIntervalSince(saved.at) < 1800 { return saved.items }
@@ -143,10 +145,12 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
     private static func movies(token: String, from start: Date, to end: Date, genres: Set<String>) async throws -> [UniversalRelease] {
         let first = dayText(start), last = dayText(end)
         var found: [UniversalRelease] = []
-        for page in 1...2 {
+        var lastPage = false
+        for page in 1...2 where !lastPage {
             var query = ["primary_release_date.gte": first, "primary_release_date.lte": last, "sort_by": "popularity.desc", "page": String(page)]
             if let genre = ids(genres, movie: true) { query["with_genres"] = genre }
             let reply = try await TMDBDirect.object("discover/movie", query: query, token: token)
+            if (reply["total_pages"] as? Int ?? 1) <= page { lastPage = true }
             for item in reply["results"] as? [[String: Any]] ?? [] {
                 guard let id = item["id"] as? Int, let catalog = TMDBDirect.catalogItem(item, kind: .movie),
                       let day = item["release_date"] as? String, day >= first, day < last else { continue }
@@ -204,6 +208,11 @@ struct UniversalCalendarSection: View {
     @State private var showGenres = false
     @State private var items: [UniversalRelease]?
     @State private var failure: String?
+    /// Later days still coming in, and why they stopped if they did.
+    @State private var loadingMore = false
+    @State private var moreFailure: String?
+    /// Each load's number: an older load that's still finishing leaves the screen alone.
+    @State private var generation = 0
     private var loadKey: String { [filter.rawValue, String(days), genres.sorted().joined(separator: ",")].joined(separator: "|") }
 
     var body: some View {
@@ -212,9 +221,15 @@ struct UniversalCalendarSection: View {
             if let failure {
                 RetryNotice(message: failure) { Task { await load() } }
             } else if let items {
-                if items.isEmpty {
+                if items.isEmpty && !loadingMore {
                     Text("Nothing releasing with these filters.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).padding(.top, 8)
                 } else { list(items) }
+                if loadingMore {
+                    HStack(spacing: 8) { ProgressView(); Text("Loading later days").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                } else if let moreFailure {
+                    RetryNotice(message: "Later days couldn’t be loaded. " + moreFailure) { Task { await load() } }
+                }
             } else { DiaryLoadingPlaceholder(height: 260, label: "Finding releases") }
         }
         .task(id: loadKey) { await load() }
@@ -222,10 +237,37 @@ struct UniversalCalendarSection: View {
             CalendarGenreSheet(names: TMDBDirect.genreNames.map(\.name).sorted(), chosen: $genres)
         }
     }
+    /// Today and tomorrow first, then a week at a time, each shown as it arrives: a few requests at
+    /// once instead of the whole range together.
     private func load() async {
-        failure = nil
-        do { items = try await UniversalReleases.load(store: store, days: days, filter: filter, genres: genres) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription; items = nil } }
+        generation += 1
+        let mine = generation, steps = Self.steps(days)
+        failure = nil; moreFailure = nil
+        loadingMore = steps.count > 1 && items != nil
+        var collected: [UniversalRelease] = []
+        for (index, step) in steps.enumerated() {
+            do {
+                let part = try await UniversalReleases.load(store: store, offset: step.offset, days: step.days, filter: filter, genres: genres)
+                guard mine == generation, !Task.isCancelled else { return }
+                collected = UniversalReleases.unique(collected + part)
+                items = collected
+                loadingMore = index < steps.count - 1
+            } catch {
+                guard mine == generation, !Task.isCancelled else { return }
+                if index == 0 { failure = error.localizedDescription; items = nil } else { moreFailure = error.localizedDescription }
+                loadingMore = false
+                return
+            }
+        }
+    }
+    /// The range in steps: the first two days, then weeks.
+    static func steps(_ days: Int) -> [(offset: Int, days: Int)] {
+        var steps: [(offset: Int, days: Int)] = [], offset = 0
+        while offset < days {
+            let size = offset == 0 ? min(2, days) : min(7, days - offset)
+            steps.append((offset, size)); offset += size
+        }
+        return steps
     }
 
     private var controls: some View {

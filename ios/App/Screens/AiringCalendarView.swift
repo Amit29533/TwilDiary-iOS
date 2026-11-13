@@ -226,7 +226,7 @@ struct AiringCalendarView: View {
         let calendar = DiaryDate.calendar()
         let shown = selectedDate.map { day in items.filter { calendar.isDate($0.date, inSameDayAs: day) } } ?? items
         ForEach(weekGroups(shown), id: \.label) { group in
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 heading(group.label, group.items.count)
                 ForEach(group.items) { item in upcomingRow(item) }
             }
@@ -364,7 +364,7 @@ struct AiringCalendarView: View {
     @ViewBuilder private func catchupList(_ items: [UpcomingSchedule.Item]) -> some View {
         let groups = behind(items)
         if !groups.isEmpty {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 heading("Behind", groups.count)
                 ForEach(groups) { group in behindRow(group) }
             }
@@ -440,13 +440,13 @@ struct AiringCalendarView: View {
 
     @ViewBuilder private func allList(upcoming: [UpcomingSchedule.Item], aired: [UpcomingSchedule.Item]) -> some View {
         if !upcoming.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 heading("Upcoming", upcoming.count)
                 ForEach(upcoming) { item in compactRow(item, badge: away(item.daysAway), strong: false) }
             }
         }
         if !aired.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 heading("Aired", aired.count)
                 ForEach(aired) { item in compactRow(item, badge: "Behind", strong: true) }
             }

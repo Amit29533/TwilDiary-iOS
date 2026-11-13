@@ -45,4 +45,12 @@ final class EpisodeAirTimesTests: XCTestCase {
         XCTAssertEqual(AiringCalendarView.Tab.allCases.map(\.title), ["Upcoming", "Missed", "Following", "Global"])
         XCTAssertEqual(AiringCalendarView.Tab.everything.rawValue, "Everything", "the saved tab keeps its value")
     }
+
+    @MainActor func testGlobalLoadsTodayAndTomorrowFirstThenWeeks() {
+        func steps(_ days: Int) -> [[Int]] { UniversalCalendarSection.steps(days).map { [$0.offset, $0.days] } }
+        XCTAssertEqual(steps(1), [[0, 1]])
+        XCTAssertEqual(steps(7), [[0, 2], [2, 5]])
+        XCTAssertEqual(steps(14), [[0, 2], [2, 7], [9, 5]])
+        XCTAssertEqual(steps(30), [[0, 2], [2, 7], [9, 7], [16, 7], [23, 7]])
+    }
 }
