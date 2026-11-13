@@ -12,6 +12,8 @@ struct ConnectionsView: View {
     @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @State private var showDiaryAccess = false
+    /// Your server switched on (Cloudflare sign-in, or Sync & backup → Your server).
+    @AppStorage(ExtrasStorage.serverKey) private var server = false
     /// Trakt's real state (Not connected, Reconnect…), from your server.
     @State private var traktDirect = TraktDirectStore.shared
     @State private var others = TrackerPreviewStore.shared
@@ -40,16 +42,20 @@ struct ConnectionsView: View {
                         SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
                     }
                 }
-                SettingsGroup(label: "Your diary") {
+                SettingsGroup(label: "Your server") {
                     Button { showDiaryAccess = true } label: {
                         rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in",
-                                 store.phoneOnly ? "Optional · not connected" : "How this iPhone signs in",
-                                 value: store.phoneOnly ? "Connect" : nil)
+                                 server ? "On · backups and extras" : "Optional · not connected",
+                                 value: server ? nil : "Connect")
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
-                    if !store.phoneOnly {
+                    // The browsing preview shows them too (its UI tests open them).
+                    if server || store.isPreview {
                         divider
                         row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "Copies of your diary kept on your server",
                             value: nil, destination: .backups, id: "connections-backups")
+                        divider
+                        row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare usage", "Today's use against the free plan",
+                            value: nil, destination: .cloudflare, id: "settings-cloudflare")
                     }
                 }
                 VStack(alignment: .leading, spacing: 12) {
@@ -59,10 +65,6 @@ struct ConnectionsView: View {
                         row(BrandLogo(service: .anilist, size: 38), "AniList", "Characters and voice actors",
                             value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, destination: .anilist, id: "settings-anilist")
                         divider
-                        if !store.phoneOnly {
-                            row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare", "Usage against the free plan", value: nil, destination: .cloudflare, id: "settings-cloudflare")
-                            divider
-                        }
                         NavigationLink(value: AppDestination.apis) {
                             Text("All keys").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
