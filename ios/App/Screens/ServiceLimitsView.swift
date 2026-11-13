@@ -117,15 +117,14 @@ struct ServiceLimitsView: View {
                 if let limits {
                     dailyCard(limits.daily)
                     if !limits.rows.isEmpty {
-                        SettingsGroup(label: limits.plan ?? "Account limits") {
+                        SettingsGroup(label: limits.plan ?? "Account limits", info: planNote) {
                             ForEach(Array(limits.rows.enumerated()), id: \.element.id) { index, row in
                                 if index > 0 { SettingsDivider() }
                                 LimitRow(row: row, accent: theme.accent)
                             }
                         }
-                        SettingsFootnote(text: planNote)
                     } else if let plan = limits.plan {
-                        SettingsFootnote(text: plan + ". " + planNote)
+                        SettingsFootnote(text: plan)
                     }
                 } else if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
@@ -142,7 +141,7 @@ struct ServiceLimitsView: View {
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     @ViewBuilder private func dailyCard(_ daily: ProviderQuota.Daily?) -> some View {
-        SettingsGroup(label: "Daily requests") {
+        SettingsGroup(label: "Daily requests", info: dailyNote) {
             VStack(alignment: .leading, spacing: 10) {
                 if let daily {
                     Text("\(daily.used.formatted()) of \(daily.limit.formatted()) used today")
@@ -154,15 +153,14 @@ struct ServiceLimitsView: View {
                 } else {
                     Text(noDailyText).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Text(dailyNote).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("limits-daily")
     }
     private var noDailyText: String {
         switch tracker {
         case .trakt: "Trakt has no daily request cap."
-        case .mdblist: "MDBList didn't report today's count. It's counted on MDBList's site under your API usage."
-        case .wetrakr: "WeTrakr reports today's count with each reply; it shows here after the next read."
+        case .mdblist: "MDBList didn't report today's count."
+        case .wetrakr: "Shows after the next WeTrakr read."
         }
     }
     private var dailyNote: String {

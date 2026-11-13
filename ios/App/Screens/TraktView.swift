@@ -222,7 +222,7 @@ import TwilDiaryCore
                                      badge: reconnect ? ("Reconnect", .missing) : connected ? (controller.status?.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
             if connected && !reconnect {
                 if pending > 0 { SettingsBadge(text: "\(pending) to review", tone: .missing) }
-                Text("Your diary lives on this server. Scan Trakt to compare them; nothing changes until you review.")
+                Text("Scan Trakt to compare. Nothing changes until you review.")
                     .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 // Hidden while a scan runs; the scan card has its own Continue and Stop.
                 if !scanning {

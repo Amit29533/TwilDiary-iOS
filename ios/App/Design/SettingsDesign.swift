@@ -20,10 +20,17 @@ struct SettingsIntro: View {
 /// A group: its label, then its rows in one card.
 struct SettingsGroup<Content: View>: View {
     var label: String? = nil
+    /// A longer explanation, behind an ⓘ beside the title (settings pages keep their text short).
+    var info: String? = nil
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let label { Text(label.uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 24) }
+            if let label {
+                HStack(spacing: 4) {
+                    Text(label.uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                    if let info { SettingsInfoButton(text: info).padding(.vertical, -10) }
+                }.frame(height: 24)
+            }
             VStack(spacing: 0) { content }.modifier(SettingsCard()).toggleStyle(SettingsToggleStyle())
         }
     }

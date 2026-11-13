@@ -57,7 +57,7 @@ enum SignInNavigationPolicy {
                 VStack(alignment: .leading, spacing: 10) {
                     BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
                     Text(phoneOnly == nil ? "Sign in to your diary" : "How should we keep your library?").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
-                    Text(phoneOnly == nil ? "Sign in to your TwilDiary server." : "Pick where your library lives. You can connect more services and your TwilDiary server any time.")
+                    Text(phoneOnly == nil ? "Sign in to your TwilDiary server." : "Pick where your library lives. You can add more later.")
                         .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 // The ways in, as rows (as Cinopsys lists them): Trakt first, then your server's own

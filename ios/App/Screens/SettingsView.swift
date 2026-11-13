@@ -365,13 +365,16 @@ struct TMDBConnectionView: View {
                     if let error { Text(error).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
                     if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(webHex: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
                 }
-                SettingsFootnote(text: custom
-                    ? "Your own Read Access Token is stored encrypted on this iPhone and used first; your server’s key is the backup."
-                    : "TMDB is read straight from this iPhone with your server’s key. You can also set your own TMDB Read Access Token here.")
+                HStack(spacing: 4) {
+                    SettingsFootnote(text: custom ? "Your own token is used first." : "Uses your server’s key.")
+                    SettingsInfoButton(text: custom
+                        ? "Your own Read Access Token is stored encrypted on this iPhone and used first; your server’s key is the backup."
+                        : "TMDB is read straight from this iPhone with your server’s key. You can also set your own TMDB Read Access Token here.").padding(.vertical, -10)
+                }
                 if editingApi {
                     SettingsGroup(label: "Your own token") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Paste a TMDB Read Access Token (without the word Bearer). It replaces the server’s key on this iPhone.")
+                            Text("Paste a TMDB Read Access Token (without “Bearer”).")
                                 .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                             SecureField("TMDB Read Access Token", text: $tokenInput).settingsField(monospaced: true)
                                 .accessibilityIdentifier("tmdb-api-token-field")

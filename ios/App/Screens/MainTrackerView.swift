@@ -39,9 +39,11 @@ struct MainTrackerView: View {
                 }
                 if tracker == .trakt { diarySource } else { trackerDiarySource }
                 TrackerPreviewPanel(tracker: tracker)
-                Text(recordNote)
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("main-tracker-record")
+                HStack(spacing: 4) {
+                    Text(store.serverRecord.map { "\($0.name) holds your diary." } ?? "Your diary is on your server.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    SettingsInfoButton(text: recordNote).padding(.vertical, -10)
+                }.accessibilityIdentifier("main-tracker-record")
             }.padding(14).padding(.bottom, 40)
         }.diaryScreenBackground().navigationTitle("Main tracker").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
     }
@@ -83,7 +85,7 @@ struct MainTrackerView: View {
                 }
             }.accessibilityIdentifier("diary-from-" + tracker.rawValue)
             if store.diaryFromTracker == tracker {
-                Label("Your diary comes from \(tracker.name). Turn this off to go back to your server’s diary.", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                Label("Diary from \(tracker.name)", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
             }
         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
@@ -268,10 +270,13 @@ struct TrackerPreviewPanel: View {
         let plan = report != nil ? trakt.plan : nil
         let fill = store.traktHoldsDiary
         if fill {
-            Text(plan?.isEmpty == false
-                 ? "Trakt holds your diary. The list above is what your old server copy has and Trakt doesn’t. It’s copied in automatically once; if anything is still listed, tap below to try again. Anything newer on Trakt stays as it is."
-                 : "Trakt holds your diary and has everything from your old server copy.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
+            HStack(spacing: 4) {
+                Text(plan?.isEmpty == false ? "Trakt holds your diary. Some old items are still to copy." : "Trakt holds your diary.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                SettingsInfoButton(text: plan?.isEmpty == false
+                    ? "The list above is what your old server copy has and Trakt doesn’t. It’s copied in automatically once; if anything is still listed, tap below to try again. Anything newer on Trakt stays as it is."
+                    : "Trakt has everything from your old server copy.").padding(.vertical, -10)
+            }.accessibilityIdentifier(id + "-holds-diary")
         } else {
         Toggle(isOn: Binding(get: { store.traktWriteThrough }, set: { on in
             savingWriteThrough = true; writeThroughError = nil
@@ -338,16 +343,15 @@ struct TrackerPreviewPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("Source of truth").font(.subheadline.weight(.semibold))
+                SettingsInfoButton(text: forceSource == .diary
+                 ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
+                 : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.").padding(.vertical, -10)
                 Spacer(minLength: 8)
                 Picker("Source of truth", selection: $forceSource) {
                     Text("Diary").tag(TrackerPreviewStore.ForceSource.diary)
                     if intoDiary { Text(tracker.name).tag(TrackerPreviewStore.ForceSource.service) }
                 }.pickerStyle(.menu).accessibilityIdentifier(tracker.rawValue + "-force-source")
             }
-            Text(forceSource == .diary
-                 ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
-                 : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button {
                 // Both sides are read and the changes shown before anything is sent.
                 let source = forceSource

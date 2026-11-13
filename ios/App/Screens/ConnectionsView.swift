@@ -29,7 +29,7 @@ struct ConnectionsView: View {
             // Design (board 3): WHERE YOUR DIARY LIVES, YOUR DIARY and KEYS, each a card of rows.
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 12) {
-                    SettingsGroup(label: "Where your diary lives") {
+                    SettingsGroup(label: "Where your diary lives", info: "The Main one holds your diary. Your edits go to it, and to the others you’re signed in to.") {
                         ForEach(Array(MainTracker.offered.enumerated()), id: \.element) { index, tracker in
                             if index > 0 { divider }
                             trackerRow(tracker)
@@ -40,12 +40,11 @@ struct ConnectionsView: View {
                     } else if let note = note ?? lastResult {
                         SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
                     }
-                    SettingsFootnote(text: "The Main one holds your diary. Your edits go to it, and to the others you’re signed in to.")
                 }
                 SettingsGroup(label: "Your diary") {
                     Button { showDiaryAccess = true } label: {
                         rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in",
-                                 store.phoneOnly ? "Not connected. Optional: tags, notes, files and Trash stay on this phone and Google Drive" : "How this iPhone signs in to your TwilDiary server",
+                                 store.phoneOnly ? "Optional · not connected" : "How this iPhone signs in",
                                  value: store.phoneOnly ? "Connect" : nil)
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
                     if !store.phoneOnly {
@@ -55,7 +54,7 @@ struct ConnectionsView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    SettingsGroup(label: "Keys") {
+                    SettingsGroup(label: "Keys", info: "Keys are kept encrypted on this iPhone, and TwilDiary reads each service with them directly.") {
                         row(BrandLogo(service: .tmdb, size: 38), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
                         divider
                         row(BrandLogo(service: .anilist, size: 38), "AniList", "Characters and voice actors",
@@ -70,7 +69,6 @@ struct ConnectionsView: View {
                                 .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("settings-apis")
                     }
-                    SettingsFootnote(text: "Keys are kept encrypted on this iPhone, and TwilDiary reads each service with them directly.")
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().diaryPageNavigation("Connections")

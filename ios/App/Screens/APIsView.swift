@@ -94,11 +94,18 @@ struct APIsView: View {
     }
     private func keyRow(_ key: APIKeyStatus) -> some View {
         let check = model?.checks[key.name], testing = model?.testing.contains(key.name) == true
-        let (name, owner) = Self.splitLabel(key.label)
+        let (name, detail) = Self.splitLabel(key.label)
+        // A short note stays beside the name ("(Simkl)"); a long one goes behind ⓘ, without the
+        // server's old redirect (the line below shows the one in use).
+        let note = detail.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "()")) }
+            .map { $0.components(separatedBy: ";").filter { !$0.lowercased().contains("redirect") }.joined(separator: ";").trimmingCharacters(in: .whitespaces) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let inline = note.flatMap { $0.count <= 16 ? "(" + $0 + ")" : nil }
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                (owner.map { Text("\(name) \(Text($0).foregroundStyle(HomeStyle.secondary).fontWeight(.regular))") } ?? Text(name))
+                (inline.map { tag in Text("\(name) \(Text(tag).foregroundStyle(HomeStyle.secondary).fontWeight(.regular))") } ?? Text(name))
                     .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                if let note, inline == nil { SettingsInfoButton(text: note).padding(.vertical, -10) }
                 Spacer(minLength: 8)
                 sourcePill(key.source)
             }

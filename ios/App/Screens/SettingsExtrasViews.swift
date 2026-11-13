@@ -32,8 +32,8 @@ struct ExtrasStorageGroup: View {
     @AppStorage(GoogleDrive.connectedKey) private var driveConnected = false
     private var sync: PhoneServerSync { PhoneServerSync.shared }
     var body: some View {
-        SettingsGroup(label: "Where extras live") {
-            SettingsLine(title: "On this iPhone", subtitle: "Tags, Queue, full notes, statuses Trakt can't keep, file folders, favourite people, Trash") {
+        SettingsGroup(label: "Where extras live", info: "Tags, Queue, full notes, statuses Trakt can’t keep, file folders, favourite people and Trash. The iPhone always has a copy; turn on Google Drive or your server to keep one there too.") {
+            SettingsLine(title: "On this iPhone", subtitle: "Tags, Queue, notes, folders and more") {
                 Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
             }
             SettingsDivider()
@@ -203,8 +203,8 @@ struct SyncBackupView: View {
                 else if !store.phoneOnly {
                     // Signed in to your server: the extras are part of the diary there (nothing to
                     // choose), said here so the section doesn't seem to vanish (owner's question).
-                    SettingsGroup(label: "Where extras live") {
-                        SettingsLine(title: "Your TwilDiary server", subtitle: "Tags, Queue, full notes, statuses, file folders, favourite people and Trash are saved with your diary there, and in its backups") {
+                    SettingsGroup(label: "Where extras live", info: "Tags, Queue, full notes, statuses, file folders, favourite people and Trash are saved with your diary on your server, and in its backups.") {
+                        SettingsLine(title: "Your TwilDiary server", subtitle: "Saved with your diary") {
                             Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
                         }.accessibilityIdentifier("extras-on-server")
                     }
