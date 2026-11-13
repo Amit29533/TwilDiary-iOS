@@ -179,6 +179,7 @@ struct SettingsView: View {
                                 backupNotice = "Restored"
                                 return
                             }
+                            if store.phoneOnly { throw APIError.message("CSV files are read by your TwilDiary server. Without it, import a TwilDiary backup (.json).") }
                             let summary = try await store.importDiaryArchive(data)
                             backupNotice = "Imported \(summary.titles)"
                         } catch {

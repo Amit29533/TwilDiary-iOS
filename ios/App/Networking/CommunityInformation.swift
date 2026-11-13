@@ -97,6 +97,7 @@ extension DiaryStore {
             // Straight from Trakt with your own sign-in first: the server's shared reads were
             // often refused (rate limits on your server's Trakt app), which showed as unavailable.
             if let direct = try? await self.directCommunityInformation(identity), direct.valid, direct.statsState != .unavailable { return direct }
+            if phoneOnly { throw APIError.message("Community information is unavailable right now. Please try again later.") }
             do { return try await read(identity.path, timeout: 25) }
             catch APIError.rejected(404, _) { throw APIError.message("Community information is unavailable right now. Please try again later.") }
         }

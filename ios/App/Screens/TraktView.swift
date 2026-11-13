@@ -110,14 +110,6 @@ import TwilDiaryCore
             Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private var traktDirect: TraktDirectStore { .shared }
-    private func optionLabel(_ title: String, _ subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
-        }.frame(maxWidth: .infinity, alignment: .leading)
-    }
     /// Trakt signed in on this iPhone, or no server at all: read here, never asked of the server.
     private var onPhone: Bool { store.phoneOnly || store.traktSignedInOnPhone }
 }

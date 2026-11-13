@@ -1574,7 +1574,7 @@ import TwilDiaryCore
         if phoneOnly {
             // Details, cast, lists and discovery come from TMDB on the phone when it has a key; the
             // server is only their backup. Without a key, the key is the fix, not a server.
-            let tmdbBacked = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search"].contains { path.hasPrefix($0) }
+            let tmdbBacked = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search", "/api/stats"].contains { path.hasPrefix($0) }
             throw APIError.message(tmdbBacked && TMDBDirect.token(self) == nil ? Self.needsTMDB : Self.needsServer)
         }
         let generation = sessionGeneration
@@ -1631,7 +1631,15 @@ import TwilDiaryCore
         }
     }
     @discardableResult func refreshTitleMetadata(_ title: MediaTitle) async -> Bool {
-        guard title.tmdbId != nil else { return false }
+        guard let tmdb = title.tmdbId else { return false }
+        // No server: details and episodes from TMDB on the phone.
+        if phoneOnly {
+            guard TMDBDirect.token(self) != nil else { error = Self.needsTMDB; return false }
+            let key = (title.isSeries ? "tv:" : "movie:") + String(tmdb)
+            await PhoneCatalog.shared.fill([key], store: self, force: true)
+            if title.isSeries { await PhoneCatalog.shared.fillEpisodes([key], store: self, force: true) }
+            return true
+        }
         return await perform(refreshing: [title.id]) {
             let _: TitleReceipt = try await self.read("/api/titles/\(title.id)/metadata", method: "POST")
         }
@@ -1778,6 +1786,13 @@ import TwilDiaryCore
         return value
     }
     func loadSeason(_ title: MediaTitle, number: Int) async {
+        // No server: the phone's catalog reads the show's seasons from TMDB again.
+        if phoneOnly {
+            guard let tmdb = title.tmdbId, title.isSeries else { return }
+            guard TMDBDirect.token(self) != nil else { error = Self.needsTMDB; return }
+            await PhoneCatalog.shared.fillEpisodes(["tv:\(tmdb)"], store: self, force: true)
+            return
+        }
         await perform(refreshing: [title.id]) {
             let _: EmptyResponse = try await self.read("/api/titles/\(title.id)/seasons/\(number)/metadata", method: "POST")
         }
@@ -2190,8 +2205,8 @@ import TwilDiaryCore
         if error is URLError { return "offline" }
         return nil
     }
-    static let needsServer = "This needs your TwilDiary server. Connect it in Profile → Connections → Server sign-in."
-    static let needsTMDB = "This needs TMDB. Add your TMDB key in Profile → Connections → TMDB, or sign in to your TwilDiary server."
+    static let needsServer = "Your TwilDiary server does this, and it isn’t connected. Connect it in Profile → Connections if you want it."
+    static let needsTMDB = "This needs your TMDB key. Add it in Profile → Connections → TMDB."
     private func fail(_ cause: Error) {
         if case APIError.signIn = cause, !phoneOnly {
             retainedTraktController?.invalidateSession(); retainedTraktController = nil

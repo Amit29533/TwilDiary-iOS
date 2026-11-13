@@ -33,11 +33,12 @@ import TwilDiaryCore
     var episodes: [String: [CatalogEpisodeFact]] { episodeEntries.mapValues(\.list) }
 
     /// Reads every season's episodes for these shows (missing, or a week old; a show with a season
-    /// still airing, a day old), six shows a pass, then rebuilds the diary.
-    func fillEpisodes(_ keys: [String], store: DiaryStore) async {
+    /// still airing, a day old; `force`: now), six shows a pass, then rebuilds the diary.
+    func fillEpisodes(_ keys: [String], store: DiaryStore, force: Bool = false) async {
         guard let token = TMDBDirect.token(store), !fillingEpisodes else { return }
         let now = Date.now
         let due = keys.filter { key in
+            if force { return true }
             guard failed["episodes:" + key].map({ now.timeIntervalSince($0) > 600 }) ?? true else { return false }
             guard let entry = episodeEntries[key] else { return true }
             let airing = entry.list.contains { ($0.airedOn ?? "") >= DiaryDate.day(now.addingTimeInterval(-14 * 86_400)) }
@@ -86,12 +87,12 @@ import TwilDiaryCore
 
     /// Reads the details of these keys that are missing or a week old (at most 24 at a time, eight
     /// side by side), then rebuilds the diary. Without your TMDB key: false (nothing to read with).
-    @discardableResult func fill(_ keys: [String], store: DiaryStore) async -> Bool {
+    @discardableResult func fill(_ keys: [String], store: DiaryStore, force: Bool = false) async -> Bool {
         guard let token = TMDBDirect.token(store) else { return false }
         guard !filling else { return true }
         let now = Date.now
         let due = keys.filter { key in
-            (entries[key].map { now.timeIntervalSince($0.fetchedAt) > 7 * 86_400 } ?? true) && (failed[key].map { now.timeIntervalSince($0) > 600 } ?? true)
+            force || ((entries[key].map { now.timeIntervalSince($0.fetchedAt) > 7 * 86_400 } ?? true) && (failed[key].map { now.timeIntervalSince($0) > 600 } ?? true))
         }.prefix(24)
         guard !due.isEmpty else { return true }
         filling = true
