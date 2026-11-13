@@ -1,0 +1,126 @@
+# Code-health checks on the Namespace Apple Silicon runner, separate from the IPA build: a
+# Periphery dead-code scan and the app's own unit tests (TwilDiaryTests) in the Simulator. Start it
+# by pushing a tag (`git tag namespace-check-<short sha> && git push origin namespace-check-<short sha>`).
+# Read-only: no signing, no release, no deploy. Results are the run's artifacts.
+name: iOS checks (Namespace)
+run-name: namespace checks ${{ github.ref_name }}
+
+on:
+  push:
+    tags: ['namespace-check-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-namespace-checks-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  unused-code:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 60
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Choose Xcode 26.6
+        run: |
+          set -euo pipefail
+          dev=""
+          for app in /Applications/Xcode_26.6.app $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
+            if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then dev="$app/Contents/Developer"; break; fi
+          done
+          [ -n "$dev" ] || dev="$(xcode-select -p)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          mkdir -p ios/.artifacts
+      - name: Cache Swift packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.spm
+          key: spm-namespace-${{ runner.arch }}-${{ hashFiles('ios/**/Package.resolved', 'ios/**/Package.swift', 'ios/project.yml') }}
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Install Periphery
+        run: |
+          set -euo pipefail
+          brew install periphery || brew install peripheryapp/periphery/periphery
+          periphery version | tee ios/.artifacts/periphery-version.txt
+      - name: Scan for unused code
+        run: |
+          set -uo pipefail
+          periphery scan --project ios/TwilDiary.xcodeproj --schemes TwilDiary \
+            --retain-swift-ui-previews --retain-codable-properties --relative-results --disable-update-check \
+            --format csv -- -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
+            -clonedSourcePackagesDirPath "$PWD/ios/.spm" > ios/.artifacts/periphery.csv 2> ios/.artifacts/periphery.log
+          status=$?
+          echo "periphery exit $status"; tail -40 ios/.artifacts/periphery.log; wc -l ios/.artifacts/periphery.csv
+          exit $status
+      - name: Upload scan
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-unused-code
+          path: ios/.artifacts
+          retention-days: 7
+
+  app-tests:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Choose Xcode 26.6 and an iPhone simulator
+        run: |
+          set -euo pipefail
+          dev=""
+          for app in /Applications/Xcode_26.6.app $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
+            if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then dev="$app/Contents/Developer"; break; fi
+          done
+          [ -n "$dev" ] || dev="$(xcode-select -p)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          mkdir -p ios/.artifacts/logs
+          DEVELOPER_DIR="$dev" xcrun simctl list devices available -j > ios/.artifacts/devices.json
+          python3 - <<'PY'
+          import json, os, re
+          devices = json.load(open('ios/.artifacts/devices.json'))['devices']
+          options = [(runtime, d) for runtime, items in devices.items() if 'iOS' in runtime
+                     for d in items if d['name'].startswith('iPhone') and d.get('isAvailable', True)]
+          if not options: raise SystemExit('No iPhone simulator available')
+          runtime, device = max(options, key=lambda o: (tuple(map(int, re.findall(r'\d+', o[0]))), 'Pro' in o[1]['name']))
+          print('Simulator:', device['name'], runtime)
+          open(os.environ['GITHUB_ENV'], 'a').write('SIMULATOR_ID=' + device['udid'] + '\n')
+          PY
+      - name: Cache Swift packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.spm
+          key: spm-namespace-${{ runner.arch }}-${{ hashFiles('ios/**/Package.resolved', 'ios/**/Package.swift', 'ios/project.yml') }}
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Build for testing
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          bash ios/scripts/ci.sh build-simulator
+      - name: App unit tests
+        run: bash ios/scripts/ci.sh test-unit
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-app-tests
+          path: |
+            ios/.artifacts/logs
+            ios/.artifacts/UnitTests.xcresult
+          retention-days: 7
