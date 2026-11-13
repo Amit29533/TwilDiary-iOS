@@ -47,9 +47,7 @@ struct ExtrasStorageGroup: View {
             }.accessibilityIdentifier("extras-server")
         }
         .onChange(of: drive) { _, on in if on { Task { await PhoneDriveSync.pullIfDue(store: store, force: true) } } }
-        .onChange(of: server) { _, on in
-            if on { Task { await sync.pullIfDue(store: store, force: true) } } else { sync.forget() }
-        }
+        .onChange(of: server) { _, on in ExtrasStorage.switched(on, store: store) }
         .task { sync.store = store }
     }
     private var serverSubtitle: String {

@@ -11,8 +11,7 @@ struct ConnectionsView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
-    @State private var showDiaryAccess = false
-    /// Your server switched on (Cloudflare sign-in, or Sync & backup → Your server).
+    /// Your server switched on (here, in Sync & backup, or by a Cloudflare sign-in).
     @AppStorage(ExtrasStorage.serverKey) private var server = false
     /// Trakt's real state (Not connected, Reconnect…), from your server.
     @State private var traktDirect = TraktDirectStore.shared
@@ -43,11 +42,17 @@ struct ConnectionsView: View {
                     }
                 }
                 SettingsGroup(label: "Your server") {
-                    Button { showDiaryAccess = true } label: {
-                        rowLabel(SettingsTile(symbol: "lock.shield"), "Server sign-in",
-                                 server ? "On · backups and extras" : "Optional · not connected",
-                                 value: server ? nil : "Connect")
-                    }.buttonStyle(.plain).accessibilityIdentifier("settings-signin-methods")
+                    // No sign-in (owner's choice): the app reaches your server with its own key.
+                    HStack(spacing: 14) {
+                        SettingsTile(symbol: "server.rack")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Your server").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            Text(server ? "Backups and extras, no sign-in" : "Off · nothing goes to your server")
+                                .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                        }
+                        Spacer(minLength: 4)
+                        Toggle("", isOn: $server).labelsHidden().tint(theme.accent)
+                    }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("connections-server")
                     // The browsing preview shows them too (its UI tests open them).
                     if server || store.isPreview {
                         divider
@@ -83,16 +88,7 @@ struct ConnectionsView: View {
                     Text(plan.summary.map { "• " + $0 }.joined(separator: "\n") + "\n\nNothing is removed from your \(tracker.name) history.")
                 }
             }
-            .sheet(isPresented: $showDiaryAccess) {
-                NavigationStack {
-                    AccessSignIn { credential in
-                        showDiaryAccess = false
-                        Task { await store.signInWithServer(credential) }
-                    }
-                    .navigationTitle("Server sign-in").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showDiaryAccess = false } } }
-                }
-            }
+            .onChange(of: server) { _, on in ExtrasStorage.switched(on, store: store) }
     }
 
     // MARK: Trackers

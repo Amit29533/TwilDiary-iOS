@@ -16,6 +16,16 @@ enum ExtrasStorage {
         get { UserDefaults.standard.bool(forKey: serverKey) }
         set { UserDefaults.standard.set(newValue, forKey: serverKey) }
     }
+    /// The Your server switch changed (Connections or Sync & backup): on, the extras get in step
+    /// (and, the first time, your server's old copy gives the phone what it lacks); off, the
+    /// server is left alone (its copy stays).
+    @MainActor static func switched(_ on: Bool, store: DiaryStore) {
+        guard on else { PhoneServerSync.shared.forget(); return }
+        Task {
+            await ServerExtrasMove.runOnce(store: store)
+            await PhoneServerSync.shared.pullIfDue(store: store, force: true)
+        }
+    }
 }
 
 /// Keeps the phone's extras in step with a copy on your TwilDiary server (`/api/phone-extras`), the
