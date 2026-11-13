@@ -1578,6 +1578,14 @@ import TwilDiaryCore
         if isPreview { throw APIError.message("The browsing fixture is read-only.") }
         #endif
         if phoneOnly {
+            // Signed in to your server (Cloudflare): its own pages (usage, API keys, saved keys,
+            // backups, Jellyfin's copy) and its fallbacks go through that sign-in. Never the diary:
+            // it isn't on the server.
+            let diaryOnly = ["/api/workspace", "/api/titles", "/api/watch-events", "/api/glance", "/api/progress", "/api/trash", "/api/favourites", "/api/trakt/sync"].contains { path.hasPrefix($0) }
+            if ExtrasStorage.server, !diaryOnly {
+                let data = try body.map { try JSONSerialization.data(withJSONObject: $0) }
+                return try JSONDecoder().decode(T.self, from: try await PhoneServerSync.shared.send(path, method: method, body: data, store: self))
+            }
             // Details, cast, lists and discovery come from TMDB on the phone when it has a key; the
             // server is only their backup. Without a key, the key is the fix, not a server.
             let tmdbBacked = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search", "/api/stats"].contains { path.hasPrefix($0) }
