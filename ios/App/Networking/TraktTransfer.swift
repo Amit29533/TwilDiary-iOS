@@ -1,5 +1,4 @@
 import Foundation
-import TwilDiaryCore
 
 /// Preserve provider/retry evidence only for the reviewed Trakt endpoints.
 /// A lost POST response is reconciled by GET before any further write.

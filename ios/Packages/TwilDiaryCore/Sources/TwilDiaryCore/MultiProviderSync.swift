@@ -443,51 +443,6 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         self.isBackgrounded = isBackgrounded
     }
 
-    /// Builds a Dynamic Island `SyncLiveActivityState` from a `TraktSync` snapshot.
-    public static func fromTrakt(_ sync: TraktSync, paused: Bool = false, isBackgrounded: Bool = false) -> SyncLiveActivityState? {
-        guard let run = sync.run else { return nil }
-        if run.state == "building" {
-            let scan = TraktScanProgress(run: run)
-            let done = scan.completed ?? max(0, run.page - 1)
-            let total = scan.total ?? max(done, run.progress)
-            return SyncLiveActivityState(
-                provider: .trakt,
-                phase: paused ? .paused : .scanning,
-                title: paused ? "Trakt scan paused" : scan.title,
-                subtitle: scan.detail,
-                completedCount: done,
-                totalCount: total,
-                isBackgrounded: isBackgrounded
-            )
-        }
-        let applied = max(0, sync.counts["applied"] ?? 0)
-        let skipped = max(0, sync.counts["skipped"] ?? 0)
-        let remaining = max(0, (sync.counts["pending"] ?? 0) + (sync.counts["failed"] ?? 0) + (sync.counts["uncertain"] ?? 0))
-        let finished = applied + skipped
-        let total = finished + remaining
-        if run.state == "complete" {
-            return SyncLiveActivityState(
-                provider: .trakt,
-                phase: .completed,
-                title: "Trakt sync complete",
-                subtitle: "\(applied.formatted()) saved · \(skipped.formatted()) skipped",
-                completedCount: total,
-                totalCount: max(1, total),
-                isBackgrounded: isBackgrounded
-            )
-        }
-        guard sync.reviewing else { return nil }
-        return SyncLiveActivityState(
-            provider: .trakt,
-            phase: paused ? .paused : .importing,
-            title: paused ? "Trakt import paused" : (isBackgrounded ? "Background Trakt import" : "Importing Trakt changes"),
-            subtitle: "\(applied.formatted()) saved · \(remaining.formatted()) remaining",
-            completedCount: finished,
-            totalCount: total,
-            isBackgrounded: isBackgrounded
-        )
-    }
-
     /// Builds a Dynamic Island `SyncLiveActivityState` for an external provider outbox/sync batch.
     public static func forProviderBatch(
         provider: SyncProviderKind,

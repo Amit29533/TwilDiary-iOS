@@ -1475,14 +1475,6 @@ import UIKit
         row.tap()
         XCTAssertTrue(app.navigationBars["Connections"].waitForExistence(timeout: 5))
     }
-    /// Profile → Connections → Trakt.
-    private func openTrakt(_ app: XCUIApplication) {
-        if !app.buttons["settings-trakt"].exists { openConnections(app) }
-        let row = app.buttons["settings-trakt"]
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
-        row.tap()
-    }
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

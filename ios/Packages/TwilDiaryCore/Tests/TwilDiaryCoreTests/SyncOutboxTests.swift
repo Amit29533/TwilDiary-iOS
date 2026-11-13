@@ -183,17 +183,6 @@ import TwilDiaryTestSupport
     #expect(diProviderState.compactBadge == "ML")
     #expect(diProviderState.percent == 50)
     #expect(diProviderState.title == "Background MDBList sync")
-
-    let traktSync = TraktSync(
-        next: nil,
-        run: TraktSync.Run(id: "r1", state: "applying", stage: "done", page: 1, progress: 100, ratingMode: "round", error: nil, retryAfter: 0),
-        items: [],
-        counts: ["applied": 30, "skipped": 10, "pending": 10]
-    )
-    let diTraktState = try #require(SyncLiveActivityState.fromTrakt(traktSync, paused: false, isBackgrounded: true))
-    #expect(diTraktState.compactBadge == "TK")
-    #expect(diTraktState.percent == 80)
-    #expect(diTraktState.title == "Background Trakt import")
 }
 
 @Test func providerConnectionSettingsAndLoggingMethods() throws {
