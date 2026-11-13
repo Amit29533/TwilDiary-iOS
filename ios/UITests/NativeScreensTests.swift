@@ -1530,8 +1530,8 @@ import UIKit
         let rating = app.buttons["title-personal-rating"]
         XCTAssertTrue(rating.waitForExistence(timeout: 5))
         // Title redesign: your rating sits in the rating circles (community scores in the logo boxes),
-        // reachable and inside the page margins.
-        XCTAssertTrue(rating.isHittable)
+        // reachable and inside the page margins (scrolled clear of the tab bar, which title pages keep).
+        reveal(rating)
         XCTAssertGreaterThanOrEqual(rating.frame.minX, 12); XCTAssertLessThanOrEqual(rating.frame.maxX, app.frame.width - 12)
         capture("Saved title ratings strip and personal rating")
         let cast = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'cast-person-'")).firstMatch
