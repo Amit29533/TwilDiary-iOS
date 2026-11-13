@@ -1525,7 +1525,7 @@ import UIKit
             for _ in 0..<14 { if element.exists && element.isHittable { return }; if down { app.swipeDown() } else { app.swipeUp() } }
             XCTAssertTrue(element.isHittable, element.identifier)
         }
-        func assertDetailTabsHidden() { XCTAssertEqual(app.tabBars.count, 0, "A profile/detail must not reveal the root tab bar while scrolling") }
+        func assertDetailTabsHidden() { XCTAssertEqual(app.tabBars.count, 1, "The tab bar stays on profile and detail pages") }
         app.tabBars.buttons["Library"].tap(); app.buttons["title-frieren"].tap()
         let rating = app.buttons["title-personal-rating"]
         XCTAssertTrue(rating.waitForExistence(timeout: 5))
@@ -1797,7 +1797,7 @@ import UIKit
             app.buttons["search-library-frieren"].tap()
             XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.keyboards.firstMatch.exists)
-            XCTAssertFalse(app.tabBars.buttons["Home"].exists, "The presented title must hide root chrome before a native Back gesture")
+            XCTAssertTrue(app.tabBars.buttons["Home"].exists, "The tab bar stays on title pages")
             // The plain synopsis is below the poster and has no horizontal
             // control. A long content stroke here avoids depending on velocity
             // to finish a shorter pan across the hero's artwork hit region.
@@ -1888,13 +1888,13 @@ import UIKit
         XCTAssertTrue(cover.waitForExistence(timeout: 5))
         cover.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)).tap()
         XCTAssertTrue(app.buttons["title-personal-rating"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertTrue(app.tabBars.firstMatch.exists)
         let more = app.buttons["title-more"]
         XCTAssertTrue(more.isHittable)
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.45))
         start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.45)),
                     withVelocity: .slow, thenHoldForDuration: 0.7)
-        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertTrue(app.tabBars.firstMatch.exists)
         XCTAssertTrue(more.isHittable)
         start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.45)),
                     withVelocity: .slow, thenHoldForDuration: 0)

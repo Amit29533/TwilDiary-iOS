@@ -21,6 +21,9 @@ import OSLog
     final class Controller: UIViewController {
         var onPresented: (@MainActor () -> Void)?
         var detail = false
+        /// The tab bar stays on every page, title and profile pages included (owner's request:
+        /// one navigation everywhere). `detail` now only fades the navigation bar in and out.
+        private let hidesTabBar = false
         private var publishing: Task<Void, Never>?
         private var transitionPending = false
         private var observing = [UIGestureRecognizer]()
@@ -51,10 +54,10 @@ import OSLog
         private func applyTabBarVisibility(animated: Bool) {
             // The cheap check first: the bar is almost always already right, and walking the view
             // tree on every page update (it runs while scrolling) showed up in the profile.
-            guard let tabs = tabBarController, tabs.isTabBarHidden != detail, let selected = tabs.selectedViewController,
+            guard let tabs = tabBarController, tabs.isTabBarHidden != hidesTabBar, let selected = tabs.selectedViewController,
                   view.isDescendant(of: selected.view) else { return }
             let previous = tabs.isTabBarHidden
-            tabs.setTabBarHidden(detail, animated: animated)
+            tabs.setTabBarHidden(hidesTabBar, animated: animated)
             _ = transitionCoordinator?.animate(alongsideTransition: nil) { context in
                 guard context.isCancelled else { return }
                 // Completion runs on the main thread: restore in the same frame.
@@ -146,7 +149,7 @@ import OSLog
             }
             // Scrolling/toolbar updates can make UIKit reveal the tab bar again.
             // Only the attached top destination may reassert its ownership.
-            top.hidesBottomBarWhenPushed = detail
+            top.hidesBottomBarWhenPushed = hidesTabBar
             applyTabBarVisibility(animated: false)
             onPresented?()
             #if DEBUG
