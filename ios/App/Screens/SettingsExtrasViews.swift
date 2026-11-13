@@ -53,38 +53,10 @@ struct ExtrasStorageGroup: View {
         .task { sync.store = store }
     }
     private var serverSubtitle: String {
-        guard server else { return "Your TwilDiary server on Cloudflare, reached with your Trakt sign-in" }
+        guard server else { return "Your TwilDiary server on Cloudflare" }
         if let problem = sync.problem { return problem }
         if let at = sync.lastSynced { return "In step · " + at.formatted(.relative(presentation: .named)) }
         return "Getting in step…"
-    }
-}
-
-/// Signed in to your server: where the extras are, the same three places as without a server
-/// (owner's question "where are the other options?"). Nothing to switch: the server holds them
-/// with the diary, the iPhone keeps a copy for offline use, and Drive backups include them.
-private struct ServerExtrasGroup: View {
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(GoogleDrive.connectedKey) private var driveConnected = false
-    var body: some View {
-        SettingsGroup(label: "Where extras live", info: "Tags, Queue, full notes, statuses, file folders, favourite people and Trash are saved with your diary on your server. This iPhone keeps a copy for offline use, and your Google Drive backups include them.") {
-            SettingsLine(title: "Your TwilDiary server", subtitle: "Saved with your diary") { check }
-                .accessibilityIdentifier("extras-on-server")
-            SettingsDivider()
-            SettingsLine(title: "On this iPhone", subtitle: "A copy for offline use") { check }
-            SettingsDivider()
-            SettingsLine(title: "Google Drive", subtitle: driveSubtitle) {
-                if driveConnected { check } else { Text("Off").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary) }
-            }.accessibilityIdentifier("extras-drive-backups")
-        }
-    }
-    private var check: some View {
-        Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
-    }
-    private var driveSubtitle: String {
-        guard driveConnected else { return "Connect Google Drive below" }
-        guard let last = GoogleDrive.last else { return "In your Drive backups" }
-        return "In your backups · " + last.formatted(.dateTime.day().month(.abbreviated).hour().minute())
     }
 }
 
@@ -234,7 +206,6 @@ struct SyncBackupView: View {
                 }
                 }
                 if store.phoneOnly { ExtrasStorageGroup() }
-                else if !store.phoneOnly { ServerExtrasGroup() }
                 SettingsGroup(label: ServerBackups.available(store) ? "Extra backup" : "Backup") {
                     SettingsLine(title: "Back up to Files", subtitle: "A daily copy in the Files app") {
                         Toggle("", isOn: $filesBackup).labelsHidden().tint(theme.accent)

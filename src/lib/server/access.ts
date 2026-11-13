@@ -2,7 +2,12 @@ import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jo
 import type { ServerBindings } from './api.ts';
 
 export type AuthMethod =
-  'cloudflare_access' | 'personal_token' | 'passcode' | 'provider_oauth' | 'local_dev';
+  | 'cloudflare_access'
+  | 'service_token'
+  | 'personal_token'
+  | 'passcode'
+  | 'provider_oauth'
+  | 'local_dev';
 
 export interface AuthenticatedOwner {
   subject: string;
@@ -52,10 +57,18 @@ export function createAccessVerifier(config: AccessConfiguration, getKey?: JWTVe
         algorithms: ['RS256'],
         requiredClaims: ['exp', 'iat', 'sub']
       });
+      if (payload.type !== 'app') throw new Error('Wrong token type');
+      // The TwilDiary app's service token (owner's choice: no extra sign-in for backups and
+      // extras). Access only signs a service-token assertion for this application's audience
+      // when the application's own policy admits that token, so it stands for the owner. Such an
+      // assertion carries the token's common name and an empty subject, never an email.
+      const commonName = typeof payload.common_name === 'string' ? payload.common_name.trim() : '';
+      if (commonName && payload.sub === '' && payload.email === undefined) {
+        return { subject: 'service-token:' + commonName, email: config.ownerEmail, method: 'service_token' };
+      }
       if (
         typeof payload.sub !== 'string' ||
         !payload.sub.trim() ||
-        payload.type !== 'app' ||
         typeof payload.email !== 'string' ||
         payload.email.toLowerCase() !== config.ownerEmail.toLowerCase()
       ) {

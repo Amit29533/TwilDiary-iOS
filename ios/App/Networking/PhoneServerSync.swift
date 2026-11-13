@@ -21,9 +21,9 @@ enum ExtrasStorage {
 /// Keeps the phone's extras in step with a copy on your TwilDiary server (`/api/phone-extras`), the
 /// same file and the same rules as Google Drive: read the server's copy, merge (the newer change
 /// wins), and save back only what it was missing, so a new, empty install never overwrites it.
-/// The server is reached with your Trakt sign-in on this iPhone (the server checks it's the Trakt
-/// account linked to your diary and issues a session, kept in the Keychain) and, behind Cloudflare
-/// Access, the built-in service token. The diary itself stays on Trakt.
+/// The server is reached with the app's built-in Cloudflare Access service token alone: your
+/// server's Access policy admits it and the server takes it as you (owner's choice: no extra
+/// sign-in). The diary itself stays on Trakt, MDBList, WeTrakr or this phone.
 @MainActor @Observable final class PhoneServerSync {
     static let shared = PhoneServerSync()
     private(set) var lastSynced: Date?
@@ -34,9 +34,6 @@ enum ExtrasStorage {
     /// A change saved while a sync was running: it goes in one more pass right after.
     @ObservationIgnored private var again = false
     @ObservationIgnored weak var store: DiaryStore?
-    private static let sessionAccount = "extrasServer.session"
-
-    private struct Session: Codable { let token: String; let expires: Date? }
     private struct Copy: Decodable { let body: String?; let updatedAt: String? }
 
     private var available: Bool { ExtrasStorage.server && (store?.phoneOnly ?? false) }
@@ -57,17 +54,10 @@ enum ExtrasStorage {
         guard available, force || Date.now.timeIntervalSince(lastPull ?? .distantPast) > 60 else { return }
         if (try? await run()) == true { store.applyDiarySource() }
     }
-    /// A session from your server's own sign-in (Google or email), kept for backups and extras.
-    func adopt(token: String, expires: Date?) {
-        if let encoded = try? JSONEncoder().encode(Session(token: token, expires: expires)) {
-            _ = KeychainProviderSecretStore().writeSecret(String(decoding: encoded, as: UTF8.self), for: Self.sessionAccount)
-        }
-        problem = nil
-    }
-    /// Turning it off forgets the server session (the copy on the server stays).
+    /// Turned off (the copy on the server stays). A server session saved by an older build goes.
     func forget() {
         pending?.cancel()
-        _ = KeychainProviderSecretStore().writeSecret(nil, for: Self.sessionAccount)
+        _ = KeychainProviderSecretStore().writeSecret(nil, for: "extrasServer.session")
         lastSynced = nil; problem = nil
     }
 
@@ -115,9 +105,11 @@ enum ExtrasStorage {
         self.store = store
         return try await request(path, method: method, body: body)
     }
-    /// A request to your server with the extras session (a fresh one once when it's refused).
-    private func request(_ path: String, method: String, body: Data? = nil, retried: Bool = false) async throws -> Data {
-        let token = try await session(fresh: retried)
+    /// A request to your server, let in by the app's service token.
+    private func request(_ path: String, method: String, body: Data? = nil) async throws -> Data {
+        guard AppConfiguration.accessServiceToken != nil else {
+            throw APIError.message("This build has no key for your server, so it can’t reach it.")
+        }
         // A query ("?section=titles") stays a query, not part of the path.
         let parts = path.split(separator: "?", maxSplits: 1)
         var url = AppConfiguration.backend.appendingPathComponent(String(parts[0].dropFirst()))
@@ -127,7 +119,6 @@ enum ExtrasStorage {
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppConfiguration.passAccess(&request)
         if let body {
             request.httpBody = body
@@ -136,38 +127,10 @@ enum ExtrasStorage {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 401, !retried { return try await self.request(path, method: method, body: body, retried: true) }
         guard (200..<300).contains(status), (response as? HTTPURLResponse)?.mimeType == "application/json" else {
             throw APIError.message(Self.explain(status, data, response))
         }
         return data
-    }
-
-    /// The saved session, or a new one from your server for this iPhone's Trakt sign-in.
-    private func session(fresh: Bool) async throws -> String {
-        let keychain = KeychainProviderSecretStore()
-        if !fresh, let saved = ((try? keychain.readSecret(for: Self.sessionAccount)) ?? nil).flatMap({ try? JSONDecoder().decode(Session.self, from: Data($0.utf8)) }),
-           (saved.expires ?? .distantFuture) > Date.now.addingTimeInterval(3_600) {
-            return saved.token
-        }
-        guard let store, store.traktSignedInOnPhone else { throw APIError.message("Your server’s sign-in has ended. Sign in to it again in Profile → Connections.") }
-        let trakt = try await store.traktToken()
-        var request = URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/auth"), timeoutInterval: 30)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(AppConfiguration.backend.absoluteString, forHTTPHeaderField: "Origin")
-        AppConfiguration.passAccess(&request)
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["method": "provider", "provider": "trakt", "accessToken": trakt.accessToken, "clientId": trakt.clientId])
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(status), let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let token = json["token"] as? String, AccessCookiePolicy.validToken(token) else {
-            throw APIError.message("Signing in to your server: " + Self.explain(status, data, response))
-        }
-        let session = Session(token: token, expires: (json["expiresAt"] as? String).flatMap(DiaryDate.parse))
-        if let encoded = try? JSONEncoder().encode(session) { _ = keychain.writeSecret(String(decoding: encoded, as: UTF8.self), for: Self.sessionAccount) }
-        return token
     }
 
     /// What went wrong, in words, and who said it: your server's own message (JSON or plain text),

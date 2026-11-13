@@ -2,13 +2,12 @@ import Foundation
 import TwilDiaryCore
 
 /// Your server's sign-in only signs you in (owner's rule): the diary lives on Trakt, MDBList,
-/// WeTrakr or this phone, never on the server. The server's 30-day session is kept for what you
-/// use it for, backups and extras, and the first time, what your server's old copy of the diary
-/// holds that the phone doesn't (tags, Queue, long notes, statuses, folders, favourite people) is
-/// copied onto the phone, so nothing is lost.
+/// WeTrakr or this phone, never on the server. It turns on the server for backups and extras
+/// (reached with the app's service token), and the first time, what your server's old copy of the
+/// diary holds that the phone doesn't (tags, Queue, long notes, statuses, folders, favourite
+/// people) is copied onto the phone, so nothing is lost.
 extension DiaryStore {
     func signInWithServer(_ credential: AccessCredential) async {
-        PhoneServerSync.shared.adopt(token: credential.token, expires: credential.expires ?? now.addingTimeInterval(30 * 86_400))
         ExtrasStorage.server = true
         // The diary where you keep it: the service you signed in to on this phone, else this phone.
         let signedIn = Self.savedPhoneOnly.flatMap { tracker in

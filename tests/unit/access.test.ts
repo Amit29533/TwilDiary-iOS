@@ -58,6 +58,39 @@ test('wrong owner, audience, issuer and token type are rejected', async () => {
     );
   }
 });
+const serviceToken = async (claims: Record<string, unknown>, subject = '', audience = config.audience) =>
+  new SignJWT({ type: 'app', ...claims })
+    .setProtectedHeader({ alg: 'RS256' })
+    .setSubject(subject)
+    .setIssuer(config.issuer)
+    .setAudience(audience)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+test("the app's service token assertion stands for the owner", async () => {
+  const owner = await verify(request(await serviceToken({ common_name: 'app-client.access' })));
+  assert.equal(owner.email, config.ownerEmail);
+  assert.equal(owner.method, 'service_token');
+  assert.equal(owner.subject, 'service-token:app-client.access');
+});
+test('service token assertions for another app, of another type, or unsigned are rejected', async () => {
+  for (const assertion of [
+    await serviceToken({ common_name: 'app-client.access' }, '', 'another-app'),
+    await serviceToken({ common_name: 'app-client.access', type: 'org' }),
+    await serviceToken({ common_name: '' }),
+    await serviceToken({ common_name: 'app-client.access' }, 'someone'),
+    await serviceToken({ common_name: 'app-client.access', email: 'other@example.test' })
+  ]) {
+    await assert.rejects(
+      () => verify(request(assertion)),
+      (e: unknown) => e instanceof AccessFailure && e.status === 403
+    );
+  }
+  const signed = await serviceToken({ common_name: 'app-client.access' });
+  const parts = signed.split('.');
+  parts[1] = Buffer.from(JSON.stringify({ type: 'app', common_name: 'forged.access', sub: '' })).toString('base64url');
+  await assert.rejects(() => verify(request(parts.join('.'))), AccessFailure);
+});
 test('expired and tampered assertions are rejected', async () => {
   const expired = await new SignJWT({ type: 'app', email: config.ownerEmail })
     .setProtectedHeader({ alg: 'RS256' })
