@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import Intents
 import TwilDiaryCore
 
 /// New-episode alerts, scheduled on this iPhone (no server): the next two weeks of episodes for
@@ -58,9 +59,9 @@ import TwilDiaryCore
             let content = UNMutableNotificationContent()
             content.title = alert.title; content.body = alert.body; content.sound = .default
             content.threadIdentifier = alert.titleId
-            if let picture = await NotificationArtwork.attachment(store.title(alert.titleId)?.poster) { content.attachments = [picture] }
+            let finished = await NotificationArtwork.finish(content, from: alert.title, conversation: alert.titleId, poster: store.title(alert.titleId)?.poster)
             do {
-                try await center.add(UNNotificationRequest(identifier: alert.id, content: content,
+                try await center.add(UNNotificationRequest(identifier: alert.id, content: finished,
                                                            trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
                 scheduled.insert(alert.id)
             } catch { continue }
@@ -80,26 +81,44 @@ import TwilDiaryCore
     }
 }
 
-/// The show's or anime's poster on its alert (a thumbnail, and the full picture when you press and
-/// hold). Each poster is downloaded once and kept on the phone; iOS takes a copy for each alert.
+/// The show's or anime's poster on its alert. Sent as a message from the show (Communication
+/// Notifications, owner's request), the poster takes the app icon's place; it's also attached, so
+/// without that permission the alert still shows it beside the text (and in full when you press
+/// and hold). Each poster is downloaded once and kept on the phone.
 @MainActor enum NotificationArtwork {
     private static let folder = URL.cachesDirectory.appending(path: "NotificationArt", directoryHint: .isDirectory)
-    static func attachment(_ poster: String?) async -> UNNotificationAttachment? {
+    static func finish(_ content: UNMutableNotificationContent, from name: String, conversation: String, poster: String?) async -> UNNotificationContent {
+        guard let file = await saved(poster) else { return content }
+        if let picture = attachment(file) { content.attachments = [picture] }
+        guard let data = try? Data(contentsOf: file) else { return content }
+        let image = INImage(imageData: data)
+        let sender = INPerson(personHandle: INPersonHandle(value: conversation, type: .unknown), nameComponents: nil, displayName: name,
+                              image: image, contactIdentifier: nil, customIdentifier: conversation)
+        let intent = INSendMessageIntent(recipients: nil, outgoingMessageType: .outgoingMessageText, content: content.body, speakableGroupName: nil,
+                                         conversationIdentifier: conversation, serviceName: nil, sender: sender, attachments: nil)
+        intent.setImage(image, forParameterNamed: \.sender)
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        interaction.donate(completion: nil)
+        return (try? content.updating(from: intent)) ?? content
+    }
+    /// The poster on the phone (downloaded the first time).
+    private static func saved(_ poster: String?) async -> URL? {
         guard let poster, let url = URL(string: poster), url.scheme == "https" else { return nil }
         let ext = ["jpg", "jpeg", "png"].contains(url.pathExtension.lowercased()) ? url.pathExtension.lowercased() : "jpg"
         let name = String(poster.unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }, radix: 16)
         let saved = folder.appending(path: name + "." + ext)
-        if !FileManager.default.fileExists(atPath: saved.path) {
-            var request = URLRequest(url: url, timeoutInterval: 15)
-            request.cachePolicy = .returnCacheDataElseLoad
-            guard let reply = try? await URLSession.shared.data(for: request),
-                  (reply.1 as? HTTPURLResponse)?.statusCode == 200, !reply.0.isEmpty, reply.0.count < 3_000_000 else { return nil }
-            let data = reply.0
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            guard (try? data.write(to: saved, options: .atomic)) != nil else { return nil }
-        }
-        // iOS moves an attachment's file into its own store, so each alert gets a fresh copy.
-        let copy = URL.temporaryDirectory.appending(path: UUID().uuidString + "." + ext)
+        if FileManager.default.fileExists(atPath: saved.path) { return saved }
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.cachePolicy = .returnCacheDataElseLoad
+        guard let reply = try? await URLSession.shared.data(for: request),
+              (reply.1 as? HTTPURLResponse)?.statusCode == 200, !reply.0.isEmpty, reply.0.count < 3_000_000 else { return nil }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return (try? reply.0.write(to: saved, options: .atomic)) != nil ? saved : nil
+    }
+    /// iOS moves an attachment's file into its own store, so each alert gets a fresh copy.
+    private static func attachment(_ saved: URL) -> UNNotificationAttachment? {
+        let copy = URL.temporaryDirectory.appending(path: UUID().uuidString + "." + saved.pathExtension)
         guard (try? FileManager.default.copyItem(at: saved, to: copy)) != nil else { return nil }
         return try? UNNotificationAttachment(identifier: "poster", url: copy)
     }

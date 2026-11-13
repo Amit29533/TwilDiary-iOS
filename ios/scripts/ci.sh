@@ -54,6 +54,11 @@ PY
     python3 ios/tools/verify-release-resources.py "$PWD/ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app" | tee "$ARTIFACTS/logs/release-resources.log"
     mkdir -p "$ARTIFACTS/package/Payload"
     cp -R ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app "$ARTIFACTS/package/Payload/"
+    # An ad-hoc signature carrying the app's permissions (Communication Notifications: a show's
+    # poster in place of the app icon on its alerts). Your sideloading tool re-signs the app as before.
+    codesign --force --deep --sign - --timestamp=none "$ARTIFACTS/package/Payload/TwilDiary.app"
+    codesign --force --sign - --timestamp=none --entitlements ios/Support/TwilDiary.entitlements "$ARTIFACTS/package/Payload/TwilDiary.app"
+    codesign -d --entitlements - "$ARTIFACTS/package/Payload/TwilDiary.app" 2>&1 | tee "$ARTIFACTS/logs/entitlements.log"
     (cd "$ARTIFACTS/package" && ditto -c -k --keepParent Payload ../TwilDiary-unsigned.ipa)
     (cd "$ARTIFACTS" && shasum -a 256 TwilDiary-unsigned.ipa > TwilDiary-unsigned.ipa.sha256)
     ;;

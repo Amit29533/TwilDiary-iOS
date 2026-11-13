@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Communication Notifications: an alert sent as a message from a show shows its poster in
+	     place of the app icon. Carried in the IPA's ad-hoc signature; a sideloading tool keeps it
+	     when its certificate allows. -->
+	<key>com.apple.developer.usernotifications.communication</key>
+	<true/>
+</dict>
+</plist>
