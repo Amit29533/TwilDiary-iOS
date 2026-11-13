@@ -388,7 +388,7 @@ private struct RootNoticeBanner: View {
         if let notice = store.mutationRefreshNotice {
             // A small pill above the tab bar, not a banner over the page header.
             HStack(spacing: 10) {
-                Text("Saved · refresh failed").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Text("Saved · refresh failed" + (store.mutationRefreshReason.map { " (\($0))" } ?? "")).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                     .accessibilityLabel(notice).accessibilityIdentifier("confirmed-write-notice")
                 Button("Refresh") { Task { await store.refresh() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
                     .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")

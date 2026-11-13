@@ -135,6 +135,9 @@ import TwilDiaryCore
         for waiter in waiting { waiter.resume() }
     }
     private(set) var needsMutationRefresh = false
+    /// Why the read after a saved change failed ("HTTP 503", "offline"), shown on the notice.
+    private(set) var mutationRefreshReason: String?
+    @ObservationIgnored private var mutationRefreshRetry: Task<Void, Never>?
     var writesBlocked: Bool { busy || replayingOutbox || needsMutationRefresh }
     /// Trakt-first phase 4a: show the diary built from Trakt (read-only) instead of the server's.
     static let diarySourceKey = "diarySource"
@@ -1235,7 +1238,7 @@ import TwilDiaryCore
             })
             _ = persistProviderSettings(applyingVault(remote.settings, paths: paths, to: providerSettings))
             if !vaultDirty.isEmpty { await pushProviderVaultToServer() }
-        } catch { providerVaultNotice = "Online provider settings are unavailable. Device settings are unchanged." }
+        } catch { providerVaultNotice = "Online provider settings are unavailable" + (Self.shortReason(error).map { " (" + $0 + ")" } ?? "") + ". Device settings are unchanged." }
     }
     func resolveProviderVaultConflict(keepDevice: Bool) async {
         guard !needsSignIn, !isPreview, !vaultSending, !vaultResolving else { return }
@@ -2142,8 +2145,9 @@ import TwilDiaryCore
             } catch {
                 guard generation == sessionGeneration else { return false }
                 needsMutationRefresh = true
+                mutationRefreshReason = Self.shortReason(error)
                 if case APIError.signIn = error { fail(error) }
-                else { self.error = nil }
+                else { self.error = nil; retryMutationRefreshSoon() }
             }
             return true
         } catch is CancellationError { return false }
@@ -2172,6 +2176,33 @@ import TwilDiaryCore
         catch { try await reload() }
     }
     private static let targetedRefreshLimit = 50
+    /// The change was saved but the read after it failed: tried again a few times on its own
+    /// (owner's report: the notice stayed up), so a brief failure clears without a tap.
+    private func retryMutationRefreshSoon() {
+        mutationRefreshRetry?.cancel()
+        let session = sessionGeneration
+        mutationRefreshRetry = Task { @MainActor [weak self] in
+            for delay in [2.0, 6.0, 15.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, !Task.isCancelled, session == self.sessionGeneration, self.needsMutationRefresh else { return }
+                do { try await self.reload() } catch { self.mutationRefreshReason = Self.shortReason(error); continue }
+                if !self.needsMutationRefresh { self.mutationRefreshReason = nil; return }
+            }
+        }
+    }
+    /// A few words on why a read failed, for a small notice.
+    static func shortReason(_ error: Error) -> String? {
+        if let error = error as? APIError {
+            switch error {
+            case .rejected(let status, _): return "HTTP \(status)"
+            case .databaseLimit: return "database limit"
+            case .transport: return "offline"
+            default: return nil
+            }
+        }
+        if error is URLError { return "offline" }
+        return nil
+    }
     static let needsServer = "This needs your TwilDiary server. Connect it in Profile → Connections → Server sign-in."
     static let needsTMDB = "This needs TMDB. Add your TMDB key in Profile → Connections → TMDB, or sign in to your TwilDiary server."
     private func fail(_ cause: Error) {
