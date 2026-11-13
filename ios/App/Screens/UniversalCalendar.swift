@@ -63,35 +63,36 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
             date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? end
         }
         let genre = ids(genres, movie: false)
-        var found: [UniversalRelease] = []
-        var failure: Error?
-        await withTaskGroup(of: Result<[UniversalRelease], Error>.self) { group in
+        // The days side by side, off the main actor (raw replies, read below).
+        let replies = await withTaskGroup(of: (day: String, reply: Data?, error: String?).self) { group in
             for day in days {
-                group.addTask { @MainActor in
-                    do {
-                        var query = ["air_date.gte": day, "air_date.lte": day, "sort_by": "popularity.desc", "page": "1", "include_null_first_air_dates": "false"]
-                        if let genre { query["with_genres"] = genre }
-                        var results = try await TMDBDirect.object("discover/tv", query: query, token: token)["results"] as? [[String: Any]] ?? []
-                        // With anime shown from AniList, Japanese animation from TMDB would be listed twice.
-                        if skipAnime { results.removeAll { ($0["original_language"] as? String) == "ja" && (($0["genre_ids"] as? [Int]) ?? []).contains(16) } }
-                        return .success(results.prefix(15).compactMap { item in
-                            guard let id = item["id"] as? Int, let catalog = TMDBDirect.catalogItem(item, kind: .tv) else { return nil }
-                            return UniversalRelease(id: "tv:\(id):\(day)", kind: .show, name: catalog.name, poster: catalog.artwork, day: day, time: nil,
-                                                    detail: "New episode", route: CatalogRoute(kind: .tv, id: id), anime: nil,
-                                                    genres: catalog.genres ?? [], popularity: item["popularity"] as? Double ?? 0)
-                        })
-                    } catch { return .failure(error) }
+                var query = ["air_date.gte": day, "air_date.lte": day, "sort_by": "popularity.desc", "page": "1", "include_null_first_air_dates": "false"]
+                if let genre { query["with_genres"] = genre }
+                group.addTask {
+                    do { return (day, try await TMDBDirect.data("discover/tv", query: query, token: token), nil) }
+                    catch { return (day, nil, error.localizedDescription) }
                 }
             }
-            for await result in group {
-                switch result {
-                case .success(let items): found += items
-                case .failure(let error): failure = failure ?? error
-                }
+            var collected: [(day: String, reply: Data?, error: String?)] = []
+            for await reply in group { collected.append(reply) }
+            return collected
+        }
+        var found: [UniversalRelease] = []
+        var failure: String?
+        for (day, reply, error) in replies {
+            guard let reply, let root = (try? JSONSerialization.jsonObject(with: reply)) as? [String: Any] else { failure = failure ?? error; continue }
+            var results = root["results"] as? [[String: Any]] ?? []
+            // With anime shown from AniList, Japanese animation from TMDB would be listed twice.
+            if skipAnime { results.removeAll { ($0["original_language"] as? String) == "ja" && (($0["genre_ids"] as? [Int]) ?? []).contains(16) } }
+            for item in results.prefix(15) {
+                guard let id = item["id"] as? Int, let catalog = TMDBDirect.catalogItem(item, kind: .tv) else { continue }
+                found.append(UniversalRelease(id: "tv:\(id):\(day)", kind: .show, name: catalog.name, poster: catalog.artwork, day: day, time: nil,
+                                              detail: "New episode", route: CatalogRoute(kind: .tv, id: id), anime: nil,
+                                              genres: catalog.genres ?? [], popularity: item["popularity"] as? Double ?? 0))
             }
         }
         // Every day refused (offline, a bad key): said, rather than an empty calendar.
-        if found.isEmpty, let failure { throw failure }
+        if found.isEmpty, let failure { throw APIError.message(failure) }
         return found
     }
 

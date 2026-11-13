@@ -414,6 +414,14 @@ import TwilDiaryCore
     /// One TMDB v3 read. A v4 read access token goes in the Authorization header; a 32-character
     /// v3 API key goes in `api_key`.
     static func object(_ path: String, query: [String: String], token: String) async throws -> [String: Any] {
+        guard let object = try JSONSerialization.jsonObject(with: try await data(path, query: query, token: token)) as? [String: Any] else {
+            throw APIError.message("TMDB sent an unexpected reply.")
+        }
+        return object
+    }
+    /// The same request, off the main actor, as raw JSON: several can run side by side (a task
+    /// group), with the replies read afterwards.
+    nonisolated static func data(_ path: String, query: [String: String], token: String) async throws -> Data {
         var components = URLComponents(string: "https://api.themoviedb.org/3/" + path)!
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         let apiKey = token.count == 32 && token.allSatisfy(\.isHexDigit)
@@ -429,7 +437,6 @@ import TwilDiaryCore
         guard (200..<300).contains(http.statusCode) else {
             throw APIError.message(http.statusCode == 401 ? "TMDB didn't accept your key. Check it in Settings → TMDB." : "TMDB is unavailable right now (\(http.statusCode)).")
         }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw APIError.message("TMDB sent an unexpected reply.") }
-        return object
+        return data
     }
 }
