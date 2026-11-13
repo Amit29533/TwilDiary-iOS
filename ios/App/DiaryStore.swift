@@ -284,6 +284,7 @@ import TwilDiaryCore
         catch { self.providerSettings = ProviderConnectionSettings(); self.error = error.localizedDescription }
         self.api.customTmdbToken = self.providerSettings.customTmdbToken
         self.api.customMdblistApiKey = self.providerSettings.mdblist.apiKey
+        if !isPreview { removeSimkl() }
         #if DEBUG
         if isPreview {
             workspace = PreviewData.workspace; needsSignIn = false; hasLoadedWorkspace = true
@@ -1031,6 +1032,34 @@ import TwilDiaryCore
         outboxNotice = "Saved on this device · \(pendingDiaryEdits) pending sync"
         return entry
     }
+    /// Simkl support was removed (owner's choice, 2026-11-13). Once: its sign-in leaves the
+    /// Keychain, it's no longer the main tracker or the diary's service, and the phone's copy of its
+    /// library, its sync report, its retry list and its not-kept list go. Nothing on Simkl changes.
+    private func removeSimkl() {
+        let doneKey = "simkl.removed.v1"
+        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        var simkl = providerSettings.config(for: .simkl)
+        if simkl.accessToken != nil || simkl.refreshToken != nil || simkl.enabled || simkl.connection != nil {
+            simkl.accessToken = nil; simkl.refreshToken = nil; simkl.tokenExpiresAt = nil
+            simkl.enabled = false; simkl.connection = nil
+            var next = providerSettings
+            next.setConfig(simkl)
+            // Not saved (the Keychain refused): tried again next launch.
+            guard (try? providerSettingsStore.save(next)) != nil else { return }
+            providerSettings = next
+        }
+        if Self.savedPhoneOnly == .simkl { UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey) }
+        if UserDefaults.standard.string(forKey: MainTrackerView.key) == MainTracker.simkl.rawValue {
+            UserDefaults.standard.set(MainTracker.trakt.rawValue, forKey: MainTrackerView.key)
+        }
+        if diarySource == MainTracker.simkl.rawValue {
+            UserDefaults.standard.set("server", forKey: Self.diarySourceKey); diarySource = "server"
+        }
+        try? FileManager.default.removeItem(at: URL.applicationSupportDirectory.appending(path: "Trackers/simkl.json"))
+        for key in ["syncReport.simkl", "deadLetters.simkl", "matchLedger.simkl"] { UserDefaults.standard.removeObject(forKey: key) }
+        AccountProfiles.shared.forget(.simkl)
+        UserDefaults.standard.set(true, forKey: doneKey)
+    }
     func acknowledgeOutbox(_ entryID: String, provider: SyncProviderKind) throws {
         guard let scope = outboxScope else { throw APIError.signIn }
         var next = outbox
@@ -1296,6 +1325,12 @@ import TwilDiaryCore
     /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `simkl`, `mdblist`).
     func flushDirectProviders() async {
         guard !directFlushActive, !needsSignIn else { return }
+        // Simkl support was removed: edits still queued for it come off its list (nothing is sent).
+        if let scope = outboxScope, outbox.entries.contains(where: { $0.pendingProviders.contains(.simkl) }) {
+            var next = outbox
+            for entry in outbox.entries where entry.pendingProviders.contains(.simkl) { next.acknowledge(entryID: entry.id, provider: .simkl) }
+            if (try? outboxStore.save(next, scope: scope)) != nil { outbox = next }
+        }
         let session = sessionGeneration
         directFlushActive = true; defer { directFlushActive = false }
         let activeProviders = providerSettings.activeDirectLoggingProviders

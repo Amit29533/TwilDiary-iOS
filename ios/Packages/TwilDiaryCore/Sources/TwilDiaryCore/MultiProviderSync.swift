@@ -189,7 +189,8 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     /// Returns all direct providers that are currently enabled, authenticated, and configured to receive watch logs.
     public var activeDirectLoggingProviders: Set<SyncProviderKind> {
         var result: Set<SyncProviderKind> = []
-        for item in [trakt, simkl, mdblist, wetrakr] {
+        // Simkl support was removed: nothing is sent to it, whatever its saved settings say.
+        for item in [trakt, mdblist, wetrakr] {
             if item.enabled && item.isAuthenticated && item.loggingMethod.includesDirectAPI {
                 result.insert(item.provider)
             }

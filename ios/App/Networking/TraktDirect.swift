@@ -1173,7 +1173,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
-        for tracker in [MainTracker.simkl, .mdblist, .wetrakr] {
+        // Simkl support was removed: its saved copy is no longer read (and is deleted at launch).
+        for tracker in MainTracker.others {
             var saved = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
             // MDBList copies saved before its show and season rows were left out.
             if tracker == .mdblist { saved?.plays.removeAll { !$0.isMovieOrEpisode } }

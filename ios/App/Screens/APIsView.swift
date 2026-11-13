@@ -46,10 +46,11 @@ struct APIsView: View {
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out.")
                     service(.cloudflare, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
-                    let signIn = model.keys.filter { ["simkl", "mdblist"].contains($0.service) }
+                    // Simkl support was removed: its app ID isn't shown.
+                    let signIn = model.keys.filter { $0.service == "mdblist" }
                     if !signIn.isEmpty {
-                        service(nil, "Sign-in apps", icon: "iphone", keys: signIn, note: "App IDs for Simkl and MDBList sign-in.",
-                                info: "TwilDiary’s own app IDs for Simkl and MDBList. Once one is set, that service’s page offers “Sign in” without your own developer keys.")
+                        service(nil, "Sign-in apps", icon: "iphone", keys: signIn, note: "App ID for MDBList sign-in.",
+                                info: "TwilDiary’s own app ID for MDBList. Once it’s set, MDBList’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
                 if !store.phoneOnly { aiSection(.gemini); aiSection(.groq); aiSection(.requesty) }

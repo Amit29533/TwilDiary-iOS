@@ -75,7 +75,7 @@ enum SignInNavigationPolicy {
                     }
                     // Simkl, MDBList and WeTrakr: the app opens on that service alone.
                     if phoneOnly != nil {
-                        ForEach([MainTracker.simkl, .mdblist, .wetrakr], id: \.self) { tracker in
+                        ForEach(MainTracker.others, id: \.self) { tracker in
                             optionRow(busy: serviceSigningIn == tracker, id: "sign-in-" + tracker.rawValue, title: tracker.name,
                                       detail: "Syncs to your \(tracker.name) account") {
                                 BrandLogo(service: tracker.brand, size: 40)

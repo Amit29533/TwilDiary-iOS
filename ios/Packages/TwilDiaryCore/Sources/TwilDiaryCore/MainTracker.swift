@@ -8,6 +8,11 @@ import Foundation
 public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
     case trakt, simkl, mdblist, wetrakr
     public var id: String { rawValue }
+    /// The services TwilDiary offers. Simkl support was removed (owner's choice, 2026-11-13); its
+    /// case stays only so settings and queued edits saved before still read.
+    public static let offered: [MainTracker] = [.trakt, .mdblist, .wetrakr]
+    /// The services besides Trakt that the app reads and writes on the phone.
+    public static let others: [MainTracker] = [.mdblist, .wetrakr]
 
     /// What the service can hold as the diary. Anything it can't stays in Cloudflare.
     public struct Capabilities: Equatable, Sendable {

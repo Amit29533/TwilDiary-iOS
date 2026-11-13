@@ -20,7 +20,7 @@ struct MainTrackerView: View {
                     SettingsInfoButton(text: "The service you pick holds your diary. What it can’t keep (tags, notes, file locations, favourite people) stays on this iPhone and in your backups.")
                 }
                 VStack(spacing: 0) {
-                    ForEach(Array(MainTracker.allCases.enumerated()), id: \.element) { index, option in
+                    ForEach(Array(MainTracker.offered.enumerated()), id: \.element) { index, option in
                         if index > 0 { Divider().padding(.leading, 62) }
                         Button { selection = option.rawValue } label: { row(option) }
                             .buttonStyle(.plain).accessibilityIdentifier("main-tracker-" + option.rawValue)

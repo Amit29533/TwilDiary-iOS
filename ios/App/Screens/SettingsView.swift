@@ -256,7 +256,7 @@ struct SettingsView: View {
     /// Trakt's state in a word for its row; the full sync controls live on the Trakt page.
     /// "Trakt · 2 connected": the main tracker and how many services are signed in.
     private var connectionsSummary: String {
-        let count = [store.traktController.status?.connected == true, store.providerSettings.simkl.isAuthenticated, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
+        let count = [store.traktController.status?.connected == true, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
         return count > 0 ? "\(count) on" : "Off"
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {

@@ -330,7 +330,8 @@ import TwilDiaryTestSupport
     #expect(settings.mdblist.statusBadge == "Connected")
     #expect(settings.trakt.loggingMethod.includesServerLogging == true)
     #expect(settings.trakt.loggingMethod.includesDirectAPI == false)
-    #expect(settings.activeDirectLoggingProviders == Set([.simkl, .mdblist]))
+    // Simkl support was removed: a connected Simkl is never sent anything.
+    #expect(settings.activeDirectLoggingProviders == Set([.mdblist]))
 
     final class MemorySecretStore: ProviderSecretStoring, @unchecked Sendable {
         var values: [String: String] = [:]

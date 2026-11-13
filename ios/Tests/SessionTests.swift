@@ -1897,6 +1897,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         // Verify custom TMDB token & external provider config updates and watch-logging fan-out
         store.updateCustomTmdbToken("  custom-tmdb-read-token  ")
         XCTAssertEqual(store.providerSettings.customTmdbToken, "custom-tmdb-read-token")
+        // Simkl support was removed: a connected Simkl gets nothing; MDBList stands for the fan-out.
         store.updateProviderConfig(ExternalProviderConfig(
             provider: .simkl,
             enabled: true,
@@ -1904,7 +1905,14 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             clientId: "simkl_test_cid",
             accessToken: "simkl_test_token"
         ))
-        XCTAssertEqual(store.providerSettings.activeDirectLoggingProviders, Set([.simkl]))
+        XCTAssertTrue(store.providerSettings.activeDirectLoggingProviders.isEmpty)
+        store.updateProviderConfig(ExternalProviderConfig(
+            provider: .mdblist,
+            enabled: true,
+            loggingMethod: .serverAndDirectAPI,
+            apiKey: "mdb_test_key"
+        ))
+        XCTAssertEqual(store.providerSettings.activeDirectLoggingProviders, Set([.mdblist]))
         store.recordDirectProviderMutation(
             .markWatch(
                 operationId: "op-direct-1",
@@ -1916,7 +1924,8 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             ),
             operationId: "op-direct-1"
         )
-        XCTAssertEqual(store.outbox.pending(for: .simkl).count, 1)
+        XCTAssertEqual(store.outbox.pending(for: .mdblist).count, 1)
+        XCTAssertTrue(store.outbox.pending(for: .simkl).isEmpty)
     }
     func testOfflinePatchPersistsBeforePublishingAndReplaysAfterRelaunch() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential

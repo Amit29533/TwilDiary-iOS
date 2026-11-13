@@ -30,7 +30,7 @@ struct ConnectionsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 12) {
                     SettingsGroup(label: "Where your diary lives") {
-                        ForEach(Array(MainTracker.allCases.enumerated()), id: \.element) { index, tracker in
+                        ForEach(Array(MainTracker.offered.enumerated()), id: \.element) { index, tracker in
                             if index > 0 { divider }
                             trackerRow(tracker)
                         }
@@ -148,7 +148,7 @@ struct ConnectionsView: View {
     }
     private var lastResult: String? {
         if let error = traktDirect.error { return error }
-        for tracker in [MainTracker.simkl, .mdblist, .wetrakr] { if let error = others.errors[tracker] { return "\(tracker.name): " + error } }
+        for tracker in MainTracker.others { if let error = others.errors[tracker] { return "\(tracker.name): " + error } }
         return traktDirect.writeResult ?? others.writeResults.values.first
     }
 
