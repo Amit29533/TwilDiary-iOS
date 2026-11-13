@@ -69,21 +69,7 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
             days.append(dayText(date))
             date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? end
         }
-        let genre = ids(genres, movie: false)
-        // The days side by side, off the main actor (raw replies, read below).
-        let replies = await withTaskGroup(of: (day: String, reply: Data?, error: String?).self) { group in
-            for day in days {
-                var query = ["air_date.gte": day, "air_date.lte": day, "sort_by": "popularity.desc", "page": "1", "include_null_first_air_dates": "false"]
-                if let genre { query["with_genres"] = genre }
-                group.addTask {
-                    do { return (day, try await TMDBDirect.data("discover/tv", query: query, token: token), nil) }
-                    catch { return (day, nil, error.localizedDescription) }
-                }
-            }
-            var collected: [(day: String, reply: Data?, error: String?)] = []
-            for await reply in group { collected.append(reply) }
-            return collected
-        }
+        let replies = await discoverDays(days, genre: ids(genres, movie: false), token: token)
         var found: [UniversalRelease] = []
         var failure: String?
         for (day, reply, error) in replies {
@@ -101,6 +87,26 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
         // Every day refused (offline, a bad key): said, rather than an empty calendar.
         if found.isEmpty, let failure { throw APIError.message(failure) }
         return found
+    }
+
+    /// TMDB's discover for each day, side by side, entirely off the main actor: plain values in, raw
+    /// replies out (read on the main actor afterwards). The group used to run from main-actor code,
+    /// and a crash report showed task memory overwritten while the Everything tab loaded.
+    nonisolated private static func discoverDays(_ days: [String], genre: String?, token: String) async -> [(day: String, reply: Data?, error: String?)] {
+        await withTaskGroup(of: (day: String, reply: Data?, error: String?).self) { group in
+            for day in days {
+                var query = ["air_date.gte": day, "air_date.lte": day, "sort_by": "popularity.desc", "page": "1", "include_null_first_air_dates": "false"]
+                if let genre { query["with_genres"] = genre }
+                let request = query
+                group.addTask {
+                    do { return (day, try await TMDBDirect.data("discover/tv", query: request, token: token), nil) }
+                    catch { return (day, nil, error.localizedDescription) }
+                }
+            }
+            var collected: [(day: String, reply: Data?, error: String?)] = []
+            for await reply in group { collected.append(reply) }
+            return collected
+        }
     }
 
     /// The episode a show airs on `day` ("S2 E5"), from its details (and, for a later week, its

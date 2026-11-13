@@ -80,7 +80,8 @@ struct AiringCalendarView: View {
             }
             .sheet(isPresented: $showGenres) { CalendarGenreSheet(names: genreNames, chosen: $genres) }
             .onChange(of: tab) { _, _ in selectedDate = nil }
-            .task(id: scheduleKey) { await computeSchedules() }
+            // Everything has its own list: your shows' schedules wait until you're back on their tabs.
+            .task(id: scheduleKey) { if tab != .everything { await computeSchedules() } }
     }
 
     // MARK: Header pieces
