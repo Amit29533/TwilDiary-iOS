@@ -191,6 +191,15 @@ enum AnimeTitleChoice {
     }
 }
 
+/// One anime episode on AniList's airing schedule.
+struct AnimeAiring: Sendable, Hashable {
+    let appearance: AniAppearance
+    let episode: Int
+    let airsAt: Date
+    let genres: [String]
+    let popularity: Int
+}
+
 actor AniListClient {
     static let shared = AniListClient()
     private var characterLists: [String: [AniCharacter]] = [:]
@@ -313,6 +322,39 @@ actor AniListClient {
             AniAppearance(id: m.id, title: AnimeTitleChoice.pick(english: m.title.english, romaji: m.title.romaji), cover: m.coverImage?.large, year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format, alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 }, rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
         }
         trending = (Date(), items)
+        return items
+    }
+
+    /// Every anime episode airing between two times (AniList's airing schedule, public, no sign-in),
+    /// for the calendar's Everything view; adult titles left out. Up to 150, kept 30 min per window.
+    private var airingCache: [String: (at: Date, items: [AnimeAiring])] = [:]
+    func airing(from start: Date, to end: Date) async throws -> [AnimeAiring] {
+        let key = "\(Int(start.timeIntervalSince1970) / 3600)|\(Int(end.timeIntervalSince1970) / 3600)"
+        if let saved = airingCache[key], Date().timeIntervalSince(saved.at) < 1800 { return saved.items }
+        struct Reply: Decodable { struct Page: Decodable { let pageInfo: Info; let airingSchedules: [Slot] }; let Page: Page }
+        struct Info: Decodable { let hasNextPage: Bool? }
+        struct Slot: Decodable { let airingAt: Int; let episode: Int; let media: MediaNode? }
+        struct MediaNode: Decodable {
+            struct Title: Decodable { let english: String?; let romaji: String? }
+            let id: Int; let format: String?; let isAdult: Bool?; let popularity: Int?; let averageScore: Int?
+            let genres: [String]?; let title: Title; let coverImage: Image?; let startDate: DateParts?
+        }
+        var items: [AnimeAiring] = []
+        for page in 1...3 {
+            let reply: Reply = try await query("query($from: Int, $to: Int, $page: Int) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: TIME) { airingAt episode media { id format isAdult popularity averageScore genres title { english romaji } coverImage { large } startDate { year } } } } }", ["from": Int(start.timeIntervalSince1970), "to": Int(end.timeIntervalSince1970), "page": page])
+            for slot in reply.Page.airingSchedules {
+                guard let m = slot.media, m.isAdult != true else { continue }
+                let appearance = AniAppearance(id: m.id, title: AnimeTitleChoice.pick(english: m.title.english, romaji: m.title.romaji), cover: m.coverImage?.large,
+                                               year: m.startDate?.year, role: nil, voiceActor: nil, format: m.format,
+                                               alternateTitles: [m.title.english, m.title.romaji].compactMap { $0 },
+                                               rating: m.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+                items.append(AnimeAiring(appearance: appearance, episode: slot.episode, airsAt: Date(timeIntervalSince1970: TimeInterval(slot.airingAt)),
+                                         genres: m.genres ?? [], popularity: m.popularity ?? 0))
+            }
+            if reply.Page.pageInfo.hasNextPage != true { break }
+        }
+        if airingCache.count > 8 { airingCache.removeAll() }
+        airingCache[key] = (Date(), items)
         return items
     }
 

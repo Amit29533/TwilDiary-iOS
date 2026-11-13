@@ -5,7 +5,8 @@ import TwilDiaryCore
 /// (what aired that you haven't watched, per show, with Watch E52 and Mark all) and All. Type,
 /// genre and range filters; the ••• menu holds range, "Show all episodes", export and sync.
 struct AiringCalendarView: View {
-    enum Tab: String, CaseIterable, Identifiable { case upcoming = "Upcoming", catchup = "Catch-up", all = "All"; var id: String { rawValue } }
+    /// Everything: every release in the next days, not only your diary's (owner's request).
+    enum Tab: String, CaseIterable, Identifiable { case upcoming = "Upcoming", catchup = "Catch-up", all = "All", everything = "Everything"; var id: String { rawValue } }
     enum Status: String, CaseIterable, Identifiable { case all = "All status", upcoming = "Upcoming", behind = "Behind"; var id: String { rawValue } }
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -55,7 +56,8 @@ struct AiringCalendarView: View {
         EdgeToEdgeScroll(frosted: true) {
             VStack(alignment: .leading, spacing: 16) {
                 tabs
-                if computed == nil { DiaryLoadingPlaceholder(height: 260, label: "Loading the calendar") }
+                if tab == .everything { UniversalCalendarSection() }
+                else if computed == nil { DiaryLoadingPlaceholder(height: 260, label: "Loading the calendar") }
                 else { switch tab {
                 case .upcoming:
                     monthCard(upcomingItems)
@@ -68,6 +70,8 @@ struct AiringCalendarView: View {
                 case .all:
                     filters
                     allList(upcoming: status == .behind ? [] : upcomingItems, aired: status == .upcoming ? [] : airedItems)
+                case .everything:
+                    EmptyView()
                 } }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 110)
         }.diaryScreenBackground().diaryPageNavigation("Airing calendar")
@@ -455,7 +459,7 @@ struct AiringCalendarView: View {
 }
 
 /// Genres: the genres of the shows on the calendar as chips; pick any, then Apply.
-private struct CalendarGenreSheet: View {
+struct CalendarGenreSheet: View {
     let names: [String]
     @Binding var chosen: Set<String>
     @State private var pending: Set<String> = []

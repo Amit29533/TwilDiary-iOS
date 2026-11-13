@@ -141,7 +141,7 @@ import TwilDiaryCore
                            votes: item["vote_count"] as? Int ?? 0, genres: genres)
     }
     /// The server's genre table (src/lib/discovery.ts `discoveryGenres`).
-    private static let genreNames: [(name: String, movie: Int?, tv: Int?)] = [
+    static let genreNames: [(name: String, movie: Int?, tv: Int?)] = [
         ("Action & adventure", 28, 10759), ("Animation", 16, 16), ("Comedy", 35, 35), ("Crime", 80, 80), ("Documentary", 99, 99),
         ("Drama", 18, 18), ("Family", 10751, 10751), ("Mystery", 9648, 9648), ("Sci-fi & fantasy", 878, 10765), ("Fantasy", 14, nil),
         ("Horror", 27, nil), ("History", 36, nil), ("Music", 10402, nil), ("Romance", 10749, nil), ("Thriller", 53, nil),
