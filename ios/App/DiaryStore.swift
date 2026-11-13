@@ -1581,7 +1581,7 @@ import TwilDiaryCore
             // Signed in to your server (Cloudflare): its own pages (usage, API keys, saved keys,
             // backups, Jellyfin's copy) and its fallbacks go through that sign-in. Never the diary:
             // it isn't on the server.
-            let diaryOnly = ["/api/workspace", "/api/titles", "/api/watch-events", "/api/glance", "/api/progress", "/api/trash", "/api/favourites", "/api/trakt/sync"].contains { path.hasPrefix($0) }
+            let diaryOnly = ["/api/workspace", "/api/titles", "/api/watch-events", "/api/glance", "/api/progress/status", "/api/trash", "/api/favourites", "/api/trakt/sync"].contains { path.hasPrefix($0) }
             if ExtrasStorage.server, !diaryOnly {
                 let data = try body.map { try JSONSerialization.data(withJSONObject: $0) }
                 return try JSONDecoder().decode(T.self, from: try await PhoneServerSync.shared.send(path, method: method, body: data, store: self))
