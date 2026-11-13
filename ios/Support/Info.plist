@@ -13,8 +13,6 @@
 	     Set TWILDIARY_*_CLIENT_ID when building; empty means the app uses the IDs your server lists. -->
 	<key>TwilDiaryTraktClientID</key>
 	<string>$(TWILDIARY_TRAKT_CLIENT_ID)</string>
-	<key>TwilDiarySimklClientID</key>
-	<string>$(TWILDIARY_SIMKL_CLIENT_ID)</string>
 	<key>TwilDiaryMDBListClientID</key>
 	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
 	<key>TwilDiaryTMDBKey</key>

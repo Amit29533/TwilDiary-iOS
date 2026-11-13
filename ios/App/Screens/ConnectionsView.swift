@@ -2,7 +2,7 @@ import SwiftUI
 import AuthenticationServices
 import TwilDiaryCore
 
-/// Profile → Connections. On top, where your diary lives: Trakt, Simkl and MDBList in one list.
+/// Profile → Connections. On top, where your diary lives: Trakt, MDBList and WeTrakr in one list.
 /// The ticked one is your main tracker (the diary comes from it; edits go to it, and also to the
 /// others you're signed in to). Each row opens that service's page; ⋯ has the quick actions.
 /// Below: how this iPhone reaches your server, and the services that use a key.
@@ -106,7 +106,6 @@ struct ConnectionsView: View {
     private func connected(_ tracker: MainTracker) -> Bool {
         switch tracker {
         case .trakt: store.traktSignedInOnPhone || trakt?.status?.connected == true
-        case .simkl: store.providerSettings.simkl.isAuthenticated
         case .mdblist: store.providerSettings.mdblist.isAuthenticated
         case .wetrakr: store.providerSettings.wetrakr.isAuthenticated
         }
@@ -121,7 +120,6 @@ struct ConnectionsView: View {
         case .trakt:
             store.traktSignedInOnPhone ? "Connected"
             : TraktOverview(status: trakt?.status, sync: trakt?.sync, checked: trakt?.status != nil || trakt?.error != nil, unavailable: trakt?.error != nil).badge
-        case .simkl: connected(.simkl) ? "Connected" : "Not connected"
         case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
         case .wetrakr: connected(.wetrakr) ? "Connected" : "Not connected"
         }
@@ -129,7 +127,6 @@ struct ConnectionsView: View {
     private func account(_ tracker: MainTracker) -> String? {
         switch tracker {
         case .trakt: store.traktSignedInOnPhone ? store.providerSettings.trakt.username : trakt?.status?.username
-        case .simkl: store.providerSettings.simkl.username
         case .mdblist: store.providerSettings.mdblist.username
         case .wetrakr: store.providerSettings.wetrakr.username
         }
@@ -154,7 +151,7 @@ struct ConnectionsView: View {
 
     private func trackerRow(_ tracker: MainTracker) -> some View {
         let isMain = tracker == main, on = connected(tracker)
-        let destination: AppDestination = switch tracker { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
+        let destination: AppDestination = switch tracker { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
         let profile = on ? profiles.account(tracker) : nil
         let checked = checkedAt(tracker).map { $0.formatted(.relative(presentation: .named)) }
         let sync = syncing(tracker)

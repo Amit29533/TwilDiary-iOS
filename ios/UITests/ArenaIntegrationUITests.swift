@@ -15,7 +15,7 @@ import XCTest
         for _ in 0..<12 { if element.isHittable { return }; app.swipeUp() }
         XCTAssertTrue(element.isHittable)
     }
-    /// Profile → Connections, where Simkl, MDBList, Trakt and the main tracker live.
+    /// Profile → Connections, where Trakt, MDBList, WeTrakr and the main tracker live.
     private func openConnections(_ app: XCUIApplication) {
         let row = app.buttons["settings-connections"]
         reveal(row, app: app); row.tap()
@@ -39,9 +39,9 @@ import XCTest
     func testProviderPagesAndCollectionFilterKeepTheCurrentNavigation() {
         let app = launch()
         app.tabBars.buttons["Profile"].tap(); openConnections(app)
-        let provider = app.buttons["settings-simkl"]
+        let provider = app.buttons["settings-wetrakr"]
         reveal(provider, app: app); provider.tap()
-        XCTAssertTrue(app.navigationBars["Simkl"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["WeTrakr"].waitForExistence(timeout: 5))
         capture("Arena provider connection in Profile", app: app)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.tabBars.buttons["Library"].tap()
@@ -53,12 +53,12 @@ import XCTest
         XCTAssertTrue(tag.exists)
     }
     /// Each service offers both ways in: sign in (when TwilDiary has an app ID for it) or your own
-    /// API key or token. The preview server has no Simkl/MDBList app ID, so their pages explain where
+    /// API key or token. The preview server has no WeTrakr/MDBList app ID, so their pages explain where
     /// to add one.
     func testEveryServiceOffersSignInOrYourOwnKey() {
         let app = launch()
         app.tabBars.buttons["Profile"].tap(); openConnections(app)
-        for (row, title, signIn, key) in [("settings-simkl", "Simkl", "simkl-sign-in", "simkl-client-id-field"),
+        for (row, title, signIn, key) in [("settings-wetrakr", "WeTrakr", "wetrakr-sign-in", "wetrakr-client-id-field"),
                                           ("settings-mdblist", "MDBList", "mdblist-sign-in", "mdblist-api-key-field")] {
             let entry = app.buttons[row]
             reveal(entry, app: app); entry.tap()
@@ -75,15 +75,16 @@ import XCTest
             XCTAssertTrue(app.buttons[row].waitForExistence(timeout: 5))
         }
     }
-    /// Profile → Connections: Trakt, Simkl, MDBList and WeTrakr in one list, the main tracker
+    /// Profile → Connections: Trakt, MDBList and WeTrakr in one list, the main tracker
     /// ticked, and quick actions under ⋯.
     func testConnectionsListTheTrackersWithTheMainOneTicked() {
         let app = launch()
         app.tabBars.buttons["Profile"].tap(); openConnections(app)
-        for id in ["settings-trakt", "settings-simkl", "settings-mdblist", "settings-wetrakr"] { XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id) }
+        for id in ["settings-trakt", "settings-mdblist", "settings-wetrakr"] { XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id) }
         XCTAssertTrue(app.buttons["settings-trakt"].label.contains("Main"), "Trakt is the default main tracker")
-        XCTAssertFalse(app.buttons["settings-simkl"].label.contains("Main"))
-        let actions = app.buttons["simkl-actions"]
+        XCTAssertFalse(app.buttons["settings-mdblist"].label.contains("Main"))
+        XCTAssertFalse(app.buttons["settings-simkl"].exists, "Simkl is no longer offered")
+        let actions = app.buttons["mdblist-actions"]
         reveal(actions, app: app); actions.tap()
         XCTAssertTrue(app.buttons["Check now"].waitForExistence(timeout: 5))
         capture("Trackers and their actions", app: app)

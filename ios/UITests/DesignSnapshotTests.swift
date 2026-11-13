@@ -87,7 +87,7 @@ import XCTest
         }
         func scrolled(_ name: String) { app.swipeUp(); Thread.sleep(forTimeInterval: 1); shot(name) }
         if open("settings-connections") {
-            for id in ["settings-trakt", "settings-simkl", "settings-mdblist", "settings-tmdb", "settings-anilist", "settings-apis"] {
+            for id in ["settings-trakt", "settings-mdblist", "settings-wetrakr", "settings-tmdb", "settings-anilist", "settings-apis"] {
                 if open(id) { shot("svc-" + id); scrolled("svc-" + id + "-2"); back(); app.swipeDown(); app.swipeDown() }
             }
             shot("svc-connections")

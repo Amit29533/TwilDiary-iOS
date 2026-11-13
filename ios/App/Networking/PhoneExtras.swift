@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import TwilDiaryCore
 
-/// With no TwilDiary server (Trakt-only, On this phone, or a phone-only Simkl/MDBList/WeTrakr
+/// With no TwilDiary server (Trakt-only, On this phone, or a phone-only MDBList/WeTrakr
 /// diary): what the service can't keep, kept on this iPhone instead of the server's record of
 /// each title. Tags, Queue, a note's full text (Trakt keeps 500 characters), the statuses the
 /// service has no place for (Completed, Paused, a dropped movie), a favourite where the service has

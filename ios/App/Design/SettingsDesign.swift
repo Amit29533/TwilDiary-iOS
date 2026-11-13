@@ -190,7 +190,7 @@ struct SeasonProgressCard: View {
     }
 }
 
-// MARK: Service pages (Trakt, Simkl, MDBList, AniList, TMDB, APIs): boards 4 and 6–13.
+// MARK: Service pages (Trakt, MDBList, WeTrakr, AniList, TMDB, APIs): boards 4 and 6–13.
 
 /// What a status pill says about a service: connected (green), configured (purple),
 /// missing (amber) or plain (grey, e.g. "Server secret").
@@ -258,7 +258,7 @@ struct SettingsKeeps: View {
     }
 }
 
-/// A group label with something beside it ("DIRECT FROM SIMKL  Preview  ⓘ").
+/// A group label with something beside it ("DIRECT FROM MDBLIST  Preview  ⓘ").
 struct SettingsLabel<Accessory: View>: View {
     let text: String
     @ViewBuilder var accessory: Accessory
@@ -317,7 +317,7 @@ struct SettingsWideButtonStyle: ButtonStyle {
     }
 }
 
-/// A link line in the accent: "↗ Open Simkl's developer page".
+/// A link line in the accent: "↗ Open MDBList's developer page".
 struct SettingsLinkLabel: View {
     let text: String
     var body: some View {

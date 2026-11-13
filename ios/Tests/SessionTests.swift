@@ -1897,14 +1897,6 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         // Verify custom TMDB token & external provider config updates and watch-logging fan-out
         store.updateCustomTmdbToken("  custom-tmdb-read-token  ")
         XCTAssertEqual(store.providerSettings.customTmdbToken, "custom-tmdb-read-token")
-        // Simkl support was removed: a connected Simkl gets nothing; MDBList stands for the fan-out.
-        store.updateProviderConfig(ExternalProviderConfig(
-            provider: .simkl,
-            enabled: true,
-            loggingMethod: .serverAndDirectAPI,
-            clientId: "simkl_test_cid",
-            accessToken: "simkl_test_token"
-        ))
         XCTAssertTrue(store.providerSettings.activeDirectLoggingProviders.isEmpty)
         store.updateProviderConfig(ExternalProviderConfig(
             provider: .mdblist,
@@ -1925,7 +1917,7 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
             operationId: "op-direct-1"
         )
         XCTAssertEqual(store.outbox.pending(for: .mdblist).count, 1)
-        XCTAssertTrue(store.outbox.pending(for: .simkl).isEmpty)
+        XCTAssertTrue(store.outbox.pending(for: .wetrakr).isEmpty)
     }
     func testOfflinePatchPersistsBeforePublishingAndReplaysAfterRelaunch() async throws {
         let storage = MemorySessionStorage(); storage.credential = credential
@@ -2033,8 +2025,8 @@ extension SessionTests {
         let store = makeStore(api: api(storage), cache: MemoryWorkspaceCache(), providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
         XCTAssertNil(store.providerSettings.customTmdbToken)
-        XCTAssertFalse(store.updateProviderConfig(ExternalProviderConfig(provider: .simkl, enabled: true, clientId: "fixture", accessToken: "fixture")))
-        XCTAssertNil(store.providerSettings.simkl.accessToken)
+        XCTAssertFalse(store.updateProviderConfig(ExternalProviderConfig(provider: .wetrakr, enabled: true, clientId: "fixture", accessToken: "fixture")))
+        XCTAssertNil(store.providerSettings.wetrakr.accessToken)
         XCTAssertNotNil(store.error)
     }
 
@@ -2053,8 +2045,8 @@ extension SessionTests {
         let store = makeStore(api: api(storage), cache: cache, outboxStore: queueStore, directClient: DirectProviderClient(session: URLSession(configuration: configuration)))
         XCTAssertEqual(store.workspace.titles, workspace.titles)
         let title = try XCTUnwrap(store.workspace.titles.first)
-        store.providerSettings = ProviderConnectionSettings(simkl: ExternalProviderConfig(provider: .simkl, enabled: true, loggingMethod: .directAPIOnly, clientId: "fixture-client", accessToken: "fixture-token"))
-        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: nil, queued: nil, notes: nil), providers: [.simkl])
+        store.providerSettings = ProviderConnectionSettings(mdblist: ExternalProviderConfig(provider: .mdblist, enabled: true, loggingMethod: .directAPIOnly, apiKey: "fixture-key"))
+        let entry = try store.enqueueOptimistic(.patchTitle(titleId: title.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: nil, queued: nil, notes: nil), providers: [.mdblist])
         XCTAssertEqual(Set(store.workspace.titles.map(\.id)), Set(workspace.titles.map(\.id)))
         XCTAssertEqual(store.workspace.titles.first?.tmdbId, 123)
         StubProtocol.state.reset { request in
@@ -2062,12 +2054,12 @@ extension SessionTests {
         }
         await store.flushDirectProviders()
         let saved = try XCTUnwrap(queueStore.load(scope: credential.cacheScope).entries.first { $0.id == entry.id })
-        XCTAssertEqual(saved.confirmedActions, ["simkl:rating"])
+        XCTAssertEqual(saved.confirmedActions, ["mdblist:rating"])
         XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/ratings" }.count, 1)
         StubProtocol.state.reset { _ in .init(#"{"added":{"movies":1}}"#) }
         await store.flushDirectProviders()
         XCTAssertTrue(queueStore.load(scope: credential.cacheScope).isEmpty)
         XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/ratings" }.count, 0)
-        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/sync/add-to-list" }.count, 1, "Only the unconfirmed Simkl plan is retried")
+        XCTAssertEqual(StubProtocol.state.recorded().filter { $0.url?.path == "/watchlist/items/add" }.count, 1, "Only the unconfirmed MDBList watchlist add is retried")
     }
 }

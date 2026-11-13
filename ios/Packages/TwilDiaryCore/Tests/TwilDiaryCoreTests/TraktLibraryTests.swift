@@ -105,41 +105,15 @@ private func diary() throws -> Workspace {
     #expect(!result.matches)
 }
 
-// MARK: Main tracker: Simkl and MDBList read into the same library
+// MARK: Main tracker: MDBList and WeTrakr read into the same library
 
 @Test func everyTrackerSaysWhatStaysInCloudflare() {
     #expect(MainTracker.trakt.keptInCloudflare == ["the full text of notes over 500 characters"])
-    #expect(MainTracker.simkl.keptInCloudflare.contains("rewatch counts"))
-    #expect(MainTracker.simkl.keptInCloudflare.contains("favourite titles"))
+    #expect(MainTracker.mdblist.keptInCloudflare.contains("rewatch counts"))
+    #expect(MainTracker.mdblist.keptInCloudflare.contains("favourite titles"))
     #expect(MainTracker.mdblist.keptInCloudflare.contains("notes"))
     #expect(MainTracker.wetrakr.keptInCloudflare == ["notes"])
-    #expect(MainTracker.allCases == [.trakt, .simkl, .mdblist, .wetrakr])
-}
-
-@Test func simklAllItemsBecomeWatchesRatingsListsAndNotes() throws {
-    let library = try TrackerDecode.simklLibrary(from: data("""
-    {"shows":[{"status":"completed","user_rating":9,"user_rated_at":"2026-11-01T00:00:00Z","last_watched_at":"2026-11-04T07:42:00Z",
-               "memo":{"text":"Loved the finale","is_private":true},
-               "show":{"title":"Spooky in Love","year":2026,"ids":{"simkl":1,"tmdb":"284172","imdb":"tt1"}},
-               "seasons":[{"number":1,"episodes":[{"number":11,"watched_at":"2026-11-04T07:42:00Z"},{"number":12,"watched_at":"2026-10-31T23:16:00Z"}]}]}],
-     "anime":[{"status":"plantowatch","anime_type":"tv","added_to_watchlist_at":"2026-10-01T00:00:00Z",
-               "show":{"title":"Frieren","year":2023,"ids":{"simkl":2,"mal":"52991"}}},
-              {"status":"watching","anime_type":"tv","show":{"title":"Numbered by TVDB","ids":{"simkl":3,"tmdb":"500"}},
-               "seasons":[{"number":1,"episodes":[{"number":30,"watched_at":"2026-10-01T00:00:00Z","tvdb":{"season":2,"episode":5}}]}]}],
-     "movies":[{"status":"dropped","last_watched_at":"2026-09-01T00:00:00Z","movie":{"title":"Dropped film","year":2020,"ids":{"simkl":4,"tmdb":"77"}}},
-               {"status":"completed","last_watched_at":"2026-08-01T00:00:00Z","user_rating":7,"movie":{"title":"Diary only","ids":{"simkl":5,"tmdb":"9"}}},
-               {"status":"completed","movie":{"title":"","ids":{}}}]}
-    """))
-    #expect(library.plays.filter { $0.title.tmdbId == 284172 }.map(\.episode) == [11, 12])
-    let numbered = library.plays.first { $0.title.tmdbId == 500 }
-    #expect(numbered?.season == 2 && numbered?.episode == 5, "Anime use TVDB numbering when Simkl gives it")
-    #expect(library.ratings.map(\.rating).sorted() == [7, 9])
-    #expect(library.watchlist.map(\.title.name) == ["Frieren"])
-    #expect(library.dropped.map(\.title.name) == ["Dropped film"])
-    #expect(library.notes.map(\.text) == ["Loved the finale"])
-    #expect(library.skipped == 1, "The nameless movie is counted, not guessed")
-    #expect(Set(library.plays.map(\.historyId)).count == library.plays.count, "Each watch gets its own stable id")
-    #expect(try TrackerDecode.simklLibrary(from: data("{}")) == TraktLibrary())
+    #expect(MainTracker.allCases == [.trakt, .mdblist, .wetrakr])
 }
 
 @Test func withoutRewatchesTheComparisonChecksWatchedAtLeastOnce() throws {
@@ -152,14 +126,14 @@ private func diary() throws -> Workspace {
                 TraktPlay(historyId: 3, title: local, watchedAt: nil)],
         ratings: [TraktRating(title: spooky, rating: 9, ratedAt: nil)],
         watchlist: [TraktListed(title: obsession, listedAt: nil)])
-    // Simkl keeps no favourites: the diary favourite is not a difference, it stays in Cloudflare.
-    let simkl = TraktComparison.compare(library, with: try diary(), tracker: .simkl)
-    #expect(simkl.matches)
-    #expect(simkl.matchingPlays == 3)
+    // MDBList keeps no favourites: the diary favourite is not a difference, it stays in Cloudflare.
+    let mdblist = TraktComparison.compare(library, with: try diary(), tracker: .mdblist)
+    #expect(mdblist.matches)
+    #expect(mdblist.matchingPlays == 3)
     var rewatched = library
     rewatched.ratings = [TraktRating(title: spooky, rating: 8, ratedAt: nil)]
-    let differs = TraktComparison.compare(rewatched, with: try diary(), tracker: .simkl)
-    #expect(differs.ratingDifferences.map(\.detail) == ["diary 9, Simkl 8"])
+    let differs = TraktComparison.compare(rewatched, with: try diary(), tracker: .mdblist)
+    #expect(differs.ratingDifferences.map(\.detail) == ["diary 9, MDBList 8"])
     // Trakt holds favourites, so the same library differs there.
     #expect(TraktComparison.compare(library, with: try diary()).favoriteDifferences.count == 1)
 }
@@ -262,19 +236,19 @@ private func diary() throws -> Workspace {
 @Test func whatDidntStickIsNeitherResentNorADifference() throws {
     // The ledger (sent once, not kept by the service) is left out of the plan and the differences.
     let library = TraktLibrary()
-    let full = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .simkl)
+    let full = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .mdblist)
     let stuck = Set(full.tokens.filter { $0.hasPrefix("play|") }.prefix(1))
     #expect(!stuck.isEmpty)
-    let again = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .simkl, except: stuck)
+    let again = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .mdblist, except: stuck)
     #expect(again.tokens.isDisjoint(with: stuck) && again.plays.count == full.plays.count - 1)
-    let before = TraktComparison.compare(library, with: try diary(), tracker: .simkl).onlyInDiary.count
-    let after = TraktComparison.compare(library, with: try diary(), tracker: .simkl, except: stuck).onlyInDiary.count
+    let before = TraktComparison.compare(library, with: try diary(), tracker: .mdblist).onlyInDiary.count
+    let after = TraktComparison.compare(library, with: try diary(), tracker: .mdblist, except: stuck).onlyInDiary.count
     #expect(after == before - 1)
 }
 
-// MARK: Phase 5: Simkl and MDBList match the diary
+// MARK: Phase 5: MDBList matches the diary
 
-@Test func simklAndMDBListGetOneWatchPerEpisodeAndTheirOwnEndpoints() throws {
+@Test func mdblistGetsOneWatchPerEpisodeAndItsOwnEndpoints() throws {
     let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love")
     let obsession = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 3, name: "Obsession")
     let diaryOnly = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 9, name: "Diary only")
@@ -283,18 +257,12 @@ private func diary() throws -> Workspace {
     let library = TraktLibrary(
         plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: "2025-01-01T00:00:00.000Z")],
         watchlist: [TraktListed(title: diaryOnly, listedAt: nil)])
-    let simkl = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .simkl)
-    #expect(simkl.plays.map { "\($0.title.tmdbId) s\($0.season ?? 0)e\($0.episode ?? 0)" }.sorted() == ["284172 s1e12", "9 s0e0"])
-    #expect(simkl.favouritesAdd.isEmpty && simkl.diaryFavourites.isEmpty, "Simkl keeps no favourites")
-    #expect(simkl.watchlistAdd.map(\.tmdbId) == [3])
-    #expect(simkl.watchlistRemove.isEmpty && simkl.moves == [.init(title: .init(movie: true, tmdbId: 9, name: "Diary only"), to: "completed")])
-    let simklPaths = simkl.requests().map(\.path)
-    #expect(simklPaths == ["/sync/history", "/sync/ratings", "/sync/add-to-list", "/sync/add-to-list"])
-    let plan = String(decoding: simkl.requests()[2].body, as: UTF8.self)
-    #expect(plan.contains("\"to\":\"plantowatch\"") && plan.contains("\"tmdb\":3"))
-    #expect(simkl.summary.contains { $0.contains("Simkl history") })
-
     let mdblist = TraktWritePlan.make(library: library, workspace: try diary(), tracker: .mdblist)
+    #expect(mdblist.plays.map { "\($0.title.tmdbId) s\($0.season ?? 0)e\($0.episode ?? 0)" }.sorted() == ["284172 s1e12", "9 s0e0"])
+    #expect(mdblist.favouritesAdd.isEmpty && mdblist.diaryFavourites.isEmpty, "MDBList keeps no favourites")
+    #expect(mdblist.watchlistAdd.map(\.tmdbId) == [3])
+    #expect(mdblist.watchlistRemove.map(\.tmdbId) == [9], "Diary only is completed in the diary, so it leaves the watchlist")
+    #expect(mdblist.summary.contains { $0.contains("MDBList history") })
     #expect(mdblist.requests().map(\.path) == ["/sync/watched", "/sync/ratings", "/watchlist/items/add", "/watchlist/items/remove"])
     // Once the service has a watch of each, nothing more is sent.
     var done = library
@@ -303,7 +271,6 @@ private func diary() throws -> Workspace {
     done.ratings = [TraktRating(title: spooky, rating: 9, ratedAt: nil)]
     done.watchlist = [TraktListed(title: obsession, listedAt: nil)]
     #expect(TraktWritePlan.make(library: done, workspace: try diary(), tracker: .mdblist).isEmpty)
-    #expect(TraktWritePlan.make(library: done, workspace: try diary(), tracker: .simkl).isEmpty)
 }
 
 // MARK: Phase 4a: the diary built from Trakt
@@ -338,58 +305,13 @@ private func diary() throws -> Workspace {
     #expect(built.locations == server.locations)
     // Titles Trakt doesn't know stay as the server has them.
     #expect(byName["Diary only"]?.status == "completed")
-    // Simkl keeps no favourites: the server's favourite stands.
-    let simkl = TraktDiary.build(library: library, server: server, tracker: .simkl)
-    #expect(simkl.titles.first { $0.id == "spooky" }?.favorite == true)
+    // MDBList keeps no favourites: the server's favourite stands.
+    let mdblist = TraktDiary.build(library: library, server: server, tracker: .mdblist)
+    #expect(mdblist.titles.first { $0.id == "spooky" }?.favorite == true)
 }
 
 
-// MARK: Simkl delta sync and MDBList per-list reads
-
-@Test func simklReadsOnlyWhatMovedAfterTheFirstPull() throws {
-    func activities(_ json: String) throws -> TraktActivities { try TraktDecode.activities(from: data(json)) }
-    let saved = try activities(#"{"all":"2026-11-01T00:00:00Z","tv_shows":{"all":"2026-11-01T00:00:00Z","watching":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","removed_from_list":"2026-09-01T00:00:00Z"}}"#)
-    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love", simklId: 1)
-    let library = TraktLibrary(activities: SimklSync.marked(saved), plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 1, watchedAt: nil)], fetchedAt: "2026-11-01T00:00:00Z")
-    #expect(SimklSync.step(previous: nil, now: saved) == .full)
-    #expect(SimklSync.step(previous: library, now: saved) == .none)
-    // A copy read before anime came in TVDB's numbering is read in full once.
-    var unnumbered = library
-    unnumbered.activities = saved
-    #expect(SimklSync.step(previous: unnumbered, now: saved) == .full)
-    let watched = try activities(#"{"all":"2026-11-05T00:00:00Z","tv_shows":{"all":"2026-11-05T00:00:00Z","watching":"2026-11-05T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","removed_from_list":"2026-09-01T00:00:00Z"}}"#)
-    #expect(SimklSync.step(previous: library, now: watched) == .delta(items: true, ratings: false, removals: false, since: "2026-11-01T00:00:00Z"))
-    let rated = try activities(#"{"all":"2026-11-05T00:00:00Z","tv_shows":{"all":"2026-11-05T00:00:00Z","watching":"2026-11-01T00:00:00Z","rated_at":"2026-11-05T00:00:00Z","removed_from_list":"2026-11-05T00:00:00Z"}}"#)
-    #expect(SimklSync.step(previous: library, now: rated) == .delta(items: false, ratings: true, removals: true, since: "2026-11-01T00:00:00Z"))
-    // A copy saved before Simkl ids were kept is read in full once.
-    var old = library
-    old.plays = [TraktPlay(historyId: 1, title: TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love"), watchedAt: nil)]
-    #expect(SimklSync.step(previous: old, now: watched) == .full)
-    // An entry added by your own edit (no Simkl id yet) doesn't force a full read.
-    var edited = library
-    edited.plays.append(TraktPlay(historyId: -5, title: TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love"), season: 1, episode: 2, watchedAt: nil))
-    #expect(SimklSync.step(previous: edited, now: watched) == .delta(items: true, ratings: false, removals: false, since: "2026-11-01T00:00:00Z"))
-}
-
-@Test func simklDeltasReplaceTheirTitlesAndRemovalsDropTheRest() throws {
-    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love", simklId: 1)
-    let frieren = TraktTitleRef(kind: .show, traktId: nil, tmdbId: nil, name: "Frieren", simklId: 2)
-    let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 1, watchedAt: nil)],
-                               watchlist: [TraktListed(title: frieren, listedAt: nil)])
-    let deltaData = data("""
-    {"shows":[{"status":"watching","show":{"title":"Spooky in Love","ids":{"simkl":1,"tmdb":"284172"}},
-               "seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2026-11-01T00:00:00Z"},{"number":2,"watched_at":"2026-11-02T00:00:00Z"}]}]}]}
-    """)
-    let merged = SimklSync.merge(try TrackerDecode.simklLibrary(from: deltaData), touched: try TrackerDecode.simklIDs(from: deltaData), into: library)
-    #expect(merged.plays.map(\.episode) == [1, 2], "The changed show's episodes replace the old ones, not add to them")
-    #expect(merged.watchlist.map(\.title.name) == ["Frieren"], "Titles not in the delta stay")
-    let ids = try TrackerDecode.simklIDs(from: data(#"{"shows":[{"show":{"ids":{"simkl":1,"slug":"spooky"}}}]}"#))
-    #expect(ids == [1])
-    #expect(SimklSync.removing(from: merged, keeping: ids).watchlist.isEmpty, "Frieren left Simkl, so it leaves the copy")
-    #expect(throws: (any Error).self) { try TrackerDecode.simklIDs(from: data(#"{"shows":[{"show":{"ids":{"slug":"no-id"}}}]}"#)) }
-    let ratings = try TrackerDecode.simklRatings(from: data(#"{"movies":[{"user_rating":8,"movie":{"title":"Film","ids":{"simkl":9,"tmdb":"77"}}}]}"#))
-    #expect(ratings.map(\.rating) == [8] && ratings.first?.title.simklId == 9)
-}
+// MARK: MDBList per-list reads
 
 @Test func mdblistRereadsOnlyTheListsThatMoved() throws {
     let before = try TrackerDecode.flatActivities(from: data(#"{"watched_at":"2026-11-01T00:00:00Z","rated_at":"2026-10-01T00:00:00Z","watchlisted_at":"2026-10-01T00:00:00Z"}"#))
@@ -498,17 +420,4 @@ private func diary() throws -> Workspace {
     server.notes = "Old note"
     diary = TraktDiary.build(library: library, server: Workspace(titles: [server]))
     #expect(diary.titles.first { $0.id == "m1" }?.notes == String(long.prefix(500)), "a different note on Trakt is the newer word")
-}
-
-/// Simkl's own example (`extended=full_anime_seasons`): "Shingeki no Kyojin Season 2" is its own
-/// entry numbered from season 1, under TMDB's one show; its episodes land in TVDB season 2, the
-/// diary's numbering. An episode without its own mapping takes the entry's one TVDB season.
-@Test func simklAnimeSeasonEntriesUseTVDBNumbering() throws {
-    let library = try TrackerDecode.simklLibrary(from: data("""
-    {"anime":[{"show":{"title":"Shingeki no Kyojin Season 2","ids":{"simkl":439744,"tmdb":"1429"}},"anime_type":"tv","mapped_tvdb_seasons":[2],
-               "seasons":[{"number":1,"episodes":[{"number":1,"tvdb":{"season":2,"episode":1},"watched_at":"2026-01-01T00:00:00Z"},{"number":2}]}]},
-              {"show":{"title":"Shingeki no Kyojin","ids":{"simkl":38636,"tmdb":"1429"}},"anime_type":"tv",
-               "seasons":[{"number":1,"episodes":[{"number":1}]}]}]}
-    """))
-    #expect(library.plays.map { "\($0.title.tmdbId ?? 0) s\($0.season ?? -1)e\($0.episode ?? -1)" } == ["1429 s2e1", "1429 s2e2", "1429 s1e1"])
 }

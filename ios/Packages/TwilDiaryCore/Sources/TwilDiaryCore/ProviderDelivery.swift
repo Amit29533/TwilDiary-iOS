@@ -22,7 +22,7 @@ public struct DetachedWatch: Codable, Equatable, Sendable {
     public let season: Int?
     public let number: Int?
     public let watchedAt: String?
-    /// The diary still has another play of this movie or episode: Simkl and MDBList, which keep one
+    /// The diary still has another play of this movie or episode: MDBList, which keeps one
     /// watch for all of them, are then left as they are.
     public let othersRemain: Bool
     public init(tmdbId: Int, movie: Bool, season: Int?, number: Int?, watchedAt: String?, othersRemain: Bool) {
@@ -46,7 +46,7 @@ public struct DetachedWatch: Codable, Equatable, Sendable {
 /// Plans only operations with an explicit transport contract. Unsupported edits stay pending.
 public enum ProviderDeliveryPlanner {
     /// Taking one play off a mirror, from what the removal itself carries (see `DetachedWatch`):
-    /// Trakt and WeTrakr that very play, by its time; Simkl and MDBList their one watch, unless the
+    /// Trakt and WeTrakr that very play, by its time; MDBList its one watch, unless the
     /// diary still has another play of it.
     static func detachedRemoval(_ watch: DetachedWatch, provider: SyncProviderKind) -> ProviderDeliveryPlan {
         let slot = watch.movie ? "movies" : "shows"
@@ -84,12 +84,12 @@ public enum ProviderDeliveryPlanner {
             var body = WeTrakrWrite.watched(timed, rewatch: false)
             body.removeValue(forKey: "allow_rewatch")
             return one("history-remove", "/sync/tracking/remove", body)
-        case .simkl, .mdblist:
+        case .mdblist:
             if watch.othersRemain { return ProviderDeliveryPlan(deliveries: [], blocked: []) }
             guard let body = item(timed: false) else {
                 return ProviderDeliveryPlan(deliveries: [], blocked: ["A mapped episode is required before this removal can sync."])
             }
-            return one("history-remove", provider == .mdblist ? "/sync/watched/remove" : "/sync/history/remove", body)
+            return one("history-remove", "/sync/watched/remove", body)
         case .cloudflare:
             return ProviderDeliveryPlan(deliveries: [], blocked: [])
         }
@@ -142,14 +142,14 @@ public enum ProviderDeliveryPlanner {
             sendWatch(watch, rewatch: false)
         case .revokeWatch(let eventID, _, _, _):
             // Only that play: Trakt by its history id (a removal without one would take every
-            // play of the title), WeTrakr by its time, Simkl and MDBList their one watch.
+            // play of the title), WeTrakr by its time, MDBList its one watch.
             guard let event = workspace.events.first(where: { $0.id == eventID }) else {
                 return ProviderDeliveryPlan(deliveries: [], blocked: ["This watch is no longer in the diary."])
             }
             switch provider {
             case .trakt:
-                // A Trakt history id only when the play came from Trakt: a diary read from Simkl,
-                // MDBList or WeTrakr names its plays by that service's ids. Otherwise the play is
+                // A Trakt history id only when the play came from Trakt: a diary read from another
+                // service (MDBList, WeTrakr, once Simkl) names its plays by that service's ids. Otherwise the play is
                 // found in Trakt's history at its time and removed by its id (as Cinopsys does).
                 let fromTrakt = !["simkl", "mdblist", "wetrakr"].contains(event.origin)
                 if fromTrakt, eventID.hasPrefix("trakt-"), let history = Int64(eventID.dropFirst(6)) {
@@ -165,14 +165,14 @@ public enum ProviderDeliveryPlanner {
                 }
                 watch.removeValue(forKey: "allow_rewatch")
                 add("history-remove", "/sync/tracking/remove", watch)
-            case .simkl, .mdblist:
-                // Their one watch stands for every play of it: while the diary still has another
+            case .mdblist:
+                // Its one watch stands for every play of it: while the diary still has another
                 // play of this movie or episode, taking one off leaves the service as it is.
                 if workspace.events.contains(where: { $0.id != eventID && $0.titleId == title.id && $0.episodeId == event.episodeId && $0.revokedAt == nil }) { break }
                 guard let watch = watchItem(event.episodeId, event.watchedAt ?? entry.createdAt) else {
                     blocked.append("A mapped episode is required before this removal can sync."); break
                 }
-                add("history-remove", provider == .mdblist ? "/sync/watched/remove" : "/sync/history/remove", watch)
+                add("history-remove", "/sync/watched/remove", watch)
             case .cloudflare: break
             }
         case .patchTitle(_, _, let status, let score, let clearScore, let favorite, _, _, _):
@@ -184,11 +184,9 @@ public enum ProviderDeliveryPlanner {
                 } else { blocked.append("Ratings must be between 1 and 10.") }
             }
             // Planned is each service's watchlist. Queue is TwilDiary's own list (no service keeps
-            // one), so it never touches a watchlist: on Simkl that moved a show you were watching
-            // to Plan to Watch.
+            // one), so it never touches a watchlist.
             if status == "planned" {
                 switch provider {
-                case .simkl: var value = item; value["to"] = "plantowatch"; add("watchlist", "/sync/add-to-list", value)
                 case .mdblist: add("watchlist", "/watchlist/items/add")
                 case .wetrakr: var value = item; value["status"] = "planning"; add("watchlist", "/sync/tracking", value)
                 default: add("watchlist", "/sync/watchlist")
@@ -196,8 +194,7 @@ public enum ProviderDeliveryPlanner {
             }
             // Leaving Planned takes the title off the watchlist too, or it stays listed there for
             // good (a match only ever adds). Asked whatever it was before: taking off something
-            // that isn't listed changes nothing. Simkl moves it to its list below instead; WeTrakr
-            // is left to the match, since its removal call isn't confirmed to touch only Planning.
+            // that isn't listed changes nothing. WeTrakr is left to the match, since its removal call isn't confirmed to touch only Planning.
             if let status, status != "planned" {
                 if provider == .trakt { add("watchlist-remove", "/sync/watchlist/remove") }
                 else if provider == .mdblist { add("watchlist-remove", "/watchlist/items/remove") }
@@ -205,10 +202,7 @@ public enum ProviderDeliveryPlanner {
             // A status the service doesn't keep (watching and completed come from the watches
             // themselves on Trakt and MDBList) and favourites outside Trakt stay in the diary.
             if let status, status != "planned", statusCarried(status, provider: provider, isSeries: title.isSeries) {
-                if provider == .simkl, let list = TraktWritePlan.simklList(status: status, isSeries: title.isSeries) {
-                    // Simkl moves the title to its list (this also takes it off Plan to Watch).
-                    var value = item; value["to"] = list; add("status", "/sync/add-to-list", value)
-                } else if provider == .mdblist { add("status", "/sync/dropped") }
+                if provider == .mdblist { add("status", "/sync/dropped") }
                 else if provider == .wetrakr { var value = item; value["status"] = "dropped"; add("status", "/sync/tracking", value) }
                 else if provider == .trakt { add("status", "/users/hidden/dropped") }
             }
@@ -232,7 +226,6 @@ public enum ProviderDeliveryPlanner {
     static func statusCarried(_ status: String, provider: SyncProviderKind, isSeries: Bool) -> Bool {
         if status == "planned" { return true }
         switch provider {
-        case .simkl: return TraktWritePlan.simklList(status: status, isSeries: isSeries) != nil
         case .trakt, .mdblist: return status == "dropped" && isSeries
         case .wetrakr: return status == "dropped"
         case .cloudflare: return true
@@ -269,7 +262,7 @@ public enum ProviderDeliveryPlanner {
         }
         func confirmedCount(_ value: Any?) -> Bool {
             if positiveCount(value) { return true }
-            // Simkl lists what it added ({"added": {"movies": [{…}]}}) instead of counting it.
+            // A service may list what it added ({"added": {"movies": [{…}]}}) instead of counting it.
             if let items = value as? [Any] { return !items.isEmpty }
             guard let counts = value as? [String: Any] else { return false }
             return ["total", "movies", "shows", "episodes", "seasons", "items", "ratings", "anime"].contains { key in

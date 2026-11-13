@@ -4,17 +4,14 @@ import Testing
 
 private func json(_ text: String) -> Data { Data(text.utf8) }
 
-@Test func mdblistAndSimklUseTheirDocumentedDeviceSignIn() throws {
+@Test func mdblistUsesItsDocumentedDeviceSignIn() throws {
     let mdblist = try #require(ProviderDeviceSignIn.endpoints(for: .mdblist))
     #expect(mdblist.authorize.absoluteString == "https://api.mdblist.com/oauth/device-authorization/")
     #expect(mdblist.token.absoluteString == "https://api.mdblist.com/oauth/token/", "MDBList needs the trailing slash")
     #expect(mdblist.scope == "write")
-    let simkl = try #require(ProviderDeviceSignIn.endpoints(for: .simkl))
-    #expect(simkl.authorize.absoluteString == "https://api.simkl.com/oauth2/device")
-    #expect(simkl.scope == "media:read media:write")
     #expect(ProviderDeviceSignIn.endpoints(for: .trakt) == nil)
-    #expect(String(decoding: ProviderDeviceSignIn.authorizeBody(clientId: "abc 1", scope: simkl.scope), as: UTF8.self)
-            == "client_id=abc%201&scope=media%3Aread%20media%3Awrite")
+    #expect(String(decoding: ProviderDeviceSignIn.authorizeBody(clientId: "abc 1", scope: "read write"), as: UTF8.self)
+            == "client_id=abc%201&scope=read%20write")
     #expect(String(decoding: ProviderDeviceSignIn.pollBody(clientId: "abc", deviceCode: "d/1"), as: UTF8.self)
             == "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&device_code=d%2F1&client_id=abc")
 }
@@ -46,14 +43,6 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     if case .failed = ProviderDeviceSignIn.decodePoll(status: 500, data: Data()) {} else { Issue.record("An empty error must fail") }
 }
 
-@Test func aSimklSignInWithoutWriteAccessIsNotSaved() {
-    let readOnly = ProviderDeviceSignIn.Tokens(accessToken: "t", refreshToken: nil, expiresAt: nil, scope: "media:read")
-    let writable = ProviderDeviceSignIn.Tokens(accessToken: "t", refreshToken: nil, expiresAt: nil, scope: "media:read media:write")
-    #expect(!ProviderDeviceSignIn.grantsWrite(readOnly, provider: .simkl))
-    #expect(ProviderDeviceSignIn.grantsWrite(writable, provider: .simkl))
-    #expect(ProviderDeviceSignIn.grantsWrite(readOnly, provider: .mdblist), "Only Simkl downgrades quietly")
-}
-
 @Test func signInTokensRefreshBeforeTheyExpireAndNeverReachPlainPreferences() throws {
     let now = try Date("2026-11-05T10:00:00Z", strategy: .iso8601)
     var config = ExternalProviderConfig(provider: .mdblist, enabled: true, clientId: "app", accessToken: "tok",
@@ -74,42 +63,36 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     let secrets = Secrets()
     let store = UserDefaultsProviderSettingsStore(defaults: defaults, key: "test.settings", secrets: secrets)
     var settings = ProviderConnectionSettings()
-    settings.setConfig(ExternalProviderConfig(provider: .simkl, enabled: true, clientId: "app", accessToken: "secret-access",
+    settings.setConfig(ExternalProviderConfig(provider: .wetrakr, enabled: true, clientId: "app", accessToken: "secret-access",
                                               refreshToken: "secret-refresh", tokenExpiresAt: "2026-11-12T10:00:00Z", connection: .signIn))
     try store.save(settings)
     let plain = String(decoding: try #require(defaults.data(forKey: "test.settings")), as: UTF8.self)
     #expect(!plain.contains("secret-access") && !plain.contains("secret-refresh"))
-    #expect(try store.load().simkl.refreshToken == "secret-refresh")
-    #expect(try store.load().simkl.connection == .signIn)
+    #expect(try store.load().wetrakr.refreshToken == "secret-refresh")
+    #expect(try store.load().wetrakr.connection == .signIn)
 }
 
 @Test func webSignInOpensTheServicePageWithPKCEAndChecksTheReply() throws {
     var counter: UInt8 = 0
     let bytes: (Int) -> [UInt8] = { count in (0..<count).map { _ in counter &+= 1; return counter } }
-    let simkl = try #require(ProviderWebSignIn.start(provider: .simkl, clientId: " simkl-app ", randomBytes: bytes))
-    let query = Dictionary(uniqueKeysWithValues: (URLComponents(url: simkl.url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-    #expect(simkl.url.host == "simkl.com" && simkl.url.path == "/oauth2/authorize")
-    #expect(query["client_id"] == "simkl-app" && query["response_type"] == "code" && query["code_challenge_method"] == "S256")
-    #expect(query["redirect_uri"] == "twildiary://auth/simkl" && query["scope"] == "media:read media:write")
-    #expect(query["code_challenge"] == ProviderWebSignIn.challenge(for: simkl.verifier))
-    #expect((43...128).contains(simkl.verifier.count))
+    let mdblist = try #require(ProviderWebSignIn.start(provider: .mdblist, clientId: " md-app ", randomBytes: bytes))
+    let query = Dictionary(uniqueKeysWithValues: (URLComponents(url: mdblist.url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+    #expect(mdblist.url.absoluteString.hasPrefix("https://mdblist.com/oauth/authorize/?"))
+    #expect(query["client_id"] == "md-app" && query["response_type"] == "code" && query["code_challenge_method"] == "S256")
+    #expect(query["code_challenge"] == ProviderWebSignIn.challenge(for: mdblist.verifier))
+    #expect((43...128).contains(mdblist.verifier.count))
     // RFC 7636 appendix B: the S256 challenge of the sample verifier.
     #expect(ProviderWebSignIn.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
-    let good = URL(string: "twildiary://auth/simkl?code=abc&state=\(simkl.state)&iss=https://simkl.com")!
-    #expect(try ProviderWebSignIn.code(from: good, for: simkl) == "abc")
-    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=other&iss=https://simkl.com")!, for: simkl) }
-    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=\(simkl.state)&iss=https://evil.example")!, for: simkl) }
+    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?code=abc&state=other")!, for: mdblist) }
     #expect(throws: ProviderSignInError.unexpected("The sign-in was declined.")) {
-        try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?error=access_denied&state=\(simkl.state)&iss=https://simkl.com")!, for: simkl)
+        try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?error=access_denied&state=\(mdblist.state)")!, for: mdblist)
     }
-    let body = String(decoding: ProviderWebSignIn.tokenBody(code: "abc", for: simkl), as: UTF8.self)
-    #expect(body.contains("grant_type=authorization_code") && body.contains("code_verifier=" + simkl.verifier) && !body.contains("client_secret"))
-    let mdblist = try #require(ProviderWebSignIn.start(provider: .mdblist, clientId: "md-app"))
-    #expect(mdblist.url.absoluteString.hasPrefix("https://mdblist.com/oauth/authorize/?"))
+    let body = String(decoding: ProviderWebSignIn.tokenBody(code: "abc", for: mdblist), as: UTF8.self)
+    #expect(body.contains("grant_type=authorization_code") && body.contains("code_verifier=" + mdblist.verifier) && !body.contains("client_secret"))
     // MDBList's Public PKCE apps take an https redirect: the return page hands it to the app.
     #expect(ProviderWebSignIn.redirect(for: .mdblist) == "https://twildiary-auth.amit29533.workers.dev/mdblist")
     #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?code=xyz&state=\(mdblist.state)")!, for: mdblist) == "xyz")
-    #expect(ProviderWebSignIn.start(provider: .cloudflare, clientId: "x") == nil && ProviderWebSignIn.start(provider: .simkl, clientId: "  ") == nil)
+    #expect(ProviderWebSignIn.start(provider: .cloudflare, clientId: "x") == nil && ProviderWebSignIn.start(provider: .mdblist, clientId: "  ") == nil)
 }
 
 /// Trakt on the phone: Trakt's own page with PKCE and no scope, JSON token requests without a
@@ -123,7 +106,7 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     #expect(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/trakt?code=c0de&state=\(trakt.state)")!, for: trakt) == "c0de")
     #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/trakt?code=c0de&state=nope")!, for: trakt) }
     // Another service's return address is refused, even with the right state.
-    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=c0de&state=\(trakt.state)")!, for: trakt) }
+    #expect(throws: ProviderSignInError.self) { try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/mdblist?code=c0de&state=\(trakt.state)")!, for: trakt) }
 
     let exchange = try #require(JSONSerialization.jsonObject(with: TraktPhoneSignIn.codeBody(code: "c0de", for: trakt)) as? [String: String])
     #expect(exchange == ["code": "c0de", "client_id": "trakt-app", "redirect_uri": "https://twildiary-auth.amit29533.workers.dev/trakt",
@@ -147,7 +130,7 @@ private func json(_ text: String) -> Data { Data(text.utf8) }
     #expect(!config.needsRefresh(now: now))
     config.tokenExpiresAt = now.addingTimeInterval(600).formatted(.iso8601)
     #expect(config.needsRefresh(now: now))
-    let simkl = ExternalProviderConfig(provider: .simkl, refreshToken: "r", tokenExpiresAt: now.addingTimeInterval(3_600).formatted(.iso8601))
-    #expect(simkl.needsRefresh(now: now))
+    let mdblist = ExternalProviderConfig(provider: .mdblist, refreshToken: "r", tokenExpiresAt: now.addingTimeInterval(3_600).formatted(.iso8601))
+    #expect(mdblist.needsRefresh(now: now))
 }
 

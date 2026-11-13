@@ -464,11 +464,10 @@ struct ExternalProviderConnectionView: View {
     @FocusState private var appIDFocused: Bool
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
-    struct ProviderApps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String? }
+    struct ProviderApps: Decodable { let trakt: String?; let mdblist: String? }
 
     private var brand: BrandLogo.Service {
         switch provider {
-        case .simkl: .simkl
         case .mdblist: .mdblist
         case .wetrakr: .wetrakr
         case .trakt: .trakt
@@ -478,7 +477,6 @@ struct ExternalProviderConnectionView: View {
 
     private var displayName: String {
         switch provider {
-        case .simkl: "Simkl"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
         case .trakt: "Trakt"
@@ -488,7 +486,6 @@ struct ExternalProviderConnectionView: View {
 
     private var subtitleText: String {
         switch provider {
-        case .simkl: "Watch history, ratings and lists."
         case .mdblist: "Public ratings, watch history and watchlist."
         case .wetrakr: "Watch history with rewatches, ratings and lists."
         case .trakt: "Watch history, ratings and watchlist."
@@ -498,7 +495,6 @@ struct ExternalProviderConnectionView: View {
 
     private var includedDomainsText: String {
         switch provider {
-        case .simkl: "Watch history · Ratings · Plan to watch · Dropped"
         case .mdblist: "Watch history · Ratings · Watchlist · Dropped shows"
         case .wetrakr: "Watch history · Ratings · Watchlist · Favourites · Dropped"
         case .trakt, .cloudflare: "Watch history · Ratings · Watchlist"
@@ -537,7 +533,7 @@ struct ExternalProviderConnectionView: View {
     }
 
     private var tracker: MainTracker? {
-        switch provider { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .cloudflare: nil }
+        switch provider { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .cloudflare: nil }
     }
 
     /// One switch: whether your edits go to this service, and what's still on its way.
@@ -639,7 +635,7 @@ struct ExternalProviderConnectionView: View {
                         }
                         Link(destination: URL(string: "https://trakt.tv/oauth/applications")!) { SettingsLinkLabel(text: "Open Trakt’s app settings") }
                     }
-                case .simkl, .mdblist, .wetrakr:
+                case .mdblist, .wetrakr:
                     // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
                     // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
                     let appId = appClientId ?? ProfileText.line(signInAppID)
@@ -689,7 +685,7 @@ struct ExternalProviderConnectionView: View {
                                 .focused($appIDFocused)
                                 .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
-                            Link(destination: URL(string: provider == .simkl ? "https://simkl.com/settings/developer/" : provider == .wetrakr ? "https://api.wetrakr.com/" : "https://mdblist.com/developer/")!) {
+                            Link(destination: URL(string: provider == .wetrakr ? "https://api.wetrakr.com/" : "https://mdblist.com/developer/")!) {
                                 SettingsLinkLabel(text: "Open \(displayName)’s developer page")
                             }
                         }
@@ -703,7 +699,6 @@ struct ExternalProviderConnectionView: View {
     }
     private var appClientId: String? {
         let listed: String? = switch provider {
-        case .simkl: apps?.simkl
         case .mdblist: apps?.mdblist
         case .trakt: apps?.trakt
         case .wetrakr: nil
@@ -713,11 +708,11 @@ struct ExternalProviderConnectionView: View {
     }
     private func loadApps() async {
         #if DEBUG
-        if store.isPreview { apps = ProviderApps(trakt: "preview", simkl: nil, mdblist: nil); return }
+        if store.isPreview { apps = ProviderApps(trakt: "preview", mdblist: nil); return }
         #endif
         let loaded: ProviderApps? = try? await store.read("/api/providers/apps")
-        if let loaded { ProviderAppIDs.remember([.trakt: loaded.trakt, .simkl: loaded.simkl, .mdblist: loaded.mdblist]) }
-        apps = loaded ?? ProviderApps(trakt: nil, simkl: nil, mdblist: nil)
+        if let loaded { ProviderAppIDs.remember([.trakt: loaded.trakt, .mdblist: loaded.mdblist]) }
+        apps = loaded ?? ProviderApps(trakt: nil, mdblist: nil)
     }
     private func startSignIn(_ appId: String) {
         signInTask?.cancel()
@@ -743,9 +738,6 @@ struct ExternalProviderConnectionView: View {
                 loadFromStore()
                 statusMessage = "Signed in to Trakt on this iPhone."
                 return
-            }
-            guard ProviderDeviceSignIn.grantsWrite(tokens, provider: provider) else {
-                throw APIError.message("\(displayName) gave read-only access. Sign in again and allow TwilDiary to make changes.")
             }
             var signedIn = currentConfig
             signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
@@ -894,7 +886,7 @@ struct ExternalProviderConnectionView: View {
                         .accessibilityIdentifier("\(provider.rawValue)-disconnect-button")
                     }
 
-                    if (provider == .simkl || provider == .trakt) && !clientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if provider == .trakt && !clientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button("Sign in with PIN") {
                             Task { await beginPinAuth() }
                         }
@@ -1006,7 +998,7 @@ struct ExternalProviderConnectionView: View {
                 var connectedCfg = draftConfig()
                 connectedCfg.accessToken = token
                 connectedCfg.enabled = true
-                // Simkl's PIN and Trakt's device codes issue no refresh token.
+                // Trakt's device codes issue no refresh token.
                 connectedCfg.connection = .signIn; connectedCfg.refreshToken = nil; connectedCfg.tokenExpiresAt = nil
                 guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
                 statusMessage = "\(displayName) authorized and connected."

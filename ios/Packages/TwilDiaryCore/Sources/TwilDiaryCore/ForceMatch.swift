@@ -14,11 +14,10 @@ public struct ForceMatchPlan: Equatable, Sendable {
     public struct Item: Hashable, Sendable {
         public let movie: Bool
         public let tmdbId: Int
-        public let simklId: Int?
         public let imdbId: String?
         public let name: String
         init(_ ref: TraktTitleRef, tmdb: Int) {
-            movie = ref.kind == .movie; tmdbId = tmdb; simklId = ref.simklId; imdbId = ref.imdbId; name = ref.name
+            movie = ref.kind == .movie; tmdbId = tmdb; imdbId = ref.imdbId; name = ref.name
         }
     }
     /// One play to take off the target.
@@ -76,15 +75,13 @@ public struct ForceMatchPlan: Equatable, Sendable {
     public var watchlist: [Item] = []
     public var dropped: [Item] = []
     public var favourites: [Item] = []
-    /// Simkl: titles the source doesn't have at all, taken off Simkl whole (history and its lists).
-    public var titles: [Item] = []
     /// Titles left as they are because the two sides number their episodes differently.
     public var renumbered: [String] = []
     /// Titles cleared off the target altogether (every play, its rating, watchlist, dropped and
     /// favourite). Never part of a Force Match run: clearing loses what the source can't hold
     /// (rewatches, specials, favourites), so it's only for a reset you ask for, title by title.
     public var wipe: [Item] = []
-    public var removalCount: Int { plays.count + ratings.count + watchlist.count + dropped.count + favourites.count + titles.count + wipe.count }
+    public var removalCount: Int { plays.count + ratings.count + watchlist.count + dropped.count + favourites.count + wipe.count }
     public var isEmpty: Bool { send.isEmpty && removalCount == 0 }
 
     static func key(movie: Bool, _ tmdb: Int) -> String { (movie ? "movie:" : "tv:") + String(tmdb) }
@@ -92,8 +89,8 @@ public struct ForceMatchPlan: Equatable, Sendable {
     public var names: [String: String] {
         var result: [String: String] = [:]
         for ref in send.plays.map(\.title) + send.ratings.map(\.title) + send.watchlistAdd + send.watchlistRemove + send.favouritesAdd
-            + send.dropped + send.moves.map(\.title) { result[Self.key(movie: ref.movie, ref.tmdbId)] = ref.name }
-        for item in plays.map(\.title) + ratings + watchlist + dropped + favourites + titles + wipe { result[Self.key(movie: item.movie, item.tmdbId)] = item.name }
+            + send.dropped { result[Self.key(movie: ref.movie, ref.tmdbId)] = ref.name }
+        for item in plays.map(\.title) + ratings + watchlist + dropped + favourites + wipe { result[Self.key(movie: item.movie, item.tmdbId)] = item.name }
         return result
     }
     /// The titles one call changes, by key: from its body's TMDB ids, or (Trakt's history ids,
@@ -142,10 +139,9 @@ public struct ForceMatchPlan: Equatable, Sendable {
         plan.send.watchlistRemove = send.watchlistRemove.filter(keep)
         plan.send.favouritesAdd = send.favouritesAdd.filter(keep)
         plan.send.dropped = send.dropped.filter(keep)
-        plan.send.moves = send.moves.filter { keep($0.title) }
         plan.plays = plays.filter { keep($0.title) }
         plan.ratings = ratings.filter(keep); plan.watchlist = watchlist.filter(keep); plan.dropped = dropped.filter(keep)
-        plan.favourites = favourites.filter(keep); plan.titles = titles.filter(keep); plan.wipe = wipe.filter(keep)
+        plan.favourites = favourites.filter(keep); plan.wipe = wipe.filter(keep)
         plan.renumbered = []
         return plan
     }
@@ -187,15 +183,13 @@ public struct ForceMatchPlan: Equatable, Sendable {
         }
 
         // The same TMDB id as the other kind ("tv:37910" on the service, "movie:37910" in the
-        // source): one title the service types its own way (Simkl files OVAs as shows). Never
+        // source): one title the service types its own way (an OVA filed as a show). Never
         // taken off: on the service it's the very title the source has.
         func otherKind(_ k: String) -> String { k.hasPrefix("tv:") ? "movie:" + k.dropFirst(3) : "tv:" + k.dropFirst(6) }
         func typedOtherwise(_ k: String) -> Bool { byKey[k] == nil && byKey[otherKind(k)] != nil }
 
         // Titles getting plays: a title also losing other episodes is renumbered, not different.
         let sending = Set(plan.send.plays.map { ($0.title.movie ? "movie:" : "tv:") + String($0.title.tmdbId) })
-        // Simkl takes a title off whole when the source doesn't have it at all.
-        let wholeTitles = tracker == .simkl
 
         // Plays the target has beyond the source's.
         var targetPlays: [String: [TraktPlay]] = [:], order: [String] = []
@@ -243,7 +237,6 @@ public struct ForceMatchPlan: Equatable, Sendable {
             if k.hasPrefix("tv:"), sending.contains(k), plays.contains(where: { $0.season != nil }) {
                 plan.renumbered.append(plays[0].title.name); renumberedKeys.insert(k); continue
             }
-            if wholeTitles, byKey[k] == nil { continue }
             plan.plays += plays
         }
         // Left as it is means its episodes aren't sent either: the target would file them under its
@@ -258,36 +251,19 @@ public struct ForceMatchPlan: Equatable, Sendable {
             if let k = ref.diaryKey, ref.tmdbId != nil, refs[k] == nil, !kept(ref) { refs[k] = ref }
         }
         func item(_ k: String) -> Item? { refs[k].flatMap { ref in ref.tmdbId.map { Item(ref, tmdb: $0) } } }
-        if wholeTitles {
-            // A season Simkl files as its own entry (its own TMDB id) of a show the source has, the
-            // same TVDB series, is never cleared whole: Simkl files the source's episodes of that
-            // season there, so clearing it took off what had just been sent.
-            let seriesHeld = Set(refs.compactMap { k, ref in byKey[k] != nil ? ref.tvdbId : nil })
-            for k in refs.keys.sorted() where byKey[k] == nil {
-                if let tvdb = refs[k]?.tvdbId, seriesHeld.contains(tvdb) { continue }
-                if typedOtherwise(k) { continue }
-                if let item = item(k) { plan.titles.append(item) }
-            }
-        }
-        let gone = Set(plan.titles.map { ($0.movie ? "movie:" : "tv:") + String($0.tmdbId) })
         func keys(_ list: [TraktListed]) -> [String] { Array(Set(list.compactMap(\.title.diaryKey))).sorted() }
         for rating in target.ratings {
-            guard let k = rating.title.diaryKey, !gone.contains(k), refs[k] != nil, !typedOtherwise(k) else { continue }
+            guard let k = rating.title.diaryKey, refs[k] != nil, !typedOtherwise(k) else { continue }
             let score = byKey[k]?.score.flatMap { $0.isFinite && (1...10).contains($0) ? Int($0.rounded()) : nil }
             if score == nil, let item = item(k), !plan.ratings.contains(item) { plan.ratings.append(item) }
         }
         // Watchlist entries of titles the source has are already moved or taken off by `send`.
-        for k in keys(target.watchlist) where byKey[k] == nil && !gone.contains(k) && !typedOtherwise(k) { if let item = item(k) { plan.watchlist.append(item) } }
+        for k in keys(target.watchlist) where byKey[k] == nil && !typedOtherwise(k) { if let item = item(k) { plan.watchlist.append(item) } }
         if favourites {
-            for k in keys(target.favorites) where byKey[k]?.favorite != true && !gone.contains(k) && !typedOtherwise(k) { if let item = item(k) { plan.favourites.append(item) } }
+            for k in keys(target.favorites) where byKey[k]?.favorite != true && !typedOtherwise(k) { if let item = item(k) { plan.favourites.append(item) } }
         }
         if droppedToo {
-            for k in keys(target.dropped) where byKey[k]?.status != "dropped" && !gone.contains(k) && !typedOtherwise(k) {
-                // Simkl moves a title the source has to the list for its status instead.
-                if tracker == .simkl, let title = byKey[k], let list = TraktWritePlan.simklList(title), let item = item(k) {
-                    plan.send.moves.append(TraktWritePlan.Move(title: TraktWritePlan.Ref(movie: item.movie, tmdbId: item.tmdbId, name: item.name), to: list))
-                    continue
-                }
+            for k in keys(target.dropped) where byKey[k]?.status != "dropped" && !typedOtherwise(k) {
                 if let item = item(k) { plan.dropped.append(item) }
             }
         }
@@ -323,12 +299,7 @@ public struct ForceMatchPlan: Equatable, Sendable {
             guard count > 0, let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
             result.append(Request(method: "POST", path: path, body: data, summary: summary, count: count))
         }
-        func ids(_ item: Item) -> [String: Any] {
-            var value: [String: Any] = ["tmdb": item.tmdbId]
-            // Simkl finds its own titles best by its id (and anime by it alone).
-            if tracker == .simkl { if let simkl = item.simklId { value["simkl"] = simkl }; if let imdb = item.imdbId { value["imdb"] = imdb } }
-            return ["ids": value]
-        }
+        func ids(_ item: Item) -> [String: Any] { ["ids": ["tmdb": item.tmdbId]] }
         func split(_ items: [Item], _ extra: [String: Any] = [:]) -> [String: Any] {
             ["movies": items.filter(\.movie).map { ids($0).merging(extra) { $1 } },
              "shows": items.filter { !$0.movie }.map { ids($0).merging(extra) { $1 } }]
@@ -363,8 +334,8 @@ public struct ForceMatchPlan: Equatable, Sendable {
                     result.append(Request(method: "DELETE", path: "/sync/tracklogs/" + escaped, body: nil, summary: "play taken off", count: 1))
                 }
             }
-        case .simkl, .mdblist:
-            let path = tracker == .mdblist ? "/sync/watched/remove" : "/sync/history/remove"
+        case .mdblist:
+            let path = "/sync/watched/remove"
             for batch in batches(plays) {
                 var movies: [[String: Any]] = [], shows: [Int: (item: Item, seasons: [Int: [Int]])] = [:]
                 for play in batch {
@@ -397,9 +368,6 @@ public struct ForceMatchPlan: Equatable, Sendable {
                 add("/sync/tracking/remove", split(batch, ["status": "dropped"]), "taken off dropped", count)
                 add("/sync/ratings/remove", split(batch), "ratings cleared", count)
                 add("/sync/favorites/remove", split(batch), "favourites cleared", count)
-            case .simkl:
-                add("/sync/history/remove", split(batch), "titles cleared", count)
-                add("/sync/ratings/remove", split(batch), "ratings cleared", count)
             case .mdblist:
                 add("/sync/watched/remove", split(batch), "titles cleared", count)
                 add("/sync/ratings/remove", split(batch), "ratings cleared", count)
@@ -407,15 +375,12 @@ public struct ForceMatchPlan: Equatable, Sendable {
                 add("/sync/dropped/remove", split(batch), "taken off dropped", count)
             }
         }
-        // Simkl titles taken off whole.
-        for batch in batches(titles) { add("/sync/history/remove", split(batch), "titles taken off", batch.count) }
         for batch in batches(ratings) { add("/sync/ratings/remove", split(batch), "ratings taken off", batch.count) }
         for batch in batches(watchlist) {
             switch tracker {
             case .trakt: add("/sync/watchlist/remove", split(batch), "taken off the watchlist", batch.count)
             case .wetrakr: add("/sync/tracking/remove", split(batch, ["status": "planning"]), "taken off the watchlist", batch.count)
             case .mdblist: add("/watchlist/items/remove", split(batch), "taken off the watchlist", batch.count)
-            case .simkl: add("/sync/history/remove", split(batch), "taken off Plan to Watch", batch.count)
             }
         }
         for batch in batches(favourites) { add("/sync/favorites/remove", split(batch), "favourites taken off", batch.count) }
@@ -424,7 +389,6 @@ public struct ForceMatchPlan: Equatable, Sendable {
             case .trakt: add("/users/hidden/dropped/remove", ["shows": batch.filter { !$0.movie }.map(ids)], "taken off dropped", batch.count)
             case .wetrakr: add("/sync/tracking/remove", split(batch, ["status": "dropped"]), "taken off dropped", batch.count)
             case .mdblist: add("/sync/dropped/remove", split(batch), "taken off dropped", batch.count)
-            case .simkl: add("/sync/history/remove", split(batch), "taken off dropped", batch.count)
             }
         }
         return result
@@ -436,7 +400,6 @@ public struct ForceMatchPlan: Equatable, Sendable {
         func counted(_ count: Int, _ one: String, _ many: String) -> String { count.formatted() + " " + (count == 1 ? one : many) }
         var lines = send.summary
         if !plays.isEmpty { lines.append(counted(plays.count, "watch", "watches") + " taken off \(name) history") }
-        if !titles.isEmpty { lines.append(counted(titles.count, "title", "titles") + " not in the source taken off \(name)") }
         if !ratings.isEmpty { lines.append(counted(ratings.count, "rating", "ratings") + " taken off \(name)") }
         if !watchlist.isEmpty { lines.append(counted(watchlist.count, "title", "titles") + " taken off the \(name) watchlist") }
         if !favourites.isEmpty { lines.append(counted(favourites.count, "favourite", "favourites") + " taken off \(name)") }

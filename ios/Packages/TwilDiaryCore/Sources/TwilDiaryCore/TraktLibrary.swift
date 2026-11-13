@@ -14,13 +14,11 @@ public struct TraktTitleRef: Codable, Hashable, Sendable {
     public let tvdbId: Int?
     public let name: String
     public let year: Int?
-    /// Simkl's own id (Simkl reads only): how its "removed" check names titles.
-    public let simklId: Int?
     /// WeTrakr's own id (WeTrakr reads only): how its journal names titles.
     public let weTrakrId: Int?
-    public init(kind: Kind, traktId: Int?, tmdbId: Int?, imdbId: String? = nil, tvdbId: Int? = nil, name: String, year: Int? = nil, simklId: Int? = nil, weTrakrId: Int? = nil) {
+    public init(kind: Kind, traktId: Int?, tmdbId: Int?, imdbId: String? = nil, tvdbId: Int? = nil, name: String, year: Int? = nil, weTrakrId: Int? = nil) {
         self.kind = kind; self.traktId = traktId; self.tmdbId = tmdbId; self.imdbId = imdbId; self.tvdbId = tvdbId; self.name = name; self.year = year
-        self.simklId = simklId; self.weTrakrId = weTrakrId
+        self.weTrakrId = weTrakrId
     }
     /// "movie:603" or "tv:1399", as the diary matches titles; nil without a TMDB id.
     public var diaryKey: String? { tmdbId.map { (kind == .movie ? "movie:" : "tv:") + String($0) } }
@@ -130,7 +128,7 @@ extension TraktLibrary {
         func named(_ ref: TraktTitleRef) -> TraktTitleRef {
             guard ref.name.trimmingCharacters(in: .whitespaces).isEmpty, let name = lookup(ref), !name.isEmpty else { return ref }
             return TraktTitleRef(kind: ref.kind, traktId: ref.traktId, tmdbId: ref.tmdbId, imdbId: ref.imdbId, tvdbId: ref.tvdbId,
-                                 name: name, year: ref.year, simklId: ref.simklId, weTrakrId: ref.weTrakrId)
+                                 name: name, year: ref.year, weTrakrId: ref.weTrakrId)
         }
         var copy = self
         copy.plays = plays.map { TraktPlay(historyId: $0.historyId, title: named($0.title), season: $0.season, episode: $0.episode, watchedAt: $0.watchedAt, remoteId: $0.remoteId) }

@@ -6,10 +6,9 @@ import Foundation
 // only on Trakt stay (the incoming worker brings them into the diary). Every play sent carries the
 // diary's own watch time, so the incoming worker links it to that watch instead of importing a copy.
 //
-// Phase 5: the same plan for Simkl and MDBList ("Make Simkl match the diary"), within what each
-// keeps: one watch per episode or movie (the first, at the diary's time; rewatches stay in
-// Cloudflare), no favourites, and each service's own endpoints. Simkl has no "take off Plan to
-// Watch" that keeps history, so a title leaving Planned is moved to the list for its status.
+// Phase 5: the same plan for MDBList and WeTrakr ("Make MDBList match the diary"), within what each
+// keeps (MDBList: one watch per episode or movie, the first, at the diary's time; no favourites) and
+// with each service's own endpoints.
 
 public struct TraktWritePlan: Equatable, Sendable {
     /// A movie or show as Trakt is told about it (by TMDB id, which Trakt accepts).
@@ -39,12 +38,6 @@ public struct TraktWritePlan: Equatable, Sendable {
         public let count: Int
     }
 
-    /// Simkl: a title moved to another of its lists (`/sync/add-to-list`).
-    public struct Move: Hashable, Sendable {
-        public let title: Ref
-        public let to: String
-    }
-
     /// The service the plan writes to.
     public var tracker: MainTracker = .trakt
     public var plays: [Play] = []
@@ -53,14 +46,13 @@ public struct TraktWritePlan: Equatable, Sendable {
     public var watchlistRemove: [Ref] = []
     public var favouritesAdd: [Ref] = []
     public var dropped: [Ref] = []
-    public var moves: [Move] = []
     /// Diary titles to mark as favourites (favourites on Trakt but not in the diary).
     public var diaryFavourites: [String] = []
     /// Diary watches that can't be sent: no date (Trakt needs one), or a title without a TMDB id.
     public var skippedPlays = 0
     public var isEmpty: Bool {
         plays.isEmpty && ratings.isEmpty && watchlistAdd.isEmpty && watchlistRemove.isEmpty && favouritesAdd.isEmpty && dropped.isEmpty
-            && moves.isEmpty && diaryFavourites.isEmpty
+            && diaryFavourites.isEmpty
     }
 
     /// What the diary has that Trakt doesn't (with the rules above).
@@ -148,18 +140,13 @@ public struct TraktWritePlan: Equatable, Sendable {
             let planned = title.status == "planned"
             if planned && !watchlist.contains(diaryKey),
                !fillOnly || !played.contains(diaryKey), !except.contains("planned|" + diaryKey) { plan.watchlistAdd.append(titleRef) }
-            var moved = false
-            if !fillOnly && !planned && watchlist.contains(diaryKey) {
-                if tracker == .simkl {
-                    if let list = simklList(title) { plan.moves.append(Move(title: titleRef, to: list)); moved = true }
-                } else { plan.watchlistRemove.append(titleRef) }
-            }
+            if !fillOnly && !planned && watchlist.contains(diaryKey) { plan.watchlistRemove.append(titleRef) }
             if can.holdsFavourites {
                 if title.favorite && !favourites.contains(diaryKey) && !except.contains("favourite|" + diaryKey) { plan.favouritesAdd.append(titleRef) }
                 if !fillOnly && !title.favorite && favourites.contains(diaryKey) { plan.diaryFavourites.append(title.id) }
             }
             // Dropped is for shows only (a dropped movie stays in the diary's own record).
-            if title.status == "dropped" && title.isSeries && !dropped.contains(diaryKey) && !moved && !except.contains("dropped|" + diaryKey) {
+            if title.status == "dropped" && title.isSeries && !dropped.contains(diaryKey) && !except.contains("dropped|" + diaryKey) {
                 plan.dropped.append(titleRef)
             }
         }
@@ -176,20 +163,6 @@ public struct TraktWritePlan: Equatable, Sendable {
         for ref in favouritesAdd { result.insert("favourite|" + key(ref)) }
         for ref in dropped { result.insert("dropped|" + key(ref)) }
         return result
-    }
-
-    /// The Simkl list for a title that's no longer Planned (nil: leave it where it is).
-    public static func simklList(_ title: MediaTitle) -> String? { simklList(status: title.status, isSeries: title.isSeries) }
-    public static func simklList(status: String, isSeries: Bool) -> String? {
-        switch status {
-        case "planned": return "plantowatch"
-        // On no list at the source (only rated there, see `TraktDiary.forceSource`): never marked watched.
-        case "none": return nil
-        case "dropped": return isSeries ? "dropped" : nil
-        case "paused", "on_hold", "hold": return isSeries ? "hold" : nil
-        case "watching": return isSeries ? "watching" : "completed"
-        default: return "completed"
-        }
     }
 
     /// The writes, at most 100 items per request (each service takes batches; one request a second).
@@ -246,23 +219,12 @@ public struct TraktWritePlan: Equatable, Sendable {
             ]
             add("/sync/ratings", body, "ratings", batch.count)
         }
-        func listed(_ refs: [Ref], _ to: (Ref) -> String) -> [String: Any] {
-            ["movies": refs.filter(\.movie).map { ids($0).merging(["to": to($0)]) { $1 } },
-             "shows": refs.filter { !$0.movie }.map { ids($0).merging(["to": to($0)]) { $1 } }]
-        }
         switch tracker {
         case .trakt:
             for batch in batches(watchlistAdd) { add("/sync/watchlist", split(batch), "added to the watchlist", batch.count) }
             for batch in batches(watchlistRemove) { add("/sync/watchlist/remove", split(batch), "taken off the watchlist", batch.count) }
             for batch in batches(favouritesAdd) { add("/sync/favorites", split(batch), "favourites", batch.count) }
             for batch in batches(dropped) { add("/users/hidden/dropped", ["shows": batch.map(ids)], "dropped shows", batch.count) }
-        case .simkl:
-            for batch in batches(watchlistAdd) { add("/sync/add-to-list", listed(batch) { _ in "plantowatch" }, "added to Plan to Watch", batch.count) }
-            for batch in batches(moves) {
-                let to = Dictionary(batch.map { ($0.title, $0.to) }, uniquingKeysWith: { first, _ in first })
-                add("/sync/add-to-list", listed(batch.map(\.title)) { to[$0] ?? "completed" }, "moved off Plan to Watch", batch.count)
-            }
-            for batch in batches(dropped) { add("/sync/add-to-list", listed(batch) { _ in "dropped" }, "dropped shows", batch.count) }
         case .wetrakr:
             func status(_ refs: [Ref], _ value: String) -> [String: Any] {
                 ["movies": refs.filter(\.movie).map { ids($0).merging(["status": value]) { $1 } },
@@ -284,12 +246,11 @@ public struct TraktWritePlan: Equatable, Sendable {
     public var summary: [String] {
         var lines: [String] = []
         let name = tracker.name
-        let list = tracker == .simkl ? "Plan to Watch" : "the \(name) watchlist"
+        let list = "the \(name) watchlist"
         if !plays.isEmpty { lines.append(plays.count.formatted() + (plays.count == 1 ? " watch" : " watches") + " added to \(name) history, at the diary’s times") }
         if !ratings.isEmpty { lines.append(ratings.count.formatted() + (ratings.count == 1 ? " rating" : " ratings") + " set on \(name)") }
         if !watchlistAdd.isEmpty { lines.append(watchlistAdd.count.formatted() + " Planned " + (watchlistAdd.count == 1 ? "title" : "titles") + " added to \(list)") }
         if !watchlistRemove.isEmpty { lines.append(watchlistRemove.count.formatted() + " no-longer-Planned " + (watchlistRemove.count == 1 ? "title" : "titles") + " taken off \(list)") }
-        if !moves.isEmpty { lines.append(moves.count.formatted() + " no-longer-Planned " + (moves.count == 1 ? "title" : "titles") + " moved off Plan to Watch to their status") }
         if !favouritesAdd.isEmpty { lines.append(favouritesAdd.map(\.name).joined(separator: ", ") + " made \(name) favourites") }
         if !dropped.isEmpty { lines.append(dropped.map(\.name).joined(separator: ", ") + " dropped on \(name)") }
         if !diaryFavourites.isEmpty { lines.append(diaryFavourites.count.formatted() + " Trakt " + (diaryFavourites.count == 1 ? "favourite" : "favourites") + " made a diary favourite") }

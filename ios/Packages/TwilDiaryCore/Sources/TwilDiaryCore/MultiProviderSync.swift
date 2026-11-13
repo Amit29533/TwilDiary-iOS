@@ -38,7 +38,7 @@ public enum ProviderConnectionMethod: String, Codable, Sendable {
     case apiKey = "api_key"
 }
 
-/// Configuration for an external sync provider (Trakt, Simkl, MDBList).
+/// Configuration for an external sync provider (Trakt, MDBList, WeTrakr).
 public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable {
     public let provider: SyncProviderKind
     public var enabled: Bool
@@ -48,7 +48,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     public var accessToken: String?
     public var username: String?
     public var lastSyncedAt: String?
-    /// From a sign-in that issues one (MDBList, Simkl's newer sign-in); renews the access token.
+    /// From a sign-in that issues one (Trakt, MDBList, WeTrakr); renews the access token.
     public var refreshToken: String?
     /// ISO 8601; when the access token stops working, if the service says.
     public var tokenExpiresAt: String?
@@ -93,7 +93,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     /// True when the required API credentials for this provider have been entered.
     public var hasCredentials: Bool {
         switch provider {
-        case .trakt, .simkl, .wetrakr:
+        case .trakt, .wetrakr:
             guard let cid = Self.trimmed(clientId), !cid.isEmpty else { return false }
             return true
         case .mdblist:
@@ -107,7 +107,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     /// True when the provider has both an API key/client ID and an user access token (or API key for MDBList).
     public var isAuthenticated: Bool {
         switch provider {
-        case .trakt, .simkl, .wetrakr:
+        case .trakt, .wetrakr:
             guard let cid = Self.trimmed(clientId), !cid.isEmpty,
                   let token = Self.trimmed(accessToken), !token.isEmpty else { return false }
             return true
@@ -136,17 +136,16 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
 public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public var customTmdbToken: String?
     public var trakt: ExternalProviderConfig
-    public var simkl: ExternalProviderConfig
     public var mdblist: ExternalProviderConfig
     public var wetrakr: ExternalProviderConfig
 
-    private enum CodingKeys: String, CodingKey { case customTmdbToken, trakt, simkl, mdblist, wetrakr }
-    /// Settings saved before WeTrakr came back have no entry for it.
+    private enum CodingKeys: String, CodingKey { case customTmdbToken, trakt, mdblist, wetrakr }
+    /// Settings saved before WeTrakr came back have no entry for it. Settings saved while Simkl was
+    /// offered still hold a "simkl" entry; it isn't read (and the next save leaves it out).
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         customTmdbToken = try c.decodeIfPresent(String.self, forKey: .customTmdbToken)
         trakt = try c.decode(ExternalProviderConfig.self, forKey: .trakt)
-        simkl = try c.decode(ExternalProviderConfig.self, forKey: .simkl)
         mdblist = try c.decode(ExternalProviderConfig.self, forKey: .mdblist)
         wetrakr = try c.decodeIfPresent(ExternalProviderConfig.self, forKey: .wetrakr) ?? ExternalProviderConfig(provider: .wetrakr)
     }
@@ -154,14 +153,12 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public init(
         customTmdbToken: String? = nil,
         trakt: ExternalProviderConfig = ExternalProviderConfig(provider: .trakt),
-        simkl: ExternalProviderConfig = ExternalProviderConfig(provider: .simkl),
         mdblist: ExternalProviderConfig = ExternalProviderConfig(provider: .mdblist),
         wetrakr: ExternalProviderConfig = ExternalProviderConfig(provider: .wetrakr)
     ) {
         self.customTmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         if self.customTmdbToken?.isEmpty == true { self.customTmdbToken = nil }
         self.trakt = trakt
-        self.simkl = simkl
         self.mdblist = mdblist
         self.wetrakr = wetrakr
     }
@@ -169,7 +166,6 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public func config(for provider: SyncProviderKind) -> ExternalProviderConfig {
         switch provider {
         case .trakt: trakt
-        case .simkl: simkl
         case .mdblist: mdblist
         case .wetrakr: wetrakr
         case .cloudflare: ExternalProviderConfig(provider: .cloudflare, enabled: true)
@@ -179,7 +175,6 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public mutating func setConfig(_ config: ExternalProviderConfig) {
         switch config.provider {
         case .trakt: trakt = config
-        case .simkl: simkl = config
         case .mdblist: mdblist = config
         case .wetrakr: wetrakr = config
         case .cloudflare: break
@@ -189,7 +184,6 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     /// Returns all direct providers that are currently enabled, authenticated, and configured to receive watch logs.
     public var activeDirectLoggingProviders: Set<SyncProviderKind> {
         var result: Set<SyncProviderKind> = []
-        // Simkl support was removed: nothing is sent to it, whatever its saved settings say.
         for item in [trakt, mdblist, wetrakr] {
             if item.enabled && item.isAuthenticated && item.loggingMethod.includesDirectAPI {
                 result.insert(item.provider)
@@ -298,7 +292,7 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
         }
         // One-time migration: do not claim success or erase the old copy unless the atomic Keychain write succeeds.
         if let token = try secrets.readSecret(for: "\(key).tmdb.token") { decoded.customTmdbToken = token }
-        for provider in [SyncProviderKind.trakt, .simkl, .mdblist] {
+        for provider in [SyncProviderKind.trakt, .mdblist] {
             var config = decoded.config(for: provider)
             if let token = try secrets.readSecret(for: "\(key).\(provider.rawValue).accessToken") { config.accessToken = token }
             if let token = try secrets.readSecret(for: "\(key).\(provider.rawValue).apiKey") { config.apiKey = token }
@@ -320,171 +314,12 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
     private static func stripped(_ settings: ProviderConnectionSettings) -> ProviderConnectionSettings {
         var value = settings
         value.customTmdbToken = nil
-        for provider in [SyncProviderKind.trakt, .simkl, .mdblist, .wetrakr] {
+        for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr] {
             var config = value.config(for: provider)
             config.accessToken = nil; config.apiKey = nil; config.refreshToken = nil
             value.setConfig(config)
         }
         return value
-    }
-}
-
-/// Simkl (`https://api.simkl.com`) activity timestamps and payload normalization engine.
-public enum SimklSyncEngine {
-    public struct ActivityTimestamps: Codable, Equatable, Sendable {
-        public let all: String?
-        public let tvShowsAll: String?
-        public let animeAll: String?
-        public let moviesAll: String?
-
-        public init(all: String?, tvShowsAll: String? = nil, animeAll: String? = nil, moviesAll: String? = nil) {
-            self.all = all
-            self.tvShowsAll = tvShowsAll
-            self.animeAll = animeAll
-            self.moviesAll = moviesAll
-        }
-
-        public func hasChanges(since previous: ActivityTimestamps?) -> Bool {
-            guard let previous else { return true }
-            return previous.all != all
-                || previous.tvShowsAll != tvShowsAll
-                || previous.animeAll != animeAll
-                || previous.moviesAll != moviesAll
-        }
-    }
-
-    public static func decodeActivities(from data: Data) throws -> ActivityTimestamps {
-        struct Bucket: Decodable { let all: String? }
-        struct Raw: Decodable {
-            let all: String?
-            let tv_shows: Bucket?
-            let anime: Bucket?
-            let movies: Bucket?
-        }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any], object.keys.contains("all") else {
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl activities are incomplete."))
-        }
-        let raw = try JSONDecoder().decode(Raw.self, from: data)
-        return ActivityTimestamps(
-            all: raw.all,
-            tvShowsAll: raw.tv_shows?.all,
-            animeAll: raw.anime?.all,
-            moviesAll: raw.movies?.all
-        )
-    }
-
-    /// Normalizes Simkl's `GET /sync/all-items/` response (`movies`, `shows`, `anime`) into
-    /// `DirectTraktRemoteSnapshot` so the 3-way diff engine (`DirectTraktEngine.plan`) works identically.
-    public static func decodeAllItems(from data: Data) throws -> DirectTraktRemoteSnapshot {
-        struct IDs: Decodable {
-            let tmdb: StringOrInt?
-        }
-        struct EpisodeItem: Decodable {
-            let number: Int
-            let watched_at: String?
-        }
-        struct SeasonItem: Decodable {
-            let number: Int
-            let episodes: [EpisodeItem]?
-        }
-        struct MediaNode: Decodable {
-            let ids: IDs?
-        }
-        struct Item: Decodable {
-            let last_watched_at: String?
-            let user_rated_at: String?
-            let added_to_watchlist_at: String?
-            let user_rating: Int?
-            let status: String?
-            let movie: MediaNode?
-            let show: MediaNode?
-            let seasons: [SeasonItem]?
-        }
-        struct RawAllItems: Decodable {
-            let movies: [Item]?
-            let shows: [Item]?
-            let anime: [Item]?
-        }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any], ["movies", "shows", "anime"].contains(where: { object[$0] is [Any] }) else {
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl library snapshot is incomplete."))
-        }
-        let raw = try JSONDecoder().decode(RawAllItems.self, from: data)
-        var plays: [DirectTraktWatchPlay] = []
-        var ratings: [DirectTraktRatingItem] = []
-        var watchlist: [DirectTraktWatchlistItem] = []
-
-        for item in raw.movies ?? [] {
-            guard let tmdbId = item.movie?.ids?.tmdb?.intValue, tmdbId > 0 else { continue }
-            if item.status == "completed" {
-                plays.append(DirectTraktWatchPlay(tmdbId: tmdbId, isSeries: false, watchedAt: item.last_watched_at))
-            }
-            if let rating = item.user_rating, (1...10).contains(rating) {
-                ratings.append(DirectTraktRatingItem(
-                    tmdbId: tmdbId,
-                    isSeries: false,
-                    rating: rating,
-                    ratedAt: item.user_rated_at ?? item.last_watched_at
-                ))
-            }
-            if item.status == "plantowatch" {
-                watchlist.append(DirectTraktWatchlistItem(
-                    tmdbId: tmdbId,
-                    isSeries: false,
-                    listedAt: item.added_to_watchlist_at
-                ))
-            }
-        }
-
-        for item in (raw.shows ?? []) + (raw.anime ?? []) {
-            guard let tmdbId = item.show?.ids?.tmdb?.intValue, tmdbId > 0 else { continue }
-            for season in item.seasons ?? [] {
-                for ep in season.episodes ?? [] {
-                    plays.append(DirectTraktWatchPlay(
-                        tmdbId: tmdbId,
-                        isSeries: true,
-                        season: season.number,
-                        episode: ep.number,
-                        watchedAt: ep.watched_at
-                    ))
-                }
-            }
-            if let rating = item.user_rating, (1...10).contains(rating) {
-                ratings.append(DirectTraktRatingItem(
-                    tmdbId: tmdbId,
-                    isSeries: true,
-                    rating: rating,
-                    ratedAt: item.user_rated_at ?? item.last_watched_at
-                ))
-            }
-            if item.status == "plantowatch" {
-                watchlist.append(DirectTraktWatchlistItem(
-                    tmdbId: tmdbId,
-                    isSeries: true,
-                    listedAt: item.added_to_watchlist_at
-                ))
-            }
-        }
-
-        return DirectTraktRemoteSnapshot(plays: plays, ratings: ratings, watchlist: watchlist)
-    }
-
-    /// Builds Simkl `POST /sync/history`, `/sync/ratings`, and `/sync/add-to-list` payloads from a `DirectTraktPlan`.
-    public static func buildPushPayloads(from plan: DirectTraktPlan) -> (
-        history: [String: Any]?,
-        ratings: [String: Any]?,
-        watchlist: [String: Any]?
-    ) {
-        let base = DirectTraktEngine.buildPushPayloads(from: plan)
-        guard let rawWatchlist = base.watchlist else {
-            return (base.history, base.ratings, nil)
-        }
-        let movies = (rawWatchlist["movies"] as? [[String: Any]] ?? []).map { item -> [String: Any] in
-            var copy = item; copy["to"] = "plantowatch"; return copy
-        }
-        let shows = (rawWatchlist["shows"] as? [[String: Any]] ?? []).map { item -> [String: Any] in
-            var copy = item; copy["to"] = "plantowatch"; return copy
-        }
-        return (base.history, base.ratings, ["movies": movies, "shows": shows])
     }
 }
 
@@ -561,7 +396,7 @@ public enum MultiProviderOutboxDispatcher {
         public let idempotencyKey: String?
     }
 
-    /// Compiles pending outbox mutations for an external provider (`.trakt`, `.simkl`, `.mdblist`)
+    /// Compiles pending outbox mutations for an external provider (`.trakt`, `.mdblist`, `.wetrakr`)
     /// into batched request payloads using TMDb identities from `workspace`.
     public static func prepareBatch(
         for provider: SyncProviderKind,
@@ -621,7 +456,6 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
     public var compactBadge: String {
         switch provider {
         case .trakt: "TK"
-        case .simkl: "SK"
         case .mdblist: "ML"
         case .wetrakr: "WT"
         case .cloudflare: "TD"
@@ -631,7 +465,6 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
     public var providerDisplayName: String {
         switch provider {
         case .trakt: "Trakt"
-        case .simkl: "Simkl"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
         case .cloudflare: "TwilDiary"
@@ -711,7 +544,6 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
     ) -> SyncLiveActivityState {
         let name: String = switch provider {
         case .trakt: "Trakt"
-        case .simkl: "Simkl"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
         case .cloudflare: "TwilDiary"

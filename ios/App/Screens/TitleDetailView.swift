@@ -163,7 +163,7 @@ struct TitleDetailView: View {
         }
     }
     /// "Check in on <service>" (a movie, or the next episode): the service holding your diary
-    /// (Simkl, MDBList or WeTrakr), else Trakt when it's connected.
+    /// (MDBList or WeTrakr), else Trakt when it's connected.
     @ViewBuilder private func checkInButton(_ title: MediaTitle) -> some View {
         if let tracker = store.diaryFromTracker ?? ((store.traktSignedInOnPhone || store.traktHoldsDiary) ? MainTracker.trakt : nil),
            LiveCheckIn.shared.active == nil {
@@ -690,7 +690,7 @@ struct TitleDetailView: View {
     }
     private func saveRating(value: Double?) async {
         if value == 10 { perfectSparks += 1 }
-        // Whole numbers only, everywhere: Trakt, Simkl and MDBList keep 1–10 whole ratings (a half
+        // Whole numbers only, everywhere: Trakt, MDBList and WeTrakr keep 1–10 whole ratings (a half
         // star on a 5-star scale is one whole point), so the diary and every service always agree.
         ratingField.draft = value.map { min(10, max(1, $0.rounded())) }
         guard let current = store.title(id) else { return }

@@ -37,8 +37,6 @@ import TwilDiaryCore
             switch tracker {
             case .trakt:
                 data = try await TraktDirectStore.shared.client(store: store).get("/users/settings", query: ["extended": "full"]).data
-            case .simkl:
-                data = try await store.directClient.read(await store.freshProviderConfig(.simkl), path: "/users/settings")
             case .mdblist:
                 data = try await store.directClient.read(await store.freshProviderConfig(.mdblist), path: "/user")
             case .wetrakr:
@@ -49,8 +47,8 @@ import TwilDiaryCore
     }
 
     /// The name, picture and plan in a service's account reply. The services name these
-    /// differently (Trakt: user.username, user.vip, user.images.avatar.full; Simkl: user.name,
-    /// user.avatar, account.type; MDBList: username, patron_status; WeTrakr: user.username…), so
+    /// differently (Trakt: user.username, user.vip, user.images.avatar.full; MDBList: username,
+    /// patron_status; WeTrakr: info.username, images.avatar, plan…), so
     /// each is looked for where that service keeps it, then anywhere it might be.
     nonisolated static func account(from data: Data, tracker: MainTracker, now: Date = .now) -> Account {
         let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]

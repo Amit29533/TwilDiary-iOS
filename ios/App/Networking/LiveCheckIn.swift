@@ -23,8 +23,8 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
 
 /// Live check-in: checks in on the service, shows a banner with the time left and Cancel, and when
 /// it ends (the service logs the watch itself) reads the service so the watch is in the diary.
-/// Cancelling uses each service's own way, as Cinopsys does: Trakt DELETE /checkin, Simkl and
-/// MDBList scrobble/stop at 0 % (MDBList then scrobble/clear), WeTrakr DELETE /scrobble/playing.
+/// Cancelling uses each service's own way, as Cinopsys does: Trakt DELETE /checkin, MDBList
+/// scrobble/stop at 0 % then scrobble/clear, WeTrakr DELETE /scrobble/playing.
 @MainActor @Observable final class LiveCheckIn {
     static let shared = LiveCheckIn()
     nonisolated private static let key = "activeCheckIn"
@@ -65,20 +65,14 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
             case .wetrakr:
                 let config = await store.freshProviderConfig(tracker.provider)
                 _ = try await store.directClient.read(config, path: "/scrobble/playing", method: "DELETE")
-            case .simkl, .mdblist:
+            case .mdblist:
                 let config = await store.freshProviderConfig(tracker.provider)
                 let slot = active.isSeries ? "show" : "movie"
-                var body: [String: Any] = ["progress": 0]
-                if tracker == .simkl {
-                    body[slot] = ["ids": ["tmdb": active.tmdbId]]
-                    if active.isSeries { body["episode"] = ["season": active.season ?? 0, "number": active.episode ?? 0] }
-                } else {
-                    var media: [String: Any] = ["ids": ["tmdb": active.tmdbId]]
-                    if active.isSeries { media["season"] = active.season ?? 0; media["episode"] = active.episode ?? 0 }
-                    body[slot] = media
-                }
+                var media: [String: Any] = ["ids": ["tmdb": active.tmdbId]]
+                if active.isSeries { media["season"] = active.season ?? 0; media["episode"] = active.episode ?? 0 }
+                let body: [String: Any] = ["progress": 0, slot: media]
                 _ = try await store.directClient.write(config, path: "/scrobble/stop", body: try JSONSerialization.data(withJSONObject: body))
-                if tracker == .mdblist { _ = try? await store.directClient.write(config, path: "/scrobble/clear", body: Data("{}".utf8)) }
+                _ = try? await store.directClient.write(config, path: "/scrobble/clear", body: Data("{}".utf8))
             }
             finish(logged: false, store: store)
         } catch {

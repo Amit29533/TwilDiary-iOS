@@ -1,7 +1,7 @@
 import Foundation
 import TwilDiaryCore
 
-/// What the phone knows about titles that are only on Trakt (or Simkl, MDBList, WeTrakr): their
+/// What the phone knows about titles that are only on Trakt (or MDBList, WeTrakr): their
 /// TMDB details (poster, seasons, category…), read with your TMDB key and kept in a file. These
 /// titles used to be copied into your server's diary just to have a poster; now they stay on the
 /// phone, and a title joins the server only when you give it something Trakt can't hold (a note,

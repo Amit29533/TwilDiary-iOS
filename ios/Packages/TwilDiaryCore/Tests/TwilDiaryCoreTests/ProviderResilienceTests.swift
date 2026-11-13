@@ -3,8 +3,8 @@ import Testing
 @testable import TwilDiaryCore
 import TwilDiaryTestSupport
 
-/// "Too many requests" becomes a saved pause: Retry-After in seconds or as a date, MDBList's and
-/// Simkl's reset (epoch or seconds) when the allowance is used up, a minute when unsaid; clamped.
+/// "Too many requests" becomes a saved pause: Retry-After in seconds or as a date, MDBList's
+/// reset (epoch or seconds) when the allowance is used up, a minute when unsaid; clamped.
 @Test func cooldownsComeFromTheServicesOwnHeaders() {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(ProviderCooldown.until(status: 200, headers: [:], now: now) == nil)
@@ -45,7 +45,7 @@ import TwilDiaryTestSupport
 }
 
 /// Removing a watch reaches each service as that one play: Trakt by its history id (never "every
-/// play of the title"), WeTrakr by its time, Simkl and MDBList their watch; undoing it sends it again.
+/// play of the title"), WeTrakr by its time, MDBList its watch; undoing it sends it again.
 @Test func removingAWatchSendsOnlyThatPlay() throws {
     var base = try SampleWorkspace.mapped()
     let movie = try #require(base.titles.first { !$0.isSeries && $0.tmdbId != nil })
@@ -64,18 +64,16 @@ import TwilDiaryTestSupport
     let wetrakr = plan(revokeLocal, .wetrakr)
     let item = try #require((wetrakr.deliveries.first?.body["movies"] as? [[String: Any]])?.first)
     #expect(wetrakr.deliveries.first?.path == "/sync/tracking/remove" && item["tracked_at"] as? String == "2026-11-06T20:00:00.000Z" && item["allow_rewatch"] == nil)
-    // Simkl and MDBList keep one watch for every play: while the diary still has another play of
-    // this movie, taking one off leaves them as they are…
+    // MDBList keeps one watch for every play: while the diary still has another play of
+    // this movie, taking one off leaves it as it is…
     #expect(plan(revokeLocal, .mdblist).deliveries.isEmpty && plan(revokeLocal, .mdblist).blocked.isEmpty)
-    #expect(plan(revokeLocal, .simkl).deliveries.isEmpty && plan(revokeLocal, .simkl).blocked.isEmpty)
-    // …and the last play takes their watch off.
+    // …and the last play takes its watch off.
     for index in base.events.indices where base.events[index].titleId == movie.id && base.events[index].id != "local-7" {
         base.events[index].revokedAt = "2026-11-06T00:00:00Z"
     }
     #expect(plan(revokeLocal, .mdblist).deliveries.map(\.path) == ["/sync/watched/remove"])
-    #expect(plan(revokeLocal, .simkl).deliveries.map(\.path) == ["/sync/history/remove"])
     let restore = OptimisticMutation.restoreWatch(eventId: "local-7", titleId: movie.id, expectedVersion: 2)
-    #expect(plan(restore, .simkl).deliveries.map(\.path) == ["/sync/history"])
+    #expect(plan(restore, .mdblist).deliveries.map(\.path) == ["/sync/watched"])
 }
 
 /// Most watched cast, counted on the phone: each person once per title, ranked by titles then

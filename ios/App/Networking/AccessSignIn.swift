@@ -73,7 +73,7 @@ enum SignInNavigationPolicy {
                             else { webError = "Your server hasn’t shared its Trakt app yet. Use Google or email this once; Trakt is offered from then on." }
                         }
                     }
-                    // Simkl, MDBList and WeTrakr: the app opens on that service alone.
+                    // MDBList and WeTrakr: the app opens on that service alone.
                     if phoneOnly != nil {
                         ForEach(MainTracker.others, id: \.self) { tracker in
                             optionRow(busy: serviceSigningIn == tracker, id: "sign-in-" + tracker.rawValue, title: tracker.name,
@@ -233,7 +233,7 @@ enum SignInNavigationPolicy {
             }.padding(.horizontal, 15).frame(minHeight: 68).contentShape(Rectangle()).modifier(SettingsCard())
         }.buttonStyle(.plain).disabled(webSigningIn || traktSigningIn || serviceSigningIn != nil || submitting).accessibilityIdentifier(id)
     }
-    /// Simkl, MDBList or WeTrakr: its own sign-in page, then the app opens on that service.
+    /// MDBList or WeTrakr: its own sign-in page, then the app opens on that service.
     private func serviceSignIn(_ tracker: MainTracker) async {
         webError = nil; serviceSigningIn = tracker
         defer { serviceSigningIn = nil }

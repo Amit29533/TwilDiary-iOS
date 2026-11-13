@@ -1,11 +1,11 @@
 import Foundation
 import TwilDiaryCore
 
-/// Trakt-first phase 4b, and phase 5 for Simkl, MDBList and WeTrakr: with "Show my diary from
+/// Trakt-first phase 4b, and phase 5 for MDBList and WeTrakr: with "Show my diary from
 /// <service>" on, edits go to that service, the way Cinopsys makes them. Watches (at their exact
 /// time), removing a watch, ratings, Planned and dropped change the phone's copy first, so the
 /// screen updates at once, and go to the service right away in the background (kept on the phone
-/// until it takes them). Favourites go to Trakt (Simkl and MDBList keep none, so your
+/// until it takes them). Favourites go to Trakt and WeTrakr (MDBList keeps none, so your
 /// server keeps them); notes, tags, Queue and Trash stay on your server.
 ///
 /// The same edits also go to the other connected services (the mirrors) through the delivery
@@ -36,19 +36,19 @@ extension DiaryStore {
     private func send(_ path: String, _ body: [String: Any], resolve: Bool = false) throws {
         switch service {
         case .trakt: try TraktDirectStore.shared.write(path, body: body, store: self, resolve: resolve)
-        case .simkl, .mdblist, .wetrakr: try TrackerPreviewStore.shared.write(service, path, body: body, store: self)
+        case .mdblist, .wetrakr: try TrackerPreviewStore.shared.write(service, path, body: body, store: self)
         }
     }
     private func updateCopy(_ change: (inout TraktLibrary) -> Void) {
         switch service {
         case .trakt: TraktDirectStore.shared.update(store: self, change)
-        case .simkl, .mdblist, .wetrakr: TrackerPreviewStore.shared.update(service, store: self, change)
+        case .mdblist, .wetrakr: TrackerPreviewStore.shared.update(service, store: self, change)
         }
     }
     private func refreshCopySoon() {
         switch service {
         case .trakt: TraktDirectStore.shared.refreshSoon(store: self)
-        case .simkl, .mdblist, .wetrakr: TrackerPreviewStore.shared.refreshSoon(service, store: self)
+        case .mdblist, .wetrakr: TrackerPreviewStore.shared.refreshSoon(service, store: self)
         }
     }
 
@@ -63,8 +63,6 @@ extension DiaryStore {
         case .trakt: path = listed ? "/sync/watchlist" : "/sync/watchlist/remove"
         case .mdblist: path = listed ? "/watchlist/items/add" : "/watchlist/items/remove"
         case .wetrakr: path = listed ? "/sync/tracking" : "/sync/tracking/remove"
-        // Simkl's only removal also clears the title's history, so its list is left as it is.
-        case .simkl: return
         }
         func entry(_ title: MediaTitle) throws -> [String: Any] {
             var value = try serviceRef(title)
@@ -84,7 +82,7 @@ extension DiaryStore {
     }
 
     /// Queues an edit for the connected mirrors, never the service the diary comes from.
-    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .simkl, .mdblist, .wetrakr]) {
+    func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .mdblist, .wetrakr]) {
         var skip: Set<SyncProviderKind> = [.cloudflare]
         if let diaryService { skip.insert(providerKind(diaryService)) }
         // The service holding the diary gets your edits directly (one writer, one pace), also
@@ -136,7 +134,7 @@ extension DiaryStore {
         updateCopy { library in
             if title.isSeries {
                 for episode in episodes {
-                    // Simkl and MDBList keep one watch per episode: the new time replaces the old.
+                    // MDBList keeps one watch per episode: the new time replaces the old.
                     if oneEach { library.plays.removeAll { $0.title.diaryKey == key && $0.season == episode.season && $0.episode == episode.number } }
                     library.plays.append(TraktPlay(historyId: -TrackerDecode.playID("local|\(ref.tmdbId ?? 0)|\(episode.season)|\(episode.number)|\(when)"),
                                                    title: ref, season: episode.season, episode: episode.number, watchedAt: when))
@@ -182,11 +180,11 @@ extension DiaryStore {
     }
 
     /// Removes exactly these watches. Trakt removes those very plays (by id, never all plays of an
-    /// episode); Simkl and MDBList keep one watch per episode or movie, so that watch is removed.
+    /// episode); MDBList keeps one watch per episode or movie, so that watch is removed.
     /// The screen changes at once and the removal goes in the background. Trakt: plays it has ids
     /// for go by id (all in one request); a play just added (no id here yet) is found in Trakt's
     /// history at its time when its turn comes, right after the add itself (Cinopsys's way, with
-    /// no read first). WeTrakr removes the play at its time; Simkl and MDBList keep one watch per
+    /// no read first). WeTrakr removes the play at its time; MDBList keeps one watch per
     /// episode or movie, so that watch is removed.
     func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
         guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
@@ -381,11 +379,6 @@ extension DiaryStore {
                     // record of the title keeps your choice, so it survives the next read.
                     serviceHolds = false
                 }
-            case .simkl:
-                // Simkl moves the title to the list for its status (that keeps its history).
-                if let list = TraktWritePlan.simklList(status: status, isSeries: title.isSeries) {
-                    try send("/sync/add-to-list", [slot: [item.merging(["to": list]) { $1 }]])
-                } else { serviceHolds = false }
             case .mdblist:
                 switch status {
                 case "planned":

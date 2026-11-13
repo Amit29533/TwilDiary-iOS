@@ -1,7 +1,7 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Settings → Main tracker: which service is the diary (Trakt, Simkl or MDBList). For now the
+/// Settings → Main tracker: which service is the diary (Trakt, MDBList or WeTrakr). For now the
 /// choice decides which one the read-and-compare preview checks; the switch-over (plan phase 4)
 /// makes it the diary. Nothing is written anywhere from here.
 struct MainTrackerView: View {
@@ -33,7 +33,7 @@ struct MainTrackerView: View {
                         .font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("main-tracker-cloudflare")
                 }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 14, radius: 16)
                 if tracker != .trakt, !store.providerSettings.config(for: tracker.provider).isAuthenticated {
-                    NavigationLink(value: tracker == .simkl ? AppDestination.simkl : tracker == .wetrakr ? AppDestination.wetrakr : AppDestination.mdblist) {
+                    NavigationLink(value: tracker == .wetrakr ? AppDestination.wetrakr : AppDestination.mdblist) {
                         Label("Connect \(tracker.name) first", systemImage: "link").frame(maxWidth: .infinity)
                     }.font(.subheadline).buttonStyle(.diarySecondary).accessibilityIdentifier("main-tracker-connect")
                 }
@@ -73,7 +73,7 @@ struct MainTrackerView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
     }
 
-    /// Phase 5: the same from Simkl or MDBList; edits go to it.
+    /// Phase 5: the same from MDBList or WeTrakr; edits go to it.
     private var trackerDiarySource: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: Binding(get: { store.diaryFromTracker == tracker }, set: { store.diaryFromTracker = $0 ? tracker : nil })) {
@@ -105,10 +105,10 @@ struct MainTrackerView: View {
 
 extension MainTracker {
     var brand: BrandLogo.Service {
-        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
+        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
     }
     var provider: SyncProviderKind {
-        switch self { case .trakt: .trakt; case .simkl: .simkl; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
+        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
     }
 }
 
@@ -199,7 +199,7 @@ struct TrackerPreviewPanel: View {
     }
 
     private var previewCard: some View {
-        // Design (boards 7 and 13): DIRECT FROM SIMKL · Preview · ⓘ, then one card with Check now.
+        // Design (boards 7 and 13): DIRECT FROM <SERVICE> · Preview · ⓘ, then one card with Check now.
         VStack(alignment: .leading, spacing: 12) {
             SettingsLabel(text: "Direct from \(tracker.name)") {
                 SettingsBadge(text: "Preview", tone: .configured)
@@ -308,7 +308,7 @@ struct TrackerPreviewPanel: View {
         }
     }
 
-    /// Phase 5: the same for Simkl and MDBList, within what each keeps.
+    /// Phase 5: the same for MDBList and WeTrakr, within what each keeps.
     @ViewBuilder private var trackerMatchSection: some View {
         let plan = report != nil ? others.plans[tracker] : nil
         if others.writing == tracker, let progress = others.writeProgress {
@@ -391,7 +391,6 @@ struct TrackerPreviewPanel: View {
     private var intro: String {
         switch tracker {
         case .trakt: "Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed."
-        case .simkl: "Reads your Simkl library (watches, ratings, plan to watch, dropped and memos) and compares it with your diary. Simkl keeps one watch per episode, so rewatches aren’t counted as differences. Nothing changes until you send."
         case .mdblist: "Reads your MDBList watched items, ratings, dropped shows and watchlist and compares them with your diary. Items it can’t read are counted, not guessed. Nothing changes until you send."
         case .wetrakr: "Reads your WeTrakr plays (rewatches included), ratings, watchlist, favourites and dropped titles, then only its journal of what changed, and compares them with your diary. Nothing changes until you send."
         }

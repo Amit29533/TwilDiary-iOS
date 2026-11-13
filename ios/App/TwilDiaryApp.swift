@@ -81,7 +81,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
     }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, simkl, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -351,7 +351,6 @@ struct RootView: View {
                     case .cloudflare: CloudflareUsageView()
                     case .apis: APIsView()
                     case .favourites: FavouritesView()
-                    case .simkl: ExternalProviderConnectionView(provider: .simkl)
                     case .mainTracker: MainTrackerView()
                     case .connections: ConnectionsView()
                     case .backups: BackupsView()

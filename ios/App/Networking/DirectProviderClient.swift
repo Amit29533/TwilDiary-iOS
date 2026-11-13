@@ -16,8 +16,8 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     case expired
 }
 
-/// Direct device-to-provider HTTP client for Trakt (`api.trakt.tv`), Simkl (`api.simkl.com`),
-/// and MDBList (`api.mdblist.com`), bypassing the server-side D1 bottleneck when configured.
+/// Direct device-to-provider HTTP client for Trakt (`api.trakt.tv`), MDBList (`api.mdblist.com`)
+/// and WeTrakr (`api.wetrakr.com`), bypassing the server-side D1 bottleneck when configured.
 @MainActor final class DirectProviderClient {
     private let session: URLSession
 
@@ -41,28 +41,6 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return try DirectTraktEngine.decodeLastActivities(from: data)
     }
 
-    func fetchSimklActivities(config: ExternalProviderConfig) async throws -> SimklSyncEngine.ActivityTimestamps {
-        let data = try await send(
-            url: URL(string: "https://api.simkl.com/sync/activities")!,
-            method: "GET",
-            headers: simklHeaders(config)
-        )
-        return try SimklSyncEngine.decodeActivities(from: data)
-    }
-
-    func fetchSimklAllItems(config: ExternalProviderConfig, dateFrom: String? = nil) async throws -> DirectTraktRemoteSnapshot {
-        var components = URLComponents(string: "https://api.simkl.com/sync/all-items/")!
-        var query = [URLQueryItem(name: "extended", value: "full"), URLQueryItem(name: "episode_watched_at", value: "yes"), URLQueryItem(name: "include_all_episodes", value: "yes")]
-        if let dateFrom, !dateFrom.isEmpty { query.append(URLQueryItem(name: "date_from", value: dateFrom)) }
-        components.queryItems = query
-        let data = try await send(
-            url: components.url!,
-            method: "GET",
-            headers: simklHeaders(config)
-        )
-        return try SimklSyncEngine.decodeAllItems(from: data)
-    }
-
     func fetchMDBListRatings(config: ExternalProviderConfig, tmdbId: Int, isSeries: Bool) async throws -> MDBListSyncEngine.RatingSummary {
         let kind = isSeries ? "show" : "movie"
         var components = URLComponents(string: "https://api.mdblist.com/tmdb/\(kind)/\(tmdbId)")!
@@ -81,7 +59,6 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         case .trakt:
             base = "https://api.trakt.tv"
             headers = traktHeaders(DirectTraktCredentials(clientId: config.clientId ?? "", accessToken: config.accessToken ?? ""))
-        case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
         case .mdblist: base = "https://api.mdblist.com"; headers = mdblistAuth(config).headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
         case .wetrakr: base = "https://api.wetrakr.com"; headers = WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken)
         case .cloudflare: throw APIError.message("Diary mutations must use the authenticated diary API.")
@@ -112,8 +89,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty {
             data = ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing)
         } else {
-            let body = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
-            data = ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: body), adding: prepared.missing)
+            data = ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: prepared.body), adding: prepared.missing)
         }
         guard ProviderDeliveryPlanner.confirms(data) else {
             // A title the service can't find is set aside (said once), not retried forever.
@@ -123,17 +99,16 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
     }
 
-    /// The service answered a write with nothing added and nothing refused (Simkl's reply for a
+    /// The service answered a write with nothing added and nothing refused (a service's reply for a
     /// watch it already had). A watch is checked against the service before it counts as done.
     struct DeliveryUnconfirmed: Error { let history: Bool }
 
-    /// A read for the main-tracker preview (Simkl or MDBList): GET with the service's own sign-in.
+    /// A read for the main-tracker preview (MDBList or WeTrakr): GET with the service's own sign-in.
     func read(_ config: ExternalProviderConfig, path: String, query: [String: String] = [:], method: String = "GET") async throws -> Data {
         guard config.isAuthenticated else { throw APIError.message("Connect \(config.provider.displayName) first, in Connections.") }
         let base: String, headers: [String: String]
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         switch config.provider {
-        case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
         case .mdblist:
             base = "https://api.mdblist.com"
             let auth = mdblistAuth(config)
@@ -150,7 +125,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
     }
 
-    /// A write for "Make Simkl / MDBList match the diary": POST of a ready JSON body, returning the reply.
+    /// A write for "Make MDBList / WeTrakr match the diary": POST of a ready JSON body, returning the reply.
     /// `partial`: a bulk send (a match, a restore, Force Match) goes ahead without the titles WeTrakr
     /// couldn't be asked about yet; they come back as not found and are asked about next time. One
     /// of your own edits waits whole instead, so no part of it is dropped.
@@ -162,7 +137,6 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         let base: String, headers: [String: String]
         var items: [URLQueryItem] = []
         switch config.provider {
-        case .simkl: base = "https://api.simkl.com"; headers = simklHeaders(config)
         case .mdblist:
             base = "https://api.mdblist.com"
             let auth = mdblistAuth(config)
@@ -180,50 +154,29 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             throw APIError.rejected(503, "WeTrakr couldn’t be asked for this title’s own id yet; it’s sent once WeTrakr answers.")
         }
         if prepared.movies + prepared.shows == 0, !prepared.missing.isEmpty { return ServiceIDs.reply(Data("{}".utf8), adding: prepared.missing) }
-        let sending = config.provider == .simkl ? Self.simklAnimeSeasons(prepared.body) : prepared.body
+        let sending = prepared.body
         do {
             let reply = try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending)
             SyncReport.record(config.provider, path: path, body: sending, reply: reply)
-            var answered = reply
-            // Simkl couldn't place some episodes by TVDB numbering: sent once more by their AniDB
-            // entry and its own episode numbers (Anime-Lists), and the two answers combined.
-            if config.provider == .simkl, path == "/sync/history" || path == "/sync/history/remove",
-               SimklAnimeFallback.hasMissingEpisodes(reply), let index = await AnimeListsStore.shared.index(),
-               let retry = SimklAnimeFallback.retry(sent: sending, reply: reply, index: index) {
-                let second = try? await send(url: components.url!, method: "POST", headers: headers, rawBody: retry.body)
-                SyncReport.record(config.provider, path: path + " (by AniDB entry)", body: retry.body, reply: second ?? Data("No answer.".utf8))
-                answered = SimklAnimeFallback.merge(reply: reply, retry: retry, retryReply: second)
-            }
-            return ServiceIDs.reply(answered, adding: prepared.missing)
+            return ServiceIDs.reply(reply, adding: prepared.missing)
         }
-        catch APIError.rejected(let status, let message) where status != 429 && !(config.provider == .simkl && status == 400 && message.contains("rate_limit")) {
+        catch APIError.rejected(let status, let message) where status != 429 {
             SyncReport.record(config.provider, path: path, body: sending, reply: Data("HTTP \(status): \(message)".utf8))
             if status == 401 || status == 403 {
                 throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
             }
             throw APIError.rejected(status, message)
         }
-        catch APIError.rejected(let status, _) where status == 401 || status == 403 {
-            throw APIError.message("\(name) didn’t accept the sign-in for writing (HTTP \(status)). Reconnect it in Connections and allow changes.")
-        } catch APIError.rejected(let status, let message) where status == 429 || (config.provider == .simkl && status == 400 && message.contains("rate_limit")) {
-            // Simkl takes one write per account at a time and answers "rate_limit" while another
-            // is still running; its guide says wait and try once more (same for a plain 429).
+        catch APIError.rejected(let status, _) where status == 429 {
+            // Too many requests: wait a moment and try once more.
             try await Task.sleep(for: .seconds(3))
             do { return ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: headers, rawBody: sending), adding: prepared.missing) }
-            catch APIError.rejected(let again, _) where again == 400 || again == 429 {
+            catch APIError.rejected(let again, _) where again == 429 {
                 throw APIError.message("\(name) is busy with another change right now. Try again in a minute.")
             }
         }
     }
 
-    /// Simkl numbers anime episodes its own way unless told the seasons are TVDB-style (as TMDB's
-    /// mostly are): every show in a Simkl write says so, as Cinopsys sends it.
-    nonisolated static func simklAnimeSeasons(_ body: Data) -> Data {
-        guard var root = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any], var shows = root["shows"] as? [[String: Any]], !shows.isEmpty else { return body }
-        for index in shows.indices where shows[index]["seasons"] != nil { shows[index]["use_tvdb_anime_seasons"] = true }
-        root["shows"] = shows
-        return (try? JSONSerialization.data(withJSONObject: root)) ?? body
-    }
     /// MDBList takes a sign-in token as Bearer, or an API key as ?apikey= — never both (MDBList
     /// warns that sending the same credential both ways fails).
     private func mdblistAuth(_ config: ExternalProviderConfig) -> (query: [URLQueryItem], headers: [String: String]) {
@@ -241,18 +194,6 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             "trakt-api-key": credentials.clientId,
             "Authorization": "Bearer \(credentials.accessToken)"
         ]
-    }
-
-    private func simklHeaders(_ config: ExternalProviderConfig) -> [String: String] {
-        var headers: [String: String] = [
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "simkl-api-key": config.clientId ?? ""
-        ]
-        if let token = config.accessToken, !token.isEmpty {
-            headers["Authorization"] = "Bearer \(token)"
-        }
-        return headers
     }
 
     private func send(
@@ -279,14 +220,12 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         }
         ProviderCooldowns.record(url, http)
         guard (200..<300).contains(http.statusCode) else {
-            // Simkl's "one write at a time" refusal is a 400 whose body says rate_limit.
-            let busy = (String(data: data.prefix(500), encoding: .utf8) ?? "").contains("rate_limit")
-            throw APIError.rejected(http.statusCode, "Provider returned HTTP \(http.statusCode)." + (busy ? " (rate_limit)" : ""))
+            throw APIError.rejected(http.statusCode, "Provider returned HTTP \(http.statusCode).")
         }
         return data
     }
 
-    // MARK: - Sign in with MDBList or Simkl (their sign-in page in Apple's sheet; PKCE, no client secret)
+    // MARK: - Sign in with MDBList or WeTrakr (their sign-in page in Apple's sheet; PKCE, no client secret)
 
     /// Trades the code from the sign-in sheet for tokens.
     func finishWebSignIn(_ request: ProviderWebSignIn.Request, code: String) async throws -> ProviderDeviceSignIn.Tokens {
@@ -330,7 +269,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.pollBody(clientId: clientId, deviceCode: deviceCode))
         return ProviderDeviceSignIn.decodePoll(status: status, data: data)
     }
-    /// A new access token from the refresh token (MDBList: 30-day tokens; Simkl: 7 days).
+    /// A new access token from the refresh token (MDBList: 30-day tokens; WeTrakr: 7 days).
     func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {
         if provider == .wetrakr {
             // WeTrakr rotates the refresh token on every renewal (7-day access tokens).
@@ -413,7 +352,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
 
-    // MARK: - Interactive OAuth Device Code / PIN Sign-In (Trakt & Simkl)
+    // MARK: - Interactive OAuth Device Code Sign-In (Trakt)
 
     func requestDeviceCode(provider: SyncProviderKind, clientId: String) async throws -> DeviceCodeAuthSession {
         let cleanId = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -445,29 +384,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
                 interval: reply.interval ?? 5
             )
         }
-        var comps = URLComponents(string: "https://api.simkl.com/oauth/pin")!
-        comps.queryItems = [URLQueryItem(name: "client_id", value: cleanId)]
-        let data = try await send(
-            url: comps.url!,
-            method: "GET",
-            headers: ["Accept": "application/json"]
-        )
-        struct SimklPinReply: Decodable {
-            let user_code: String
-            let verification_url: String?
-            let expires_in: Int?
-            let interval: Int?
-        }
-        let reply = try JSONDecoder().decode(SimklPinReply.self, from: data)
-        let url = URL(string: reply.verification_url ?? "https://simkl.com/pin") ?? URL(string: "https://simkl.com/pin")!
-        return DeviceCodeAuthSession(
-            provider: .simkl,
-            userCode: reply.user_code,
-            verificationURL: url,
-            deviceCode: reply.user_code,
-            expiresIn: reply.expires_in ?? 900,
-            interval: reply.interval ?? 5
-        )
+        throw APIError.message("Only Trakt signs in with a code here.")
     }
 
     func pollDeviceToken(session auth: DeviceCodeAuthSession, clientId: String, clientSecret: String? = nil) async throws -> DeviceCodePollStatus {
@@ -493,22 +410,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             }
             return .pending
         }
-        var comps = URLComponents(string: "https://api.simkl.com/oauth/pin/\(auth.userCode)")!
-        comps.queryItems = [URLQueryItem(name: "client_id", value: cleanId)]
-        var request = URLRequest(url: comps.url!)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return .pending }
-        struct SimklTokenReply: Decodable {
-            let result: String?
-            let access_token: String?
-        }
-        if let reply = try? JSONDecoder().decode(SimklTokenReply.self, from: data),
-           reply.result == "OK", let token = reply.access_token, !token.isEmpty {
-            return .authorized(accessToken: token)
-        }
-        return .pending
+        return .expired
     }
 }
 
@@ -529,7 +431,6 @@ enum ProviderCooldowns {
     private static func name(_ host: String) -> String {
         switch host {
         case "api.trakt.tv": "Trakt"
-        case "api.simkl.com": "Simkl"
         case "api.mdblist.com": "MDBList"
         case "api.wetrakr.com": "WeTrakr"
         default: host

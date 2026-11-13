@@ -29,7 +29,7 @@ import TwilDiaryCore
         if !controller.busy { await controller.refresh(); await controller.resumeApprovedApply() }
     }
     /// Any edit still on its way anywhere: your server's queue, the queue for the other services,
-    /// or the service diary's own (Trakt, Simkl, MDBList, WeTrakr).
+    /// or the service diary's own (Trakt, MDBList, WeTrakr).
     var hasWaitingEdits: Bool {
         !outbox.isEmpty || !TraktDirectStore.shared.pending.isEmpty || TrackerPreviewStore.shared.pending.values.contains { !$0.isEmpty }
     }
@@ -162,7 +162,7 @@ import TwilDiaryCore
         if let name = value as? String { return MainTracker(rawValue: name) }
         return (value as? Bool) == true ? .trakt : nil
     }
-    /// Which diary is on screen: "server", "trakt", "simkl" or "mdblist".
+    /// Which diary is on screen: "server", "trakt", "mdblist" or "wetrakr".
     var diarySource = UserDefaults.standard.string(forKey: DiaryStore.diarySourceKey) ?? "server" {
         didSet {
             UserDefaults.standard.set(diarySource, forKey: Self.diarySourceKey)
@@ -173,7 +173,7 @@ import TwilDiaryCore
         get { diarySource == "trakt" }
         set { diarySource = newValue ? "trakt" : "server" }
     }
-    /// Phase 5: the diary built from Simkl or MDBList; edits go to it (TraktDiaryEditing).
+    /// Phase 5: the diary built from MDBList or WeTrakr; edits go to it (TraktDiaryEditing).
     var diaryFromTracker: MainTracker? {
         get { MainTracker(rawValue: diarySource).flatMap { $0 == .trakt ? nil : $0 } }
         set { diarySource = newValue?.rawValue ?? "server" }
@@ -374,7 +374,7 @@ import TwilDiaryCore
     var onThisPhone: Bool { phoneOnly && TraktDirectStore.shared.localOnly }
     /// Where the queue of edits for the other services is kept: your server sign-in's, or with no
     /// server this iPhone's own (as Cinopsys keeps its queue on the device), so edits made in the
-    /// Trakt-only diary still reach Simkl, MDBList and WeTrakr.
+    /// Trakt-only diary still reach MDBList and WeTrakr.
     var outboxScope: String? { api.credential?.cacheScope ?? (phoneOnly ? "phone" : nil) }
     /// With no server: the phone's queue, loaded when the phone-only diary starts.
     private func loadPhoneOutbox() {
@@ -1032,33 +1032,24 @@ import TwilDiaryCore
         outboxNotice = "Saved on this device · \(pendingDiaryEdits) pending sync"
         return entry
     }
-    /// Simkl support was removed (owner's choice, 2026-11-13). Once: its sign-in leaves the
-    /// Keychain, it's no longer the main tracker or the diary's service, and the phone's copy of its
-    /// library, its sync report, its retry list and its not-kept list go. Nothing on Simkl changes.
+    /// Simkl support was removed (owner's choice, 2026-11-13). Once: the provider settings are saved
+    /// again (they're read without Simkl's entry, so its sign-in leaves the Keychain), along with the
+    /// older per-field Keychain items; it's no longer the main tracker, the phone-only service or the
+    /// diary's service; and the phone's copy of its library and reports go. Nothing on Simkl changes.
     private func removeSimkl() {
-        let doneKey = "simkl.removed.v1"
-        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        var simkl = providerSettings.config(for: .simkl)
-        if simkl.accessToken != nil || simkl.refreshToken != nil || simkl.enabled || simkl.connection != nil {
-            simkl.accessToken = nil; simkl.refreshToken = nil; simkl.tokenExpiresAt = nil
-            simkl.enabled = false; simkl.connection = nil
-            var next = providerSettings
-            next.setConfig(simkl)
-            // Not saved (the Keychain refused): tried again next launch.
-            guard (try? providerSettingsStore.save(next)) != nil else { return }
-            providerSettings = next
-        }
-        if Self.savedPhoneOnly == .simkl { UserDefaults.standard.removeObject(forKey: Self.phoneOnlyKey) }
-        if UserDefaults.standard.string(forKey: MainTrackerView.key) == MainTracker.simkl.rawValue {
-            UserDefaults.standard.set(MainTracker.trakt.rawValue, forKey: MainTrackerView.key)
-        }
-        if diarySource == MainTracker.simkl.rawValue {
-            UserDefaults.standard.set("server", forKey: Self.diarySourceKey); diarySource = "server"
-        }
+        let doneKey = "simkl.removed.v2"
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: doneKey) else { return }
+        // Not saved (the Keychain refused): tried again next launch.
+        guard (try? providerSettingsStore.save(providerSettings)) != nil else { return }
+        let keychain = KeychainProviderSecretStore()
+        for field in ["accessToken", "apiKey"] { _ = keychain.writeSecret(nil, for: "twildiary.provider.connection.settings.simkl." + field) }
+        if defaults.string(forKey: Self.phoneOnlyKey) == "simkl" { defaults.removeObject(forKey: Self.phoneOnlyKey) }
+        if defaults.string(forKey: MainTrackerView.key) == "simkl" { defaults.set(MainTracker.trakt.rawValue, forKey: MainTrackerView.key) }
+        if diarySource == "simkl" { diarySource = "server" }
         try? FileManager.default.removeItem(at: URL.applicationSupportDirectory.appending(path: "Trackers/simkl.json"))
-        for key in ["syncReport.simkl", "deadLetters.simkl", "matchLedger.simkl"] { UserDefaults.standard.removeObject(forKey: key) }
-        AccountProfiles.shared.forget(.simkl)
-        UserDefaults.standard.set(true, forKey: doneKey)
+        for key in ["syncReport.simkl", "deadLetters.simkl", "matchLedger.simkl"] { defaults.removeObject(forKey: key) }
+        defaults.set(true, forKey: doneKey)
     }
     func acknowledgeOutbox(_ entryID: String, provider: SyncProviderKind) throws {
         guard let scope = outboxScope else { throw APIError.signIn }
@@ -1105,10 +1096,9 @@ import TwilDiaryCore
         struct Payload: Decodable {
             let customTmdbToken: String?
             let trakt: Entry?
-            let simkl: Entry?
             let mdblist: Entry?
             func entry(_ key: String) -> Entry? {
-                switch key { case "trakt": trakt; case "simkl": simkl; case "mdblist": mdblist; default: nil }
+                switch key { case "trakt": trakt; case "mdblist": mdblist; default: nil }
             }
         }
         let protocolVersion: Int?
@@ -1116,7 +1106,7 @@ import TwilDiaryCore
         let revision: String?
         let settings: Payload?
     }
-    private static let vaultPaths = ["customTmdbToken"] + ["trakt", "simkl", "mdblist"].flatMap { provider in
+    private static let vaultPaths = ["customTmdbToken"] + ["trakt", "mdblist"].flatMap { provider in
         ["enabled", "clientId", "accessToken", "apiKey", "username", "loggingMethod"].map { provider + "." + $0 }
     }
     private static func validVaultDirty(_ fields: [String: VaultDirtyField]) -> [String: VaultDirtyField] {
@@ -1306,7 +1296,7 @@ import TwilDiaryCore
         guard session == sessionGeneration else { throw CancellationError() }
         return (receipt.importedTitles, receipt.importedEvents)
     }
-    /// Records a watch or title mutation for any enabled direct providers (`simkl`, `mdblist`, `trakt`)
+    /// Records a watch or title mutation for any enabled direct providers (`trakt`, `mdblist`, `wetrakr`)
     /// while keeping the primary server logging method intact, and flushes pending direct provider batches in the background.
     func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind>? = nil) {
         let isSeries = title(mutation.titleId)?.isSeries ?? true
@@ -1322,15 +1312,9 @@ import TwilDiaryCore
         catch { self.error = "Provider delivery could not be saved: " + error.localizedDescription; return }
         Task { await flushDirectProviders() }
     }
-    /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `simkl`, `mdblist`).
+    /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `mdblist`, `wetrakr`).
     func flushDirectProviders() async {
         guard !directFlushActive, !needsSignIn else { return }
-        // Simkl support was removed: edits still queued for it come off its list (nothing is sent).
-        if let scope = outboxScope, outbox.entries.contains(where: { $0.pendingProviders.contains(.simkl) }) {
-            var next = outbox
-            for entry in outbox.entries where entry.pendingProviders.contains(.simkl) { next.acknowledge(entryID: entry.id, provider: .simkl) }
-            if (try? outboxStore.save(next, scope: scope)) != nil { outbox = next }
-        }
         let session = sessionGeneration
         directFlushActive = true; defer { directFlushActive = false }
         let activeProviders = providerSettings.activeDirectLoggingProviders
@@ -1573,11 +1557,6 @@ import TwilDiaryCore
             _ = try await directClient.fetchTraktLastActivities(
                 credentials: DirectTraktCredentials(clientId: clientId, accessToken: token)
             )
-        case .simkl:
-            guard config.isAuthenticated else {
-                throw APIError.message("Enter both a Simkl Client ID and Access Token.")
-            }
-            _ = try await directClient.fetchSimklActivities(config: config)
         case .mdblist:
             guard config.isAuthenticated else {
                 throw APIError.message("Sign in to MDBList or enter your MDBList API key.")
@@ -2415,7 +2394,6 @@ extension DiaryStore {
                 case .markWatch, .patchTitle:
                     switch diaryService ?? serverRecord {
                     case .trakt: target = .trakt
-                    case .simkl: target = .simkl
                     case .mdblist: target = .mdblist
                     case .wetrakr: target = .wetrakr
                     case nil: target = nil

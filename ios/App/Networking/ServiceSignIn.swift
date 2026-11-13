@@ -12,7 +12,6 @@ import TwilDiaryCore
     private static func infoKey(_ provider: SyncProviderKind) -> String? {
         switch provider {
         case .trakt: "TwilDiaryTraktClientID"
-        case .simkl: "TwilDiarySimklClientID"
         case .mdblist: "TwilDiaryMDBListClientID"
         case .wetrakr: "TwilDiaryWeTrakrClientID"
         case .cloudflare: nil
@@ -35,10 +34,10 @@ import TwilDiaryCore
     /// Asks your server once per launch for its app IDs and remembers them.
     static func refresh(store: DiaryStore) async {
         guard !store.isPreview, !store.needsSignIn, !refreshed else { return }
-        struct Apps: Decodable { let trakt: String?; let simkl: String?; let mdblist: String? }
+        struct Apps: Decodable { let trakt: String?; let mdblist: String? }
         guard let apps: Apps = try? await store.read("/api/providers/apps") else { return }
         refreshed = true
-        remember([.trakt: apps.trakt, .simkl: apps.simkl, .mdblist: apps.mdblist])
+        remember([.trakt: apps.trakt, .mdblist: apps.mdblist])
     }
     private static var refreshed = false
     private static func clean(_ value: String) -> String? {
@@ -49,7 +48,7 @@ import TwilDiaryCore
 }
 
 /// One-tap sign-in: the service's own page in Apple's sign-in sheet, back to the app signed in.
-/// Trakt, Simkl, MDBList and WeTrakr: each service's own sign-in page.
+/// Trakt, MDBList and WeTrakr: each service's own sign-in page.
 enum ServiceSignIn {
     enum Outcome: Equatable { case signedIn(String), cancelled }
 
@@ -78,9 +77,6 @@ enum ServiceSignIn {
         if provider == .trakt {
             try await store.finishTraktPhoneSignIn(clientId: clientId, tokens: tokens)
             return .signedIn(store.providerSettings.config(for: .trakt).username.map { "@" + $0 } ?? "Trakt")
-        }
-        guard ProviderDeviceSignIn.grantsWrite(tokens, provider: provider) else {
-            throw APIError.message("\(provider.displayName) gave read-only access. Sign in again and allow TwilDiary to make changes.")
         }
         var signedIn = store.providerSettings.config(for: provider)
         signedIn.clientId = clientId; signedIn.accessToken = tokens.accessToken

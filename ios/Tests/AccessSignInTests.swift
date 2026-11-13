@@ -88,14 +88,14 @@ import TwilDiaryCore
     func testServerListedIDsAreRememberedAndBlanksIgnored() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ProviderAppIDsTests"))
         defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
-        // Built into the app: all four services' public client IDs, as Cinopsys ships its own.
-        for provider in [SyncProviderKind.trakt, .simkl, .mdblist, .wetrakr] { XCTAssertNotNil(ProviderAppIDs.id(for: provider, defaults: defaults), provider.rawValue) }
+        // Built into the app: every service's public client ID, as Cinopsys ships its own.
+        for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr] { XCTAssertNotNil(ProviderAppIDs.id(for: provider, defaults: defaults), provider.rawValue) }
         // A server-listed ID never replaces a built-in one.
         let builtIn = ProviderAppIDs.id(for: .wetrakr, defaults: defaults)
         ProviderAppIDs.remember([.wetrakr: "other-app"], defaults: defaults)
         XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), builtIn)
         defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
         XCTAssertNil(ProviderAppIDs.id(for: .cloudflare, defaults: defaults))
-        XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.simkl) && ServiceSignIn.supportsSheet(.mdblist) && !ServiceSignIn.supportsSheet(.cloudflare))
+        XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.wetrakr) && ServiceSignIn.supportsSheet(.mdblist) && !ServiceSignIn.supportsSheet(.cloudflare))
     }
 }

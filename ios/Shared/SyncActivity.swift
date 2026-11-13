@@ -14,7 +14,7 @@ public struct SyncLiveActivityAttributes: ActivityAttributes, Sendable {
 }
 #endif
 
-/// The Lock Screen pill, as Cinopsys draws it: TwilDiary's icon, "Syncing with Simkl" and
+/// The Lock Screen pill, as Cinopsys draws it: TwilDiary's icon, "Syncing with MDBList" and
 /// "5 of 382", and a ring that fills as it goes.
 @MainActor struct DynamicIslandSyncBannerView: View {
     let state: SyncLiveActivityState
@@ -71,7 +71,7 @@ struct SyncRing: View {
 }
 
 enum SyncActivityText {
-    /// "Syncing with Simkl", "Simkl sync paused", "Synced with Simkl".
+    /// "Syncing with MDBList", "MDBList sync paused", "Synced with MDBList".
     static func headline(_ state: SyncLiveActivityState) -> String {
         switch state.phase {
         case .completed: "Synced with \(state.providerDisplayName)"

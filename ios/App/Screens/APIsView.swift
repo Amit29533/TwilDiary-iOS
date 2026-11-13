@@ -46,7 +46,6 @@ struct APIsView: View {
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out.")
                     service(.cloudflare, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
-                    // Simkl support was removed: its app ID isn't shown.
                     let signIn = model.keys.filter { $0.service == "mdblist" }
                     if !signIn.isEmpty {
                         service(nil, "Sign-in apps", icon: "iphone", keys: signIn, note: "App ID for MDBList sign-in.",
@@ -103,8 +102,10 @@ struct APIsView: View {
                 Spacer(minLength: 8)
                 sourcePill(key.source)
             }
-            if ["simkl", "mdblist"].contains(key.service) {
-                Text("Redirect: twildiary://auth/" + key.service).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            if key.service == "mdblist" {
+                // The https return page (it hands the reply to the app), as the sign-in sends it.
+                Text("Redirect: " + ProviderWebSignIn.redirect(for: .mdblist)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
             HStack(spacing: 8) {
                 Text(key.hint.map { "••••" + $0 } ?? "No key").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary)
@@ -121,7 +122,7 @@ struct APIsView: View {
             }.padding(.top, 6)
         }.padding(15).accessibilityElement(children: .contain).accessibilityIdentifier("api-row-" + key.name)
     }
-    /// "V2 mobile app client ID (Simkl)" → the name, and "(Simkl)" shown in grey.
+    /// "App client ID (MDBList)" → the name, and "(MDBList)" shown in grey.
     private static func splitLabel(_ label: String) -> (String, String?) {
         guard label.hasSuffix(")"), let open = label.lastIndex(of: "(") else { return (label, nil) }
         return (String(label[..<open]).trimmingCharacters(in: .whitespaces), String(label[open...]))

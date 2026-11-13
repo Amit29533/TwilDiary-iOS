@@ -23,7 +23,7 @@ private func diary() throws -> Workspace {
     return try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
 }
 private let blue = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 10494, name: "Perfect Blue")
-private let frieren = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 209867, name: "Frieren", simklId: 55)
+private let frieren = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 209867, name: "Frieren")
 private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, name: "Love Reset")
 
 @Test func forceMatchFromTheDiaryTakesWeTrakrsDuplicateOffByItsPlayID() throws {
@@ -51,41 +51,39 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
     #expect(plan.summary.contains { $0.contains("taken off WeTrakr history") })
 }
 
-@Test func forceMatchToASimklSourceNeverTakesTheDiarysRewatchesOrUnmatchedTitlesOff() throws {
-    // Trakt (the diary) has a rewatch of E1 and Love Reset; Simkl has one watch per episode, no
+@Test func forceMatchToAOneWatchSourceNeverTakesTheDiarysRewatchesOrUnmatchedTitlesOff() throws {
+    // Trakt (the diary) has a rewatch of E1 and Love Reset; MDBList has one watch per episode, no
     // Love Reset, and a title it can't name by TMDB id that is Love Reset by IMDb id.
     var trakt = TraktLibrary(
         plays: [TraktPlay(historyId: 1, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z"),
                 TraktPlay(historyId: 2, title: frieren, season: 1, episode: 1, watchedAt: "2026-05-01T20:00:00.000Z"),
                 TraktPlay(historyId: 3, title: frieren, season: 1, episode: 2, watchedAt: "2026-02-02T20:00:00.000Z"),
                 TraktPlay(historyId: 4, title: loveReset, watchedAt: "2026-03-01T20:00:00.000Z")])
-    let simkl = TraktLibrary(plays: [TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z"),
-                                     TraktPlay(historyId: 0, title: frieren, season: 1, episode: 2, watchedAt: nil)])
-    let source = TraktDiary.build(library: simkl, server: Workspace(), tracker: .simkl)
-    var plan = ForceMatchPlan.make(target: trakt, tracker: .trakt, source: source, sourceHolds: MainTracker.simkl.capabilities)
-    #expect(plan.plays.map(\.historyId) == [4], "The rewatch stays (Simkl can't hold one); Love Reset goes")
+    let mdblist = TraktLibrary(plays: [TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z"),
+                                       TraktPlay(historyId: 0, title: frieren, season: 1, episode: 2, watchedAt: nil)])
+    let source = TraktDiary.build(library: mdblist, server: Workspace(), tracker: .mdblist)
+    var plan = ForceMatchPlan.make(target: trakt, tracker: .trakt, source: source, sourceHolds: MainTracker.mdblist.capabilities)
+    #expect(plan.plays.map(\.historyId) == [4], "The rewatch stays (MDBList can't hold one); Love Reset goes")
     #expect(plan.requests().contains { $0.path == "/sync/history/remove" && String(decoding: $0.body ?? Data(), as: UTF8.self) == #"{"ids":[4]}"# })
-    // Love Reset is on Simkl without a TMDB id: it's kept.
+    // Love Reset is on MDBList without a TMDB id: it's kept.
     trakt.plays[3] = TraktPlay(historyId: 4, title: TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, imdbId: "tt999", name: "Love Reset"), watchedAt: nil)
     let keep = ForceMatchPlan.keepTokens([TraktTitleRef(kind: .movie, traktId: nil, tmdbId: nil, imdbId: "tt999", name: "Love Reset (2023)")])
-    plan = ForceMatchPlan.make(target: trakt, tracker: .trakt, source: source, sourceHolds: MainTracker.simkl.capabilities, keep: keep)
+    plan = ForceMatchPlan.make(target: trakt, tracker: .trakt, source: source, sourceHolds: MainTracker.mdblist.capabilities, keep: keep)
     #expect(plan.plays.isEmpty)
 }
 
-@Test func forceMatchLeavesShowsNumberedDifferentlyAndTakesSimklOnlyTitlesOffWhole() throws {
-    // Simkl numbers Frieren E2 as S2E1 (its anime seasons): missing and extra episodes of one show.
+@Test func forceMatchLeavesShowsNumberedDifferently() throws {
+    // The service numbers Frieren E2 as S2E1 (anime seasons): missing and extra episodes of one show.
     let library = TraktLibrary(
         plays: [TraktPlay(historyId: 0, title: blue, watchedAt: nil),
                 TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: nil),
                 TraktPlay(historyId: 0, title: frieren, season: 2, episode: 1, watchedAt: nil),
                 TraktPlay(historyId: 0, title: loveReset, watchedAt: nil)],
         watchlist: [TraktListed(title: TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 5, name: "Panchayat"), listedAt: nil)])
-    let plan = ForceMatchPlan.make(target: library, tracker: .simkl, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
-    #expect(plan.renumbered == ["Frieren"] && plan.plays.isEmpty, "Frieren's S2E1 stays: it's the diary's E2 under Simkl's number")
-    #expect(plan.send.plays.isEmpty, "Left as it is: E2 isn't sent either, or the show would never stop looking different")
-    #expect(plan.titles.map(\.name).sorted() == ["Love Reset", "Panchayat"], "Titles the diary lacks go whole")
-    let removal = try #require(plan.requests().first { $0.summary == "titles taken off" })
-    #expect(removal.path == "/sync/history/remove")
+    let plan = ForceMatchPlan.make(target: library, tracker: .wetrakr, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
+    #expect(plan.renumbered == ["Frieren"], "Frieren's S2E1 stays: it's the diary's E2 under the service's number")
+    #expect(!plan.plays.contains { $0.title.tmdbId == 209867 })
+    #expect(!plan.send.plays.contains { $0.title.tmdbId == 209867 }, "Left as it is: E2 isn't sent either, or the show would never stop looking different")
     #expect(plan.summary.contains { $0.contains("numbered differently") })
 }
 
@@ -118,7 +116,8 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
     #expect(wetrakr.wipe.map(\.name) == ["Love Reset"] && wetrakr.summary.contains { $0.contains("cleared off WeTrakr") })
     let paths = wetrakr.requests().map(\.path)
     #expect(paths.first == "/sync/tracking/remove/all" && paths.contains("/sync/ratings/remove") && paths.contains("/sync/favorites/remove"))
-    #expect(ForceMatchPlan.wipe(["movie:1100"], target: library, tracker: .simkl).requests().map(\.path) == ["/sync/history/remove", "/sync/ratings/remove"])
+    #expect(ForceMatchPlan.wipe(["movie:1100"], target: library, tracker: .mdblist).requests().map(\.path)
+            == ["/sync/watched/remove", "/sync/ratings/remove", "/watchlist/items/remove", "/sync/dropped/remove"])
     #expect(ForceMatchPlan.wipe(["tv:5"], target: library, tracker: .trakt).isEmpty, "A title the target doesn't have has nothing to clear")
     // Only the titles asked for are sent again.
     let plan = ForceMatchPlan.make(target: library, tracker: .mdblist, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
@@ -138,18 +137,16 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
 }
 
 @Test func aServiceAsTheSourceDoesNotPutRatedOnlyTitlesOnTheWatchlist() throws {
-    // Simkl: Frieren watched, Love Reset only rated, Perfect Blue on Plan to Watch.
-    let simkl = TraktLibrary(plays: [TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z")],
-                             ratings: [TraktRating(title: loveReset, rating: 8, ratedAt: nil)],
-                             watchlist: [TraktListed(title: blue, listedAt: nil)])
-    let source = TraktDiary.forceSource(library: simkl, tracker: .simkl)
+    // MDBList: Frieren watched, Love Reset only rated, Perfect Blue on the watchlist.
+    let mdblist = TraktLibrary(plays: [TraktPlay(historyId: 0, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00.000Z")],
+                               ratings: [TraktRating(title: loveReset, rating: 8, ratedAt: nil)],
+                               watchlist: [TraktListed(title: blue, listedAt: nil)])
+    let source = TraktDiary.forceSource(library: mdblist, tracker: .mdblist)
     #expect(source.titles.first { $0.tmdbId == 1100 }?.status == "none")
     #expect(source.titles.first { $0.tmdbId == 10494 }?.status == "planned")
-    let plan = ForceMatchPlan.make(target: TraktLibrary(), tracker: .trakt, source: source, sourceHolds: MainTracker.simkl.capabilities)
-    #expect(plan.send.watchlistAdd.map(\.name) == ["Perfect Blue"], "Only what Simkl has on Plan to Watch")
+    let plan = ForceMatchPlan.make(target: TraktLibrary(), tracker: .trakt, source: source, sourceHolds: MainTracker.mdblist.capabilities)
+    #expect(plan.send.watchlistAdd.map(\.name) == ["Perfect Blue"], "Only what MDBList has on its watchlist")
     #expect(plan.send.ratings.map(\.title.name) == ["Love Reset"])
-    // On no list at the source: never moved to Simkl's Completed.
-    #expect(TraktWritePlan.simklList(status: "none", isSeries: false) == nil)
 }
 
 @Test func mdblistShowAndSeasonRowsAreNotWatchesToTakeOff() throws {
@@ -165,22 +162,17 @@ private let loveReset = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: 1100, 
     #expect(plan.plays.isEmpty, "nothing counted as taken off that the call can't name")
 }
 
-@Test func simklKeepsTheDiarysTitlesItFilesItsOwnWay() throws {
-    // Simkl: Perfect Blue as a one-episode show (its OVA way), once with the film's kind but an
-    // episode number, once as "tv:10494"; and a season Simkl files as its own entry (tv:999) of
-    // Frieren's TVDB series. None of it is taken off: on Simkl they are the diary's own titles.
+@Test func aServiceKeepsTheDiarysTitlesItFilesItsOwnWay() throws {
+    // Perfect Blue as a one-episode show (an OVA's way), once with the film's kind but an episode
+    // number, once as "tv:10494". None of it is taken off: on the service it's the diary's own title.
     let ova = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 10494, name: "Perfect Blue")
-    let season = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 999, tvdbId: 555, name: "Frieren Season 2")
-    let frierenTVDB = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 209867, tvdbId: 555, name: "Frieren")
     let library = TraktLibrary(
         plays: [TraktPlay(historyId: 1, title: blue, season: 1, episode: 1, watchedAt: "2026-01-01T20:00:00Z"),
                 TraktPlay(historyId: 2, title: ova, season: 1, episode: 1, watchedAt: "2026-01-01T20:00:00Z"),
-                TraktPlay(historyId: 3, title: frierenTVDB, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00Z"),
-                TraktPlay(historyId: 4, title: frierenTVDB, season: 1, episode: 2, watchedAt: "2026-02-02T20:00:00Z"),
-                TraktPlay(historyId: 5, title: season, season: 2, episode: 1, watchedAt: "2026-03-01T20:00:00Z")],
+                TraktPlay(historyId: 3, title: frieren, season: 1, episode: 1, watchedAt: "2026-02-01T20:00:00Z"),
+                TraktPlay(historyId: 4, title: frieren, season: 1, episode: 2, watchedAt: "2026-02-02T20:00:00Z")],
         ratings: [TraktRating(title: ova, rating: 8, ratedAt: nil)])
-    let plan = ForceMatchPlan.make(target: library, tracker: .simkl, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
+    let plan = ForceMatchPlan.make(target: library, tracker: .wetrakr, source: try diary(), sourceHolds: MainTracker.trakt.capabilities)
     #expect(plan.plays.isEmpty, "no watch of the diary's titles is taken off")
-    #expect(plan.titles.isEmpty, "neither the OVA entry nor the season entry is cleared whole")
     #expect(plan.ratings.isEmpty)
 }

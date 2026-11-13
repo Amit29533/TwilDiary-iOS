@@ -161,7 +161,7 @@ enum TraktDelivery: Equatable, Sendable {
 }
 
 /// Cinopsys merges unsent edits that set the same thing on the same title (a rating, the watchlist,
-/// a favourite, dropped, a Simkl list, WeTrakr's planning or dropped): only the last choice is sent.
+/// a favourite, dropped, WeTrakr's planning or dropped): only the last choice is sent.
 /// Plays are events, never merged. nil: not a mergeable state change.
 enum PendingMerge {
     static func key(_ path: String, _ body: [String: Any]) -> String? {
@@ -1146,14 +1146,14 @@ enum ServiceRemovals {
     }
 }
 
-/// Work on a service's reply away from the main thread: a whole Simkl library is megabytes of
+/// Work on a service's reply away from the main thread: a whole service library is megabytes of
 /// JSON, and decoding it (or MDBList's and WeTrakr's pages) on the main thread froze scrolling for
 /// a few hundred milliseconds at a time while the checks ran after the app opened.
 private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
     try await Task.detached(priority: .userInitiated) { try work() }.value
 }
 
-/// The same read-and-compare preview for Simkl and MDBList as the main tracker. Trakt keeps its own
+/// The same read-and-compare preview for MDBList and WeTrakr as the main tracker. Trakt keeps its own
 /// store above (its lists are fetched one by one); these two are read whole when anything changed.
 @MainActor @Observable final class TrackerPreviewStore {
     static let shared = TrackerPreviewStore()
@@ -1173,7 +1173,6 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
-        // Simkl support was removed: its saved copy is no longer read (and is deleted at launch).
         for tracker in MainTracker.others {
             var saved = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
             // MDBList copies saved before its show and season rows were left out.
@@ -1195,9 +1194,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             let config = await store.freshProviderConfig(tracker.provider)
             let client = store.directClient
             var requests = 1
-            let activitiesData = try await client.read(config, path: tracker == .simkl ? "/sync/activities" : "/sync/last_activities")
-            let activities = try (tracker == .simkl ? TraktDecode.activities(from: activitiesData)
-                                  : tracker == .wetrakr ? WeTrakrDecode.activities(from: activitiesData) : TrackerDecode.flatActivities(from: activitiesData))
+            let activitiesData = try await client.read(config, path: "/sync/last_activities")
+            let activities = try (tracker == .wetrakr ? WeTrakrDecode.activities(from: activitiesData) : TrackerDecode.flatActivities(from: activitiesData))
             var library = libraries[tracker] ?? TraktLibrary()
             var fetched: [TraktDomain] = []
             if tracker == .wetrakr {
@@ -1208,53 +1206,6 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 for title in store.workspace.titles { if let key = title.tmdbId.map({ (title.isSeries ? "tv:" : "movie:") + String($0) }) { names[key] = title.name } }
                 for (key, title) in PhoneCatalog.shared.titles where names[key] == nil { names[key] = title.name }
                 library = library.naming { ref in ref.diaryKey.flatMap { names[$0] } }
-            } else if tracker == .simkl {
-                // Simkl's sync rules: the whole library once, then only what changed.
-                // `full_anime_seasons`: `full` plus each anime episode's TVDB season and number, which is how
-                // the diary (TMDB) numbers them; plain `full` numbers every anime season entry from 1.
-                let fullQuery = ["extended": "full_anime_seasons", "episode_watched_at": "yes", "memos": "yes", "include_all_episodes": "yes"]
-                func fullPull() async throws {
-                    let data = try await client.read(config, path: "/sync/all-items/", query: fullQuery)
-                    let anime = await AnimeListsStore.shared.index()
-                    library = try await offMain { try TrackerDecode.simklLibrary(from: data, anime: anime) }
-                    requests += 1
-                    fetched = [.history, .ratings, .watchlist, .dropped, .notes]
-                }
-                switch SimklSync.step(previous: libraries[tracker], now: activities) {
-                case .none:
-                    break
-                case .full:
-                    try await fullPull()
-                case .delta(let items, let ratings, let removals, let since):
-                    if items {
-                        var query = fullQuery; query["date_from"] = since
-                        let data = try await client.read(config, path: "/sync/all-items/", query: query)
-                        let base = library, anime = await AnimeListsStore.shared.index()
-                        library = try await offMain { SimklSync.merge(try TrackerDecode.simklLibrary(from: data, anime: anime), touched: (try? TrackerDecode.simklIDs(from: data)) ?? [], into: base) }
-                        requests += 1
-                        fetched += [.history, .watchlist, .dropped, .notes]
-                    }
-                    if ratings {
-                        // Ratings aren't in item deltas; the rated lists are small, so they're read whole
-                        // (that also catches a rating taken off).
-                        var all: [TraktRating] = []
-                        for type in ["movies", "shows", "anime"] {
-                            all += try TrackerDecode.simklRatings(from: try await client.read(config, path: "/sync/ratings/" + type))
-                            requests += 1
-                        }
-                        library.ratings = all
-                        fetched.append(.ratings)
-                    }
-                    if removals {
-                        requests += 1
-                        if let ids = try? TrackerDecode.simklIDs(from: try await client.read(config, path: "/sync/all-items/", query: ["extended": "simkl_ids_only"])) {
-                            library = SimklSync.removing(from: library, keeping: ids)
-                        } else {
-                            try await fullPull()
-                        }
-                    }
-                }
-                library.activities = SimklSync.marked(activities)
             } else if MDBListJournal.unmarked(library.activities) != activities || library.fetchedAt == nil {
                 // MDBList: only the lists whose time moved (all of them on the first read).
                 let previous = library.fetchedAt == nil ? nil : MDBListJournal.unmarked(library.activities)
@@ -1373,7 +1324,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         plans[tracker] = analysed.plan
     }
 
-    // MARK: Phase 5: edits in the Simkl / MDBList diary
+    // MARK: Phase 5: edits in the MDBList / WeTrakr diary
 
     @ObservationIgnored private var lastWrite: Date?
     /// Trakt takes one write a second: every write (your edits, queued ones, the automatic copy,
@@ -1476,10 +1427,10 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 let reply = try await store.directClient.write(config, path: next.path, body: next.body)
                 guard session == generation else { return false }
                 pending[tracker]?.removeAll { $0.id == next.id }
-                // Simkl and MDBList answered without saying anything changed: the phone already
+                // MDBList answered without saying anything changed: the phone already
                 // shows the edit, and their change stamps won't move for one they didn't apply, so
                 // the next read is a full one (otherwise the phone's guess would stay for good).
-                if tracker == .simkl || tracker == .mdblist, !ProviderDeliveryPlanner.confirms(reply) { libraries[tracker]?.activities = nil }
+                if tracker == .mdblist, !ProviderDeliveryPlanner.confirms(reply) { libraries[tracker]?.activities = nil }
                 if TraktDirectStore.notFoundCount(reply) > 0 {
                     refused(tracker, "\(tracker.name) couldn’t find a title by its TMDB id, so it wasn’t changed there.", store: store)
                 }
@@ -1550,7 +1501,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         let kind = TraktDelivery.of(error)
         return kind == .rejected ? .rejected : .retryLater
     }
-    /// Check-in, the way Cinopsys does it on each service: Simkl's and WeTrakr's scrobble/checkin,
+    /// Check-in, the way Cinopsys does it on each service: WeTrakr's scrobble/checkin,
     /// MDBList's checkin (a movie, or the show's next episode). The service logs the watch when it ends.
     func checkIn(_ tracker: MainTracker, _ title: MediaTitle, episode: Episode?, store: DiaryStore) async throws -> String {
         if store.isPreview { throw APIError.message("Checking in needs a real \(tracker.name) connection.") }
@@ -1641,13 +1592,13 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         }
     }
 
-    // MARK: Phase 5: make Simkl / MDBList match the diary
+    // MARK: Phase 5: make MDBList / WeTrakr match the diary
 
     func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
         guard store.diaryService != tracker, store.serverRecord != tracker else { return nil }
         return libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.diaryToMatch, tracker: tracker, except: MatchLedger.tokens(tracker)) }
     }
-    /// A backup or an import into Simkl, MDBList or WeTrakr while it holds the diary: only what it
+    /// A backup or an import into MDBList or WeTrakr while it holds the diary: only what it
     /// lacks (watches at their dates, ratings where it has none, Planned for titles never
     /// watched), nothing changed or taken off, so running it twice adds nothing twice.
     func restore(_ tracker: MainTracker, _ backup: Workspace, store: DiaryStore) async throws -> String {
@@ -1747,7 +1698,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     /// Can the diary be made like this service? Only when the diary lives on a service of its own.
     func canForceIntoDiary(_ tracker: MainTracker, store: DiaryStore) -> Bool {
         guard let home = store.diaryService, home != tracker else { return false }
-        return home == .trakt || home == .simkl || home == .mdblist || home == .wetrakr
+        return home == .trakt || home == .mdblist || home == .wetrakr
     }
     /// Reads both sides afresh, then works out what Force Match would add and take off.
     func forcePlan(_ tracker: MainTracker, source: ForceSource, store: DiaryStore) async -> ForceMatchPlan? {
@@ -2161,7 +2112,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         refreshes = [:]
         running = nil; writing = nil; writeProgress = nil
         libraries = [:]; reports = [:]; errors = [:]; writeResults = [:]; plans = [:]; pending = [:]
-        for tracker in [MainTracker.simkl, .mdblist, .wetrakr] { MatchLedger.clear(tracker) }
+        for tracker in MainTracker.others { MatchLedger.clear(tracker) }
         BackgroundFiles.cancel(folder: folder)
         flushing = []; sending = []; retries = [:]
         for task in retryTasks.values { task.cancel() }
@@ -2216,7 +2167,7 @@ extension DiaryStore {
     /// from a service, else your server's.
     var diaryToMatch: Workspace { diaryFromService ? workspace : serverDiary }
     /// Trakt-first phase 2: your edits go to Trakt as you make them (watches with their exact time,
-    /// ratings, Planned), through the same delivery queue as Simkl and MDBList, with the token your
+    /// ratings, Planned), through the same delivery queue as MDBList and WeTrakr, with the token your
     /// server hands out. The diary on your server stays the record until the switch-over.
     var traktWriteThrough: Bool {
         let config = providerSettings.config(for: .trakt)

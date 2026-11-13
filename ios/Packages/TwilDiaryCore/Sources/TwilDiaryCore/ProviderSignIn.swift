@@ -6,8 +6,6 @@ import CryptoKit
 /// is involved, so TwilDiary's own client ID (or yours) can sit on the phone.
 ///
 /// - MDBList: a "Device Code App" registered at mdblist.com/developer (scope `write`).
-/// - Simkl: an AUTH V2 app (scopes `media:read media:write`; without `media:write` Simkl quietly
-///   grants read-only). Older AUTH V1 apps use Simkl's PIN flow instead.
 public enum ProviderDeviceSignIn {
     public struct Endpoints: Equatable, Sendable {
         public let authorize: URL
@@ -19,9 +17,6 @@ public enum ProviderDeviceSignIn {
         case .mdblist:
             Endpoints(authorize: URL(string: "https://api.mdblist.com/oauth/device-authorization/")!,
                       token: URL(string: "https://api.mdblist.com/oauth/token/")!, scope: "write")
-        case .simkl:
-            Endpoints(authorize: URL(string: "https://api.simkl.com/oauth2/device")!,
-                      token: URL(string: "https://api.simkl.com/oauth2/token")!, scope: "media:read media:write")
         // WeTrakr: refreshing is its own route (`refresh`); the device flow isn't used.
         case .wetrakr:
             Endpoints(authorize: URL(string: "https://api.wetrakr.com/oauth/device/code")!,
@@ -90,7 +85,7 @@ public enum ProviderDeviceSignIn {
         case failed(String)
     }
     /// Reads a token-endpoint reply (the poll, or a refresh): tokens on success, otherwise the
-    /// standard `error` codes. Simkl has no deny signal, so the caller also times out.
+    /// standard `error` codes. A service may send no deny signal, so the caller also times out.
     public static func decodePoll(status: Int, data: Data, now: Date = .now) -> Poll {
         let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         if (200..<300).contains(status), let access = object["access_token"] as? String, !access.isEmpty {
@@ -108,12 +103,6 @@ public enum ProviderDeviceSignIn {
         default: return .failed("The service answered HTTP \(status).")
         }
     }
-    /// Simkl downgrades an unknown scope to read-only without an error; a sign-in without write
-    /// access can't sync, so it is refused rather than saved.
-    public static func grantsWrite(_ tokens: Tokens, provider: SyncProviderKind) -> Bool {
-        guard provider == .simkl, let scope = tokens.scope else { return true }
-        return scope.split(separator: " ").contains("media:write")
-    }
 }
 
 public enum ProviderSignInError: LocalizedError, Equatable, Sendable {
@@ -125,8 +114,8 @@ public enum ProviderSignInError: LocalizedError, Equatable, Sendable {
 
 /// "Sign in with …" the way Cinopsys does it: the service's own sign-in page opens in Apple's
 /// sign-in sheet, you approve, and it returns to the app. Authorization code with PKCE: no client
-/// secret, so the app ID can live on the phone (Simkl: a V2 mobile app; MDBList: a Public PKCE app,
-/// each registered with the redirect `twildiary://auth/<service>`).
+/// secret, so the app ID can live on the phone (MDBList: a Public PKCE app; each registered with
+/// the https return page's redirect for that service).
 public enum ProviderWebSignIn {
     public static let callbackScheme = "twildiary"
     /// The https return address (workers/auth-return): live Trakt apps accept only https://
@@ -135,13 +124,11 @@ public enum ProviderWebSignIn {
     public static let returnSite = "https://twildiary-auth.amit29533.workers.dev"
     /// The redirect registered with the service (and sent in the token exchange).
     public static func redirect(for provider: SyncProviderKind) -> String {
-        // Trakt, MDBList and WeTrakr (as Cinopsys signs in to them) through the https page; Simkl's
-        // mobile apps take the app's own address.
-        provider == .simkl ? callbackScheme + "://auth/simkl" : returnSite + "/" + provider.rawValue
+        // Trakt, MDBList and WeTrakr (as Cinopsys signs in to them) through the https page.
+        returnSite + "/" + provider.rawValue
     }
     static func authorizePage(for provider: SyncProviderKind) -> URL? {
         switch provider {
-        case .simkl: URL(string: "https://simkl.com/oauth2/authorize")
         case .mdblist: URL(string: "https://mdblist.com/oauth/authorize/")
         case .trakt: URL(string: "https://auth.trakt.tv/oauth/authorize")
         case .wetrakr: URL(string: "https://api.wetrakr.com/oauth/authorize")
@@ -184,16 +171,13 @@ public enum ProviderWebSignIn {
     }
 
     /// The code from the service's reply, once it is checked: same attempt (state), the right
-    /// service (Simkl also names itself in `iss`), and not declined.
+    /// service, and not declined.
     public static func code(from callback: URL, for request: Request) throws -> String {
         guard callback.scheme == callbackScheme, callback.host == "auth", callback.path == "/" + request.provider.rawValue, let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems else {
             throw ProviderSignInError.unexpected("The sign-in came back in a form TwilDiary doesn’t recognise.")
         }
         func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
         guard value("state") == request.state else { throw ProviderSignInError.unexpected("This sign-in doesn’t match the one TwilDiary started. Try again.") }
-        if request.provider == .simkl, value("iss") != "https://simkl.com" {
-            throw ProviderSignInError.unexpected("The sign-in didn’t come from Simkl. Try again.")
-        }
         if let error = value("error") {
             throw ProviderSignInError.unexpected(error == "access_denied" ? "The sign-in was declined." : "The service refused the sign-in (\(error)).")
         }

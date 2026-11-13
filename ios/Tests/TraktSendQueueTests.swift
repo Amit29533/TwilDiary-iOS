@@ -38,7 +38,7 @@ import TwilDiaryCore
         XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(429, "busy")), .retryLater)
         XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(401, "sign-in")), .authBlocked, "kept until reconnected")
         XCTAssertEqual(TrackerPreviewStore.delivery(APIError.rejected(400, "bad")), .rejected, "refused: dropped, and the screen put back")
-        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.message("Simkl is busy with another change right now. Try again in a minute.")), .retryLater)
+        XCTAssertEqual(TrackerPreviewStore.delivery(APIError.message("MDBList is busy with another change right now. Try again in a minute.")), .retryLater)
         XCTAssertEqual(TraktDelivery.of(APIError.message("Trakt asked TwilDiary to slow down. It tries again after 10:00.")), .retryLater,
                        "a cool-down never drops an edit")
     }
@@ -51,16 +51,12 @@ import TwilDiaryCore
         XCTAssertNil(TrackerPreviewStore.weTrakrMatch(try data([["id": 7, "type": "movie"]]), show: true), "never a title of the other kind")
     }
 
-    func testSimklListsAndNotFoundTitlesAreUnderstood() throws {
+    func testListedAddsAndNotFoundTitlesAreUnderstood() throws {
         func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
-        XCTAssertTrue(ProviderDeliveryPlanner.confirms(try data(["added": ["movies": [["to": "plantowatch", "ids": ["tmdb": 603]]]], "not_found": ["movies": []]])),
-                      "Simkl lists what it added")
+        XCTAssertTrue(ProviderDeliveryPlanner.confirms(try data(["added": ["movies": [["ids": ["tmdb": 603]]]], "not_found": ["movies": []]])),
+                      "a service that lists what it added")
         XCTAssertTrue(ProviderDeliveryPlanner.notFound(try data(["added": ["movies": 0], "not_found": ["movies": [["ids": ["tmdb": 1]]]]])))
         XCTAssertFalse(ProviderDeliveryPlanner.notFound(try data(["added": ["movies": 1], "not_found": ["movies": []]])))
-        let sent = DirectProviderClient.simklAnimeSeasons(try data(["shows": [["ids": ["tmdb": 1], "seasons": [["number": 2]]], ["ids": ["tmdb": 2]]]]))
-        let shows = try XCTUnwrap((try JSONSerialization.jsonObject(with: sent) as? [String: Any])?["shows"] as? [[String: Any]])
-        XCTAssertEqual(shows.first?["use_tvdb_anime_seasons"] as? Bool, true)
-        XCTAssertNil(shows.last?["use_tvdb_anime_seasons"], "a whole show (no seasons) is left as it is")
     }
 
     func testIdOnlyTitlesGetTheirNames() {
@@ -73,9 +69,9 @@ import TwilDiaryCore
 
     func testServiceLookUpsAndLeftOutTitles() throws {
         func data(_ object: Any) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
-        XCTAssertEqual(ServiceIDs.simklID(try data([["type": "movie", "ids": ["simkl": 53536, "tmdb": "603"]]])), 53536)
-        XCTAssertEqual(ServiceIDs.simklID(try data(["ids": ["simkl_id": 7]])), 7)
-        XCTAssertNil(ServiceIDs.simklID(try data([Any]())))
+        XCTAssertTrue(ServiceIDs.weTrakrHasNone(try data([Any]())))
+        XCTAssertTrue(ServiceIDs.weTrakrHasNone(try data(["data": [Any]()])))
+        XCTAssertFalse(ServiceIDs.weTrakrHasNone(try data([["id": 5, "type": "movie"]])))
         let reply = ServiceIDs.reply(try data(["added": ["movies": 1]]), adding: [["ids": ["tmdb": 9], "slot": "movies"]])
         XCTAssertTrue(ProviderDeliveryPlanner.notFound(reply), "a title the service lacks is reported, not silently dropped")
         XCTAssertEqual(TraktDirectStore.notFoundCount(reply), 1)

@@ -1,22 +1,22 @@
 import Foundation
 
 // Main tracker (ios/docs/TRAKT-CLIENT-PLAN.md, "Choose your main tracker"): the owner picks which
-// service is the diary: Trakt, Simkl or MDBList. Each one is read into the same
+// service is the diary: Trakt, MDBList or WeTrakr. Each one is read into the same
 // `TraktLibrary` model, so the comparison, the cache and (later) the screens are shared. What a
 // service can't hold stays in Cloudflare. Read-only for now: nothing here writes anywhere.
 
 public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
-    case trakt, simkl, mdblist, wetrakr
+    case trakt, mdblist, wetrakr
     public var id: String { rawValue }
-    /// The services TwilDiary offers. Simkl support was removed (owner's choice, 2026-11-13); its
-    /// case stays only so settings and queued edits saved before still read.
+    /// The services TwilDiary offers. (Simkl was removed, owner's choice, 2026-11-13: a saved
+    /// "simkl" no longer reads as a tracker, so it falls back to Trakt wherever it was chosen.)
     public static let offered: [MainTracker] = [.trakt, .mdblist, .wetrakr]
     /// The services besides Trakt that the app reads and writes on the phone.
     public static let others: [MainTracker] = [.mdblist, .wetrakr]
 
     /// What the service can hold as the diary. Anything it can't stays in Cloudflare.
     public struct Capabilities: Equatable, Sendable {
-        /// Several plays of one movie or episode. Simkl keeps one watch each (rewatches need Simkl PRO/VIP).
+        /// Several plays of one movie or episode. MDBList keeps one watch each.
         public let keepsRewatches: Bool
         public let holdsDropped: Bool
         public let holdsFavourites: Bool
@@ -30,13 +30,12 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 
     public var name: String {
-        switch self { case .trakt: "Trakt"; case .simkl: "Simkl"; case .mdblist: "MDBList"; case .wetrakr: "WeTrakr" }
+        switch self { case .trakt: "Trakt"; case .mdblist: "MDBList"; case .wetrakr: "WeTrakr" }
     }
 
     public var capabilities: Capabilities {
         switch self {
         case .trakt: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: 500, changeCheck: true)
-        case .simkl: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: 140, changeCheck: true)
         case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true, keepsSpecials: false)
         // WeTrakr keeps every play, favourites and dropped titles, and its journal names what changed.
         case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true)
@@ -47,7 +46,6 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
     public var summary: String {
         switch self {
         case .trakt: "History with rewatches, ratings, watchlist, favourites, dropped shows, notes up to 500 characters."
-        case .simkl: "History (one watch per episode), ratings, plan to watch, dropped, notes up to 140 characters. Best for anime."
         case .mdblist: "History, ratings, watchlist and dropped. No notes or favourites."
         case .wetrakr: "History with rewatches, ratings, watchlist, favourites and dropped. Notes stay in TwilDiary."
         }
@@ -66,11 +64,11 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Simkl and MDBList read into the shared library model. Like `TraktDecode`, an item that can't be
+/// MDBList and WeTrakr read into the shared library model. Like `TraktDecode`, an item that can't be
 /// identified is skipped and counted, never guessed.
 public enum TrackerDecode {
     private static func object(_ value: Any?) -> [String: Any]? { value as? [String: Any] }
-    /// A positive whole number, from a JSON number or a numeric string (Simkl sends TMDB ids as text).
+    /// A positive whole number, from a JSON number or a numeric string (some services send ids as text).
     static func int(_ value: Any?) -> Int? {
         if let text = value as? String { return Int(text.trimmingCharacters(in: .whitespaces)).flatMap { $0 > 0 && $0 <= 9_999_999_999 ? $0 : nil } }
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
@@ -100,125 +98,9 @@ public enum TrackerDecode {
             ?? (media["ids"] == nil && media["mediatype"] != nil ? int(media["id"]) : nil)
         let trakt = int(ids["trakt"]) ?? int(ids["trakt_id"])
         let imdb = ((ids["imdb"] ?? ids["imdb_id"]) as? String).flatMap { $0.hasPrefix("tt") && $0.count <= 15 ? $0 : nil }
-        guard tmdb != nil || trakt != nil || imdb != nil || int(ids["simkl"]) != nil || int(ids["mdblist"]) != nil else { return nil }
+        guard tmdb != nil || trakt != nil || imdb != nil || int(ids["mdblist"]) != nil else { return nil }
         return TraktTitleRef(kind: kind, traktId: trakt, tmdbId: tmdb, imdbId: imdb, tvdbId: int(ids["tvdb"]) ?? int(ids["tvdb_id"]),
-                             name: name, year: int(media["year"]) ?? int(media["release_year"]), simklId: int(ids["simkl"]) ?? int(ids["simkl_id"]))
-    }
-
-    // MARK: Simkl
-
-    /// `GET /sync/all-items/?extended=full&episode_watched_at=yes&memos=yes&include_all_episodes=yes`:
-    /// movies, shows and anime with their status, rating, memo and watched episodes.
-    /// `anime`: Anime-Lists, to place an anime episode Simkl gives no TVDB place for (its entry's
-    /// own number) by the entry's AniDB id.
-    public static func simklLibrary(from data: Data, anime: AnimeListIndex? = nil) throws -> TraktLibrary {
-        let parsed = try JSONSerialization.jsonObject(with: data)
-        // An empty library is `{}` (or, from some clients, `null`).
-        guard let root = parsed as? [String: Any] else {
-            if parsed is NSNull { return TraktLibrary() }
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl returned something other than a library."))
-        }
-        var library = TraktLibrary()
-        for bucket in ["movies", "shows", "anime"] {
-            for case let item as [String: Any] in (root[bucket] as? [Any]) ?? [] {
-                let block = object(item["movie"]) ?? object(item["show"])
-                let movie = item["movie"] != nil || (item["anime_type"] as? String)?.lowercased() == "movie"
-                guard let block, let title = ref(block, kind: movie ? .movie : .show) else { library.skipped += 1; continue }
-                let status = (item["status"] as? String)?.lowercased()
-                if status == "plantowatch" { library.watchlist.append(TraktListed(title: title, listedAt: date(item["added_to_watchlist_at"]))) }
-                if status == "dropped" { library.dropped.append(TraktListed(title: title, listedAt: date(item["last_watched_at"]))) }
-                if let rating = int(item["user_rating"]), (1...10).contains(rating) {
-                    library.ratings.append(TraktRating(title: title, rating: rating, ratedAt: date(item["user_rated_at"])))
-                }
-                if let memo = object(item["memo"]), let note = text(memo["text"]) {
-                    library.notes.append(TraktNote(id: playID("simkl-note|\(title.name)|\(title.tmdbId ?? 0)"), title: title, text: note, updatedAt: nil))
-                }
-                if movie {
-                    // One watch per movie (Simkl keeps rewatches only for PRO/VIP accounts).
-                    if status == "completed" || date(item["last_watched_at"]) != nil, status != "plantowatch" {
-                        let watched = date(item["last_watched_at"])
-                        library.plays.append(TraktPlay(historyId: playID("simkl|m|\(title.tmdbId ?? 0)|\(title.name)"), title: title, watchedAt: watched))
-                    }
-                    continue
-                }
-                // Anime: Simkl files each season as its own entry numbered from season 1. With
-                // `extended=full_anime_seasons` each episode says where it is in TVDB's numbering
-                // (closest to TMDB's), and the entry which TVDB seasons it covers.
-                let mapped = ((item["mapped_tvdb_seasons"] as? [Any]) ?? []).compactMap { int($0) }
-                let anidb = int(object(block["ids"])?["anidb"])
-                for case let season as [String: Any] in (item["seasons"] as? [Any]) ?? [] {
-                    for case let episode as [String: Any] in (season["episodes"] as? [Any]) ?? [] {
-                        let tvdb = object(episode["tvdb"])
-                        // The entry's own episode placed through Anime-Lists, in TMDB's numbering (the
-                        // diary's) whenever Anime-Lists has it, even over Simkl's TVDB place: a long
-                        // series TVDB splits into seasons (Simkl's TVDB S3E1 is the diary's S1E39), or a
-                        // season Simkl files under its own TMDB id, lands where the diary has it. With
-                        // only TVDB's numbering known, Simkl's own TVDB place stands.
-                        let own = int(episode["number"])
-                        let placed = anidb.flatMap { anidb in own.flatMap { anime?.show(anidb: anidb, episode: $0) } }
-                        if let placed, placed.tmdb != nil || tvdb == nil {
-                            let target = placed.tmdb.flatMap { $0 == title.tmdbId ? nil : $0 }.map {
-                                TraktTitleRef(kind: .show, traktId: title.traktId, tmdbId: $0, imdbId: nil, tvdbId: placed.tvdb ?? title.tvdbId,
-                                              name: title.name, year: title.year, simklId: title.simklId)
-                            } ?? title
-                            library.plays.append(TraktPlay(historyId: playID("simkl|e|\(target.tmdbId ?? 0)|\(title.name)|\(placed.season)|\(placed.episode)"),
-                                                           title: target, season: placed.season, episode: placed.episode, watchedAt: date(episode["watched_at"])))
-                            continue
-                        }
-                        guard let number = int(tvdb?["episode"]) ?? int(episode["number"]) else { library.skipped += 1; continue }
-                        // An episode without its own mapping, in an entry that covers one TVDB season: that season.
-                        let seasonNumber = tvdb.flatMap { int($0["season"]) } ?? (mapped.count == 1 ? mapped[0] : nil) ?? int(season["number"]) ?? 1
-                        let watched = date(episode["watched_at"])
-                        library.plays.append(TraktPlay(historyId: playID("simkl|e|\(title.tmdbId ?? 0)|\(title.name)|\(seasonNumber)|\(number)"),
-                                                       title: title, season: seasonNumber, episode: number, watchedAt: watched))
-                    }
-                }
-            }
-        }
-        return library
-    }
-
-    /// Every title's Simkl id in an all-items reply (any `extended`, including `simkl_ids_only`:
-    /// `{"shows":[{"show":{"ids":{"simkl":297}}}]}`). An entry without one throws, so a reply that
-    /// can't be read in full never makes titles look removed.
-    public static func simklIDs(from data: Data) throws -> Set<Int> {
-        let parsed = try JSONSerialization.jsonObject(with: data)
-        guard let root = parsed as? [String: Any] else {
-            if parsed is NSNull || (parsed as? [Any])?.isEmpty == true { return [] }
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl returned something other than a library."))
-        }
-        var ids = Set<Int>()
-        for bucket in ["movies", "shows", "anime"] {
-            for case let item as [String: Any] in (root[bucket] as? [Any]) ?? [] {
-                let block = object(item["movie"]) ?? object(item["show"]) ?? item
-                guard let id = int(object(block["ids"])?["simkl"]) ?? int(object(item["ids"])?["simkl"]) else {
-                    throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "A Simkl item had no Simkl id."))
-                }
-                ids.insert(id)
-            }
-        }
-        return ids
-    }
-
-    /// `GET /sync/ratings/{type}`: the rated titles (buckets like all-items, or a plain list).
-    public static func simklRatings(from data: Data) throws -> [TraktRating] {
-        let parsed = try JSONSerialization.jsonObject(with: data)
-        var entries: [Any] = []
-        if let root = parsed as? [String: Any] {
-            for bucket in ["movies", "shows", "anime"] { entries += (root[bucket] as? [Any]) ?? [] }
-        } else if let list = parsed as? [Any] {
-            entries = list
-        } else if !(parsed is NSNull) {
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Simkl returned something other than ratings."))
-        }
-        var ratings: [TraktRating] = []
-        for case let item as [String: Any] in entries {
-            let movie = item["movie"] != nil || (item["anime_type"] as? String)?.lowercased() == "movie"
-            guard let block = object(item["movie"]) ?? object(item["show"]), let title = ref(block, kind: movie ? .movie : .show),
-                  let rating = int(item["user_rating"]), (1...10).contains(rating) else { continue }
-            ratings.append(TraktRating(title: title, rating: rating, ratedAt: date(item["user_rated_at"])))
-        }
-        return ratings
+                             name: name, year: int(media["year"]) ?? int(media["release_year"]))
     }
 
     // MARK: MDBList

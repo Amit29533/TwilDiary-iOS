@@ -4,7 +4,6 @@ import Foundation
 public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
     case cloudflare
     case trakt
-    case simkl
     case mdblist
     case wetrakr
     public var id: Self { self }
@@ -12,7 +11,6 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
         switch self {
         case .cloudflare: "Cloudflare D1"
         case .trakt: "Trakt"
-        case .simkl: "Simkl"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
         }
@@ -98,6 +96,13 @@ public struct SyncOutboxQueue: Codable, Equatable, Sendable {
 
     public init(entries: [SyncOutboxEntry] = []) {
         self.entries = entries
+    }
+    private enum CodingKeys: String, CodingKey { case entries }
+    /// An entry left with no service to go to (it was queued only for a service the app no longer
+    /// has, like Simkl) is dropped as the queue loads, so it never waits forever as a pending edit.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        entries = try c.decode([SyncOutboxEntry].self, forKey: .entries).filter { !$0.pendingProviders.isEmpty }
     }
 
     public var isEmpty: Bool { entries.isEmpty }

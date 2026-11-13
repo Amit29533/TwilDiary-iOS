@@ -1,7 +1,7 @@
 import Foundation
 
-/// How long a service asked to be left alone. Trakt, WeTrakr and Simkl send `Retry-After`
-/// (seconds or an HTTP date); MDBList and Simkl also send `X-RateLimit-Remaining` with a reset
+/// How long a service asked to be left alone. Trakt and WeTrakr send `Retry-After`
+/// (seconds or an HTTP date); MDBList also sends `X-RateLimit-Remaining` with a reset
 /// (`X-RateLimit-Reset`, epoch seconds or seconds from now). The pause is kept between 5 seconds
 /// and a day, so a bad header can't lock a service out for long.
 public enum ProviderCooldown {

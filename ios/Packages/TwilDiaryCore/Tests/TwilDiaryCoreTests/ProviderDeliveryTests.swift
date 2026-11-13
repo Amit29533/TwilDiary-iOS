@@ -5,7 +5,7 @@ import TwilDiaryTestSupport
 
 @Test func providerDeliveryDoesNotAcknowledgeMissingMappingsOrUnknownReceipts() throws {
     let queue = SyncOutboxEntry(createdAt: "2026-11-03T00:00:00Z", mutation: .patchTitle(titleId: "missing", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.trakt])
-    for provider in [SyncProviderKind.trakt, .simkl, .mdblist] {
+    for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr] {
         let plan = ProviderDeliveryPlanner.plan(queue, provider: provider, in: SampleWorkspace.make())
         #expect(plan.deliveries.isEmpty)
         #expect(!plan.blocked.isEmpty)
@@ -18,8 +18,8 @@ import TwilDiaryTestSupport
     #expect(ProviderDeliveryPlanner.confirms(Data(#"{"deleted":{"movies":1},"not_found":{"movies":[]}}"#.utf8)))
 }
 
-/// Phase 5: MDBList's published contract (Trakt-style "ids") and Simkl's lists.
-@Test func mdblistAndSimklGetTheirOwnPathsForWatchesRatingsAndStatus() throws {
+/// Phase 5: MDBList's published contract (Trakt-style "ids").
+@Test func mdblistGetsItsOwnPathsForWatchesRatingsAndStatus() throws {
     let base = try SampleWorkspace.mapped()
     let movie = try #require(base.titles.first { !$0.isSeries && $0.tmdbId != nil })
     let watch = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .markWatch(operationId: "w", titleId: movie.id, episodeId: nil,
@@ -31,20 +31,15 @@ import TwilDiaryTestSupport
     let rated = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: 8,
         clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.mdblist])
     #expect(ProviderDeliveryPlanner.plan(rated, provider: .mdblist, in: base).deliveries.map(\.path) == ["/sync/ratings"])
-    let completed = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .patchTitle(titleId: movie.id, expectedVersion: 1, status: "completed",
-        score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil), pendingProviders: [.simkl])
-    let moved = ProviderDeliveryPlanner.plan(completed, provider: .simkl, in: base)
-    #expect(moved.blocked.isEmpty && moved.deliveries.map(\.path) == ["/sync/add-to-list"])
-    #expect((moved.deliveries[0].body["movies"] as? [[String: Any]])?.first?["to"] as? String == "completed")
     // Favourites go to Trakt only.
     let favourite = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: true, queued: nil, notes: nil)
     #expect(ProviderDeliveryPlanner.carries(favourite, provider: .trakt, isSeries: false))
-    #expect(!ProviderDeliveryPlanner.carries(favourite, provider: .simkl, isSeries: false) && !ProviderDeliveryPlanner.carries(favourite, provider: .mdblist, isSeries: false))
+    #expect(!ProviderDeliveryPlanner.carries(favourite, provider: .mdblist, isSeries: false))
     let traktFavourite = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: favourite, pendingProviders: [.trakt]), provider: .trakt, in: base)
     #expect(traktFavourite.blocked.isEmpty && traktFavourite.deliveries.map(\.path) == ["/sync/favorites"])
     let done = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "completed", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
     // MDBList keeps no Completed, but leaving Planned takes the title off its watchlist.
-    #expect(ProviderDeliveryPlanner.carries(done, provider: .mdblist, isSeries: false) && ProviderDeliveryPlanner.carries(done, provider: .simkl, isSeries: false))
+    #expect(ProviderDeliveryPlanner.carries(done, provider: .mdblist, isSeries: false))
     let offList = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: done, pendingProviders: [.mdblist]), provider: .mdblist, in: base)
     #expect(offList.blocked.isEmpty && offList.deliveries.map(\.path) == ["/watchlist/items/remove"])
     let dropped = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "dropped", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
@@ -67,39 +62,33 @@ import TwilDiaryTestSupport
     let trakt = plan(watch, .trakt)
     #expect(trakt.blocked.isEmpty && trakt.deliveries.map(\.key) == ["history-remove-timed"])
     #expect(String(describing: trakt.deliveries[0].body).contains("2026-02-02T20:00:00.000Z"))
-    #expect(plan(watch, .simkl).deliveries.map(\.path) == ["/sync/history/remove"] && plan(watch, .mdblist).deliveries.map(\.path) == ["/sync/watched/remove"])
+    #expect(plan(watch, .mdblist).deliveries.map(\.path) == ["/sync/watched/remove"])
     let wetrakr = plan(watch, .wetrakr)
     #expect(wetrakr.deliveries.map(\.path) == ["/sync/tracking/remove"] && !String(describing: wetrakr.deliveries[0].body).contains("allow_rewatch"))
-    // Another play of the episode is still in the diary: Simkl's one watch stays; Trakt loses just that play.
+    // Another play of the episode is still in the diary: MDBList's one watch stays; Trakt loses just that play.
     let rewatch = DetachedWatch(tmdbId: 209867, movie: false, season: 1, number: 2, watchedAt: "2026-02-02T20:00:00.000Z", othersRemain: true)
-    #expect(plan(rewatch, .simkl).deliveries.isEmpty && plan(rewatch, .simkl).blocked.isEmpty && plan(rewatch, .trakt).deliveries.count == 1)
+    #expect(plan(rewatch, .mdblist).deliveries.isEmpty && plan(rewatch, .mdblist).blocked.isEmpty && plan(rewatch, .trakt).deliveries.count == 1)
     // No time: Trakt can't tell which play, so it's said rather than every play taken off.
     let undated = DetachedWatch(tmdbId: 10494, movie: true, season: nil, number: nil, watchedAt: nil, othersRemain: false)
-    #expect(plan(undated, .trakt).deliveries.isEmpty && !plan(undated, .trakt).blocked.isEmpty && plan(undated, .simkl).deliveries.count == 1)
+    #expect(plan(undated, .trakt).deliveries.isEmpty && !plan(undated, .trakt).blocked.isEmpty && plan(undated, .mdblist).deliveries.count == 1)
 }
 
 @Test func providerDeliveryProgressSurvivesEncodingAndCannotBeCoalesced() throws {
     let mutation = OptimisticMutation.patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: true, notes: nil)
-    let entry = SyncOutboxEntry(createdAt: "2026-11-03T00:00:00Z", mutation: mutation, pendingProviders: [.simkl])
+    let entry = SyncOutboxEntry(createdAt: "2026-11-03T00:00:00Z", mutation: mutation, pendingProviders: [.mdblist])
     var queue = SyncOutboxQueue(entries: [entry])
-    queue.recordDelivery(entryID: entry.id, key: "simkl:rating", confirmed: true)
-    queue.recordDelivery(entryID: entry.id, key: "simkl:history", confirmed: false)
+    queue.recordDelivery(entryID: entry.id, key: "mdblist:rating", confirmed: true)
+    queue.recordDelivery(entryID: entry.id, key: "mdblist:history", confirmed: false)
     queue = try JSONDecoder().decode(SyncOutboxQueue.self, from: JSONEncoder().encode(queue))
-    #expect(queue.entries[0].confirmedActions == ["simkl:rating"])
-    #expect(queue.entries[0].uncertainActions == ["simkl:history"])
-    queue.enqueue(SyncOutboxEntry(createdAt: entry.createdAt, mutation: mutation, pendingProviders: [.simkl]))
+    #expect(queue.entries[0].confirmedActions == ["mdblist:rating"])
+    #expect(queue.entries[0].uncertainActions == ["mdblist:history"])
+    queue.enqueue(SyncOutboxEntry(createdAt: entry.createdAt, mutation: mutation, pendingProviders: [.mdblist]))
     #expect(queue.count == 2)
-    queue.recordDelivery(entryID: entry.id, key: "simkl:history", confirmed: false, rejected: true)
+    queue.recordDelivery(entryID: entry.id, key: "mdblist:history", confirmed: false, rejected: true)
     #expect(queue.entries[0].uncertainActions?.isEmpty == true)
 }
 
-@Test func remoteUnknownWatchDatesRemainUnknownAndNewSimklAccountsCanHaveNoActivity() throws {
-    let activities = try SimklSyncEngine.decodeActivities(from: Data(#"{"all":null}"#.utf8))
-    #expect(activities.all == nil)
-    #expect(throws: DecodingError.self) { try SimklSyncEngine.decodeActivities(from: Data(#"{}"#.utf8)) }
-    let snapshot = try SimklSyncEngine.decodeAllItems(from: Data(#"{"movies":[{"movie":{"ids":{"tmdb":1}},"status":"completed"}],"shows":[{"show":{"ids":{"tmdb":2}},"last_watched_at":"2026-10-01T12:00:00Z","seasons":[{"number":1,"episodes":[{"number":1}]}]}]}"#.utf8))
-    #expect(snapshot.plays.count == 2)
-    #expect(snapshot.plays.allSatisfy { $0.watchedAt == nil })
+@Test func remoteUnknownWatchDatesRemainUnknown() throws {
     let base = SampleWorkspace.make()
     let movie = try #require(base.titles.first { !$0.isSeries })
     var clean = base; clean.events.removeAll { $0.titleId == movie.id }
@@ -124,8 +113,8 @@ import TwilDiaryTestSupport
     #expect(allowed(watch(false)) == false)
     #expect(allowed(watch(true)) == true)
     let queued = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: nil, queued: true, notes: nil)
-    for provider in [SyncProviderKind.trakt, .simkl, .mdblist, .wetrakr] { #expect(!ProviderDeliveryPlanner.carries(queued, provider: provider, isSeries: false)) }
-    // A play read from Simkl: its id isn't Trakt's.
+    for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr] { #expect(!ProviderDeliveryPlanner.carries(queued, provider: provider, isSeries: false)) }
+    // A play read from another service (once Simkl): its id isn't Trakt's.
     base.events.append(WatchEvent(id: "trakt-777", operationId: "trakt-777", titleId: movie.id, episodeId: nil, watchedAt: "2026-11-01T10:00:00.000Z",
                                   recordedAt: "2026-11-01T10:00:00.000Z", origin: "simkl"))
     let removal = SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .revokeWatch(eventId: "trakt-777", titleId: movie.id, expectedVersion: 1, revokedAt: "2026-11-05T00:00:00.000Z"), pendingProviders: [.trakt])

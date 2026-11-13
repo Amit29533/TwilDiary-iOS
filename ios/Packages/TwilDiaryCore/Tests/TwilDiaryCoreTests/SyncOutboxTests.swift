@@ -25,14 +25,14 @@ import TwilDiaryTestSupport
         operationId: "op-1",
         createdAt: "2026-10-23T12:00:00Z",
         mutation: .patchTitle(titleId: "again", expectedVersion: 1, status: "watching", score: 8.5, clearScore: false, favorite: nil, queued: nil, notes: nil),
-        pendingProviders: [.cloudflare, .trakt, .simkl]
+        pendingProviders: [.cloudflare, .trakt, .wetrakr]
     )
     let second = SyncOutboxEntry(
         id: "entry-2",
         operationId: "op-2",
         createdAt: "2026-10-23T12:00:05Z",
         mutation: .patchTitle(titleId: "again", expectedVersion: 2, status: nil, score: 9.0, clearScore: false, favorite: true, queued: nil, notes: "Great pacing"),
-        pendingProviders: [.cloudflare, .trakt, .simkl]
+        pendingProviders: [.cloudflare, .trakt, .wetrakr]
     )
     queue.enqueue(first)
     let merged = queue.enqueue(second)
@@ -49,10 +49,10 @@ import TwilDiaryTestSupport
     #expect(queue.count == 1)
     #expect(queue.pending(for: .cloudflare).isEmpty)
     #expect(queue.pending(for: .trakt).count == 1)
-    #expect(queue.pending(for: .simkl).count == 1)
+    #expect(queue.pending(for: .wetrakr).count == 1)
 
     queue.acknowledge(entryID: "entry-1", provider: .trakt)
-    queue.acknowledge(entryID: "entry-1", provider: .simkl)
+    queue.acknowledge(entryID: "entry-1", provider: .wetrakr)
     #expect(queue.isEmpty)
 }
 
@@ -114,32 +114,7 @@ import TwilDiaryTestSupport
     #expect(updatedTitle.score == 10.0)
 }
 
-@Test func simklAndMDBListNormalizationAndOutboxFanout() throws {
-    let simklJSON = Data(#"""
-    {
-      "movies": [
-        {
-          "status": "completed",
-          "last_watched_at": "2026-10-20T10:00:00Z",
-          "user_rating": 9,
-          "movie": { "ids": { "tmdb": "12345" } }
-        }
-      ],
-      "anime": [
-        {
-          "status": "plantowatch",
-          "added_to_watchlist_at": "2026-10-21T10:00:00Z",
-          "show": { "ids": { "tmdb": 67890 } }
-        }
-      ]
-    }
-    """#.utf8)
-    let snapshot = try SimklSyncEngine.decodeAllItems(from: simklJSON)
-    #expect(snapshot.plays.count == 1)
-    #expect(snapshot.plays.first?.tmdbId == 12345)
-    #expect(snapshot.ratings.first?.rating == 9)
-    #expect(snapshot.watchlist.first?.tmdbId == 67890)
-
+@Test func mdblistNormalizationAndOutboxFanout() throws {
     let mdbJSON = Data(#"""
     {
       "score": 86,
@@ -161,21 +136,21 @@ import TwilDiaryTestSupport
         operationId: "op-fanout-1",
         createdAt: "2026-10-23T12:00:00Z",
         mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 9.0, clearScore: false, favorite: nil, queued: true, notes: nil),
-        pendingProviders: [.simkl, .mdblist]
+        pendingProviders: [.mdblist, .wetrakr]
     ))
-    let simklBatch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .simkl, from: queue, in: workspace))
-    #expect(simklBatch.entryIDs == ["fanout-1"])
-    #expect(simklBatch.ratingsPayload != nil)
-    #expect(simklBatch.watchlistPayload != nil)
+    let mdblistBatch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .mdblist, from: queue, in: workspace))
+    #expect(mdblistBatch.entryIDs == ["fanout-1"])
+    #expect(mdblistBatch.ratingsPayload != nil)
+    #expect(mdblistBatch.watchlistPayload != nil)
 }
 
 @Test func anEditTheServerNoLongerTakesGoesToTheServiceHoldingTheDiary() {
     var queue = SyncOutboxQueue()
     let watch = queue.enqueue(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .markWatch(operationId: "w", titleId: "t", episodeId: nil,
-        watchedAt: "2026-11-05T00:00:00Z", recordedAt: "2026-11-05T00:00:00Z", rewatch: false), pendingProviders: [.cloudflare, .simkl]))
+        watchedAt: "2026-11-05T00:00:00Z", recordedAt: "2026-11-05T00:00:00Z", rewatch: false), pendingProviders: [.cloudflare, .mdblist]))
     queue.handOver(entryID: watch.id, to: .trakt)
     #expect(queue.pending(for: .cloudflare).isEmpty)
-    #expect(queue.entries.first?.pendingProviders == [.simkl, .trakt])
+    #expect(queue.entries.first?.pendingProviders == [.mdblist, .trakt])
     let revoke = queue.enqueue(SyncOutboxEntry(createdAt: "2026-11-05T00:00:00Z", mutation: .revokeWatch(eventId: "e", titleId: "u", expectedVersion: 1,
         revokedAt: "2026-11-05T00:00:00Z"), pendingProviders: [.cloudflare]))
     queue.handOver(entryID: revoke.id, to: nil)
@@ -259,29 +234,29 @@ import TwilDiaryTestSupport
         operationId: "op-sk-1",
         createdAt: "2026-10-23T19:00:00Z",
         mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil),
-        pendingProviders: [.simkl]
+        pendingProviders: [.mdblist]
     ))
-    let batch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .simkl, from: queue, in: workspace))
-    #expect(batch.provider == .simkl)
+    let batch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .mdblist, from: queue, in: workspace))
+    #expect(batch.provider == .mdblist)
     #expect(batch.ratingsPayload != nil && batch.watchlistPayload != nil)
     #expect(batch.idempotencyKey == nil)
-    // Simkl keeps no favourites: an edit that changes one is held back, never half-sent.
+    // MDBList keeps no favourites: an edit that changes one is held back, never half-sent.
     var favourite = SyncOutboxQueue()
     favourite.enqueue(SyncOutboxEntry(createdAt: "2026-10-23T19:00:00Z",
         mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: true, queued: nil, notes: nil),
-        pendingProviders: [.simkl]))
-    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .simkl, from: favourite, in: workspace) == nil)
+        pendingProviders: [.mdblist]))
+    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .mdblist, from: favourite, in: workspace) == nil)
 
     let diProviderState = SyncLiveActivityState.forProviderBatch(
-        provider: .simkl,
+        provider: .mdblist,
         completed: 3,
         total: 6,
         phase: .flushingOutbox,
         isBackgrounded: true
     )
-    #expect(diProviderState.compactBadge == "SK")
+    #expect(diProviderState.compactBadge == "ML")
     #expect(diProviderState.percent == 50)
-    #expect(diProviderState.title == "Background Simkl sync")
+    #expect(diProviderState.title == "Background MDBList sync")
 
     let traktSync = TraktSync(
         next: nil,
@@ -297,7 +272,7 @@ import TwilDiaryTestSupport
 
 @Test func providerConnectionSettingsAndLoggingMethods() throws {
     var settings = ProviderConnectionSettings()
-    #expect(settings.simkl.statusBadge == "Set up")
+    #expect(settings.wetrakr.statusBadge == "Set up")
     #expect(settings.activeDirectLoggingProviders.isEmpty)
 
     settings.customTmdbToken = "  custom-tmdb-token  "
@@ -310,28 +285,27 @@ import TwilDiaryTestSupport
             clientId: "trakt-cid",
             accessToken: "trakt-token"
         ),
-        simkl: ExternalProviderConfig(
-            provider: .simkl,
-            enabled: true,
-            loggingMethod: .serverAndDirectAPI,
-            clientId: "simkl-cid",
-            accessToken: "simkl_token_456",
-            username: "cinephile"
-        ),
         mdblist: ExternalProviderConfig(
             provider: .mdblist,
             enabled: true,
             loggingMethod: .directAPIOnly,
             apiKey: "mdb-key"
+        ),
+        wetrakr: ExternalProviderConfig(
+            provider: .wetrakr,
+            enabled: true,
+            loggingMethod: .serverAndDirectAPI,
+            clientId: "wetrakr-cid",
+            accessToken: "wetrakr_token_456",
+            username: "cinephile"
         )
     )
     #expect(settings.customTmdbToken == "custom-tmdb-token")
-    #expect(settings.simkl.statusBadge == "Connected")
+    #expect(settings.wetrakr.statusBadge == "Connected")
     #expect(settings.mdblist.statusBadge == "Connected")
     #expect(settings.trakt.loggingMethod.includesServerLogging == true)
     #expect(settings.trakt.loggingMethod.includesDirectAPI == false)
-    // Simkl support was removed: a connected Simkl is never sent anything.
-    #expect(settings.activeDirectLoggingProviders == Set([.mdblist]))
+    #expect(settings.activeDirectLoggingProviders == Set([.mdblist, .wetrakr]))
 
     final class MemorySecretStore: ProviderSecretStoring, @unchecked Sendable {
         var values: [String: String] = [:]
@@ -350,12 +324,12 @@ import TwilDiaryTestSupport
     // Verify UserDefaults payload stripped plaintext tokens and stored them in the secret store
     let rawJSON = String(data: suite.data(forKey: "test.settings") ?? Data(), encoding: .utf8) ?? ""
     #expect(!rawJSON.contains("custom-tmdb-token"))
-    #expect(!rawJSON.contains("simkl_token_456"))
+    #expect(!rawJSON.contains("wetrakr_token_456"))
     #expect(!rawJSON.contains("mdb-key"))
     let sealed = try #require(secretStore.readSecret(for: "test.settings.credentials.v2"))
     let protectedSettings = try JSONDecoder().decode(ProviderConnectionSettings.self, from: Data(sealed.utf8))
     #expect(protectedSettings.customTmdbToken == "custom-tmdb-token")
-    #expect(protectedSettings.simkl.accessToken == "simkl_token_456")
+    #expect(protectedSettings.wetrakr.accessToken == "wetrakr_token_456")
     #expect(protectedSettings.mdblist.apiKey == "mdb-key")
     #expect(try store.load() == settings)
 }
@@ -390,19 +364,23 @@ import TwilDiaryTestSupport
 
 }
 
-/// A service the app no longer knows: a saved outbox naming it still loads, with every other
-/// pending edit kept and that service simply dropped.
+/// A service the app no longer knows (Simkl, removed 2026-11-13): a saved outbox naming it still
+/// loads, with every other pending edit kept, that service simply dropped, and an edit queued for it
+/// alone gone.
 @Test func aSavedOutboxNamingARemovedProviderStillLoads() throws {
     let entry = SyncOutboxEntry(createdAt: "2026-10-23T19:00:00Z",
                                 mutation: .patchTitle(titleId: "again", expectedVersion: 1, status: nil, score: 8, clearScore: false, favorite: nil, queued: nil, notes: nil),
-                                pendingProviders: [.cloudflare, .simkl])
+                                pendingProviders: [.cloudflare])
     // The real encoding of a mutation, with a removed provider added to the saved list.
     var saved = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(SyncOutboxQueue(entries: [entry]))) as? [String: Any])
     var entries = try #require(saved["entries"] as? [[String: Any]])
     entries[0]["pendingProviders"] = ["cloudflare", "simkl", "retired-service"]
+    var onlyRemoved = entries[0]
+    onlyRemoved["id"] = "only-simkl"; onlyRemoved["operationId"] = "only-simkl"; onlyRemoved["pendingProviders"] = ["simkl"]
+    entries.append(onlyRemoved)
     saved["entries"] = entries
     let queue = try JSONDecoder().decode(SyncOutboxQueue.self, from: JSONSerialization.data(withJSONObject: saved))
     #expect(queue.entries.count == 1)
-    #expect(queue.entries[0].pendingProviders == [.cloudflare, .simkl])
+    #expect(queue.entries[0].pendingProviders == [.cloudflare])
     #expect(queue.entries[0].mutation == entry.mutation)
 }

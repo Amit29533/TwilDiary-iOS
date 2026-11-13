@@ -7,8 +7,8 @@ import Foundation
 // notes and tags stay attached. Read-only for now: edits go back to the server diary.
 
 public enum TraktDiary {
-    /// `tracker`: the service the library comes from. What it doesn't keep (favourites on Simkl and
-    /// MDBList) stays as the server has it.
+    /// `tracker`: the service the library comes from. What it doesn't keep (favourites on MDBList)
+    /// stays as the server has it.
     /// `catalog`: titles made on the phone from TMDB (`catalogTitle`) for what's only on the
     /// service, so they show their poster, seasons and category without joining the server.
     public static func build(library: TraktLibrary, server: Workspace, tracker: MainTracker = .trakt, catalog: [String: MediaTitle] = [:]) -> Workspace {
