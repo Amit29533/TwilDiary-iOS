@@ -692,21 +692,12 @@ struct LibraryListRow: View {
     }
 }
 
-@MainActor func titleRow(_ title: MediaTitle) -> some View {
-    HStack(spacing: 12) {
-        Artwork(path: title.poster, title: title.name).frame(width: 48, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
-        VStack(alignment: .leading, spacing: 5) { Text(title.name).font(.subheadline.bold()); Text(title.categoryName).font(.caption).foregroundStyle(.secondary) }
-        Spacer(); DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(.secondary)
-    }.foregroundStyle(.white).diaryPanel()
-}
-
 struct GlanceView: View {
     @AppStorage("glanceGrid") private var grid = false
     @AppStorage("glanceSort") private var sortRaw = GlanceSort.recentlyUpdated.rawValue
     @Environment(DiaryStore.self) private var store
     /// Remembered between visits, like the layout and sort.
     @AppStorage("glanceCategory") private var category = LibraryCategory.all
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var showAll = false
     private func glanceHeading(_ name: String, _ count: Int) -> some View {
         HStack {

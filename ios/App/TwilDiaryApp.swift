@@ -77,9 +77,6 @@ enum AppTab: String, CaseIterable, Hashable {
         return saved.flatMap(AppTab.init(rawValue:)) ?? .glance
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
-    var icon: String {
-        switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .search: "search"; case .more: "user-round" }
-    }
 }
 enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
@@ -154,7 +151,6 @@ struct SavedTitleRoute: Hashable {
     func libraryDisk(_ key: String) { library("all"); libraryDiskShortcut = key == "all" ? "" : key }
     func statsToday() { statsRevision += 1; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.statistics); selectedTab = .more }
     func search() { selectedTab = .search; paths[.search] = NavigationPath() }
-    func files() { selectedTab = .more; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.files) }
     func openTitle(_ id: String, tab: AppTab) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         selectedTab = tab; paths[tab, default: NavigationPath()].append(id)

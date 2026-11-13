@@ -6,8 +6,6 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
     case twilight, ocean, jade, rose, amber
     var id: Self { self }
     var name: String { rawValue.capitalized }
-    var text: Color { Color(webHex: "#f3f0f7") }
-    var muted: Color { Color(webHex: "#a09aa9") }
     var field: Color { Color(webHex: "#111115") }
     var detail: String {
         switch self {
@@ -16,15 +14,6 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .jade: "A quiet mint glow"
         case .rose: "Soft pink after dark"
         case .amber: "Warm cinema gold"
-        }
-    }
-    var strong: Color {
-        switch self {
-        case .twilight: Color(webHex: "#9d76f4")
-        case .ocean: Color(webHex: "#498de8")
-        case .jade: Color(webHex: "#36ae8c")
-        case .rose: Color(webHex: "#d66d9f")
-        case .amber: Color(webHex: "#ca8e36")
         }
     }
     var ink: Color {
@@ -653,29 +642,6 @@ private struct CardCircle: ViewModifier {
 }
 
 
-/// "Recently updated ▾" on the left, screen tools (layout toggle, filters) on the right.
-struct SortMenuRow<Option: Hashable & Identifiable, Trailing: View>: View {
-    let options: [Option]
-    @Binding var selection: Option
-    let label: (Option) -> String
-    let identifier: String
-    @ViewBuilder var trailing: Trailing
-    var body: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Picker("Sort", selection: $selection) { ForEach(options) { Text(label($0)).tag($0) } }
-            } label: {
-                // Plain text on Glance by the owner's choice: that row is tight on space.
-                HStack(spacing: 6) { Text(label(selection)); DiaryIcon(name: "chevron-down", size: 14) }
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Color(webHex: "#c5c0cf"))
-                    .frame(minHeight: 44).contentShape(Rectangle())
-            }.accessibilityIdentifier(identifier).accessibilityLabel("Sort").accessibilityValue(label(selection))
-            Spacer(minLength: 0)
-            trailing
-        }.padding(.leading, 18).padding(.trailing, 8)
-    }
-}
-
 struct ProgressCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     let title: MediaTitle
@@ -892,22 +858,6 @@ struct ProgressCard: View {
         }.padding(16).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
     }
-    /// The bar with "63% of season 1" and the time left; long-running seasons show no share.
-    private var progressBlock: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if card == nil || cardText?.progressLabel != nil {
-                GeometryReader { proxy in Capsule().fill(.white.opacity(0.16)).overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(height: 6)
-            }
-            // Narrow grid cards stack the time left under the share instead of truncating it.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { progressText; Spacer(minLength: 0); timeLeftText }
-                VStack(alignment: .leading, spacing: 2) { progressText; timeLeftText }
-            }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf")).lineLimit(1)
-        }
-    }
-    // Before the card loads, say so instead of showing a made-up zero.
-    private var progressText: some View { Text(card == nil ? "Checking progress…" : cardText?.progressLabel ?? "").fixedSize() }
-    @ViewBuilder private var timeLeftText: some View { if let left = cardText?.timeLeft { Text(left).monospacedDigit().fixedSize() } }
     /// − last watched episode + for shows; one Log watch button for movies. The circles are
     /// 36 pt, as in the owner's design, inside 44 pt tap targets.
     @ViewBuilder private var controls: some View {
@@ -1028,11 +978,6 @@ struct ProgressCard: View {
             .accessibilityIdentifier("progress-next-" + title.id)
     }
 
-    /// "S1 · Watched 5 of 8 · Next E6" (see GlanceCardText).
-    private var subtitleLine: some View {
-        Text(cardText?.subtitle ?? (title.isSeries ? title.categoryName : "Movie"))
-            .foregroundStyle(Color(webHex: "#c5c0cf")).modifier(TextShadow(on: hero))
-    }
     private var cardText: GlanceCardText? {
         guard let card else { return nil }
         if !title.isSeries { return .movie(watched: card.progress.watched > 0, runtimeMinutes: title.runtimeMinutes) }

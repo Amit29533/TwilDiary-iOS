@@ -42,7 +42,6 @@ import TwilDiaryCore
     }
     /// Any key at all (Gemini, Groq or Requesty): AI search and CineMind can answer.
     static var key: String? { keys.first ?? groqRequestKeys.first ?? requestyRequestKeys.first }
-    static var hasOwnKey: Bool { !ownKeys.isEmpty }
 
     /// The AI services, each with its own keys.
     enum Service: String, CaseIterable, Identifiable, Sendable {
@@ -135,11 +134,6 @@ import TwilDiaryCore
         return saveKeys(list)
     }
     @discardableResult static func removeKey(_ value: String) -> Bool { saveKeys(ownKeys.filter { $0 != value }) }
-    /// nil removes every key; a value replaces them with that one.
-    @discardableResult static func setKey(_ value: String?) -> Bool {
-        let kept = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return saveKeys(kept.isEmpty ? [] : [kept])
-    }
     /// "••••AbC4": a key as the list shows it.
     static func masked(_ key: String) -> String { "••••" + String(key.suffix(4)) }
 

@@ -475,10 +475,6 @@ enum ServiceRemovals {
         let fill = store.traktHoldsDiary
         return library.map { TraktWritePlan.make(library: $0, workspace: store.serverDiary, fillOnly: fill, except: fill ? settled($0, store.serverDiary) : MatchLedger.tokens(.trakt)) }
     }
-    private func comparison(_ library: TraktLibrary, store: DiaryStore) -> TraktComparison {
-        let fill = store.traktHoldsDiary
-        return TraktComparison.compare(library, with: store.serverDiary, oneWay: fill, except: fill ? settled(library, store.serverDiary) : MatchLedger.tokens(.trakt))
-    }
     /// The comparison with the diary and the plan for "Make Trakt match", away from the main thread.
     private func analysis(_ library: TraktLibrary, store: DiaryStore) async -> (comparison: TraktComparison, plan: TraktWritePlan) {
         let fill = store.traktHoldsDiary, diary = store.serverDiary
@@ -986,14 +982,6 @@ enum ServiceRemovals {
         await check(store: store)
         return "Restored to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
             + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) watches in the backup have no date and were left out." : "")
-    }
-    /// Takes queued history writes for plays at this time out of the queue (Undo before they
-    /// reached Trakt); true when there were any.
-    func cancelPending(watchedAt when: String) -> Bool {
-        let before = pending.count
-        // One whose answer was lost may already be on Trakt: that one is read and removed there instead.
-        pending.removeAll { $0.id != inFlight && $0.uncertain != true && $0.path == "/sync/history" && String(decoding: $0.body, as: UTF8.self).contains(when) }
-        return pending.count != before
     }
     /// For a history write whose answer was lost: Trakt's history at that time (a minute either
     /// side) is read, and only the plays not there are kept; nil when all of them already are.

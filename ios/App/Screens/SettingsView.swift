@@ -10,7 +10,6 @@ struct SettingsView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
-    @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmSignOut = false
@@ -297,9 +296,6 @@ struct SettingsView: View {
     private func settingsRow(_ icon: String, _ tint: TileTint, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false, padded: Bool = true) -> some View {
         settingsRow(leading: tile(icon, tint), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: padded)
     }
-    private func settingsRow(_ brand: BrandLogo.Service, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
-        settingsRow(leading: BrandLogo(service: brand), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: true)
-    }
     private func settingsRow<Leading: View>(leading: Leading, _ title: String, subtitle: String?, value: String?, disclosure: Bool, padded: Bool) -> some View {
         HStack(spacing: 14) {
             leading
@@ -343,7 +339,6 @@ struct DiaryJSONDocument: FileDocument {
 
 struct TMDBConnectionView: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var checking = false
     @State private var verified = false
     @State private var error: String?

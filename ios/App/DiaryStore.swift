@@ -37,14 +37,6 @@ import TwilDiaryCore
         retainedTraktController?.suspendForBackground()
         BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: hasWaitingEdits)
     }
-    /// Requests a background execution window on iOS while updating the Dynamic Island Live Activity,
-    /// suspending cleanly when the OS background time expires.
-    func continueSyncInBackground() {
-        BackgroundSyncCoordinator.shared.scheduleBackgroundTasks(hasPendingOutbox: hasWaitingEdits)
-        BackgroundSyncCoordinator.shared.beginBackgroundExecution { [weak self] in
-            self?.suspendTraktForBackground()
-        }
-    }
     struct HomeProjection: Sendable {
         let overview: HomeOverview
         let watching: [MediaTitle]
@@ -1569,19 +1561,6 @@ import TwilDiaryCore
             break
         }
     }
-    /// Restores or deterministically merges a `DiaryExport` JSON archive on-device (for standalone
-    /// local mode, iCloud Drive backup sync, or cross-device recovery).
-    func importArchive(_ data: Data, merge: Bool = true) throws {
-        let archive = try DiaryExport.decoded(from: data)
-        let updated = try (merge ? archive.merged(into: confirmedWorkspace) : archive.toWorkspace())
-        confirmedWorkspace = updated
-        workspace = outbox.project(onto: updated)
-        hasLoadedWorkspace = true
-        indexWorkspace()
-        if let scope = api.credential?.cacheScope {
-            try cache.save(updated, scope: scope, at: now)
-        }
-    }
     func libraryProgress(_ title: MediaTitle) -> Double { progressIndex[title.id] ?? 0 }
     func hasPresentLocation(_ titleID: String) -> Bool { presentTitleIDs.contains(titleID) }
     func browserCredential() -> AccessCredential? { api.credential }
@@ -2119,11 +2098,6 @@ import TwilDiaryCore
         }
     }
     func dismissUndo() { undoLabel = nil; undoAction = nil }
-    /// Undo for an edit made outside this file (the phone's Trash).
-    func setUndo(_ titles: Set<String>, _ action: @escaping () async throws -> Void) {
-        undoAction = action
-        undoTitles = titles
-    }
     func installUndo(_ actions: [(event: WatchEvent, action: String)], label: String) {
         guard !actions.isEmpty else { return }
         undoLabel = label

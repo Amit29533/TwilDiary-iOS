@@ -135,7 +135,6 @@ struct DiaryScreenBackground: View {
     var name = ""
     var forceGlass = false
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var bitmap: GlassArtworkBitmap?
     private var candidate: MediaTitle? { store.activeTitles.first { $0.status == "watching" && ($0.backdrop != nil || $0.poster != nil) } ?? store.activeTitles.first }

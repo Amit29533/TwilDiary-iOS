@@ -363,7 +363,6 @@ struct CatalogDetailView: View {
     var onImported: ((String) -> Void)? = nil
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var details: CatalogBrowse?
     @State private var failure: String?
     @State private var loading = false
@@ -524,7 +523,6 @@ private struct CatalogSeasonPreview: View {
     /// The episode whose details sheet is open (the same sheet as a saved title's episodes).
     @State private var selectedEpisode: Int?
     @State private var swipeForward = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sheetEpisode: Int?
     init(route: CatalogRoute, details: CatalogDetails, store: DiaryStore) {
         self.route = route; self.details = details

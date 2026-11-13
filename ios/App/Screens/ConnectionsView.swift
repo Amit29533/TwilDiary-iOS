@@ -262,19 +262,7 @@ struct ConnectionsView: View {
 
     // MARK: Rows
 
-    @ViewBuilder private func group<Content: View>(_ name: String?, note: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let name { Text(name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4) }
-            VStack(spacing: 0, content: content).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
-            if let note { Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
-        }
-    }
     private var divider: some View { SettingsDivider() }
-    private func tile(_ symbol: String, _ color: Color) -> some View {
-        Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-            .frame(width: 34, height: 34).background(color.gradient, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
-    }
     private func row<Leading: View>(_ leading: Leading, _ title: String, _ subtitle: String, value: String?, destination: AppDestination, id: String) -> some View {
         NavigationLink(value: destination) { rowLabel(leading, title, subtitle, value: value) }.buttonStyle(.plain).accessibilityIdentifier(id)
     }

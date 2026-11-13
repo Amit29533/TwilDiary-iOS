@@ -6,7 +6,6 @@ import TwilDiaryCore
 /// Explore button, This week, Up next posters, New episodes and Recently watched.
 struct HomeView: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -228,51 +227,6 @@ struct HomeView: View {
     @MainActor private static var heroArt: [String: String] = [:]
     /// Just enough to reach under the status bar; pulling down stretches the art instead of revealing a gap.
     private static let artLift: CGFloat = 64
-    private func discoverButton(_ name: String, icon: String) -> some View {
-        HStack(spacing: 10) {
-            Spacer(minLength: 0)
-            DiaryIcon(name: icon, size: 16).foregroundStyle(theme.ink).frame(width: 30, height: 30).background(theme.accent, in: Circle())
-            Text(name).font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
-            Spacer(minLength: 0)
-        }.frame(height: 54).frame(maxWidth: .infinity)
-            .overlay(alignment: .trailing) { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(theme.accent).padding(.trailing, 16) }
-            .background(theme.accent.opacity(0.1), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.55), lineWidth: 1.5))
-            .contentShape(Capsule())
-    }
-    private func heading<Trailing: View>(_ name: String, @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: 8) {
-            Text(name).font(.system(size: 22, weight: .bold)).tracking(-0.6)
-            Spacer(minLength: 4)
-            trailing().font(.system(size: 15, weight: .semibold)).tint(theme.accent)
-        }.frame(minHeight: 32)
-    }
-    private func weekPanel(_ overview: HomeOverview, now: Date) -> some View {
-        let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
-        return VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 0) {
-                metric(DiaryDate.duration(overview.minutes), "Watch time", accent: true)
-                divider
-                metric(String(overview.watches), "Watches")
-                divider
-                metric("\(overview.streak) \(overview.streak == 1 ? "day" : "days")", "Current streak")
-            }
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
-            HStack(alignment: .top, spacing: 0) { ForEach(overview.days) { day in
-                NavigationLink(value: HistoryRoute(day: day.date)) {
-                    VStack(spacing: 6) {
-                        Text(day.date, format: .dateTime.weekday(.narrow)).font(.system(size: 11)).foregroundStyle(.secondary)
-                        Text(day.date, format: .dateTime.day()).font(.system(size: 16, weight: .semibold)).foregroundStyle(DiaryDate.calendar().isDate(day.date, inSameDayAs: now) ? theme.accent : .primary)
-                        // Days without watches keep a dim full-height slot, as in the design.
-                        VStack { Spacer(minLength: 0); RoundedRectangle(cornerRadius: 4).fill(day.minutes > 0 ? theme.accent : .white.opacity(0.08)).frame(width: 13, height: day.minutes > 0 ? max(8, 30 * CGFloat(day.minutes) / CGFloat(maximum)) : 24) }.frame(height: 30)
-                    }.frame(maxWidth: .infinity).foregroundStyle(.primary).opacity(day.future ? 0.45 : 1)
-                }.buttonStyle(.plain).disabled(day.future).accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)), \(day.count) watches")
-            } }
-        }.diaryPanel(radius: 18)
-    }
-    private var divider: some View { Rectangle().fill(.white.opacity(0.1)).frame(width: 1, height: 44).padding(.horizontal, 14) }
-    private func metric(_ value: String, _ label: String, accent: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) { Text(value).font(.system(size: 24, weight: .bold)).tracking(-0.7).foregroundStyle(accent ? theme.accent : .primary).lineLimit(1).minimumScaleFactor(0.7); Text(label).font(.system(size: 13)).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading)
-    }
 }
 
 /// Home's hero art. Pulling the page down to refresh zooms it from its bottom edge by exactly the

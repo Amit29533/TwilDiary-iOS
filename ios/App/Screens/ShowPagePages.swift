@@ -47,7 +47,6 @@ enum EpisodeRowState: Equatable {
 struct EpisodeChip: View {
     let text: String
     var accent = false
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         Text(text).font(.system(size: 11, weight: .semibold)).lineLimit(1)
             .foregroundStyle(accent ? HomeStyle.chipText : text.hasPrefix("Watched") ? HomeStyle.dateChipText : HomeStyle.secondary)
@@ -91,7 +90,6 @@ struct EpisodeCardRow: View {
     let onToggle: () -> Void
     /// False on a preview page: the title isn't in your diary, so there is nothing to tick.
     var showsTick = true
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     private var watched: Bool { if case .watched = state { return true } else { return false } }
     var body: some View {
         HStack(spacing: 12) {
@@ -259,7 +257,6 @@ struct EpisodesPage: View {
     let titleID: String
     @State private var season: Int
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage("episodesPageGrid") private var grid = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

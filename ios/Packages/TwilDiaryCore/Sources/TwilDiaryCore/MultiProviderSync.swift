@@ -375,53 +375,7 @@ public enum MDBListSyncEngine {
         return RatingSummary(tmdbId: tmdbId, isSeries: isSeries, aggregatedScore: raw.score, ratings: ratings)
     }
 
-    public static func buildWatchedPayload(from plan: DirectTraktPlan) -> [String: Any]? {
-        DirectTraktEngine.buildPushPayloads(from: plan).history
-    }
 
-    public static func buildWatchlistPayload(from plan: DirectTraktPlan) -> [String: Any]? {
-        DirectTraktEngine.buildPushPayloads(from: plan).watchlist
-    }
-}
-
-/// Universal external tracker bridge (multi-provider outbox fan-out).
-public enum MultiProviderOutboxDispatcher {
-    public struct ProviderBatch {
-        public let provider: SyncProviderKind
-        public let entryIDs: [String]
-        public let historyPayload: [String: Any]?
-        public let ratingsPayload: [String: Any]?
-        public let watchlistPayload: [String: Any]?
-        public let favoritesPayload: [String: Any]?
-        public let idempotencyKey: String?
-    }
-
-    /// Compiles pending outbox mutations for an external provider (`.trakt`, `.mdblist`, `.wetrakr`)
-    /// into batched request payloads using TMDb identities from `workspace`.
-    public static func prepareBatch(
-        for provider: SyncProviderKind,
-        from queue: SyncOutboxQueue,
-        in workspace: Workspace
-    ) -> ProviderBatch? {
-        guard provider != .cloudflare else { return nil }
-        var ids: [String] = []
-        var payloads: [String: [String: [[String: Any]]]] = [:]
-        for entry in queue.pending(for: provider) where !entry.pendingProviders.contains(.cloudflare) {
-            let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: workspace)
-            guard plan.blocked.isEmpty, !plan.deliveries.isEmpty,
-                  !plan.deliveries.contains(where: { $0.path.hasSuffix("/remove") }) else { continue }
-            ids.append(entry.id)
-            for delivery in plan.deliveries {
-                let bucket = delivery.key == "status" ? "watchlist" : delivery.key
-                for slot in ["movies", "shows"] {
-                    payloads[bucket, default: [:]][slot, default: []].append(contentsOf: delivery.body[slot] as? [[String: Any]] ?? [])
-                }
-            }
-        }
-        guard !ids.isEmpty else { return nil }
-        func body(_ key: String) -> [String: Any]? { payloads[key].map { $0 as [String: Any] } }
-        return ProviderBatch(provider: provider, entryIDs: ids, historyPayload: body("history"), ratingsPayload: body("rating"), watchlistPayload: body("watchlist"), favoritesPayload: body("favorite"), idempotencyKey: nil)
-    }
 }
 
 /// Cross-platform state payload for iOS Dynamic Island (`ActivityKit`) & background sync progress.
@@ -567,22 +521,5 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
             totalCount: total,
             isBackgrounded: isBackgrounded
         )
-    }
-}
-
-private enum StringOrInt: Decodable {
-    case string(String)
-    case int(Int)
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let i = try? container.decode(Int.self) { self = .int(i) }
-        else if let s = try? container.decode(String.self) { self = .string(s) }
-        else { throw DecodingError.typeMismatch(StringOrInt.self, .init(codingPath: decoder.codingPath, debugDescription: "Expected String or Int")) }
-    }
-    var intValue: Int? {
-        switch self {
-        case .int(let i): i
-        case .string(let s): Int(s)
-        }
     }
 }

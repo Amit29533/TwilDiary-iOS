@@ -35,7 +35,6 @@ extension ShowSectionHeading where Value == String {
 struct SeeAllLink<Value: Hashable>: View {
     let value: Value
     let identifier: String
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         NavigationLink(value: value) { RoundChevron() }
             .buttonStyle(.springPress).accessibilityLabel("See all").accessibilityIdentifier(identifier)

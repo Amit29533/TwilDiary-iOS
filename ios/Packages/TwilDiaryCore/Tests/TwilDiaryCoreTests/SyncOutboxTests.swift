@@ -76,45 +76,7 @@ import TwilDiaryTestSupport
     #expect(afterCard.previous?.episodeId == nextEp.id)
 }
 
-@Test func directTraktThreeWayDiffPlansPullsPushesAndConflicts() throws {
-    let base = try SampleWorkspace.mapped()
-    let series = try #require(base.titles.first { $0.id == "again" && $0.tmdbId != nil })
-    let tmdbId = try #require(series.tmdbId)
-    let card = WatchCard.calculate(title: series, in: base, day: "2026-10-23")
-    let nextEp = try #require(card.next)
-    let episode = try #require(base.episodes.first { $0.id == nextEp.id })
-
-    let remote = DirectTraktRemoteSnapshot(
-        plays: [
-            DirectTraktWatchPlay(tmdbId: tmdbId, isSeries: true, season: episode.season, episode: episode.number, watchedAt: "2026-10-23T18:00:00Z"),
-            DirectTraktWatchPlay(tmdbId: 999888, isSeries: false, watchedAt: "2026-10-23T19:00:00Z")
-        ],
-        ratings: [
-            DirectTraktRatingItem(tmdbId: tmdbId, isSeries: true, rating: 10, ratedAt: "2026-10-23T18:00:00Z")
-        ],
-        watchlist: []
-    )
-    let baseline = DirectTraktSyncBaseline(
-        lastActivities: nil,
-        titles: [
-            series.id: DirectTraktTitleBaseline(
-                titleId: series.id,
-                score: series.score.map { Int($0.rounded()) },
-                watchlisted: false
-            )
-        ]
-    )
-    let plan = DirectTraktEngine.plan(workspace: base, remote: remote, baseline: baseline)
-    #expect(plan.pulls.contains(.pullWatch(titleId: series.id, episodeId: episode.id, watchedAt: "2026-10-23T18:00:00Z")))
-    #expect(plan.pulls.contains(.pullRating(titleId: series.id, score: 10.0)))
-    #expect(plan.missingImports.contains(.importMissingTmdb(tmdbId: 999888, isSeries: false)))
-
-    let applied = DirectTraktEngine.applyPulls(from: plan, to: base, recordedAt: "2026-10-23T20:00:00Z")
-    let updatedTitle = try #require(applied.titles.first { $0.id == series.id })
-    #expect(updatedTitle.score == 10.0)
-}
-
-@Test func mdblistNormalizationAndOutboxFanout() throws {
+@Test func mdblistRatingSummaryIsRead() throws {
     let mdbJSON = Data(#"""
     {
       "score": 86,
@@ -127,21 +89,6 @@ import TwilDiaryTestSupport
     let summary = try MDBListSyncEngine.decodeRatingSummary(from: mdbJSON, tmdbId: 12345, isSeries: false)
     #expect(summary.aggregatedScore == 86)
     #expect(summary.score(for: "imdb") == 87)
-
-    let workspace = try SampleWorkspace.mapped()
-    let series = try #require(workspace.titles.first { $0.id == "again" })
-    var queue = SyncOutboxQueue()
-    queue.enqueue(SyncOutboxEntry(
-        id: "fanout-1",
-        operationId: "op-fanout-1",
-        createdAt: "2026-10-23T12:00:00Z",
-        mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 9.0, clearScore: false, favorite: nil, queued: true, notes: nil),
-        pendingProviders: [.mdblist, .wetrakr]
-    ))
-    let mdblistBatch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .mdblist, from: queue, in: workspace))
-    #expect(mdblistBatch.entryIDs == ["fanout-1"])
-    #expect(mdblistBatch.ratingsPayload != nil)
-    #expect(mdblistBatch.watchlistPayload != nil)
 }
 
 @Test func anEditTheServerNoLongerTakesGoesToTheServiceHoldingTheDiary() {
@@ -225,28 +172,7 @@ import TwilDiaryTestSupport
     #expect(reloaded == queue)
 }
 
-@Test func providerBatchesAndDynamicIslandLiveActivityStates() throws {
-    let workspace = try SampleWorkspace.mapped()
-    let series = try #require(workspace.titles.first { $0.id == "again" && $0.tmdbId != nil })
-    var queue = SyncOutboxQueue()
-    queue.enqueue(SyncOutboxEntry(
-        id: "sk-1",
-        operationId: "op-sk-1",
-        createdAt: "2026-10-23T19:00:00Z",
-        mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: "planned", score: 8.5, clearScore: false, favorite: nil, queued: true, notes: nil),
-        pendingProviders: [.mdblist]
-    ))
-    let batch = try #require(MultiProviderOutboxDispatcher.prepareBatch(for: .mdblist, from: queue, in: workspace))
-    #expect(batch.provider == .mdblist)
-    #expect(batch.ratingsPayload != nil && batch.watchlistPayload != nil)
-    #expect(batch.idempotencyKey == nil)
-    // MDBList keeps no favourites: an edit that changes one is held back, never half-sent.
-    var favourite = SyncOutboxQueue()
-    favourite.enqueue(SyncOutboxEntry(createdAt: "2026-10-23T19:00:00Z",
-        mutation: .patchTitle(titleId: series.id, expectedVersion: 1, status: nil, score: nil, clearScore: false, favorite: true, queued: nil, notes: nil),
-        pendingProviders: [.mdblist]))
-    #expect(MultiProviderOutboxDispatcher.prepareBatch(for: .mdblist, from: favourite, in: workspace) == nil)
-
+@Test func dynamicIslandLiveActivityStates() throws {
     let diProviderState = SyncLiveActivityState.forProviderBatch(
         provider: .mdblist,
         completed: 3,

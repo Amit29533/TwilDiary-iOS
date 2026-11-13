@@ -153,15 +153,6 @@ struct TitleDetailView: View {
             } else { ContentUnavailableView("Title unavailable", systemImage: "film") }
         }
     }
-    /// Sheets, dialogs and change observers live in their own function so the
-    /// type checker handles two shorter modifier chains instead of one very long one.
-    /// "Remove from watch history": for a watch logged by accident (every watch of the title).
-    @ViewBuilder private func removeHistoryButton(_ title: MediaTitle) -> some View {
-        if store.workspace.events.contains(where: { $0.titleId == title.id && $0.revokedAt == nil }) {
-            Button("Remove from watch history", systemImage: "clock.arrow.circlepath", role: .destructive) { confirmRemoveHistory = true }
-                .disabled(store.writesBlocked).accessibilityIdentifier("title-remove-history")
-        }
-    }
     /// "Check in on <service>" (a movie, or the next episode): the service holding your diary
     /// (MDBList or WeTrakr), else Trakt when it's connected.
     @ViewBuilder private func checkInButton(_ title: MediaTitle) -> some View {

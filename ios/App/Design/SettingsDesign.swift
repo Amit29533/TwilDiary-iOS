@@ -9,7 +9,6 @@ import TwilDiaryCore
 struct SettingsIntro: View {
     let eyebrow: String
     let text: String
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(eyebrow.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
@@ -72,18 +71,6 @@ extension SettingsRow where Leading == EmptyView {
 /// The design's chevron for rows that open a page.
 struct SettingsChevron: View {
     var body: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78")) }
-}
-
-/// "Synced", "None", "Connected": 12 pt bold on a 24 pt pill; green when good.
-struct SettingsStatusPill: View {
-    let text: String
-    var good = true
-    var body: some View {
-        Text(text).font(.system(size: 12, weight: .bold)).lineLimit(1)
-            .foregroundStyle(good ? Color(webHex: "#7fe0b5") : HomeStyle.dateChipText)
-            .padding(.horizontal, 10).frame(height: 24)
-            .background(good ? Color(webHex: "#1b2b25") : HomeStyle.round, in: Capsule())
-    }
 }
 
 /// "Run", "Connect", "Save": a small pill button inside a row.
@@ -236,9 +223,6 @@ struct SettingsServiceHeader<Extra: View>: View {
     }
 }
 extension SettingsServiceHeader where Extra == EmptyView {
-    init(logo: BrandLogo.Service, title: String, subtitle: String, badge: (text: String, tone: SettingsTone)? = nil) {
-        self.logo = logo; self.title = title; self.subtitle = subtitle; self.badge = badge; self.extra = EmptyView()
-    }
 }
 
 /// "KEEPS" over the kinds of data a service holds, as small chips.

@@ -17,7 +17,6 @@ struct BackupsView: View {
     private struct Snapshot: Decodable { let diary: DiaryExport; let phone: PhoneExtras.Backup? }
 
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var backups: [Summary]?
     @State private var working: String?
     @State private var message: String?

@@ -86,7 +86,6 @@ private struct ExploreHeading: View {
 /// the title large over a soft scrim, and its year, type and score underneath.
 private struct DailyDiscoveryCard: View {
     let title: MediaTitle
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             Artwork(path: title.backdrop ?? title.poster, title: title.name)

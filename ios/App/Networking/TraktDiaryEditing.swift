@@ -159,26 +159,6 @@ extension DiaryStore {
         return when
     }
 
-    /// Undo for plays just added: exactly those plays (the same title at that time, so another
-    /// watch of the same episode is never touched). Still waiting to reach Trakt: taken out of the
-    /// queue. Sent but without Trakt's ids yet: found in Trakt's history at their time and removed.
-    func serviceUndoPlays(_ title: MediaTitle, at when: String) async throws {
-        if service == .trakt, TraktDirectStore.shared.cancelPending(watchedAt: when) {
-            updateCopy { library in library.plays.removeAll { $0.historyId < 0 && $0.watchedAt == when } }
-            return
-        }
-        let time = DiaryDate.parse(when)
-        func plays() -> [WatchEvent] {
-            workspace.activeEvents.filter { event in
-                event.titleId == title.id && (event.watchedAt == when
-                    || (time != nil && DiaryDate.parse(event.watchedAt).map { abs($0.timeIntervalSince(time!)) < 1 } == true))
-            }
-        }
-        let found = plays()
-        guard !found.isEmpty else { throw APIError.message("That watch isn’t on \(service.name) any more.") }
-        try await serviceRemoveWatches(found)
-    }
-
     /// Removes exactly these watches. Trakt removes those very plays (by id, never all plays of an
     /// episode); MDBList keeps one watch per episode or movie, so that watch is removed.
     /// The screen changes at once and the removal goes in the background. Trakt: plays it has ids

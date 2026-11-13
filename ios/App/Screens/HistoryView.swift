@@ -4,7 +4,6 @@ import TwilDiaryCore
 struct HistoryView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(\.dynamicTypeSize) private var typeSize
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("historyGrid") private var grid = false
     @State private var filters: HistoryQuery
     @State private var showRange: Bool

@@ -142,32 +142,6 @@ struct HomeEpisodeCard: View {
     }
 }
 
-/// The existing grid preference now selects a horizontal card shelf; list stays vertical.
-struct HomeActivityLayout<Content: View>: View {
-    let cards: Bool
-    @ViewBuilder let content: Content
-    var body: some View {
-        if cards {
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) { content }.scrollTargetLayout()
-            }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden)
-        } else { LazyVStack(spacing: 8) { content } }
-    }
-}
-
-struct HomePlannedCard: View {
-    let title: MediaTitle
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
-            Text(title.isSeries ? "Show" : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "))
-                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-        }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
-    }
-}
-
 /// A favourite on Home: the same 128 × 192 poster, name and kind as the other shelves (design).
 struct HomeFavouriteCard: View {
     let item: Favourite

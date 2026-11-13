@@ -1,31 +1,6 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// CineMind: ask Gemini about the movie or show on screen. It knows the title (story, genres,
-/// year) and where you are in it; spoiler-safe (on unless you turn it off) keeps every answer to
-/// what you've already watched. Suggested titles are found on TMDB and open their pages.
-struct CineMindButton: View {
-    let title: MediaTitle
-    @State private var open = false
-    var body: some View {
-        Button { open = true } label: {
-            HStack(spacing: 12) {
-                CineMindMark(size: 34)
-                Text("CineMind").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                Spacer(minLength: 0)
-                Text("Ask").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                    .padding(.horizontal, 10).frame(height: 24).background(HomeStyle.chip, in: Capsule())
-            }.padding(.horizontal, 12).frame(height: 54)
-                .background(LinearGradient(colors: [Color(webHex: "#2a2148"), Color(webHex: "#1a1530")], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#4a3b80").opacity(0.6), lineWidth: 1))
-        }.buttonStyle(.springPress).accessibilityLabel("Ask CineMind about " + title.name).accessibilityIdentifier("cinemind-open")
-            .sheet(isPresented: $open) {
-                CineMindView(title: title).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
-
-            }
-    }
-}
-
 extension View {
     /// CineMind as a sheet, from a title's ••• menu (a saved title or a preview), pulled up to full screen.
     func cineMind(isPresented: Binding<Bool>, title: MediaTitle?) -> some View {

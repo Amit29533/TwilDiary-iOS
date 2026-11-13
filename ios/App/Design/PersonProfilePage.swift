@@ -67,38 +67,6 @@ struct PersonProfilePage<Content: View>: View {
             .modifier(ProfileNativeLinks(kind: kind, ref: ref, sameVoice: sameVoice, samePerson: samePerson))
     }
 
-    private func hero(height: CGFloat, topInset: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Spacer(minLength: 150)
-            Text(name).font(.largeTitle.bold()).tracking(-0.9)
-                .foregroundStyle(LinearGradient(colors: [.white, theme.accent], startPoint: .leading, endPoint: .trailing))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier(identifier + "-name")
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
-                } action: { header.update($0) }
-            if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
-                Text(native).font(.subheadline).foregroundStyle(.white.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
-            }
-            if let role = ProfileText.line(role) {
-                Text(role).font(.subheadline).foregroundStyle(.white.opacity(0.7)).fixedSize(horizontal: false, vertical: true)
-            }
-        }.padding(.horizontal, 14).padding(.bottom, 10)
-            .frame(maxWidth: .infinity, minHeight: height, alignment: .bottomLeading)
-            // Press and hold the photo to see it whole, full screen.
-            .contentShape(Rectangle()).fullScreenArtwork(image, title: name)
-            .background {
-                GeometryReader { proxy in
-                    portrait.frame(width: proxy.size.width, height: proxy.size.height)
-                        .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.14), location: 0),
-                            .init(color: .black.opacity(0.15), location: 0.45), .init(color: .black.opacity(0.8), location: 0.82),
-                            .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
-                        .overlay(LinearGradient(colors: [.black.opacity(0.3), .clear], startPoint: .leading, endPoint: .trailing))
-                        .clipped().allowsHitTesting(false).accessibilityHidden(true)
-                }
-            }
-    }
-
     /// The photo as a card, the name (second part in the accent) with the role, and the top facts
     /// beside it, divided like a list. The photo's Photos button opens the gallery.
     private func cardHero(width: CGFloat, topInset: CGFloat, fit: ProfileHeroFit) -> some View {
@@ -178,22 +146,6 @@ struct PersonProfilePage<Content: View>: View {
             }
     }
 
-    @ViewBuilder private var portrait: some View {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--ui-profile-header-pattern") {
-            ProfileHeaderTestPattern()
-        } else { framedPortrait }
-        #else
-        framedPortrait
-        #endif
-    }
-    /// The portrait fills the header's width. The header is shorter than a 2:3 photo, so the
-    /// bottom is trimmed (under the fade and the name); the top, where the face is, stays.
-    /// TMDB's original rendition (and a TMDB photo for AniList voice actors linked through
-    /// Wikidata) keeps it sharp at full width.
-    private var framedPortrait: some View {
-        Artwork(path: image, title: name, alignment: .top, prefersOriginal: true)
-    }
 }
 
 /// The name with a small round photo, as title pages show their poster, once the big name scrolls away.
@@ -244,7 +196,6 @@ struct ProfileBiography: View {
     var style: Font = .body
     var moreLabel = "More"
     var lessLabel = "Less"
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var fullHeight: CGFloat = 0
     @State private var previewHeight: CGFloat = 0
     private var overflows: Bool { fullHeight > previewHeight + 1 }

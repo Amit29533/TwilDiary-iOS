@@ -1,5 +1,4 @@
 import SwiftUI
-import TwilDiaryCore
 
 struct ProfileFact: Identifiable {
     let id: String

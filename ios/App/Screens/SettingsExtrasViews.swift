@@ -164,9 +164,6 @@ struct SyncBackupView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("confirmDeletions") private var confirmDeletions = true
-    @AppStorage(ServiceRemovals.key) private var applyRemovals = true
-    @AppStorage(EpisodeNotifications.enabledKey) private var episodeAlerts = false
-    @State private var releaseAlerts = ReleaseAlerts.enabled
     @State private var importing = false
     @AppStorage(LocalBackups.enabledKey) private var filesBackup = false
     @Environment(\.openURL) private var openURL

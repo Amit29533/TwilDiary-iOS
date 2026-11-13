@@ -61,7 +61,6 @@ struct JellyfinLibrary: Identifiable, Sendable, Equatable {
     let type: String?
     var readable: Bool { type == "movies" || type == "tvshows" || type == nil || type == "mixed" }
     var onByDefault: Bool { type == "movies" || type == "tvshows" }
-    var label: String { switch type { case "movies": "Movies"; case "tvshows": "Shows"; case nil, "mixed"?: "Mixed"; default: type!.capitalized } }
 }
 
 /// One movie or show on Jellyfin, for the Jellyfin page: its drive (from its folder) and the

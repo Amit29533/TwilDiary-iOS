@@ -1,5 +1,4 @@
 import SwiftUI
-import TwilDiaryCore
 
 /// Files & drives: Jellyfin as a source of folder locations. Shows which libraries are read
 /// (Movies and Shows; photos, home videos and music never), the last sync, and Sync now.

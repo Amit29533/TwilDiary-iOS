@@ -130,7 +130,6 @@ struct ProfileFormattedBiography {
         let label: String
         let icon: String
         let markdown: String
-        var wide: Bool { !["height", "weight", "blood-type"].contains(id) }
         var kind: Kind { Kind.of(id) }
         /// The value as separate items when it's a list ("Eden Academy, Unknown Organization"),
         /// splitting on commas and semicolons outside brackets and links.

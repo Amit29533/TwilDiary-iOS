@@ -44,16 +44,6 @@ struct PeopleRankingRoute: Hashable {
     var source: String? = nil
 }
 
-/// "ANILIST": a small outlined pill naming where a ranking comes from.
-struct RankingSourcePill: View {
-    let text: String
-    var body: some View {
-        Text(text.uppercased()).font(.system(size: 11, weight: .bold)).tracking(1).foregroundStyle(HomeStyle.secondary)
-            .padding(.horizontal, 11).frame(height: 28).background(HomeStyle.round, in: Capsule())
-            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
-    }
-}
-
 /// The heart on a person's card: outlined until hearted, then filled lilac. Tapping adds or removes
 /// them from Favourites at once.
 struct FavouriteHeartButton: View {

@@ -333,10 +333,6 @@ struct PersonalProfileView: View {
                     .padding(.horizontal, -16).offset(y: -140).allowsHitTesting(false).accessibilityHidden(true)
             }
     }
-    private func count(_ value: Int, _ label: String) -> some View {
-        HStack(spacing: 4) { Text(value.formatted()).bold().foregroundStyle(.white); Text(label).foregroundStyle(.secondary) }.font(.system(size: 15))
-            .accessibilityElement(children: .combine)
-    }
     private func statTiles(_ insights: StatsInsights) -> some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             Button { openStats(.overview) } label: { tile("play.rectangle", "Episodes", insights.episodes.formatted()) }.buttonStyle(.plain)

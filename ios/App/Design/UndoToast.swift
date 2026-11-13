@@ -17,7 +17,6 @@ struct UndoToast: View {
     let label: String
     @Environment(DiaryStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @GestureState private var touching = false
     private struct Lifetime: Equatable {
         let notice: UUID

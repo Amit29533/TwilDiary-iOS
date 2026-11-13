@@ -54,7 +54,6 @@ struct AniCharacterDetail: Sendable {
         var seen = Set<Int>()
         return appearances.compactMap(\.voiceActor).filter { seen.insert($0.id).inserted }
     }
-    func readableDescription(hideSpoilers: Bool) -> String { AniListText.readable(description, hideSpoilers: hideSpoilers) }
 }
 /// One character a voice actor plays, in one anime.
 struct AniRole: Hashable, Sendable, Identifiable {
@@ -104,7 +103,6 @@ struct AniVoiceActorDetail: Sendable {
     let favourites: Int?
     /// Most popular anime first; one entry per character and anime.
     let roles: [AniRole]
-    func readableDescription(hideSpoilers: Bool) -> String { AniListText.readable(description, hideSpoilers: hideSpoilers) }
 }
 /// A row of the AniList stats page "Voice actors": how many of your anime they voice in.
 struct AniVoiceActorStat: Hashable, Sendable, Identifiable {

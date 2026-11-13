@@ -88,16 +88,6 @@ import TwilDiaryTestSupport
     #expect(queue.entries[0].uncertainActions?.isEmpty == true)
 }
 
-@Test func remoteUnknownWatchDatesRemainUnknown() throws {
-    let base = SampleWorkspace.make()
-    let movie = try #require(base.titles.first { !$0.isSeries })
-    var clean = base; clean.events.removeAll { $0.titleId == movie.id }
-    let plan = DirectTraktPlan(actions: [.pullWatch(titleId: movie.id, episodeId: nil, watchedAt: nil)])
-    let merged = DirectTraktEngine.applyPulls(from: plan, to: clean, recordedAt: "2026-11-03T00:00:00Z")
-    let event = try #require(merged.activeEvents.first { $0.titleId == movie.id })
-    #expect(event.watchedAt == nil)
-}
-
 /// Cinopsys's way: only a real rewatch asks WeTrakr to log another play; Queue isn't a watchlist;
 /// a play from another service is removed from Trakt by finding it at its time.
 @Test func rewatchQueueAndForeignPlaysFollowCinopsys() throws {

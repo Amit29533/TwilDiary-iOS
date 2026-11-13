@@ -9,7 +9,6 @@ struct DiaryPanelModifier: ViewModifier {
     /// False: no outline (a panel on a dark page whose edge would read as a stray line).
     var bordered = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
         content.padding(padding)
             .background { RoundedRectangle(cornerRadius: radius).fill(Color(webHex: "#111115")) }
@@ -26,8 +25,6 @@ struct DiarySectionBackground: ViewModifier {
     var stroke = Color.white.opacity(0.13)
     /// Selected rows keep their accent emphasis on glass too.
     var emphasized = false
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius)
         content.background { shape.fill(fill) }.overlay(shape.strokeBorder(stroke))

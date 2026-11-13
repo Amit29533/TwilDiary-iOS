@@ -23,7 +23,6 @@ enum CanvasSort: String, CaseIterable, Identifiable {
 private struct CanvasContent: View {
     let store: DiaryStore
     @Binding var tab: CanvasTab
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.displayScale) private var displayScale
     @State private var results: DiscoveryResults
     @State private var recommendations: DiscoveryRecommendations

@@ -78,31 +78,6 @@ import BackgroundTasks
         #endif
     }
 
-    /// Requests an iOS background execution window so an active sync or outbox flush can continue
-    /// while updating the Dynamic Island Live Activity.
-    func beginBackgroundExecution(onExpire: @escaping @MainActor @Sendable () -> Void = {}) {
-        guard backgroundTaskID == .invalid else { return }
-        isBackgroundTaskActive = true
-        if let state = currentActivityState {
-            let bgState = SyncLiveActivityState(
-                provider: state.provider,
-                phase: state.phase,
-                title: state.title,
-                subtitle: state.subtitle,
-                completedCount: state.completedCount,
-                totalCount: state.totalCount,
-                isBackgrounded: true
-            )
-            applyLiveActivityState(bgState)
-        }
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "TwilDiaryBackgroundSync") { [weak self] in
-            Task { @MainActor in
-                onExpire()
-                self?.endBackgroundExecution()
-            }
-        }
-    }
-
     func endBackgroundExecution() {
         isBackgroundTaskActive = false
         guard backgroundTaskID != .invalid else { return }

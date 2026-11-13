@@ -209,7 +209,6 @@ struct CharacterView: View {
 /// you've hearted, as posters. "Favourites" titles the page; the tabs are its first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
     @AppStorage("favouritesCastGrid") private var castGrid = true
     @AppStorage("favouritesCharactersGrid") private var charactersGrid = true
