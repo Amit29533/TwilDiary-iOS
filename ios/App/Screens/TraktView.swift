@@ -57,7 +57,7 @@ import TwilDiaryCore
                 apiAndLoggingSettings
                 if controller.status?.connected == true { account }
                 }
-                if let error = controller.error {
+                if !onPhone, let error = controller.error {
                     // "Start a fresh preview": Trakt changed after this preview, so retrying can't succeed.
                     let stale = error.contains("Start a fresh")
                     VStack(alignment: .leading, spacing: 8) {
@@ -76,7 +76,7 @@ import TwilDiaryCore
                     await controller.refreshReview(); await controller.resumeApprovedApply()
                 } catch { }
             }
-            .refreshable { await controller.refresh(); if controller.status?.connected == true && !retired { await incoming.refresh() } }
+            .refreshable { if !onPhone { await controller.refresh() }; if controller.status?.connected == true && !retired { await incoming.refresh() } }
             .task(id: "\(controller.status?.connected == true):\(controller.sync?.run?.state ?? "")") { if controller.status?.connected == true && !retired { await incoming.refresh() } }
             .task(id: controller.cooldownUntil) {
                 // One wake-up at the end of the cooldown re-enables the controls. The
@@ -88,7 +88,7 @@ import TwilDiaryCore
                 do { try await Task.sleep(for: .seconds(wait)) } catch { return }
                 clock = .now
             }
-            .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy { Task { await controller.refresh() } } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active && !controller.busy && !onPhone { Task { await controller.refresh() } } }
             .onChange(of: paceKey) { _, _ in recordPace() }
             .sheet(isPresented: $showSignIn) {
                 if let credential = store.browserCredential() {
@@ -261,15 +261,20 @@ import TwilDiaryCore
     // MARK: Trakt holds the diary (design board 4)
 
     @ViewBuilder private var retiredPage: some View {
-        let connected = controller.status?.connected == true
-        let reconnect = controller.status?.needsReconnect == true
-        let synced = DiaryDate.parse(controller.status?.lastSyncAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
+        // Signed in on this iPhone: the state is read here, never from the server.
+        let saved = store.providerSettings.trakt
+        let connected = onPhone ? store.traktSignedInOnPhone : controller.status?.connected == true
+        let reconnect = !onPhone && controller.status?.needsReconnect == true
+        let username = onPhone ? saved.username : controller.status?.username
+        let synced = DiaryDate.parse(onPhone ? saved.lastSyncedAt : controller.status?.lastSyncAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
         SettingsServiceHeader(logo: .trakt, title: reconnect ? "Reconnect Trakt" : "Trakt",
-                              subtitle: synced ?? (controller.loading ? "Checking connection…" : connected ? "Connected" : "Your watches, together"),
-                              badge: reconnect ? ("Reconnect", .missing) : connected ? (controller.status?.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
-            Text(connected ? "Trakt holds your diary. Your edits go straight to Trakt." : "Connect Trakt and your diary lives there.")
+                              subtitle: synced ?? (!onPhone && controller.loading ? "Checking connection…" : connected ? "Connected" : "Your watches, together"),
+                              badge: reconnect ? ("Reconnect", .missing) : connected ? (username.map { "@" + $0 } ?? "Connected", .good) : nil) {
+            Text(connected ? (store.traktHoldsDiary ? "Trakt holds your diary. Your edits go straight to Trakt." : "Signed in on this iPhone.")
+                 : onPhone ? "Sign in to Trakt in Profile → Connections." : "Connect Trakt and your diary lives there.")
                 .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
-            if reconnect || (!connected && controller.status?.configured == true) {
+            if onPhone { EmptyView() }
+            else if reconnect || (!connected && controller.status?.configured == true) {
                 Button { showSignIn = true } label: { Label(reconnect ? "Reconnect Trakt" : "Connect Trakt", systemImage: "globe") }
                     .buttonStyle(SettingsPrimaryButtonStyle()).disabled(controller.busy)
             } else if !connected && controller.status != nil {
@@ -305,11 +310,15 @@ import TwilDiaryCore
                     SettingsRow(title: "Account limits", subtitle: "What your plan allows and what you use") { SettingsChevron() }
                 }.buttonStyle(.plain).accessibilityIdentifier("trakt-account-limits")
             }
-            VStack(alignment: .leading, spacing: 12) {
-                SettingsLabel(text: "Account") { EmptyView() }
-                Button("Disconnect Trakt", role: .destructive) { Task { await controller.disconnect() } }
-                    .buttonStyle(SettingsDestructiveButtonStyle()).disabled(controller.busy).accessibilityIdentifier("trakt-disconnect")
-                SettingsFootnote(text: "Your diary stays on Trakt. You can connect again any time.")
+            if onPhone {
+                SettingsFootnote(text: "Sign out of Trakt in Profile → Connections.")
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    SettingsLabel(text: "Account") { EmptyView() }
+                    Button("Disconnect Trakt", role: .destructive) { Task { await controller.disconnect() } }
+                        .buttonStyle(SettingsDestructiveButtonStyle()).disabled(controller.busy).accessibilityIdentifier("trakt-disconnect")
+                    SettingsFootnote(text: "Your diary stays on Trakt. You can connect again any time.")
+                }
             }
         }
     }
@@ -322,8 +331,11 @@ import TwilDiaryCore
     }
 
     private var scanning: Bool { controller.sync?.run?.state == "building" }
-    /// Phase 4c: a service holds the diary, so the scan and review are retired.
-    private var retired: Bool { store.serverRecord != nil }
+    /// Phase 4c: a service holds the diary, so the scan and review are retired. Also with Trakt
+    /// signed in on this iPhone or no server at all: the old page asked the server for everything
+    /// and said "This needs your TwilDiary server" (owner's report).
+    private var retired: Bool { store.serverRecord != nil || onPhone }
+    private var onPhone: Bool { store.phoneOnly || store.traktSignedInOnPhone }
     private var apiAndLoggingSettings: some View {
         let saved = store.providerSettings.trakt
         let clientId = customClientId.trimmingCharacters(in: .whitespacesAndNewlines)
