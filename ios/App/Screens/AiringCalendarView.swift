@@ -6,7 +6,12 @@ import TwilDiaryCore
 /// genre and range filters; the ••• menu holds range, "Show all episodes", export and sync.
 struct AiringCalendarView: View {
     /// Everything: every release in the next days, not only your diary's (owner's request).
-    enum Tab: String, CaseIterable, Identifiable { case upcoming = "Upcoming", catchup = "Catch-up", all = "All", everything = "Everything"; var id: String { rawValue } }
+    enum Tab: String, CaseIterable, Identifiable {
+        case upcoming = "Upcoming", catchup = "Catch-up", all = "All", everything = "Everything"
+        var id: String { rawValue }
+        /// The name on screen; the raw value stays as saved (calendar.tab) and in test ids.
+        var title: String { switch self { case .upcoming: "Upcoming"; case .catchup: "Missed"; case .all: "Following"; case .everything: "Global" } }
+    }
     enum Status: String, CaseIterable, Identifiable { case all = "All status", upcoming = "Upcoming", behind = "Behind"; var id: String { rawValue } }
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -93,7 +98,7 @@ struct AiringCalendarView: View {
                 let on = tab == item
                 Button { withAnimation(.snappy(duration: 0.25)) { tab = item } } label: {
                     VStack(spacing: 8) {
-                        Text(item.rawValue).font(.system(size: 16, weight: on ? .bold : .semibold)).foregroundStyle(on ? HomeStyle.primary : HomeStyle.secondary)
+                        Text(item.title).font(.system(size: 16, weight: on ? .bold : .semibold)).foregroundStyle(on ? HomeStyle.primary : HomeStyle.secondary)
                         ZStack { if on { Capsule().fill(theme.accent).matchedGeometryEffect(id: "line", in: underline) } else { Color.clear } }.frame(height: 3)
                     }.fixedSize().frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("calendar-tab-" + item.id)
@@ -238,21 +243,36 @@ struct AiringCalendarView: View {
     private func away(_ days: Int) -> String { days == 0 ? "Today" : days == 1 ? "Tomorrow" : days < 0 ? "\(-days)d ago" : "In \(days)d" }
     private func episodeLine(_ item: UpcomingSchedule.Item) -> String { item.title.categoryName + " · S\(item.episode.season) E\(item.episode.number)" }
 
-    /// The hour from Trakt's calendar, when Trakt is signed in on this iPhone.
-    private func airTime(_ item: UpcomingSchedule.Item) -> String {
-        TraktAirTimes.shared.time(for: item).map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""
+    /// The episode's day as TMDB gives it (the network's own day).
+    private func airDay(_ item: UpcomingSchedule.Item) -> String { item.episode.airedOn ?? DiaryDate.day(item.date) }
+    /// When it airs: Trakt's or TVmaze's exact time, else TMDB's day alone.
+    private func airTime(_ item: UpcomingSchedule.Item) -> Date? {
+        EpisodeAirTimes.shared.time(tmdb: item.title.tmdbId, season: item.episode.season, number: item.episode.number, day: airDay(item))
+    }
+    private func loadAirTime(_ item: UpcomingSchedule.Item) async {
+        await EpisodeAirTimes.shared.load(tmdb: item.title.tmdbId, season: item.episode.season, number: item.episode.number, day: airDay(item), store: store)
+    }
+    /// "Sat 15 Nov · 9:30 PM" in your own time zone (an episode can air on another day here than on
+    /// its network's), and how many days away that is.
+    private func when(_ item: UpcomingSchedule.Item) -> (text: String, away: Int) {
+        let dayFormat = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+        guard let at = airTime(item) else { return (item.date.formatted(dayFormat), item.daysAway) }
+        let calendar = DiaryDate.calendar()
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: store.now), to: calendar.startOfDay(for: at)).day ?? item.daysAway
+        return (at.formatted(dayFormat) + " · " + at.formatted(date: .omitted, time: .shortened), days)
     }
     private func upcomingRow(_ item: UpcomingSchedule.Item) -> some View {
         let summary = hideSpoilers ? item.title.overview : (item.episode.overview.isEmpty ? item.title.overview : item.episode.overview)
+        let when = when(item)
         return HStack(alignment: .top, spacing: 14) {
             NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
                 HStack(alignment: .top, spacing: 14) {
-                    poster(item.title, width: 72)
+                    poster(item.title, width: Self.posterWidth)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .center, spacing: 6) {
                             HStack(spacing: 0) {
-                                Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) + airTime(item) + " · ").foregroundStyle(HomeStyle.secondary)
-                                Text(away(item.daysAway)).foregroundStyle(HomeStyle.chipText).fontWeight(.semibold)
+                                Text(when.text + " · ").foregroundStyle(HomeStyle.secondary)
+                                Text(away(when.away)).foregroundStyle(HomeStyle.chipText).fontWeight(.semibold)
                             }.font(.system(size: 13)).lineLimit(1)
                             Spacer(minLength: 4)
                             if let score = item.title.communityScore, score > 0 { scoreBadge(score) }
@@ -268,7 +288,7 @@ struct AiringCalendarView: View {
                     DiaryIcon(name: "check", size: 18).foregroundStyle(theme.accent).frame(width: 44, height: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(store.writesBlocked).accessibilityLabel("Mark watched")
             }
-        }
+        }.task(id: item.id) { await loadAirTime(item) }
     }
     private func scoreBadge(_ score: Double) -> some View {
         HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
@@ -280,6 +300,8 @@ struct AiringCalendarView: View {
             .padding(.horizontal, 8).frame(height: 22)
             .background(strong ? HomeStyle.chip : Color.white.opacity(0.08), in: Capsule())
     }
+    /// One poster size across the calendar (Upcoming's), Global included.
+    static let posterWidth: CGFloat = 72
     private func poster(_ title: MediaTitle, width: CGFloat) -> some View {
         Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: width, height: width * 1.4)
             .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
@@ -362,7 +384,7 @@ struct AiringCalendarView: View {
             : "S\(first.episode.season) E\(first.episode.number) – S\(last.episode.season) E\(last.episode.number)"
         let progress = watchedProgress(group.title)
         return HStack(alignment: .top, spacing: 14) {
-            NavigationLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) { poster(group.title, width: 72) }.buttonStyle(.plain)
+            NavigationLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) { poster(group.title, width: Self.posterWidth) }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(airedText).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
@@ -434,10 +456,10 @@ struct AiringCalendarView: View {
     private func compactRow(_ item: UpcomingSchedule.Item, badge text: String, strong: Bool) -> some View {
         NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
             HStack(alignment: .top, spacing: 14) {
-                poster(item.title, width: 56)
+                poster(item.title, width: Self.posterWidth)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Text(when(item).text).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         Spacer(minLength: 4)
                         badge(text, strong: strong)
                     }
@@ -446,6 +468,7 @@ struct AiringCalendarView: View {
                 }
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("calendar-row-" + item.id)
+            .task(id: item.id) { await loadAirTime(item) }
     }
 
     private func empty(_ text: String) -> some View {

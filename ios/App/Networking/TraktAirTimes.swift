@@ -22,11 +22,6 @@ import TwilDiaryCore
 
     nonisolated static func key(tmdb: Int, season: Int, number: Int) -> String { "tv:\(tmdb):\(season):\(number)" }
 
-    func time(for item: UpcomingSchedule.Item) -> Date? {
-        guard let tmdb = item.title.tmdbId else { return nil }
-        return times[Self.key(tmdb: tmdb, season: item.episode.season, number: item.episode.number)]
-    }
-
     func refresh(store: DiaryStore) async {
         guard !store.isPreview, store.traktSignedInOnPhone else { return }
         let now = Date()

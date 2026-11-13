@@ -238,11 +238,12 @@ struct UniversalCalendarSection: View {
                     pill(genres.isEmpty ? "All genres" : genres.count == 1 ? genres.first! : "\(genres.count) genres", on: !genres.isEmpty)
                 }.buttonStyle(.plain)
                 Menu {
-                    Picker("Range", selection: $days) { ForEach([7, 14, 30], id: \.self) { Text("Next \($0) days").tag($0) } }
-                } label: { pill("Next \(days) days", on: false) }
+                    Picker("Range", selection: $days) { ForEach([1, 7, 14, 30], id: \.self) { Text(Self.range($0)).tag($0) } }
+                } label: { pill(Self.range(days), on: days == 1) }
             }
         }.scrollIndicators(.hidden).accessibilityIdentifier("calendar-everything-filters")
     }
+    static func range(_ days: Int) -> String { days == 1 ? "Today" : "Next \(days) days" }
     private func pill(_ text: String, on: Bool) -> some View {
         HStack(spacing: 6) { Text(text).lineLimit(1); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
             .font(.system(size: 13, weight: .bold)).foregroundStyle(on ? theme.accent : HomeStyle.chipText)
@@ -259,7 +260,7 @@ struct UniversalCalendarSection: View {
                     VStack(spacing: 0) {
                         let rows = days[day] ?? []
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                            if index > 0 { SettingsDivider().padding(.leading, 74) }
+                            if index > 0 { SettingsDivider().padding(.leading, 26 + AiringCalendarView.posterWidth) }
                             row(item, saved: item.route.map { (($0.kind == .tv) ? "tv:" : "movie:") + String($0.id) }.map(inDiary.contains) ?? false)
                         }
                     }.modifier(SettingsCard())
@@ -269,7 +270,9 @@ struct UniversalCalendarSection: View {
     }
     @ViewBuilder private func row(_ item: UniversalRelease, saved: Bool) -> some View {
         let label = HStack(spacing: 12) {
-            Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 8))
+            Artwork(path: item.poster, title: item.name, initialsOnly: false)
+                .frame(width: AiringCalendarView.posterWidth, height: AiringCalendarView.posterWidth * 1.4)
+                .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                 ReleaseSubtitle(item: item)
@@ -305,14 +308,18 @@ private struct ReleaseSubtitle: View {
     var body: some View {
         Text(text).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
             .task(id: item.id) {
-                guard item.kind == .show, episode == nil, let id = item.route?.id else { return }
-                episode = await UniversalReleases.episode(show: id, day: item.day, store: store)
+                guard item.kind == .show, let id = item.route?.id else { return }
+                if episode == nil { episode = await UniversalReleases.episode(show: id, day: item.day, store: store) }
+                await EpisodeAirTimes.shared.load(tmdb: id, day: item.day, store: store)
             }
     }
     private var text: String {
         switch item.kind {
         case .movie: return "Movie"
-        case .show: return "Show · " + (episode ?? item.detail)
+        case .show:
+            var parts = ["Show", episode ?? item.detail]
+            if let id = item.route?.id, let time = EpisodeAirTimes.shared.time(tmdb: id, day: item.day) { parts.append(time.formatted(date: .omitted, time: .shortened)) }
+            return parts.joined(separator: " · ")
         case .anime:
             var parts = ["Anime", item.detail]
             if let time = item.time { parts.append(time.formatted(date: .omitted, time: .shortened)) }
