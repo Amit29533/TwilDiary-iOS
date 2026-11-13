@@ -224,9 +224,10 @@ final class StopRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable
                 quotaBlockedUntil = max(quotaBlockedUntil ?? nextReset, nextReset)
                 throw APIError.databaseLimit(quotaBlockedUntil)
             }
+            // The status goes in the words, so a refusal without a message of its own can be traced.
             let fallback = method == "GET"
-                ? "The diary could not be loaded. Please try refreshing."
-                : "The change was not confirmed. Refresh before trying again."
+                ? "The diary could not be loaded (HTTP \(http.statusCode)). Please try refreshing."
+                : "The change was not confirmed (HTTP \(http.statusCode)). Refresh before trying again."
             if path.hasPrefix("/api/trakt/sync") || url.path == "/api/trakt/status" {
                 throw TraktTransferFailure(status: http.statusCode, code: envelope?.error.code ?? "unconfirmed_response",
                     message: envelope?.error.message ?? fallback,

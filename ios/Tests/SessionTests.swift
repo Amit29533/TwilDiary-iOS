@@ -784,8 +784,8 @@ private struct WorkspaceDecodeProbe: Decodable, Sendable {
         StubProtocol.state.reset { _ in .init(503, "Synthetic offline", contentType: "text/plain") }
         let client = api(storage)
         for (method, expected) in [
-            ("GET", "The diary could not be loaded. Please try refreshing."),
-            ("PATCH", "The change was not confirmed. Refresh before trying again.")
+            ("GET", "The diary could not be loaded (HTTP 503). Please try refreshing."),
+            ("PATCH", "The change was not confirmed (HTTP 503). Refresh before trying again.")
         ] {
             do {
                 let _: EmptyResponse = try await client.request("/api/titles/synthetic", method: method)

@@ -121,7 +121,7 @@ struct SettingsView: View {
                     }
                     settingsSection("CONNECTIONS AND DATA") {
                         NavigationLink(value: AppDestination.connections) {
-                            settingsRow("link", .purple, "Connections", subtitle: "Trakt, Simkl, AniList and more", value: connectionsSummary, disclosure: true)
+                            settingsRow("link", .purple, "Connections", subtitle: "Trakt, MDBList, WeTrakr, AniList and more", value: connectionsSummary, disclosure: true)
                         }.accessibilityIdentifier("settings-connections")
                         divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress and notes", disclosure: true) }

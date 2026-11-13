@@ -31,6 +31,8 @@ enum ExtrasStorage {
     private(set) var running = false
     @ObservationIgnored private var pending: Task<Void, Never>?
     @ObservationIgnored private var lastPull: Date?
+    /// A change saved while a sync was running: it goes in one more pass right after.
+    @ObservationIgnored private var again = false
     @ObservationIgnored weak var store: DiaryStore?
     private static let sessionAccount = "extrasServer.session"
 
@@ -64,8 +66,13 @@ enum ExtrasStorage {
 
     /// Reads, merges and saves back. Returns whether the phone's copy changed.
     @discardableResult func run() async throws -> Bool {
-        guard available, !running else { return false }
-        running = true; defer { running = false }
+        guard available else { return false }
+        guard !running else { again = true; return false }
+        running = true
+        defer {
+            running = false
+            if again { again = false; soon() }
+        }
         do {
             let extras = PhoneExtras.shared
             let data = try await request("/api/phone-extras", method: "GET")
