@@ -7,11 +7,9 @@ import TwilDiaryCore
 @MainActor final class FixtureDiaryBackend {
     private(set) var workspace: Workspace
     private let stamp = "2026-10-23T12:00:00Z"
-    private var scans: [[String: Any]] = []
     private let history = FixtureWatchHistory()
-    init(workspace: Workspace, scanner: Bool = false) {
+    init(workspace: Workspace) {
         self.workspace = workspace
-        if scanner { scans = [["id": "fixture-unmatched", "version": 1, "deviceId": "fixture-pc", "deviceName": "Reference PC", "volumeId": "fixture-volume", "driveLetter": "R:", "root": "R:\\Reference", "relativePath": "Unmatched Series", "name": "Unmatched Series", "seasonNumber": 1, "fileCount": 16, "sizeBytes": NSNull(), "checkedAt": stamp]] }
     }
     func request<T: Decodable>(_ path: String, method: String, body: [String: Any]?) throws -> T {
         if let update = try history.prepare(workspace, route: URLComponents(string: path)?.path ?? path, method: method, body: body ?? [:]) {
@@ -24,7 +22,6 @@ import TwilDiaryCore
         let parts = route.split(separator: "/").map(String.init)
         var response: [String: Any] = [:]
         var purged = Set<String>()
-        var resolvedScan: String?
         if route == "/api/metadata/import", method == "POST" {
             guard let id = body["tmdbId"] as? Int, id > 0, let media = body["mediaType"] as? String, let kind = MediaKind(rawValue: media), let category = body["category"] as? String,
                   (kind == .tv ? ["show", "anime"] : ["movie", "anime-movie"]).contains(category), body["status"] as? String == "planned" else { throw APIError.rejected(400, "The category must match this movie or series.") }
@@ -72,19 +69,6 @@ import TwilDiaryCore
                 manifests[manifestIndex]["expectedEpisodes"] = episodeObjects.filter { $0["titleId"] as? String == title.id && $0["season"] as? Int == number }.count
             }
             titles[index]["seasons"] = manifests; archive["episodes"] = episodeObjects; response = [:]
-        } else if route == "/api/scanner/review", method == "GET" {
-            response = ["items": scans, "nextCursor": NSNull()]
-        } else if parts.count == 5, Array(parts.prefix(3)) == ["api", "scanner", "review"], parts[4] == "resolve", method == "POST" {
-            guard let scan = scans.first(where: { $0["id"] as? String == parts[3] }), scan["version"] as? Int == body["expectedVersion"] as? Int,
-                  let titleID = body["titleId"] as? String, let title = workspace.activeTitles.first(where: { $0.id == titleID }) else { throw APIError.rejected(409, "This scan was already resolved or the selected title changed. Refresh the queue.") }
-            var copies = try objects(workspace.locations)
-            let seasonNumber = scan["seasonNumber"] as? Int
-            let matchedSeason = seasonNumber.flatMap { number in title.seasons?.contains(where: { $0.number == number }) == true ? number : nil }
-            let season: Any = matchedSeason as Any? ?? NSNull()
-            let mapping: [String: Any] = ["id": UUID().uuidString, "titleId": titleID, "deviceName": scan["deviceName"]!, "deviceId": scan["deviceId"]!, "volumeId": scan["volumeId"]!, "driveLetter": scan["driveLetter"]!, "root": scan["root"]!, "relativePath": scan["relativePath"]!, "season": season, "fileCount": scan["fileCount"]!, "sizeBytes": scan["sizeBytes"] as Any? ?? NSNull(), "evidence": "present", "checkedAt": scan["checkedAt"]!]
-            copies.removeAll { $0["deviceId"] as? String == mapping["deviceId"] as? String && $0["volumeId"] as? String == mapping["volumeId"] as? String && $0["root"] as? String == mapping["root"] as? String && $0["relativePath"] as? String == mapping["relativePath"] as? String }
-            copies.append(mapping); archive["locations"] = copies; resolvedScan = parts[3]
-            response = ["resolved": true, "titleId": titleID]
         } else if path == "/api/titles/bulk", method == "POST" {
             guard let items = body["items"] as? [[String: Any]], !items.isEmpty, items.count <= CollectionRequest.limit, let action = body["action"] as? String else { throw APIError.rejected(400, "Invalid selection.") }
             let ids = items.compactMap { $0["id"] as? String }
@@ -132,7 +116,6 @@ import TwilDiaryCore
         let updated = try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: archive))
         let receipt = try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: response))
         workspace = updated; history.retain(Set(updated.titles.map(\.id)))
-        if let resolvedScan { scans.removeAll { $0["id"] as? String == resolvedScan } }
         return receipt
     }
     private func object<Value: Encodable>(_ value: Value) throws -> [String: Any] { try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any] ?? [:] }

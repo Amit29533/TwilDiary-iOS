@@ -11,7 +11,7 @@ import XCTest
 final class NoServerContractTests: XCTestCase {
     static let optional = ["/api/session", "/api/backups", "/api/phone-extras", "/api/usage", "/api/settings/apis", "/api/providers",
                            "/api/diary-record", "/api/trakt/connect", "/api/trakt/status", "/api/trakt/disconnect", "/api/trakt/token",
-                           "/api/jellyfin/library", "/api/files/jellyfin", "/api/scanner/review"]
+                           "/api/jellyfin/library", "/api/files/jellyfin"]
     static let serverDiary = ["/api/workspace", "/api/titles", "/api/watch-events", "/api/glance", "/api/progress/status", "/api/trash",
                               "/api/library/ratings", "/api/trakt/sync", "/api/favourites"]
     static let phoneFirst = ["/api/metadata", "/api/catalog", "/api/canvas", "/api/discovery", "/api/people", "/api/person", "/api/search",

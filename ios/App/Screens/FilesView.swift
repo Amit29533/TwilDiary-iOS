@@ -19,10 +19,10 @@ struct FilesView: View {
                     HStack { Text("Mapped folders").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); SectionMoreButton(label: "Browse titles", identifier: "files-browse") { router.libraryDisk(selected) } }
                     if selected != "all" { Button("All drives") { selected = "all" }.font(.caption.bold()) }
                     CollectionLayout(grid: grid) { ForEach(locations) { location in folderRow(location) } }
-                    if locations.isEmpty { ContentUnavailableView("No mapped folders", systemImage: "folder", description: Text(store.phoneOnly ? "Try another drive." : "Try another drive. Unmatched scanned folders can be linked in Fix mismatches.")) }
+                    if locations.isEmpty { ContentUnavailableView("No mapped folders", systemImage: "folder", description: Text("Try another drive.")) }
                     HStack(alignment: .top, spacing: 10) {
                         DiaryIcon(name: "info", size: 18)
-                        VStack(alignment: .leading, spacing: 8) { Text("Shown as of the last scan.").font(.system(size: 13)).foregroundStyle(.secondary); if !store.phoneOnly { NavigationLink("Fix mismatches →", value: AppDestination.scanner).font(.system(size: 13, weight: .semibold)) } }
+                        VStack(alignment: .leading, spacing: 8) { Text("Shown as of the last Jellyfin sync.").font(.system(size: 13)).foregroundStyle(.secondary) }
                     }.diaryPanel()
                 // Keep the final action above the floating tab bar, matching the web shell's bottom clearance.
                 }.padding(14).padding(.bottom, 100)

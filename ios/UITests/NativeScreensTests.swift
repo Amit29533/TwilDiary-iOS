@@ -10,10 +10,9 @@ import UIKit
         XCTAssertTrue(row.isHittable); row.tap()
         XCTAssertTrue(app.navigationBars["Statistics"].waitForExistence(timeout: 5))
     }
-    private func launch(mutations: Bool = false, scanner: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
+    private func launch(mutations: Bool = false, ratingsUnavailable: Bool = false, titleMetadata: Bool = false, empty: Bool = false, traktScenario: String? = nil, refreshFailure: Bool = false, upcoming: Bool = false, slowWrites: Bool = false, slowMetadata: Bool = false, communityUnavailable: Bool = false, cachedSnapshot: Bool = false, longEpisodes: Bool = false, automaticCarousel: Bool = false, animeNavigation: Bool = false, favouritesGallery: Bool = false, profileRepairs: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]
-        if mutations || scanner { app.launchArguments.append("--ui-mutations") }
-        if scanner { app.launchArguments.append("--ui-scanner") }
+        if mutations { app.launchArguments.append("--ui-mutations") }
         if ratingsUnavailable { app.launchArguments.append("--ui-ratings-unavailable") }
         if titleMetadata { app.launchArguments.append("--ui-title-metadata") }
         if empty { app.launchArguments.append("--ui-empty") }
@@ -1234,39 +1233,6 @@ import UIKit
         trash.tap(); app.buttons["Delete permanently"].tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(app.staticTexts["Trash is clear"].waitForExistence(timeout: 5)); capture("Trash after permanent delete")
-    }
-    func testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory() {
-        let app = launch(scanner: true); app.tabBars.buttons["Profile"].tap()
-        app.buttons["settings-files"].tap()
-        XCTAssertTrue(app.staticTexts["Mapped folders"].waitForExistence(timeout: 5)); capture("Files and drives")
-        let review = app.buttons["Fix mismatches →"]
-        let filesContent = app.scrollViews["files-content"]
-        for _ in 0..<8 {
-            if review.isHittable && review.frame.maxY < app.tabBars.buttons["Profile"].frame.minY { break }
-            filesContent.swipeUp()
-        }
-        XCTAssertTrue(review.isHittable)
-        XCTAssertLessThan(review.frame.maxY, app.tabBars.buttons["Profile"].frame.minY, "The last Files action must scroll fully above the floating tab bar")
-        capture("Files final action above navigation"); review.tap()
-        let match = app.buttons["match-scan-fixture-unmatched"]
-        XCTAssertTrue(match.waitForExistence(timeout: 5)); capture("Unmatched scan"); match.tap()
-        let search = app.textFields["Search library and online"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("18 Again\n")
-        let chosen = app.buttons["match-title-again"]
-        XCTAssertTrue(chosen.waitForExistence(timeout: 5)); chosen.tap()
-        XCTAssertTrue(app.staticTexts["No unmatched scans"].waitForExistence(timeout: 5)); capture("Scanner resolved")
-        let done = app.navigationBars.buttons.element(boundBy: 0)
-        XCTAssertTrue(done.isHittable)
-        XCTAssertLessThan(done.frame.maxY, app.tabBars.buttons["Profile"].frame.minY, "Dismiss must never overlap the tab bar")
-        done.tap()
-        XCTAssertTrue(app.staticTexts["Mapped folders"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Profile"].isSelected)
-        let path = app.staticTexts["R:\\Reference\\Unmatched Series"]
-        for _ in 0..<10 { if path.isHittable { break }; filesContent.swipeUp() }
-        XCTAssertTrue(path.exists); capture("Confirmed scanned location")
-        let filesDone = app.navigationBars.buttons.element(boundBy: 0)
-        XCTAssertTrue(filesDone.isHittable); filesDone.tap()
-        XCTAssertTrue(app.staticTexts["APPEARANCE"].waitForExistence(timeout: 5))
     }
     func testStatsMoreAndFilesOfferInlineSearchWithoutChangingTheActiveTab() {
         // The former inline entry points now share the single Search tab.

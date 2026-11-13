@@ -16,7 +16,7 @@ import TwilDiaryCore
             if ProcessInfo.processInfo.arguments.contains("--ui-personal-profile-reset") {
                 for key in ["profileName", "profileCharacter", "profileUsesPhoto", "recentSearches.v1"] { UserDefaults.standard.removeObject(forKey: key) }
             }
-            for key in ["historyGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            for key in ["historyGrid", "glanceGrid", "filesGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-home-layouts") {
                 for key in ["homeHistoryGrid", "upcomingGrid"] { UserDefaults.standard.set(false, forKey: key) }
             }
@@ -79,7 +79,7 @@ enum AppTab: String, CaseIterable, Hashable {
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, scanner, appearance, trakt, tmdb, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, appearance, trakt, tmdb, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -349,7 +349,6 @@ struct RootView: View {
                     case .files: FilesView()
                     case .jellyfin: JellyfinLibraryView()
                     case .trash: TrashView()
-                    case .scanner: ScannerReviewView()
                     case .appearance: AppearanceView()
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()

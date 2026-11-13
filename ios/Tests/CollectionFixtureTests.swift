@@ -54,33 +54,4 @@ import TwilDiaryCore
         let _: EmptyResponse = try fixture.request("/api/trash", method: "DELETE", body: ["confirmation": "EMPTY_TRASH"])
         XCTAssertEqual(fixture.workspace.titles, active)
     }
-    func testScannerResolutionUsesReviewedVersionAndCreatesOnlyTheConfirmedMapping() throws {
-        let original = PreviewData.workspace, fixture = FixtureDiaryBackend(workspace: PreviewData.workspace, scanner: true)
-        let page: ScannerReviewPage = try fixture.request("/api/scanner/review?after=", method: "GET", body: nil)
-        let scan = try XCTUnwrap(page.items.first)
-        XCTAssertThrowsError(try fixture.request("/api/scanner/review/\(scan.id)/resolve", method: "POST", body: ["titleId": "again", "expectedVersion": 999]) as EmptyResponse)
-        XCTAssertEqual(fixture.workspace.locations, original.locations)
-        let _: EmptyResponse = try fixture.request("/api/scanner/review/\(scan.id)/resolve", method: "POST", body: ["titleId": "again", "expectedVersion": scan.version])
-        XCTAssertEqual(fixture.workspace.locations.count, original.locations.count + 1)
-        let mapping = try XCTUnwrap(fixture.workspace.locations.last)
-        XCTAssertEqual(mapping.titleId, "again"); XCTAssertEqual(mapping.evidence, "present")
-        XCTAssertEqual(mapping.path, "R:\\Reference\\Unmatched Series"); XCTAssertEqual(mapping.season, 1)
-        XCTAssertEqual(fixture.workspace.events, original.events); XCTAssertEqual(fixture.workspace.episodes, original.episodes)
-        let remaining: ScannerReviewPage = try fixture.request("/api/scanner/review", method: "GET", body: nil)
-        XCTAssertTrue(remaining.items.isEmpty)
-        XCTAssertThrowsError(try fixture.request("/api/scanner/review/\(scan.id)/resolve", method: "POST", body: ["titleId": "again", "expectedVersion": scan.version]) as EmptyResponse)
-        XCTAssertEqual(fixture.workspace.locations.count, original.locations.count + 1)
-    }
-    func testScannerCannotResolveIntoAMissingOrTrashedTitle() throws {
-        let original = PreviewData.workspace, fixture = FixtureDiaryBackend(workspace: PreviewData.workspace, scanner: true)
-        let page: ScannerReviewPage = try fixture.request("/api/scanner/review", method: "GET", body: nil)
-        let scan = try XCTUnwrap(page.items.first), title = try XCTUnwrap(original.activeTitles.first)
-        let _: EmptyResponse = try fixture.request("/api/titles/bulk", method: "POST", body: body([title], .trash))
-        for titleID in [title.id, "missing-title"] {
-            XCTAssertThrowsError(try fixture.request("/api/scanner/review/\(scan.id)/resolve", method: "POST", body: ["titleId": titleID, "expectedVersion": scan.version]) as EmptyResponse)
-        }
-        XCTAssertEqual(fixture.workspace.locations, original.locations)
-        let remaining: ScannerReviewPage = try fixture.request("/api/scanner/review", method: "GET", body: nil)
-        XCTAssertEqual(remaining.items.count, 1)
-    }
 }
