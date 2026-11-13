@@ -113,7 +113,7 @@ enum ExtrasStorage {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401, !retried { return try await self.request(path, method: method, body: body, retried: true) }
         guard (200..<300).contains(status), (response as? HTTPURLResponse)?.mimeType == "application/json" else {
-            throw APIError.message(Self.explain(status, data))
+            throw APIError.message(Self.explain(status, data, response))
         }
         return data
     }
@@ -138,20 +138,33 @@ enum ExtrasStorage {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status), let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let token = json["token"] as? String, AccessCookiePolicy.validToken(token) else {
-            throw APIError.message(Self.explain(status, data))
+            throw APIError.message("Signing in to your server: " + Self.explain(status, data, response))
         }
         let session = Session(token: token, expires: (json["expiresAt"] as? String).flatMap(DiaryDate.parse))
         if let encoded = try? JSONEncoder().encode(session) { _ = keychain.writeSecret(String(decoding: encoded, as: UTF8.self), for: Self.sessionAccount) }
         return token
     }
 
-    /// What went wrong, in words: the server's own message, or Cloudflare Access's page.
-    private static func explain(_ status: Int, _ data: Data) -> String {
+    /// What went wrong, in words, and who said it: your server's own message (JSON or plain text),
+    /// or Cloudflare Access's page (401: the token isn't recognised; 403: it is, but no policy on
+    /// this app lets it in).
+    private static func explain(_ status: Int, _ data: Data, _ response: URLResponse? = nil) -> String {
         if let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let message = (json["error"] as? [String: Any])?["message"] as? String { return message }
+        let mime = (response as? HTTPURLResponse)?.mimeType ?? ""
+        if mime == "text/plain", let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return "Your server said: " + String(text.prefix(160)) + " (HTTP \(status))."
+        }
         if AppConfiguration.accessServiceToken == nil {
             return "Your server is behind Cloudflare Access and this build has no service token, so it can't be reached from here."
         }
-        return status == 0 ? "Your server couldn't be reached." : "Your server didn't answer as expected (HTTP \(status)). Check the Cloudflare Access service token and its Service Auth policy."
+        if mime == "text/html" {
+            switch status {
+            case 401: return "Cloudflare Access doesn't recognise the service token (HTTP 401). Check its Client ID and Secret."
+            case 403: return "Cloudflare Access recognises the service token but no policy on this app lets it in (HTTP 403). Add a Service Auth policy with this token to the Access app for twildiary-v2.amit29533.workers.dev."
+            default: break
+            }
+        }
+        return status == 0 ? "Your server couldn't be reached." : "Your server didn't answer as expected (HTTP \(status))."
     }
 }
