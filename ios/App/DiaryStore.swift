@@ -724,10 +724,8 @@ import TwilDiaryCore
         var next = providerSettings
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
         next.customTmdbToken = trimmed?.isEmpty == false ? trimmed : nil
-        let previous = providerSettings
         guard persistProviderSettings(next) else { return false }
         invalidateDiscovery()
-        stageVaultChanges(from: previous, to: next)
         return true
     }
     @discardableResult func updateProviderConfig(_ config: ExternalProviderConfig) -> Bool {
