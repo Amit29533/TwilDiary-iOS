@@ -513,6 +513,15 @@ struct SemanticSearchSection: View {
     /// Sent when AI was turned on with text already typed.
     @State private var asked = ""
     private var description: String { query.isEmpty ? asked : query }
+    /// The last few descriptions' matches, for this app session: opening a title and coming back
+    /// (or the list rebuilding the section) shows the same matches instead of asking again.
+    @MainActor private static var answered: [String: [SemanticSearch.Match]] = [:]
+    @MainActor private static var answeredOrder: [String] = []
+    @MainActor private static func remember(_ matches: [SemanticSearch.Match], for text: String) {
+        answered[text] = matches
+        answeredOrder.removeAll { $0 == text }; answeredOrder.append(text)
+        while answeredOrder.count > 8 { answered[answeredOrder.removeFirst()] = nil }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -554,7 +563,15 @@ struct SemanticSearchSection: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 5) {
                     Text(match.item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).truncationMode(.tail)
-                    Text(detail(match.item)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text(detail(match.item)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        // TMDB's score (or the diary's, for a title in your library), as on search's posters.
+                        if let score = match.item.rating ?? store.libraryIdentity(match.item).flatMap({ store.title($0)?.communityScore }), score > 0 {
+                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 11)); Text(String(format: "%.1f", score)) }
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#e7ca90"))
+                                .accessibilityElement(children: .ignore).accessibilityLabel("Rated \(String(format: "%.1f", score))")
+                        }
+                    }
                     Text(match.why).font(.system(size: 14)).foregroundStyle(HomeStyle.soft).lineLimit(3).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -570,11 +587,14 @@ struct SemanticSearchSection: View {
     /// One request per description you send (never while typing).
     private func run(_ text: String) async {
         guard hasKey, !store.isPreview, !text.isEmpty else { return }
+        // Already answered (back from a title, or the section rebuilt): show those, no new request.
+        if let known = Self.answered[text] { matches = known; failure = nil; loading = false; return }
         loading = true; failure = nil
         defer { if !Task.isCancelled { loading = false } }
         do {
             let found = try await SemanticSearch.search(text, store: store)
             guard !Task.isCancelled else { return }
+            Self.remember(found, for: text)
             withAnimation(.smooth) { matches = found }
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription; matches = [] }
