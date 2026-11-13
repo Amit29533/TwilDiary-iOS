@@ -69,6 +69,7 @@ jobs:
         with:
           name: TwilDiary-unused-code
           path: ios/.artifacts
+          include-hidden-files: true
           retention-days: 7
 
   app-tests:
@@ -95,7 +96,9 @@ jobs:
           python3 - <<'PY'
           import json, os, re
           devices = json.load(open('ios/.artifacts/devices.json'))['devices']
-          options = [(runtime, d) for runtime, items in devices.items() if 'iOS' in runtime
+          # The runtime that matches Xcode 26's SDK: a newer one (27.x) makes the asset catalog
+          # compiler warn, and warnings fail the build.
+          options = [(runtime, d) for runtime, items in devices.items() if 'iOS-26' in runtime
                      for d in items if d['name'].startswith('iPhone') and d.get('isAvailable', True)]
           if not options: raise SystemExit('No iPhone simulator available')
           runtime, device = max(options, key=lambda o: (tuple(map(int, re.findall(r'\d+', o[0]))), 'Pro' in o[1]['name']))
@@ -123,4 +126,5 @@ jobs:
           path: |
             ios/.artifacts/logs
             ios/.artifacts/UnitTests.xcresult
+          include-hidden-files: true
           retention-days: 7
