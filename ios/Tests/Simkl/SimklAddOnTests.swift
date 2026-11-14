@@ -316,29 +316,31 @@ final class SimklAddOnTests: XCTestCase {
 
     // MARK: Reading Simkl back (phase 2)
 
-    private func title(_ id: String, _ name: String, category: String, tmdb: Int) -> MediaTitle {
-        MediaTitle(id: id, name: name, category: category, year: nil, overview: "", poster: nil, backdrop: nil, communityScore: nil, tmdbId: tmdb,
-                   genres: [], tags: [], runtimeMinutes: nil, status: "watching", favorite: false, queued: false, score: nil, notes: "", deletedAt: nil,
-                   version: 1, seasons: [], createdAt: nil)
-    }
-    private func episode(_ title: String, _ season: Int, _ number: Int) -> Episode {
-        Episode(id: "\(title)-\(season)-\(number)", titleId: title, season: season, number: number, name: "", overview: "", airedOn: nil, still: nil, hidden: nil, communityScore: nil)
-    }
-    private func watched(_ title: String, _ episode: String?) -> WatchEvent {
-        WatchEvent(id: "w-\(title)-\(episode ?? "")", operationId: "o", titleId: title, episodeId: episode, watchedAt: "2026-11-14T07:00:00Z",
-                   recordedAt: "2026-11-14T07:00:00Z", revokedAt: nil, origin: "manual", version: 1)
+    /// A diary from JSON (the model's initialisers are the core package's own).
+    private func diary(titles: [(id: String, name: String, category: String, tmdb: Int)], episodes: [(title: String, season: Int, number: Int)],
+                       watched: [(title: String, episode: String?)]) throws -> Workspace {
+        let object: [String: Any] = [
+            "titles": titles.map { ["id": $0.id, "name": $0.name, "category": $0.category, "tmdbId": $0.tmdb, "overview": "", "genres": [String](),
+                                    "status": "watching", "favorite": false, "notes": ""] as [String: Any] },
+            "episodes": episodes.map { ["id": "\($0.title)-\($0.season)-\($0.number)", "titleId": $0.title, "season": $0.season, "number": $0.number,
+                                        "name": "", "overview": ""] as [String: Any] },
+            "events": watched.map { ["id": "w-\($0.title)-\($0.episode ?? "")", "operationId": "o", "titleId": $0.title, "episodeId": $0.episode ?? NSNull(),
+                                     "watchedAt": "2026-11-14T07:00:00Z", "recordedAt": "2026-11-14T07:00:00Z", "origin": "manual", "version": 1] as [String: Any] },
+            "locations": [Any]()
+        ]
+        return try JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
 
     /// From the test account's real library (2026-11-14): movies and shows by TMDB id; anime through
     /// where the diary's episodes were placed (Re:Zero's second cour has no TMDB id on Simkl).
-    func testSimklsLibraryReadsInTheDiarysTerms() {
-        let diary = Workspace(titles: [title("inc", "Inception", category: "movie", tmdb: 27205), title("bb", "Breaking Bad", category: "show", tmdb: 1396),
-                                       title("rz", "Re:ZERO", category: "anime", tmdb: 65942), title("yn", "Your Name.", category: "anime-movie", tmdb: 372058)],
-                              episodes: [episode("bb", 1, 2), episode("rz", 1, 26), episode("rz", 1, 27)],
-                              events: [watched("inc", nil), watched("bb", "bb-1-2"), watched("rz", "rz-1-26"), watched("rz", "rz-1-27")], locations: [])
+    func testSimklsLibraryReadsInTheDiarysTerms() throws {
+        let workspace = try diary(titles: [("inc", "Inception", "movie", 27205), ("bb", "Breaking Bad", "show", 1396),
+                                       ("rz", "Re:ZERO", "anime", 65942), ("yn", "Your Name.", "anime-movie", 372058)],
+                              episodes: [("bb", 1, 2), ("rz", 1, 26), ("rz", 1, 27)],
+                              watched: [("inc", nil), ("bb", "bb-1-2"), ("rz", "rz-1-26"), ("rz", "rz-1-27")])
         let placements = ["65942:1:26": SimklPlacement(entry: 1063491, season: 1, number: 1, at: .now),
                           "65942:1:27": SimklPlacement(entry: nil, season: nil, number: nil, at: .now)]
-        let mapping = SimklLibrary.mapping(placements: placements, diary: diary)
+        let mapping = SimklLibrary.mapping(placements: placements, diary: workspace)
         var library = TraktLibrary()
         SimklLibrary.apply("movies", Data(#"{"movies":[{"last_watched_at":"2026-11-14T07:00:00Z","user_rated_at":"2026-11-14T07:37:48Z","user_rating":8,"status":"completed","movie":{"title":"Inception","year":2010,"ids":{"simkl":472214,"imdb":"tt1375666","tmdb":"27205"}}}]}"#.utf8), mapping: mapping, into: &library)
         SimklLibrary.apply("shows", Data(#"{"shows":[{"status":"watching","show":{"title":"Breaking Bad","ids":{"simkl":11121,"tmdb":"1396"}},"seasons":[{"number":1,"episodes":[{"number":2,"watched_at":"2026-11-14T07:00:00Z"}]}]},{"status":"dropped","added_to_watchlist_at":"2026-11-14T07:37:50Z","show":{"title":"Severance","ids":{"simkl":1203662,"tmdb":"95396"}}}]}"#.utf8), mapping: mapping, into: &library)
@@ -357,7 +359,7 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(library.skipped, 3, "the cour's episode 2 (no diary episode there) and the OVA (a TMDB id the diary doesn't have) are counted, not guessed")
 
         // The diary as compared: Re:Zero S1 E27, which Simkl lists nowhere, is left out; so is what Simkl didn't keep.
-        let compared = SimklLibrary.comparable(diary, placements: placements, notKept: ["show:1396:1:2"])
+        let compared = SimklLibrary.comparable(workspace, placements: placements, notKept: ["show:1396:1:2"])
         XCTAssertEqual(Set(compared.events.map(\.id)), ["w-inc-", "w-rz-rz-1-26"])
     }
 
