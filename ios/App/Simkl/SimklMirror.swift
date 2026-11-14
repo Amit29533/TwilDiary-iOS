@@ -468,7 +468,10 @@ struct SimklQueue: Codable, Equatable, Sendable {
             requests += 1
         }
         let diary = store.diaryToMatch
-        requests += await placeAhead(diary, api: api, budget: budget)
+        // Matching anime costs a few requests a title. Keep 150 of the day's allowance for sending
+        // and the other apps you connect (each check spent about 50, owner's recording).
+        let room = ProviderQuota.daily(host: SimklAPI.quotaHost).map { max(0, ($0.limit - $0.used - 150) / 4) } ?? budget
+        requests += await placeAhead(diary, api: api, budget: min(budget, room))
         let mapping = SimklLibrary.mapping(placements: placements, diary: diary)
         var read = TraktLibrary(activities: TraktActivities(all: root["all"] as? String, stamps: stamps))
         for kind in ["movies", "shows", "anime"] {

@@ -30,7 +30,11 @@ struct ServiceLimits: Sendable {
     /// number of requests but doesn't say how many are used; TwilDiary waits when it runs out.
     private static func simkl(_ store: DiaryStore) async throws -> ServiceLimits {
         guard let token = await SimklAccount.shared.token() else { throw APIError.message("Sign in to Simkl first, in Connections.") }
-        let data = try await SimklAPI(token: token).get("/users/settings")
+        // With the day's allowance used up Simkl answers nothing, not even the plan: the page still
+        // shows the saved count and when it comes back.
+        let data: Data
+        do { data = try await SimklAPI(token: token).get("/users/settings") }
+        catch SimklAPI.Failure.busy { var known = ServiceLimits(plan: nil); known.daily = ProviderQuota.daily(host: SimklAPI.quotaHost); return known }
         let plan = AccountProfiles.account(from: data, tracker: .simkl).plan
         var value = ServiceLimits(plan: plan.map { $0 == "Free" ? "Free plan" : "Simkl " + $0 })
         value.daily = ProviderQuota.daily(host: "api.simkl.com")

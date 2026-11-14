@@ -32,6 +32,21 @@ enum SimklUsage {
     }
 }
 
+extension SimklAPI.Failure: LocalizedError {
+    /// What a person reads ("SimklAPI.Failure error 0" was shown before, owner's recording).
+    var errorDescription: String? {
+        switch self {
+        case .signIn: return "Simkl signed TwilDiary out. Sign in to Simkl again in Connections."
+        case .busy(let seconds) where seconds > 600:
+            let time = Date().addingTimeInterval(seconds).formatted(date: .omitted, time: .shortened)
+            return "Simkl’s daily request limit for your account is used up (every app you connect shares it). It comes back at \(time)."
+        case .busy: return "Simkl asked TwilDiary to slow down. Try again in a few seconds."
+        case .unavailable(let message): return message.isEmpty ? "Simkl didn’t answer. Try again later." : message
+        case .refused(let status, _): return "Simkl refused the request (HTTP \(status))."
+        }
+    }
+}
+
 /// Simkl's API as the add-on uses it: your sign-in as Bearer, the app ID as `simkl-api-key`, and
 /// the app's name and version on every request, as Simkl asks.
 struct SimklAPI: Sendable {

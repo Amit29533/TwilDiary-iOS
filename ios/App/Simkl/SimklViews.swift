@@ -91,7 +91,11 @@ struct SimklSettingsView: View {
                                 Text(item.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                                 Text(item.reason).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
                                 if let reply = item.reply, !reply.isEmpty {
-                                    Text("Simkl: " + reply).font(.system(size: 11, design: .monospaced)).foregroundStyle(HomeStyle.secondary).lineLimit(3).textSelection(.enabled)
+                                    // Simkl's own answer, for a closer look, folded away.
+                                    DisclosureGroup("Simkl’s answer") {
+                                        Text(reply).font(.system(size: 11, design: .monospaced)).foregroundStyle(HomeStyle.secondary).textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }.font(.system(size: 12)).tint(HomeStyle.secondary)
                                 }
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.vertical, 10)
                         }
