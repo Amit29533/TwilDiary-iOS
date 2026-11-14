@@ -6,6 +6,7 @@ import TwilDiaryCore
     @State private var store: DiaryStore
     @State private var router = AppRouter()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
     @AppStorage("use24HourTime") private var use24Hour = false
     init() {
         #if DEBUG
@@ -59,17 +60,24 @@ import TwilDiaryCore
         // card link into a glass capsule (glass on the system bars' own glass).
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
         WindowGroup {
-            RootView().environment(store).environment(router).preferredColorScheme(theme.colorScheme).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
+            RootView().environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
                 // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
                 .onChange(of: theme, initial: true) { _, chosen in
                     ThemeStore.shared.apply(chosen)
-                    // SwiftUI doesn't give a window back to the system's appearance when the scheme
-                    // asked for goes from dark to none, so the windows are told directly.
-                    let style: UIUserInterfaceStyle = chosen.colorScheme == nil ? .unspecified : .dark
-                    for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
-                        for window in scene.windows where window.overrideUserInterfaceStyle != style { window.overrideUserInterfaceStyle = style }
-                    }
+                    applyWindowStyle()
                 }
+                .onChange(of: nativeAppearance) { _, _ in applyWindowStyle() }
+        }
+    }
+}
+
+extension TwilDiaryApp {
+    /// SwiftUI doesn't give a window back to the system's appearance when the scheme asked for goes
+    /// from dark to none, so the windows are told directly (Native's Automatic, Light or Dark).
+    @MainActor func applyWindowStyle() {
+        let style: UIUserInterfaceStyle = theme.palette.followsSystemAppearance ? nativeAppearance.interfaceStyle : .dark
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows where window.overrideUserInterfaceStyle != style { window.overrideUserInterfaceStyle = style }
         }
     }
 }
@@ -186,6 +194,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
     /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
     @Namespace private var zoom
     @State private var askAlerts = false
@@ -239,10 +248,10 @@ struct RootView: View {
             } else {
                 // Premiere marks the chosen tab in white on the glass bar, as streaming apps do; red stays for content.
                 NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme == .native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
-                               pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
+                               pageKey: theme.rawValue + ":" + nativeAppearance.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }, accessory: nowWatching) { tab in
-                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme)
+                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance))
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
                     // The tab controller fills the screen and hands pages the real insets: heroes

@@ -3,6 +3,7 @@ import SwiftUI
 /// Appearance: the themes as cards, two to a row (the five originals and Premiere). Each card previews the theme's accent.
 struct AppearanceView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 2)
 
     var body: some View {
@@ -17,6 +18,15 @@ struct AppearanceView: View {
                             .accessibilityIdentifier("theme-" + item.rawValue)
                             .accessibilityAddTraits(item == theme ? .isSelected : [])
                     }
+                }
+                if theme == .native {
+                    // Native's light or dark: follow the iPhone, or always one (as Apple's apps offer).
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("APPEARANCE").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).padding(.leading, 16)
+                        NativeSegmentedControl(segments: NativeAppearance.allCases.map { NativeSegment(value: $0, title: $0.title, id: "native-appearance-" + $0.rawValue) },
+                                               selection: $nativeAppearance)
+                        SettingsFootnote(text: nativeAppearance == .automatic ? "Follows your iPhone’s light or dark setting." : "Always \(nativeAppearance.rawValue), whatever your iPhone is set to.")
+                    }.transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 SettingsFootnote(text: "Changes instantly · saved on this iPhone")
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)

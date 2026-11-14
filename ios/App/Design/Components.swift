@@ -48,6 +48,33 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
     }
     /// The colour scheme the app asks for: always dark, except Native, which follows the iPhone.
     var colorScheme: ColorScheme? { palette.followsSystemAppearance ? nil : .dark }
+    /// The scheme on screen: Native's own choice (Automatic, Light or Dark), every other theme dark.
+    func colorScheme(native appearance: NativeAppearance) -> ColorScheme? {
+        palette.followsSystemAppearance ? appearance.scheme : .dark
+    }
+}
+
+/// Native's appearance (Settings → Appearance): follow the iPhone, or always light or dark, as in
+/// Apple's own apps that offer it.
+enum NativeAppearance: String, CaseIterable, Identifiable {
+    case automatic, light, dark
+    static let key = "nativeAppearance"
+    var id: Self { self }
+    var title: String { rawValue.capitalized }
+    var scheme: ColorScheme? {
+        switch self {
+        case .automatic: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+    var interfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .automatic: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+    }
 }
 
 extension Color {

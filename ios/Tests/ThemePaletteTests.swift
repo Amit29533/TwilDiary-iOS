@@ -107,4 +107,14 @@ final class ThemePaletteTests: XCTestCase {
         let fill = rgb(ThemePalette.native(hex: "#1b2b25"), .dark)
         XCTAssertLessThan(fill.a, 0.3); XCTAssertGreaterThan(fill.g, fill.r)
     }
+
+    func testNativeAppearanceChoice() {
+        XCTAssertNil(DiaryTheme.native.colorScheme(native: .automatic))
+        XCTAssertEqual(DiaryTheme.native.colorScheme(native: .light), .light)
+        XCTAssertEqual(DiaryTheme.native.colorScheme(native: .dark), .dark)
+        // The other themes stay dark whatever Native's choice is.
+        for theme in DiaryTheme.allCases where theme != .native {
+            for appearance in NativeAppearance.allCases { XCTAssertEqual(theme.colorScheme(native: appearance), .dark, "\(theme)") }
+        }
+    }
 }
