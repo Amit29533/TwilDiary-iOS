@@ -57,10 +57,17 @@ struct SeasonCardsSection: View {
             Spacer(minLength: 0)
             if count > 1 {
                 Button { withAnimation(.snappy(duration: 0.25)) { newestFirst.toggle() } } label: {
-                    HStack(spacing: 8) {
-                        Text(newestFirst ? "Newest" : "Oldest").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        Image(systemName: "arrow.up.arrow.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
-                    }.padding(.horizontal, 18).frame(height: 44)
+                    // One line always: with the count and time chips beside it there was room only for
+                    // "Olde / st" (owner's screenshot); where even one line doesn't fit, the arrows alone.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            Text(newestFirst ? "Newest" : "Oldest").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                .lineLimit(1).fixedSize()
+                            Image(systemName: "arrow.up.arrow.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        }.padding(.horizontal, 14)
+                        Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .frame(width: 44)
+                    }.frame(height: 44)
                         .pillSurface(border: HomeStyle.dateChipBorder)
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityLabel(newestFirst ? "Newest season first" : "Oldest season first").accessibilityIdentifier("title-seasons-order")
@@ -69,7 +76,7 @@ struct SeasonCardsSection: View {
     }
     /// The Episodes heading's count chip.
     private func chip(_ text: String) -> some View {
-        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft).lineLimit(1)
+        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft).lineLimit(1).fixedSize()
             .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
     }
