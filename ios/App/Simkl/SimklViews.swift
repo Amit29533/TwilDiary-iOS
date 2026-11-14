@@ -91,11 +91,18 @@ struct SimklSettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                                 Text(item.reason).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                                if let reply = item.reply, !reply.isEmpty {
+                                    Text("Simkl: " + reply).font(.system(size: 11, design: .monospaced)).foregroundStyle(HomeStyle.secondary).lineLimit(3).textSelection(.enabled)
+                                }
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.vertical, 10)
                         }
                         SettingsDivider()
-                        Button("Clear this list") { mirror.clearNotKept() }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
-                            .frame(maxWidth: .infinity, minHeight: 48)
+                        HStack {
+                            Button("Try again") { Task { await mirror.retryNotKept() } }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                                .frame(maxWidth: .infinity, minHeight: 48).disabled(!account.canSend || mirror.sending)
+                            Button("Clear this list") { mirror.clearNotKept() }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                        }
                     }
                 }
                 if let message { SettingsFootnote(text: message) }

@@ -109,16 +109,64 @@ final class SimklAddOnTests: XCTestCase {
          {"episode":1,"type":"special","date":"2013-12-09T00:00:00-05:00"}]
         """#.utf8))
         XCTAssertEqual(list.count, 3)
-        XCTAssertEqual(SimklBody.place(day: "2013-04-08", in: list).map { [$0.season, $0.number] }, [1, 1], "TVDB's place, a day off")
-        XCTAssertEqual(SimklBody.place(day: "2013-09-28", in: list)?.own, true, "Simkl's own number when TVDB's isn't given")
-        XCTAssertEqual(SimklBody.place(day: "2013-12-09", in: list).map { [$0.season, $0.number] }, [0, 1], "a special")
-        XCTAssertNil(SimklBody.place(day: "2014-01-01", in: list))
+        XCTAssertEqual(SimklBody.find(day: "2013-04-08", in: list)?.number, 1, "a day off (time zones)")
+        XCTAssertEqual(SimklBody.find(day: "2013-09-28", in: list)?.number, 26)
+        XCTAssertEqual(SimklBody.find(day: "2013-12-09", in: list, special: true)?.special, true, "a special")
+        XCTAssertNil(SimklBody.find(day: "2013-12-09", in: list), "a regular episode never lands on a special")
+        XCTAssertNil(SimklBody.find(day: "2014-01-01", in: list))
+
+        // Re:Zero's third season on Simkl: episode 1 dated by its early screening, a special on the
+        // TV premiere day (TMDB's date for S1 E51).
+        let third = SimklAPI.episodes(from: Data(#"""
+        [{"episode":1,"type":"episode","date":"2024-08-30T00:00:00+09:00"},
+         {"episode":2,"type":"episode","date":"2024-10-09T22:30:00+09:00"},
+         {"episode":1,"season":0,"type":"special","date":"2024-10-02T22:30:00+09:00"}]
+        """#.utf8))
+        let premiere = SimklBody.locate(day: "2024-10-02", in: third, special: false)
+        XCTAssertEqual(premiere?.number, 1); XCTAssertEqual(premiere?.special, false, "the episode before next week's, not the special")
+        XCTAssertEqual(SimklBody.shift("2024-12-28", by: 7), "2025-01-04")
+    }
+
+    /// From Simkl's real replies (2026-11-14): Re:Zero's later cours are their own entries sharing
+    /// TMDB's id; Bubble is an ONA Simkl files as anime with no TMDB id.
+    func testCoursFilmsAndEntries() throws {
+        let related = SimklAPI.related(from: Data(#"""
+        {"title":"Re:Zero","relations":[
+          {"title":"Re:Zero","year":2020,"anime_type":"tv","relation_type":"sequel","ids":{"simkl":1063491,"tmdb":"65942"}},
+          {"title":"Re:Zero Memory Snow","year":2018,"anime_type":"movie","relation_type":"side story","ids":{"simkl":717117,"tmdb":"532321"}},
+          {"title":"Isekai Quartet","year":2019,"anime_type":"tv","relation_type":"other","ids":{"simkl":925865,"tmdb":"87478"}}]}
+        """#.utf8))
+        XCTAssertEqual(related.filter { $0.tmdb == "65942" }.map(\.simkl), [1063491])
+        let search = Data(#"[{"title":"Bubble","year":2022,"endpoint_type":"anime","type":"ona","ids":{"simkl_id":1800894,"slug":"bubble"}},{"title":"Bubblegum Crisis","year":1987,"ids":{"simkl_id":38420}}]"#.utf8)
+        XCTAssertEqual(SimklAPI.pickAnime(from: search, title: "Bubble", year: 2022), SimklAPI.Match(simkl: 1800894, kind: "anime"))
+        XCTAssertNil(SimklAPI.pickAnime(from: search, title: "Bubble", year: 2005), "another year isn't the same title")
+        XCTAssertNil(SimklAPI.pickAnime(from: search, title: "Bubblegum", year: nil), "the whole title must match")
+
+        var film = SimklJob(kind: .watch, tmdb: 1, movie: true, anime: true, name: "Bubble", year: 2022, watchedAt: "2026-11-14T05:10:00Z")
+        film.entry = 1800894
+        let filmItem = try XCTUnwrap(((JSONSerialization.jsonObject(with: SimklBody.body([film], simkl: nil)) as? [String: Any])?["shows"] as? [[String: Any]])?.first)
+        XCTAssertEqual(filmItem["ids"] as? [String: Int], ["simkl": 1800894], "by its Simkl entry alone")
+        XCTAssertEqual(((filmItem["seasons"] as? [[String: Any]])?.first?["episodes"] as? [[String: Any]])?.first?["number"] as? Int, 1)
+
+        var cour = watch(1); cour.entry = 1063491; cour.ownNumbering = true
+        let courItem = try XCTUnwrap(((JSONSerialization.jsonObject(with: SimklBody.body([cour], simkl: nil)) as? [String: Any])?["shows"] as? [[String: Any]])?.first)
+        XCTAssertEqual(courItem["ids"] as? [String: Int], ["simkl": 1063491])
+        XCTAssertNil(courItem["use_tvdb_anime_seasons"])
     }
 
     func testSearchAnswer() {
         XCTAssertEqual(SimklAPI.match(from: Data(#"[{"type":"anime","title":"Attack on Titan","ids":{"simkl":39687,"slug":"attack-on-titan"}}]"#.utf8)),
                        SimklAPI.Match(simkl: 39687, kind: "anime"))
         XCTAssertNil(SimklAPI.match(from: Data("[]".utf8)))
+    }
+
+    func testAnimeEpisodesGoByTmdbSoSimklPicksTheCour() {
+        let match = SimklAPI.Match(simkl: 39687, kind: "anime")
+        XCTAssertNil(SimklBody.pin(watch(1), match), "anime episodes: TMDB id and TVDB seasons, no pinned cour")
+        XCTAssertEqual(SimklBody.pin(SimklJob(kind: .watch, tmdb: 1, movie: true, anime: true, name: "Bubble"), match), 39687)
+        XCTAssertEqual(SimklBody.pin(SimklJob(kind: .watch, tmdb: 1399, movie: false, name: "Game of Thrones", season: 1, number: 1), match), 39687)
+        XCTAssertNil(SimklBody.pin(SimklJob(kind: .watch, tmdb: 1, movie: true, name: "Bubble"), nil), "nothing found: TMDB id, title and year alone")
+        XCTAssertEqual(SimklBody.missingPart(Data(#"{"added":{"episodes":0},"not_found":{"shows":[{"ids":{"tmdb":65942}}]}}"#.utf8)), #"{"shows":[{"ids":{"tmdb":65942}}]}"#)
     }
 
     @MainActor func testStatusesMapToSimklLists() {
