@@ -109,7 +109,7 @@ struct HomeSavedShelves: View {
             } else if titles.isEmpty {
                 Text("Nothing matches this shelf right now.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
                     .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+                    .cardSurface(20)
                     .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             } else {
                 ScrollView(.horizontal) {

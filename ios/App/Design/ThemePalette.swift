@@ -88,7 +88,7 @@ struct ThemePalette: Equatable, Sendable {
         shortcut: Color(uiColor: .secondarySystemGroupedBackground), shortcutBorder: .clear,
         accentTop: Color(uiColor: .systemBlue), accentBottom: Color(uiColor: .systemBlue), accentInk: .white, chipInk: .white,
         watchTop: Color(uiColor: .systemBlue), watchBottom: Color(uiColor: .systemBlue), watchInk: .white,
-        canvas: Color(uiColor: .systemGroupedBackground), ambientArtwork: false, usesGlass: true, neutralizesViolet: false,
+        canvas: Color(uiColor: .systemGroupedBackground), ambientArtwork: true, usesGlass: true, neutralizesViolet: false,
         followsSystemAppearance: true, native: true)
 
     /// A cool neutral grey of lightness `dark` in dark mode and `light` in light mode.

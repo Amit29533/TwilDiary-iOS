@@ -183,7 +183,7 @@ struct AiringCalendarView: View {
                 }
                 ForEach(days, id: \.self) { day in dayCell(day, today: today, count: counts[day] ?? 0) }
             }
-        }.padding(16).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+        }.padding(16).cardSurface(22)
             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
     private func dayCell(_ day: Date, today: Date, count: Int) -> some View {
@@ -320,7 +320,7 @@ struct AiringCalendarView: View {
                 .confirmationDialog("Mark \(items.count.counted("episode", "episodes")) watched?", isPresented: $confirmMarkAll, titleVisibility: .visible) {
                     Button("Mark all watched") { markAll(items) }
                 } message: { Text("Every episode that aired in the last \(catchupDays) days and isn't watched yet, dated today.") }
-        }.padding(16).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+        }.padding(16).cardSurface(22)
             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
     @ViewBuilder private func catchupList(_ items: [UpcomingSchedule.Item]) -> some View {
@@ -426,7 +426,7 @@ struct AiringCalendarView: View {
 
     private func empty(_ text: String) -> some View {
         Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
+            .padding(16).cardSurface(18)
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
     private func syncDates() {

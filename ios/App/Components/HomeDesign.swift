@@ -142,7 +142,7 @@ struct HomeWeekCard: View {
             }
         }.padding(.horizontal, 17).padding(.top, 17).padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 24))
+            .cardSurface(24)
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             .onAppear { grown = true }
     }
@@ -255,7 +255,7 @@ struct HomeRow: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             if let date { Text(date).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4) }
         }.padding(9).frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+            .cardSurface(20)
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             .contentShape(RoundedRectangle(cornerRadius: 20))
             .accessibilityElement(children: .combine)

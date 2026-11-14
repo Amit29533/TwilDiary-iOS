@@ -237,7 +237,7 @@ struct RatingBoxes: View {
                         }
                         Text(box.text).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
                     }.frame(maxWidth: .infinity).frame(height: 46)
-                        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 12))
+                        .cardSurface(12)
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         .accessibilityElement(children: .ignore).accessibilityLabel(RatingsStrip<EmptyView>.name(box.id) + " " + box.text)
                 }

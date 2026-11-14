@@ -530,7 +530,7 @@ struct SemanticSearchSection: View {
                         Text("Add your free Gemini API key to find titles from a plot, theme or scene.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                             .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+                        .cardSurface(16)
                         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                 }.buttonStyle(.springPress).accessibilityIdentifier("semantic-add-key")
             } else if loading && matches.isEmpty {
@@ -570,7 +570,7 @@ struct SemanticSearchSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-            }.padding(10).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+            }.padding(10).cardSurface(16)
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline)).contentShape(Rectangle())
         }.buttonStyle(.springPress).accessibilityIdentifier("semantic-" + match.item.key)
     }
@@ -612,7 +612,7 @@ struct GeminiKeySheet: View {
                     .font(.system(size: 15, weight: .semibold))
                 SecureField(service.name + " API key", text: $value).font(.system(size: 15, design: .monospaced))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .padding(12).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("gemini-key-field")
+                    .padding(12).cardSurface(12).accessibilityIdentifier("gemini-key-field")
                 if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
                 Spacer()
             }.padding(20)

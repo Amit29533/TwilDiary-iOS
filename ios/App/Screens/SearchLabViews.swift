@@ -335,7 +335,7 @@ private extension View {
     /// Search Lab's text fields: a dark rounded box with a hairline edge.
     func labField() -> some View {
         padding(.horizontal, 16).frame(height: 50)
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+            .cardSurface(16)
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
     }
 }

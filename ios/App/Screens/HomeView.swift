@@ -105,7 +105,7 @@ struct HomeView: View {
                         if overview.upcoming.isEmpty {
                             Text("No upcoming air dates in your library for the next 30 days.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
                                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+                                .cardSurface(20)
                                 .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         } else if upcomingGrid {
                             ScrollView(.horizontal) {

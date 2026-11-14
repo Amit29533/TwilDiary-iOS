@@ -306,7 +306,7 @@ struct ProfileHighlightCard<Content: View>: View {
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             content
         }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+            .cardSurface(20)
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
 }

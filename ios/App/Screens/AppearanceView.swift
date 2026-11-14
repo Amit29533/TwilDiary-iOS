@@ -66,7 +66,7 @@ private struct ThemeCard: View {
             }.padding(.top, 10)
             Text(item.detail).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 2)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+            .cardSurface(22)
             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(selected ? item.accent : HomeStyle.cardBorder, lineWidth: selected ? 1.5 : HomeStyle.hairline))
             .accessibilityElement(children: .ignore)
     }

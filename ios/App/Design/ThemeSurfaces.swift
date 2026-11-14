@@ -34,8 +34,12 @@ struct DiarySectionBackground: ViewModifier {
     /// Selected rows keep their accent emphasis on glass too.
     var emphasized = false
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: ThemeStore.current.native ? .continuous : .circular)
-        content.background { shape.fill(fill) }.overlay(shape.strokeBorder(ThemeStore.current.native && !emphasized ? .clear : stroke))
+        if ThemeStore.current.native && !emphasized {
+            content.nativeCard(radius: radius)
+        } else {
+            let shape = RoundedRectangle(cornerRadius: radius, style: ThemeStore.current.native ? .continuous : .circular)
+            content.background { shape.fill(fill) }.overlay(shape.strokeBorder(stroke))
+        }
     }
 }
 extension View {
@@ -52,7 +56,7 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
         Group {
-            if field || reduceTransparency {
+            if (field && !ThemeStore.current.native) || reduceTransparency {
                 shape.fill(Color(themed: field ? "#111115" : "#222226"))
                     .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : Color.primary.opacity(0.13), lineWidth: 1))
             } else {

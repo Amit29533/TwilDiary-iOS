@@ -153,7 +153,9 @@ struct DiaryScreenBackground: View {
                     Image(decorative: bitmap.image, scale: 1).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                         .opacity(ambient ? 0.3 : 0.44)
-                    LinearGradient(colors: ambient ? [.black.opacity(0.2), .black.opacity(0.62), .black.opacity(0.9)] : [.black.opacity(0.28), .black.opacity(0.55)],
+                    // Native: washed with the page's own colour (light or dark), so a light page stays light.
+                    let wash = ThemeStore.current.native ? ThemeStore.current.canvas : Color.black
+                    LinearGradient(colors: ambient ? [wash.opacity(0.2), wash.opacity(0.62), wash.opacity(0.9)] : [wash.opacity(0.28), wash.opacity(0.55)],
                                    startPoint: .top, endPoint: .bottom)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()

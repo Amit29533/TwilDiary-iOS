@@ -218,7 +218,7 @@ struct PeopleRankingView: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         }.padding(.horizontal, 14).padding(.vertical, 12)
-                            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+                            .cardSurface(22)
                             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                             .multilineTextAlignment(.leading).contentShape(Rectangle()).accessibilityElement(children: .combine)
                     }

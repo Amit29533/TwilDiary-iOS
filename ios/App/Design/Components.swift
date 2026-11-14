@@ -780,13 +780,15 @@ struct ProgressCard: View {
                                 // Home's hero draws its backdrop behind the whole page header instead.
                                 if compact { Color.clear }
                                 else if hero { Artwork(path: cardBackdrop, title: title.name).overlay(scrim) }
+                                else if ThemeStore.current.native { Color.clear }
                                 else { Rectangle().fill(theme.field) }
                             }.frame(width: proxy.size.width, height: proxy.size.height).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("Open " + title.name).accessibilityIdentifier("progress-cover-" + title.id)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact ? 0 : 0.17)))
+                .background { if ThemeStore.current.native && !compact && !hero { Color.clear.nativeCard(radius: cornerRadius) } }
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact || (ThemeStore.current.native && !hero) ? 0 : 0.17)))
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .sensoryFeedback(.success, trigger: watchFeedback)

@@ -316,7 +316,7 @@ struct CanvasListCard: View {
                     .lineLimit(2, reservesSpace: true).truncationMode(.tail).multilineTextAlignment(.leading)
                 Text("by " + list.user).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
-        }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+        }.cardSurface(20)
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             .contentShape(RoundedRectangle(cornerRadius: 20)).accessibilityElement(children: .combine)
     }

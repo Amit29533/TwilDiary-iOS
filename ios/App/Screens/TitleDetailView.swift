@@ -428,7 +428,7 @@ struct TitleDetailView: View {
             } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
         }.padding(19)
             // Design: a 28 pt card in rgba(18 16 26 / .58) with a white 8 % hairline.
-            .background(ThemeStore.current.native ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58)), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .modifier(TitleProgressSurface())
             .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
@@ -760,6 +760,18 @@ struct NotesEditor: View {
                         .frame(minHeight: 44).padding(.leading, 8).accessibilityIdentifier("notes-keyboard-done")
                 }
             }.font(.caption)
+        }
+    }
+}
+
+
+/// The title page's progress card: Liquid Glass in Native, the original translucent dark elsewhere.
+private struct TitleProgressSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.nativeCard(radius: 28)
+        } else {
+            content.background(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58), in: RoundedRectangle(cornerRadius: 28))
         }
     }
 }

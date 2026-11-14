@@ -50,13 +50,42 @@ extension View {
     func nativeGlassCapsule(prominent: Bool, ink: Color? = nil) -> some View {
         modifier(NativeGlassCapsule(prominent: prominent, ink: ink))
     }
-    /// Native's card: the grouped list's raised colour with continuous corners and no outline.
+    /// Native's card: Liquid Glass with continuous corners and no outline (owner's request: more
+    /// glass), over the page's soft artwork glow; a plain raised fill under Reduce Transparency.
     func nativeCard(radius: CGFloat = 26) -> some View {
-        background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        modifier(NativeGlassCard(radius: radius))
+    }
+    /// A card's surface: the theme's card colour, or Liquid Glass in Native.
+    func cardSurface(_ radius: CGFloat) -> some View {
+        modifier(CardSurface(radius: radius))
     }
     /// A light tap under the finger in Native when `trigger` changes (a choice made), as system pickers give.
     func nativeSelectionFeedback<T: Equatable>(_ trigger: T) -> some View {
         sensoryFeedback(.selection, trigger: trigger) { _, _ in ThemeStore.current.native }
+    }
+}
+
+private struct NativeGlassCard: ViewModifier {
+    let radius: CGFloat
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if reduceTransparency {
+            content.background(Color(uiColor: .secondarySystemGroupedBackground), in: shape)
+        } else {
+            content.glassEffect(.regular, in: shape)
+        }
+    }
+}
+
+private struct CardSurface: ViewModifier {
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.nativeCard(radius: radius)
+        } else {
+            content.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: radius))
+        }
     }
 }
 

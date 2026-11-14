@@ -194,7 +194,7 @@ struct MilestoneDetailView: View {
                 Text("You've earned every level of this badge.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
             }
         }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 24))
+            .cardSurface(24)
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             .accessibilityElement(children: .combine).accessibilityIdentifier("milestone-next")
     }
@@ -684,7 +684,7 @@ struct OnThisDayView: View {
             }.foregroundStyle(HomeStyle.ink).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }.padding(8).background(theme.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 26))
-            .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 26))
+            .cardSurface(26)
             .accessibilityElement(children: .combine)
     }
     private func dayCard(_ day: OnThisDay.Day) -> some View {

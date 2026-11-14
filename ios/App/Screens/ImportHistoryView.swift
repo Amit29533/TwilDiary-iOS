@@ -59,7 +59,7 @@ struct ImportHistoryView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
+                        .cardSurface(18)
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                 }.buttonStyle(.springPress).accessibilityIdentifier("import-" + option.rawValue)
             }
@@ -79,7 +79,7 @@ struct ImportHistoryView: View {
                     line("questionmark.circle", "\(missed.count.counted("title", "titles")) not found on TMDB: " + missed.prefix(6).joined(separator: ", ") + (missed.count > 6 ? "…" : ""))
                 }
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
+                .cardSurface(18)
             Button { send(found) } label: { Text("Add to \(destination)") }
                 .buttonStyle(SettingsPrimaryButtonStyle()).disabled(found.isEmpty).accessibilityIdentifier("import-send")
         case .sending:

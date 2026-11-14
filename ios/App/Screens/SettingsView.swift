@@ -304,7 +304,7 @@ struct SettingsCard: ViewModifier {
             // Native: an inset grouped list's section, continuous corners and no outline.
             content.nativeCard().clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         } else {
-            content.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+            content.cardSurface(22)
                 .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
         }
     }
