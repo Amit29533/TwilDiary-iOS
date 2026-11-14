@@ -276,7 +276,7 @@ struct RootView: View {
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
-                    await SimklMirror.shared.resume() // The Simkl add-on (App/Simkl).
+                    await SimklMirror.shared.resume(store: store) // The Simkl add-on (App/Simkl).
                     // Alerts first: quick, on this phone, and not held up by the syncs below.
                     await EpisodeNotifications.reschedule(store: store)
                     // No server: tags, Queue, notes, files, favourite people and Trash from Drive.

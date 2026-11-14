@@ -54,7 +54,8 @@ final class SimklAddOnTests: XCTestCase {
         queue.add(watch(3))
         queue.add(SimklJob(kind: .watch, tmdb: 550, movie: true, name: "Fight Club", watchedAt: "2026-11-14T21:00:00.000Z"))
         let now = Date()
-        XCTAssertEqual(queue.batch(now: now).map(\.number), [1, 2], "the rating in between keeps episode 3 for later")
+        XCTAssertEqual(queue.batch(now: now).map(\.label), ["Attack on Titan · S1 E1", "Attack on Titan · S1 E2", "Fight Club"],
+                       "several titles in one request; the rating in between keeps episode 3 for later")
 
         queue.jobs[0].notBefore = now.addingTimeInterval(60)
         XCTAssertEqual(queue.batch(now: now).map(\.name), ["Fight Club"], "the waiting show holds its own jobs, not the movie")
@@ -154,6 +155,46 @@ final class SimklAddOnTests: XCTestCase {
         let courItem = try XCTUnwrap(((JSONSerialization.jsonObject(with: SimklBody.body([cour], simkl: nil)) as? [String: Any])?["shows"] as? [[String: Any]])?.first)
         XCTAssertEqual(courItem["ids"] as? [String: Int], ["simkl": 1063491])
         XCTAssertNil(courItem["use_tvdb_anime_seasons"])
+    }
+
+    /// Simkl's `/redirect`, as it answered on 2026-11-14: the entry's address, or its home page.
+    func testRedirectAnswerAndKindCheck() {
+        XCTAssertEqual(SimklAPI.match(location: "https://simkl.com/anime/509292/rezero-kara-hajimeru-isekai-seikatsu?client_id=x"), SimklAPI.Match(simkl: 509292, kind: "anime"))
+        XCTAssertEqual(SimklAPI.match(location: "https://simkl.com/tv/11121/breaking-bad"), SimklAPI.Match(simkl: 11121, kind: "tv"))
+        XCTAssertEqual(SimklAPI.match(location: "https://simkl.com/movies/145222/vagabond"), SimklAPI.Match(simkl: 145222, kind: "movie"))
+        XCTAssertNil(SimklAPI.match(location: "https://simkl.com?client_id=x"), "Simkl's home page: no such title")
+        XCTAssertNil(SimklAPI.match(location: "https://example.com/anime/1/x"))
+        // TMDB 65942 is Re:Zero as a show and another film as a movie.
+        XCTAssertFalse(SimklAPI.accepts(SimklAPI.Match(simkl: 145222, kind: "movie"), movie: false), "a show never takes a movie")
+        XCTAssertFalse(SimklAPI.accepts(SimklAPI.Match(simkl: 11121, kind: "tv"), movie: true), "a movie never takes a show")
+        XCTAssertTrue(SimklAPI.accepts(SimklAPI.Match(simkl: 543146, kind: "anime"), movie: true), "an anime film")
+        XCTAssertTrue(SimklAPI.accepts(SimklAPI.Match(simkl: 509292, kind: "anime"), movie: false))
+    }
+
+    func testEveryKnownIdGoesWithTheWrite() throws {
+        let external = SimklExternalIDs(imdb: "tt5607616", tvdb: 305089)
+        let show = SimklBody.ids(watch(26, tmdb: 65942), simkl: nil, external: external)
+        XCTAssertEqual(show["tmdb"] as? Int, 65942); XCTAssertEqual(show["imdb"] as? String, "tt5607616"); XCTAssertEqual(show["tvdb"] as? Int, 305089)
+        let movie = SimklBody.ids(SimklJob(kind: .watch, tmdb: 372058, movie: true, anime: true, name: "Your Name."), simkl: 543146, external: SimklExternalIDs(imdb: "tt5311514", tvdb: 1))
+        XCTAssertEqual(movie["simkl"] as? Int, 543146); XCTAssertEqual(movie["imdb"] as? String, "tt5311514"); XCTAssertNil(movie["tvdb"], "TVDB ids are for shows")
+        var placed = watch(1, tmdb: 65942); placed.entry = 1063491; placed.entryIDs = ["mal": "39587", "anidb": "14792"]
+        let entry = SimklBody.ids(placed, simkl: nil, external: external)
+        XCTAssertEqual(entry["simkl"] as? Int, 1063491); XCTAssertEqual(entry["mal"] as? Int, 39587); XCTAssertEqual(entry["anidb"] as? Int, 14792)
+        XCTAssertNil(entry["tmdb"], "a cour entry never goes by the show's shared ids"); XCTAssertNil(entry["imdb"]); XCTAssertNil(entry["tvdb"])
+        let detail = SimklAPI.detail(from: Data(#"{"ids":{"simkl":509292,"mal":"31240","anilist":"21355","anidb":"11370","tmdb":"65942"},"relations":[{"year":2020,"anime_type":"tv","ids":{"simkl":1063491,"mal":"39587","tmdb":"65942"}}]}"#.utf8))
+        XCTAssertEqual(detail.native, ["mal": "31240", "anilist": "21355", "anidb": "11370"])
+        XCTAssertEqual(detail.related.first?.native, ["mal": "39587"])
+    }
+
+    func testSeveralTitlesInOneRequestAndNotFoundGoesToTheRightOne() throws {
+        let movie = SimklJob(kind: .watch, tmdb: 550, movie: true, name: "Fight Club", year: 1999, watchedAt: "2026-11-14T21:00:00Z")
+        let jobs = [watch(1), watch(2), movie]
+        let groups = SimklBody.groups(jobs, simkl: { _ in nil }, external: { _ in nil })
+        XCTAssertEqual(groups.count, 2)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: SimklBody.body(groups)) as? [String: Any])
+        XCTAssertEqual((root["shows"] as? [[String: Any]])?.count, 1); XCTAssertEqual((root["movies"] as? [[String: Any]])?.count, 1)
+        let reply = Data(#"{"added":{"episodes":2},"not_found":{"movies":[{"title":"Fight Club","year":1999,"ids":{"tmdb":550}}],"shows":[],"episodes":[]}}"#.utf8)
+        XCTAssertEqual(SimklBody.notFound(reply, groups: groups), [movie.id], "only the movie Simkl names")
     }
 
     func testSearchAnswer() {
