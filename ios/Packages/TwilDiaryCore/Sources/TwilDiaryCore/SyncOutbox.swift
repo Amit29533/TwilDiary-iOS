@@ -64,7 +64,9 @@ public struct SyncOutboxEntry: Codable, Identifiable, Equatable, Sendable {
         operationId = try c.decode(String.self, forKey: .operationId)
         createdAt = try c.decode(String.self, forKey: .createdAt)
         mutation = try c.decode(OptimisticMutation.self, forKey: .mutation)
-        pendingProviders = Set(try c.decode([String].self, forKey: .pendingProviders).compactMap(SyncProviderKind.init(rawValue:)))
+        // Simkl never waits here (its own sync sends its edits); a "simkl" saved by its first
+        // integration (removed 2026-11-13) is dropped like any service the app doesn't know.
+        pendingProviders = Set(try c.decode([String].self, forKey: .pendingProviders).compactMap(SyncProviderKind.init(rawValue:))).subtracting([.simkl])
         attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
         confirmedActions = try c.decodeIfPresent(Set<String>.self, forKey: .confirmedActions)
