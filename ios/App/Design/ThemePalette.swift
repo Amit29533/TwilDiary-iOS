@@ -25,6 +25,8 @@ struct ThemePalette: Equatable, Sendable {
     var accentTop: Color
     var accentBottom: Color
     var accentInk: Color
+    /// The text on a chip filled with `chipText` (a chosen chip): dark on lilac, black on Premiere's white.
+    var chipInk: Color
     // The primary "play" button (Watch E5, Play): its fill, top to bottom, and its text.
     var watchTop: Color
     var watchBottom: Color
@@ -47,7 +49,7 @@ struct ThemePalette: Equatable, Sendable {
         chip: Color(webHex: "#2a2440"), chipText: Color(webHex: "#cdbbff"),
         dateChipBorder: Color(webHex: "#26262e"), dateChipText: Color(webHex: "#b4b3c2"),
         shortcut: Color(webHex: "#14111f"), shortcutBorder: Color(webHex: "#2a2440"),
-        accentTop: Color(webHex: "#cdbbff"), accentBottom: Color(webHex: "#a98bff"), accentInk: Color(webHex: "#1a1030"),
+        accentTop: Color(webHex: "#cdbbff"), accentBottom: Color(webHex: "#a98bff"), accentInk: Color(webHex: "#1a1030"), chipInk: Color(webHex: "#1a1030"),
         watchTop: Color(webHex: "#cdbbff"), watchBottom: Color(webHex: "#a98bff"), watchInk: Color(webHex: "#1a1030"),
         canvas: .black, ambientArtwork: false, usesGlass: false, neutralizesViolet: false)
 
@@ -62,14 +64,14 @@ struct ThemePalette: Equatable, Sendable {
         chip: Color(webHex: "#2c2d31"), chipText: Color(webHex: "#f4f5f8"),
         dateChipBorder: Color(webHex: "#34363b"), dateChipText: Color(webHex: "#b9bbc3"),
         shortcut: Color(webHex: "#18191c"), shortcutBorder: Color(webHex: "#2e3034"),
-        accentTop: Color(webHex: "#ff3b45"), accentBottom: Color(webHex: "#e50914"), accentInk: Color(webHex: "#ffffff"),
+        accentTop: Color(webHex: "#ff3b45"), accentBottom: Color(webHex: "#e50914"), accentInk: Color(webHex: "#ffffff"), chipInk: Color(webHex: "#000000"),
         watchTop: Color(webHex: "#ffffff"), watchBottom: Color(webHex: "#ececec"), watchInk: Color(webHex: "#000000"),
         canvas: Color(webHex: "#080605"), ambientArtwork: true, usesGlass: true, neutralizesViolet: true)
 
     /// Premiere's red, for colours that were the violet accent.
     static let premiereRedHue = 357.0 / 360
 
-    /// A typed colour as Premiere shows it: a violet or purple one (hue 235°–330°) becomes a
+    /// A typed colour as Premiere shows it: a violet one (hue 235°–290°, where the app's lilacs are) becomes a
     /// neutral grey of the same lightness, unless it's a strong accent (saturated, not near
     /// white), which becomes a red of matching lightness. Every other colour (greens, golds,
     /// error reds, other services' blues) is left alone. Alpha is kept.
@@ -89,7 +91,8 @@ struct ThemePalette: Equatable, Sendable {
         default: hue = (r - g) / delta + 4
         }
         hue = (hue * 60 + 360).truncatingRemainder(dividingBy: 360)
-        guard hue >= 235, hue <= 330 else { return Color(webHex: hex) }
+        // Pinks and magentas (Animation's chip, Rose's swatch) aren't the app's violet: left alone.
+        guard hue >= 235, hue <= 290 else { return Color(webHex: hex) }
         if saturation >= 0.45, lightness <= 0.85, lightness >= 0.25 {
             return Color(hue: premiereRedHue, saturation: 0.86, brightness: 0.62 + (lightness - 0.25) * 0.55, opacity: alpha)
         }

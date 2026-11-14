@@ -62,6 +62,8 @@ struct MetaChip: View {
 /// everyone, yellow, orange, red for adults); a status by what it means (green still going, blue
 /// coming, grey ended, red cancelled); a network in teal.
 enum ChipTint {
+    // These colours carry meaning (a genre's hue, how grown-up a rating is, what a status means),
+    // so they stay as they are in every theme.
     static func genre(_ name: String) -> Color {
         let hues: [String: String] = [
             "action": "#ff8a65", "adventure": "#ffb454", "action & adventure": "#ff9a5c", "animation": "#ff7ad9",
@@ -71,24 +73,24 @@ enum ChipTint {
             "sci-fi & fantasy": "#7cc8ff", "soap": "#f7a8d0", "talk": "#a0e7e5", "thriller": "#ff9a4d", "tv movie": "#c0bccc",
             "war": "#c9b98f", "war & politics": "#c2b280", "western": "#e0a96d", "anime": "#b9a6ff"
         ]
-        if let hex = hues[name.lowercased()] { return Color(themed: hex) }
+        if let hex = hues[name.lowercased()] { return Color(webHex: hex) }
         let fallback = ["#8fb0ff", "#ff8fab", "#9be89b", "#ffd166", "#c39bff", "#5ad1ff", "#ffb454"]
-        return Color(themed: fallback[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % fallback.count])
+        return Color(webHex: fallback[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % fallback.count])
     }
     static func rating(_ value: String) -> Color {
         let rating = value.uppercased()
-        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6"].contains(rating) { return Color(themed: "#6ee7a8") }
-        if ["PG", "TV-PG", "12", "12A", "PG-12", "7", "10"].contains(rating) { return Color(themed: "#ffd166") }
-        if ["PG-13", "TV-14", "13", "14", "15", "16", "M", "R15+"].contains(rating) { return Color(themed: "#ffa94d") }
-        if ["R", "NC-17", "TV-MA", "18", "R18+", "MA15+", "X"].contains(rating) { return Color(themed: "#ff6b6b") }
-        return Color(themed: "#c0bccc")
+        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6"].contains(rating) { return Color(webHex: "#6ee7a8") }
+        if ["PG", "TV-PG", "12", "12A", "PG-12", "7", "10"].contains(rating) { return Color(webHex: "#ffd166") }
+        if ["PG-13", "TV-14", "13", "14", "15", "16", "M", "R15+"].contains(rating) { return Color(webHex: "#ffa94d") }
+        if ["R", "NC-17", "TV-MA", "18", "R18+", "MA15+", "X"].contains(rating) { return Color(webHex: "#ff6b6b") }
+        return Color(webHex: "#c0bccc")
     }
     static func status(_ raw: String?) -> Color {
         switch raw {
-        case "Returning Series": Color(themed: "#6ee7a8")
-        case "In Production", "Post Production", "Planned", "Pilot", "Rumored": Color(themed: "#7aa2ff")
-        case "Canceled", "Cancelled": Color(themed: "#ff5a36")
-        default: Color(themed: "#b4b0c2")
+        case "Returning Series": Color(webHex: "#6ee7a8")
+        case "In Production", "Post Production", "Planned", "Pilot", "Rumored": Color(webHex: "#7aa2ff")
+        case "Canceled", "Cancelled": Color(webHex: "#ff5a36")
+        default: Color(webHex: "#b4b0c2")
         }
     }
     static var network: Color { Color(themed: "#5ad1c4") }

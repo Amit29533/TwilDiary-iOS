@@ -58,7 +58,7 @@ import XCTest
         }
         func back() { app.navigationBars.buttons.element(boundBy: 0).tap(); Thread.sleep(forTimeInterval: 1.2) }
         func open(_ id: String) -> Bool {
-            let target = app.descendants(matching: .any)[id]
+            let target = app.descendants(matching: .any).matching(identifier: id).firstMatch
             for _ in 0..<6 where !(target.exists && target.isHittable) { app.swipeUp() }
             guard target.exists else { return false }
             target.tap(); Thread.sleep(forTimeInterval: 2); return true

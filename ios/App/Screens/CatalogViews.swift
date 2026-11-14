@@ -164,9 +164,9 @@ struct CatalogSearchView: View {
                         HStack(spacing: 6) {
                             Text(item.rawValue)
                             if ready, let count = count(item) {
-                                Text(count.formatted()).foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit()
+                                Text(count.formatted()).foregroundStyle(on ? ThemeStore.current.chipInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit()
                             }
-                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary)
+                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.chipInk : HomeStyle.primary)
                             .padding(.horizontal, 15).frame(height: 40)
                             .background(on ? HomeStyle.chipText : HomeStyle.round, in: Capsule())
                             .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
