@@ -77,6 +77,18 @@ private struct CopyButton: View {
     }
 }
 
+/// The assistant thinking (CineMind, AI search): its mark breathing and three dots in its colours
+/// that rise in turn, with an optional line beside them.
+struct CineThinking: View {
+    var label: String? = nil
+    var body: some View {
+        HStack(spacing: 10) {
+            ThinkingRow()
+            if let label { Text(label).font(.system(size: 14, weight: .medium)).foregroundStyle(Color(uiColor: .secondaryLabel)) }
+        }.accessibilityElement(children: .ignore).accessibilityLabel(label ?? "Thinking")
+    }
+}
+
 /// CineMind thinking: its mark and three dots that rise in turn.
 private struct ThinkingRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

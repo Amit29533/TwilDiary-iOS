@@ -286,11 +286,19 @@ struct EpisodesPage: View {
         return EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 seasonCard(title)
-                HStack(spacing: 8) {
-                    let count = episodes.filter { watched.contains($0.id) }.count
-                    ShowFilterChip(label: "All \(episodes.count)", on: filter == .all) { filter = .all }
-                    ShowFilterChip(label: "Watched \(count)", on: filter == .watched) { filter = .watched }
-                    ShowFilterChip(label: "To watch \(episodes.count - count)", on: filter == .toWatch) { filter = .toWatch }
+                let count = episodes.filter { watched.contains($0.id) }.count
+                if ThemeStore.current.native {
+                    // Native: All · Watched · To watch as iOS's segmented control on glass.
+                    NativeSegmentedControl(segments: [NativeSegment(value: Filter.all, title: "All \(episodes.count)", id: "episodes-filter-all"),
+                                                      NativeSegment(value: Filter.watched, title: "Watched \(count)", id: "episodes-filter-watched"),
+                                                      NativeSegment(value: Filter.toWatch, title: "To watch \(episodes.count - count)", id: "episodes-filter-towatch")],
+                                           selection: $filter)
+                } else {
+                    HStack(spacing: 8) {
+                        ShowFilterChip(label: "All \(episodes.count)", on: filter == .all) { filter = .all }
+                        ShowFilterChip(label: "Watched \(count)", on: filter == .watched) { filter = .watched }
+                        ShowFilterChip(label: "To watch \(episodes.count - count)", on: filter == .toWatch) { filter = .toWatch }
+                    }
                 }
                 if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
                 else if filter == .all {
@@ -528,10 +536,17 @@ struct PreviewEpisodesPage: View {
             VStack(alignment: .leading, spacing: 14) {
                 if let details { seasonCard(details, count: items.count) }
                 if !items.isEmpty {
-                    HStack(spacing: 8) {
-                        ShowFilterChip(label: "All \(items.count)", on: filter == .all) { filter = .all }
-                        ShowFilterChip(label: "Watched 0", on: filter == .watched) { filter = .watched }
-                        ShowFilterChip(label: "To watch \(items.count)", on: filter == .toWatch) { filter = .toWatch }
+                    if ThemeStore.current.native {
+                        NativeSegmentedControl(segments: [NativeSegment(value: Filter.all, title: "All \(items.count)", id: "episodes-filter-all"),
+                                                          NativeSegment(value: Filter.watched, title: "Watched 0", id: "episodes-filter-watched"),
+                                                          NativeSegment(value: Filter.toWatch, title: "To watch \(items.count)", id: "episodes-filter-towatch")],
+                                               selection: $filter)
+                    } else {
+                        HStack(spacing: 8) {
+                            ShowFilterChip(label: "All \(items.count)", on: filter == .all) { filter = .all }
+                            ShowFilterChip(label: "Watched 0", on: filter == .watched) { filter = .watched }
+                            ShowFilterChip(label: "To watch \(items.count)", on: filter == .toWatch) { filter = .toWatch }
+                        }
                     }
                 }
                 if controller?.loading == true && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }

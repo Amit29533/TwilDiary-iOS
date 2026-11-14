@@ -117,6 +117,13 @@ struct TitleDetailView: View {
                                 ToolbarItem(placement: .principal) {
                                     CompactTitleNavigation(name: title.name, poster: title.poster, state: headerState)
                                 }
+                                // Native: CineMind one tap away, in the assistant's colours, in the toolbar's glass.
+                                if ThemeStore.current.native {
+                                    ToolbarItem(placement: .topBarTrailing) {
+                                        Button { showCineMind = true } label: { Image(systemName: "sparkle").foregroundStyle(CineGlow.linear) }
+                                            .accessibilityLabel("Ask CineMind").accessibilityIdentifier("title-cinemind-toolbar")
+                                    }
+                                }
                                 // Native: Share beside •••, the two in one glass capsule, as on an Apple Music page.
                                 if ThemeStore.current.native, let tmdb = title.tmdbId, let link = URL(string: "https://www.themoviedb.org/\(title.isSeries ? "tv" : "movie")/\(tmdb)") {
                                     ToolbarItem(placement: .topBarTrailing) {

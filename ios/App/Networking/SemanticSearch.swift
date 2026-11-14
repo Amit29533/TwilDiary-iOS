@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TwilDiaryCore
 
 /// Search by description ("a movie about the friendship between a boy and his dog"): Google's
@@ -519,10 +520,11 @@ struct SemanticSearchSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles").font(.system(size: 12, weight: .bold))
-                Text("FROM YOUR DESCRIPTION").font(.system(size: 13, weight: .bold)).tracking(1.2)
-            }.foregroundStyle(HomeStyle.chipText).padding(.top, 6)
+            // AI looks one way everywhere (owner's request): CineMind's mark and its glow colours.
+            HStack(spacing: 8) {
+                CineMindMark(size: 20)
+                Text("FROM YOUR DESCRIPTION").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(CineGlow.linear)
+            }.padding(.top, 6)
             if !hasKey {
                 Button { addingKey = true } label: {
                     VStack(alignment: .leading, spacing: 4) {
@@ -531,10 +533,10 @@ struct SemanticSearchSection: View {
                             .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(14)
                         .cardSurface(16)
-                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                        .cineGlow(RoundedRectangle(cornerRadius: 16), active: false)
                 }.buttonStyle(.springPress).accessibilityIdentifier("semantic-add-key")
             } else if loading && matches.isEmpty {
-                DiaryLoadingPlaceholder(height: 120, label: "Finding titles that match")
+                CineThinking(label: "Finding titles that match").padding(.vertical, 8)
             } else if let failure {
                 Text(failure).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else if description.isEmpty {
@@ -542,7 +544,7 @@ struct SemanticSearchSection: View {
             } else if matches.isEmpty && !loading {
                 Text("Nothing matched that description. Try adding a detail.").font(.system(size: 14)).foregroundStyle(.secondary)
             }
-            ForEach(matches) { match in row(match) }
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in row(match).cineReveal(order: index) }
         }
         .onAppear { if query.isEmpty, asked.isEmpty { asked = typed } }
         .task(id: description + (hasKey ? "|key" : "")) { await run(description) }
@@ -566,7 +568,9 @@ struct SemanticSearchSection: View {
                                 .accessibilityElement(children: .ignore).accessibilityLabel("Rated \(String(format: "%.1f", score))")
                         }
                     }
-                    Text(match.why).font(.system(size: 14)).foregroundStyle(HomeStyle.soft).lineLimit(3).truncationMode(.tail)
+                    // Why it matched, in the assistant's voice: its sparkle in its colours.
+                    Text("\(Text(Image(systemName: "sparkle")).foregroundStyle(CineGlow.linear)) \(match.why)").foregroundStyle(HomeStyle.soft)
+                        .font(.system(size: 14)).lineLimit(3).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -606,14 +610,22 @@ struct GeminiKeySheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    CineMindMark(size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(service.name).font(.system(size: 20, weight: .bold))
+                        Text("Powers AI search and CineMind").font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
+                }
                 Text(service == .gemini ? "Get a free key at Google AI Studio and paste it here. Keys from other Google accounts share the load." : "Get a free key at GroqCloud and paste it here. Groq answers when Gemini can’t.")
                     .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Open " + service.keysPageName) { openURL(service.keysPage) }
                     .font(.system(size: 15, weight: .semibold))
                 SecureField(service.name + " API key", text: $value).font(.system(size: 15, design: .monospaced))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .padding(12).cardSurface(12).accessibilityIdentifier("gemini-key-field")
-                if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
+                    .padding(12).cardSurface(12).cineGlow(RoundedRectangle(cornerRadius: 12), active: !value.isEmpty)
+                    .accessibilityIdentifier("gemini-key-field")
+                if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(uiColor: .systemRed)) }
                 Spacer()
             }.padding(20)
                 .navigationTitle(SemanticSearch.ownKeys(service).isEmpty ? service.name + " API key" : "Add a " + service.name + " key").navigationBarTitleDisplayMode(.inline)
@@ -625,6 +637,6 @@ struct GeminiKeySheet: View {
                         }.disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
-        }.presentationDetents([.medium])
+        }.presentationDetents([.medium, .large])
     }
 }

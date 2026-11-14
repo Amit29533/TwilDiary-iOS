@@ -28,7 +28,15 @@ struct StatsView: View {
     @State private var genreKind = 0
     @State private var mostPlayedShows = true
     @State private var highestRatedShows = true
-    private var tabPicker: some View {
+    @ViewBuilder private var tabPicker: some View {
+        if ThemeStore.current.native {
+            // Native: iOS's segmented control on glass.
+            NativeSegmentedControl(segments: Tab.allCases.map { NativeSegment(value: $0, title: $0.rawValue, id: "stats-tab-" + $0.rawValue.lowercased()) }, selection: $tab)
+        } else {
+            pillTabs
+        }
+    }
+    private var pillTabs: some View {
         HStack(spacing: 4) {
             ForEach(Tab.allCases, id: \.self) { item in
                 Button { tab = item } label: {
