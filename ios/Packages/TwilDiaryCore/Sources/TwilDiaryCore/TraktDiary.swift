@@ -106,7 +106,7 @@ public enum TraktDiary {
     /// TMDB says Japanese animation), the same facts the server stores when a title is added.
     public static func catalogTitle(_ details: CatalogDetails) -> MediaTitle {
         let key = (details.mediaType == .tv ? "tv:" : "movie:") + String(details.id)
-        let seasons = details.seasons?.map { Season(number: $0.number, name: $0.name, expectedEpisodes: $0.expectedEpisodes, metadataLoadedAt: nil, metadataVersion: nil) }
+        let seasons = details.seasons?.map { Season(number: $0.number, name: $0.name, expectedEpisodes: $0.expectedEpisodes, metadataLoadedAt: nil, metadataVersion: nil, posterPath: $0.posterPath) }
         return MediaTitle(id: key, name: details.name, category: details.suggestedCategory, year: details.year, overview: details.overview,
                           poster: CatalogTools.image(details.posterPath), backdrop: CatalogTools.image(details.backdropPath, size: "w780"),
                           communityScore: details.communityScore, tmdbId: details.id, genres: details.genres, tags: [],

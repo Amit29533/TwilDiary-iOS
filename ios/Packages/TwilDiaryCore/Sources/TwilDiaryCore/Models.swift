@@ -50,6 +50,8 @@ public struct Season: Codable, Hashable, Sendable {
     public let expectedEpisodes: Int?
     public let metadataLoadedAt: String?
     public let metadataVersion: Int?
+    /// TMDB's poster for the season (sent by the server's browse), when it has one.
+    public var posterPath: String? = nil
 }
 
 public struct Episode: Codable, Identifiable, Hashable, Sendable {

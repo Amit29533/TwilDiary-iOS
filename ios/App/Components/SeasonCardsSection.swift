@@ -94,6 +94,16 @@ struct SeasonCardsSection: View {
         let watched = row.watched ?? 0
         return VStack(alignment: .leading, spacing: 0) {
             Artwork(path: posters[row.number] ?? showPoster, title: showName, initialsOnly: false).frame(width: 111, height: 167)
+                // No season poster (yet): the show's cover, dimmed, with the season's number, so it never
+                // passes for that season's own poster (owner saw the cover on every season as "wrong").
+                .overlay {
+                    if posters[row.number] == nil {
+                        ZStack {
+                            Color.black.opacity(0.5)
+                            Text(row.number == 0 ? "SP" : "S\(row.number)").font(.system(size: 34, weight: .heavy)).foregroundStyle(.white.opacity(0.92))
+                        }.accessibilityHidden(true)
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     if watched > 0 {
                         GeometryReader { proxy in
@@ -169,13 +179,23 @@ struct SeasonCardsSection: View {
     }
     /// Each season's own poster from TMDB's show details, once per show (kept for the session).
     private func loadPosters() async {
+        // Never another show's posters while this one's load.
+        posters = [:]
         guard let tmdb = tmdbID else { return }
         if let known = Self.posterCache[tmdb] { posters = known; return }
-        guard let token = TMDBDirect.token(store), let details = try? await TMDBDirect.object("tv/\(tmdb)", query: [:], token: token) else { return }
         var found: [Int: String] = [:]
-        for season in details["seasons"] as? [[String: Any]] ?? [] {
-            if let number = season["season_number"] as? Int, let path = CatalogTools.image(season["poster_path"] as? String, size: "w342") { found[number] = path }
-        }
+        // TMDB from the phone first; where TMDB is blocked (some Indian networks reset its API, owner's
+        // case) the diary server's copy of the show, which carries each season's poster.
+        if let token = TMDBDirect.token(store), let details = try? await TMDBDirect.object("tv/\(tmdb)", query: [:], token: token) {
+            for season in details["seasons"] as? [[String: Any]] ?? [] {
+                if let number = season["season_number"] as? Int, let path = CatalogTools.image(season["poster_path"] as? String, size: "w342") { found[number] = path }
+            }
+        } else if let browse = try? await store.browse(CatalogRoute(kind: .tv, id: tmdb)) {
+            for season in browse.details.seasons ?? [] {
+                if let path = CatalogTools.image(season.posterPath, size: "w342") { found[season.number] = path }
+            }
+        } else { return }
+        guard !Task.isCancelled else { return }
         if Self.posterCache.count > 200 { Self.posterCache.removeAll() }
         Self.posterCache[tmdb] = found
         posters = found

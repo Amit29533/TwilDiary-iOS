@@ -577,7 +577,9 @@ export function createTmdb(
         return {
           number,
           name: text(s.name, 300) || (number ? `Season ${number}` : 'Specials'),
-          expectedEpisodes: int(s.episode_count, 0, 5000)
+          expectedEpisodes: int(s.episode_count, 0, 5000),
+          // The season's own poster, for the app's season shelf where TMDB is blocked on the phone.
+          posterPath: path(s.poster_path)
         };
       });
       if (new Set(seasons.map((s) => s.number)).size !== seasons.length) throw upstream();
