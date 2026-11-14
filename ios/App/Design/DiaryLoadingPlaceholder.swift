@@ -17,8 +17,8 @@ enum PlaceholderLayout {
 }
 
 /// What shows while something loads: grey shapes laid out like the content that's coming, gently
-/// pulsing, as Apple's own apps show loading (no spinner rows that push the page about). Background
-/// refreshes keep the loaded content instead. Still under Reduce Motion.
+/// pulsing, as Apple's own apps show loading (no spinner rows that push the page about). The same in
+/// every theme. Background refreshes keep the loaded content instead. Still under Reduce Motion.
 struct DiaryLoadingPlaceholder: View {
     var height: CGFloat = 160
     var label = "Loading content"
@@ -31,10 +31,11 @@ struct DiaryLoadingPlaceholder: View {
             .accessibilityElement(children: .ignore).accessibilityLabel(label)
     }
 
-    /// Native: iOS's own fill colours; the other themes keep their faint greys.
-    private var fill: Color { ThemeStore.current.native ? Color(uiColor: .tertiarySystemFill) : Color.primary.opacity(0.06) }
-    private var line: Color { ThemeStore.current.native ? Color(uiColor: .systemFill) : Color.primary.opacity(0.08) }
-    private var faint: Color { ThemeStore.current.native ? Color(uiColor: .tertiarySystemFill) : Color.primary.opacity(0.05) }
+    /// iOS's own fill colours in every theme (the placeholder is part of the app, not a theme): they
+    /// follow light and dark by themselves.
+    private var fill: Color { Color(uiColor: .tertiarySystemFill) }
+    private var line: Color { Color(uiColor: .systemFill) }
+    private var faint: Color { Color(uiColor: .tertiarySystemFill) }
 
     @ViewBuilder private var shapes: some View {
         switch layout {
