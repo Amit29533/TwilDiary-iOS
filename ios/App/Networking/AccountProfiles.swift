@@ -23,6 +23,11 @@ import TwilDiaryCore
     @ObservationIgnored private var reading: Set<MainTracker> = []
 
     func account(_ tracker: MainTracker) -> Account? { accounts[tracker.rawValue] }
+    /// An account answer read elsewhere (Simkl's limits page reads the same /users/settings).
+    func remember(_ data: Data, tracker: MainTracker) {
+        let read = Self.account(from: data, tracker: tracker)
+        if read.name != nil || read.avatar != nil { accounts[tracker.rawValue] = read }
+    }
     func forget(_ tracker: MainTracker) { accounts[tracker.rawValue] = nil }
 
     /// Reads the account again when it's older than six hours (or `force`).

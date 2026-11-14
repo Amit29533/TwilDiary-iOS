@@ -35,6 +35,8 @@ struct ServiceLimits: Sendable {
         let data: Data
         do { data = try await SimklAPI(token: token).get("/users/settings") }
         catch SimklAPI.Failure.busy { var known = ServiceLimits(plan: nil); known.daily = ProviderQuota.daily(host: SimklAPI.quotaHost); return known }
+        // The same answer carries your picture: keep it for Connections (its own read may have run out of requests).
+        AccountProfiles.shared.remember(data, tracker: .simkl)
         let plan = AccountProfiles.account(from: data, tracker: .simkl).plan
         var value = ServiceLimits(plan: plan.map { $0 == "Free" ? "Free plan" : "Simkl " + $0 })
         value.daily = ProviderQuota.daily(host: "api.simkl.com")

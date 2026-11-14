@@ -192,7 +192,6 @@ struct TrackerPreviewPanel: View {
                 } else { trackerMatchSection }
                 if ThemeStore.current.native {
                     // Native: rows with a small button, as iOS Settings (owner's reference), not full-width buttons.
-                    SettingsDivider()
                     SettingsActionRow(title: "Compare with your diary", button: running ? "Reading…" : "Check", busy: running,
                                       disabled: trakt.writing || others.writing != nil, identifier: id + "-check") {
                         Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
@@ -207,7 +206,6 @@ struct TrackerPreviewPanel: View {
                 if tracker != .trakt, let log = SyncReport.text(tracker.provider) {
                     // What the last match sent and what came back, to see why something didn't land.
                     if ThemeStore.current.native {
-                        SettingsDivider()
                         SettingsActionRow(title: "Last sync report", subtitle: "What was sent and what came back", button: copiedReport ? "Copied" : "Copy",
                                           identifier: id + "-report") { UIPasteboard.general.string = log; copiedReport = true }
                     } else {
@@ -274,7 +272,6 @@ struct TrackerPreviewPanel: View {
         if let plan, !plan.isEmpty, others.writing == nil {
             Group {
                 if ThemeStore.current.native {
-                    SettingsDivider()
                     SettingsActionRow(title: "Make \(tracker.name) match the diary", subtitle: plan.summary.first, button: "Send", disabled: running,
                                       identifier: tracker.rawValue + "-make-match") { confirmMatch = true }
                 } else {
@@ -297,9 +294,9 @@ struct TrackerPreviewPanel: View {
     /// Force Match: one side made exactly like the other, after a preview of what's added and taken off.
     @ViewBuilder private var forceMatchSection: some View {
         let intoDiary = others.canForceIntoDiary(tracker, store: store)
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: ThemeStore.current.native ? 12 : 10) {
             HStack(spacing: 8) {
-                Text("Source of truth").font(.subheadline.weight(.semibold))
+                Text("Source of truth").font(ThemeStore.current.native ? .system(size: 17) : .subheadline.weight(.semibold))
                 SettingsInfoButton(text: forceSource == .diary
                  ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
                  : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.").padding(.vertical, -10)
@@ -318,7 +315,7 @@ struct TrackerPreviewPanel: View {
                         .padding(.horizontal, 12).frame(height: 32).modifier(SourceMenuFace())
                 }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
                     .accessibilityIdentifier(tracker.rawValue + "-force-source")
-            }
+            }.frame(height: ThemeStore.current.native ? 52 : nil)
             Group {
                 if ThemeStore.current.native {
                     SettingsActionRow(title: "Force Match", subtitle: "Make one side exactly like the other",
@@ -425,10 +422,10 @@ struct TrackerPreviewPanel: View {
     }
 }
 
-/// The Source of truth menu's face: the accent chip, or a small glass button in Native.
+/// The Source of truth menu's face: the accent chip, or a flat grey capsule in Native.
 private struct SourceMenuFace: ViewModifier {
     func body(content: Content) -> some View {
-        if ThemeStore.current.native { content.glassEffect(.regular.interactive(), in: Capsule()) }
+        if ThemeStore.current.native { content.background(Color(uiColor: .tertiarySystemFill), in: Capsule()) }
         else { content.background(HomeStyle.chip, in: Capsule()) }
     }
 }

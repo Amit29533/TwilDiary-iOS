@@ -232,7 +232,7 @@ private struct FilterPillSurface: ViewModifier {
     func body(content: Content) -> some View {
         if ThemeStore.current.native {
             // Native: clear glass, or the accent glass when a filter is on.
-            content.glassEffect(active ? .regular.tint(accent).interactive() : .regular.interactive(), in: Capsule())
+            content.background(active ? accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
         } else if !active, ThemeStore.current.usesGlass {
             content.glassEffect(.regular.interactive(), in: Capsule())
         } else {
@@ -686,8 +686,8 @@ struct CategoryPicker: View {
                             Text(count.formatted()).foregroundStyle(.secondary).monospacedDigit()
                                 .contentTransition(.numericText())
                         }
-                    }.font(.system(size: 14, weight: selected ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
-                        .lineLimit(1).minimumScaleFactor(0.75).padding(.horizontal, 6).frame(maxWidth: .infinity, minHeight: 36)
+                    }.font(.system(size: 13, weight: selected ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
+                        .lineLimit(1).fixedSize().padding(.horizontal, 4).frame(maxWidth: .infinity, minHeight: 36)
                         .background {
                             if selected {
                                 Capsule().fill(ThemePalette.adaptive(dark: 0.4, light: 1))
@@ -698,7 +698,7 @@ struct CategoryPicker: View {
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selected ? .isSelected : [])
             }
-        }.padding(3).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+        }.padding(3).frame(maxWidth: .infinity).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             .padding(.horizontal, 16).padding(.vertical, 4)
             .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22), value: selection)
             .sensoryFeedback(.selection, trigger: shown)

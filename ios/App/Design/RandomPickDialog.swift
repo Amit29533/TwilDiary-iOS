@@ -64,19 +64,21 @@ struct RandomPickDialog: View {
                             DiaryIcon(name: "sparkles", size: 17)
                             Text("A little surprise").font(.system(size: 14)).accessibilityHidden(true)
                             Spacer(minLength: 0)
-                            Button(action: onClose) { DiaryIcon(name: "x", size: 21).frame(width: 44, height: 44) }
-                                .buttonStyle(.glass).accessibilityLabel("Close random pick")
+                            Button(action: onClose) {
+                                DiaryIcon(name: "x", size: 15).frame(width: 30, height: 30).background(Color.primary.opacity(0.1), in: Circle())
+                                    .frame(width: 44, height: 44).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("Close random pick")
                         }.foregroundStyle(theme.accent).padding(.bottom, 7)
                         if let picked {
                             pickCard(picked, compact: compact).id(sequence)
                                 .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 14)))
                             HStack(spacing: 10) {
-                                Button { choose() } label: { HStack(spacing: 7) { DiaryIcon(name: "shuffle", size: 18); Text("Pick again") }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.glass).controlSize(.large)
+                                // Two buttons of one kind and one size (owner): the app's capsule buttons, 44 pt.
+                                Button { choose() } label: { HStack(spacing: 6) { DiaryIcon(name: "shuffle", size: 15); Text("Pick again") }.frame(maxWidth: .infinity) }
+                                    .buttonStyle(.diarySecondary)
                                     .disabled(active.count < 2 || rolling).accessibilityIdentifier("random-pick-again")
-                                Button { onOpen(picked.id) } label: { HStack(spacing: 7) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 18) }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    // The same kind and size as Pick again (owner's request): system Liquid Glass, this one in the accent.
-                                    .buttonStyle(.glassProminent).controlSize(.large).accessibilityIdentifier("random-pick-open")
+                                Button { onOpen(picked.id) } label: { HStack(spacing: 6) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 15) }.frame(maxWidth: .infinity) }
+                                    .buttonStyle(.diaryPrimary).accessibilityIdentifier("random-pick-open")
                             }.font(.system(size: 14, weight: .semibold)).padding(.top, 16)
                         } else {
                             VStack(spacing: 14) {

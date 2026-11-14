@@ -241,8 +241,8 @@ private struct PillSurface: ViewModifier {
         if let chosen {
             content.background(chosen, in: Capsule())
         } else if ThemeStore.current.native {
-            // Native: a small button on Liquid Glass (owner: glass for the small buttons).
-            content.glassEffect(.regular.interactive(), in: Capsule())
+            // Native: a flat grey fill, as iOS Settings.
+            content.background(Color(uiColor: .tertiarySystemFill), in: Capsule())
         } else if ThemeStore.current.usesGlass {
             content.glassEffect(.regular.interactive(), in: Capsule())
         } else {

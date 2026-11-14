@@ -196,7 +196,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                     withAnimation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22)) { selection = segment.value }
                 } label: {
                     Text(segment.title).font(.system(size: 14, weight: on ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
-                        .lineLimit(1).minimumScaleFactor(0.75).padding(.horizontal, 5).frame(maxWidth: .infinity, minHeight: 34)
+                        .lineLimit(1).minimumScaleFactor(0.8).padding(.horizontal, 5).frame(maxWidth: .infinity, minHeight: 34)
                         .background {
                             if on {
                                 Capsule().fill(ThemePalette.adaptive(dark: 0.4, light: 1)).shadow(color: .black.opacity(0.12), radius: 6, y: 2)
@@ -206,7 +206,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(segment.id)
             }
-        }.padding(3).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+        }.padding(3).frame(maxWidth: .infinity).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             .sensoryFeedback(.selection, trigger: selection)
     }
 }

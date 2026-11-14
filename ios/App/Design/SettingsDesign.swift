@@ -63,12 +63,12 @@ extension View {
     func settingsRowFrame() -> some View {
         padding(.horizontal, ThemeStore.current.native ? 16 : 15).frame(minHeight: ThemeStore.current.native ? 52 : 64)
     }
-    /// A small button's face in Native: Liquid Glass (owner: glass suits the small buttons), the accent
-    /// glass with white text when `prominent`.
+    /// A small button's face in Native: flat, solid accent with white text when `prominent`, else a grey
+    /// fill with accent text (owner: no glass on these buttons).
     func nativeSmallGlass(prominent: Bool, ink: Color? = nil) -> some View {
         let accent = Color(uiColor: .systemBlue)
         return foregroundStyle(ink ?? (prominent ? .white : accent))
-            .glassEffect(prominent ? .regular.tint(accent).interactive() : .regular.interactive(), in: Capsule())
+            .background(prominent ? accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
             .contentShape(Capsule())
     }
 }
@@ -87,8 +87,8 @@ struct SettingsActionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(2)
-                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.85)
+                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
             }
             Spacer(minLength: 8)
             if busy { ProgressView().controlSize(.small) }
@@ -96,7 +96,7 @@ struct SettingsActionRow: View {
                 Text(button).font(.system(size: 15, weight: .semibold)).lineLimit(1).padding(.horizontal, 14).frame(height: 34)
                     .nativeSmallGlass(prominent: !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
             }.buttonStyle(.plain).disabled(disabled || busy).opacity(disabled || busy ? 0.5 : 1).accessibilityIdentifier(identifier)
-        }.frame(minHeight: 52).accessibilityElement(children: .contain)
+        }.frame(height: 52).accessibilityElement(children: .contain)
     }
 }
 

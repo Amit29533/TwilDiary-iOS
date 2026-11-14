@@ -120,7 +120,7 @@ struct EpisodeInfoSheet: View {
             HStack {
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        .frame(width: 44, height: 44).background(Color(themed: "#26262e"), in: Circle())
+                        .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
                 }.buttonStyle(.plain)
                     .accessibilityLabel("Close").accessibilityIdentifier("episode-sheet-close")
                 Spacer()
@@ -146,7 +146,7 @@ struct EpisodeInfoSheet: View {
             .overlay(alignment: .topTrailing) {
                 ShareLink(item: shareText(item, p)) {
                     Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(width: 44, height: 44)
-                        .background(HomeStyle.card.opacity(0.6), in: Circle())
+                        .glassEffect(.regular.interactive(), in: Circle())
                 }.padding(8).accessibilityLabel("Share episode")
             }
     }
@@ -236,8 +236,9 @@ struct EpisodeInfoSheet: View {
         // Design: 64 pt circles; on = accent with #e5dcff label, off = #26262e with a #2e2e38 hairline.
         VStack(spacing: 8) {
             DiaryIcon(name: icon, size: 22).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary)
-                .frame(width: 64, height: 64).background(on ? theme.accent : Color(themed: "#26262e"), in: Circle())
-                .overlay(Circle().strokeBorder(on ? .clear : Color(themed: "#2e2e38"), lineWidth: HomeStyle.hairline))
+                .frame(width: 64, height: 64)
+                // Liquid Glass, as the Sentiments sheet's buttons (owner); a chosen one is the accent glass.
+                .glassEffect(on ? .regular.tint(theme.accent).interactive() : .regular.interactive(), in: Circle())
             Text(label).font(.system(size: 13, weight: on ? .semibold : .regular)).foregroundStyle(on ? Color(themed: "#e5dcff") : HomeStyle.soft).lineLimit(1)
         }.contentShape(Rectangle())
     }
@@ -255,16 +256,14 @@ struct EpisodeInfoSheet: View {
                         Capsule().fill(dot == index ? theme.accent : Color(themed: "#4a4a56")).frame(width: dot == index ? 16 : 6, height: 6)
                     }
                 }.accessibilityHidden(true)
-            }.frame(maxWidth: .infinity, minHeight: 56).background(Color(themed: "#26262e"), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color(themed: "#2e2e38"), lineWidth: HomeStyle.hairline))
+            }.frame(maxWidth: .infinity, minHeight: 56).glassEffect(.regular, in: Capsule())
             Button { go(true) } label: { pagerCircle("chevron.right") }
                 .buttonStyle(.springPress).disabled(index >= episodes.count - 1).opacity(index >= episodes.count - 1 ? 0.4 : 1).accessibilityLabel("Next episode")
         }
     }
     private func pagerCircle(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            .frame(width: 56, height: 56).background(Color(themed: "#26262e"), in: Circle())
-            .overlay(Circle().strokeBorder(Color(themed: "#2e2e38"), lineWidth: HomeStyle.hairline))
+            .frame(width: 56, height: 56).glassEffect(.regular.interactive(), in: Circle())
     }
     /// Five dots at most, the current one among them.
     private func dotRange(index: Int) -> [Int] {
