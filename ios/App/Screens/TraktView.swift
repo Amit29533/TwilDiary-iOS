@@ -21,15 +21,23 @@ import TwilDiaryCore
                 .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
         }
         if connected {
-            TrackerPreviewPanel(tracker: .trakt)
-            SettingsGroup(label: "Options") {
+            if ThemeStore.current.native && !store.traktHoldsDiary {
+                TrackerPreviewPanel(tracker: .trakt, trailingOptions: AnyView(traktOptions))
+            } else {
+                TrackerPreviewPanel(tracker: .trakt)
+                SettingsGroup(label: "Options") { traktOptions }
+            }
+            SettingsFootnote(text: "Sign out of Trakt in Profile → Connections.")
+        }
+    }
+    @ViewBuilder private var traktOptions: some View {
                 Toggle(isOn: Binding(get: { traktDirect.instantSync }, set: { on in
                     traktDirect.instantSync = on
                     // Back on: send whatever waited.
                     if on && !traktDirect.pending.isEmpty { Task { await traktDirect.check(store: store) } }
                 })) {
                     optionLabel("Instant sync", traktDirect.instantSync ? "Send edits as you make them" : "Edits wait for the next sync")
-                }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("trakt-instant-sync")
+                }.settingsRowFrame().accessibilityIdentifier("trakt-instant-sync")
                 SettingsDivider()
                 SettingsRow(title: "Pending requests", subtitle: "Waiting to be sent") {
                     SettingsBadge(text: traktDirect.pending.isEmpty ? "None" : traktDirect.pending.count.formatted(), tone: traktDirect.pending.isEmpty ? .good : .missing)
@@ -44,15 +52,13 @@ import TwilDiaryCore
                 NavigationLink { ServiceLimitsView(tracker: .trakt) } label: {
                     SettingsRow(title: "Account limits", subtitle: "What your plan allows and what you use") { SettingsChevron() }
                 }.buttonStyle(.plain).accessibilityIdentifier("trakt-account-limits")
-            }
-            SettingsFootnote(text: "Sign out of Trakt in Profile → Connections.")
-        }
     }
     private var traktDirect: TraktDirectStore { .shared }
     private func optionLabel(_ title: String, _ subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+        let native = ThemeStore.current.native
+        return VStack(alignment: .leading, spacing: native ? 1 : 2) {
+            Text(title).font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
+            Text(subtitle).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

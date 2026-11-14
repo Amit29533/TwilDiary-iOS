@@ -74,14 +74,23 @@ struct SimklSettingsView: View {
                         }
                         if let problem = mirror.lastProblem { SettingsFootnote(text: problem) }
                     }
-                    TrackerPreviewPanel(tracker: .simkl)
+                    if ThemeStore.current.native {
+                        TrackerPreviewPanel(tracker: .simkl, trailingOptions: AnyView(
+                            NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
+                                SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
+                            }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")))
+                    } else {
+                        TrackerPreviewPanel(tracker: .simkl)
+                    }
                     if others.simklWaiting > 0 {
                         SettingsFootnote(text: "\(others.simklWaiting.formatted()) anime \(others.simklWaiting == 1 ? "episode is" : "episodes are") still being matched with Simkl’s entries, a few shows at a time. They’re left out of the comparison until then.")
                     }
-                    NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
-                        SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
-                            .modifier(SettingsCard())
-                    }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")
+                    if !ThemeStore.current.native {
+                        NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
+                            SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
+                                .modifier(SettingsCard())
+                        }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")
+                    }
                 }
                 if !mirror.notKept.isEmpty {
                     SettingsGroup(label: "Not kept on Simkl", info: "Simkl couldn’t find these, even by air date. They aren’t sent again; the rest of your activity carries on.") {

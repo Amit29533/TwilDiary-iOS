@@ -717,9 +717,13 @@ struct GlanceView: View {
                 VStack(spacing: 0) {
                     header
 
-                    ScrollView(.horizontal) {
-                        CategoryPicker(selection: $category, counts: Dictionary(uniqueKeysWithValues: LibraryCategory.allCases.map { item in (item, watching.filter { item.includes($0) }.count) }))
-                    }.scrollIndicators(.hidden)
+                    let categoryCounts = Dictionary(uniqueKeysWithValues: LibraryCategory.allCases.map { item in (item, watching.filter { item.includes($0) }.count) })
+                    if ThemeStore.current.native {
+                        // Native: a segmented control as wide as the screen; a sideways scroll would shrink it to its labels.
+                        CategoryPicker(selection: $category, counts: categoryCounts)
+                    } else {
+                        ScrollView(.horizontal) { CategoryPicker(selection: $category, counts: categoryCounts) }.scrollIndicators(.hidden)
+                    }
                     HStack(spacing: 10) {
                         Menu {
                             Picker("Order", selection: sort) { ForEach(GlanceSort.allCases, id: \.self) { Text($0.label).tag($0) } }

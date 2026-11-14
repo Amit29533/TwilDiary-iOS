@@ -498,9 +498,20 @@ struct ExternalProviderConnectionView: View {
             VStack(alignment: .leading, spacing: 16) {
                 headerCard
                 connectCard
-                if currentConfig.isAuthenticated || pendingOutboxCount > 0 { sendEditsCard }
-                if currentConfig.isAuthenticated, let tracker { TrackerPreviewPanel(tracker: tracker) }
-                if currentConfig.isAuthenticated, let tracker, tracker != .trakt {
+                let native = ThemeStore.current.native
+                if (currentConfig.isAuthenticated || pendingOutboxCount > 0) && !(native && currentConfig.isAuthenticated && tracker != nil) { sendEditsCard }
+                if currentConfig.isAuthenticated, let tracker {
+                    if native {
+                        // Native: one Options list, as Trakt's page: Send my edits, the actions, Account limits.
+                        TrackerPreviewPanel(tracker: tracker, leadingOptions: AnyView(sendEditsRows), trailingOptions: tracker == .trakt ? nil : AnyView(
+                            NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
+                                SettingsRow(title: "Account limits", subtitle: "Daily requests and what your plan allows") { SettingsChevron() }
+                            }.buttonStyle(.plain).accessibilityIdentifier("\(tracker.rawValue)-account-limits")))
+                    } else {
+                        TrackerPreviewPanel(tracker: tracker)
+                    }
+                }
+                if currentConfig.isAuthenticated, let tracker, tracker != .trakt, !native {
                     NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
                         SettingsRow(title: "Account limits", subtitle: "Daily requests and what your plan allows") { SettingsChevron() }
                             .modifier(SettingsCard())
@@ -527,12 +538,13 @@ struct ExternalProviderConnectionView: View {
     }
 
     /// One switch: whether your edits go to this service, and what's still on its way.
-    private var sendEditsCard: some View {
+    private var sendEditsCard: some View { sendEditsRows.modifier(SettingsCard()) }
+    private var sendEditsRows: some View {
         VStack(alignment: .leading, spacing: 0) {
             Toggle(isOn: $enabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Send my edits to \(displayName)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                    Text("Sent as you make them.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                VStack(alignment: .leading, spacing: ThemeStore.current.native ? 1 : 2) {
+                    Text("Send my edits to \(displayName)").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text("Sent as you make them.").font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.toggleStyle(SettingsToggleStyle()).settingsRowFrame()
                 .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
@@ -555,7 +567,7 @@ struct ExternalProviderConnectionView: View {
                     }.buttonStyle(SettingsPillButtonStyle()).disabled(syncing || !currentConfig.isAuthenticated).accessibilityIdentifier("\(provider.rawValue)-sync-now")
                 }.padding(.horizontal, 15).padding(.vertical, 10)
             }
-        }.modifier(SettingsCard())
+        }
     }
 
     /// Your own key or token, folded away: signing in is the simple way.
