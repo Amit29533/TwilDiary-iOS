@@ -52,8 +52,6 @@ struct PersonProfilePage<Content: View>: View {
                 // background. It otherwise blurs a hard strip over the portrait.
                 .scrollEdgeEffectHidden(true, for: .top)
                 .background(ThemeStore.current.canvas).tint(Color(themed: "#e6e2ec"))
-                // Native: an Apple Music artist page, dark with the portrait's colour, in light mode too.
-                .nativeArtworkPage()
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
@@ -66,6 +64,8 @@ struct PersonProfilePage<Content: View>: View {
                     }
                 }
         }.toolbarBackground(.hidden, for: .navigationBar)
+            // Native: an Apple Music artist page, dark in light mode too, its header and toolbar included.
+            .nativeArtworkPage()
             .modifier(ProfileNativeLinks(kind: kind, ref: ref, sameVoice: sameVoice, samePerson: samePerson))
     }
 

@@ -99,7 +99,7 @@ struct TitleDetailView: View {
                                 .background(alignment: .top) {
                                     TitleArtworkBackdrop(path: ["again", "night", "severance"].contains(title.id) ? "scene:" + title.id : title.backdrop ?? title.poster, name: title.name, topExtension: geometry.safeAreaInsets.top)
                                 }
-                        }.scrollClipDisabled().scrollDismissesKeyboard(.interactively).diaryScreenBackground(path: title.backdrop ?? title.poster, name: title.name).nativeArtworkPage()
+                        }.scrollClipDisabled().scrollDismissesKeyboard(.interactively).diaryScreenBackground(path: title.backdrop ?? title.poster, name: title.name)
                             .onScrollPhaseChange { _, phase in if phase == .tracking || phase == .interacting { pendingScrollTarget = nil } }
                             .task(id: ScrollFocus(target: pendingScrollTarget, height: contentHeight, notes: showNotes, files: showLocation)) {
                                 guard let target = pendingScrollTarget else { return }
@@ -205,6 +205,9 @@ struct TitleDetailView: View {
     }
     private func detailPresentations(title: MediaTitle, content: some View) -> some View {
         content
+            // Native: the whole page (its scrolled header and toolbar too) is the dark artwork page;
+            // the sheets below keep the phone's own appearance.
+            .nativeArtworkPage()
             // Presented while an episode is chosen; swiping inside changes the episode, not the sheet.
             .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
                 // The last episode stays while the sheet slides away, instead of an empty sheet.

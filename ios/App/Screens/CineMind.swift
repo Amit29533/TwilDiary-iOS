@@ -191,7 +191,9 @@ private struct CineGlowRing<S: InsettableShape>: ViewModifier {
             .animation(.smooth(duration: 0.35), value: active)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) { spin = 360 }
+                // From the start each time it shows (a ring seen again would otherwise stay still at 360°).
+                spin = 0
+                Task { @MainActor in withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) { spin = 360 } }
             }
     }
     private func ring(width: CGFloat) -> some View {

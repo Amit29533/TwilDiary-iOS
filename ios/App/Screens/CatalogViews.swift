@@ -421,7 +421,7 @@ struct CatalogDetailView: View {
                     .background(alignment: .top) {
                         if let details { TitleArtworkBackdrop(path: CatalogTools.image(details.details.backdropPath, size: "w780"), name: details.details.name, topExtension: geometry.safeAreaInsets.top) }
                     }
-            }.scrollClipDisabled().diaryScreenBackground(path: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") }, name: details?.details.name ?? "").nativeArtworkPage().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            }.scrollClipDisabled().diaryScreenBackground(path: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") }, name: details?.details.name ?? "").navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }
                 .toolbar {
@@ -449,6 +449,8 @@ struct CatalogDetailView: View {
                             .accessibilityLabel("More options for " + (details?.details.name ?? "this title")).accessibilityIdentifier("catalog-more")
                     }
                 }
+                // Native: the whole page, header and toolbar included, is the dark artwork page (sheets aren't).
+                .nativeArtworkPage()
                 .sheet(isPresented: $showFiles) {
                     NavigationStack {
                         VStack(alignment: .leading, spacing: 12) {
