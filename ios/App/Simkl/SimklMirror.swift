@@ -287,7 +287,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
             let groups = SimklBody.groups(batch, simkl: { SimklBody.pin($0, found[$0.titleKey] ?? nil) }, external: { ids[$0.titleKey] ?? nil })
             let reply = try await api.post(SimklBody.path(first.kind), body: SimklBody.body(groups))
             var missing = SimklBody.notFound(reply, groups: groups)
-            if first.kind == .watch { missing.formUnion(await readBack(reply, groups: groups, missing: missing, api: api)) }
+            if first.kind == .watch { missing.formUnion(try await readBack(reply, groups: groups, missing: missing, api: api)) }
             lastProblem = nil
             remove(batch.filter { !missing.contains($0.id) })
             let refused = batch.filter { missing.contains($0.id) }
@@ -326,8 +326,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// Simkl's answer to a watch, read back (as CrossWatch does): a title filed as the other kind is
     /// listed to check; one Simkl said nothing about (neither took nor listed as not found) is
     /// looked up on the account (`/sync/watched`: in Simkl's own numbering, that very episode).
-    /// Returns the jobs that aren't there. If the check itself fails, nothing is held against them.
-    private func readBack(_ reply: Data, groups: [SimklBody.Group], missing: Set<String>, api: SimklAPI) async -> Set<String> {
+    /// Returns the jobs that aren't there. If the check can't be made, it throws and the whole batch
+    /// stays queued to go again: a batch Simkl never confirmed is never counted as sent (it was, and
+    /// 1,828 changes "went" without landing, owner's test 2026-11-14). Sending again is harmless:
+    /// Simkl keeps an episode watched once.
+    private func readBack(_ reply: Data, groups: [SimklBody.Group], missing: Set<String>, api: SimklAPI) async throws -> Set<String> {
         let filed = SimklBody.filed(reply, groups: groups)
         for (index, filing) in filed {
             guard let first = groups[index].jobs.first, let other = SimklBody.otherKind(first, filing) else { continue }
@@ -341,7 +344,17 @@ struct SimklQueue: Codable, Equatable, Sendable {
         let question = SimklBody.watchedQuestion(groups, asking: unclear)
         var landed = Set<String>()
         if !question.asked.isEmpty {
-            guard let answer = try? await api.post("/sync/watched", query: ["extended": "episodes,specials"], body: question.body) else { return [] }
+            // Simkl takes one write a second per account and this question is one: wait a moment, and
+            // once more if it was still too soon. A daily limit or no answer stops here (the batch waits).
+            func ask() async throws -> Data { try await api.post("/sync/watched", query: ["extended": "episodes,specials"], body: question.body) }
+            var answer: Data
+            do {
+                try await Task.sleep(for: .milliseconds(1_100))
+                answer = try await ask()
+            } catch SimklAPI.Failure.busy(let seconds) where seconds <= 10 {
+                try await Task.sleep(for: .seconds(max(2, seconds)))
+                answer = try await ask()
+            }
             landed = SimklBody.confirmed(answer, groups: groups, asked: question.asked)
         }
         return Set(unclear.flatMap { groups[$0].jobs.map(\.id) }).subtracting(landed)
