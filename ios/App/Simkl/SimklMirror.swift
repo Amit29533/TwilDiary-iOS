@@ -229,6 +229,13 @@ struct SimklQueue: Codable, Equatable, Sendable {
                 await placeFirst(batch, match: match, api: api)
                 return true
             }
+            // A special Simkl lists on no such day isn't sent by TVDB's season 0: Simkl rarely places
+            // it, and the try still puts the show on your Watching list with nothing watched.
+            let unplacedSpecials = batch.filter { $0.anime && !$0.movie && $0.entry == nil && $0.season == 0 && $0.datesChecked == true }
+            if !unplacedSpecials.isEmpty {
+                finish(unplacedSpecials, reason: "Simkl lists no special or OVA on that day.")
+                return true
+            }
             let reply = try await api.post(SimklBody.path(first.kind), body: SimklBody.body(batch, simkl: first.entry ?? SimklBody.pin(first, match)))
             let missing = SimklBody.notFound(reply, sent: batch)
             lastProblem = nil
