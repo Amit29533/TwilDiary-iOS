@@ -106,7 +106,7 @@ struct SimklSettingsView: View {
                 if account.signedIn || !mirror.queue.jobs.isEmpty || !mirror.notKept.isEmpty {
                     Button(role: .destructive) { confirmRemove = true } label: {
                         Text("Disconnect and remove").font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 50)
-                    }.buttonStyle(.plain).foregroundStyle(.red).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+                    }.buttonStyle(.plain).foregroundStyle(.red).cardSurface(16)
                         .accessibilityIdentifier("simkl-remove")
                     SettingsFootnote(text: "Signs out and deletes everything TwilDiary kept for Simkl on this iPhone. Nothing on Simkl changes.")
                 }
