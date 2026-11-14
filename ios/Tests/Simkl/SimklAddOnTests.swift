@@ -233,6 +233,86 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SimklBody.notFound(reply, groups: groups), [movie.id], "only the movie Simkl names")
     }
 
+    /// From Simkl's real lists (2026-11-14): titles break ties and place an episode Simkl dates
+    /// differently (JoJo's Stone Ocean, dated by Netflix).
+    func testEpisodeTitles() {
+        XCTAssertEqual(SimklBody.titleKey("Mini 8-bit Shorts 1"), SimklBody.titleKey("Mini 8-Bit Shorts 1"))
+        XCTAssertEqual(SimklBody.titleKey("PROJECT APPLE"), SimklBody.titleKey("Project Apple"))
+        XCTAssertNil(SimklBody.titleKey("Episode 3")); XCTAssertNil(SimklBody.titleKey("Volume 1")); XCTAssertNil(SimklBody.titleKey("OAD"))
+        XCTAssertNil(SimklBody.titleKey(nil))
+
+        // Mob Psycho: two specials a day apart; the title decides before the nearer day.
+        let specials = SimklAPI.episodes(from: Data(#"""
+        [{"episode":1,"type":"special","date":"2016-09-28","title":"Mini 8-Bit Shorts 1"},{"episode":7,"type":"special","date":"2016-09-27","title":"Ending of Episode 12"}]
+        """#.utf8))
+        XCTAssertEqual(SimklBody.find(day: "2016-09-27", in: specials, special: true, season: 0, number: 1, sameDay: [1], title: "Mini 8-bit Shorts 1")?.number, 1)
+        XCTAssertEqual(SimklBody.find(day: "2016-09-27", in: specials, special: true, season: 0, number: 1, sameDay: [1])?.number, 7, "no title: the one that very day")
+
+        // Stone Ocean on another day than TMDB's: its title, whatever the day; a generic one never.
+        let ocean = SimklAPI.episodes(from: Data(#"""
+        [{"episode":1,"type":"episode","date":"2021-12-01","title":"Stone Ocean"},{"episode":3,"type":"episode","date":"2021-12-01","title":"The Visitor (1)"},
+         {"episode":4,"type":"episode","date":"2021-12-01","title":"Episode 4"}]
+        """#.utf8))
+        XCTAssertNil(SimklBody.find(day: "2022-01-22", in: ocean))
+        XCTAssertEqual(SimklBody.titled("The Visitor (1)", in: ocean, special: false, anyKind: false).map(\.number), [3])
+        XCTAssertEqual(SimklBody.titled("Episode 4", in: ocean, special: false, anyKind: false).count, 0)
+        XCTAssertEqual(SimklBody.titled("Stone Ocean", in: ocean, special: true, anyKind: false).count, 0, "a special matches only a special in a show's own entry")
+    }
+
+    /// Scroblarr's way, as Simkl answered it (2026-11-14): an episode by its own TVDB id goes in
+    /// `episodes`, and comes back by that id when Simkl doesn't know it.
+    func testAnEpisodeByItsTvdbId() throws {
+        var job = watch(13, season: 5, tmdb: 45790); job.tvdbEpisode = 9075730
+        let groups = SimklBody.groups([job, watch(2)], simkl: { _ in nil }, external: { _ in nil })
+        XCTAssertEqual(groups.count, 2)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: SimklBody.body(groups)) as? [String: Any])
+        let episodes = try XCTUnwrap(root["episodes"] as? [[String: Any]])
+        XCTAssertEqual((episodes.first?["ids"] as? [String: Any])?["tvdb"] as? Int, 9075730)
+        XCTAssertEqual(episodes.first?["watched_at"] as? String, job.watchedAt)
+        XCTAssertEqual((root["shows"] as? [[String: Any]])?.count, 1, "the other episode as before")
+        let reply = Data(#"{"added":{"episodes":1,"statuses":[]},"not_found":{"movies":[],"shows":[],"episodes":[{"ids":{"tvdb":9075730},"watched_at":"2026-11-14T20:00:00.000Z"}]}}"#.utf8)
+        XCTAssertEqual(SimklBody.notFound(reply, groups: groups), [job.id], "only the episode sent by that id")
+    }
+
+    /// Simkl's answer read back (its replies, 2026-11-14): how it filed each item, the other kind
+    /// flagged, and an item it said nothing about checked on the account.
+    func testTheAnswerIsReadBack() throws {
+        let movie = SimklJob(kind: .watch, tmdb: 27205, movie: true, name: "Inception", year: 2010, watchedAt: "2026-11-14T07:00:00Z")
+        var placed = watch(5, tmdb: 105248); placed.entry = 1377443; placed.ownNumbering = true
+        let show = SimklJob(kind: .watch, tmdb: 1396, movie: false, name: "Breaking Bad", year: 2008, season: 1, number: 2, watchedAt: "2026-11-14T07:00:00Z")
+        let groups = SimklBody.groups([movie, placed, show], simkl: { _ in nil }, external: { _ in nil })
+        let reply = Data(#"""
+        {"added":{"movies":1,"shows":0,"episodes":1,"statuses":[
+          {"request":{"ids":{"tmdb":27205},"title":"Inception","type":"movie"},"response":{"status":"completed","simkl_type":"tv","anime_type":null}},
+          {"request":{"ids":{"simkl":1377443},"type":"show"},"response":{"status":"watching","simkl_type":"anime","anime_type":"ona"}}]},
+         "not_found":{"movies":[],"shows":[],"episodes":[]}}
+        """#.utf8)
+        let filed = SimklBody.filed(reply, groups: groups)
+        XCTAssertEqual(filed[0], SimklBody.Filed(type: "tv", animeType: nil))
+        XCTAssertEqual(SimklBody.otherKind(movie, try XCTUnwrap(filed[0])), "a TV show")
+        XCTAssertNil(SimklBody.otherKind(placed, try XCTUnwrap(filed[1])))
+        XCTAssertEqual(SimklBody.otherKind(show, SimklBody.Filed(type: "anime", animeType: "movie")), "an anime film")
+        XCTAssertNil(SimklBody.otherKind(SimklJob(kind: .watch, tmdb: 912598, movie: true, anime: true, name: "Bubble"), SimklBody.Filed(type: "anime", animeType: "ona")), "an ONA film is a film")
+
+        // Breaking Bad: neither taken nor not found, so it's asked about.
+        let unclear = SimklBody.unclear(reply, groups: groups, missing: [])
+        XCTAssertEqual(unclear, [2])
+        let question = SimklBody.watchedQuestion(groups, asking: [1, 2])
+        XCTAssertEqual(question.asked, [1, 2])
+        let items = try XCTUnwrap(JSONSerialization.jsonObject(with: question.body) as? [[String: Any]])
+        XCTAssertEqual((items[0]["ids"] as? [String: Any])?["simkl"] as? Int, 1377443)
+        let answer = Data(#"""
+        [{"ids":{"simkl":1377443},"result":true,"seasons":[{"number":1,"episodes":[{"number":4,"watched":true},{"number":5,"watched":false}]}]},
+         {"ids":{"tmdb":1396},"result":"not_found"}]
+        """#.utf8)
+        XCTAssertEqual(SimklBody.confirmed(answer, groups: groups, asked: [1, 2]), [], "that very episode isn't watched, and the show isn't there")
+        let watched = Data(#"[{"ids":{"simkl":1377443},"result":true,"seasons":[{"number":1,"episodes":[{"number":5,"watched":true}]}]},{"result":true}]"#.utf8)
+        XCTAssertEqual(SimklBody.confirmed(watched, groups: groups, asked: [1, 2]), [placed.id, show.id])
+        var byTVDB = watch(13, season: 5, tmdb: 45790); byTVDB.tvdbEpisode = 9075730
+        XCTAssertEqual(SimklBody.watchedQuestion(SimklBody.groups([byTVDB], simkl: { _ in nil }, external: { _ in nil }), asking: [0]).asked, [],
+                       "an episode sent by TVDB id isn't asked about: TVDB's seasons are next")
+    }
+
     func testSearchAnswer() {
         XCTAssertEqual(SimklAPI.match(from: Data(#"[{"type":"anime","title":"Attack on Titan","ids":{"simkl":39687,"slug":"attack-on-titan"}}]"#.utf8)),
                        SimklAPI.Match(simkl: 39687, kind: "anime"))

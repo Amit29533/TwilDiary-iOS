@@ -105,6 +105,20 @@ struct SimklSettingsView: View {
                         }
                     }
                 }
+                if !mirror.filedDifferently.isEmpty {
+                    SettingsGroup(label: "Check on Simkl", info: "Simkl took these, but filed them as the other kind (a show sent as a movie, or the reverse), so it may have taken another title.") {
+                        ForEach(Array(mirror.filedDifferently.prefix(20).enumerated()), id: \.element.id) { index, item in
+                            if index > 0 { SettingsDivider() }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text(item.reason).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.vertical, 10)
+                        }
+                        SettingsDivider()
+                        Button("Clear this list") { mirror.clearFiledDifferently() }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                }
                 if let message { SettingsFootnote(text: message) }
                 if account.signedIn || !mirror.queue.jobs.isEmpty || !mirror.notKept.isEmpty {
                     Button(role: .destructive) { confirmRemove = true } label: {

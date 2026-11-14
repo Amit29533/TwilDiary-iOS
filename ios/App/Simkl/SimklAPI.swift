@@ -19,7 +19,7 @@ struct SimklAPI: Sendable {
     }
 
     func get(_ path: String, query: [String: String] = [:]) async throws -> Data { try await send(path, method: "GET", query: query, body: nil) }
-    func post(_ path: String, body: Data) async throws -> Data { try await send(path, method: "POST", query: [:], body: body) }
+    func post(_ path: String, query: [String: String] = [:], body: Data) async throws -> Data { try await send(path, method: "POST", query: query, body: body) }
 
     private func request(_ path: String, method: String, query: [String: String], body: Data?) -> URLRequest {
         var components = URLComponents(string: Self.base + path)!
@@ -168,6 +168,8 @@ struct SimklAPI: Sendable {
         /// The same episode in TVDB's numbering, when Simkl knows it.
         let tvdbSeason: Int?
         let tvdbEpisode: Int?
+        /// Its title (English, like TMDB's): "The Journey's End".
+        var title: String? = nil
     }
     func episodes(of match: Match) async throws -> [Episode] {
         Self.episodes(from: try await get((match.kind == "anime" ? "/anime/episodes/" : "/tv/episodes/") + String(match.simkl)))
@@ -179,7 +181,8 @@ struct SimklAPI: Sendable {
             let tvdb = row["tvdb"] as? [String: Any]
             let date = (row["date"] as? String).map { String($0.prefix(10)) }
             return Episode(number: number, day: date?.count == 10 ? date : nil, special: (row["type"] as? String) == "special",
-                           tvdbSeason: (tvdb?["season"] as? NSNumber)?.intValue, tvdbEpisode: (tvdb?["episode"] as? NSNumber)?.intValue)
+                           tvdbSeason: (tvdb?["season"] as? NSNumber)?.intValue, tvdbEpisode: (tvdb?["episode"] as? NSNumber)?.intValue,
+                           title: row["title"] as? String)
         }
     }
 }
@@ -226,6 +229,7 @@ enum SimklBody {
     /// its own anime-database ids, never TMDB's, IMDb's or TVDB's, which a show's cours share and
     /// which would lead back to the first cour.
     static func ids(_ job: SimklJob, simkl: Int?, external: SimklExternalIDs?) -> [String: Any] {
+        if job.entry == nil, let episode = job.tvdbEpisode { return ["tvdb": episode] }
         if let entry = job.entry {
             var ids: [String: Any] = ["simkl": entry]
             for (key, value) in job.entryIDs ?? [:] { ids[key] = Int(value) ?? value }
@@ -247,7 +251,7 @@ enum SimklBody {
     static func groups(_ jobs: [SimklJob], simkl: (SimklJob) -> Int?, external: (SimklJob) -> SimklExternalIDs?) -> [Group] {
         var order: [String] = [], byKey: [String: [SimklJob]] = [:]
         for job in jobs {
-            let key = "\(job.titleKey)|\(job.entry ?? 0)|\(job.ownNumbering)"
+            let key = "\(job.titleKey)|\(job.entry ?? 0)|\(job.ownNumbering)|\(job.entry == nil ? job.tvdbEpisode ?? 0 : 0)"
             if byKey[key] == nil { order.append(key) }
             byKey[key, default: []].append(job)
         }
@@ -258,9 +262,18 @@ enum SimklBody {
     }
     /// The request: several titles in one (Simkl's docs: every write takes arrays).
     static func body(_ groups: [Group]) -> Data {
-        var movies: [[String: Any]] = [], shows: [[String: Any]] = []
+        var movies: [[String: Any]] = [], shows: [[String: Any]] = [], episodes: [[String: Any]] = []
         for group in groups {
             guard let first = group.jobs.first else { continue }
+            if first.entry == nil, first.tvdbEpisode != nil {
+                // An episode by its own TVDB id (Scroblarr's way): Simkl's own mapping finds the anime episode.
+                for job in group.jobs {
+                    var episode: [String: Any] = ["ids": group.ids]
+                    if job.kind == .watch, let when = job.watchedAt { episode["watched_at"] = when }
+                    episodes.append(episode)
+                }
+                continue
+            }
             var item: [String: Any] = ["title": first.name, "ids": group.ids]
             if let year = first.year { item["year"] = year }
             switch first.kind {
@@ -295,6 +308,7 @@ enum SimklBody {
         var root: [String: Any] = [:]
         if !movies.isEmpty { root["movies"] = movies }
         if !shows.isEmpty { root["shows"] = shows }
+        if !episodes.isEmpty { root["episodes"] = episodes }
         return (try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])) ?? Data("{}".utf8)
     }
     /// One title's request (as before batching).
@@ -340,12 +354,86 @@ enum SimklBody {
                 }
             }
         }
-        let episodes = (missing["episodes"] as? [[String: Any]]) ?? []
+        // Episodes sent by their own TVDB id come back by that id; any other, by its place.
+        var episodes: [[String: Any]] = []
+        for item in (missing["episodes"] as? [[String: Any]]) ?? [] {
+            let owners = groups.filter { $0.jobs.first?.entry == nil && $0.jobs.first?.tvdbEpisode != nil && owns(item, $0) }
+            if owners.isEmpty { episodes.append(item) } else { out.formUnion(owners.flatMap(\.jobs).map(\.id)) }
+        }
         if !episodes.isEmpty {
-            let shows = groups.flatMap(\.jobs).filter { !$0.movie || $0.entry != nil }
+            let shows = groups.flatMap(\.jobs).filter { (!$0.movie || $0.entry != nil) && !($0.entry == nil && $0.tvdbEpisode != nil) }
             let named = episodes.reduce(into: Set<String>()) { $0.formUnion(places($1)) }
             let some = shows.filter { named.contains(place($0)) }
             out.formUnion((some.isEmpty ? shows : some).map(\.id))
+        }
+        return out
+    }
+
+    /// How Simkl filed an item it took (its answer's `added.statuses`: each item it took, echoed,
+    /// with Simkl's type and anime type), as CrossWatch reads it back.
+    struct Filed: Equatable, Sendable { let type: String?; let animeType: String? }
+    /// Each group Simkl answered for, by the ids its echo carries (each answer claimed once).
+    static func filed(_ reply: Data, groups: [Group]) -> [Int: Filed] {
+        guard let root = (try? JSONSerialization.jsonObject(with: reply)) as? [String: Any],
+              let added = root["added"] as? [String: Any], let rows = added["statuses"] as? [[String: Any]] else { return [:] }
+        var out: [Int: Filed] = [:]
+        for row in rows {
+            let theirs = (row["request"] as? [String: Any])?["ids"] as? [String: Any] ?? [:]
+            let response = row["response"] as? [String: Any] ?? [:]
+            guard let index = groups.indices.first(where: { index in
+                out[index] == nil && theirs.contains { pair in pair.key != "slug" && groups[index].ids[pair.key].map { "\($0)" == "\(pair.value)" } == true }
+            }) else { continue }
+            out[index] = Filed(type: response["simkl_type"] as? String, animeType: response["anime_type"] as? String)
+        }
+        return out
+    }
+    /// What a filing says about a title of the other kind: Simkl keeping a show TwilDiary sent as a
+    /// movie, or the reverse, means it took another title. Anime films and ONAs can be either.
+    static func otherKind(_ job: SimklJob, _ filed: Filed) -> String? {
+        if job.movie && job.entry == nil {
+            if filed.type == "tv" { return "a TV show" }
+            if filed.type == "anime" && filed.animeType == "tv" { return "an anime series" }
+        } else if !job.movie {
+            if filed.type == "movie" { return "a movie" }
+            if filed.type == "anime" && filed.animeType == "movie" { return "an anime film" }
+        }
+        return nil
+    }
+
+    /// Groups Simkl said nothing about (neither took nor listed as not found): checked on the
+    /// account before being counted as kept.
+    static func unclear(_ reply: Data, groups: [Group], missing: Set<String>) -> [Int] {
+        let answered = filed(reply, groups: groups)
+        return groups.indices.filter { index in answered[index] == nil && !groups[index].jobs.contains { missing.contains($0.id) } }
+    }
+    /// `/sync/watched`'s question for those groups (an episode sent by TVDB id can't be asked about:
+    /// it goes on to TVDB's seasons).
+    static func watchedQuestion(_ groups: [Group], asking: [Int]) -> (body: Data, asked: [Int]) {
+        var items: [[String: Any]] = [], asked: [Int] = []
+        for index in asking {
+            guard let first = groups[index].jobs.first, !(first.entry == nil && first.tvdbEpisode != nil) else { continue }
+            var item: [String: Any] = ["ids": groups[index].ids]
+            if first.movie && first.entry == nil { item["type"] = "movie" }
+            items.append(item); asked.append(index)
+        }
+        return ((try? JSONSerialization.data(withJSONObject: items, options: [.sortedKeys])) ?? Data("[]".utf8), asked)
+    }
+    /// The jobs `/sync/watched` shows on the account: a movie or title Simkl has as watched; an
+    /// episode in Simkl's own numbering, only if that very episode is watched.
+    static func confirmed(_ reply: Data, groups: [Group], asked: [Int]) -> Set<String> {
+        let rows = ((try? JSONSerialization.jsonObject(with: reply)) as? [[String: Any]]) ?? []
+        var out = Set<String>()
+        for (row, index) in zip(rows, asked) where (row["result"] as? Bool) == true {
+            let seasons = (row["seasons"] as? [[String: Any]]) ?? []
+            for job in groups[index].jobs {
+                guard job.entry != nil || job.ownNumbering, !job.movie || job.entry != nil else { out.insert(job.id); continue }
+                let season = job.movie ? 1 : job.season ?? 1, number = job.movie ? 1 : job.number ?? 0
+                let watched = seasons.contains { s in
+                    (s["number"] as? NSNumber)?.intValue == season
+                        && ((s["episodes"] as? [[String: Any]]) ?? []).contains { ($0["number"] as? NSNumber)?.intValue == number && ($0["watched"] as? Bool) == true }
+                }
+                if watched { out.insert(job.id) }
+            }
         }
         return out
     }
@@ -361,12 +449,12 @@ enum SimklBody {
     ///
     /// Several on (nearly) the same day (a season released at once, a multi-episode premiere,
     /// specials out together): the date can't tell them apart, so the same number decides (TVDB's,
-    /// then for a regular episode Simkl's), then the same place in the day when TMDB lists as many
-    /// that day (`sameDay`: TMDB's numbers within a day of this one), then the only one dated that
-    /// very day. Otherwise no guess. Tested 2026-11-14: Edgerunners, Frieren's premiere, Demon
-    /// Slayer's three specials.
+    /// then for a regular episode Simkl's), then the same title (CrossWatch's and Cinopsys's
+    /// tie-break), then the same place in the day when TMDB lists as many that day (`sameDay`:
+    /// TMDB's numbers within a day of this one), then the only one dated that very day. Otherwise
+    /// no guess. Tested 2026-11-14: Edgerunners, Frieren's premiere, Demon Slayer's three specials.
     static func find(day: String, in episodes: [SimklAPI.Episode], special: Bool = false, anyKind: Bool = true,
-                     season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil) -> SimklAPI.Episode? {
+                     season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil, title: String? = nil) -> SimklAPI.Episode? {
         let near = episodes.filter { episode in (special ? anyKind || episode.special : !episode.special) && (episode.day.map { daysApart($0, day) <= 1 } ?? false) }
         let preferred = near.filter { $0.special == special }
         let pool = preferred.isEmpty ? near : preferred
@@ -376,19 +464,40 @@ enum SimklBody {
             if byTVDB.count == 1 { return byTVDB[0] }
             let byNumber = special ? [] : pool.filter { $0.number == number }
             if byNumber.count == 1 { return byNumber[0] }
-            if let sameDay = sameDay?.sorted(), sameDay.count == pool.count, let place = sameDay.firstIndex(of: number) {
-                return pool.sorted { $0.number < $1.number }[place]
-            }
+        }
+        if let key = titleKey(title) {
+            let byTitle = pool.filter { titleKey($0.title) == key }
+            if byTitle.count == 1 { return byTitle[0] }
+        }
+        if let number, let sameDay = sameDay?.sorted(), sameDay.count == pool.count, let place = sameDay.firstIndex(of: number) {
+            return pool.sorted { $0.number < $1.number }[place]
         }
         let exact = pool.filter { daysApart($0.day ?? "", day) == 0 }
         return exact.count == 1 ? exact[0] : nil
+    }
+    /// An episode title as compared: lower case, words of letters and digits. A generic one
+    /// ("Episode 3", "Volume 1", "OAD") is no evidence: nil.
+    static func titleKey(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let words = text.lowercased().split { !($0.isLetter || $0.isNumber) }.map(String.init)
+        let generic: Set<String> = ["episode", "ep", "part", "volume", "vol", "special", "specials", "oad", "ova", "ona", "recap",
+                                    "preview", "picture", "drama", "movie", "film", "the", "final", "bonus", "extra", "chapter"]
+        guard words.contains(where: { !generic.contains($0) && Int($0) == nil }) else { return nil }
+        let key = words.joined(separator: " ")
+        return key.count >= 4 ? key : nil
+    }
+    /// The episodes titled as this one, whatever their day (Simkl dates some releases by another
+    /// country's premiere: Netflix's anime). The same kinds as `find`.
+    static func titled(_ title: String?, in episodes: [SimklAPI.Episode], special: Bool, anyKind: Bool) -> [SimklAPI.Episode] {
+        guard let key = titleKey(title) else { return [] }
+        return episodes.filter { (special ? anyKind || $0.special : !$0.special) && titleKey($0.title) == key }
     }
     /// `find`, and for a regular episode Simkl dates differently (a premiere it dates by its early
     /// screening: Re:Zero's third season), the one before the episode a week later, or after the one
     /// a week earlier: weekly shows keep their order.
     static func locate(day: String, in episodes: [SimklAPI.Episode], special: Bool, anyKind: Bool = true,
-                       season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil) -> SimklAPI.Episode? {
-        if let found = find(day: day, in: episodes, special: special, anyKind: anyKind, season: season, number: number, sameDay: sameDay) { return found }
+                       season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil, title: String? = nil) -> SimklAPI.Episode? {
+        if let found = find(day: day, in: episodes, special: special, anyKind: anyKind, season: season, number: number, sameDay: sameDay, title: title) { return found }
         guard !special else { return nil }
         if let later = shift(day, by: 7).flatMap({ find(day: $0, in: episodes) }),
            let found = episodes.first(where: { !$0.special && $0.number == later.number - 1 }) { return found }
