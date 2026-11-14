@@ -102,7 +102,7 @@ private struct DailyDiscoveryCard: View {
                     }.font(.system(size: 15, weight: .medium)).foregroundStyle(Color(themed: "#d8d3e0"))
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.padding(.horizontal, 20).padding(.bottom, 18)
-        }.aspectRatio(1.89, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.primary.opacity(0.12))).contentShape(Rectangle())
+        }.environment(\.colorScheme, .dark).aspectRatio(1.89, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.primary.opacity(0.12))).contentShape(Rectangle())
     }
 }
 

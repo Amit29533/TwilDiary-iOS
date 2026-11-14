@@ -428,7 +428,7 @@ struct TitleDetailView: View {
             } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
         }.padding(19)
             // Design: a 28 pt card in rgba(18 16 26 / .58) with a white 8 % hairline.
-            .background(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58), in: RoundedRectangle(cornerRadius: 28))
+            .background(ThemeStore.current.native ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58)), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }

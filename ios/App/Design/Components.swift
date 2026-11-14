@@ -940,7 +940,9 @@ struct ProgressCard: View {
         HStack(spacing: 0) {
             Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 4) {
-                Text("LAST WATCHED").font(.system(size: 12, weight: .bold)).tracking(1.8).foregroundStyle(HomeStyle.chipText)
+                Text("LAST WATCHED").font(.system(size: 12, weight: .bold)).tracking(1.8)
+                    // Native: white on the artwork (the accent blue was lost on warm pictures).
+                    .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
                     .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 10)
                 Button { openTitle() } label: {
@@ -952,6 +954,8 @@ struct ProgressCard: View {
             }
         }.padding(16).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
+            // On the artwork: light text in light mode too (Native).
+            .environment(\.colorScheme, .dark)
     }
     /// − last watched episode + for shows; one Log watch button for movies. The circles are
     /// 36 pt, as in the owner's design, inside 44 pt tap targets.
