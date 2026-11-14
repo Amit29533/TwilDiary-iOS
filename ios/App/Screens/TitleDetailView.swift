@@ -71,6 +71,7 @@ struct TitleDetailView: View {
                                 header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
                                 progressPanel(title).padding(.top, -8)
                                 if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
+                                if title.isSeries { SeasonCardsSection(title: title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if title.isSeries, let tmdbId = title.tmdbId {
                                     RatingTrendCard(show: tmdbId, season: season, tmdb: tmdbEpisodePoints, current: card?.next?.number)

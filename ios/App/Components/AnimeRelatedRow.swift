@@ -11,21 +11,28 @@ struct AnimeRelatedRow: View {
     let movie: Bool
     @Environment(DiaryStore.self) private var store
     @State private var items: [AniRelated] = []
+    /// Folded away from its heading, as Seasons is.
+    @AppStorage("title.related.open") private var open = true
 
     var body: some View {
         Group {
             if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Related").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
-                        .frame(minHeight: 44)
-                    ScrollView(.horizontal) {
+                    Button { withAnimation(.snappy(duration: 0.25)) { open.toggle() } } label: {
+                        HStack(spacing: 8) {
+                            Text("Related").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                            Image(systemName: "chevron.down").font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                                .rotationEffect(.degrees(open ? 0 : -90))
+                        }.frame(minHeight: 44).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel(open ? "Related, hide" : "Related, show").accessibilityIdentifier("related-anime-toggle")
+                    if open { ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 12) {
                             ForEach(items) { item in
                                 AnimeAppearanceButton(appearance: item.appearance) { card(item) }
                                     .buttonStyle(.springPress).accessibilityIdentifier("related-anime-" + String(item.id))
                             }
                         }
-                    }.scrollIndicators(.hidden).scrollClipDisabled().accessibilityIdentifier("related-anime-shelf")
+                    }.scrollIndicators(.hidden).scrollClipDisabled().accessibilityIdentifier("related-anime-shelf") }
                 }
             }
         }.task(id: title) { items = (try? await AniListClient.shared.related(title: title, year: year, movie: movie)) ?? [] }
