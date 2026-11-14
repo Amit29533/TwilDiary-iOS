@@ -53,7 +53,7 @@ struct LibraryView: View {
             if selecting { selectionHeader }
             collectionContent
         }
-        .background(Color(themed: "#0e0d13")).diaryScreenBackground()
+        .background(ThemeStore.current.native ? ThemeStore.current.canvas : Color(themed: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
             .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }

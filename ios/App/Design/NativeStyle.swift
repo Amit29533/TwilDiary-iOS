@@ -182,7 +182,7 @@ extension View {
 private struct NativeArtworkPage: ViewModifier {
     func body(content: Content) -> some View {
         if ThemeStore.current.native {
-            content.environment(\.colorScheme, .dark).environment(\.nativeOnArtwork, true)
+            content.environment(\.colorScheme, .dark)
         } else {
             content
         }

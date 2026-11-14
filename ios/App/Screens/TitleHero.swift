@@ -44,43 +44,24 @@ struct TitleHero<Ratings: View>: View {
             // top. Ratings scroll within the remaining column width.
             // Design: a 112 × 168 poster (radius 16, white 12 % hairline), the text column 14 pt to its
             // right starting 8 pt below the poster's top.
-            if ThemeStore.current.native {
-                // Native: the header centred under the cover, as an Apple Music album page: a larger poster,
-                // the name in 28 pt bold, its details, chips and ratings below it.
-                VStack(spacing: 0) {
-                    Artwork(path: poster, title: name, initialsOnly: false).frame(width: 150, height: 225).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: .black.opacity(0.45), radius: 18, y: 12)
-                        .contentShape(RoundedRectangle(cornerRadius: 14)).fullScreenArtwork(poster, title: name)
-                        .accessibilityIdentifier("title-hero-poster")
-                    Text(name).font(.system(size: 28, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                        .multilineTextAlignment(.center).lineLimit(2).truncationMode(.tail).allowsTightening(true).padding(.top, 18)
+            HStack(alignment: .top, spacing: 14) {
+                Artwork(path: poster, title: name, initialsOnly: false).frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.12), lineWidth: HomeStyle.hairline))
+                    .shadow(color: .black.opacity(0.6), radius: 14, y: 10)
+                    .contentShape(RoundedRectangle(cornerRadius: 16)).fullScreenArtwork(poster, title: name)
+                    .accessibilityIdentifier("title-hero-poster")
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
+                        .lineLimit(2).truncationMode(.tail).allowsTightening(true)
+                        .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
-                    Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per ep" : "\($0) min" }].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4)
-                    TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime"), centered: true).padding(.top, 10)
-                }.frame(maxWidth: .infinity)
-                ratings.frame(maxWidth: .infinity)
-            } else {
-                HStack(alignment: .top, spacing: 14) {
-                    Artwork(path: poster, title: name, initialsOnly: false).frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 16))
-                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.12), lineWidth: HomeStyle.hairline))
-                        .shadow(color: .black.opacity(0.6), radius: 14, y: 10)
-                        .contentShape(RoundedRectangle(cornerRadius: 16)).fullScreenArtwork(poster, title: name)
-                        .accessibilityIdentifier("title-hero-poster")
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
-                            .lineLimit(2).truncationMode(.tail).allowsTightening(true)
-                            .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
-                            .accessibilityIdentifier("title-hero-name")
-                            .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
-                        Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per ep" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).padding(.top, 6)
-                        TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime")).padding(.top, 6)
-                        if !ratingsBelow { ratings.padding(.top, 14) }
-                    }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                if ratingsBelow { ratings }
+                    Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per ep" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).padding(.top, 6)
+                    TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime")).padding(.top, 6)
+                    if !ratingsBelow { ratings.padding(.top, 14) }
+                }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            if ratingsBelow { ratings }
             VStack(alignment: .leading, spacing: 4) {
                 if expanded && !synopsisParts.continuation.isEmpty {
                     Text(synopsisText.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -139,22 +120,13 @@ struct TitleArtworkBackdrop: View {
     let name: String
     var topExtension: CGFloat = 0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    /// Native: the artwork's main colour, which the whole page takes on (as Apple Music's pages).
-    @State private var tint: Color?
     var body: some View {
         GeometryReader { proxy in cover(width: proxy.size.width) }
             .offset(y: -topExtension).allowsHitTesting(false).accessibilityHidden(true)
-            .task(id: ThemeStore.current.native ? path : nil) {
-                guard ThemeStore.current.native, let path else { tint = nil; return }
-                var found = GlassArtworkCache.shared.cached(path)
-                if found == nil { found = await GlassArtworkCache.shared.image(path) }
-                guard let found else { return }
-                let deep = Color(red: found.red * 0.46, green: found.green * 0.46, blue: found.blue * 0.46)
-                withAnimation(.smooth(duration: 0.5)) { tint = deep }
-            }
     }
-    /// The page's ground: the original near-black, or in Native the artwork's deepened colour.
-    private var ground: Color { ThemeStore.current.native ? (tint ?? .black) : Color(themed: "#0a0a0e") }
+    /// The page's ground: the original near-black, or pitch black in Native (no artwork tint: owner's
+    /// note, it didn't follow the theme).
+    private var ground: Color { ThemeStore.current.native ? .black : Color(themed: "#0a0a0e") }
     private func cover(width: CGFloat) -> some View {
         let artwork = TitleCover.artworkHeight(width: width)
         // Owner's reference: the cover stays crisp; below it a strong, very smooth wash of its own
