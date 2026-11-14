@@ -58,7 +58,13 @@ import UIKit
         }
         guard coordinator.interaction == nil, controller.transitionCoordinator == nil,
               let index = AppTab.allCases.firstIndex(of: selection), controller.selectedIndex != index else { return }
-        controller.selectedIndex = index
+        // Only a jump asked for from inside a page lands here (Home's Up next or Stats, Profile's
+        // Watchlist, a stat opening Library, Search): a tap on the bar has already switched. A short
+        // cross-fade instead of a cut (owner's request); none with Reduce Motion or off screen.
+        guard controller.view.window != nil, !UIAccessibility.isReduceMotionEnabled else { controller.selectedIndex = index; return }
+        UIView.transition(with: controller.view, duration: 0.3, options: [.transitionCrossDissolve, .allowAnimatedContent, .beginFromCurrentState]) {
+            controller.selectedIndex = index
+        }
     }
     static func dismantleUIViewController(_ controller: UITabBarController, coordinator: Coordinator) {
         controller.view.removeGestureRecognizer(coordinator.pan)
