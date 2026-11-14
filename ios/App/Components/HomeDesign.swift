@@ -90,6 +90,9 @@ struct HomeWeekCard: View {
     let overview: HomeOverview
     let now: Date
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The bars grow up from nothing the first time the card shows, as Apple's charts do.
+    @State private var grown = false
     var body: some View {
         let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
         VStack(alignment: .leading, spacing: 0) {
@@ -103,7 +106,7 @@ struct HomeWeekCard: View {
             }
             Rectangle().fill(HomeStyle.cardBorder).frame(height: 1).padding(.top, 14)
             HStack(spacing: 0) {
-                ForEach(overview.days) { day in
+                ForEach(Array(overview.days.enumerated()), id: \.element.id) { order, day in
                     let today = DiaryDate.calendar().isDate(day.date, inSameDayAs: now)
                     NavigationLink(value: HistoryRoute(day: day.date)) {
                         VStack(spacing: 0) {
@@ -116,6 +119,8 @@ struct HomeWeekCard: View {
                                 .overlay(alignment: .bottom) {
                                     if day.minutes > 0 {
                                         Rectangle().fill(theme.accent).frame(height: max(4, 22 * CGFloat(day.minutes) / CGFloat(maximum)))
+                                            .scaleEffect(y: grown || reduceMotion ? 1 : 0.001, anchor: .bottom)
+                                            .animation(reduceMotion ? nil : .spring(duration: 0.6, bounce: 0.25).delay(Double(order) * 0.05), value: grown)
                                     }
                                 }.clipShape(RoundedRectangle(cornerRadius: 5))
                         }.frame(maxWidth: .infinity)
@@ -139,10 +144,12 @@ struct HomeWeekCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+            .onAppear { grown = true }
     }
     private func metric(_ value: String, _ label: String, accent: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(.system(size: 24, weight: .bold)).foregroundStyle(accent ? theme.accent : HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.7)
+                .contentTransition(.numericText()).animation(reduceMotion ? nil : .smooth, value: value)
             Text(label).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
         }.accessibilityElement(children: .combine)
     }

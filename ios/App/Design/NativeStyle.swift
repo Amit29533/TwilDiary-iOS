@@ -99,6 +99,25 @@ private struct HeroClip: Shape {
     }
 }
 
+/// A slowly moving mesh of system indigo, purple, blue and teal behind a summary card (Stats),
+/// as the colour fields of Apple's newer apps. Still under Reduce Motion; 20 frames a second at most.
+struct NativeMeshGlow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let colours: [Color] = [UIColor.systemIndigo, .systemPurple, .systemBlue, .systemBlue, .systemIndigo, .systemTeal, .systemPurple, .systemBlue, .systemIndigo]
+        .map { Color(uiColor: $0) }
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
+            let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+            let x = Float(sin(time * 0.45)) * 0.14, y = Float(cos(time * 0.35)) * 0.14
+            MeshGradient(width: 3, height: 3, points: [
+                [0, 0], [0.5, 0], [1, 0],
+                [0, 0.5], [0.5 + x, 0.5 + y], [1, 0.5],
+                [0, 1], [0.5, 1], [1, 1],
+            ], colors: Self.colours)
+        }
+    }
+}
+
 /// A round Liquid Glass button face (see all, layout, more): the glass circle iOS 26 uses for a
 /// bar's icon buttons, with the symbol in the primary label colour.
 struct NativeRoundGlass: View {

@@ -156,7 +156,7 @@ struct StatsMonthCard: View {
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
-                    ThemeStore.current.native ? Color(uiColor: .systemIndigo) : Color(themed: "#2a1f45")
+                    if ThemeStore.current.native { NativeMeshGlow() } else { Color(themed: "#2a1f45") }
                     RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
                     LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
                 }
