@@ -49,4 +49,8 @@ struct OutboxDeadLetter: LocalizedError { let reason: String; var errorDescripti
         UserDefaults.standard.set(Array(Self.tokens(tracker).union(tokens)).sorted(), forKey: key(tracker))
     }
     static func clear(_ tracker: MainTracker) { UserDefaults.standard.removeObject(forKey: key(tracker)) }
+    static func remove(_ tracker: MainTracker, _ tokens: Set<String>) {
+        guard !tokens.isEmpty else { return }
+        UserDefaults.standard.set(Array(Self.tokens(tracker).subtracting(tokens)).sorted(), forKey: key(tracker))
+    }
 }

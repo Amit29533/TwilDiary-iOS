@@ -192,10 +192,22 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         let diary = tracker == .simkl ? SimklLibrary.comparable(store.diaryToMatch, placements: SimklMirror.shared.placements, notKept: SimklMirror.shared.notKeptKeys)
             : store.diaryToMatch
         let planned = store.diaryService != tracker
-        let ledger = MatchLedger.tokens(tracker), names = PhoneCatalog.shared.titles.mapValues(\.name)
+        var ledger = MatchLedger.tokens(tracker)
+        let names = PhoneCatalog.shared.titles.mapValues(\.name)
+        if planned, !ledger.isEmpty {
+            // What the ledger holds that nothing would send any more (the service has it now, or the
+            // diary changed) is settled: off the "didn't stick" list.
+            let held = ledger
+            let settled = await Task.detached(priority: .utility) {
+                held.subtracting(TraktWritePlan.make(library: read, workspace: diary, tracker: tracker).tokens)
+            }.value
+            MatchLedger.remove(tracker, settled)
+            ledger.subtract(settled)
+        }
+        let except = ledger
         return await Task.detached(priority: .utility) {
-            (TraktComparison.compare(read, with: diary, tracker: tracker, except: ledger, names: names),
-             planned ? TraktWritePlan.make(library: read, workspace: diary, tracker: tracker, except: ledger) : nil)
+            (TraktComparison.compare(read, with: diary, tracker: tracker, except: except, names: names),
+             planned ? TraktWritePlan.make(library: read, workspace: diary, tracker: tracker, except: except) : nil)
         }.value
     }
     /// "Try them again": the ledger is cleared, so those go with the next match.
