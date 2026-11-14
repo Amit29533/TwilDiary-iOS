@@ -193,6 +193,11 @@ struct RootView: View {
     /// played and there's something to show (your diary, the first screen, or why it can't open).
     @State private var showSplash = !ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.arguments.contains("--ui-splash")
     @State private var splashPlayed = false
+    /// Native: the show you're watching, in a bar above the tab bar (as Apple Music's mini player).
+    private var nowWatching: AnyView? {
+        guard theme == .native, NowWatchingBar.current(in: store) != nil else { return nil }
+        return AnyView(NowWatchingBar().environment(store).environment(router))
+    }
     /// The splash lifts on a Home that's ready to draw (its rows worked out), so opening never shows
     /// a half-built page that then jumps into place; 2.5 s at most.
     private var readyToShow: Bool {
@@ -236,7 +241,7 @@ struct RootView: View {
                 NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme == .native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
                                pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
-                }, onReselect: { router.select($0) }) { tab in
+                }, onReselect: { router.select($0) }, accessory: nowWatching) { tab in
                     AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme)
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }

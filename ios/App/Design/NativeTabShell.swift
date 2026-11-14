@@ -13,6 +13,8 @@ import UIKit
     let pageKey: String
     let canPage: @MainActor (AppTab) -> Bool
     let onReselect: @MainActor (AppTab) -> Void
+    /// Native's now-watching bar above the tab bar (iOS's tab accessory); nil for none.
+    var accessory: AnyView? = nil
     let page: @MainActor (AppTab) -> AnyView
 
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection, canPage: canPage, onReselect: onReselect) }
@@ -40,6 +42,7 @@ import UIKit
         // No content swipe between tabs: a sideways swipe belongs to the page (All, Movies, Shows, Anime).
         controller.selectedIndex = AppTab.allCases.firstIndex(of: selection) ?? 0
         controller.tabBar.tintColor = accent
+        coordinator.showAccessory(accessory, in: controller, animated: false)
         return controller
     }
     func updateUIViewController(_ controller: UITabBarController, context: Context) {
@@ -49,6 +52,7 @@ import UIKit
         controller.tabBar.tintColor = accent
         controller.view.backgroundColor = ThemeStore.current.followsSystemAppearance ? .systemBackground : .black
         coordinator.showSync(syncing, in: controller, accent: accent)
+        coordinator.showAccessory(accessory, in: controller, animated: true)
         // Reassigning a root re-diffs that whole tab. Doing all five on every root update
         // (opening Surprise me, any state the root body read) rebuilt every screen.
         if coordinator.renderedPageKey != pageKey {
@@ -75,6 +79,24 @@ import UIKit
     }
 
     final class Coordinator: NSObject, UITabBarControllerDelegate, UIGestureRecognizerDelegate {
+        // MARK: Now watching (Native)
+
+        private var accessoryHost: UIHostingController<AnyView>?
+        /// Shows, updates or removes the bar above the tab bar.
+        func showAccessory(_ content: AnyView?, in controller: UITabBarController, animated: Bool) {
+            guard let content else {
+                if controller.bottomAccessory != nil { controller.setBottomAccessory(nil, animated: animated) }
+                accessoryHost = nil
+                return
+            }
+            if let host = accessoryHost, controller.bottomAccessory != nil { host.rootView = content; return }
+            let host = UIHostingController(rootView: content)
+            host.view.backgroundColor = .clear
+            host.sizingOptions = []
+            accessoryHost = host
+            controller.setBottomAccessory(UITabAccessory(contentView: host.view), animated: animated)
+        }
+
         // MARK: Syncing ring on the Profile tab
 
         private var spinLink: CADisplayLink?
