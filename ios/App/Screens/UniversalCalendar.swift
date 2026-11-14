@@ -201,7 +201,6 @@ private final class DayReplies: @unchecked Sendable {
 /// The calendar's Everything tab: type, genre and range filters, then each day's releases.
 struct UniversalCalendarSection: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("calendar.everything.filter") private var filter = UniversalReleases.Filter.all
     @AppStorage("calendar.everything.days") private var days = 7
     @State private var genres: Set<String> = []
@@ -270,61 +269,39 @@ struct UniversalCalendarSection: View {
         return steps
     }
 
+    /// The other tabs' filters: type and genres on the left, the range on the right.
     private var controls: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                Menu {
-                    Picker("Type", selection: $filter) { ForEach(UniversalReleases.Filter.allCases) { Text($0.rawValue).tag($0) } }
-                } label: { pill(filter.rawValue, on: filter != .all) }
-                Button { showGenres = true } label: {
-                    pill(genres.isEmpty ? "All genres" : genres.count == 1 ? genres.first! : "\(genres.count) genres", on: !genres.isEmpty)
-                }.buttonStyle(.plain)
-                Menu {
-                    Picker("Range", selection: $days) { ForEach([1, 7, 14, 30], id: \.self) { Text(Self.range($0)).tag($0) } }
-                } label: { pill(Self.range(days), on: days == 1) }
-            }
-        }.scrollIndicators(.hidden).accessibilityIdentifier("calendar-everything-filters")
+        HStack(spacing: 8) {
+            Menu {
+                Picker("Type", selection: $filter) { ForEach(UniversalReleases.Filter.allCases) { Text($0.rawValue).tag($0) } }
+            } label: { CalendarStyle.pill(filter.rawValue, active: filter != .all) }
+            Button { showGenres = true } label: {
+                CalendarStyle.pill(genres.isEmpty ? "Genres" : genres.count == 1 ? genres.first! : "\(genres.count) genres", active: !genres.isEmpty)
+            }.buttonStyle(.plain)
+            Spacer(minLength: 0)
+            Menu {
+                Picker("Range", selection: $days) { ForEach([1, 7, 14, 30], id: \.self) { Text(Self.range($0)).tag($0) } }
+            } label: { CalendarStyle.pill(Self.range(days), active: days == 1) }
+        }.accessibilityIdentifier("calendar-everything-filters")
     }
     static func range(_ days: Int) -> String { days == 1 ? "Today" : "Next \(days) days" }
-    private func pill(_ text: String, on: Bool) -> some View {
-        HStack(spacing: 6) { Text(text).lineLimit(1); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
-            .font(.system(size: 13, weight: .bold)).foregroundStyle(on ? theme.accent : HomeStyle.chipText)
-            .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.16) : HomeStyle.chip, in: Capsule())
-    }
 
     @ViewBuilder private func list(_ items: [UniversalRelease]) -> some View {
         let days = Dictionary(grouping: items, by: \.day)
         let inDiary = Set(store.workspace.activeTitles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } })
-        LazyVStack(alignment: .leading, spacing: 18) {
-            ForEach(days.keys.sorted(), id: \.self) { day in
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(Self.heading(day)).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).textCase(.uppercase)
-                    VStack(spacing: 0) {
-                        let rows = days[day] ?? []
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                            if index > 0 { SettingsDivider().padding(.leading, 26 + AiringCalendarView.posterWidth) }
-                            row(item, saved: item.route.map { (($0.kind == .tv) ? "tv:" : "movie:") + String($0.id) }.map(inDiary.contains) ?? false)
-                        }
-                    }.modifier(SettingsCard())
+        // As the other tabs: a heading with its count per day, then plain rows.
+        ForEach(days.keys.sorted(), id: \.self) { day in
+            let rows = days[day] ?? []
+            LazyVStack(alignment: .leading, spacing: 16) {
+                CalendarStyle.heading(Self.heading(day), rows.count)
+                ForEach(rows) { item in
+                    row(item, saved: item.route.map { (($0.kind == .tv) ? "tv:" : "movie:") + String($0.id) }.map(inDiary.contains) ?? false)
                 }
             }
         }
     }
     @ViewBuilder private func row(_ item: UniversalRelease, saved: Bool) -> some View {
-        let label = HStack(spacing: 12) {
-            Artwork(path: item.poster, title: item.name, initialsOnly: false)
-                .frame(width: AiringCalendarView.posterWidth, height: AiringCalendarView.posterWidth * 1.4)
-                .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
-                ReleaseSubtitle(item: item)
-            }
-            Spacer(minLength: 8)
-            if saved {
-                Text("In diary").font(.system(size: 11, weight: .semibold)).foregroundStyle(theme.accent)
-                    .padding(.horizontal, 8).frame(height: 22).background(theme.accent.opacity(0.16), in: Capsule())
-            }
-        }.padding(.horizontal, 14).padding(.vertical, 10).contentShape(Rectangle())
+        let label = ReleaseRow(item: item, saved: saved)
         if let route = item.route {
             NavigationLink(value: route) { label }.buttonStyle(.plain).accessibilityIdentifier("everything-" + item.id)
         } else if let anime = item.anime {
@@ -341,31 +318,49 @@ struct UniversalCalendarSection: View {
     }
 }
 
-/// "Show · S2 E5", "Movie", "Anime · Episode 7 · 9:30 PM". A show's episode number is read when
-/// its row comes on screen (one small request per show, kept), so opening the tab stays light.
-private struct ReleaseSubtitle: View {
+/// A release in the other tabs' row layout: "Fri 20 Nov · 9:30 PM" on top with how far away it is
+/// (and "In diary"), the name, then "Anime · Episode 7", "Show · S2 E5" or "Movie" in lilac. A
+/// show's episode number and time are read when its row comes on screen (one small request per
+/// show, kept), so opening the tab stays light.
+private struct ReleaseRow: View {
     let item: UniversalRelease
+    let saved: Bool
     @Environment(DiaryStore.self) private var store
     @State private var episode: String?
     var body: some View {
-        Text(text).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+        CalendarStyle.row(poster: item.poster, name: item.name, when: when, line: line) {
+            if saved { CalendarStyle.badge("In diary", strong: true) }
+            CalendarStyle.badge(CalendarStyle.away(daysAway))
+        } extra: { EmptyView() }
             .task(id: item.id) {
                 guard item.kind == .show, let id = item.route?.id else { return }
                 if episode == nil { episode = await UniversalReleases.episode(show: id, day: item.day, store: store) }
                 await EpisodeAirTimes.shared.load(tmdb: id, day: item.day, store: store)
             }
     }
-    private var text: String {
+    private var date: Date? {
+        let parser = DateFormatter(); parser.calendar = Calendar(identifier: .gregorian); parser.dateFormat = "yyyy-MM-dd"
+        return parser.date(from: item.day)
+    }
+    private var time: Date? {
+        if let time = item.time { return time }
+        guard item.kind == .show, let id = item.route?.id else { return nil }
+        return EpisodeAirTimes.shared.time(tmdb: id, day: item.day)
+    }
+    private var when: String {
+        let day = (time ?? date)?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) ?? item.day
+        return time.map { day + " · " + $0.formatted(date: .omitted, time: .shortened) } ?? day
+    }
+    private var daysAway: Int {
+        let calendar = Calendar.current
+        guard let at = time ?? date else { return 0 }
+        return calendar.dateComponents([.day], from: calendar.startOfDay(for: store.now), to: calendar.startOfDay(for: at)).day ?? 0
+    }
+    private var line: String {
         switch item.kind {
-        case .movie: return "Movie"
-        case .show:
-            var parts = ["Show", episode ?? item.detail]
-            if let id = item.route?.id, let time = EpisodeAirTimes.shared.time(tmdb: id, day: item.day) { parts.append(time.formatted(date: .omitted, time: .shortened)) }
-            return parts.joined(separator: " · ")
-        case .anime:
-            var parts = ["Anime", item.detail]
-            if let time = item.time { parts.append(time.formatted(date: .omitted, time: .shortened)) }
-            return parts.joined(separator: " · ")
+        case .movie: "Movie"
+        case .show: "Show · " + (episode ?? item.detail)
+        case .anime: "Anime · " + item.detail
         }
     }
 }
