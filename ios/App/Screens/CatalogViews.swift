@@ -715,6 +715,8 @@ struct CastAndRelated: View {
                 }.scrollIndicators(.hidden).scrollClipDisabled()
               }
             }
+            // Anime: its sequels, side stories and the like (AniList), just above More like this.
+            if let anime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: anime.year, movie: anime.movie) }
             if !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

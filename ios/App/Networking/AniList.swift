@@ -19,6 +19,29 @@ struct AniCharacter: Codable, Hashable, Sendable, Identifiable {
     let voiceActor: AniPerson?
     var roleName: String { role == "MAIN" ? "Main" : role == "SUPPORTING" ? "Supporting" : "Background" }
 }
+/// An anime related to another on AniList: how ("SEQUEL", "SIDE_STORY"…) and which.
+struct AniRelated: Hashable, Sendable, Identifiable {
+    let relation: String
+    let appearance: AniAppearance
+    var id: Int { appearance.id }
+    /// "Sequel", "Side story", "Main story", "Other"…
+    var label: String {
+        switch relation {
+        case "PREQUEL": "Prequel"
+        case "SEQUEL": "Sequel"
+        case "PARENT": "Main story"
+        case "SIDE_STORY": "Side story"
+        case "SPIN_OFF": "Spin-off"
+        case "ALTERNATIVE": "Alternative"
+        case "SUMMARY": "Summary"
+        case "COMPILATION": "Compilation"
+        case "CONTAINS": "Contains"
+        case "CHARACTER": "Same characters"
+        default: "Other"
+        }
+    }
+}
+
 struct AniAppearance: Hashable, Sendable, Identifiable {
     let id: Int
     let title: String
@@ -235,7 +258,7 @@ actor AniListClient {
     private var tmdbPeople: [Int: Int] = [:]
     /// The anime names already read, dropped when the title language setting changes so they're
     /// read again in the chosen language.
-    func forgetTitles() { details = [:]; voiceActors = [:]; firstSeasons = [:]; trending = nil; mediaDetails = [:] }
+    func forgetTitles() { details = [:]; voiceActors = [:]; firstSeasons = [:]; trending = nil; mediaDetails = [:]; relatedLists = [:] }
     func tmdbTitle(_ id: Int) -> CatalogRoute? { tmdbTitles[id] }
     func tmdbPerson(_ id: Int) -> Int? { tmdbPeople[id] }
     func staffID(forTMDB id: Int) -> Int? { tmdbPeople.first { $0.value == id }?.key }
@@ -376,6 +399,54 @@ actor AniListClient {
         if airingCache.count > 8 { airingCache.removeAll() }
         airingCache[key] = (Date(), items)
         return items
+    }
+
+    private var relatedLists: [String: [AniRelated]] = [:]
+    /// The anime's sequels, prequels, side stories, spin-offs and the like, as AniList relates them
+    /// (anime only: the manga or novel it adapts isn't listed), in story order: prequel, sequel,
+    /// main story, side stories, then the rest. Empty when AniList has no anime of that name
+    /// released within a year of `year` (better none than wrong).
+    func related(title: String, year: Int?, movie: Bool) async throws -> [AniRelated] {
+        let key = "\(title.lowercased())|\(year ?? 0)|\(movie)"
+        if let saved = relatedLists[key] { return saved }
+        var id = mediaIDs[key]
+        if id == nil {
+            struct Found: Decodable { let Page: PageResult; struct PageResult: Decodable { let media: [Media] } }
+            struct Media: Decodable { let id: Int; let format: String?; let startDate: DateParts? }
+            let found: Found = try await query("""
+                query($search: String) { Page(perPage: 6) { media(search: $search, type: ANIME, sort: SEARCH_MATCH) { id format startDate { year } } } }
+                """, ["search": title])
+            let candidates = found.Page.media.filter { media in
+                guard let year else { return true }
+                guard let started = media.startDate?.year else { return false }
+                return abs(started - year) <= 1
+            }
+            id = (candidates.first(where: { ($0.format == "MOVIE") == movie }) ?? candidates.first)?.id
+        }
+        guard let id else { relatedLists[key] = []; return [] }
+        struct Reply: Decodable { let Media: Node; struct Node: Decodable { let relations: Relations? } }
+        struct Relations: Decodable { let edges: [Edge?] }
+        struct Edge: Decodable { let relationType: String?; let node: Item? }
+        struct Item: Decodable {
+            struct Title: Decodable { let english: String?; let romaji: String? }
+            let id: Int; let type: String?; let format: String?; let title: Title; let coverImage: Image?; let startDate: DateParts?; let averageScore: Int?
+        }
+        let reply: Reply = try await query("""
+            query($id: Int) { Media(id: $id) { relations { edges { relationType node { id type format title { english romaji } coverImage { large } startDate { year } averageScore } } } } }
+            """, ["id": id])
+        let order = ["PREQUEL", "SEQUEL", "PARENT", "SIDE_STORY", "SPIN_OFF", "ALTERNATIVE", "SUMMARY", "COMPILATION", "CONTAINS", "CHARACTER", "OTHER"]
+        var seen = Set<Int>()
+        let list: [AniRelated] = (reply.Media.relations?.edges ?? []).compactMap { edge in
+            guard let edge, let node = edge.node, node.type == "ANIME", let type = edge.relationType, order.contains(type), seen.insert(node.id).inserted else { return nil }
+            let appearance = AniAppearance(id: node.id, title: AnimeTitleChoice.pick(english: node.title.english, romaji: node.title.romaji), cover: node.coverImage?.large,
+                                           year: node.startDate?.year, role: nil, voiceActor: nil, format: node.format,
+                                           alternateTitles: [node.title.english, node.title.romaji].compactMap { $0 },
+                                           rating: node.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+            return AniRelated(relation: type, appearance: appearance)
+        }.sorted { (order.firstIndex(of: $0.relation) ?? 99, $0.appearance.year ?? 9999) < (order.firstIndex(of: $1.relation) ?? 99, $1.appearance.year ?? 9999) }
+        if relatedLists.count > 100 { relatedLists.removeAll() }
+        relatedLists[key] = list
+        return list
     }
 
     private var mediaDetails: [Int: AniAppearance] = [:]
