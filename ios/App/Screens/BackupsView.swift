@@ -44,13 +44,13 @@ struct BackupsView: View {
                     ServerBackups.SchedulePicker()
                     Button { Task { await backUp() } } label: {
                         HStack(spacing: 8) {
-                            if working != nil { ProgressView().controlSize(.small).tint(Color(webHex: "#1a1030")) }
+                            if working != nil { ProgressView().controlSize(.small).tint(ThemeStore.current.accentInk) }
                             Text(working ?? "Back up now")
                         }
                     }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(working != nil || store.isPreview).accessibilityIdentifier("backup-now")
                 }.padding(17).modifier(SettingsCard())
                 if let message { SettingsFootnote(text: message) }
-                if let failure { Text(failure).font(.system(size: 12)).foregroundStyle(Color(webHex: "#ff8a8a")).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
+                if let failure { Text(failure).font(.system(size: 12)).foregroundStyle(Color(themed: "#ff8a8a")).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
                 if let backups {
                     if backups.isEmpty {
                         DiaryEmptyState(title: "No backups yet", description: "Back up before big changes, like switching to Trakt as your diary.")

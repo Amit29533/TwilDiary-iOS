@@ -51,7 +51,7 @@ struct PersonProfilePage<Content: View>: View {
                 // iOS 26's scroll-edge material is independent of the toolbar
                 // background. It otherwise blurs a hard strip over the portrait.
                 .scrollEdgeEffectHidden(true, for: .top)
-                .background(.black).tint(Color(webHex: "#e6e2ec"))
+                .background(.black).tint(Color(themed: "#e6e2ec"))
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
@@ -124,11 +124,11 @@ struct PersonProfilePage<Content: View>: View {
                     TitleArtworkBackdrop(path: backdrop, name: name)
                         .overlay(alignment: .top) {
                             LinearGradient(stops: [
-                                .init(color: Color(webHex: "#0a0a0e").opacity(0), location: 0),
-                                .init(color: Color(webHex: "#0a0a0e").opacity(0.08), location: 0.28),
-                                .init(color: Color(webHex: "#0a0a0e").opacity(0.55), location: 0.45),
-                                .init(color: Color(webHex: "#0a0a0e").opacity(0.78), location: 0.65),
-                                .init(color: Color(webHex: "#0a0a0e").opacity(0.88), location: 1)
+                                .init(color: Color(themed: "#0a0a0e").opacity(0), location: 0),
+                                .init(color: Color(themed: "#0a0a0e").opacity(0.08), location: 0.28),
+                                .init(color: Color(themed: "#0a0a0e").opacity(0.55), location: 0.45),
+                                .init(color: Color(themed: "#0a0a0e").opacity(0.78), location: 0.65),
+                                .init(color: Color(themed: "#0a0a0e").opacity(0.88), location: 1)
                             ], startPoint: .top, endPoint: .bottom)
                             .frame(height: topInset + 64 + photoWidth * 1.45).allowsHitTesting(false).accessibilityHidden(true)
                         }
@@ -225,7 +225,7 @@ struct ProfileBiography: View {
                 .sheet(isPresented: $expanded) {
                     NavigationStack {
                         ScrollView { prose.lineLimit(nil).fixedSize(horizontal: false, vertical: true).textSelection(.enabled).padding(20) }
-                            .background(Color(webHex: "#111116"))
+                            .background(Color(themed: "#111116"))
                             .navigationTitle(identifier == "profile-aliases" ? "Other names" : "About").navigationBarTitleDisplayMode(.inline)
                             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { expanded = false } } }
                     }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -233,8 +233,8 @@ struct ProfileBiography: View {
         }
     }
     private var prose: some View {
-        Text(text).font(style).lineSpacing(5).foregroundStyle(Color(webHex: "#cfccda"))
-            .tint(Color(webHex: "#d1cdd8")).frame(maxWidth: .infinity, alignment: .leading)
+        Text(text).font(style).lineSpacing(5).foregroundStyle(Color(themed: "#cfccda"))
+            .tint(Color(themed: "#d1cdd8")).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -250,7 +250,7 @@ struct ProfileWebsiteButtons: View {
                             else { Image(systemName: link.symbol).resizable().scaledToFit() }
                         }.frame(width: 20, height: 20).foregroundStyle(.white)
                             .frame(width: 44, height: 44)
-                            .background(Color(webHex: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
+                            .background(Color(themed: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
                     }.buttonStyle(.plain).accessibilityLabel(link.label)
                         .accessibilityHint(ProfileDeepLink.parse(link.url) == nil ? "Opens website" : "Opens inside TwilDiary").accessibilityIdentifier("profile-site-" + link.id)

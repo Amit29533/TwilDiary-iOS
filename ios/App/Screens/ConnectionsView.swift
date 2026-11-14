@@ -155,7 +155,7 @@ struct ConnectionsView: View {
                     avatar(profile?.avatar, on: on)
                         .overlay(alignment: .bottomTrailing) {
                             BrandLogo(service: tracker.brand, size: 20)
-                                .overlay(RoundedRectangle(cornerRadius: 20 * 0.225).strokeBorder(Color(webHex: "#111115"), lineWidth: 2))
+                                .overlay(RoundedRectangle(cornerRadius: 20 * 0.225).strokeBorder(Color(themed: "#111115"), lineWidth: 2))
                                 .offset(x: 4, y: 4)
                         }.opacity(on || isMain ? 1 : 0.6)
                     VStack(alignment: .leading, spacing: 3) {
@@ -168,9 +168,9 @@ struct ConnectionsView: View {
                             }
                         }.lineLimit(1)
                         HStack(spacing: 6) {
-                            if on && !problem { Circle().fill(sync ? Color(webHex: "#7fe0b5") : Color(webHex: "#8e8e9c")).frame(width: 6, height: 6) }
+                            if on && !problem { Circle().fill(sync ? Color(themed: "#7fe0b5") : Color(themed: "#8e8e9c")).frame(width: 6, height: 6) }
                             Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: 12))
-                                .foregroundStyle(problem ? Color(webHex: "#f5c26b") : HomeStyle.secondary).lineLimit(1)
+                                .foregroundStyle(problem ? Color(themed: "#f5c26b") : HomeStyle.secondary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 0)
@@ -208,14 +208,14 @@ struct ConnectionsView: View {
                 Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
-        }.background(isMain ? Color(webHex: "#1d1934") : .clear)
+        }.background(isMain ? Color(themed: "#1d1934") : .clear)
     }
 
     /// Your picture on the service, or a plain person while it's unknown or you're not signed in.
     private func avatar(_ path: String?, on: Bool) -> some View {
         ZStack {
-            Circle().fill(Color(webHex: "#2a2a31"))
-            Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(Color(webHex: "#8e8e9c"))
+            Circle().fill(Color(themed: "#2a2a31"))
+            Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(Color(themed: "#8e8e9c"))
             // Account pictures live on each service's own host (not TMDB's), so they load directly.
             if let path, let url = URL(string: path), url.scheme == "https" {
                 AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in

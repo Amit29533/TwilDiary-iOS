@@ -69,7 +69,7 @@ private struct CopyButton: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 13, weight: .semibold)).contentTransition(.symbolEffect(.replace))
                 .frame(width: 32, height: 32).background(Color.white.opacity(0.06), in: Circle())
-        }.buttonStyle(.plain).foregroundStyle(copied ? Color(webHex: "#7fe0b5") : HomeStyle.secondary).accessibilityLabel(copied ? "Copied" : "Copy answer")
+        }.buttonStyle(.plain).foregroundStyle(copied ? Color(themed: "#7fe0b5") : HomeStyle.secondary).accessibilityLabel(copied ? "Copied" : "Copy answer")
             .sensoryFeedback(.success, trigger: copied) { _, now in now }
     }
 }
@@ -85,7 +85,7 @@ private struct ThinkingRow: View {
                 HStack(spacing: 5) {
                     ForEach(0..<3, id: \.self) { index in
                         let phase = reduceMotion ? 0 : sin((time * 5) - Double(index) * 0.8)
-                        Circle().fill(Color(webHex: "#b9a6ff")).frame(width: 7, height: 7)
+                        Circle().fill(Color(themed: "#b9a6ff")).frame(width: 7, height: 7)
                             .offset(y: -3 * max(0, phase)).opacity(0.45 + 0.55 * max(0, phase))
                     }
                 }
@@ -100,7 +100,7 @@ struct CineMindMark: View {
     var body: some View {
         Image(systemName: "sparkle").font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(LinearGradient(colors: [Color(webHex: "#a98bff"), Color(webHex: "#6c4cf0")], startPoint: .topLeading, endPoint: .bottomTrailing),
+            .background(LinearGradient(colors: [Color(themed: "#a98bff"), Color(themed: "#6c4cf0")], startPoint: .topLeading, endPoint: .bottomTrailing),
                         in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
     }
 }
@@ -162,8 +162,8 @@ struct CineMindView: View {
 
     // MARK: Pieces
 
-    static let page = Color(webHex: "#0d0c13")
-    private static let accent = Color(webHex: "#8b6cf6")
+    static var page: Color { Color(themed: "#0d0c13") }
+    private static var accent: Color { Color(themed: "#8b6cf6") }
 
     private var header: some View {
         HStack(spacing: 12) {
@@ -235,14 +235,14 @@ struct CineMindView: View {
             HStack {
                 Spacer(minLength: 56)
                 Text(message.text).font(.system(size: 16, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 15).padding(.vertical, 10)
-                    .background(LinearGradient(colors: [Color(webHex: "#7b5cf2"), Color(webHex: "#5b3fd6")], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    .background(LinearGradient(colors: [Color(themed: "#7b5cf2"), Color(themed: "#5b3fd6")], startPoint: .topLeading, endPoint: .bottomTrailing),
                                 in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
             }
         } else if message.failed {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 14)).foregroundStyle(Color(webHex: "#ffb4a8"))
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 14)).foregroundStyle(Color(themed: "#ffb4a8"))
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(message.text).font(.system(size: 14)).foregroundStyle(Color(webHex: "#ffd2cb")).fixedSize(horizontal: false, vertical: true)
+                    Text(message.text).font(.system(size: 14)).foregroundStyle(Color(themed: "#ffd2cb")).fixedSize(horizontal: false, vertical: true)
                     if message.id == messages.last?.id, let question = messages.last(where: { $0.fromYou })?.text {
                         Button { messages.removeLast(); ask(question, again: true) } label: {
                             Label("Try again", systemImage: "arrow.clockwise").font(.system(size: 13, weight: .semibold))
@@ -250,7 +250,7 @@ struct CineMindView: View {
                     }
                 }
                 Spacer(minLength: 0)
-            }.padding(14).background(Color(webHex: "#2a1517"), in: RoundedRectangle(cornerRadius: 16))
+            }.padding(14).background(Color(themed: "#2a1517"), in: RoundedRectangle(cornerRadius: 16))
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 AnswerText(text: message.text, accent: Self.accent)
@@ -330,7 +330,7 @@ struct CineMindView: View {
             Button { send() } label: {
                 Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundStyle(canSend ? .white : HomeStyle.secondary)
                     .frame(width: 36, height: 36)
-                    .background(canSend ? AnyShapeStyle(LinearGradient(colors: [Color(webHex: "#9a7cff"), Color(webHex: "#6c4cf0")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color.white.opacity(0.08)), in: Circle())
+                    .background(canSend ? AnyShapeStyle(LinearGradient(colors: [Color(themed: "#9a7cff"), Color(themed: "#6c4cf0")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color.white.opacity(0.08)), in: Circle())
                     .animation(.snappy(duration: 0.15), value: canSend)
             }.buttonStyle(.plain).disabled(!canSend).padding(.trailing, 6).padding(.bottom, 6)
                 .accessibilityLabel("Send").accessibilityIdentifier("cinemind-send")

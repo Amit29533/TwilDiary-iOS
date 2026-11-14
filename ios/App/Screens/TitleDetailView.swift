@@ -312,7 +312,7 @@ struct TitleDetailView: View {
                 HStack(spacing: 6) {
                     Circle().frame(width: 5, height: 5)
                     Text(location.evidence == "present" ? "Available" : location.evidence == "unavailable" ? "Drive offline" : location.evidence == "missing" ? "Not available" : "Not confirmed")
-                }.font(.system(size: 12.8)).foregroundStyle(Color(webHex: location.evidence == "present" ? "#9edbc4" : "#e7ca90"))
+                }.font(.system(size: 12.8)).foregroundStyle(Color(themed: location.evidence == "present" ? "#9edbc4" : "#e7ca90"))
             }
             Text(location.path).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
@@ -324,7 +324,7 @@ struct TitleDetailView: View {
             }
         }.padding(.horizontal, 15).padding(.top, 15).padding(.bottom, 7)
             .background(theme.field, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(webHex: "#ffffff0d")))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(themed: "#ffffff0d")))
     }
     private func header(_ title: MediaTitle, coverStrip: CGFloat) -> some View {
         TitleHero(name: title.name, poster: title.poster, backdrop: title.backdrop, genres: title.genres, year: title.year, category: title.categoryName, runtime: title.runtimeMinutes, series: title.isSeries, summary: title.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: coverStrip, onNameScrolled: { headerState.update($0) }) {
@@ -412,7 +412,7 @@ struct TitleDetailView: View {
                 if DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
                     Button { choosingWatchDate = true } label: {
                         HStack(spacing: 6) { DiaryIcon(name: "calendar-days", size: 14).foregroundStyle(theme.accent); Text("Logging as " + watchDate.formatted(.dateTime.day().month(.abbreviated).year())) }
-                            .font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf")).frame(maxWidth: .infinity, minHeight: 36)
+                            .font(.system(size: 13)).foregroundStyle(Color(themed: "#c5c0cf")).frame(maxWidth: .infinity, minHeight: 36)
                     }.buttonStyle(.plain).accessibilityIdentifier("watch-date")
                 }
                 if showRating { ratingPanel(title).padding(.top, 10) }
@@ -564,14 +564,14 @@ struct TitleDetailView: View {
     private func episodeFilter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             // Design: 44 pt pills, 14 pt semibold; the chosen one #0b0b10 on the accent.
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#0b0b10") : HomeStyle.soft)
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
                 .padding(.horizontal, 20).frame(height: 44)
                 .background(on ? theme.accent : HomeStyle.round, in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("episodes-filter-" + (name == "Unwatched" ? "unwatched" : "all"))
     }
     @ViewBuilder private func episodeArtwork(_ episode: Episode) -> some View {
-        if isHidden(episode) { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 23).foregroundStyle(.secondary) } }
+        if isHidden(episode) { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 23).foregroundStyle(.secondary) } }
         else { Artwork(path: episodeDetails.episodes[episode.id]?.artwork ?? episode.still ?? store.title(id)?.backdrop, title: String(episode.number)) }
     }
     private func isHidden(_ episode: Episode) -> Bool { hideSpoilers && !watched.contains(episode.id) && !revealedEpisodeIDs.contains(episode.id) }

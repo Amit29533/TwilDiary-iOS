@@ -83,7 +83,7 @@ struct MainTrackerView: View {
         HStack(alignment: .top, spacing: 14) {
             BrandLogo(service: option.brand, size: 34)
             VStack(alignment: .leading, spacing: 3) {
-                Text(option.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                Text(option.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
                 Text(option.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
@@ -224,7 +224,7 @@ struct TrackerPreviewPanel: View {
                         }.padding(.top, 6)
                     } label: {
                         Label("\(setAside.count) \(setAside.count == 1 ? "edit" : "edits") set aside", systemImage: "exclamationmark.triangle")
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(Color(webHex: "#f5c26b"))
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Color(themed: "#f5c26b"))
                     }.id(clearedLetters).accessibilityIdentifier(id + "-set-aside")
                 }
             }.padding(15).modifier(SettingsCard())

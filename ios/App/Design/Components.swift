@@ -3,10 +3,12 @@ import UIKit
 import TwilDiaryCore
 
 enum DiaryTheme: String, CaseIterable, Identifiable {
-    case twilight, ocean, jade, rose, amber
+    case twilight, ocean, jade, rose, amber, premiere
     var id: Self { self }
     var name: String { rawValue.capitalized }
-    var field: Color { Color(webHex: "#111115") }
+    var field: Color { self == .premiere ? Color(webHex: "#121212") : Color(webHex: "#111115") }
+    /// Everything else the theme colours (see `ThemePalette`).
+    var palette: ThemePalette { self == .premiere ? .premiere : .classic }
     var detail: String {
         switch self {
         case .twilight: "The original violet"
@@ -14,10 +16,11 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .jade: "A quiet mint glow"
         case .rose: "Soft pink after dark"
         case .amber: "Warm cinema gold"
+        case .premiere: "Streaming night: black, white and red"
         }
     }
     var ink: Color {
-        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010") }
+        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere: Color(webHex: "#ffffff") }
     }
     var accent: Color {
         switch self {
@@ -26,6 +29,7 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .jade: Color(webHex: "#79d8bc")
         case .rose: Color(webHex: "#f4a2c6")
         case .amber: Color(webHex: "#edbe73")
+        case .premiere: Color(webHex: "#e50914")
         }
     }
 }
@@ -61,7 +65,7 @@ extension Int {
 /// The app's small icon button: a faint 44 pt circle sized to its icon, never a padded glass bubble.
 struct RoundTool: View {
     let icon: String
-    var tint = Color(webHex: "#c5c0cf")
+    var tint = Color(themed: "#c5c0cf")
     var size: CGFloat = 44
     var body: some View {
         DiaryIcon(name: icon, size: size * 0.43).foregroundStyle(tint).frame(width: size, height: size)
@@ -139,7 +143,7 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
             let destructive = configuration.role == .destructive
             configuration.label.font(.system(size: compact ? 13 : 15, weight: .semibold)).lineLimit(1)
                 .padding(.horizontal, compact ? 12 : 16).frame(minHeight: compact ? 36 : 44)
-                .foregroundStyle(bright ? WatchStyle.ink : prominent ? HomeStyle.chipText : destructive ? Color(webHex: "#ff8a80") : theme.accent)
+                .foregroundStyle(bright ? WatchStyle.ink : prominent ? HomeStyle.chipText : destructive ? Color(themed: "#ff8a80") : theme.accent)
                 .background(bright ? AnyShapeStyle(WatchStyle.fill) : prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
                 .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
                 .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
@@ -168,7 +172,7 @@ struct FilterPill: View {
             if let icon { DiaryIcon(name: icon, size: 16) }
             Text(label).font(.system(size: 15, weight: .medium)).lineLimit(1)
             DiaryIcon(name: "chevron-down", size: 13)
-        }.foregroundStyle(active ? theme.accent : Color(webHex: "#f3f0f7"))
+        }.foregroundStyle(active ? theme.accent : Color(themed: "#f3f0f7"))
             .padding(.horizontal, 14).frame(height: 38)
             .background(active ? theme.accent.opacity(0.12) : .white.opacity(0.08), in: Capsule())
             .overlay(Capsule().strokeBorder(active ? theme.accent.opacity(0.5) : .white.opacity(0.14)))
@@ -194,12 +198,12 @@ struct BrandLogo: View {
             case .mdblist: Image("brand-mdblist").resizable().scaledToFit().clipShape(corner)
             // WeTrakr's "we" mark on its violet (drawn here; no image asset yet).
             case .wetrakr: Text("we").font(.system(size: size * 0.46, weight: .black, design: .rounded)).tracking(-size * 0.03)
-                .foregroundStyle(.white).frame(width: size, height: size).background(Color(webHex: "#4b3df5"), in: corner)
+                .foregroundStyle(.white).frame(width: size, height: size).background(Color(themed: "#4b3df5"), in: corner)
             // A square tile (the cloud is twice as wide as tall: sized first, then the tile).
             case .cloudflare: Image("brand-cloudflare").resizable().scaledToFit()
                 .padding(size * 0.14).frame(width: size, height: size).background(.white, in: corner)
             case .anilist: Image("brand-anilist").resizable().scaledToFit()
-                .padding(size * 0.08).frame(width: size, height: size).background(Color(webHex: "#2b2d42"), in: corner)
+                .padding(size * 0.08).frame(width: size, height: size).background(Color(themed: "#2b2d42"), in: corner)
             case .imdb: Image("brand-imdb").resizable().scaledToFit()
             case .myanimelist: Image("brand-myanimelist").resizable().scaledToFit().clipShape(corner)
             case .metacritic: Image("brand-metacritic").resizable().scaledToFit()
@@ -207,7 +211,7 @@ struct BrandLogo: View {
             case .letterboxd: Image("brand-letterboxd").resizable().scaledToFit().clipShape(corner)
             // TV Time's black "tv" on its yellow (drawn here; no image asset).
             case .tvtime: Text("tv").font(.system(size: size * 0.5, weight: .black, design: .rounded)).tracking(-size * 0.02)
-                .foregroundStyle(.black).frame(width: size, height: size).background(Color(webHex: "#FFD400"), in: corner)
+                .foregroundStyle(.black).frame(width: size, height: size).background(Color(themed: "#FFD400"), in: corner)
             }
         }.frame(width: size, height: size).accessibilityHidden(true)
     }
@@ -298,16 +302,16 @@ struct PageHeader: View {
         if name == "TwilDiary" {
             // Design: one 24 pt bold word with a left-to-right #f5f0ff → #b79cff gradient.
             Text("TwilDiary").font(.system(size: 24, weight: .bold)).tracking(-0.48)
-                .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f5f0ff"), Color(webHex: "#b79cff")], startPoint: .leading, endPoint: .trailing))
-        } else { Text(name).font(.system(size: 32, weight: .bold)).tracking(-1.3).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
+                .foregroundStyle(LinearGradient(colors: [Color(themed: "#f5f0ff"), Color(themed: "#b79cff")], startPoint: .leading, endPoint: .trailing))
+        } else { Text(name).font(.system(size: 32, weight: .bold)).tracking(-1.3).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier("page-title") }
         if let count {
-            Text(count).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
+            Text(count).font(.system(size: 13)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)
                 .contentTransition(.numericText()).animation(reduceMotion ? nil : Motion.smooth, value: count)
         }
     }
     private func glassButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            DiaryIcon(name: icon, size: 20).foregroundStyle(Color(webHex: "#e6e2ec")).frame(width: 44, height: 44)
+            DiaryIcon(name: icon, size: 20).foregroundStyle(Color(themed: "#e6e2ec")).frame(width: 44, height: 44)
                 .glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(label).accessibilityIdentifier(id)
     }
@@ -335,7 +339,7 @@ struct SearchField: View {
     private var aiOn: Bool { ai?.wrappedValue == true }
     var body: some View {
         HStack(spacing: 10) {
-            DiaryIcon(name: "search", size: 19).foregroundStyle(Color(webHex: "#a09aa9"))
+            DiaryIcon(name: "search", size: 19).foregroundStyle(Color(themed: "#a09aa9"))
             TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false; onSearch?() }.accessibilityLabel(aiOn ? "Search by description" : label)
             if let ai { aiPill(ai) }
             if !text.isEmpty { Button { text = ""; focused = true } label: { DiaryIcon(name: "x", size: 16).frame(width: 26, height: 32) }.buttonStyle(.plain).accessibilityLabel("Clear search") }
@@ -360,7 +364,7 @@ struct SearchField: View {
     /// "AI" in a small pill: grey when off, Gemini's gradient when on.
     private func aiPill(_ ai: Binding<Bool>) -> some View {
         Button { ai.wrappedValue.toggle(); if ai.wrappedValue { focused = true } } label: {
-            Text("AI").font(.system(size: 12, weight: .bold)).foregroundStyle(ai.wrappedValue ? .white : Color(webHex: "#a09aa9"))
+            Text("AI").font(.system(size: 12, weight: .bold)).foregroundStyle(ai.wrappedValue ? .white : Color(themed: "#a09aa9"))
                 .padding(.horizontal, 9).frame(height: 24)
                 .background {
                     if ai.wrappedValue { Capsule().fill(LinearGradient(colors: Array(Self.geminiColors.prefix(3)), startPoint: .leading, endPoint: .trailing)) }
@@ -427,7 +431,7 @@ struct Artwork: View {
             if contentMode == .fit { Color.clear }
             else if bitmap == nil, initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
             else if bitmap == nil {
-                LinearGradient(colors: [Color(webHex: "#243638"), Color(webHex: "#17151e"), Color(webHex: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
+                LinearGradient(colors: [Color(themed: "#243638"), Color(themed: "#17151e"), Color(themed: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
                 RadialGradient(colors: [theme.placeholderGlow, .clear], center: UnitPoint(x: 0.8, y: 0.05), startRadius: 0, endRadius: max(proxy.size.width, proxy.size.height) * 0.7)
             }
             if let path, path.hasPrefix("asset:") || path.hasPrefix("/demo/") || path.hasPrefix("scene:"), let image = DemoArtwork.image(path) { Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode).frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment).clipped() }
@@ -464,7 +468,7 @@ struct Artwork: View {
     }
     private var tint: Color {
         let values = ["#543173", "#514779", "#294959", "#345682", "#477062", "#73435f"]
-        return Color(webHex: values[title.unicodeScalars.reduce(0) { $0 + Int($1.value) } % values.count])
+        return Color(themed: values[title.unicodeScalars.reduce(0) { $0 + Int($1.value) } % values.count])
     }
     private func fixtureImage(_ path: String?) -> UIImage? {
         #if DEBUG
@@ -479,10 +483,10 @@ struct Artwork: View {
         else {
             // Just the clapperboard: every card already shows the title beside or below its artwork.
             DiaryIcon(name: "clapperboard", size: min(34, max(16, min(size.width, size.height) * 0.3)))
-                .foregroundStyle(Color(webHex: "#d2c4e4"))
+                .foregroundStyle(Color(themed: "#d2c4e4"))
         }
     }
-    private var initials: some View { Text(title.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()).font(.system(size: 24, weight: .bold)).foregroundStyle(Color(webHex: "#eee6fb99")) }
+    private var initials: some View { Text(title.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()).font(.system(size: 24, weight: .bold)).foregroundStyle(Color(themed: "#eee6fb99")) }
 }
 
 struct RatingBadge: View {
@@ -492,16 +496,16 @@ struct RatingBadge: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: "star.fill").font(.system(size: community ? 10 : 12))
-                .foregroundStyle(Color(webHex: community ? "#ffe030" : "#f4d06a"))
+                .foregroundStyle(Color(themed: community ? "#ffe030" : "#f4d06a"))
             // Your ratings are whole numbers ("8"); community scores keep their decimal ("7.3").
             Text(score, format: .number.precision(community ? .fractionLength(1) : .fractionLength(0...1))).frame(minHeight: community ? 17.25 : 18)
         }.font(.system(size: community ? 11.5 : 12, weight: community ? .medium : .semibold))
             .lineLimit(1).fixedSize(horizontal: true, vertical: true)
-            .foregroundStyle(Color(webHex: community ? "#f5f5f5" : "#f3f0f7"))
+            .foregroundStyle(Color(themed: community ? "#f5f5f5" : "#f3f0f7"))
             // No text shadow: the badge already sits on a dark capsule, and a blurred
             // shadow costs an offscreen render pass for every poster in a scrolling grid.
             .padding(.horizontal, community ? 6 : 4).padding(.vertical, 3)
-            .background(Color(webHex: community ? "#00000099" : "#07090cdd"), in: RoundedRectangle(cornerRadius: community ? 99 : 7))
+            .background(Color(themed: community ? "#00000099" : "#07090cdd"), in: RoundedRectangle(cornerRadius: community ? 99 : 7))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text("\(source ?? (community ? "Community" : "Your")) rating \(score, format: .number.precision(community ? .fractionLength(1) : .fractionLength(0...1))) out of 10"))
     }
@@ -522,7 +526,7 @@ struct PosterCard: View {
                 .overlay(alignment: .bottomTrailing) { statusBadge }
                 .overlay(alignment: personalRating ? .topLeading : .bottomLeading) { availabilityBadges.padding(8) }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(title.name).font(.system(size: 15, weight: .semibold)).lineSpacing(2.3).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            Text(title.name).font(.system(size: 15, weight: .semibold)).lineSpacing(2.3).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
         }.contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name).accessibilityValue(accessibleDetails)
     }
     private var displayedScore: Double? { personalRating ? title.score : store.publicScore(title, source: ratingSource) }
@@ -532,8 +536,8 @@ struct PosterCard: View {
     }
     @ViewBuilder private var statusBadge: some View {
         if personalRating {
-            DiaryIcon(name: title.statusIconName, size: 18).foregroundStyle(Color(webHex: title.status == "planned" ? "#b9dcff" : "#d3d4dc"))
-                .frame(width: 26, height: 26).background(Color(webHex: "#080a10e8"), in: Circle())
+            DiaryIcon(name: title.statusIconName, size: 18).foregroundStyle(Color(themed: title.status == "planned" ? "#b9dcff" : "#d3d4dc"))
+                .frame(width: 26, height: 26).background(Color(themed: "#080a10e8"), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.42))).padding(6)
         } else if title.status == "completed" && !archived {
             Image(systemName: "checkmark").font(.system(size: 17, weight: .heavy))
@@ -545,11 +549,11 @@ struct PosterCard: View {
         VStack(alignment: .leading, spacing: 5) {
             if title.queued == true {
                 DiaryIcon(name: "download", size: 14).foregroundStyle(theme.accent).frame(width: 27, height: 27)
-                    .background(Color(webHex: "#080c10d9"), in: RoundedRectangle(cornerRadius: 7))
+                    .background(Color(themed: "#080c10d9"), in: RoundedRectangle(cornerRadius: 7))
             }
             if present && !personalRating {
-                DiaryIcon(name: "monitor", size: 14).foregroundStyle(Color(webHex: "#9edbc4"))
-                    .frame(width: 27, height: 27).background(Color(webHex: "#080c10b8"), in: RoundedRectangle(cornerRadius: 7))
+                DiaryIcon(name: "monitor", size: 14).foregroundStyle(Color(themed: "#9edbc4"))
+                    .frame(width: 27, height: 27).background(Color(themed: "#080c10b8"), in: RoundedRectangle(cornerRadius: 7))
             }
         }
     }
@@ -585,7 +589,7 @@ struct CategoryPicker: View {
                             Text(count.formatted()).foregroundStyle(selected ? theme.ink.opacity(0.75) : HomeStyle.secondary).monospacedDigit()
                         }
                     }.font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(webHex: "#c5c0cf") : HomeStyle.primary)
+                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(themed: "#c5c0cf") : HomeStyle.primary)
                         .padding(.horizontal, counts == nil ? 16 : 14).frame(minHeight: 40)
                         .background {
                             if selected { Capsule().fill(theme.accent).matchedGeometryEffect(id: "category-pill", in: pill) }
@@ -624,8 +628,9 @@ struct TextShadow: ViewModifier {
 /// Watch actions keep the bright lavender gradient with dark text (Start, + E2, Log watch, the
 /// round +); other main buttons are dark violet with lavender text.
 enum WatchStyle {
-    static let fill = LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)
-    static let ink = Color(webHex: "#1a1030")
+    // The theme's play button: lilac in the original themes, white with black text in Premiere.
+    static var fill: LinearGradient { LinearGradient(colors: [ThemeStore.current.watchTop, ThemeStore.current.watchBottom], startPoint: .top, endPoint: .bottom) }
+    static var ink: Color { ThemeStore.current.watchInk }
 }
 
 private struct CardCircle: ViewModifier {
@@ -708,15 +713,15 @@ struct ProgressCard: View {
             Spacer(minLength: 0)
             Group {
                 if notStarted {
-                    Text("CONTINUE WATCHING").font(.system(size: 11, weight: .bold)).tracking(1.54).foregroundStyle(Color(webHex: "#cdbbff"))
+                    Text("CONTINUE WATCHING").font(.system(size: 11, weight: .bold)).tracking(1.54).foregroundStyle(Color(themed: "#cdbbff"))
                         .frame(height: 14).padding(.bottom, 6)
                 } else {
-                    Text("CONTINUE WATCHING").font(.system(size: 12, weight: .medium)).tracking(1.92).foregroundStyle(Color(webHex: "#d8d4e6"))
+                    Text("CONTINUE WATCHING").font(.system(size: 12, weight: .medium)).tracking(1.92).foregroundStyle(Color(themed: "#d8d4e6"))
                         .frame(height: 16).padding(.bottom, 8)
                 }
             }.shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
             Button { openTitle() } label: {
-                Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(webHex: "#f5f5f7"))
+                Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(themed: "#f5f5f7"))
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
             }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
             // Its row fades in once progress is known, instead of one row flashing into the other:
@@ -729,7 +734,7 @@ struct ProgressCard: View {
     }
     private var progressRow: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(homeLine).font(.system(size: 14)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).frame(height: 20).padding(.top, 6)
+            Text(homeLine).font(.system(size: 14)).foregroundStyle(Color(themed: "#d8d4e6")).lineLimit(1).frame(height: 20).padding(.top, 6)
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     GeometryReader { proxy in RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.28)).overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(width: 186, height: 5)
@@ -740,7 +745,7 @@ struct ProgressCard: View {
                         Text(card == nil ? "Checking progress…" : "\(Int((fraction * 100).rounded()))% complete").layoutPriority(1)
                         Spacer(minLength: 0)
                         if let left = cardText?.timeLeft { Text(left).monospacedDigit() }
-                    }.font(.system(size: 13)).foregroundStyle(Color(webHex: "#d8d4e6")).lineLimit(1).frame(width: 186)
+                    }.font(.system(size: 13)).foregroundStyle(Color(themed: "#d8d4e6")).lineLimit(1).frame(width: 186)
                 }
                 Spacer(minLength: 0)
                 controls
@@ -751,7 +756,7 @@ struct ProgressCard: View {
     /// "Start S2 · E1" button and a 48 pt frosted + that adds the show to the Queue (design).
     private var startRow: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(startLine).font(.system(size: 13)).foregroundStyle(Color(webHex: "#b4b3c2")).lineLimit(1).frame(height: 18).padding(.top, 6)
+            Text(startLine).font(.system(size: 13)).foregroundStyle(Color(themed: "#b4b3c2")).lineLimit(1).frame(height: 18).padding(.top, 6)
             HStack(spacing: 10) {
                 Button { Task { await markWatch() } } label: {
                     HStack(spacing: 8) {
@@ -762,7 +767,7 @@ struct ProgressCard: View {
                         .contentShape(Capsule())
                 }.buttonStyle(.springPress).disabled(!markable).starBurst(trigger: sparks).accessibilityLabel(startLabel + ", " + title.name)
                 Button { guard !cardBusy, !store.needsMutationRefresh else { return }; Task { await store.patchCard(title.id, values: ["queued": title.queued != true]) } } label: {
-                    Image(systemName: title.queued == true ? "checkmark" : "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
+                    Image(systemName: title.queued == true ? "checkmark" : "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f5f5f7"))
                         .frame(width: 48, height: 48)
                         .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.32), in: Circle())
                         .background(.ultraThinMaterial, in: Circle())
@@ -808,7 +813,7 @@ struct ProgressCard: View {
                     if let glanceTime { timePill(glanceTime).padding(.top, 4) }
                     Spacer(minLength: 8)
                     HStack(alignment: .center, spacing: 14) {
-                        barWithLine(color: Color(webHex: "#c5c0cf"))
+                        barWithLine(color: Color(themed: "#c5c0cf"))
                         nextButton
                     }
                 }.frame(maxWidth: .infinity, minHeight: 105, alignment: .topLeading)
@@ -834,7 +839,7 @@ struct ProgressCard: View {
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }
             VStack(alignment: .leading, spacing: 10) {
-                barWithLine(color: Color(webHex: "#c5c0cf"))
+                barWithLine(color: Color(themed: "#c5c0cf"))
                 HStack { Spacer(minLength: 0); nextButton }
             }
         }.padding(10)
@@ -853,7 +858,7 @@ struct ProgressCard: View {
                         .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
                 }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
                 if let glanceTime { timePill(glanceTime, onArtwork: true).padding(.top, 2) }
-                HStack(alignment: .center, spacing: 14) { barWithLine(color: Color(webHex: "#e6e2ef"), shadow: true); nextButton }.padding(.top, 8)
+                HStack(alignment: .center, spacing: 14) { barWithLine(color: Color(themed: "#e6e2ef"), shadow: true); nextButton }.padding(.top, 8)
             }
         }.padding(16).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
@@ -868,11 +873,11 @@ struct ProgressCard: View {
     private var homeStepper: some View {
         HStack(spacing: 10) {
             Button { Task { await removeWatch() } } label: {
-                actionIcon(.remove, symbol: "minus", size: 15).fontWeight(.bold).foregroundStyle(Color(webHex: "#f5f5f7"))
-                    .frame(width: 35, height: 35).background(Color(webHex: "#3a3a40"), in: Circle())
+                actionIcon(.remove, symbol: "minus", size: 15).fontWeight(.bold).foregroundStyle(Color(themed: "#f5f5f7"))
+                    .frame(width: 35, height: 35).background(Color(themed: "#3a3a40"), in: Circle())
                     .contentShape(Rectangle().inset(by: -5))
             }.buttonStyle(.plain).disabled(card != nil && card?.previous == nil).accessibilityLabel("Remove latest watch for \(title.name)")
-            Text(card.map { "\($0.progress.watched) / \($0.progress.total)" } ?? "–").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
+            Text(card.map { "\($0.progress.watched) / \($0.progress.total)" } ?? "–").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(themed: "#f5f5f7"))
                 .monospacedDigit().lineLimit(1).fixedSize().contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.2), value: card?.progress.watched)
                 .accessibilityIdentifier("watch-count-" + title.id)
             Button { Task { await markWatch() } } label: {
@@ -913,7 +918,7 @@ struct ProgressCard: View {
             Button("Dropped", systemImage: "stop.circle") { Task { await store.patchCard(title.id, values: ["status": "dropped"]) } }
             Button("Notes", systemImage: "note.text") { showNotes = true }
         } label: { DiaryIcon(name: "ellipsis", size: 19).frame(width: 44, height: 44) }
-            .disabled(cardBusy || store.needsMutationRefresh).foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("More options for " + title.name).accessibilityIdentifier("progress-menu-" + title.id)
+            .disabled(cardBusy || store.needsMutationRefresh).foregroundStyle(Color(themed: "#c5c0cf")).accessibilityLabel("More options for " + title.name).accessibilityIdentifier("progress-menu-" + title.id)
     }
     // MARK: Glance (owner's design): "S1 · E1 of 12 · 4h 24m left", a bar with its percent, "+ E2".
 
@@ -945,7 +950,7 @@ struct ProgressCard: View {
             Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
             Text(text).lineLimit(1)
         }.font(.system(size: 12, weight: .semibold)).monospacedDigit()
-            .foregroundStyle(onArtwork ? Color(webHex: "#ece8f6") : HomeStyle.chipText)
+            .foregroundStyle(onArtwork ? Color(themed: "#ece8f6") : HomeStyle.chipText)
             .padding(.horizontal, 8).frame(height: 22)
             .background(onArtwork ? AnyShapeStyle(Color.black.opacity(0.45)) : AnyShapeStyle(HomeStyle.chip), in: Capsule())
             .fixedSize()

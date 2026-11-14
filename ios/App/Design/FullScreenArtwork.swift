@@ -47,7 +47,7 @@ private struct ArtworkPeek: View {
         let size = Self.size(aspect: aspect)
         Artwork(path: path, title: title, contentMode: .fill, prefersOriginal: true)
             .frame(width: size.width, height: size.height)
-            .background(Color(webHex: "#16151b"))
+            .background(Color(themed: "#16151b"))
     }
 }
 

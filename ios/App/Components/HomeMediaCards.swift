@@ -62,8 +62,8 @@ struct WatchActivityCard: View {
                         .frame(maxWidth: .infinity, alignment: .trailing).multilineTextAlignment(.trailing)
                 }
             }.padding(12).frame(maxWidth: .infinity, alignment: .topLeading)
-        }.foregroundStyle(Color(webHex: "#f3f0f7"))
-            .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 14))
+        }.foregroundStyle(Color(themed: "#f3f0f7"))
+            .background(Color(themed: "#111115"), in: RoundedRectangle(cornerRadius: 14))
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
             .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 14))
@@ -114,8 +114,8 @@ struct HomeEpisodeCard: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if !typeSize.isAccessibilitySize { dateColumn }
                 }.padding(6).frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
-                    .foregroundStyle(Color(webHex: "#f3f0f7"))
-                    .background(Color(webHex: "#111115"), in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(Color(themed: "#f3f0f7"))
+                    .background(Color(themed: "#111115"), in: RoundedRectangle(cornerRadius: 12))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
                     .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 12))

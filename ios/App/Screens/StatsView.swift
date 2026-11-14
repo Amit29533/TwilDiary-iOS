@@ -33,7 +33,7 @@ struct StatsView: View {
             ForEach(Tab.allCases, id: \.self) { item in
                 Button { tab = item } label: {
                     Text(item.rawValue).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                        .foregroundStyle(tab == item ? theme.ink : Color(webHex: "#c5c0cf"))
+                        .foregroundStyle(tab == item ? theme.ink : Color(themed: "#c5c0cf"))
                         .frame(maxWidth: .infinity).frame(height: 42)
                         .background { if tab == item { Capsule().fill(theme.accent) } }.contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("stats-tab-" + item.rawValue.lowercased())
@@ -185,7 +185,7 @@ struct StatsView: View {
             let comparable = value.difference != nil && (value.minutes > 0 || difference != 0)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(difference > 0 ? "↑" : difference < 0 ? "↓" : "—") \(DiaryDate.duration(abs(difference)))").font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(difference > 0 ? Color(webHex: "#5fe0b0") : difference < 0 ? Color(webHex: "#ff6b6b") : Color(webHex: "#c5c0cf"))
+                    .foregroundStyle(difference > 0 ? Color(themed: "#5fe0b0") : difference < 0 ? Color(themed: "#ff6b6b") : Color(themed: "#c5c0cf"))
                 Text(value.period == .today ? "vs yesterday" : value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }.padding(.top, 4).opacity(comparable ? 1 : 0).accessibilityHidden(!comparable)
         }
@@ -237,7 +237,7 @@ struct StatsView: View {
                     .overlay(alignment: .top) {
                         if let key = selectedBucket, let bucket = buckets.first(where: { $0.key == key }) {
                             VStack(spacing: 1) { Text(bucket.label).font(.system(size: 11)); Text(DiaryDate.duration(bucket.minutes)).font(.system(size: 13, weight: .semibold)) }
-                                .padding(.horizontal, 8).padding(.vertical, 4).background(Color(webHex: "#2a2638"), in: RoundedRectangle(cornerRadius: 8)).allowsHitTesting(false)
+                                .padding(.horizontal, 8).padding(.vertical, 4).background(Color(themed: "#2a2638"), in: RoundedRectangle(cornerRadius: 8)).allowsHitTesting(false)
                         }
                     }
             }.frame(height: 130)
@@ -431,7 +431,7 @@ struct StatsView: View {
     private func heatColor(_ count: Int, _ maxCount: Int) -> Color { count == 0 ? Color.white.opacity(0.06) : theme.accent.opacity(Double(max(1, Int(ceil(Double(count) / Double(maxCount) * 4)))) / 4) }
     private func localDay(_ value: String) -> Date { let fields = value.split(separator: "-").compactMap { Int($0) }; return fields.count == 3 ? DiaryDate.calendar().date(from: DateComponents(year: fields[0], month: fields[1], day: fields[2], hour: 12)) ?? store.now : store.now }
     private var statuses: [String] { ["planned", "watching", "completed", "dropped"] }
-    private func statusColor(_ status: String) -> Color { status == "dropped" ? Color(webHex: "#646075") : theme.accent.opacity(status == "planned" ? 0.65 : status == "watching" ? 0.85 : 1) }
+    private func statusColor(_ status: String) -> Color { status == "dropped" ? Color(themed: "#646075") : theme.accent.opacity(status == "planned" ? 0.65 : status == "watching" ? 0.85 : 1) }
 }
 
 private extension View {
@@ -448,7 +448,7 @@ private struct StatsRangeSelector: View {
         // Segments are plain: a glass capsule per segment washed out the sliding accent
         // selection (native segmented controls keep one surface and one selection).
         HStack(spacing: 3) { ForEach(ranges) { range in
-            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? theme.ink : Color(webHex: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
+            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? theme.ink : Color(themed: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
         } }.frame(height: 38).background(alignment: .leading) {
             GeometryReader { geometry in
                 if let index = ranges.firstIndex(of: selection) {

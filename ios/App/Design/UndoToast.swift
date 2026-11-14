@@ -26,11 +26,11 @@ struct UndoToast: View {
     }
     var body: some View {
         HStack(spacing: 5) {
-            DiaryIcon(name: "check", size: 15).foregroundStyle(Color(webHex: "#79d8bc"))
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(webHex: "#f5f5f7"))
+            DiaryIcon(name: "check", size: 15).foregroundStyle(Color(themed: "#79d8bc"))
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5f5f7"))
                 .lineLimit(1).layoutPriority(1)
             Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 13).frame(width: 36, height: 44) }
-                .foregroundStyle(Color(webHex: "#c5c0cf")).accessibilityLabel("Dismiss notice")
+                .foregroundStyle(Color(themed: "#c5c0cf")).accessibilityLabel("Dismiss notice")
         // No spacer, so the row hugs its content: a small pill, not a bar across the screen.
         }.buttonStyle(.plain).padding(.leading, 12).padding(.trailing, 2).frame(height: 40)
             .background(.black.opacity(0.3), in: Capsule())

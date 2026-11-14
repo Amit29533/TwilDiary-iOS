@@ -34,7 +34,7 @@ struct APIsView: View {
                     // Nothing to list: one clear card instead of empty service sections.
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(webHex: "#e7ca90")).accessibilityHidden(true)
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(themed: "#e7ca90")).accessibilityHidden(true)
                             Text("Keys couldn’t be loaded").font(.system(size: 15, weight: .semibold))
                         }
                         Text(error).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -42,7 +42,7 @@ struct APIsView: View {
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).accessibilityIdentifier("apis-unavailable")
                 } else if let model, model.loaded {
-                    if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
+                    if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out.")
                     service(.cloudflare, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
@@ -144,8 +144,8 @@ struct APIsView: View {
     /// "Ready", "2 of 3 ready", or "Resting until 17:05 · daily limit" when nothing can answer now.
     @ViewBuilder private func healthBadge(_ health: SemanticSearch.Health, keys: Int) -> some View {
         if health.total > 0, health.ready == 0, let back = health.back {
-            HStack(spacing: 5) { Circle().fill(Color(webHex: "#f5c26b")).frame(width: 6, height: 6); Text("Back " + back.formatted(date: .omitted, time: .shortened) + (health.why.map { " · " + $0 } ?? "")) }
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(webHex: "#f5c26b")).lineLimit(1)
+            HStack(spacing: 5) { Circle().fill(Color(themed: "#f5c26b")).frame(width: 6, height: 6); Text("Back " + back.formatted(date: .omitted, time: .shortened) + (health.why.map { " · " + $0 } ?? "")) }
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).lineLimit(1)
         } else if health.ready < health.total {
             status(true, "\(health.ready) of \(health.total) ready")
         } else {
@@ -153,8 +153,8 @@ struct APIsView: View {
         }
     }
     private func status(_ ok: Bool, _ message: String) -> some View {
-        HStack(spacing: 5) { Circle().fill(ok ? Color(webHex: "#7fe0b5") : Color(webHex: "#ff6b6b")).frame(width: 6, height: 6); Text(message) }
-            .font(.system(size: 12, weight: .semibold)).foregroundStyle(ok ? Color(webHex: "#7fe0b5") : Color(webHex: "#ff8a80")).lineLimit(1)
+        HStack(spacing: 5) { Circle().fill(ok ? Color(themed: "#7fe0b5") : Color(themed: "#ff6b6b")).frame(width: 6, height: 6); Text(message) }
+            .font(.system(size: 12, weight: .semibold)).foregroundStyle(ok ? Color(themed: "#7fe0b5") : Color(themed: "#ff8a80")).lineLimit(1)
     }
 
     private var jellyfin: some View {
@@ -223,8 +223,8 @@ struct APIsView: View {
                         Spacer(minLength: 0)
                         Button(role: .destructive) { SemanticSearch.removeKey(key, from: service); reloadAIKeys() } label: {
                             Image(systemName: "trash").font(.system(size: 14)).frame(width: 36, height: 36).contentShape(Rectangle())
-                        }.buttonStyle(.plain).foregroundStyle(Color(webHex: "#ff8a80")).accessibilityLabel("Remove key " + SemanticSearch.masked(key))
-                    }.padding(.horizontal, 12).frame(height: 44).background(Color(webHex: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain).foregroundStyle(Color(themed: "#ff8a80")).accessibilityLabel("Remove key " + SemanticSearch.masked(key))
+                    }.padding(.horizontal, 12).frame(height: 44).background(Color(themed: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
                 }
                 if service == .requesty, !keys.isEmpty { RequestyModelField() }
                 Button(keys.isEmpty ? "Add \(service.name) key" : "Add another key") { addingAIKey = service }
@@ -282,7 +282,7 @@ private struct ReplaceKeySheet: View {
                 SecureField("New key", text: $value).font(.system(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .focused($focused).padding(.horizontal, 14).frame(height: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12))).accessibilityIdentifier("api-key-field")
-                if let failure { Text(failure).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")).fixedSize(horizontal: false, vertical: true) }
+                if let failure { Text(failure).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true) }
                 Button {
                     saving = true
                     Task { failure = await save(value); saving = false; if failure == nil { dismiss() } }
@@ -315,7 +315,7 @@ struct JellyfinSetupSheet: View {
                         .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     field("Address", text: $address, secure: false).keyboardType(.URL).accessibilityIdentifier("jellyfin-address")
                     field(JellyfinSettings.keyHint.map { "API key (••••\($0) kept if empty)" } ?? "API key", text: $key, secure: true).accessibilityIdentifier("jellyfin-key")
-                    if let message { Text(message).font(.system(size: 13)).foregroundStyle(message.hasPrefix("Connected") ? Color.mint : Color(webHex: "#ff8a80")) }
+                    if let message { Text(message).font(.system(size: 13)).foregroundStyle(message.hasPrefix("Connected") ? Color.mint : Color(themed: "#ff8a80")) }
                     Button { Task { await connect() } } label: { Text(checking ? "Checking…" : "Test and save").frame(maxWidth: .infinity) }
                         .buttonStyle(.diaryPrimary).disabled(checking || JellyfinSettings.normalized(address) == nil || (key.isEmpty && JellyfinSettings.apiKey == nil))
                         .accessibilityIdentifier("jellyfin-save")
@@ -355,7 +355,7 @@ private struct RequestyModelField: View {
     var body: some View {
         TextField("Model (optional), e.g. google/gemini-flash", text: $value)
             .font(.system(size: 14, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
-            .padding(.horizontal, 12).frame(height: 44).background(Color(webHex: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 12).frame(height: 44).background(Color(themed: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
             .onChange(of: value) { _, now in SemanticSearch.requestyModel = now }
             .accessibilityIdentifier("apis-requesty-model")
     }

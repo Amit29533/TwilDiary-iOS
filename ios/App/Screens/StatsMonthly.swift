@@ -156,7 +156,7 @@ struct StatsMonthCard: View {
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
-                    Color(webHex: "#2a1f45")
+                    Color(themed: "#2a1f45")
                     RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
                     LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
                 }
@@ -223,7 +223,7 @@ struct StatsYourDaysCard: View {
     let month: StatsMonth
     let now: Date
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    private let movie = Color(webHex: "#f2b45a")
+    private let movie = Color(themed: "#f2b45a")
     var body: some View {
         let calendar = DiaryDate.calendar()
         let lead = (calendar.component(.weekday, from: month.start) + 5) % 7
@@ -254,7 +254,7 @@ struct StatsYourDaysCard: View {
         let future = day.date > calendar.startOfDay(for: now)
         return NavigationLink(value: HistoryRoute(day: day.date)) {
             Text(day.date.formatted(.dateTime.day())).font(.system(size: 14, weight: day.watched ? .bold : .regular))
-                .foregroundStyle(day.watched ? (day.shows && day.movies ? Color.black : Color(webHex: "#1a1030")) : HomeStyle.secondary)
+                .foregroundStyle(day.watched ? (day.shows && day.movies ? Color.black : ThemeStore.current.accentInk) : HomeStyle.secondary)
                 .frame(width: 40, height: 40).background(fill, in: Circle())
                 .overlay { if biggest { Circle().strokeBorder(.white, lineWidth: 2).padding(-3) } }
                 .opacity(future ? 0.35 : 1)

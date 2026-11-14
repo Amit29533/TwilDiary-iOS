@@ -71,27 +71,27 @@ enum ChipTint {
             "sci-fi & fantasy": "#7cc8ff", "soap": "#f7a8d0", "talk": "#a0e7e5", "thriller": "#ff9a4d", "tv movie": "#c0bccc",
             "war": "#c9b98f", "war & politics": "#c2b280", "western": "#e0a96d", "anime": "#b9a6ff"
         ]
-        if let hex = hues[name.lowercased()] { return Color(webHex: hex) }
+        if let hex = hues[name.lowercased()] { return Color(themed: hex) }
         let fallback = ["#8fb0ff", "#ff8fab", "#9be89b", "#ffd166", "#c39bff", "#5ad1ff", "#ffb454"]
-        return Color(webHex: fallback[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % fallback.count])
+        return Color(themed: fallback[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % fallback.count])
     }
     static func rating(_ value: String) -> Color {
         let rating = value.uppercased()
-        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6"].contains(rating) { return Color(webHex: "#6ee7a8") }
-        if ["PG", "TV-PG", "12", "12A", "PG-12", "7", "10"].contains(rating) { return Color(webHex: "#ffd166") }
-        if ["PG-13", "TV-14", "13", "14", "15", "16", "M", "R15+"].contains(rating) { return Color(webHex: "#ffa94d") }
-        if ["R", "NC-17", "TV-MA", "18", "R18+", "MA15+", "X"].contains(rating) { return Color(webHex: "#ff6b6b") }
-        return Color(webHex: "#c0bccc")
+        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6"].contains(rating) { return Color(themed: "#6ee7a8") }
+        if ["PG", "TV-PG", "12", "12A", "PG-12", "7", "10"].contains(rating) { return Color(themed: "#ffd166") }
+        if ["PG-13", "TV-14", "13", "14", "15", "16", "M", "R15+"].contains(rating) { return Color(themed: "#ffa94d") }
+        if ["R", "NC-17", "TV-MA", "18", "R18+", "MA15+", "X"].contains(rating) { return Color(themed: "#ff6b6b") }
+        return Color(themed: "#c0bccc")
     }
     static func status(_ raw: String?) -> Color {
         switch raw {
-        case "Returning Series": Color(webHex: "#6ee7a8")
-        case "In Production", "Post Production", "Planned", "Pilot", "Rumored": Color(webHex: "#7aa2ff")
-        case "Canceled", "Cancelled": Color(webHex: "#ff5a36")
-        default: Color(webHex: "#b4b0c2")
+        case "Returning Series": Color(themed: "#6ee7a8")
+        case "In Production", "Post Production", "Planned", "Pilot", "Rumored": Color(themed: "#7aa2ff")
+        case "Canceled", "Cancelled": Color(themed: "#ff5a36")
+        default: Color(themed: "#b4b0c2")
         }
     }
-    static let network = Color(webHex: "#5ad1c4")
+    static var network: Color { Color(themed: "#5ad1c4") }
 }
 
 /// Genres on one line, then age rating, status and network, all trimmed to fit (never wrapping).
@@ -245,9 +245,9 @@ struct RatingBoxes: View {
     }
     static func color(_ key: String) -> Color {
         switch key {
-        case "tmdb": Color(webHex: "#01b4e4"); case "myanimelist": Color(webHex: "#6c9bff"); case "imdb": Color(webHex: "#f5c518")
-        case "trakt": Color(webHex: "#ff4d5e"); case "metacritic": Color(webHex: "#ffcc34"); case "letterboxd": Color(webHex: "#00e054")
-        default: Color(webHex: "#c5c0cf")
+        case "tmdb": Color(themed: "#01b4e4"); case "myanimelist": Color(themed: "#6c9bff"); case "imdb": Color(themed: "#f5c518")
+        case "trakt": Color(themed: "#ff4d5e"); case "metacritic": Color(themed: "#ffcc34"); case "letterboxd": Color(themed: "#00e054")
+        default: Color(themed: "#c5c0cf")
         }
     }
     /// Everything out of 10 (Trakt's 77% reads 7.7), except Metacritic and Rotten Tomatoes.
@@ -282,7 +282,7 @@ struct RatingCircles: View {
     /// False on a preview page: the title isn't in your diary, so there is no rating of yours.
     var showsMine = true
     static func color(_ score: Double) -> Color {
-        switch RatingTone(score: score) { case .low: Color(webHex: "#ef5350"); case .mid: Color(webHex: "#ffa726"); case .high: Color(webHex: "#43c66b") }
+        switch RatingTone(score: score) { case .low: Color(themed: "#ef5350"); case .mid: Color(themed: "#ffa726"); case .high: Color(themed: "#43c66b") }
     }
     var body: some View {
         HStack(spacing: 10) {
@@ -347,7 +347,7 @@ struct TitleTagsSection: View {
                 Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 17))
                 Text(keyword.name.capitalizedTag).font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
             }.padding(.horizontal, 14).frame(height: 44).fixedSize()
-                .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(Color(webHex: "#2a2a33"), lineWidth: HomeStyle.hairline))
+                .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(Color(themed: "#2a2a33"), lineWidth: HomeStyle.hairline))
         }.buttonStyle(.springPress).accessibilityIdentifier("title-tag-\(keyword.id)")
     }
     private func route(_ keyword: TitleKeyword) -> ExploreSectionRoute {
@@ -440,7 +440,7 @@ struct RatingTrendCard: View {
             ForEach(summary.points, id: \.episode) { point in
                 LineMark(x: .value("Episode", point.episode), y: .value("Rating", point.score))
                     .interpolationMethod(.catmullRom).lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .foregroundStyle(LinearGradient(colors: [Color(webHex: "#4fd1c5"), Color(webHex: "#43c66b"), Color(webHex: "#f5c518")], startPoint: .leading, endPoint: .trailing))
+                    .foregroundStyle(LinearGradient(colors: [Color(themed: "#4fd1c5"), Color(themed: "#43c66b"), Color(themed: "#f5c518")], startPoint: .leading, endPoint: .trailing))
             }
             RuleMark(y: .value("Average", summary.average)).lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4])).foregroundStyle(theme.accent.opacity(0.8))
             if let current, let point = summary.points.first(where: { $0.episode == current }) {
@@ -474,18 +474,18 @@ struct CompanyLogo: View {
             if let logo = CatalogTools.image(company.logoPath, size: "w185") {
                 // The company's own logo, unchanged; many are black, so they sit on a light tile.
                 Artwork(path: logo, title: company.name, contentMode: .fit).padding(.horizontal, 18).padding(.vertical, 16)
-                    .background(Color(webHex: "#f2f1f5"), in: RoundedRectangle(cornerRadius: 16))
+                    .background(Color(themed: "#f2f1f5"), in: RoundedRectangle(cornerRadius: 16))
             } else {
                 Text(company.name).font(.system(size: 18, weight: .heavy)).foregroundStyle(Self.tint(company.name))
                     .lineLimit(2).minimumScaleFactor(0.6).multilineTextAlignment(.center).padding(10)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(webHex: "#16151b"), in: RoundedRectangle(cornerRadius: 16))
+            .background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
     }
     static func tint(_ name: String) -> Color {
         let values = ["#6ee07a", "#ff9b4a", "#ff6b7d", "#5cc8ff", "#ffd54a", "#b48cff"]
-        return Color(webHex: values[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % values.count])
+        return Color(themed: values[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % values.count])
     }
 }
 
@@ -540,7 +540,7 @@ struct ListCollageCard: View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack(alignment: .leading) {
                 if list.posters.isEmpty {
-                    RoundedRectangle(cornerRadius: 10).fill(LinearGradient(colors: [Color(webHex: "#3b2f5c"), Color(webHex: "#1b1824")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    RoundedRectangle(cornerRadius: 10).fill(LinearGradient(colors: [Color(themed: "#3b2f5c"), Color(themed: "#1b1824")], startPoint: .topLeading, endPoint: .bottomTrailing))
                         .overlay { DiaryIcon(name: "list-video", size: 28).foregroundStyle(.white.opacity(0.6)) }
                 } else {
                     ForEach(Array(list.posters.prefix(3).enumerated().reversed()), id: \.offset) { index, poster in
@@ -597,7 +597,7 @@ struct RelatedCollection: Identifiable, Hashable {
     var posters: [String]
     var id: String { switch kind { case .series(let id): "series:\(id)"; case .genre(let name): "genre:" + name } }
     static func tint(_ index: Int) -> Color {
-        [Color(webHex: "#f0805a"), Color(webHex: "#3fb3b0"), Color(webHex: "#8e7cf0"), Color(webHex: "#e0607e"), Color(webHex: "#5d8ff0"), Color(webHex: "#d9a441")][index % 6]
+        [Color(themed: "#f0805a"), Color(themed: "#3fb3b0"), Color(themed: "#8e7cf0"), Color(themed: "#e0607e"), Color(themed: "#5d8ff0"), Color(themed: "#d9a441")][index % 6]
     }
     /// The TMDb catalogue a genre card opens: same media type, anime limited to Japanese titles.
     static func filters(genre: String, route: CatalogRoute, anime: Bool) -> DiscoveryFilters {

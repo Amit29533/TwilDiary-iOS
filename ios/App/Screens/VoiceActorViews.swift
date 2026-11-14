@@ -217,8 +217,8 @@ struct AniListSettingsView: View {
                                 Text("@" + user).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             Button("Remove", role: .destructive) { user = ""; draft = "" }
-                                .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
-                                .padding(.horizontal, 16).frame(height: 36).background(Color(webHex: "#3a1d26"), in: Capsule())
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                                .padding(.horizontal, 16).frame(height: 36).background(Color(themed: "#3a1d26"), in: Capsule())
                                 .buttonStyle(.plain).accessibilityIdentifier("anilist-user-remove")
                         }.padding(.horizontal, 15).frame(minHeight: 64)
                     }
@@ -229,7 +229,7 @@ struct AniListSettingsView: View {
                         TextField("twilight29533 or anilist.co/user/…", text: $draft).settingsField()
                             .submitLabel(.done).onSubmit(save).accessibilityIdentifier("anilist-user-field")
                         if !draft.isEmpty && AniListError.username(draft) == nil {
-                            Text("That doesn’t look like an AniList username or profile link.").font(.system(size: 12)).foregroundStyle(Color(webHex: "#f5c26b"))
+                            Text("That doesn’t look like an AniList username or profile link.").font(.system(size: 12)).foregroundStyle(Color(themed: "#f5c26b"))
                         }
                         Button("Save", action: save).buttonStyle(SettingsWideButtonStyle(outlined: true))
                             .disabled(AniListError.username(draft) == nil || AniListError.username(draft) == user).accessibilityIdentifier("anilist-user-save")

@@ -141,14 +141,14 @@ struct TitleArtworkBackdrop: View {
             // An even ramp (owner's light-cover reference): a pale cover stays pale behind the poster and
             // title, and every cover reaches the page's dark at about the rating boxes.
             LinearGradient(stops: [
-                .init(color: Color(webHex: "#0a0a0e").opacity(0), location: 0),
-                .init(color: Color(webHex: "#0a0a0e").opacity(0.18), location: 0.25),
-                .init(color: Color(webHex: "#0a0a0e").opacity(0.45), location: 0.5),
-                .init(color: Color(webHex: "#0a0a0e").opacity(0.78), location: 0.75),
-                .init(color: Color(webHex: "#0a0a0e"), location: 1)
+                .init(color: Color(themed: "#0a0a0e").opacity(0), location: 0),
+                .init(color: Color(themed: "#0a0a0e").opacity(0.18), location: 0.25),
+                .init(color: Color(themed: "#0a0a0e").opacity(0.45), location: 0.5),
+                .init(color: Color(themed: "#0a0a0e").opacity(0.78), location: 0.75),
+                .init(color: Color(themed: "#0a0a0e"), location: 1)
             ], startPoint: .top, endPoint: .bottom)
                 .frame(height: 250).offset(y: artwork - 20)
-            Color(webHex: "#0a0a0e").frame(height: 4000).offset(y: artwork + 229)
+            Color(themed: "#0a0a0e").frame(height: 4000).offset(y: artwork + 229)
             // The cover itself, crisp; only a light shade behind the status bar and buttons, and a
             // short soft foot so it melts into the wash instead of ending on a line.
             art.frame(width: width, height: artwork).clipped()
@@ -158,7 +158,7 @@ struct TitleArtworkBackdrop: View {
     }
     @ViewBuilder private var art: some View {
         ZStack {
-            LinearGradient(stops: [.init(color: theme.heroFallbackLead, location: 0), .init(color: Color(webHex: "#473c37"), location: 0.45), .init(color: Color(webHex: "#253b3b"), location: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(stops: [.init(color: theme.heroFallbackLead, location: 0), .init(color: Color(themed: "#473c37"), location: 0.45), .init(color: Color(themed: "#253b3b"), location: 1)], startPoint: .topLeading, endPoint: .bottomTrailing)
             if let path { Artwork(path: path, title: name) }
         }
     }

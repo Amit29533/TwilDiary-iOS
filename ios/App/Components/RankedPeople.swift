@@ -149,8 +149,8 @@ struct MostWatchedShelf: View {
                                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
                                 .overlay(alignment: .topLeading) {
                                     Text("#\(index + 1)").font(.system(size: 12, weight: .bold)).monospacedDigit()
-                                        .foregroundStyle(Color(webHex: "#1a1030")).padding(.horizontal, 8).frame(height: 24)
-                                        .background(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom), in: Capsule())
+                                        .foregroundStyle(ThemeStore.current.accentInk).padding(.horizontal, 8).frame(height: 24)
+                                        .background(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom), in: Capsule())
                                         .padding(8)
                                 }
                                 .padding(.bottom, 6)
@@ -224,7 +224,7 @@ struct PeopleRankingView: View {
                     }
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
-        }.diaryScreenBackground().tint(Color(webHex: "#e6e2ec"))
+        }.diaryScreenBackground().tint(Color(themed: "#e6e2ec"))
             .navigationTitle("Most watched").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
     }
 }

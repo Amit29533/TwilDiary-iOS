@@ -220,7 +220,7 @@ private struct LimitBar: View {
     let fraction: Double
     let accent: Color
     static func tint(_ fraction: Double, accent: Color) -> Color {
-        fraction >= 0.9 ? Color(webHex: "#ff6b6b") : fraction >= 0.75 ? Color(webHex: "#f5c26b") : accent
+        fraction >= 0.9 ? Color(themed: "#ff6b6b") : fraction >= 0.75 ? Color(themed: "#f5c26b") : accent
     }
     var body: some View {
         GeometryReader { geometry in

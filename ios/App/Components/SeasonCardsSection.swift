@@ -108,7 +108,7 @@ struct SeasonCardsSection: View {
                 .overlay { if chosen { RoundedRectangle(cornerRadius: 18).strokeBorder(theme.accent, lineWidth: 2) } }
                 .overlay(alignment: .topTrailing) {
                     if row.complete { status("checkmark", Self.done).padding(7) }
-                    else if watched > 0 { status("play.fill", Color(webHex: "#2f7de1")).padding(7) }
+                    else if watched > 0 { status("play.fill", Color(themed: "#2f7de1")).padding(7) }
                 }
             Text(row.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
             Text(line(row)).font(.system(size: 12)).monospacedDigit()
@@ -126,7 +126,7 @@ struct SeasonCardsSection: View {
             .frame(width: 26, height: 26).background(color, in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
     }
-    private static let done = Color(webHex: "#3f9a4f")
+    private static var done: Color { Color(themed: "#3f9a4f") }
 
     // MARK: Data
 

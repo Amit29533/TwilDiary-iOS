@@ -31,7 +31,7 @@ struct JellyfinCard: View {
                                 let on = sync?.isOn(library) == true
                                 Button { sync?.toggle(library) } label: {
                                     HStack(spacing: 6) { Image(systemName: on ? "checkmark" : "plus").font(.system(size: 11, weight: .bold)); Text(library.name) }
-                                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
+                                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
                                         .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : .white.opacity(0.06), in: Capsule())
                                         .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : .white.opacity(0.12)))
                                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("jellyfin-library-" + library.id)
@@ -48,7 +48,7 @@ struct JellyfinCard: View {
                     caption("\(summary.mapped.counted("title", "titles")) mapped · \(summary.notInDiary.formatted()) not in your diary · \(summary.personal.counted("personal item", "personal items")) skipped")
                         .accessibilityIdentifier("jellyfin-summary")
                 }
-                if let error = sync?.error { Text(error).font(.system(size: 12)).foregroundStyle(Color(webHex: "#ff8a80")) }
+                if let error = sync?.error { Text(error).font(.system(size: 12)).foregroundStyle(Color(themed: "#ff8a80")) }
             } else {
                 Button("Connect Jellyfin") { setup = true }.buttonStyle(.diaryRowPrimary).accessibilityIdentifier("jellyfin-connect")
             }

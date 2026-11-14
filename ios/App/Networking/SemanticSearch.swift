@@ -562,7 +562,7 @@ struct SemanticSearchSection: View {
                         // TMDB's score (or the diary's, for a title in your library), as on search's posters.
                         if let score = match.item.rating ?? store.libraryIdentity(match.item).flatMap({ store.title($0)?.communityScore }), score > 0 {
                             HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 11)); Text(String(format: "%.1f", score)) }
-                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#e7ca90"))
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e7ca90"))
                                 .accessibilityElement(children: .ignore).accessibilityLabel("Rated \(String(format: "%.1f", score))")
                         }
                     }
@@ -613,7 +613,7 @@ struct GeminiKeySheet: View {
                 SecureField(service.name + " API key", text: $value).font(.system(size: 15, design: .monospaced))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .padding(12).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 12)).accessibilityIdentifier("gemini-key-field")
-                if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(webHex: "#ff8a80")) }
+                if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
                 Spacer()
             }.padding(20)
                 .navigationTitle(SemanticSearch.ownKeys(service).isEmpty ? service.name + " API key" : "Add a " + service.name + " key").navigationBarTitleDisplayMode(.inline)

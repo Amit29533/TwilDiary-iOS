@@ -192,13 +192,13 @@ struct AiringCalendarView: View {
         return Button { withAnimation(.snappy) { selectedDate = selected ? nil : day } } label: {
             VStack(spacing: 2) {
                 Text(day, format: .dateTime.day()).font(.system(size: 16, weight: count > 0 || isToday ? .bold : .medium)).monospacedDigit()
-                    .foregroundStyle(isToday ? Color(webHex: "#1a1030") : count > 0 ? HomeStyle.primary : HomeStyle.secondary.opacity(past ? 0.45 : 1))
-                if isToday { Text("NOW").font(.system(size: 8, weight: .heavy)).foregroundStyle(Color(webHex: "#1a1030")) }
+                    .foregroundStyle(isToday ? ThemeStore.current.accentInk : count > 0 ? HomeStyle.primary : HomeStyle.secondary.opacity(past ? 0.45 : 1))
+                if isToday { Text("NOW").font(.system(size: 8, weight: .heavy)).foregroundStyle(ThemeStore.current.accentInk) }
                 else { Circle().fill(count > 0 ? HomeStyle.chipText : .clear).frame(width: 4, height: 4) }
             }.frame(maxWidth: .infinity).frame(height: 44)
                 .background {
                     RoundedRectangle(cornerRadius: 12).fill(isToday
-                        ? AnyShapeStyle(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
+                        ? AnyShapeStyle(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom))
                         : count > 0 ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(past ? 0.02 : 0.05)))
                 }
                 .overlay { if selected { RoundedRectangle(cornerRadius: 12).strokeBorder(theme.accent, lineWidth: 1.5) } }
@@ -251,7 +251,7 @@ struct AiringCalendarView: View {
                     if let score = item.title.communityScore, score > 0 { scoreBadge(score) }
                     CalendarStyle.badge(away(when.away))
                 } extra: {
-                    if !summary.isEmpty { Text(summary).font(.system(size: 13)).foregroundStyle(Color(webHex: "#a9a3b5")).lineLimit(2).multilineTextAlignment(.leading) }
+                    if !summary.isEmpty { Text(summary).font(.system(size: 13)).foregroundStyle(Color(themed: "#a9a3b5")).lineLimit(2).multilineTextAlignment(.leading) }
                 }
             }.buttonStyle(.plain).accessibilityIdentifier("calendar-row-" + item.id)
             if item.daysAway <= 0 {
@@ -360,7 +360,7 @@ struct AiringCalendarView: View {
                 if progress.aired > 0 {
                     GeometryReader { proxy in
                         Capsule().fill(Color.white.opacity(0.1)).overlay(alignment: .leading) {
-                            Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .leading, endPoint: .trailing))
+                            Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .leading, endPoint: .trailing))
                                 .frame(width: proxy.size.width * CGFloat(progress.watched) / CGFloat(progress.aired))
                         }
                     }.frame(height: 4).padding(.top, 4)
@@ -450,7 +450,7 @@ enum CalendarStyle {
             Text(label).lineLimit(1).truncationMode(.tail).frame(maxWidth: 120)
             Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
         }.font(.system(size: 14, weight: .semibold)).fixedSize()
-            .foregroundStyle(active ? HomeStyle.chipText : Color(webHex: "#e6e1ee"))
+            .foregroundStyle(active ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 38)
             .background(active ? HomeStyle.chip : HomeStyle.card, in: Capsule())
             .overlay(Capsule().strokeBorder(active ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
@@ -459,7 +459,7 @@ enum CalendarStyle {
     /// "This week (12)", "Today (8)".
     static func heading(_ label: String, _ count: Int) -> some View {
         HStack(spacing: 5) {
-            Text(label).foregroundStyle(Color(webHex: "#c5c0cf"))
+            Text(label).foregroundStyle(Color(themed: "#c5c0cf"))
             Text("(\(count))").foregroundStyle(HomeStyle.primary)
         }.font(.system(size: 20, weight: .bold)).padding(.top, 4)
     }
@@ -523,7 +523,7 @@ struct CalendarGenreSheet: View {
                             let on = pending.contains(name)
                             Button { withAnimation(.snappy(duration: 0.2)) { if on { pending.remove(name) } else { pending.insert(name) } } } label: {
                                 Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                                    .foregroundStyle(on ? HomeStyle.chipText : Color(webHex: "#e6e1ee"))
+                                    .foregroundStyle(on ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
                                     .padding(.horizontal, 15).frame(height: 40)
                                     .background(on ? HomeStyle.chip : HomeStyle.card, in: Capsule())
                                     .overlay(Capsule().strokeBorder(on ? HomeStyle.chipText.opacity(0.35) : HomeStyle.dateChipBorder, lineWidth: 1))
@@ -544,7 +544,7 @@ struct CalendarGenreSheet: View {
                     Text(pending.isEmpty ? "Show all genres" : "Apply · " + pending.count.counted("genre", "genres")).lineLimit(1)
                 }.buttonStyle(SettingsPrimaryButtonStyle()).accessibilityIdentifier("calendar-genres-apply")
             }.padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 16)
-        }.presentationDetents([.height(min(640, chipsHeight + 180)), .large]).presentationDragIndicator(.visible).presentationBackground(Color(webHex: "#111116"))
+        }.presentationDetents([.height(min(640, chipsHeight + 180)), .large]).presentationDragIndicator(.visible).presentationBackground(Color(themed: "#111116"))
             .onAppear { pending = chosen }
     }
 }

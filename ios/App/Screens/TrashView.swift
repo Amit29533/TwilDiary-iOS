@@ -84,12 +84,12 @@ struct TrashView: View {
                             .background(HomeStyle.chip, in: Capsule())
                             .accessibilityIdentifier("trash-restore-selected")
                         Button("Delete forever", role: .destructive) { review = CollectionReview(titles: titles, change: .purge) }
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
-                            .padding(.horizontal, 16).frame(height: 40).background(Color(webHex: "#3a1d26"), in: Capsule())
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                            .padding(.horizontal, 16).frame(height: 40).background(Color(themed: "#3a1d26"), in: Capsule())
                             .accessibilityIdentifier("trash-delete-selected")
                     }.buttonStyle(.plain).disabled(titles.isEmpty || store.writesBlocked)
                         .padding(.leading, 18).padding(.trailing, 8).frame(height: 56)
-                        .background(Color(webHex: "#1a1a20"), in: Capsule())
+                        .background(Color(themed: "#1a1a20"), in: Capsule())
                         .overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         .padding(.horizontal, 16).padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -101,7 +101,7 @@ struct TrashView: View {
                     // Design: "Select" (dimmed when empty), "Done" in the accent pill while selecting.
                     Button(selecting ? "Done" : "Select") { selecting.toggle(); selected = [] }
                         .font(.system(size: 15, weight: selecting ? .bold : .semibold))
-                        .foregroundStyle(selecting ? HomeStyle.chipText : archived.isEmpty ? Color(webHex: "#7a7a88") : HomeStyle.primary)
+                        .foregroundStyle(selecting ? HomeStyle.chipText : archived.isEmpty ? Color(themed: "#7a7a88") : HomeStyle.primary)
                         .disabled(archived.isEmpty).accessibilityIdentifier("trash-select")
                 }
             }
@@ -142,8 +142,8 @@ struct TrashView: View {
                     card(title).overlay(alignment: grid ? .topTrailing : .leading) {
                         ZStack {
                             Circle().fill(selected.contains(title.id) ? theme.accent : HomeStyle.card.opacity(0.85))
-                            Circle().strokeBorder(selected.contains(title.id) ? .clear : Color(webHex: "#4a4a56"), lineWidth: 1.5)
-                            if selected.contains(title.id) { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030")) }
+                            Circle().strokeBorder(selected.contains(title.id) ? .clear : Color(themed: "#4a4a56"), lineWidth: 1.5)
+                            if selected.contains(title.id) { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk) }
                         }.frame(width: 26, height: 26).padding(grid ? 8 : 0).offset(x: grid ? 0 : -6)
                     }
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected.contains(title.id) ? theme.accent : .clear, lineWidth: 1.5))
@@ -157,7 +157,7 @@ struct TrashView: View {
                     Button("Restore", systemImage: "arrow.uturn.backward") { review = CollectionReview(titles: [title], change: .restore) }
                         .buttonStyle(.diarySecondary).accessibilityIdentifier("trash-restore-" + title.id)
                     Spacer(minLength: 0)
-                    Button(role: .destructive) { review = CollectionReview(titles: [title], change: .purge) } label: { RoundTool(icon: "trash-2", tint: Color(webHex: "#ff8a80")) }
+                    Button(role: .destructive) { review = CollectionReview(titles: [title], change: .purge) } label: { RoundTool(icon: "trash-2", tint: Color(themed: "#ff8a80")) }
                         .buttonStyle(.plain).accessibilityLabel("Delete permanently").accessibilityIdentifier("trash-delete-" + title.id)
                 }.disabled(store.writesBlocked)
             }

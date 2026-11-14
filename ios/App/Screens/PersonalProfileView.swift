@@ -50,7 +50,7 @@ struct MilestoneBadge: View {
     let milestone: ProfileMilestone
     var size: CGFloat = 54
     var body: some View {
-        let colour = Color(webHex: milestone.colour)
+        let colour = Color(themed: milestone.colour)
         ZStack {
             Hexagon().fill(colour.opacity(milestone.earned ? 0.22 : 0.06))
             Hexagon().stroke(colour.opacity(milestone.earned ? 1 : 0.4), style: StrokeStyle(lineWidth: 2.5, dash: milestone.earned ? [] : [4, 3]))
@@ -116,7 +116,7 @@ struct MilestoneDetailView: View {
         let level = (ladder.firstIndex(of: milestone.id) ?? 0) + 1
         let next = milestone.earned ? ladder.dropFirst(level).first.flatMap { id in all.first { $0.id == id } } : nil
         let goal = next ?? (milestone.earned ? nil : milestone)
-        let colour = Color(webHex: milestone.colour)
+        let colour = Color(themed: milestone.colour)
         ZStack {
             Rectangle().fill(.ultraThinMaterial).overlay(Color.black.opacity(0.5)).ignoresSafeArea()
                 .opacity(shown ? 1 : 0).onTapGesture(perform: dismiss).accessibilityHidden(true)
@@ -186,7 +186,7 @@ struct MilestoneDetailView: View {
                 }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
                 Capsule().fill(.white.opacity(0.1)).frame(height: 8).overlay(alignment: .leading) {
                     GeometryReader { proxy in
-                        Capsule().fill(Color(webHex: goal.colour))
+                        Capsule().fill(Color(themed: goal.colour))
                             .frame(width: proxy.size.width * (filled ? min(1, Double(goal.progress) / Double(max(1, goal.target))) : 0))
                     }
                 }
@@ -422,7 +422,7 @@ struct PersonalProfileView: View {
                 HStack {
                     Text("Milestones").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
                     Spacer()
-                    HStack(spacing: 3) { Text("\(earned.count) earned"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#ff8a6a"))
+                    HStack(spacing: 3) { Text("\(earned.count) earned"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#ff8a6a"))
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("profile-milestones").accessibilityLabel("Milestones, \(earned.count) earned")
             // Every badge, sideways; a tap opens Milestones.
@@ -734,7 +734,7 @@ struct MilestonesView: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 16) {
-                    Text("\(earned.count)").font(.system(size: 52, weight: .heavy)).foregroundStyle(Color(webHex: "#ffc83d"))
+                    Text("\(earned.count)").font(.system(size: 52, weight: .heavy)).foregroundStyle(Color(themed: "#ffc83d"))
                     VStack(alignment: .leading, spacing: 4) {
                         Text("milestones earned").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
                         if let next { Text("Next up: " + next.title + " · " + next.progressLabel).font(.system(size: 14)).foregroundStyle(.secondary) }
@@ -762,7 +762,7 @@ struct MilestonesView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack { Text(item.title).font(.system(size: 16, weight: .semibold)); Spacer(); Text(item.progressLabel).font(.system(size: 13)).foregroundStyle(.secondary) }
                                 Capsule().fill(.white.opacity(0.1)).frame(height: 8).overlay(alignment: .leading) {
-                                    GeometryReader { proxy in Capsule().fill(Color(webHex: item.colour)).frame(width: proxy.size.width * min(1, Double(item.progress) / Double(max(1, item.target)))) }
+                                    GeometryReader { proxy in Capsule().fill(Color(themed: item.colour)).frame(width: proxy.size.width * min(1, Double(item.progress) / Double(max(1, item.target)))) }
                                 }
                             }
                         }.foregroundStyle(.white).contentShape(Rectangle()) }.buttonStyle(.plain)

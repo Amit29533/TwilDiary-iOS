@@ -53,7 +53,7 @@ struct LibraryView: View {
             if selecting { selectionHeader }
             collectionContent
         }
-        .background(Color(webHex: "#0e0d13")).diaryScreenBackground()
+        .background(Color(themed: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
             .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }
@@ -73,7 +73,7 @@ struct LibraryView: View {
         HStack {
             Button("Cancel") { selecting = false; selected = [] }.accessibilityIdentifier("selection-cancel")
             Spacer(minLength: 8)
-            Text("\(selected.count) selected").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).accessibilityIdentifier("selection-count")
+            Text("\(selected.count) selected").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).accessibilityIdentifier("selection-count")
             Spacer(minLength: 8)
             Button("All") { selected = Set(filtered.prefix(CollectionRequest.limit).map(\.id)) }.accessibilityLabel("Select all shown").accessibilityIdentifier("selection-all")
         }.font(.system(size: 16, weight: .semibold)).tint(theme.accent).padding(.horizontal, 18).frame(height: 54)
@@ -107,11 +107,11 @@ struct LibraryView: View {
     static func statusDot(_ key: String) -> Color {
         switch key {
         case "watching": HomeStyle.chipText
-        case "planned": Color(webHex: "#8e8e9c")
-        case "completed": Color(webHex: "#5fd48a")
-        case "dropped": Color(webHex: "#ff8a80")
-        case "jellyfin": Color(webHex: "#00a4dc")
-        default: Color(webHex: "#f5c26b")
+        case "planned": Color(themed: "#8e8e9c")
+        case "completed": Color(themed: "#5fd48a")
+        case "dropped": Color(themed: "#ff8a80")
+        case "jellyfin": Color(themed: "#00a4dc")
+        default: Color(themed: "#f5c26b")
         }
     }
     private var sortRow: some View {
@@ -141,7 +141,7 @@ struct LibraryView: View {
         }.padding(.leading, 18).padding(.trailing, 14).padding(.bottom, 6)
     }
     private func roundTool(_ icon: String) -> some View {
-        DiaryIcon(name: icon, size: 19).foregroundStyle(Color(webHex: "#c5c0cf")).frame(width: 44, height: 44)
+        DiaryIcon(name: icon, size: 19).foregroundStyle(Color(themed: "#c5c0cf")).frame(width: 44, height: 44)
             .background(.white.opacity(0.08), in: Circle()).contentShape(Circle())
     }
     /// The toggle names what it switches to: Grid → List → Shelves → Grid.
@@ -200,7 +200,7 @@ struct LibraryView: View {
         if !extras.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("Not in your diary").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                    Text("Not in your diary").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
                     Text("\(extras.count)").font(.system(size: 14)).foregroundStyle(.secondary)
                 }.accessibilityElement(children: .combine).accessibilityIdentifier("library-jellyfin-extras")
                 Text("On your Jellyfin. Open one to add it.").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -217,7 +217,7 @@ struct LibraryView: View {
                             ForEach(shelves) { shelf in
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack(spacing: 8) {
-                                        Text(shelf.genre).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
+                                        Text(shelf.genre).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
                                         Text("\(shelf.titles.count)").font(.system(size: 14)).foregroundStyle(.secondary)
                                         Spacer()
                                         if shelf.genre != "Without a genre" {
@@ -250,7 +250,7 @@ struct LibraryView: View {
             HStack {
                 Text("All titles").font(.system(size: 22, weight: .bold)).tracking(-0.5)
                 Spacer()
-                Text(filtered.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                Text(filtered.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                     .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
@@ -280,7 +280,7 @@ struct LibraryView: View {
                     HStack {
                         Text(shelf.genre).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
                         Spacer()
-                        Text(shelf.titles.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                        Text(shelf.titles.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                             .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
                         DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                     }.padding(.horizontal, 16).frame(minHeight: 60).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
@@ -296,7 +296,7 @@ struct LibraryView: View {
     private var noMatches: some View {
         VStack(spacing: 8) {
             Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 30)).foregroundStyle(.secondary).accessibilityHidden(true)
-            Text("No titles match").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+            Text("No titles match").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
             Text(activeFilterNames.joined(separator: " · ")).font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Clear filters") { clearFilters() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                 .padding(.horizontal, 18).frame(height: 40).background(HomeStyle.chip, in: Capsule()).buttonStyle(.plain).padding(.top, 6)
@@ -351,11 +351,11 @@ struct LibraryView: View {
                     ForEach(["planned", "watching", "completed", "dropped"], id: \.self) { value in Button(value.capitalized) { prepareReview(.status(value)) } }
                 } label: { barLabel("Status", icon: "circle-check", color: theme.accent) }
                     .frame(maxWidth: .infinity).accessibilityIdentifier("selection-status")
-                barButton("Trash", icon: "trash-2", identifier: "selection-trash", color: Color(webHex: "#ff8a8a")) { prepareReview(.trash) }
+                barButton("Trash", icon: "trash-2", identifier: "selection-trash", color: Color(themed: "#ff8a8a")) { prepareReview(.trash) }
             }.padding(.vertical, 6).glassEffect(.regular, in: Capsule())
         }.disabled(selected.isEmpty || store.busy)
     }
-    private func barButton(_ name: String, icon: String, identifier: String, color: Color = Color(webHex: "#c5c0cf"), action: @escaping () -> Void) -> some View {
+    private func barButton(_ name: String, icon: String, identifier: String, color: Color = Color(themed: "#c5c0cf"), action: @escaping () -> Void) -> some View {
         Button(action: action) { barLabel(name, icon: icon, color: color) }.buttonStyle(.plain).frame(maxWidth: .infinity).accessibilityIdentifier(identifier)
     }
     private func barLabel(_ name: String, icon: String, color: Color) -> some View {
@@ -454,7 +454,7 @@ struct LibraryView: View {
                     .buttonStyle(SettingsPrimaryButtonStyle()).padding(.horizontal, 20).padding(.vertical, 8).accessibilityIdentifier("filter-show")
                     // Solid under the button down to the screen edge, so chips never show beneath it.
                     .background(alignment: .bottom) {
-                        LinearGradient(stops: [.init(color: Color(webHex: "#111116").opacity(0), location: 0), .init(color: Color(webHex: "#111116"), location: 0.4)],
+                        LinearGradient(stops: [.init(color: Color(themed: "#111116").opacity(0), location: 0), .init(color: Color(themed: "#111116"), location: 0.4)],
                                        startPoint: .top, endPoint: .bottom)
                             .padding(.top, -24).ignoresSafeArea(edges: .bottom).allowsHitTesting(false)
                     }
@@ -471,7 +471,7 @@ struct LibraryView: View {
                         .font(.system(size: 15, weight: .semibold)).disabled(activeFilterCount == 0)
                 }
             }
-        }.presentationBackground(Color(webHex: "#111116"))
+        }.presentationBackground(Color(themed: "#111116"))
     }
     private func sheetLabel(_ text: String, detail: String? = nil) -> some View {
         HStack {
@@ -484,9 +484,9 @@ struct LibraryView: View {
     private func sheetChip(_ label: String, count: Int? = nil, icon: String? = nil, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                if let icon { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.secondary) }
-                Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.primary).lineLimit(1)
-                if let count { Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(on ? Color(webHex: "#1a1030").opacity(0.7) : HomeStyle.secondary) }
+                if let icon { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.secondary) }
+                Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary).lineLimit(1)
+                if let count { Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary) }
             }.padding(.horizontal, 16).frame(height: 42)
                 .background(on ? theme.accent : HomeStyle.round, in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -621,7 +621,7 @@ struct LibraryPosterCard: View {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
                 .overlay(alignment: .topLeading) {
                     if let score {
-                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                             .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 7).frame(height: 22).background(.black.opacity(0.72), in: Capsule()).padding(6)
                     }
@@ -637,8 +637,8 @@ struct LibraryPosterCard: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
-            Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1).padding(.top, 6)
-            Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1).padding(.top, 2)
+            Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
+            Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
         }.contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue(Self.details(title, score: score, progress: progress, present: present))
     }
@@ -673,19 +673,19 @@ struct LibraryListRow: View {
         HStack(spacing: 12) {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 4) {
-                Text(title.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7")).lineLimit(1)
-                Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Color(webHex: "#a09aa9")).lineLimit(1)
+                Text(title.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1)
+                Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)
                 HStack(spacing: 6) {
-                    Text(title.status.capitalized).font(.system(size: 11, weight: .medium)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    Text(title.status.capitalized).font(.system(size: 11, weight: .medium)).foregroundStyle(Color(themed: "#c5c0cf"))
                         .padding(.horizontal, 8).frame(height: 20).overlay(Capsule().strokeBorder(.white.opacity(0.16)))
-                    if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 12)).foregroundStyle(Color(webHex: "#a09aa9")) }
+                    if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")) }
                 }.padding(.top, 2)
             }
             Spacer(minLength: 0)
             if let selected {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).foregroundStyle(selected ? theme.accent : Color(webHex: "#a09aa9"))
-            } else { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(Color(webHex: "#a09aa9")) }
-        }.padding(10).background(Color(webHex: "#16151b"), in: RoundedRectangle(cornerRadius: 14))
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).foregroundStyle(selected ? theme.accent : Color(themed: "#a09aa9"))
+            } else { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(Color(themed: "#a09aa9")) }
+        }.padding(10).background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected == true ? theme.accent.opacity(0.7) : .white.opacity(0.1)))
             .contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue(LibraryPosterCard.details(title, score: score, progress: store.libraryProgress(title), present: store.hasPresentLocation(title.id)))
@@ -703,7 +703,7 @@ struct GlanceView: View {
         HStack {
             Text(name).font(.system(size: 24, weight: .bold)).tracking(-0.6)
             Spacer()
-            Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#c5c0cf"))
+            Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                 .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
         }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 2)
     }

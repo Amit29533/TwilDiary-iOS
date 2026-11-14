@@ -92,7 +92,7 @@ struct TitleMoreButtonLabel: View {
             // In the bar, the system's glass (same as the back button) draws around it.
             Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
         } else {
-            icon.background(Color(webHex: "#2b2b30").opacity(0.94), in: Circle())
+            icon.background(Color(themed: "#2b2b30").opacity(0.94), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67))
         }
     }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Appearance: five themes as cards, two to a row. Each card previews the theme's accent.
+/// Appearance: the themes as cards, two to a row (the five originals and Premiere). Each card previews the theme's accent.
 struct AppearanceView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 2)
@@ -36,18 +36,18 @@ private struct ThemeCard: View {
                     HStack(alignment: .top, spacing: 8) {
                         RoundedRectangle(cornerRadius: 9).fill(item.accent).frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 6) {
-                            Capsule().fill(Color(webHex: "#3a3a46")).frame(width: 71, height: 5)
+                            Capsule().fill(Color(themed: "#3a3a46")).frame(width: 71, height: 5)
                             Capsule().fill(item.accent).frame(width: 45, height: 5)
                         }.padding(.top, 6)
                     }
                     Capsule().fill(HomeStyle.cardBorder).frame(height: 5).padding(.top, 10)
                 }.padding(.horizontal, 12).padding(.top, 34).frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
-                    .background(Color(webHex: "#08080c"), in: RoundedRectangle(cornerRadius: 14))
+                    .background(Color(themed: "#08080c"), in: RoundedRectangle(cornerRadius: 14))
                 ZStack {
                     if selected {
                         Circle().fill(item.accent)
-                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Color(webHex: "#1a1030"))
-                    } else { Circle().strokeBorder(Color(webHex: "#3a3a46"), lineWidth: 1.5) }
+                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
+                    } else { Circle().strokeBorder(Color(themed: "#3a3a46"), lineWidth: 1.5) }
                 }.frame(width: 22, height: 22).padding(8)
             }
             HStack(spacing: 7) {

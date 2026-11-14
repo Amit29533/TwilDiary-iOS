@@ -120,8 +120,8 @@ struct CloudflareUsageView: View {
                         }
                     }
                     if showLimit {
-                        RuleMark(y: .value("Limit", cap)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4])).foregroundStyle(Color(webHex: "#ff6b6b").opacity(0.8))
-                            .annotation(position: .top, alignment: .leading) { Text("Limit").font(.system(size: 10)).foregroundStyle(Color(webHex: "#ff6b6b")) }
+                        RuleMark(y: .value("Limit", cap)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4])).foregroundStyle(Color(themed: "#ff6b6b").opacity(0.8))
+                            .annotation(position: .top, alignment: .leading) { Text("Limit").font(.system(size: 10)).foregroundStyle(Color(themed: "#ff6b6b")) }
                     }
                 }
                 .chartYScale(domain: 0...top)
@@ -161,7 +161,7 @@ struct CloudflareUsageView: View {
         }.diaryPanel().accessibilityIdentifier("cloudflare-error")
     }
 
-    private func level(_ share: Double) -> Color { share < 0.5 ? Color(webHex: "#5fe0b0") : share < 0.8 ? Color(webHex: "#fac775") : Color(webHex: "#ff6b6b") }
+    private func level(_ share: Double) -> Color { share < 0.5 ? Color(themed: "#5fe0b0") : share < 0.8 ? Color(themed: "#fac775") : Color(themed: "#ff6b6b") }
     private func percent(_ share: Double) -> String { share > 0 && share < 0.01 ? "<1%" : "\(Int((share * 100).rounded(.down)))%" }
     private func amount(_ value: Int, bytes: Bool = false) -> String {
         bytes ? Int64(value).formatted(.byteCount(style: .decimal)) : value.formatted(.number.notation(.compactName))

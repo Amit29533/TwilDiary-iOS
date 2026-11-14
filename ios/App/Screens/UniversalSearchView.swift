@@ -60,8 +60,8 @@ struct SearchLandingView: View {
                                     Text(item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
                                     HStack(spacing: 8) {
                                         if let score = item.rating, score > 0 {
-                                            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(webHex: "#ffc83d"))
+                                            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#ffc83d"))
                                         }
                                         if CatalogTools.libraryIdentity(item, in: store.workspace) != nil {
                                             Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
@@ -202,7 +202,7 @@ struct SearchPeopleView: View {
                             Text(person.kind == "cast" ? "Cast" : person.kind == "character" ? "Character" : "Voice actor")
                                 .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
-                        Spacer(minLength: 4); Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78"))
+                        Spacer(minLength: 4); Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityIdentifier("search-person-" + person.key)
             }

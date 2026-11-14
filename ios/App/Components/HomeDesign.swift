@@ -3,20 +3,21 @@ import TwilDiaryCore
 
 /// Home, to the owner's design file ("Home Redesign – 2 · Home with watch data"): exact sizes,
 /// colours, radii and spacing at a 390 pt wide phone.
+/// The shared colours, from the theme on screen (`ThemePalette`).
 enum HomeStyle {
-    static let primary = Color(webHex: "#f5f5f7")
-    static let secondary = Color(webHex: "#9a9aa8")
-    static let muted = Color(webHex: "#6e6e7c")
-    static let soft = Color(webHex: "#d8d4e6")
-    static let card = Color(webHex: "#0e0e12")
-    static let cardBorder = Color(webHex: "#23232b")
-    static let round = Color(webHex: "#17171d")
-    static let chip = Color(webHex: "#2a2440")
-    static let chipText = Color(webHex: "#cdbbff")
-    static let dateChipBorder = Color(webHex: "#26262e")
-    static let dateChipText = Color(webHex: "#b4b3c2")
-    static let shortcut = Color(webHex: "#14111f")
-    static let shortcutBorder = Color(webHex: "#2a2440")
+    static var primary: Color { ThemeStore.current.primary }
+    static var secondary: Color { ThemeStore.current.secondary }
+    static var muted: Color { ThemeStore.current.muted }
+    static var soft: Color { ThemeStore.current.soft }
+    static var card: Color { ThemeStore.current.card }
+    static var cardBorder: Color { ThemeStore.current.cardBorder }
+    static var round: Color { ThemeStore.current.round }
+    static var chip: Color { ThemeStore.current.chip }
+    static var chipText: Color { ThemeStore.current.chipText }
+    static var dateChipBorder: Color { ThemeStore.current.dateChipBorder }
+    static var dateChipText: Color { ThemeStore.current.dateChipText }
+    static var shortcut: Color { ThemeStore.current.shortcut }
+    static var shortcutBorder: Color { ThemeStore.current.shortcutBorder }
     static let match = Color(webHex: "#7be495")
     static let hairline: CGFloat = 0.67
 }
@@ -120,7 +121,7 @@ struct HomeWeekCard: View {
                             .lineLimit(1).fixedSize().padding(.horizontal, 9).frame(height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
                     }
                 }.padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Color(webHex: "#17142a"), in: RoundedRectangle(cornerRadius: 16)).padding(.top, 14)
+                    .background(Color(themed: "#17142a"), in: RoundedRectangle(cornerRadius: 16)).padding(.top, 14)
             }
         }.padding(.horizontal, 17).padding(.top, 17).padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)

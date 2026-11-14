@@ -134,7 +134,7 @@ struct PersonPhotoViewer: View {
                 VStack {
                     Spacer()
                     Text(message).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 16).frame(height: 36).background(Color(webHex: "#1c1a1e").opacity(0.9), in: Capsule()).padding(.bottom, 30)
+                        .padding(.horizontal, 16).frame(height: 36).background(Color(themed: "#1c1a1e").opacity(0.9), in: Capsule()).padding(.bottom, 30)
                 }.transition(.opacity).allowsHitTesting(false)
             }
         }.presentationBackground(.clear).preferredColorScheme(.dark).statusBarHidden().persistentSystemOverlays(controls ? .automatic : .hidden)
@@ -147,7 +147,7 @@ struct PersonPhotoViewer: View {
             // One picture (a poster, a cover, character art): no "1 / 1".
             if photos.count > 1 {
                 Text("\(index + 1) / \(photos.count)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
-                    .padding(.horizontal, 18).frame(height: 40).background(Color(webHex: "#2b2727").opacity(0.88), in: Capsule())
+                    .padding(.horizontal, 18).frame(height: 40).background(Color(themed: "#2b2727").opacity(0.88), in: Capsule())
                     .accessibilityLabel("Photo \(index + 1) of \(photos.count)")
             }
             Spacer(minLength: 8)
@@ -179,7 +179,7 @@ struct PersonPhotoViewer: View {
     }
     private func circle(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-            .frame(width: 44, height: 44).background(Color(webHex: "#1c1a1e").opacity(0.85), in: Circle())
+            .frame(width: 44, height: 44).background(Color(themed: "#1c1a1e").opacity(0.85), in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67)).contentShape(Circle())
     }
     /// Photos runs the change on its own queue: written in this (main-actor) view, the block was

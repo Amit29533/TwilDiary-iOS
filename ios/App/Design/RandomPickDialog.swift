@@ -31,7 +31,7 @@ struct RandomPickDialog: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color(webHex: "#020106bf").background(.ultraThinMaterial).ignoresSafeArea().contentShape(Rectangle()).onTapGesture { }.accessibilityHidden(true)
+                Color(themed: "#020106bf").background(.ultraThinMaterial).ignoresSafeArea().contentShape(Rectangle()).onTapGesture { }.accessibilityHidden(true)
                 ScrollView {
                     panel(compact: proxy.size.width < 359).fixedSize(horizontal: false, vertical: true)
                 }.scrollIndicators(.hidden)
@@ -99,7 +99,7 @@ struct RandomPickDialog: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("FROM YOUR COLLECTION").font(.system(size: 11)).tracking(0.77).foregroundStyle(theme.accent)
                 Text(title.name).font(.system(size: 19.2, weight: .bold)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("random-picked-name")
-                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(Color(themed: "#c5c0cf"))
                 Text(title.status.capitalized).font(.system(size: 12)).foregroundStyle(theme.accent)
                     .padding(.horizontal, 9).padding(.vertical, 4).background(theme.accent.opacity(0.0784), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.2667)))
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -108,8 +108,8 @@ struct RandomPickDialog: View {
                 ZStack {
                     theme.pickBase
                     if let backdrop = title.backdrop { Artwork(path: backdrop).opacity(0.6) }
-                    LinearGradient(colors: [theme.pickVeil, Color(webHex: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
-                    LinearGradient(colors: [Color(webHex: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
+                    LinearGradient(colors: [theme.pickVeil, Color(themed: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [Color(themed: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
                 }.allowsHitTesting(false)
             }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(.white.opacity(0.125)))
     }

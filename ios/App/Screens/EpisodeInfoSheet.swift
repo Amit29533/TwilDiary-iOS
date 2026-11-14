@@ -71,7 +71,7 @@ struct EpisodeInfoSheet: View {
                 .scrollPosition(id: $position)
                 // A swipe counts once it has come to rest on a page.
                 .onScrollPhaseChange { _, phase in if phase == .idle { settle() } }
-            Rectangle().fill(Color(webHex: "#2a2a33")).frame(height: HomeStyle.hairline)
+            Rectangle().fill(Color(themed: "#2a2a33")).frame(height: HomeStyle.hairline)
             pager.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
                 // Anchored at the bottom, by the actions, so the choices open there rather than at the top.
                 .confirmationDialog("Rate episode \(episode.number)", isPresented: $rating, titleVisibility: .visible) {
@@ -120,7 +120,7 @@ struct EpisodeInfoSheet: View {
             HStack {
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        .frame(width: 44, height: 44).background(Color(webHex: "#26262e"), in: Circle())
+                        .frame(width: 44, height: 44).background(Color(themed: "#26262e"), in: Circle())
                 }.buttonStyle(.plain)
                     .accessibilityLabel("Close").accessibilityIdentifier("episode-sheet-close")
                 Spacer()
@@ -131,7 +131,7 @@ struct EpisodeInfoSheet: View {
     private func still(_ item: Episode, _ p: Page) -> some View {
         Color.clear.frame(height: 200).frame(maxWidth: .infinity)
             .overlay {
-                if p.hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 28).foregroundStyle(HomeStyle.secondary) } }
+                if p.hidden { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 28).foregroundStyle(HomeStyle.secondary) } }
                 else { Artwork(path: p.artwork, title: String(item.number)) }
             }
             .background(HomeStyle.card)
@@ -164,7 +164,7 @@ struct EpisodeInfoSheet: View {
             }
             let rest = [title.runtimeMinutes.map { "\($0) min" }, item.airedOn.map { String($0.prefix(4)) }].compactMap { $0 }
             ForEach(Array(rest.enumerated()), id: \.offset) { index, part in
-                if index > 0 || (traktScore ?? tmdbScore) != nil { Text("·").font(.system(size: 14)).foregroundStyle(Color(webHex: "#5a5a66")) }
+                if index > 0 || (traktScore ?? tmdbScore) != nil { Text("·").font(.system(size: 14)).foregroundStyle(Color(themed: "#5a5a66")) }
                 Text(part).font(.system(size: 14)).foregroundStyle(HomeStyle.dateChipText)
             }
             if let myRating {
@@ -235,10 +235,10 @@ struct EpisodeInfoSheet: View {
     private func actionLabel(_ label: String, icon: String, on: Bool) -> some View {
         // Design: 64 pt circles; on = accent with #e5dcff label, off = #26262e with a #2e2e38 hairline.
         VStack(spacing: 8) {
-            DiaryIcon(name: icon, size: 22).foregroundStyle(on ? Color(webHex: "#0b0b10") : HomeStyle.primary)
-                .frame(width: 64, height: 64).background(on ? theme.accent : Color(webHex: "#26262e"), in: Circle())
-                .overlay(Circle().strokeBorder(on ? .clear : Color(webHex: "#2e2e38"), lineWidth: HomeStyle.hairline))
-            Text(label).font(.system(size: 13, weight: on ? .semibold : .regular)).foregroundStyle(on ? Color(webHex: "#e5dcff") : HomeStyle.soft).lineLimit(1)
+            DiaryIcon(name: icon, size: 22).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary)
+                .frame(width: 64, height: 64).background(on ? theme.accent : Color(themed: "#26262e"), in: Circle())
+                .overlay(Circle().strokeBorder(on ? .clear : Color(themed: "#2e2e38"), lineWidth: HomeStyle.hairline))
+            Text(label).font(.system(size: 13, weight: on ? .semibold : .regular)).foregroundStyle(on ? Color(themed: "#e5dcff") : HomeStyle.soft).lineLimit(1)
         }.contentShape(Rectangle())
     }
 
@@ -252,19 +252,19 @@ struct EpisodeInfoSheet: View {
                 Text("Episode \(episode.number) of \(episodes.count)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.soft)
                 HStack(spacing: 6) {
                     ForEach(dotRange(index: index), id: \.self) { dot in
-                        Capsule().fill(dot == index ? theme.accent : Color(webHex: "#4a4a56")).frame(width: dot == index ? 16 : 6, height: 6)
+                        Capsule().fill(dot == index ? theme.accent : Color(themed: "#4a4a56")).frame(width: dot == index ? 16 : 6, height: 6)
                     }
                 }.accessibilityHidden(true)
-            }.frame(maxWidth: .infinity, minHeight: 56).background(Color(webHex: "#26262e"), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color(webHex: "#2e2e38"), lineWidth: HomeStyle.hairline))
+            }.frame(maxWidth: .infinity, minHeight: 56).background(Color(themed: "#26262e"), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color(themed: "#2e2e38"), lineWidth: HomeStyle.hairline))
             Button { go(true) } label: { pagerCircle("chevron.right") }
                 .buttonStyle(.springPress).disabled(index >= episodes.count - 1).opacity(index >= episodes.count - 1 ? 0.4 : 1).accessibilityLabel("Next episode")
         }
     }
     private func pagerCircle(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            .frame(width: 56, height: 56).background(Color(webHex: "#26262e"), in: Circle())
-            .overlay(Circle().strokeBorder(Color(webHex: "#2e2e38"), lineWidth: HomeStyle.hairline))
+            .frame(width: 56, height: 56).background(Color(themed: "#26262e"), in: Circle())
+            .overlay(Circle().strokeBorder(Color(themed: "#2e2e38"), lineWidth: HomeStyle.hairline))
     }
     /// Five dots at most, the current one among them.
     private func dotRange(index: Int) -> [Int] {

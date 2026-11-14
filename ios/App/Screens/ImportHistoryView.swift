@@ -30,7 +30,7 @@ struct ImportHistoryView: View {
                     content
                 }.padding(.horizontal, 20).padding(.vertical, 16)
             }
-            .background(Color(webHex: "#111116"))
+            .background(Color(themed: "#111116"))
             .navigationTitle("Import your history").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -89,7 +89,7 @@ struct ImportHistoryView: View {
                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("import-result")
             Button("Done") { dismiss() }.buttonStyle(SettingsPrimaryButtonStyle())
         case .failed(let message):
-            Text(message).font(.system(size: 15)).foregroundStyle(Color(webHex: "#ff8a80")).fixedSize(horizontal: false, vertical: true)
+            Text(message).font(.system(size: 15)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true)
             Button("Try again") { phase = .choose }.buttonStyle(SettingsPrimaryButtonStyle())
         }
     }

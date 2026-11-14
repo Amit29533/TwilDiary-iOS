@@ -38,7 +38,7 @@ struct SettingsGroup<Content: View>: View {
 
 /// The full-width hairline between two rows of a card.
 struct SettingsDivider: View {
-    var body: some View { Rectangle().fill(Color(webHex: "#1c1c23")).frame(height: HomeStyle.hairline) }
+    var body: some View { Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline) }
 }
 
 /// A 38 pt #2a2440 tile with a #cdbbff symbol (44 pt for an account's own row).
@@ -77,7 +77,7 @@ extension SettingsRow where Leading == EmptyView {
 
 /// The design's chevron for rows that open a page.
 struct SettingsChevron: View {
-    var body: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78")) }
+    var body: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78")) }
 }
 
 /// "Run", "Connect", "Save": a small pill button inside a row.
@@ -108,7 +108,7 @@ struct SettingsPrimaryButtonStyle: ButtonStyle {
 /// "Disconnect Trakt", "Sign out": a 52 pt dark pill with pink text.
 struct SettingsDestructiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
+        configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
             .frame(maxWidth: .infinity).frame(height: 52)
             .background(HomeStyle.round, in: Capsule())
             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -124,8 +124,8 @@ struct SettingsToggleStyle: ToggleStyle {
             configuration.label
             Button { configuration.isOn.toggle() } label: {
                 ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                    Capsule().fill(configuration.isOn ? theme.accent : Color(webHex: "#3a3a46")).frame(width: 46, height: 28)
-                    Circle().fill(configuration.isOn ? Color(webHex: "#1a1030") : HomeStyle.primary).frame(width: 22, height: 22).padding(3)
+                    Capsule().fill(configuration.isOn ? theme.accent : Color(themed: "#3a3a46")).frame(width: 46, height: 28)
+                    Circle().fill(configuration.isOn ? ThemeStore.current.accentInk : HomeStyle.primary).frame(width: 22, height: 22).padding(3)
                 }.animation(.snappy(duration: 0.2), value: configuration.isOn)
             }.buttonStyle(.plain)
         }.accessibilityElement(children: .combine).accessibilityAddTraits(.isToggle)
@@ -163,22 +163,22 @@ struct SeasonProgressCard: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(.white).lineLimit(1)
-                    if seasons.count > 1 { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(webHex: "#A78BDB")) }
+                    if seasons.count > 1 { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(themed: "#A78BDB")) }
                 }.padding(.leading, 16).padding(.trailing, 14).frame(minHeight: 44)
-                    .background(Color(webHex: "#1E1E22"), in: Capsule()).fixedSize()
+                    .background(Color(themed: "#1E1E22"), in: Capsule()).fixedSize()
             }.disabled(seasons.count < 2).accessibilityLabel("Choose season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)")
                 .accessibilityIdentifier("episodes-page-season")
             VStack(spacing: 5) {
-                Text("\(watched) of \(total) watched").font(.system(size: 13, weight: .medium)).foregroundStyle(Color(webHex: "#C4C4CC")).lineLimit(1).monospacedDigit()
-                Capsule().fill(Color(webHex: "#26262B")).frame(height: 6)
+                Text("\(watched) of \(total) watched").font(.system(size: 13, weight: .medium)).foregroundStyle(Color(themed: "#C4C4CC")).lineLimit(1).monospacedDigit()
+                Capsule().fill(Color(themed: "#26262B")).frame(height: 6)
                     .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * CGFloat(percent) / 100) } }
                     .accessibilityHidden(true)
-                Text(remaining).font(.system(size: 13)).foregroundStyle(Color(webHex: "#9A9AA3")).lineLimit(1).monospacedDigit()
+                Text(remaining).font(.system(size: 13)).foregroundStyle(Color(themed: "#9A9AA3")).lineLimit(1).monospacedDigit()
             }.frame(maxWidth: .infinity)
             Text("\(percent)%").font(.system(size: 28, weight: .bold)).tracking(-0.56).monospacedDigit().foregroundStyle(theme.accent)
                 .frame(minWidth: 58, alignment: .trailing)
         }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
-            .background(Color(webHex: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
+            .background(Color(themed: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.07), lineWidth: 1))
             .accessibilityElement(children: .contain)
     }
@@ -196,10 +196,10 @@ struct SettingsBadge: View {
     var tone = SettingsTone.good
     var body: some View {
         let (ink, fill): (Color, Color) = switch tone {
-        case .good: (Color(webHex: "#7fe0b5"), Color(webHex: "#1b2b25"))
+        case .good: (Color(themed: "#7fe0b5"), Color(themed: "#1b2b25"))
         case .configured: (HomeStyle.chipText, HomeStyle.chip)
-        case .missing: (Color(webHex: "#f5c26b"), Color(webHex: "#2b2516"))
-        case .plain: (HomeStyle.secondary, Color(webHex: "#1e1e26"))
+        case .missing: (Color(themed: "#f5c26b"), Color(themed: "#2b2516"))
+        case .plain: (HomeStyle.secondary, Color(themed: "#1e1e26"))
         }
         Text(text).font(.system(size: 12, weight: .bold)).foregroundStyle(ink).lineLimit(1).truncationMode(.middle)
             .padding(.horizontal, 10).frame(height: 24).background(fill, in: Capsule())
@@ -218,7 +218,7 @@ struct SettingsServiceHeader<Extra: View>: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 BrandLogo(service: logo, size: 30).frame(width: 52, height: 52)
-                    .background(Color(webHex: "#1a1a21"), in: RoundedRectangle(cornerRadius: 15))
+                    .background(Color(themed: "#1a1a21"), in: RoundedRectangle(cornerRadius: 15))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -269,7 +269,7 @@ struct SettingsInfoButton: View {
     var body: some View {
         Button { showing = true } label: {
             Text("i").font(.system(size: 14, weight: .bold, design: .serif)).italic().foregroundStyle(HomeStyle.chipText)
-                .frame(width: 30, height: 30).background(Color(webHex: "#1e1e26"), in: Circle())
+                .frame(width: 30, height: 30).background(Color(themed: "#1e1e26"), in: Circle())
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel("About this")
             .popover(isPresented: $showing) {

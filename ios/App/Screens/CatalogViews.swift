@@ -47,7 +47,7 @@ struct CatalogPoster: View {
                 .overlay(alignment: .bottomLeading) {
                     if let score = item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), score > 0 {
                         HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
-                            .font(.system(size: 12)).foregroundStyle(Color(webHex: "#e7ca90"))
+                            .font(.system(size: 12)).foregroundStyle(Color(themed: "#e7ca90"))
                             .padding(.horizontal, 5).padding(.vertical, 3).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6)).padding(6)
                     }
                 }
@@ -164,9 +164,9 @@ struct CatalogSearchView: View {
                         HStack(spacing: 6) {
                             Text(item.rawValue)
                             if ready, let count = count(item) {
-                                Text(count.formatted()).foregroundStyle(on ? Color(webHex: "#1a1030").opacity(0.7) : HomeStyle.secondary).monospacedDigit()
+                                Text(count.formatted()).foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit()
                             }
-                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : HomeStyle.primary)
+                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary)
                             .padding(.horizontal, 15).frame(height: 40)
                             .background(on ? HomeStyle.chipText : HomeStyle.round, in: Capsule())
                             .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -252,7 +252,7 @@ struct CatalogSearchView: View {
                             let busy = adding.contains(Self.key(route))
                             Button { Task { await add(route) } } label: {
                                 HStack(spacing: 5) {
-                                    if busy { ProgressView().controlSize(.small).tint(Color(webHex: "#1a1030")) } else { Image(systemName: "plus").font(.system(size: 13, weight: .bold)) }
+                                    if busy { ProgressView().controlSize(.small).tint(ThemeStore.current.accentInk) } else { Image(systemName: "plus").font(.system(size: 13, weight: .bold)) }
                                     Text("Add")
                                 }.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 16).frame(height: 38)
@@ -625,7 +625,7 @@ private struct CatalogSeasonPreview: View {
     }
     private func filter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#0b0b10") : HomeStyle.soft)
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
                 .padding(.horizontal, 20).frame(height: 44)
                 .background(on ? AnyShapeStyle(.tint) : AnyShapeStyle(HomeStyle.round), in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))

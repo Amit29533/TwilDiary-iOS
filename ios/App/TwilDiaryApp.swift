@@ -58,7 +58,11 @@ import TwilDiaryCore
         // No app-wide glass button style: it turned every text link, toolbar item and
         // card link into a glass capsule (glass on the system bars' own glass).
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
-        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour)) }
+        WindowGroup {
+            RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
+                // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
+                .onChange(of: theme, initial: true) { _, chosen in ThemeStore.shared.apply(chosen) }
+        }
     }
 }
 
@@ -220,7 +224,8 @@ struct RootView: View {
                     }
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
             } else {
-                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent), syncing: syncing,
+                // Premiere marks the chosen tab in white on the glass bar, as streaming apps do; red stays for content.
+                NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : UIColor(theme.accent), syncing: syncing,
                                pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }) { tab in
@@ -313,7 +318,7 @@ struct RootView: View {
         NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
             // Tab pages draw their own pinned header and status-bar shade. Without this, the bar of a page
             // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
-            content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
+            content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(themed: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 .navigationDestination(for: String.self) { savedTitlePage(TitleDetailView(id: $0), tab: tab) }
                 .navigationDestination(for: SavedTitleRoute.self) {

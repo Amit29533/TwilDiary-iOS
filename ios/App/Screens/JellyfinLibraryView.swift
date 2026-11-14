@@ -87,7 +87,7 @@ struct JellyfinLibraryView: View {
     }
     private func chip(_ text: String, on: Bool, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(webHex: "#c5c0cf"))
+            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
                 .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : .white.opacity(0.06), in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : .white.opacity(0.12)))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(id)
@@ -171,7 +171,7 @@ struct JellyfinPresenceRow: View {
                 HStack(spacing: 12) {
                     BrandLogo(service: .jellyfin, size: 30)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("In your Jellyfin").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                        Text("In your Jellyfin").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
                         Text(Self.place(entry)).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
                     Spacer(minLength: 0)

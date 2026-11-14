@@ -51,15 +51,15 @@ struct EpisodeChip: View {
         Text(text).font(.system(size: 11, weight: .semibold)).lineLimit(1)
             .foregroundStyle(accent ? HomeStyle.chipText : text.hasPrefix("Watched") ? HomeStyle.dateChipText : HomeStyle.secondary)
             .padding(.horizontal, 9).frame(height: 22)
-            .background(accent ? HomeStyle.chip : Color(webHex: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
+            .background(accent ? HomeStyle.chip : Color(themed: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
     }
 }
 struct ScoreChip: View {
     let score: Double
     var body: some View {
-        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
             .font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            .padding(.horizontal, 9).frame(height: 22).background(Color(webHex: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
+            .padding(.horizontal, 9).frame(height: 22).background(Color(themed: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
             .accessibilityElement(children: .ignore).accessibilityLabel("Rated " + score.formatted(.number.precision(.fractionLength(1))))
     }
 }
@@ -71,8 +71,8 @@ struct EpisodeTick: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         ZStack {
-            if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : Color(webHex: "#3a3a46"), lineWidth: 2) }
-            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(watched ? Color(webHex: "#0b0b10") : next ? theme.accent : Color(webHex: "#3a3a46"))
+            if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : Color(themed: "#3a3a46"), lineWidth: 2) }
+            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(watched ? ThemeStore.current.accentInk : next ? theme.accent : Color(themed: "#3a3a46"))
         }.frame(width: 32, height: 32).frame(width: 44, height: 44).contentShape(Rectangle())
     }
 }
@@ -96,7 +96,7 @@ struct EpisodeCardRow: View {
             Button(action: onOpen) {
                 HStack(spacing: 12) {
                     Group {
-                        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 20).foregroundStyle(.secondary) } }
+                        if hidden { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 20).foregroundStyle(.secondary) } }
                         else { Artwork(path: artwork, title: String(number)) }
                     }.frame(width: 96, height: 60).clipShape(RoundedRectangle(cornerRadius: 14))
                     VStack(alignment: .leading, spacing: 5) {
@@ -118,8 +118,8 @@ struct EpisodeCardRow: View {
                 .accessibilityIdentifier("episode-watch-\(number)")
             }
         }.padding(.leading, 9).padding(.trailing, 6).padding(.vertical, 8)
-            .background(state == .next ? Color(webHex: "#17142a") : HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(state == .next ? Color(webHex: "#34294f") : HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+            .background(state == .next ? Color(themed: "#17142a") : HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(state == .next ? Color(themed: "#34294f") : HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
 }
 
@@ -149,7 +149,7 @@ struct EpisodeGridCard: View {
                 // The still keeps the shelf card's 230 x 128 shape at any width.
                 Color.clear.aspectRatio(230.0 / 128.0, contentMode: .fit).frame(width: fills ? nil : 230)
                     .overlay {
-                        if hidden { Color(webHex: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(HomeStyle.secondary) } }
+                        if hidden { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(HomeStyle.secondary) } }
                         else { Artwork(path: artwork, title: String(number)) }
                     }.clipShape(RoundedRectangle(cornerRadius: 21))
                     .padding(1).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 22))
@@ -165,9 +165,9 @@ struct EpisodeGridCard: View {
                     Button(action: onToggle) {
                         ZStack {
                             Circle().fill(watched ? AnyShapeStyle(theme.accent) : AnyShapeStyle(HomeStyle.card.opacity(0.8)))
-                            Circle().strokeBorder(state == .next || watched ? theme.accent : Color(webHex: "#3a3a46"), lineWidth: 2)
+                            Circle().strokeBorder(state == .next || watched ? theme.accent : Color(themed: "#3a3a46"), lineWidth: 2)
                             Image(systemName: "checkmark").font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(watched ? Color(webHex: "#0b0b10") : state == .next ? theme.accent : HomeStyle.secondary)
+                                .foregroundStyle(watched ? ThemeStore.current.accentInk : state == .next ? theme.accent : HomeStyle.secondary)
                         }.frame(width: 34, height: 34).frame(width: 48, height: 48).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
                         .accessibilityIdentifier("episode-watch-\(number)").padding(4)
@@ -188,12 +188,12 @@ struct EpisodeGridCard: View {
     @ViewBuilder private var chips: some View {
         if let runtime {
             Text("\(runtime) min").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
+                .padding(.horizontal, 10).frame(height: 24).background(Color(themed: "#1e1e26"), in: Capsule()).fixedSize()
         }
         if let score, score > 0 {
-            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(webHex: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                .padding(.horizontal, 10).frame(height: 24).background(Color(webHex: "#1e1e26"), in: Capsule()).fixedSize()
+                .padding(.horizontal, 10).frame(height: 24).background(Color(themed: "#1e1e26"), in: Capsule()).fixedSize()
         }
     }
     private var subtitle: String {
@@ -243,7 +243,7 @@ struct ShowFilterChip: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         Button(action: action) {
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(webHex: "#e6e1ee"))
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#e6e1ee"))
                 .padding(.horizontal, 16).frame(height: 40)
                 .background(on ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
                 .overlay { if !on { Capsule().strokeBorder(.white.opacity(0.1)) } }
@@ -682,7 +682,7 @@ struct CastCreditsPage: View {
     }
     private func segment(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(webHex: "#c5c0cf"))
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
                 .frame(maxWidth: .infinity).frame(height: 40)
                 .background { if on { Capsule().fill(theme.accent) } }
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
@@ -699,7 +699,7 @@ struct CastCreditsPage: View {
                                 if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
                                 if let actor = character.voiceActor {
                                     Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                                    Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Color(webHex: "#e6e1ee")).lineLimit(1)
+                                    Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Color(themed: "#e6e1ee")).lineLimit(1)
                                 }
                             }
                             Spacer(minLength: 0)
@@ -739,8 +739,8 @@ struct CastCreditsPage: View {
         HStack(spacing: 12) {
             if image == nil {
                 Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Color(webHex: "#d2c4f4"))
-                    .frame(width: 54, height: 54).background(Color(webHex: "#2a2440"), in: Circle())
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Color(themed: "#d2c4f4"))
+                    .frame(width: 54, height: 54).background(Color(themed: "#2a2440"), in: Circle())
             } else {
                 Artwork(path: image, title: name).frame(width: 54, height: 54).clipShape(Circle())
             }

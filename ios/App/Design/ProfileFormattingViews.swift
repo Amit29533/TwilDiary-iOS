@@ -36,15 +36,15 @@ struct ProfileFacts: View {
                 row(fact)
             }
         }
-        .foregroundStyle(Color(webHex: "#e6e2ec")).tint(Color(webHex: "#d1cdd8"))
-        .background(Color(webHex: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+        .foregroundStyle(Color(themed: "#e6e2ec")).tint(Color(themed: "#d1cdd8"))
+        .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
     }
     private func label(_ fact: ProfileFact) -> some View {
         HStack(spacing: 5) {
             Image(systemName: fact.icon).imageScale(.small).accessibilityHidden(true)
             Text(fact.label).fixedSize(horizontal: false, vertical: true)
-        }.font(.caption).foregroundStyle(Color(webHex: "#a9a7b6"))
+        }.font(.caption).foregroundStyle(Color(themed: "#a9a7b6"))
     }
     private func value(_ fact: ProfileFact) -> Text {
         Text(AniListText.formatted(fact.value, hideSpoilers: false)).font(.subheadline.weight(.semibold))
@@ -142,7 +142,7 @@ struct ProfileAliases: View {
         if !aliases.isEmpty {
             let visible = expanded ? aliases : Array(aliases.prefix(Self.shown))
             VStack(alignment: .leading, spacing: 10) {
-                Text("ALSO KNOWN AS").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(webHex: "#a9a7b6"))
+                Text("ALSO KNOWN AS").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
                 InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                     ForEach(visible, id: \.self) { name in
                         Text(name).font(.subheadline).foregroundStyle(HomeStyle.primary).lineLimit(2)
@@ -161,7 +161,7 @@ struct ProfileAliases: View {
                 }
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(webHex: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+            .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
             .accessibilityElement(children: .contain).accessibilityLabel("Also known as")
             .accessibilityIdentifier("profile-aliases")
@@ -245,17 +245,17 @@ struct ProfileAbout: View {
             ForEach(content.sections) { section in ProfileSectionCard(section: section) }
             if !sites.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("LINKS").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(webHex: "#a9a7b6"))
+                    Text("LINKS").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(themed: "#a9a7b6"))
                     ProfileWebsiteButtons(links: sites)
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("profile-links-section")
             }
             if !content.references.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("RELATED PROFILES AND TITLES").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(webHex: "#a9a7b6"))
+                    Text("RELATED PROFILES AND TITLES").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(themed: "#a9a7b6"))
                     InlineFlowLayout(spacing: 12, rowSpacing: 4) {
                         ForEach(content.references) { link in
                             Link(destination: link.url) { Text(link.title).underline().font(.subheadline).frame(minHeight: 44) }
-                                .buttonStyle(.plain).foregroundStyle(Color(webHex: "#e6e2ec"))
+                                .buttonStyle(.plain).foregroundStyle(Color(themed: "#e6e2ec"))
                                 .accessibilityIdentifier("profile-reference-" + link.id)
                         }
                     }
@@ -280,7 +280,7 @@ struct ProfileHighlights: View {
                         VStack(alignment: .leading, spacing: 8) {
                             // A card with one field named like the card needs no second label.
                             if facts.count > 1 || !(kind == .affiliation || kind == .relations || fact.label.lowercased() == kind.title.lowercased()) {
-                                Text(fact.label.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.4).foregroundStyle(Color(webHex: "#a9a7b6"))
+                                Text(fact.label.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.4).foregroundStyle(Color(themed: "#a9a7b6"))
                             }
                             if kind == .relations { ProfileRelations(items: fact.items) } else { ProfileValue(fact: fact) }
                         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -341,7 +341,7 @@ private struct ProfileRelations: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                if index > 0 { Rectangle().fill(Color(webHex: "#1c1c23")).frame(height: HomeStyle.hairline) }
+                if index > 0 { Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline) }
                 let (name, relation) = Self.split(item)
                 HStack(spacing: 12) {
                     Image(systemName: "person.fill").font(.system(size: 13)).foregroundStyle(HomeStyle.chipText)
@@ -349,7 +349,7 @@ private struct ProfileRelations: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(AniListText.formatted(name, hideSpoilers: false)).font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(HomeStyle.primary).tint(HomeStyle.primary).lineLimit(2)
-                        if let relation { Text(relation).font(.system(size: 12)).foregroundStyle(Color(webHex: "#a9a7b6")).lineLimit(2) }
+                        if let relation { Text(relation).font(.system(size: 12)).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(2) }
                     }
                     Spacer(minLength: 0)
                 }.padding(.vertical, 8)
@@ -401,7 +401,7 @@ struct ProfileSectionCard: View {
             .sheet(isPresented: $all) {
                 NavigationStack {
                     ScrollView { items(section.items).padding(.horizontal, 20).padding(.vertical, 12) }
-                        .background(Color(webHex: "#111116"))
+                        .background(Color(themed: "#111116"))
                         .navigationTitle(section.title).navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { all = false } } }
                 }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -452,12 +452,12 @@ struct ProfileSourceRow: View {
                 Image(systemName: "play.rectangle").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
                     .frame(width: 36, height: 36).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("FROM").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(webHex: "#a9a7b6"))
+                    Text("FROM").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
                     Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
                         .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     if let parts {
                         HStack(spacing: 6) {
-                            Text("as " + parts.name).font(.caption).foregroundStyle(Color(webHex: "#a9a7b6")).lineLimit(1)
+                            Text("as " + parts.name).font(.caption).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(1)
                             if parts.voice {
                                 Text("Voice").font(.system(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 6).padding(.vertical, 2).background(HomeStyle.chip, in: Capsule())
@@ -466,11 +466,11 @@ struct ProfileSourceRow: View {
                     }
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "arrow.uturn.backward").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#a9a7b6"))
+                Image(systemName: "arrow.uturn.backward").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#a9a7b6"))
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(webHex: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+            .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
             .contentShape(RoundedRectangle(cornerRadius: 16))
         }.buttonStyle(.plain)

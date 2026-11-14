@@ -91,6 +91,6 @@ struct CommunityInformationSheet: View {
 private struct SolidSheetBackground: ViewModifier {
     let enabled: Bool
     @ViewBuilder func body(content: Content) -> some View {
-        if enabled { content.presentationBackground(Color(webHex: "#1c1c1e")) } else { content }
+        if enabled { content.presentationBackground(Color(themed: "#1c1c1e")) } else { content }
     }
 }

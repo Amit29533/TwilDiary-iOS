@@ -277,7 +277,7 @@ struct FavouritesView: View {
                 }.padding(.horizontal, 16).padding(.top, 12)
             }
         }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .tint(Color(webHex: "#e6e2ec"))
+            .tint(Color(themed: "#e6e2ec"))
     }
     private var grid: Binding<Bool> {
         switch tab {
@@ -303,7 +303,7 @@ struct FavouritesView: View {
                 // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
                 Button { tab = kind } label: {
                     Text(kind.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                        .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
+                        .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .animation(.snappy(duration: 0.28), value: on)
                         .frame(maxWidth: .infinity).frame(height: 40).contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
@@ -312,7 +312,7 @@ struct FavouritesView: View {
             // One pill that moves between the tabs, so it's never missing mid-switch.
             GeometryReader { proxy in
                 let width = (proxy.size.width - 4 * CGFloat(kinds.count - 1)) / CGFloat(kinds.count)
-                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom))
+                Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom))
                     .frame(width: width, height: 40).offset(x: (width + 4) * index)
                     .animation(.snappy(duration: 0.28), value: index)
             }

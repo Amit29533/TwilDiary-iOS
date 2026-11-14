@@ -88,7 +88,7 @@ struct StatsJourneyCard: View {
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
-                    Color(webHex: "#2a1f45")
+                    Color(themed: "#2a1f45")
                     RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
                     LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
                 }
@@ -186,7 +186,7 @@ struct StatsSplitCard: View {
         if insights.totalMinutes > 0 {
             StatsCard(title: "Watch time split") {
                 ZStack {
-                    Circle().stroke(Color(webHex: "#f2b45a"), lineWidth: 22)
+                    Circle().stroke(Color(themed: "#f2b45a"), lineWidth: 22)
                     Circle().trim(from: 0, to: showShare).stroke(theme.accent, style: StrokeStyle(lineWidth: 22, lineCap: .butt)).rotationEffect(.degrees(-90))
                     VStack(spacing: 2) {
                         Text("\(Int((max(showShare, 1 - showShare) * 100).rounded()))%").font(.system(size: 34, weight: .bold)).foregroundStyle(.white)
@@ -194,7 +194,7 @@ struct StatsSplitCard: View {
                     }
                 }.frame(width: 170, height: 170).frame(maxWidth: .infinity).padding(.vertical, 6).accessibilityHidden(true)
                 row("Shows", theme.accent, showShare, insights.showMinutes)
-                row("Movies", Color(webHex: "#f2b45a"), 1 - showShare, insights.movieMinutes)
+                row("Movies", Color(themed: "#f2b45a"), 1 - showShare, insights.movieMinutes)
             }
         }
     }
@@ -452,7 +452,7 @@ struct StatsGlanceCard: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.system(size: 16)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                    Text(label).font(.system(size: 16)).foregroundStyle(Color(themed: "#c5c0cf"))
                     if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer()

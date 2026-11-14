@@ -199,7 +199,7 @@ struct SearchLabView: View {
                 Text(title.uppercased()).font(.system(size: 12, weight: .bold)).tracking(1).foregroundStyle(HomeStyle.secondary)
                 Spacer()
                 if let trailing { Text(trailing).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).monospacedDigit().contentTransition(.numericText()) }
-                if let badge { Text(badge).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(webHex: "#c5c0cf")).padding(.horizontal, 9).frame(height: 24).background(.white.opacity(0.08), in: Capsule()) }
+                if let badge { Text(badge).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(themed: "#c5c0cf")).padding(.horizontal, 9).frame(height: 24).background(.white.opacity(0.08), in: Capsule()) }
             }
             content()
         }
@@ -245,11 +245,11 @@ struct LabChip: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Text(label).lineLimit(1).truncationMode(.tail)
-                if let count { Text(String(count)).font(.system(size: 12, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030").opacity(0.7) : HomeStyle.secondary).monospacedDigit() }
+                if let count { Text(String(count)).font(.system(size: 12, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit() }
             }
-            .font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#e6e1ee"))
+            .font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 15).frame(maxWidth: wide ? .infinity : nil).frame(height: 40)
-            .background(on ? AnyShapeStyle(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
+            .background(on ? AnyShapeStyle(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
             .overlay(Capsule().strokeBorder(on ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
             .contentShape(Capsule())
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
@@ -267,9 +267,9 @@ struct LabSegments: View {
                 let on = option.0 == selection
                 Button { withAnimation(.snappy(duration: 0.25)) { choose(option.0) } } label: {
                     Text(option.1).font(.system(size: 14, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
-                        .foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#c5c0cf"))
+                        .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .frame(maxWidth: .infinity).frame(height: 40)
-                        .background { if on { Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)) } }
+                        .background { if on { Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom)) } }
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
             }
@@ -293,7 +293,7 @@ struct YearRangeSlider: View {
             let year: (CGFloat) -> Int = { bounds.lowerBound + Int(((min(max($0, inset), inset + width) - inset) / width * span).rounded()) }
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.12)).frame(width: width, height: 4).offset(x: inset)
-                Capsule().fill(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .leading, endPoint: .trailing))
+                Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .leading, endPoint: .trailing))
                     .frame(width: max(4, x(upper) - x(lower)), height: 4).offset(x: x(lower))
                 thumb("Earliest year", value: lower)
                     .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("years")).onChanged { drag in
@@ -379,7 +379,7 @@ struct SearchLabResultsView: View {
                         Picker("Sort", selection: $filters.sort) { ForEach(LabSort.all, id: \.0) { Text($0.1).tag($0.0) } }
                     } label: {
                         HStack(spacing: 6) { Image(systemName: "arrow.up.arrow.down").font(.system(size: 12, weight: .bold)); Text(LabSort.label(filters.sort)).lineLimit(1) }
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#e6e1ee"))
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e6e1ee"))
                             .padding(.horizontal, 14).frame(height: 34).background(HomeStyle.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1)).frame(minHeight: 44).contentShape(Capsule())
                     }.accessibilityLabel("Sort, " + LabSort.label(filters.sort)).accessibilityIdentifier("search-lab-sort")

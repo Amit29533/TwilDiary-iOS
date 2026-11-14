@@ -145,6 +145,10 @@ struct DiaryScreenBackground: View {
         GeometryReader { geometry in
             ZStack {
                 Color.black
+                // The theme's wash at the top (Premiere's grey-violet), fading into black: one gradient, no blur.
+                if let wash = ThemeStore.current.screenWash {
+                    LinearGradient(colors: [wash, wash.opacity(0.35), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.6))
+                }
                 if forceGlass && !reduceTransparency, let bitmap = bitmap ?? artwork.flatMap({ GlassArtworkCache.shared.cached($0) }) {
                     Color(red: bitmap.red, green: bitmap.green, blue: bitmap.blue).opacity(0.5)
                     Image(decorative: bitmap.image, scale: 1).resizable().scaledToFill()

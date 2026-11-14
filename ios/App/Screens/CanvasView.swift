@@ -112,7 +112,7 @@ private struct CanvasContent: View {
                 // The page swaps at once (no cross-fade flash); only the words change weight.
                 Button { tab = item; if item == .movies { network = nil } } label: {
                     Text(item.label).font(.system(size: 30, weight: .bold)).tracking(-0.6).lineLimit(1)
-                        .foregroundStyle(on ? Color.white : Color(webHex: "#8a8794"))
+                        .foregroundStyle(on ? Color.white : Color(themed: "#8a8794"))
                         .animation(.snappy(duration: 0.2), value: on)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
@@ -158,7 +158,7 @@ private struct CanvasContent: View {
             Text(label).lineLimit(1).truncationMode(.tail).frame(maxWidth: 170)
             Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
         }.font(.system(size: 15, weight: .semibold)).fixedSize()
-            .foregroundStyle(tinted ? HomeStyle.chipText : Color(webHex: "#e6e1ee"))
+            .foregroundStyle(tinted ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 40)
             .background(tinted ? HomeStyle.chip : HomeStyle.card, in: Capsule())
             .overlay(Capsule().strokeBorder(tinted ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
@@ -312,7 +312,7 @@ struct CanvasListCard: View {
                 }
                 .padding([.horizontal, .top], 10)
             VStack(alignment: .leading, spacing: 4) {
-                Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Color(webHex: "#f3f0f7"))
+                Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Color(themed: "#f3f0f7"))
                     .lineLimit(2, reservesSpace: true).truncationMode(.tail).multilineTextAlignment(.leading)
                 Text("by " + list.user).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
@@ -353,9 +353,9 @@ private struct CanvasGenreSheet: View {
                             HStack(spacing: 6) {
                                 if on { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)) }
                                 Text(name).lineLimit(1)
-                            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? Color(webHex: "#1a1030") : Color(webHex: "#e6e1ee"))
+                            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#e6e1ee"))
                                 .padding(.horizontal, 15).frame(height: 40)
-                                .background(on ? AnyShapeStyle(LinearGradient(colors: [Color(webHex: "#cdbbff"), Color(webHex: "#a98bff")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
+                                .background(on ? AnyShapeStyle(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
                                 .overlay(Capsule().strokeBorder(on ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
                                 .contentShape(Capsule())
                         }.buttonStyle(.plain).disabled(!on && count >= 6).opacity(!on && count >= 6 ? 0.45 : 1)
@@ -363,7 +363,7 @@ private struct CanvasGenreSheet: View {
                     }
                 }
             }.padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 30)
-        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).presentationBackground(Color(webHex: "#111116"))
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).presentationBackground(Color(themed: "#111116"))
             .sensoryFeedback(.selection, trigger: count)
     }
     private func toggle(_ name: String) {

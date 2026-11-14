@@ -11,7 +11,7 @@ struct DiaryPanelModifier: ViewModifier {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     func body(content: Content) -> some View {
         content.padding(padding)
-            .background { RoundedRectangle(cornerRadius: radius).fill(Color(webHex: "#111115")) }
+            .background { RoundedRectangle(cornerRadius: radius).fill(Color(themed: "#111115")) }
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(!bordered ? .clear : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
     }
 }
@@ -21,7 +21,7 @@ struct DiaryPanelModifier: ViewModifier {
 /// theme keeps its exact solid fill, stroke and radius.
 struct DiarySectionBackground: ViewModifier {
     let radius: CGFloat
-    var fill = Color(webHex: "#111115")
+    var fill = Color(themed: "#111115")
     var stroke = Color.white.opacity(0.13)
     /// Selected rows keep their accent emphasis on glass too.
     var emphasized = false
@@ -31,7 +31,7 @@ struct DiarySectionBackground: ViewModifier {
     }
 }
 extension View {
-    func diarySectionBackground(radius: CGFloat, fill: Color = Color(webHex: "#111115"),
+    func diarySectionBackground(radius: CGFloat, fill: Color = Color(themed: "#111115"),
                                 stroke: Color = .white.opacity(0.13), emphasized: Bool = false) -> some View {
         modifier(DiarySectionBackground(radius: radius, fill: fill, stroke: stroke, emphasized: emphasized))
     }
@@ -45,7 +45,7 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
     var body: some View {
         Group {
             if field || reduceTransparency {
-                shape.fill(Color(webHex: field ? "#111115" : "#222226"))
+                shape.fill(Color(themed: field ? "#111115" : "#222226"))
                     .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : .white.opacity(0.13), lineWidth: 1))
             } else {
                 shape.fill(.clear).glassEffect(.regular.tint(selected ? theme.accent.opacity(0.16) : .clear).interactive(), in: shape)
@@ -58,11 +58,11 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
 /// original hand-tuned values; other themes derive the same roles from their own
 /// accent and ink instead of showing Twilight's violet in every theme.
 extension DiaryTheme {
-    var placeholderGlow: Color { self == .twilight ? Color(webHex: "#a27ac535") : accent.opacity(0x35 / 255.0) }
-    var initialsBase: Color { self == .twilight ? Color(webHex: "#1c1728") : ink.mix(with: .black, by: 0.15) }
+    var placeholderGlow: Color { self == .twilight ? Color(themed: "#a27ac535") : accent.opacity(0x35 / 255.0) }
+    var initialsBase: Color { self == .twilight ? Color(themed: "#1c1728") : ink.mix(with: .black, by: 0.15) }
     /// First stop of the title hero's no-backdrop gradient (Twilight: deep violet).
-    var heroFallbackLead: Color { self == .twilight ? Color(webHex: "#3c2c48") : accent.mix(with: .black, by: 0.7) }
+    var heroFallbackLead: Color { self == .twilight ? Color(themed: "#3c2c48") : accent.mix(with: .black, by: 0.7) }
     /// Random-pick card base under its optional backdrop.
-    var pickBase: Color { self == .twilight ? Color(webHex: "#17121f") : ink.mix(with: .black, by: 0.35) }
-    var pickVeil: Color { self == .twilight ? Color(webHex: "#15101966") : pickBase.opacity(0.4) }
+    var pickBase: Color { self == .twilight ? Color(themed: "#17121f") : ink.mix(with: .black, by: 0.35) }
+    var pickVeil: Color { self == .twilight ? Color(themed: "#15101966") : pickBase.opacity(0.4) }
 }

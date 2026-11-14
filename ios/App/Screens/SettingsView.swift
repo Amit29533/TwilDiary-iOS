@@ -108,7 +108,7 @@ struct SettingsView: View {
                         }.accessibilityIdentifier("settings-about")
                         Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                         Button { confirmSignOut = true } label: {
-                            Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(Color(webHex: "#ffb3c0"))
+                            Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
                                 .frame(maxWidth: .infinity, minHeight: 52).background(HomeStyle.round, in: Capsule())
                         }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
                     }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
@@ -157,7 +157,7 @@ struct SettingsView: View {
     private var diaryCard: some View {
         let titles = store.activeTitles.count, watches = store.activeEvents.count
         let state = store.phoneOnly ? phoneDiaryState : store.loading ? "Refreshing…" : store.busy ? "Saving…" : "Synced"
-        let tint: Color = state == "Synced" || state == "On this phone" ? Color(webHex: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
+        let tint: Color = state == "Synced" || state == "On this phone" ? Color(themed: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
         return VStack(alignment: .leading, spacing: 0) {
             Button { Task { if store.phoneOnly { await store.readDiaryServiceIfDue(olderThan: 0) } else { await store.refresh() } } } label: {
                 VStack(alignment: .leading, spacing: 14) {
@@ -166,7 +166,7 @@ struct SettingsView: View {
                         Spacer(minLength: 8)
                         HStack(spacing: 5) { Circle().fill(tint).frame(width: 6, height: 6); Text(state) }
                             .font(.system(size: 12, weight: .bold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 22)
-                            .background(state == "Synced" || state == "On this phone" ? Color(webHex: "#1b2b25") : tint.opacity(0.14), in: Capsule())
+                            .background(state == "Synced" || state == "On this phone" ? Color(themed: "#1b2b25") : tint.opacity(0.14), in: Capsule())
                     }
                     HStack(spacing: 8) {
                         statTile(titles, "titles")
@@ -217,25 +217,25 @@ struct SettingsView: View {
         }
     }
     /// A full-width #1c1c23 hairline between rows.
-    private var divider: some View { Rectangle().fill(Color(webHex: "#1c1c23")).frame(height: HomeStyle.hairline) }
-    private var chevron: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78")) }
+    private var divider: some View { Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline) }
+    private var chevron: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78")) }
     /// iOS Settings-style tiles: a white SF Symbol on a solid colour, fixed across themes.
     enum TileTint {
         case purple, indigo, blue, cyan, teal, mint, green, yellow, orange, red, pink, cloudflare
         var color: Color {
             switch self {
-            case .purple: Color(webHex: "#8E5CF0")
-            case .indigo: Color(webHex: "#5E5CE6")
-            case .blue: Color(webHex: "#0A84FF")
-            case .cyan: Color(webHex: "#32ADE6")
-            case .teal: Color(webHex: "#30B0C7")
-            case .mint: Color(webHex: "#00B8A3")
-            case .green: Color(webHex: "#30B350")
-            case .yellow: Color(webHex: "#F2B705")
-            case .orange: Color(webHex: "#FF8A1F")
-            case .red: Color(webHex: "#FF453A")
-            case .pink: Color(webHex: "#FF375F")
-            case .cloudflare: Color(webHex: "#F38020")
+            case .purple: Color(themed: "#8E5CF0")
+            case .indigo: Color(themed: "#5E5CE6")
+            case .blue: Color(themed: "#0A84FF")
+            case .cyan: Color(themed: "#32ADE6")
+            case .teal: Color(themed: "#30B0C7")
+            case .mint: Color(themed: "#00B8A3")
+            case .green: Color(themed: "#30B350")
+            case .yellow: Color(themed: "#F2B705")
+            case .orange: Color(themed: "#FF8A1F")
+            case .red: Color(themed: "#FF453A")
+            case .pink: Color(themed: "#FF375F")
+            case .cloudflare: Color(themed: "#F38020")
             }
         }
     }
@@ -314,7 +314,7 @@ struct TMDBConnectionView: View {
                         }.buttonStyle(SettingsWideButtonStyle(outlined: true)).accessibilityIdentifier("tmdb-api-toggle")
                     }
                     if let error { Text(error).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
-                    if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(webHex: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
+                    if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(themed: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
                 }
                 HStack(spacing: 4) {
                     SettingsFootnote(text: custom ? "Your own token is used first." : "Uses your server’s key.")
@@ -531,7 +531,7 @@ struct ExternalProviderConnectionView: View {
                     Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead")
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(webHex: "#6a6a78"))
+                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
                         .rotationEffect(.degrees(showOwnKey ? 180 : 0))
                 }.padding(.horizontal, 15).frame(minHeight: 56).contentShape(Rectangle()).modifier(SettingsCard())
             }.buttonStyle(.plain).accessibilityIdentifier("\(provider.rawValue)-own-key")

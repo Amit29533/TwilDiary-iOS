@@ -2,7 +2,7 @@ import SwiftUI
 import TwilDiaryCore
 
 /// Gold that sits beside the theme accent in the star burst.
-private let burstGold = Color(webHex: "#f5d27a")
+private let burstGold = Color(themed: "#f5d27a")
 
 extension View {
     /// Each change of `trigger` pops the control and throws a ring of tiny TwilDiary stars from it.

@@ -49,12 +49,12 @@ struct AnimeRelatedRow: View {
                     HStack(spacing: -6) {
                         if let score = saved.score, score > 0 {
                             Text(String(Int(score.rounded()))).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                                .frame(width: 28, height: 28).background(Color(webHex: "#3b4a9c"), in: Circle())
+                                .frame(width: 28, height: 28).background(Color(themed: "#3b4a9c"), in: Circle())
                                 .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1.5))
                         }
                         if saved.status == "completed" {
                             Image(systemName: "checkmark").font(.system(size: 12, weight: .heavy)).foregroundStyle(.white)
-                                .frame(width: 28, height: 28).background(Color(webHex: "#3f9a4f"), in: Circle())
+                                .frame(width: 28, height: 28).background(Color(themed: "#3f9a4f"), in: Circle())
                                 .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1.5))
                         }
                     }.padding(8)

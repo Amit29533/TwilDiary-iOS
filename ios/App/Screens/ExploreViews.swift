@@ -28,7 +28,7 @@ private struct ExplorePill: View {
             Text(label).lineLimit(1)
             Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
         }.font(.system(size: 15, weight: .semibold)).fixedSize()
-            .foregroundStyle(tinted ? HomeStyle.chipText : Color(webHex: "#e6e1ee"))
+            .foregroundStyle(tinted ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 38)
             .background(tinted ? HomeStyle.chip : HomeStyle.card, in: Capsule())
             .overlay(Capsule().strokeBorder(tinted ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
@@ -97,9 +97,9 @@ private struct DailyDiscoveryCard: View {
                         Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).lineLimit(1)
                         if let score = title.communityScore, score > 0 {
                             Text("·")
-                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 12)).foregroundStyle(Color(webHex: "#f5c451")); Text(String(format: "%.1f", score)) }
+                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 12)).foregroundStyle(Color(themed: "#f5c451")); Text(String(format: "%.1f", score)) }
                         }
-                    }.font(.system(size: 15, weight: .medium)).foregroundStyle(Color(webHex: "#d8d3e0"))
+                    }.font(.system(size: 15, weight: .medium)).foregroundStyle(Color(themed: "#d8d3e0"))
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.padding(.horizontal, 20).padding(.bottom, 18)
         }.aspectRatio(1.89, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12))).contentShape(Rectangle())

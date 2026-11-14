@@ -22,21 +22,21 @@ struct LibraryTitleRow: View {
                     DiaryIcon(name: archived ? "trash-2" : title.statusIconName, size: 16)
                     if title.queued == true { DiaryIcon(name: "download", size: 15) }
                     if present { DiaryIcon(name: "monitor", size: 15) }
-                }.foregroundStyle(Color(webHex: "#c5c0cf"))
+                }.foregroundStyle(Color(themed: "#c5c0cf"))
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 13).padding(.vertical, 11)
-            .foregroundStyle(Color(webHex: "#f3f0f7"))
+            .foregroundStyle(Color(themed: "#f3f0f7"))
             .background {
                 GeometryReader { geometry in
                     ZStack {
-                        Color(webHex: "#101014")
+                        Color(themed: "#101014")
                         if let path = title.poster {
                             LibraryCoverArtwork(path: path).frame(width: geometry.size.width, height: geometry.size.height).opacity(0.65)
                         }
                         LinearGradient(stops: [
-                            .init(color: Color(webHex: "#09090c4d"), location: 0),
-                            .init(color: Color(webHex: "#08080bce"), location: 0.45),
-                            .init(color: Color(webHex: "#08080bf2"), location: 1)
+                            .init(color: Color(themed: "#09090c4d"), location: 0),
+                            .init(color: Color(themed: "#08080bce"), location: 0.45),
+                            .init(color: Color(themed: "#08080bf2"), location: 1)
                         ], startPoint: .leading, endPoint: .trailing)
                     }.allowsHitTesting(false)
                 }
