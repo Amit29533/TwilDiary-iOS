@@ -36,7 +36,6 @@ private struct CanvasContent: View {
     @State private var showGenres = false
     @State private var pageWidth: CGFloat = 390
     /// The big Movies · Shows · Lists words have scrolled under the top bar: it shows the chosen one.
-    @State private var tabsHidden = false
     @State private var network: Int?
     @State private var year = ""
     @State private var minimum = "0"
@@ -79,16 +78,16 @@ private struct CanvasContent: View {
         return filters.applying(recommendations.items).filter { item in wanted.allSatisfy { item.genres?.contains($0) == true } }
     }
     var body: some View {
-        // Movies · Shows · Lists as large words at the top of the page (owner's layout); they
-        // scroll away with it, leaving the art the whole screen.
-        EdgeToEdgeScroll(scrolledPast: (40, $tabsHidden)) {
+        // Movies · Shows · Lists sit in the top bar beside Back (owner's note: move the header to the
+        // top), so the page starts with the filters and the art.
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
-                tabs
                 pills
                 Group { if tab == .lists { listsContent } else { titlesContent } }
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
-        }.diaryScreenBackground().navigationTitle(tabsHidden ? tab.label : "").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { tabs }.sharedBackgroundVisibility(.hidden) }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
             .sheet(isPresented: $showGenres) {
                 CanvasGenreSheet(names: DiscoveryGenre.names(type: kind.rawValue), genres: $genres, anime: $anime)
@@ -106,19 +105,18 @@ private struct CanvasContent: View {
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
     /// Movies · Shows · Lists on a Liquid Glass track; the chosen one is a lilac pill that slides across.
     private var tabs: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 22) {
+        HStack(alignment: .firstTextBaseline, spacing: 18) {
             ForEach(CanvasTab.allCases, id: \.self) { item in
                 let on = tab == item
                 // The page swaps at once (no cross-fade flash); only the words change weight.
                 Button { tab = item; if item == .movies { network = nil } } label: {
-                    Text(item.label).font(.system(size: 30, weight: .bold)).tracking(-0.6).lineLimit(1)
+                    Text(item.label).font(.system(size: 24, weight: .bold)).tracking(-0.4).lineLimit(1)
                         .foregroundStyle(on ? HomeStyle.ink : Color(themed: "#8a8794"))
                         .animation(.snappy(duration: 0.2), value: on)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
-            Spacer(minLength: 0)
-        }.padding(.horizontal, 4).padding(.top, 4)
+        }.padding(.leading, 4).fixedSize()
     }
     private var pills: some View {
         ScrollView(.horizontal) {

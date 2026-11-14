@@ -222,14 +222,25 @@ struct StatsView: View {
         }()
         // Watch time on top of the bars: every bar in a week, the tallest otherwise.
         let labelled: (StatsOverview.Bucket) -> Bool = { bucket in bucket.minutes > 0 && (buckets.count <= 7 || bucket.minutes == busiest) }
+        // Native, as the Battery page: grey bars with the latest in the accent, and the average as a line.
+        let native = ThemeStore.current.native
+        let average = buckets.isEmpty ? 0 : Double(buckets.map(\.minutes).reduce(0, +)) / Double(buckets.count)
+        let latest = buckets.last?.key
         return VStack(spacing: 6) {
             GeometryReader { geometry in
-                Chart(buckets) { bucket in
-                    BarMark(x: .value("Period", Double(bucket.key)), y: .value("Minutes", bucket.minutes), width: .fixed(min(20, max(2, geometry.size.width / CGFloat(max(1, buckets.count)) - 3))))
-                        .foregroundStyle(theme.accent.opacity(selectedBucket == nil || selectedBucket == bucket.key ? 1 : 0.45)).cornerRadius(3)
-                        .annotation(position: .top, spacing: 3) {
-                            if labelled(bucket) { Text(DiaryDate.duration(bucket.minutes)).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white).fixedSize() }
-                        }
+                Chart {
+                    ForEach(buckets) { bucket in
+                        BarMark(x: .value("Period", Double(bucket.key)), y: .value("Minutes", bucket.minutes), width: .fixed(min(20, max(2, geometry.size.width / CGFloat(max(1, buckets.count)) - 3))))
+                            .foregroundStyle(native && selectedBucket == nil && bucket.key != latest ? Color(uiColor: .systemGray2)
+                                : theme.accent.opacity(selectedBucket == nil || selectedBucket == bucket.key ? 1 : 0.45)).cornerRadius(native ? 5 : 3)
+                            .annotation(position: .top, spacing: 3) {
+                                if labelled(bucket) { Text(DiaryDate.duration(bucket.minutes)).font(.system(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.ink).fixedSize() }
+                            }
+                    }
+                    if native, average > 0 {
+                        RuleMark(y: .value("Average", average)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(Color(uiColor: .secondaryLabel))
+                            .annotation(position: .top, alignment: .leading, spacing: 2) { Text("Average").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary) }
+                    }
                 }.chartXAxis(.hidden).chartYAxis {
                     AxisMarks(position: .trailing, values: [0, Double(peak) / 2, Double(peak)]) { mark in
                         AxisGridLine().foregroundStyle(Color.primary.opacity(0.08))

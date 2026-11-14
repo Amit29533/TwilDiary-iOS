@@ -13,11 +13,15 @@ struct NativeTile: View {
     var size: CGFloat = 30
     /// A colour chosen by the caller (the Settings rows' own tints); otherwise one for the symbol.
     var color: Color? = nil
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
-        Image(systemName: symbol).font(.system(size: size * 0.5, weight: .medium)).foregroundStyle(.white)
+        let tint = color ?? Self.color(for: symbol)
+        let shape = RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+        // As iOS 26's Settings: dark icons in dark mode (the symbol in its colour on a dark tile), colour tiles in light.
+        Image(systemName: symbol).font(.system(size: size * 0.5, weight: .medium)).foregroundStyle(colorScheme == .dark ? tint : .white)
             .symbolRenderingMode(.monochrome)
             .frame(width: size, height: size)
-            .background((color ?? Self.color(for: symbol)).gradient, in: RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
+            .background { if colorScheme == .dark { shape.fill(Color.black.opacity(0.55)) } else { shape.fill(tint.gradient) } }
             .accessibilityHidden(true)
     }
 
@@ -139,25 +143,6 @@ private struct HeroClip: Shape {
     func path(in rect: CGRect) -> Path {
         let tall = CGRect(x: rect.minX, y: rect.minY - 4000, width: rect.width, height: rect.height + 4000)
         return UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous).path(in: tall)
-    }
-}
-
-/// A slowly moving mesh of system indigo, purple, blue and teal behind a summary card (Stats),
-/// as the colour fields of Apple's newer apps. Still under Reduce Motion; 20 frames a second at most.
-struct NativeMeshGlow: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private static let colours: [Color] = [UIColor.systemIndigo, .systemPurple, .systemBlue, .systemBlue, .systemIndigo, .systemTeal, .systemPurple, .systemBlue, .systemIndigo]
-        .map { Color(uiColor: $0) }
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
-            let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
-            let x = Float(sin(time * 0.45)) * 0.14, y = Float(cos(time * 0.35)) * 0.14
-            MeshGradient(width: 3, height: 3, points: [
-                [0, 0], [0.5, 0], [1, 0],
-                [0, 0.5], [0.5 + x, 0.5 + y], [1, 0.5],
-                [0, 1], [0.5, 1], [1, 1],
-            ], colors: Self.colours)
-        }
     }
 }
 

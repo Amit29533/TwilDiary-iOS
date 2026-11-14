@@ -140,10 +140,10 @@ struct StatsMonthCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text(month.wholeYear ? "THIS YEAR" : "THIS MONTH").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : theme.accent.opacity(0.9))
+            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text(month.wholeYear ? "THIS YEAR" : "THIS MONTH").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? StatsHero.ink.opacity(0.85) : theme.accent.opacity(0.9))
             VStack(alignment: .leading, spacing: 2) {
-                Text(longDuration(month.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
-                Text("of watch time in " + (month.wholeYear ? String(DiaryDate.calendar().component(.year, from: month.start)) : month.start.formatted(.dateTime.month(.wide)))).font(.system(size: 16)).foregroundStyle(.white.opacity(0.75))
+                Text(longDuration(month.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(StatsHero.ink).lineLimit(1).minimumScaleFactor(0.6)
+                Text("of watch time in " + (month.wholeYear ? String(DiaryDate.calendar().component(.year, from: month.start)) : month.start.formatted(.dateTime.month(.wide)))).font(.system(size: 16)).foregroundStyle(StatsHero.ink.opacity(0.75))
             }
             HStack(spacing: 10) {
                 Button { router.library("all") } label: {
@@ -156,18 +156,21 @@ struct StatsMonthCard: View {
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
-                    if ThemeStore.current.native { NativeMeshGlow() } else { Color(themed: "#2a1f45") }
-                    RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
-                    LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+                    // Native: a plain card, as the Battery page's (owner's reference for Statistics).
+                    if ThemeStore.current.native { Color(uiColor: .secondarySystemBackground) } else {
+                        Color(themed: "#2a1f45")
+                        RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
+                        LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+                    }
                 }
-            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white.opacity(0.14)))
+            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(StatsHero.ink.opacity(0.14)))
             .accessibilityElement(children: .contain).accessibilityIdentifier("stats-month")
     }
     private func tile(_ label: String, _ value: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 13)).foregroundStyle(.white.opacity(0.75))
-            Text(value).font(.system(size: 20, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
-            Text(detail).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(label).font(.system(size: 13)).foregroundStyle(StatsHero.ink.opacity(0.75))
+            Text(value).font(.system(size: 20, weight: .bold)).foregroundStyle(StatsHero.ink).lineLimit(1).minimumScaleFactor(0.7)
+            Text(detail).font(.system(size: 12)).foregroundStyle(StatsHero.ink.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.8)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.14))).contentShape(Rectangle())
