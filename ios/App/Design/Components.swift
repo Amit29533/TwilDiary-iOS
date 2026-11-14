@@ -395,14 +395,16 @@ struct SearchField: View {
     /// AI looks the same everywhere: CineMind's glow colours on the AI pill and the field's ring.
     static let geminiColors = CineGlow.colours + [CineGlow.colours[0]]
     private var aiOn: Bool { ai?.wrappedValue == true }
+    /// Native: a capsule (iOS's search field); the original 12 pt corners elsewhere.
+    private var fieldRadius: CGFloat { ThemeStore.current.native ? 24 : 12 }
     var body: some View {
         HStack(spacing: 10) {
             DiaryIcon(name: "search", size: 19).foregroundStyle(Color(themed: "#a09aa9"))
             TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false; onSearch?() }.accessibilityLabel(aiOn ? "Search by description" : label)
             if let ai { aiPill(ai) }
             if !text.isEmpty { Button { text = ""; focused = true } label: { DiaryIcon(name: "x", size: 16).frame(width: 26, height: 32) }.buttonStyle(.plain).accessibilityLabel("Clear search") }
-        }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 12), field: true) }
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(focused && !aiOn ? theme.accent.opacity(0.65) : .clear))
+        }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: fieldRadius, style: .continuous), field: true) }
+            .overlay(RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).strokeBorder(focused && !aiOn ? theme.accent.opacity(0.65) : .clear))
             .overlay { if aiOn { geminiGlow.transition(.opacity) } }
             .animation(.smooth(duration: 0.3), value: aiOn)
             .onChange(of: aiOn, initial: true) { _, on in
@@ -436,8 +438,8 @@ struct SearchField: View {
     private var geminiGlow: some View {
         let gradient = AngularGradient(colors: Self.geminiColors, center: .center, angle: .degrees(spin))
         return ZStack {
-            RoundedRectangle(cornerRadius: 12).stroke(gradient, lineWidth: 6).blur(radius: 9).opacity(0.75)
-            RoundedRectangle(cornerRadius: 12).strokeBorder(gradient, lineWidth: 1.8)
+            RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).stroke(gradient, lineWidth: 6).blur(radius: 9).opacity(0.75)
+            RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).strokeBorder(gradient, lineWidth: 1.8)
         }.allowsHitTesting(false)
     }
 }

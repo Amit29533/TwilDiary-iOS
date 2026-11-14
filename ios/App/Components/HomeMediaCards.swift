@@ -115,9 +115,7 @@ struct HomeEpisodeCard: View {
                     if !typeSize.isAccessibilitySize { dateColumn }
                 }.padding(6).frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
                     .foregroundStyle(Color(themed: "#f3f0f7"))
-                    .background(Color(themed: "#111115"), in: RoundedRectangle(cornerRadius: 12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
+                    .modifier(EpisodeRowSurface())
                     .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 12))
                     .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
             }
@@ -139,6 +137,19 @@ struct HomeEpisodeCard: View {
                 if !model.isUpcoming { Text(date, format: .dateTime.year()).font(.caption2).foregroundStyle(.secondary) }
             } else { Text("Watch date\nunknown").font(.caption2).foregroundStyle(.secondary) }
         }.fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// A list row's surface: the original dark box, or in Native a plain row with an inset separator.
+private struct EpisodeRowSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.overlay(alignment: .bottom) { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 6) }
+        } else {
+            content.background(Color(themed: "#111115"), in: RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
+        }
     }
 }
 

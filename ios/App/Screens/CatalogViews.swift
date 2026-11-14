@@ -155,7 +155,16 @@ struct CatalogSearchView: View {
     }
     // MARK: Universal results (owner's design): kind chips, SHOWS & MOVIES as cards, PEOPLE
 
-    private var kindChips: some View {
+    @ViewBuilder private var kindChips: some View {
+        if ThemeStore.current.native {
+            NativeSegmentedControl(segments: Kind.allCases.map { item in
+                NativeSegment(value: item, title: item.rawValue + (ready ? count(item).map { " \($0)" } ?? "" : ""), id: "search-kind-" + item.rawValue.lowercased())
+            }, selection: $kind)
+        } else {
+            classicKindChips
+        }
+    }
+    private var classicKindChips: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(Kind.allCases, id: \.self) { item in

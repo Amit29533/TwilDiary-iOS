@@ -28,6 +28,30 @@ struct SearchLandingView: View {
     @State private var failure: String?
     @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    /// Native: a chart row as in Apple Music: the rank, the poster, name and score, a separator under it.
+    private func chartRow(index: Int, item: CatalogItem) -> some View {
+        HStack(spacing: 14) {
+            Text("\(index + 1)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 24)
+            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 48, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name).font(.system(size: 17)).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
+                HStack(spacing: 8) {
+                    if let score = item.rating, score > 0 {
+                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                            .font(.system(size: 14)).foregroundStyle(.secondary)
+                    }
+                    if CatalogTools.libraryIdentity(item, in: store.workspace) != nil {
+                        Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
+        }.padding(.vertical, 6)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 100) }
+            .contentShape(Rectangle())
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !recent.isEmpty {
@@ -53,6 +77,7 @@ struct SearchLandingView: View {
                     Text("Top 10 shows this week").font(.system(size: 22, weight: .bold)).tracking(-0.5)
                     ForEach(Array(shows.prefix(allTop ? 10 : 6).enumerated()), id: \.element.key) { index, item in
                         NavigationLink(value: item.route) {
+                            if ThemeStore.current.native { chartRow(index: index, item: item) } else {
                             HStack(spacing: 14) {
                                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 60, height: 76)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -74,6 +99,7 @@ struct SearchLandingView: View {
                                     .foregroundStyle(index < 3 ? theme.accent : Color.white.opacity(0.3))
                             }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
                                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08))).contentShape(Rectangle())
+                            }
                         }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
                     }
                     if !allTop && shows.count > 6 {
