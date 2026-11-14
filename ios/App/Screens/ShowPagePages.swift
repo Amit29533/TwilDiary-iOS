@@ -245,8 +245,8 @@ struct ShowFilterChip: View {
         Button(action: action) {
             Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#e6e1ee"))
                 .padding(.horizontal, 16).frame(height: 40)
-                .background(on ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
-                .overlay { if !on { Capsule().strokeBorder(.white.opacity(0.1)) } }
+                .background(on ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.primary.opacity(0.07)), in: Capsule())
+                .overlay { if !on { Capsule().strokeBorder(Color.primary.opacity(0.1)) } }
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
 }
@@ -376,15 +376,15 @@ struct EpisodesPage: View {
                 HStack(spacing: 12) {
                     EpisodeTick(watched: allWatched)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Text(allWatched ? "All watched" : ([left.count.formatted() + " to watch"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
                 }.padding(.horizontal, 8).padding(.vertical, 8).contentShape(Rectangle())
-                    .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07)))
+                    .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07)))
             }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
             if open { list(episodes, title: title, watched: watched, dates: dates, next: nextIndex.map { store.episodesForSeason(titleID, season: season)[$0].id }) }
         }
@@ -600,15 +600,15 @@ struct PreviewEpisodesPage: View {
             } label: {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Text(([episodes.count.formatted() + " episodes"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
                 }.padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
-                    .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07)))
+                    .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07)))
             }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
             if open { list(episodes) }
         }
@@ -672,7 +672,7 @@ struct CastCreditsPage: View {
                 HStack(spacing: 4) {
                     segment(anime ? "Voice cast" : "Cast", on: !crewTab) { crewTab = false }
                     segment("Crew", on: crewTab) { crewTab = true }
-                }.padding(4).background(.white.opacity(0.06), in: Capsule())
+                }.padding(4).background(Color.primary.opacity(0.06), in: Capsule())
                 if crewTab { crewList } else if anime && !characters.isEmpty { characterList } else { castList }
                 if let failure { RetryNotice(message: failure) { Task { await load() } } }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
@@ -695,7 +695,7 @@ struct CastCreditsPage: View {
                         HStack(spacing: 12) {
                             Artwork(path: character.image, title: character.name).frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                                 if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
                                 if let actor = character.voiceActor {
                                     Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
@@ -710,8 +710,8 @@ struct CastCreditsPage: View {
                             Artwork(path: actor.image, title: actor.name).frame(width: 64, height: 78).clipShape(RoundedRectangle(cornerRadius: 12))
                         }.buttonStyle(.springPress).accessibilityLabel(actor.name)
                     }
-                }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07)))
+                }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07)))
             }
         }
     }
@@ -745,13 +745,13 @@ struct CastCreditsPage: View {
                 Artwork(path: image, title: name).frame(width: 54, height: 54).clipShape(Circle())
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                 Text(detail).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
-        }.padding(12).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07))).contentShape(Rectangle())
+        }.padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07))).contentShape(Rectangle())
     }
     private func load() async {
         failure = nil
@@ -870,7 +870,7 @@ struct TMDbCollectionPage: View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false).aspectRatio(2 / 3, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
             Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 9)
             Text(item.year.map(String.init) ?? "Movie").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
         }
@@ -909,13 +909,13 @@ struct CompaniesPage: View {
                             HStack(spacing: 14) {
                                 CompanyLogo(company: company).frame(width: 108, height: 66)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(company.name).font(.system(size: 16.5, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                    Text(company.name).font(.system(size: 16.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                                     Text(CompanyRoutes.label(company, animated: animated)).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                                 DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
-                            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.07))).contentShape(Rectangle())
+                            }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07))).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("companies-page-\(company.key)")
                     }
                 }

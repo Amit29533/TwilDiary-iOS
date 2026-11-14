@@ -106,7 +106,7 @@ struct AiringCalendarView: View {
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("calendar-tab-" + item.id)
             }
             Spacer()
-        }.overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
+        }.overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
     }
 
     private func optionsMenu(upcoming: UpcomingSchedule, aired: UpcomingSchedule) -> some View {
@@ -199,7 +199,7 @@ struct AiringCalendarView: View {
                 .background {
                     RoundedRectangle(cornerRadius: 12).fill(isToday
                         ? AnyShapeStyle(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom))
-                        : count > 0 ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(past ? 0.02 : 0.05)))
+                        : count > 0 ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.primary.opacity(past ? 0.02 : 0.05)))
                 }
                 .overlay { if selected { RoundedRectangle(cornerRadius: 12).strokeBorder(theme.accent, lineWidth: 1.5) } }
                 .contentShape(RoundedRectangle(cornerRadius: 12))
@@ -359,7 +359,7 @@ struct AiringCalendarView: View {
                 Text(group.title.categoryName + " · " + span).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
                 if progress.aired > 0 {
                     GeometryReader { proxy in
-                        Capsule().fill(Color.white.opacity(0.1)).overlay(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.1)).overlay(alignment: .leading) {
                             Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .leading, endPoint: .trailing))
                                 .frame(width: proxy.size.width * CGFloat(progress.watched) / CGFloat(progress.aired))
                         }
@@ -465,11 +465,11 @@ struct AiringCalendarView: View {
     static func badge(_ text: String, strong: Bool = false) -> some View {
         Text(text).font(.system(size: 12, weight: .bold)).foregroundStyle(strong ? HomeStyle.chipText : HomeStyle.primary).lineLimit(1)
             .padding(.horizontal, 8).frame(height: 22)
-            .background(strong ? HomeStyle.chip : Color.white.opacity(0.08), in: Capsule())
+            .background(strong ? HomeStyle.chip : Color.primary.opacity(0.08), in: Capsule())
     }
     static func poster(_ path: String?, name: String) -> some View {
         Artwork(path: path, title: name, initialsOnly: false).frame(width: posterWidth, height: posterWidth * 1.4)
-            .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+            .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
     }
     /// "Today", "Tomorrow", "In 6d", "2d ago".
     static func away(_ days: Int) -> String { days == 0 ? "Today" : days == 1 ? "Tomorrow" : days < 0 ? "\(-days)d ago" : "In \(days)d" }

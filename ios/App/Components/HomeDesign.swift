@@ -18,6 +18,9 @@ enum HomeStyle {
     static var dateChipText: Color { ThemeStore.current.dateChipText }
     static var shortcut: Color { ThemeStore.current.shortcut }
     static var shortcutBorder: Color { ThemeStore.current.shortcutBorder }
+    /// Strong text that was drawn white on the dark themes: the system label in Native (dark on light).
+    /// Text over artwork stays `.white`.
+    static var ink: Color { ThemeStore.current.native ? Color(uiColor: .label) : .white }
     static let match = Color(webHex: "#7be495")
     static let hairline: CGFloat = 0.67
 }
@@ -49,6 +52,9 @@ struct HomeRoundIcon: View {
     var system: String = "chevron.right"
     var selected = false
     var body: some View {
+        if ThemeStore.current.native { NativeRoundGlass(system: system, selected: selected) } else { classic }
+    }
+    private var classic: some View {
         Image(systemName: system).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
             .frame(width: 36, height: 36).background(selected ? HomeStyle.chip : HomeStyle.round, in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
@@ -147,7 +153,7 @@ struct HomePoster<Badge: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: artwork, title: name, initialsOnly: initialsOnly).frame(width: 128, height: 192)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                 .multilineTextAlignment(.leading).padding(.top, 9)

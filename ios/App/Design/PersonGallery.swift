@@ -180,7 +180,7 @@ struct PersonPhotoViewer: View {
     private func circle(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
             .frame(width: 44, height: 44).background(Color(themed: "#1c1a1e").opacity(0.85), in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 0.67)).contentShape(Circle())
+            .overlay(Circle().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.67)).contentShape(Circle())
     }
     /// Photos runs the change on its own queue: written in this (main-actor) view, the block was
     /// main-actor isolated and Swift 6 stopped the app when Photos ran it there (the crash on

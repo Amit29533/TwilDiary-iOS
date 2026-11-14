@@ -106,7 +106,7 @@ struct LanguageRegionView: View {
         HStack(spacing: 12) {
             Image(systemName: icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(width: 38, height: 38).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                 if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 8)

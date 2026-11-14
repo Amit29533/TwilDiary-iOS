@@ -59,9 +59,17 @@ import TwilDiaryCore
         // card link into a glass capsule (glass on the system bars' own glass).
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
         WindowGroup {
-            RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
+            RootView().environment(store).environment(router).preferredColorScheme(theme.colorScheme).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
                 // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
-                .onChange(of: theme, initial: true) { _, chosen in ThemeStore.shared.apply(chosen) }
+                .onChange(of: theme, initial: true) { _, chosen in
+                    ThemeStore.shared.apply(chosen)
+                    // SwiftUI doesn't give a window back to the system's appearance when the scheme
+                    // asked for goes from dark to none, so the windows are told directly.
+                    let style: UIUserInterfaceStyle = chosen.colorScheme == nil ? .unspecified : .dark
+                    for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                        for window in scene.windows where window.overrideUserInterfaceStyle != style { window.overrideUserInterfaceStyle = style }
+                    }
+                }
         }
     }
 }
@@ -211,7 +219,7 @@ struct RootView: View {
                                 .frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.bottom, 8)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(ThemeStore.current.canvas.ignoresSafeArea())
             } else if !store.hasLoadedWorkspace {
                 VStack(spacing: 22) {
                     BrandMark().fill(.tint).frame(width: 48, height: 48)
@@ -222,14 +230,14 @@ struct RootView: View {
                         Button("Retry") { Task { await store.refresh() } }.buttonStyle(.diaryPrimary).controlSize(.large)
                         Button("Sign out") { store.signOut() }.foregroundStyle(.secondary)
                     }
-                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(ThemeStore.current.canvas)
             } else {
                 // Premiere marks the chosen tab in white on the glass bar, as streaming apps do; red stays for content.
-                NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : UIColor(theme.accent), syncing: syncing,
+                NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme == .native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
                                pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }) { tab in
-                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
+                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme)
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
                     // The tab controller fills the screen and hands pages the real insets: heroes
@@ -237,7 +245,7 @@ struct RootView: View {
                     // the bottom edge instead of stopping at a black home-indicator band.
                     // Container only: ignoring the keyboard region let the keyboard cover the tab bar.
                     .ignoresSafeArea(.container)
-                    .background(.black)
+                    .background(ThemeStore.current.canvas)
                     .overlay(alignment: .bottom) { RootNoticeBanner() }
                     // A check-in running: its banner above the tab bar (time left, Cancel).
                     .overlay(alignment: .bottom) { CheckInBanner() }

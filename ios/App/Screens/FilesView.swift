@@ -41,7 +41,7 @@ struct FilesView: View {
                     Text(disk.folders.counted("mapped folder", "mapped folders") + " · " + disk.titleCount.counted("title", "titles")).font(.system(size: 12)).foregroundStyle(.secondary)
                     HStack(spacing: 5) { Circle().fill(disk.present > 0 ? Color.mint : .secondary).frame(width: 5, height: 5); Text(disk.evidence).font(.system(size: 12)).foregroundStyle(disk.present > 0 ? Color.mint : .secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(20).diarySectionBackground(radius: 16, fill: selected == disk.key ? theme.accent.opacity(0.12) : Color(themed: "#111115"), stroke: selected == disk.key ? theme.accent.opacity(0.6) : .white.opacity(0.13), emphasized: selected == disk.key)
+            }.padding(20).diarySectionBackground(radius: 16, fill: selected == disk.key ? theme.accent.opacity(0.12) : Color(themed: "#111115"), stroke: selected == disk.key ? theme.accent.opacity(0.6) : Color.primary.opacity(0.13), emphasized: selected == disk.key)
         }.buttonStyle(.plain).accessibilityAddTraits(selected == disk.key ? .isSelected : [])
     }
     private func folderRow(_ location: FileLocation) -> some View {

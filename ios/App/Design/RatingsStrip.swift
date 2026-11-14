@@ -131,7 +131,7 @@ struct RatingSourceMark: View {
                 case "metacritic": BrandLogo(service: .metacritic, size: size)
                 default:
                     Text(String(source.prefix(2)).uppercased()).font(.system(size: size * 0.38, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: size, height: size).background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: size * 0.22))
+                        .frame(width: size, height: size).background(Color.primary.opacity(0.15), in: RoundedRectangle(cornerRadius: size * 0.22))
                 }
             }.frame(width: proxy.size.width, height: proxy.size.height)
         }.accessibilityHidden(true)

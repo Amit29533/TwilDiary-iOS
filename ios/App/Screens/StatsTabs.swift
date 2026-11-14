@@ -18,7 +18,7 @@ struct StatsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 14) {
             if title != nil || subtitle != nil {
                 VStack(alignment: .leading, spacing: 3) {
-                    if let title { Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(.white) }
+                    if let title { Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink) }
                     if let subtitle { Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary) }
                 }
             }
@@ -47,7 +47,7 @@ struct StatsJourneyCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(theme.accent.opacity(0.9))
+            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : theme.accent.opacity(0.9))
             VStack(alignment: .leading, spacing: 2) {
                 Text(longDuration(insights.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
                 Text("total watch time").font(.system(size: 16)).foregroundStyle(.white.opacity(0.75))
@@ -57,7 +57,7 @@ struct StatsJourneyCard: View {
             }
             // The dates bar only means something once there are watches.
             if coverage.total > 0 {
-                Capsule().fill(.white.opacity(0.12)).frame(height: 7)
+                Capsule().fill(Color.white.opacity(0.12)).frame(height: 7)
                     .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(coverage.percent) / 100) } }
                     .accessibilityLabel("Watches with dates").accessibilityValue("\(coverage.percent)%")
                 HStack {
@@ -78,7 +78,7 @@ struct StatsJourneyCard: View {
                         Text(coverage.unknown.counted("undated watch", "undated watches")).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
                         Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
                     }.foregroundStyle(.white).padding(.horizontal, 14).frame(height: 44)
-                        .background(.white.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.14))).contentShape(Capsule())
+                        .background(Color.white.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(Color.white.opacity(0.14))).contentShape(Capsule())
                 }.buttonStyle(.springPress).accessibilityLabel("Review dates").accessibilityIdentifier("stats-review-dates")
             }
             if coverage.future > 0 {
@@ -88,11 +88,11 @@ struct StatsJourneyCard: View {
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
-                    Color(themed: "#2a1f45")
+                    ThemeStore.current.native ? Color(uiColor: .systemIndigo) : Color(themed: "#2a1f45")
                     RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
                     LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
                 }
-            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(.white.opacity(0.14)))
+            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.primary.opacity(0.14)))
             .accessibilityElement(children: .contain).accessibilityIdentifier("stats-journey")
     }
     private func tile(_ value: Int, _ label: String) -> some View {
@@ -100,8 +100,8 @@ struct StatsJourneyCard: View {
             Text(value.formatted()).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.14)))
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.14)))
             .accessibilityElement(children: .combine)
     }
 }
@@ -120,7 +120,7 @@ struct StatsPeriodTiles: View {
     private func tile(_ label: String, _ minutes: Int, _ plays: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
-            Text(longDuration(minutes)).font(.system(size: 24, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
+            Text(longDuration(minutes)).font(.system(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.7)
             Text(plays.counted("play", "plays")).font(.system(size: 13)).foregroundStyle(.secondary)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
@@ -161,7 +161,7 @@ struct StatsOverTimeCard: View {
                         .lineStyle(StrokeStyle(lineWidth: 2.5)).foregroundStyle(theme.accent)
                     if item.year == peak?.year || item.year == years.last?.year {
                         PointMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).symbolSize(60).foregroundStyle(theme.accent)
-                            .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.system(size: 12, weight: .bold)).foregroundStyle(.white) }
+                            .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.ink) }
                     }
                 }.chartYAxis(.hidden)
                     // Quantitative years start the axis at 0 by default, which squeezed every year into the
@@ -189,7 +189,7 @@ struct StatsSplitCard: View {
                     Circle().stroke(Color(themed: "#f2b45a"), lineWidth: 22)
                     Circle().trim(from: 0, to: showShare).stroke(theme.accent, style: StrokeStyle(lineWidth: 22, lineCap: .butt)).rotationEffect(.degrees(-90))
                     VStack(spacing: 2) {
-                        Text("\(Int((max(showShare, 1 - showShare) * 100).rounded()))%").font(.system(size: 34, weight: .bold)).foregroundStyle(.white)
+                        Text("\(Int((max(showShare, 1 - showShare) * 100).rounded()))%").font(.system(size: 34, weight: .bold)).foregroundStyle(HomeStyle.ink)
                         Text(showShare >= 0.5 ? "Shows" : "Movies").font(.system(size: 15)).foregroundStyle(.secondary)
                     }
                 }.frame(width: 170, height: 170).frame(maxWidth: .infinity).padding(.vertical, 6).accessibilityHidden(true)
@@ -201,10 +201,10 @@ struct StatsSplitCard: View {
     private func row(_ label: String, _ color: Color, _ share: Double, _ minutes: Int) -> some View {
         HStack(spacing: 10) {
             Circle().fill(color).frame(width: 10, height: 10)
-            Text(label).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+            Text(label).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
             Spacer()
             Text("\(Int((share * 100).rounded()))% · \(longDuration(minutes))").font(.system(size: 14)).foregroundStyle(.secondary)
-        }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14)).accessibilityElement(children: .combine)
+        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14)).accessibilityElement(children: .combine)
     }
 }
 
@@ -218,7 +218,7 @@ struct StatsWhenCard: View {
         if insights.hours.contains(where: { $0 > 0 }) {
             StatsCard(title: "When you watch") {
                 HStack {
-                    Text("Time of day").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    Text("Time of day").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
                     if let hour = insights.peakHour { Text("Peaks around " + hourLabel(hour)).font(.system(size: 14)).foregroundStyle(theme.accent) }
                 }
@@ -230,7 +230,7 @@ struct StatsWhenCard: View {
                     .chartXAxis { AxisMarks(values: [0, 3, 6, 9, 12, 15, 18, 21]) { value in AxisValueLabel { Text(String(format: "%02d", value.as(Int.self) ?? 0)).font(.system(size: 11)) } } }
                     .frame(height: 130).accessibilityLabel("Plays by hour of day")
                 HStack {
-                    Text("Day of week").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    Text("Day of week").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
                     if let day = insights.peakWeekday { Text(Self.days[day] + "s lead").font(.system(size: 14)).foregroundStyle(theme.accent) }
                 }.padding(.top, 6)
@@ -271,7 +271,7 @@ struct StatsHallOfFameCard: View {
                             HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
                         }.frame(maxWidth: .infinity)
                         moment(latest)
-                    }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                    }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
                         .accessibilityElement(children: .combine)
                 }
             }
@@ -282,11 +282,11 @@ struct StatsHallOfFameCard: View {
             DiaryIcon(name: icon, size: 17).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
-                if let detail { Text(detail).font(.system(size: 17, weight: .bold)).foregroundStyle(.white) }
+                if let detail { Text(detail).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink) }
             }
             Spacer()
             Text(value).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
+        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsInsights.Moment) -> some View {
         NavigationLink(value: value.title.id) {
@@ -317,7 +317,7 @@ struct StatsMarathonsCard: View {
                         HStack(spacing: 12) {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 46, height: 64).clipShape(RoundedRectangle(cornerRadius: 9))
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(item.title.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+                                Text(item.title.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2)
                                 Text(item.day.formatted(.dateTime.day().month(.abbreviated).year())).font(.system(size: 13)).foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -325,7 +325,7 @@ struct StatsMarathonsCard: View {
                                 Text("\(item.episodes)").font(.system(size: 24, weight: .bold)).foregroundStyle(theme.accent)
                                 Text("episodes").font(.system(size: 12)).foregroundStyle(.secondary)
                             }
-                        }.padding(10).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle())
+                        }.padding(10).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityElement(children: .combine)
                 }
             }
@@ -348,7 +348,7 @@ struct StatsPosterRow: View {
     @Binding var shows: Bool
     var body: some View {
         StatsCard {
-            HStack { Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(.white); Spacer(); KindSwitch(shows: $shows) }
+            HStack { Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink); Spacer(); KindSwitch(shows: $shows) }
             if items.isEmpty { Text("Nothing here yet.").font(.subheadline).foregroundStyle(.secondary) }
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
@@ -399,7 +399,7 @@ struct StatsRatingsCard: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
             Text(value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -456,10 +456,10 @@ struct StatsGlanceCard: View {
                     if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer()
-                Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                 if link { DiaryIcon(name: "chevron-right", size: 12).foregroundStyle(.secondary) }
             }.padding(.vertical, 12).contentShape(Rectangle())
-            if !last { Divider().overlay(.white.opacity(0.07)) }
+            if !last { Divider().overlay(Color.primary.opacity(0.07)) }
         }.accessibilityElement(children: .combine)
     }
 }

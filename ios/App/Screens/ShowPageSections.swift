@@ -291,8 +291,8 @@ struct RatingCircles: View {
             if showsMine {
             Button(action: onRate) {
                 ZStack {
-                    Circle().fill(mine.map { Self.color($0).opacity(0.22) } ?? Color.white.opacity(0.07))
-                    Circle().strokeBorder(mine.map { Self.color($0).opacity(0.55) } ?? Color.white.opacity(0.18), lineWidth: 1.5)
+                    Circle().fill(mine.map { Self.color($0).opacity(0.22) } ?? Color.primary.opacity(0.07))
+                    Circle().strokeBorder(mine.map { Self.color($0).opacity(0.55) } ?? Color.primary.opacity(0.18), lineWidth: 1.5)
                     if let mine { Text(mine.formatted(.number.precision(.fractionLength(0...1)))).font(.system(size: 17, weight: .bold)).foregroundStyle(Self.color(mine)) }
                     else { Image(systemName: "star").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary) }
                 }.frame(width: 50, height: 50)
@@ -303,7 +303,7 @@ struct RatingCircles: View {
             // so the row never changes shape.
             Button { onCommunity?() } label: {
                 ZStack {
-                    Circle().stroke(.white.opacity(0.1), lineWidth: 4)
+                    Circle().stroke(Color.primary.opacity(0.1), lineWidth: 4)
                     if let community {
                         Circle().trim(from: 0, to: min(1, max(0, community / 10))).stroke(Self.color(community), style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .rotationEffect(.degrees(-90))
@@ -396,7 +396,7 @@ struct RatingTrendCard: View {
             if let chosen, let summary = EpisodeRatingSummary(chosen.points), summary.points.count >= 2 {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 8) {
-                        Text("Rating trend").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                        Text("Rating trend").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
                             .lineLimit(1).truncationMode(.tail).layoutPriority(1)
                         Spacer(minLength: 8)
                         // Whose ratings: the service's own logo; with both, tap one to switch.
@@ -406,8 +406,8 @@ struct RatingTrendCard: View {
                                 BrandLogo(service: item.logo, size: 22)
                                     .opacity(on ? 1 : 0.45)
                                     .frame(width: 44, height: 40)
-                                    .background(on ? theme.accent.opacity(0.22) : Color.white.opacity(0.05), in: Capsule())
-                                    .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.6) : .white.opacity(0.08), lineWidth: 1))
+                                    .background(on ? theme.accent.opacity(0.22) : Color.primary.opacity(0.05), in: Capsule())
+                                    .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1))
                             }.buttonStyle(.plain).disabled(sources.count < 2)
                                 .accessibilityLabel(item.name).accessibilityAddTraits(on ? .isSelected : [])
                         }
@@ -423,8 +423,8 @@ struct RatingTrendCard: View {
                             stat("Lowest", summary.lowest.score, "Episode \(summary.lowest.episode)")
                         }
                     }
-                }.padding(18).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 24))
-                    .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.08)))
+                }.padding(18).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 24))
+                    .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.08)))
                     .accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-trend")
             } else {
                 // A real view keeps the task alive; on an empty Group it never ran.
@@ -452,7 +452,7 @@ struct RatingTrendCard: View {
         .chartYScale(domain: summary.range)
         .chartXScale(domain: (summary.points.first?.episode ?? 1)...max(last, (summary.points.first?.episode ?? 1) + 1))
         .chartXAxis { AxisMarks(values: ticks) { value in AxisValueLabel { Text("E\(value.as(Int.self) ?? 0)").font(.system(size: 11)).foregroundStyle(value.as(Int.self) == current ? theme.accent : .secondary) } } }
-        .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { _ in AxisGridLine().foregroundStyle(.white.opacity(0.07)); AxisValueLabel().foregroundStyle(.secondary) } }
+        .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { _ in AxisGridLine().foregroundStyle(Color.primary.opacity(0.07)); AxisValueLabel().foregroundStyle(.secondary) } }
         .accessibilityLabel("Episode ratings from episode \(summary.points.first?.episode ?? 1) to \(last)")
     }
     private func stat(_ label: String, _ value: Double, _ detail: String) -> some View {
@@ -461,7 +461,7 @@ struct RatingTrendCard: View {
             Text(value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 20, weight: .bold)).foregroundStyle(RatingCircles.color(value))
             Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
             .accessibilityElement(children: .combine)
     }
 }
@@ -483,7 +483,7 @@ struct CompanyLogo: View {
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
     }
     static func tint(_ name: String) -> Color {
         let values = ["#6ee07a", "#ff9b4a", "#ff6b7d", "#5cc8ff", "#ffd54a", "#b48cff"]
@@ -520,7 +520,7 @@ struct CompaniesSection: View {
                             NavigationLink(value: CompanyRoutes.explore(company, kind: route.kind)) {
                                 VStack(spacing: 6) {
                                     CompanyLogo(company: company).frame(width: 170, height: 96)
-                                    Text(company.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                    Text(company.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                                     Text(CompanyRoutes.label(company, animated: animated)).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
                                 }.frame(width: 170)
                             }.buttonStyle(.springPress).accessibilityIdentifier("title-company-\(company.key)")
@@ -553,11 +553,11 @@ struct ListCollageCard: View {
                     }
                 }
             }.frame(width: width - 28, height: (width - 28) * 0.62 * 1.5, alignment: .leading).clipped()
-            Text(list.name).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
+            Text(list.name).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).multilineTextAlignment(.leading)
             Text(list.itemCount.counted("item", "items")).font(.system(size: 13)).foregroundStyle(.secondary)
         }.padding(14).frame(width: width, alignment: .topLeading)
-            .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.08)))
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.08)))
     }
 }
 

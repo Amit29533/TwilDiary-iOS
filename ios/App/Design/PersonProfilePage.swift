@@ -81,7 +81,7 @@ struct PersonProfilePage<Content: View>: View {
                         NavigationLink(value: PersonPhotosRoute(name: name, photos: photos)) {
                             HStack(spacing: 6) { Image(systemName: "square.on.square").font(.system(size: 13, weight: .semibold)); Text("Photos").font(.system(size: 14, weight: .semibold)) }
                                 .foregroundStyle(.white).padding(.horizontal, 12).frame(height: 36).background(.black.opacity(0.6), in: Capsule())
-                                .overlay(Capsule().strokeBorder(.white.opacity(0.15)))
+                                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.15)))
                         }.buttonStyle(.springPress).padding(10).accessibilityIdentifier(identifier + "-photos")
                     }
                 }
@@ -104,7 +104,7 @@ struct PersonProfilePage<Content: View>: View {
                         .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 }
                 ForEach(Array(fit.beside.map { heroFacts[$0] }.enumerated()), id: \.element.id) { index, fact in
-                    if index > 0 { Rectangle().fill(.white.opacity(0.1)).frame(height: HomeStyle.hairline) }
+                    if index > 0 { Rectangle().fill(Color.primary.opacity(0.1)).frame(height: HomeStyle.hairline) }
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) { Image(systemName: fact.icon).font(.system(size: 12)); Text(fact.label) }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
                         Text(fact.value).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
@@ -251,7 +251,7 @@ struct ProfileWebsiteButtons: View {
                         }.frame(width: 20, height: 20).foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .background(Color(themed: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
                     }.buttonStyle(.plain).accessibilityLabel(link.label)
                         .accessibilityHint(ProfileDeepLink.parse(link.url) == nil ? "Opens website" : "Opens inside TwilDiary").accessibilityIdentifier("profile-site-" + link.id)
                 }

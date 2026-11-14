@@ -3,12 +3,24 @@ import UIKit
 import TwilDiaryCore
 
 enum DiaryTheme: String, CaseIterable, Identifiable {
-    case twilight, ocean, jade, rose, amber, premiere
+    case twilight, ocean, jade, rose, amber, premiere, native
     var id: Self { self }
     var name: String { rawValue.capitalized }
-    var field: Color { self == .premiere ? Color(webHex: "#121212") : Color(webHex: "#111115") }
+    var field: Color {
+        switch self {
+        case .premiere: Color(webHex: "#121212")
+        case .native: Color(uiColor: .secondarySystemGroupedBackground)
+        default: Color(webHex: "#111115")
+        }
+    }
     /// Everything else the theme colours (see `ThemePalette`).
-    var palette: ThemePalette { self == .premiere ? .premiere : .classic }
+    var palette: ThemePalette {
+        switch self {
+        case .premiere: .premiere
+        case .native: .native
+        default: .classic
+        }
+    }
     var detail: String {
         switch self {
         case .twilight: "The original violet"
@@ -17,10 +29,11 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .rose: "Soft pink after dark"
         case .amber: "Warm cinema gold"
         case .premiere: "Streaming night: black, white and red"
+        case .native: "iOS itself: light or dark, Liquid Glass"
         }
     }
     var ink: Color {
-        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere: Color(webHex: "#ffffff") }
+        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere, .native: Color(webHex: "#ffffff") }
     }
     var accent: Color {
         switch self {
@@ -30,8 +43,11 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .rose: Color(webHex: "#f4a2c6")
         case .amber: Color(webHex: "#edbe73")
         case .premiere: Color(webHex: "#e50914")
+        case .native: Color(uiColor: .systemBlue)
         }
     }
+    /// The colour scheme the app asks for: always dark, except Native, which follows the iPhone.
+    var colorScheme: ColorScheme? { palette.followsSystemAppearance ? nil : .dark }
 }
 
 extension Color {
@@ -69,7 +85,7 @@ struct RoundTool: View {
     var size: CGFloat = 44
     var body: some View {
         DiaryIcon(name: icon, size: size * 0.43).foregroundStyle(tint).frame(width: size, height: size)
-            .background(.white.opacity(0.08), in: Circle()).frame(width: max(44, size), height: max(44, size)).contentShape(Circle())
+            .background(Color.primary.opacity(0.08), in: Circle()).frame(width: max(44, size), height: max(44, size)).contentShape(Circle())
     }
 }
 
@@ -97,6 +113,9 @@ extension View {
 /// The round › that opens a section's full page: the same button everywhere in the app.
 struct RoundChevron: View {
     var body: some View {
+        if ThemeStore.current.native { NativeRoundGlass(size: 34) } else { classic }
+    }
+    private var classic: some View {
         Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
             .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
             .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -140,12 +159,26 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         var body: some View {
+            if ThemeStore.current.native { native } else { classic }
+        }
+        /// Native: Liquid Glass. The main and watch actions are the accent glass with white text
+        /// (`.glassProminent`); the rest clear glass with accent text; destructive ones red.
+        private var native: some View {
             let destructive = configuration.role == .destructive
-            configuration.label.font(.system(size: compact ? 13 : 15, weight: .semibold)).lineLimit(1)
+            return configuration.label.font(.system(size: compact ? 14 : 16, weight: .semibold)).lineLimit(1)
+                .padding(.horizontal, compact ? 12 : 18).frame(minHeight: compact ? 34 : 44)
+                .nativeGlassCapsule(prominent: (prominent || bright) && !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
+                .opacity(enabled ? 1 : 0.45)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.35), value: configuration.isPressed)
+        }
+        private var classic: some View {
+            let destructive = configuration.role == .destructive
+            return configuration.label.font(.system(size: compact ? 13 : 15, weight: .semibold)).lineLimit(1)
                 .padding(.horizontal, compact ? 12 : 16).frame(minHeight: compact ? 36 : 44)
                 .foregroundStyle(bright ? WatchStyle.ink : prominent ? HomeStyle.chipText : destructive ? Color(themed: "#ff8a80") : theme.accent)
-                .background(bright ? AnyShapeStyle(WatchStyle.fill) : prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.white.opacity(0.07)), in: Capsule())
-                .overlay { if !prominent { Capsule().strokeBorder(.white.opacity(0.12)) } }
+                .background(bright ? AnyShapeStyle(WatchStyle.fill) : prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.primary.opacity(0.07)), in: Capsule())
+                .overlay { if !prominent { Capsule().strokeBorder(Color.primary.opacity(0.12)) } }
                 .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
                 .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
@@ -167,11 +200,14 @@ private struct FilterPillSurface: ViewModifier {
     let active: Bool
     let accent: Color
     func body(content: Content) -> some View {
-        if !active, ThemeStore.current.usesGlass {
+        if ThemeStore.current.native {
+            // Native: clear glass, or the accent glass when a filter is on.
+            content.glassEffect(active ? .regular.tint(accent.opacity(0.85)).interactive() : .regular.interactive(), in: Capsule())
+        } else if !active, ThemeStore.current.usesGlass {
             content.glassEffect(.regular.interactive(), in: Capsule())
         } else {
-            content.background(active ? accent.opacity(0.12) : .white.opacity(0.08), in: Capsule())
-                .overlay(Capsule().strokeBorder(active ? accent.opacity(0.5) : .white.opacity(0.14)))
+            content.background(active ? accent.opacity(0.12) : Color.primary.opacity(0.08), in: Capsule())
+                .overlay(Capsule().strokeBorder(active ? accent.opacity(0.5) : Color.primary.opacity(0.14)))
         }
     }
 }
@@ -186,7 +222,7 @@ struct FilterPill: View {
             if let icon { DiaryIcon(name: icon, size: 16) }
             Text(label).font(.system(size: 15, weight: .medium)).lineLimit(1)
             DiaryIcon(name: "chevron-down", size: 13)
-        }.foregroundStyle(active ? theme.accent : Color(themed: "#f3f0f7"))
+        }.foregroundStyle(active ? (ThemeStore.current.native ? .white : theme.accent) : Color(themed: "#f3f0f7"))
             .padding(.horizontal, 14).frame(height: 38)
             .modifier(FilterPillSurface(active: active, accent: theme.accent))
             .frame(minHeight: 44).contentShape(Capsule())
@@ -297,7 +333,7 @@ struct PageHeader: View {
                 // See-through glass, as the other header buttons (owner's choice over a dark face);
                 // held to the dark look so it doesn't flip between light and dark over bright artwork.
                 .glassEffect(.regular.interactive(), in: Circle())
-                .environment(\.colorScheme, .dark)
+                .environment(\.colorScheme, ThemeStore.current.native ? nil : .dark)
                 // The tap shape sits outside the glass; otherwise the interactive glass takes the tap.
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain)
@@ -312,7 +348,11 @@ struct PageHeader: View {
         if router.randomPick == nil { router.presentRandomPick() }
     }
     @ViewBuilder private var title: some View {
-        if name == "TwilDiary" {
+        if ThemeStore.current.native {
+            // Native: a large title, 34 pt bold in the label colour, as every Apple app's root page.
+            Text(name).font(.system(size: name == "TwilDiary" ? 30 : 34, weight: .bold)).foregroundStyle(Color(uiColor: .label))
+                .lineLimit(1).minimumScaleFactor(0.7).accessibilityIdentifier(name == "TwilDiary" ? "" : "page-title")
+        } else if name == "TwilDiary" {
             // Design: one 24 pt bold word with a left-to-right #f5f0ff → #b79cff gradient.
             Text("TwilDiary").font(.system(size: 24, weight: .bold)).tracking(-0.48)
                 .foregroundStyle(LinearGradient(colors: [Color(themed: "#f5f0ff"), Color(themed: "#b79cff")], startPoint: .leading, endPoint: .trailing))
@@ -381,7 +421,7 @@ struct SearchField: View {
                 .padding(.horizontal, 9).frame(height: 24)
                 .background {
                     if ai.wrappedValue { Capsule().fill(LinearGradient(colors: Array(Self.geminiColors.prefix(3)), startPoint: .leading, endPoint: .trailing)) }
-                    else { Capsule().fill(.white.opacity(0.08)).overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.75)) }
+                    else { Capsule().fill(Color.primary.opacity(0.08)).overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75)) }
                 }
                 .frame(minWidth: 36, minHeight: 36).contentShape(Rectangle())
         }.buttonStyle(.plain).sensoryFeedback(.selection, trigger: ai.wrappedValue)
@@ -591,8 +631,43 @@ struct CategoryPicker: View {
     /// lands, so rebuilding them can't hold up the pill (it used to move a beat after the tap).
     @State private var pending: LibraryCategory?
     var body: some View {
+        if ThemeStore.current.native { native } else { classic }
+    }
+    /// Native: a segmented control on Liquid Glass. The categories share one glass track and the
+    /// chosen one sits on a raised thumb that slides under the finger's choice (as iOS 26's own).
+    private var native: some View {
         let shown = pending ?? selection
-        HStack(spacing: 6) {
+        return HStack(spacing: 0) {
+            ForEach(LibraryCategory.allCases) { category in
+                let selected = shown == category
+                Button { choose(category) } label: {
+                    HStack(spacing: 5) {
+                        Text(category.rawValue)
+                        if let count = counts?[category] {
+                            Text(count.formatted()).foregroundStyle(.secondary).monospacedDigit()
+                                .contentTransition(.numericText())
+                        }
+                    }.font(.system(size: 14, weight: selected ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
+                        .lineLimit(1).padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 36)
+                        .background {
+                            if selected {
+                                Capsule().fill(ThemePalette.adaptive(dark: 0.4, light: 1))
+                                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                                    .matchedGeometryEffect(id: "category-pill", in: pill)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }.padding(3).glassEffect(.regular, in: Capsule())
+            .padding(.horizontal, 16).padding(.vertical, 4)
+            .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22), value: selection)
+            .sensoryFeedback(.selection, trigger: shown)
+            .onChange(of: selection) { _, value in if pending == value { pending = nil } }
+    }
+    private var classic: some View {
+        let shown = pending ?? selection
+        return HStack(spacing: 6) {
             ForEach(LibraryCategory.allCases) { category in
                 let selected = shown == category
                 Button { choose(category) } label: {
@@ -621,7 +696,8 @@ struct CategoryPicker: View {
     private func choose(_ category: LibraryCategory) {
         guard category != (pending ?? selection) else { return }
         if reduceMotion { selection = category; return }
-        withAnimation(.snappy(duration: 0.22)) { pending = category } completion: {
+        let glide: Animation = ThemeStore.current.native ? .spring(duration: 0.32, bounce: 0.22) : .snappy(duration: 0.22)
+        withAnimation(glide) { pending = category } completion: {
             if pending == category { selection = category }
         }
     }
@@ -653,7 +729,7 @@ private struct CardCircle: ViewModifier {
         if glass {
             content.glassEffect(tint.map { Glass.regular.tint($0).interactive() } ?? .regular.interactive(), in: Circle())
         } else {
-            content.background(Circle().fill(tint ?? Color.white.opacity(0.14)))
+            content.background(Circle().fill(tint ?? Color.primary.opacity(0.14)))
                 .overlay(Circle().strokeBorder(.white.opacity(tint == nil ? 0.18 : 0.25), lineWidth: 0.75))
         }
     }
@@ -784,7 +860,7 @@ struct ProgressCard: View {
                         .frame(width: 48, height: 48)
                         .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.32), in: Circle())
                         .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
                 }.buttonStyle(.plain)
                     .accessibilityLabel(title.queued == true ? "Remove from Queue" : "Add to Queue")
             }.padding(.top, 14)
@@ -820,7 +896,7 @@ struct ProgressCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // The name gets two lines; the episode line sits centred just above the bar.
                     Button { openTitle() } label: {
-                        Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white)
+                        Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(HomeStyle.ink)
                             .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading)
                     }.buttonStyle(.plain).padding(.trailing, 34).padding(.top, 6).accessibilityIdentifier("progress-title-" + title.id)
                     if let glanceTime { timePill(glanceTime).padding(.top, 4) }
@@ -844,7 +920,7 @@ struct ProgressCard: View {
                 Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(height: 154).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 3) {
                     // One line each, ending in … when long, so every card in a row is the same height.
-                    Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(.white).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading) }
+                    Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(HomeStyle.ink).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading) }
                         .buttonStyle(.plain).padding(.trailing, 34).padding(.top, 4).accessibilityIdentifier("progress-title-" + title.id)
                     if let glanceTime { timePill(glanceTime) } else { Color.clear.frame(height: 22) }
                     Spacer(minLength: 0)
@@ -943,7 +1019,7 @@ struct ProgressCard: View {
                 .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .center)
                 .modifier(TextShadow(on: shadow))
             GeometryReader { proxy in
-                Capsule().fill(.white.opacity(0.14))
+                Capsule().fill(Color.primary.opacity(0.14))
                     .overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: max(fraction > 0 ? 6 : 0, proxy.size.width * fraction)) }
             }.frame(height: 5)
         }.accessibilityElement(children: .ignore).accessibilityLabel(progressLine + ", \(Int((fraction * 100).rounded())) percent watched")

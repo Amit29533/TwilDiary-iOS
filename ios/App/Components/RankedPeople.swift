@@ -120,7 +120,7 @@ struct MostWatchedShelf: View {
                 RankedPersonLink(person: person, identifier: ranking.identifier) {
                     VStack(spacing: 6) {
                         Artwork(path: person.row.image, title: person.row.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
-                            .overlay(Circle().strokeBorder(.white.opacity(0.1)))
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(0.1)))
                         Text(person.row.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             .multilineTextAlignment(.center).lineLimit(2).truncationMode(.tail)
                         Text(person.row.count).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
@@ -146,7 +146,7 @@ struct MostWatchedShelf: View {
                             Color.clear.aspectRatio(0.83, contentMode: .fit)
                                 .overlay { Artwork(path: person.row.image, title: person.row.name, alignment: .top) }
                                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08)))
                                 .overlay(alignment: .topLeading) {
                                     Text("#\(index + 1)").font(.system(size: 12, weight: .bold)).monospacedDigit()
                                         .foregroundStyle(ThemeStore.current.accentInk).padding(.horizontal, 8).frame(height: 24)

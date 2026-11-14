@@ -111,7 +111,7 @@ struct RandomPickDialog: View {
                     LinearGradient(colors: [theme.pickVeil, Color(themed: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
                     LinearGradient(colors: [Color(themed: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
                 }.allowsHitTesting(false)
-            }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(.white.opacity(0.125)))
+            }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(Color.primary.opacity(0.125)))
     }
     private func choose() {
         guard !rolling else { return }

@@ -225,7 +225,7 @@ private struct LimitBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.1))
+                Capsule().fill(Color.primary.opacity(0.1))
                 Capsule().fill(Self.tint(fraction, accent: accent)).frame(width: max(6, geometry.size.width * min(1, max(0, fraction))))
             }
         }.frame(height: 6).accessibilityHidden(true)

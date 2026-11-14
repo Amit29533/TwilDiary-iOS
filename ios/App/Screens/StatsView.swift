@@ -38,7 +38,7 @@ struct StatsView: View {
                         .background { if tab == item { Capsule().fill(theme.accent) } }.contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("stats-tab-" + item.rawValue.lowercased())
             }
-        }.padding(4).background(.white.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+        }.padding(4).background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
     }
     var body: some View {
         let data = store.statsProjection(period: period, year: year, at: clock)
@@ -101,7 +101,7 @@ struct StatsView: View {
                             DiaryIcon(name: "history", size: 18).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                             VStack(alignment: .leading, spacing: 2) { Text("Watch history").font(.system(size: 16, weight: .semibold)); caption("Every watch, by date", size: 12) }
                             Spacer(); DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(.secondary)
-                        }.foregroundStyle(.white).statsPanel()
+                        }.foregroundStyle(HomeStyle.ink).statsPanel()
                     }.buttonStyle(.plain).accessibilityIdentifier("stats-history")
                 }.padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh(); clock = store.now }
@@ -151,7 +151,7 @@ struct StatsView: View {
                     } label: {
                         HStack(spacing: 6) { Text(String(data.selectedYear)); Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold)) }
                             .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
-                            .background(.white.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.12)))
+                            .background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.12)))
                     }.accessibilityLabel("Year").accessibilityValue(String(data.selectedYear)).accessibilityIdentifier("stats-year")
                 }
             }
@@ -169,7 +169,7 @@ struct StatsView: View {
                 }
                 Spacer(minLength: 0)
                 if highlights.busiest != nil { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
-            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()) }
+            }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()) }
                 .buttonStyle(.plain).disabled(highlights.busiest == nil)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("stats-busiest")
             if let index = selectedBucket, let active = value.buckets.first(where: { $0.key == index }) { bucketDetails(active) }
@@ -224,7 +224,7 @@ struct StatsView: View {
                         }
                 }.chartXAxis(.hidden).chartYAxis {
                     AxisMarks(position: .trailing, values: [0, Double(peak) / 2, Double(peak)]) { mark in
-                        AxisGridLine().foregroundStyle(.white.opacity(0.08))
+                        AxisGridLine().foregroundStyle(Color.primary.opacity(0.08))
                         AxisValueLabel { if let minutes = mark.as(Double.self) { Text(axisLabel(Int(minutes.rounded()))).font(.system(size: 10)).foregroundStyle(.secondary) } }
                     }
                 }.chartXScale(domain: -0.5...(Double(max(1, buckets.count)) - 0.5), range: .plotDimension(padding: 0)).chartYScale(domain: 0...Double(peak) * 1.18).accessibilityHidden(true)
@@ -301,8 +301,8 @@ struct StatsView: View {
             Image(systemName: symbol).font(.system(size: 20)).foregroundStyle(theme.accent)
             Text(value).font(.system(size: 18, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
-        }.frame(maxWidth: .infinity).padding(.vertical, 14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08))).accessibilityElement(children: .combine)
+        }.frame(maxWidth: .infinity).padding(.vertical, 14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08))).accessibilityElement(children: .combine)
     }
 
     /// Days with a dated watch: all of them, since the first, and this year.
@@ -341,7 +341,7 @@ struct StatsView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
-            }.foregroundStyle(.white)
+            }.foregroundStyle(HomeStyle.ink)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
                     Image(systemName: "clock").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
@@ -356,7 +356,7 @@ struct StatsView: View {
                     HStack(spacing: 6) { Text("Open planned"); Image(systemName: "arrow.right") }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .frame(maxWidth: .infinity).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(.springPress).accessibilityIdentifier("stats-open-planned")
-            }.padding(14).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+            }.padding(14).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
         }.statsPanel()
     }
     /// Shows you were watching that have had no progress for 30+ days.
@@ -378,11 +378,11 @@ struct StatsView: View {
                             }
                             Spacer(minLength: 0)
                         }.contentShape(Rectangle())
-                    }.buttonStyle(.plain).foregroundStyle(.white)
+                    }.buttonStyle(.plain).foregroundStyle(HomeStyle.ink)
                     Button("Drop") { Task { await store.setStatus(item.title, status: "dropped") } }
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
                         .background(theme.accent.opacity(0.12), in: Capsule()).buttonStyle(.plain).disabled(store.busy)
-                }.padding(8).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+                }.padding(8).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
             }
             if staleLimit < stale.count { Button("Show more") { staleLimit += 5 }.font(.system(size: 13, weight: .semibold)) }
         }.statsPanel().accessibilityIdentifier("stats-gone-quiet")
@@ -419,16 +419,16 @@ struct StatsView: View {
     private func genreRow(_ name: String, count: Int, share: Double) -> some View {
         HStack(spacing: 10) {
             Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1).frame(width: 118, alignment: .leading)
-            Capsule().fill(.white.opacity(0.08)).frame(height: 10).overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * min(1, share / 100)) } }
+            Capsule().fill(Color.primary.opacity(0.08)).frame(height: 10).overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * min(1, share / 100)) } }
             Text("\(Int(share.rounded()))% · \(count)").font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 62, alignment: .trailing)
-        }.foregroundStyle(.white).frame(minHeight: 28).contentShape(Rectangle())
+        }.foregroundStyle(HomeStyle.ink).frame(minHeight: 28).contentShape(Rectangle())
     }
 
     // MARK: Helpers
 
     private func heading(_ text: String) -> some View { Text(text).font(.system(size: 20, weight: .bold)) }
     private func caption(_ text: String, size: CGFloat = 13) -> some View { Text(text).font(.system(size: size)).foregroundStyle(.secondary) }
-    private func heatColor(_ count: Int, _ maxCount: Int) -> Color { count == 0 ? Color.white.opacity(0.06) : theme.accent.opacity(Double(max(1, Int(ceil(Double(count) / Double(maxCount) * 4)))) / 4) }
+    private func heatColor(_ count: Int, _ maxCount: Int) -> Color { count == 0 ? Color.primary.opacity(0.06) : theme.accent.opacity(Double(max(1, Int(ceil(Double(count) / Double(maxCount) * 4)))) / 4) }
     private func localDay(_ value: String) -> Date { let fields = value.split(separator: "-").compactMap { Int($0) }; return fields.count == 3 ? DiaryDate.calendar().date(from: DateComponents(year: fields[0], month: fields[1], day: fields[2], hour: 12)) ?? store.now : store.now }
     private var statuses: [String] { ["planned", "watching", "completed", "dropped"] }
     private func statusColor(_ status: String) -> Color { status == "dropped" ? Color(themed: "#646075") : theme.accent.opacity(status == "planned" ? 0.65 : status == "watching" ? 0.85 : 1) }

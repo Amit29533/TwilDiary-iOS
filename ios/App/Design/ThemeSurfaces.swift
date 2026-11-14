@@ -10,9 +10,17 @@ struct DiaryPanelModifier: ViewModifier {
     var bordered = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            // Native: a grouped card, continuous corners, no outline.
+            content.padding(padding).nativeCard(radius: radius)
+        } else {
+            classic(content)
+        }
+    }
+    private func classic(_ content: Content) -> some View {
         content.padding(padding)
             .background { RoundedRectangle(cornerRadius: radius).fill(Color(themed: "#111115")) }
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(!bordered ? .clear : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(!bordered ? .clear : accentBorder ? theme.accent.opacity(0.2) : Color.primary.opacity(0.13)))
     }
 }
 /// Flat section and card backgrounds (Settings groups, Explore filters, Files
@@ -22,17 +30,17 @@ struct DiaryPanelModifier: ViewModifier {
 struct DiarySectionBackground: ViewModifier {
     let radius: CGFloat
     var fill = Color(themed: "#111115")
-    var stroke = Color.white.opacity(0.13)
+    var stroke = Color.primary.opacity(0.13)
     /// Selected rows keep their accent emphasis on glass too.
     var emphasized = false
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius)
-        content.background { shape.fill(fill) }.overlay(shape.strokeBorder(stroke))
+        let shape = RoundedRectangle(cornerRadius: radius, style: ThemeStore.current.native ? .continuous : .circular)
+        content.background { shape.fill(fill) }.overlay(shape.strokeBorder(ThemeStore.current.native && !emphasized ? .clear : stroke))
     }
 }
 extension View {
     func diarySectionBackground(radius: CGFloat, fill: Color = Color(themed: "#111115"),
-                                stroke: Color = .white.opacity(0.13), emphasized: Bool = false) -> some View {
+                                stroke: Color = Color.primary.opacity(0.13), emphasized: Bool = false) -> some View {
         modifier(DiarySectionBackground(radius: radius, fill: fill, stroke: stroke, emphasized: emphasized))
     }
 }
@@ -46,7 +54,7 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
         Group {
             if field || reduceTransparency {
                 shape.fill(Color(themed: field ? "#111115" : "#222226"))
-                    .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : .white.opacity(0.13), lineWidth: 1))
+                    .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : Color.primary.opacity(0.13), lineWidth: 1))
             } else {
                 shape.fill(.clear).glassEffect(.regular.tint(selected ? theme.accent.opacity(0.16) : .clear).interactive(), in: shape)
             }

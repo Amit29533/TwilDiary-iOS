@@ -68,7 +68,7 @@ private struct CopyButton: View {
             Task { try? await Task.sleep(for: .seconds(1.4)); withAnimation(.snappy(duration: 0.15)) { copied = false } }
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 13, weight: .semibold)).contentTransition(.symbolEffect(.replace))
-                .frame(width: 32, height: 32).background(Color.white.opacity(0.06), in: Circle())
+                .frame(width: 32, height: 32).background(Color.primary.opacity(0.06), in: Circle())
         }.buttonStyle(.plain).foregroundStyle(copied ? Color(themed: "#7fe0b5") : HomeStyle.secondary).accessibilityLabel(copied ? "Copied" : "Copy answer")
             .sensoryFeedback(.success, trigger: copied) { _, now in now }
     }
@@ -178,7 +178,7 @@ struct CineMindView: View {
                     Image(systemName: spoilerSafe ? "eye.slash.fill" : "eye").font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(spoilerSafe ? .white : HomeStyle.secondary).contentTransition(.symbolEffect(.replace))
                         .frame(width: 40, height: 40)
-                        .background(spoilerSafe ? Self.accent.opacity(0.85) : Color.white.opacity(0.06), in: Circle())
+                        .background(spoilerSafe ? Self.accent.opacity(0.85) : Color.primary.opacity(0.06), in: Circle())
                         .glassEffect(.regular.interactive(), in: Circle())
                 }.buttonStyle(.plain).accessibilityLabel("Spoiler-safe").accessibilityValue(spoilerSafe ? "On" : "Off")
                     .accessibilityIdentifier("cinemind-spoiler-safe")
@@ -265,7 +265,7 @@ struct CineMindView: View {
             if message.id == messages.last?.id, let question = messages.last(where: { $0.fromYou })?.text {
                 Button { messages.removeLast(); ask(question, again: true) } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 13, weight: .semibold)).frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.06), in: Circle())
+                        .background(Color.primary.opacity(0.06), in: Circle())
                 }.buttonStyle(.plain).foregroundStyle(HomeStyle.secondary).accessibilityLabel("Ask again")
             }
         }
@@ -279,7 +279,7 @@ struct CineMindView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false)
                                 .frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.08), lineWidth: 0.75))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75))
                             Text(match.item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: 112, alignment: .leading)
                             if let tag = match.why.split(separator: "|").first.map({ String($0).trimmingCharacters(in: .whitespaces) }), !tag.isEmpty {
@@ -330,7 +330,7 @@ struct CineMindView: View {
             Button { send() } label: {
                 Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundStyle(canSend ? .white : HomeStyle.secondary)
                     .frame(width: 36, height: 36)
-                    .background(canSend ? AnyShapeStyle(LinearGradient(colors: [Color(themed: "#9a7cff"), Color(themed: "#6c4cf0")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color.white.opacity(0.08)), in: Circle())
+                    .background(canSend ? AnyShapeStyle(LinearGradient(colors: [Color(themed: "#9a7cff"), Color(themed: "#6c4cf0")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color.primary.opacity(0.08)), in: Circle())
                     .animation(.snappy(duration: 0.15), value: canSend)
             }.buttonStyle(.plain).disabled(!canSend).padding(.trailing, 6).padding(.bottom, 6)
                 .accessibilityLabel("Send").accessibilityIdentifier("cinemind-send")

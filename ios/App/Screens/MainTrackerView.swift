@@ -60,7 +60,7 @@ struct MainTrackerView: View {
                 Label("Your diary comes from Trakt. Turn this off to go back to your server’s diary.", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
             }
         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
     }
 
     /// Phase 5: the same from MDBList or WeTrakr; edits go to it.
@@ -76,7 +76,7 @@ struct MainTrackerView: View {
                 Label("Diary from \(tracker.name)", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
             }
         }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
     }
 
     private func row(_ option: MainTracker) -> some View {

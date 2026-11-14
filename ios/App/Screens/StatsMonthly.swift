@@ -140,7 +140,7 @@ struct StatsMonthCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text(month.wholeYear ? "THIS YEAR" : "THIS MONTH").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(theme.accent.opacity(0.9))
+            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text(month.wholeYear ? "THIS YEAR" : "THIS MONTH").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : theme.accent.opacity(0.9))
             VStack(alignment: .leading, spacing: 2) {
                 Text(longDuration(month.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
                 Text("of watch time in " + (month.wholeYear ? String(DiaryDate.calendar().component(.year, from: month.start)) : month.start.formatted(.dateTime.month(.wide)))).font(.system(size: 16)).foregroundStyle(.white.opacity(0.75))
@@ -156,11 +156,11 @@ struct StatsMonthCard: View {
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
-                    Color(themed: "#2a1f45")
+                    ThemeStore.current.native ? Color(uiColor: .systemIndigo) : Color(themed: "#2a1f45")
                     RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
                     LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
                 }
-            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(.white.opacity(0.14)))
+            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white.opacity(0.14)))
             .accessibilityElement(children: .contain).accessibilityIdentifier("stats-month")
     }
     private func tile(_ label: String, _ value: String, _ detail: String) -> some View {
@@ -169,8 +169,8 @@ struct StatsMonthCard: View {
             Text(value).font(.system(size: 20, weight: .bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
             Text(detail).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.8)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.14))).contentShape(Rectangle())
+            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.14))).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
 }
@@ -191,7 +191,7 @@ struct StatsMonthOverTimeCard: View {
                     .lineStyle(StrokeStyle(lineWidth: 2.5)).foregroundStyle(theme.accent)
                 if item.minutes > 0, item.start == peak?.start || index == points.count - 1 {
                     PointMark(x: .value("Month", index), y: .value("Minutes", item.minutes)).symbolSize(60).foregroundStyle(theme.accent)
-                        .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.system(size: 12, weight: .bold)).foregroundStyle(.white) }
+                        .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.ink) }
                 }
             }.chartYAxis(.hidden).chartXAxis(.hidden).frame(height: 150)
                 .chartOverlay { _ in
@@ -238,18 +238,18 @@ struct StatsYourDaysCard: View {
             // One line (owner's request); it shrinks a little on narrow phones rather than wrapping.
             HStack(spacing: 10) {
                 legend(Circle().fill(theme.accent), "Shows"); legend(Circle().fill(movie), "Movies")
-                legend(Circle().fill(.white), "Both"); legend(Circle().fill(.white.opacity(0.1)), "None")
+                legend(Circle().fill(.white), "Both"); legend(Circle().fill(Color.primary.opacity(0.1)), "None")
                 legend(Circle().strokeBorder(.white, lineWidth: 1.5), "Binge day")
             }.lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(month.watchedDays) of \(month.elapsed)").font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
                 Text("Days you watched").font(.system(size: 13)).foregroundStyle(.secondary)
-            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .combine)
         }
     }
     private func cell(_ day: StatsMonth.Day, calendar: Calendar) -> some View {
-        let fill: Color = day.shows && day.movies ? .white : day.shows ? theme.accent : day.movies ? movie : .white.opacity(0.07)
+        let fill: Color = day.shows && day.movies ? .white : day.shows ? theme.accent : day.movies ? movie : Color.primary.opacity(0.07)
         let biggest = day.date == month.biggest?.date
         let future = day.date > calendar.startOfDay(for: now)
         return NavigationLink(value: HistoryRoute(day: day.date)) {
@@ -288,7 +288,7 @@ struct StatsMonthHallOfFame: View {
                             HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
                         }.frame(maxWidth: .infinity)
                         moment(latest)
-                    }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                    }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
                 }
             }
         }
@@ -298,11 +298,11 @@ struct StatsMonthHallOfFame: View {
             DiaryIcon(name: icon, size: 17).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
-                Text(detail).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                Text(detail).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink)
             }
             Spacer()
             Text(value).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
+        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsMonth.Moment) -> some View {
         NavigationLink(value: value.title.id) {
@@ -327,7 +327,7 @@ struct StatsStreakRow: View {
             }
             Spacer()
             Text(days.counted("day", "days")).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).accessibilityElement(children: .combine)
+        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).accessibilityElement(children: .combine)
     }
 }
 
@@ -341,7 +341,7 @@ struct StatsFacesCard: View {
     var body: some View {
         StatsCard {
             HStack {
-                Text("Faces of all time").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                Text("Faces of all time").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
                 Spacer()
                 HStack(spacing: 14) {
                     Button("Cast") { voice = false }.foregroundStyle(voice ? Color.secondary : theme.accent)
@@ -370,11 +370,11 @@ struct StatsStudiosCard: View {
                 NavigationLink(value: CompanyRoutes.explore(row.company, kind: row.movie ? .movie : .tv)) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text(row.company.name).font(.system(size: 15, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                            Text(row.company.name).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                             Spacer()
                             Text("\(row.count)").font(.system(size: 13)).foregroundStyle(.secondary).monospacedDigit()
                         }
-                        Capsule().fill(.white.opacity(0.08)).frame(height: 8)
+                        Capsule().fill(Color.primary.opacity(0.08)).frame(height: 8)
                             .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * CGFloat(row.count) / CGFloat(most)) } }
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityElement(children: .combine)

@@ -40,7 +40,7 @@ struct APIsView: View {
                         Text(error).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button("Try again") { Task { await model.load() } }.buttonStyle(.diaryRowSecondary)
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
-                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).accessibilityIdentifier("apis-unavailable")
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08))).accessibilityIdentifier("apis-unavailable")
                 } else if let model, model.loaded {
                     if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
@@ -281,7 +281,7 @@ private struct ReplaceKeySheet: View {
                 Text("Paste the new \(key.label.lowercased()). It’s checked with the service as soon as it’s saved.").font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 SecureField("New key", text: $value).font(.system(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .focused($focused).padding(.horizontal, 14).frame(height: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12))).accessibilityIdentifier("api-key-field")
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.12))).accessibilityIdentifier("api-key-field")
                 if let failure { Text(failure).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true) }
                 Button {
                     saving = true
@@ -333,7 +333,7 @@ struct JellyfinSetupSheet: View {
             if secure { SecureField(title, text: text) } else { TextField(title, text: text) }
         }.font(.system(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
             .padding(.horizontal, 14).frame(height: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.12)))
     }
     private func connect() async {
         guard let url = JellyfinSettings.normalized(address) else { return }

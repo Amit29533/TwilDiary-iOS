@@ -199,7 +199,7 @@ struct SearchLabView: View {
                 Text(title.uppercased()).font(.system(size: 12, weight: .bold)).tracking(1).foregroundStyle(HomeStyle.secondary)
                 Spacer()
                 if let trailing { Text(trailing).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).monospacedDigit().contentTransition(.numericText()) }
-                if let badge { Text(badge).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(themed: "#c5c0cf")).padding(.horizontal, 9).frame(height: 24).background(.white.opacity(0.08), in: Capsule()) }
+                if let badge { Text(badge).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(themed: "#c5c0cf")).padding(.horizontal, 9).frame(height: 24).background(Color.primary.opacity(0.08), in: Capsule()) }
             }
             content()
         }
@@ -292,7 +292,7 @@ struct YearRangeSlider: View {
             let x: (Int) -> CGFloat = { inset + width * CGFloat($0 - bounds.lowerBound) / span }
             let year: (CGFloat) -> Int = { bounds.lowerBound + Int(((min(max($0, inset), inset + width) - inset) / width * span).rounded()) }
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.12)).frame(width: width, height: 4).offset(x: inset)
+                Capsule().fill(Color.primary.opacity(0.12)).frame(width: width, height: 4).offset(x: inset)
                 Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .leading, endPoint: .trailing))
                     .frame(width: max(4, x(upper) - x(lower)), height: 4).offset(x: x(lower))
                 thumb("Earliest year", value: lower)

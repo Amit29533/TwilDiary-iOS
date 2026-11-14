@@ -2,9 +2,11 @@
 # data (calendar, home, title pages, library, search, settings, stats…), in a chosen theme, with
 # every screenshot exported as an artifact (downscaled JPEGs) to look at. Start it by pushing a tag
 # (`git tag namespace-shots-<short sha> && git push origin namespace-shots-<short sha>`; the theme
-# is Premiere) or run it by hand with a theme. Read-only: no signing, no release, no deploy.
+# is Premiere; `namespace-shots-<theme>-<light|dark>-<short sha>` picks a theme and the phone's
+# appearance, e.g. namespace-shots-native-light-abc1234) or run it by hand with a theme.
+# Read-only: no signing, no release, no deploy.
 name: iOS screenshots (Namespace)
-run-name: namespace screenshots ${{ github.ref_name }} ${{ inputs.theme || 'premiere' }}
+run-name: namespace screenshots ${{ github.ref_name }} ${{ inputs.theme }}
 
 on:
   push:
@@ -15,7 +17,12 @@ on:
         description: 'Theme for every screen'
         type: choice
         default: premiere
-        options: [premiere, twilight, ocean, jade, rose, amber]
+        options: [premiere, native, twilight, ocean, jade, rose, amber]
+      appearance:
+        description: 'Light or dark (only Native follows it)'
+        type: choice
+        default: dark
+        options: [dark, light]
 
 concurrency:
   group: ios-namespace-shots-${{ github.ref }}
@@ -30,6 +37,7 @@ jobs:
     timeout-minutes: 100
     env:
       SNAPSHOT_THEME: ${{ inputs.theme || 'premiere' }}
+      SNAPSHOT_APPEARANCE: ${{ inputs.appearance || 'dark' }}
     defaults:
       run:
         shell: bash
@@ -37,6 +45,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Theme and appearance from the tag
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$TAG" =~ ^namespace-shots-([a-z]+)-(light|dark)-[0-9a-f]+$ ]]; then
+            echo "SNAPSHOT_THEME=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+            echo "SNAPSHOT_APPEARANCE=${BASH_REMATCH[2]}" >> "$GITHUB_ENV"
+          fi
       - name: Choose Xcode 26.6 and an iPhone simulator
         run: |
           set -euo pipefail
@@ -69,6 +87,7 @@ jobs:
       - name: Build for testing
         run: |
           xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl ui "$SIMULATOR_ID" appearance "$SNAPSHOT_APPEARANCE" || true
           bash ios/scripts/ci.sh build-simulator
       - name: Screenshot tour
         continue-on-error: true
@@ -115,7 +134,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: TwilDiary-screenshots-${{ env.SNAPSHOT_THEME }}
+          name: TwilDiary-screenshots-${{ env.SNAPSHOT_THEME }}-${{ env.SNAPSHOT_APPEARANCE }}
           path: |
             ios/.artifacts/shots
             ios/.artifacts/logs

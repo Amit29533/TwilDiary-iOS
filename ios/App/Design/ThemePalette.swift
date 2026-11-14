@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Observation
 
 /// Every colour a theme decides, beyond its accent: text, surfaces, chips, borders, the play
@@ -41,6 +42,11 @@ struct ThemePalette: Equatable, Sendable {
     /// The colours typed into screens (`Color(themed:)`) are shown as they are, or, in Premiere,
     /// with violet tints made neutral and violet accents made the theme's red.
     var neutralizesViolet: Bool
+    /// Light or dark as the iPhone is set (Native); every other theme is always dark.
+    var followsSystemAppearance = false
+    /// Native: the app's own controls give way to the system's (switches, grouped settings with
+    /// coloured tiles, Liquid Glass buttons, system colours, haptics on choices).
+    var native = false
 
     /// The app's own colours (the original themes).
     static let classic = ThemePalette(
@@ -67,6 +73,89 @@ struct ThemePalette: Equatable, Sendable {
         accentTop: Color(webHex: "#ff3b45"), accentBottom: Color(webHex: "#e50914"), accentInk: Color(webHex: "#ffffff"), chipInk: Color(webHex: "#000000"),
         watchTop: Color(webHex: "#ffffff"), watchBottom: Color(webHex: "#ececec"), watchInk: Color(webHex: "#000000"),
         canvas: Color(webHex: "#080605"), ambientArtwork: true, usesGlass: true, neutralizesViolet: true)
+
+    /// Native (owner's request: "a new app made by Apple"): no colour of its own. Text, surfaces and
+    /// fills are iOS's semantic colours, so the app follows the iPhone's light or dark setting;
+    /// the accent is the system blue; controls are Liquid Glass. Colours typed into screens are
+    /// mapped onto the same system roles (`ThemePalette.native(hex:)`).
+    static let native = ThemePalette(
+        primary: Color(uiColor: .label), secondary: Color(uiColor: .secondaryLabel), muted: Color(uiColor: .tertiaryLabel),
+        soft: adaptive(dark: 0.9, light: 0.22),
+        card: Color(uiColor: .secondarySystemGroupedBackground), cardBorder: Color(uiColor: .separator).opacity(0.55),
+        round: Color(uiColor: .tertiarySystemFill),
+        chip: Color(uiColor: .systemBlue).opacity(0.15), chipText: Color(uiColor: .systemBlue),
+        dateChipBorder: Color(uiColor: .separator), dateChipText: Color(uiColor: .secondaryLabel),
+        shortcut: Color(uiColor: .secondarySystemGroupedBackground), shortcutBorder: .clear,
+        accentTop: Color(uiColor: .systemBlue), accentBottom: Color(uiColor: .systemBlue), accentInk: .white, chipInk: .white,
+        watchTop: Color(uiColor: .systemBlue), watchBottom: Color(uiColor: .systemBlue), watchInk: .white,
+        canvas: Color(uiColor: .systemGroupedBackground), ambientArtwork: false, usesGlass: true, neutralizesViolet: false,
+        followsSystemAppearance: true, native: true)
+
+    /// A cool neutral grey of lightness `dark` in dark mode and `light` in light mode.
+    static func adaptive(dark: Double, light: Double, opacity: Double = 1) -> Color {
+        Color(uiColor: UIColor { traits in
+            let l = traits.userInterfaceStyle == .light ? light : dark
+            return UIColor(red: l * 0.985, green: l * 0.99, blue: min(1, l * 1.03), alpha: opacity)
+        })
+    }
+
+    /// A typed colour as Native shows it. The design's colours were drawn for a dark screen; here
+    /// each takes the system role it plays, in light and dark:
+    /// - greys and the app's violet greys by lightness: the page, cards, raised fills, separators,
+    ///   then text from primary down to tertiary (in light mode the order of text flips to dark on light,
+    ///   and cards turn white on the grey page, as in Settings);
+    /// - saturated colours become the system colour of their hue (green, yellow, red, pink…),
+    ///   a dark tinted fill becomes that colour at low opacity, and the violet accent becomes the system blue.
+    /// Alpha is kept.
+    static func native(hex: String) -> Color {
+        let raw = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard let value = UInt64(raw, radix: 16), raw.count == 6 || raw.count == 8 else { return Color(webHex: hex) }
+        let rgb = raw.count == 8 ? value >> 8 : value
+        let alpha = raw.count == 8 ? Double(value & 255) / 255 : 1
+        let r = Double((rgb >> 16) & 255) / 255, g = Double((rgb >> 8) & 255) / 255, b = Double(rgb & 255) / 255
+        let high = max(r, g, b), low = min(r, g, b), lightness = (high + low) / 2, delta = high - low
+        let saturation = delta < 0.0001 ? 0 : delta / (1 - abs(2 * lightness - 1))
+        var hue = 0.0
+        if delta >= 0.0001 {
+            switch high {
+            case r: hue = ((g - b) / delta).truncatingRemainder(dividingBy: 6)
+            case g: hue = (b - r) / delta + 2
+            default: hue = (r - g) / delta + 4
+            }
+            hue = (hue * 60 + 360).truncatingRemainder(dividingBy: 360)
+        }
+        let violet = hue >= 235 && hue <= 290
+        let neutral = saturation < 0.22 || lightness > 0.9 || (violet && saturation < 0.45) || lightness < 0.06
+        if neutral {
+            let (dark, light) = nativeGrey(lightness)
+            return adaptive(dark: dark, light: light, opacity: alpha)
+        }
+        let system: UIColor = switch hue {
+        case ..<12, 345...: .systemRed
+        case ..<42: .systemOrange
+        case ..<62: .systemYellow
+        case ..<165: .systemGreen
+        case ..<182: .systemMint
+        case ..<200: .systemCyan
+        case ..<235: .systemBlue
+        case ..<290: .systemBlue
+        default: .systemPink
+        }
+        // A dark tinted fill (a badge's ground) is the colour faintly, as iOS tints a fill.
+        return Color(uiColor: system).opacity(lightness < 0.3 ? 0.18 * alpha : alpha)
+    }
+
+    /// A grey's lightness on a dark screen → (dark mode, light mode) lightness in Native.
+    static func nativeGrey(_ l: Double) -> (Double, Double) {
+        switch l {
+        case ..<0.035: (0, 0.949)        // the page
+        case ..<0.075: (0.11, 1)         // cards
+        case ..<0.11: (0.15, 0.955)      // a raised fill inside a card
+        case ..<0.2: (0.19, 0.91)        // chips, pills, dividers
+        case ..<0.36: (0.27, 0.8)        // strong fills, outlines
+        default: (l, 0.62 * (1 - (l - 0.36) / 0.64))   // text, lightest to darkest
+        }
+    }
 
     /// Premiere's red, for colours that were the violet accent.
     static let premiereRedHue = 357.0 / 360
@@ -122,10 +211,10 @@ struct ThemePalette: Equatable, Sendable {
     }
     /// A typed colour in the current theme (kept, so each is worked out once).
     func color(_ hex: String) -> Color {
-        guard palette.neutralizesViolet else { return Color(webHex: hex) }
+        guard palette.neutralizesViolet || palette.native else { return Color(webHex: hex) }
         lock.lock(); defer { lock.unlock() }
         if let known = converted[hex] { return known }
-        let made = ThemePalette.premiere(hex: hex)
+        let made = palette.native ? ThemePalette.native(hex: hex) : ThemePalette.premiere(hex: hex)
         converted[hex] = made
         return made
     }

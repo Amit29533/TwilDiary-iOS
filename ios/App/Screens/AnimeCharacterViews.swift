@@ -382,7 +382,7 @@ struct FavouriteLink: View {
             VStack(alignment: .leading, spacing: 4) {
                 Color.clear.aspectRatio(0.83, contentMode: .fit)
                     .overlay { Artwork(path: item.image, title: item.name, alignment: .top) }
-                    .clipShape(RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08)))
+                    .clipShape(RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08)))
                     .padding(.bottom, 6)
                 Text(item.name).font(.system(size: 15, weight: .bold)).lineLimit(2).foregroundStyle(HomeStyle.primary)
                 Text(item.subtitle ?? item.kind.singular).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)

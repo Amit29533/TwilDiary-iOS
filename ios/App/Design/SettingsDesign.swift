@@ -11,9 +11,14 @@ struct SettingsIntro: View {
     let text: String
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(eyebrow.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-            Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(.horizontal, 4)
+            if ThemeStore.current.native {
+                // Native: one plain line, as a system page explains itself.
+                Text(text).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(eyebrow.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.padding(.horizontal, ThemeStore.current.native ? 16 : 4)
     }
 }
 
@@ -24,12 +29,14 @@ struct SettingsGroup<Content: View>: View {
     var info: String? = nil
     @ViewBuilder let content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let native = ThemeStore.current.native
+        VStack(alignment: .leading, spacing: native ? 7 : 12) {
             if let label {
                 HStack(spacing: 4) {
-                    Text(label.uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                    // Native: the grouped list's own header (13 pt, secondary, inset to the rows' text).
+                    Text(label.uppercased()).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary)
                     if let info { SettingsInfoButton(text: info).padding(.vertical, -10) }
-                }.frame(height: 24)
+                }.frame(height: 24).padding(.leading, native ? 16 : 0)
             }
             VStack(spacing: 0) { content }.modifier(SettingsCard()).toggleStyle(SettingsToggleStyle())
         }
@@ -38,7 +45,14 @@ struct SettingsGroup<Content: View>: View {
 
 /// The full-width hairline between two rows of a card.
 struct SettingsDivider: View {
-    var body: some View { Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline) }
+    var body: some View {
+        if ThemeStore.current.native {
+            // Native: the system separator, inset from the leading edge as in a grouped list.
+            Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 16)
+        } else {
+            Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline)
+        }
+    }
 }
 
 /// A 38 pt #2a2440 tile with a #cdbbff symbol (44 pt for an account's own row).
@@ -46,9 +60,13 @@ struct SettingsTile: View {
     let symbol: String
     var size: CGFloat = 38
     var body: some View {
-        Image(systemName: symbol).font(.system(size: size * 0.42, weight: .medium)).foregroundStyle(HomeStyle.chipText)
-            .frame(width: size, height: size).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: size * 0.32))
-            .accessibilityHidden(true)
+        if ThemeStore.current.native {
+            NativeTile(symbol: symbol, size: size >= 44 ? 36 : 30)
+        } else {
+            Image(systemName: symbol).font(.system(size: size * 0.42, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+                .frame(width: size, height: size).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: size * 0.32))
+                .accessibilityHidden(true)
+        }
     }
 }
 
@@ -59,14 +77,16 @@ struct SettingsRow<Leading: View, Trailing: View>: View {
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
     var body: some View {
-        HStack(spacing: 14) {
+        let native = ThemeStore.current.native
+        HStack(spacing: native ? 12 : 14) {
             leading
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+            VStack(alignment: .leading, spacing: native ? 1 : 2) {
+                // Native: a list row's 17 pt body title and 13 pt secondary line, 52 pt tall.
+                Text(title).font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
             }.frame(maxWidth: .infinity, alignment: .leading)
             trailing
-        }.padding(.horizontal, 15).padding(.vertical, 10).frame(minHeight: 64).contentShape(Rectangle())
+        }.padding(.horizontal, native ? 16 : 15).padding(.vertical, native ? 8 : 10).frame(minHeight: native ? 52 : 64).contentShape(Rectangle())
     }
 }
 extension SettingsRow where Leading == EmptyView {
@@ -77,19 +97,27 @@ extension SettingsRow where Leading == EmptyView {
 
 /// The design's chevron for rows that open a page.
 struct SettingsChevron: View {
-    var body: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78")) }
+    var body: some View {
+        Image(systemName: "chevron.right").font(.system(size: ThemeStore.current.native ? 14 : 15, weight: .semibold))
+            .foregroundStyle(ThemeStore.current.native ? Color(uiColor: .tertiaryLabel) : Color(themed: "#6a6a78"))
+    }
 }
 
 /// "Run", "Connect", "Save": a small pill button inside a row.
 struct SettingsPillButtonStyle: ButtonStyle {
     var outlined = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 13, weight: outlined ? .semibold : .bold))
-            .foregroundStyle(outlined ? HomeStyle.primary : HomeStyle.chipText)
-            .padding(.horizontal, 14).frame(height: 34)
-            .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
-            .overlay(Capsule().strokeBorder(outlined ? HomeStyle.dateChipBorder : .clear, lineWidth: HomeStyle.hairline))
-            .opacity(configuration.isPressed ? 0.7 : 1)
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 15, weight: .semibold)).padding(.horizontal, 14).frame(height: 34)
+                .nativeGlassCapsule(prominent: !outlined)
+        } else {
+            configuration.label.font(.system(size: 13, weight: outlined ? .semibold : .bold))
+                .foregroundStyle(outlined ? HomeStyle.primary : HomeStyle.chipText)
+                .padding(.horizontal, 14).frame(height: 34)
+                .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
+                .overlay(Capsule().strokeBorder(outlined ? HomeStyle.dateChipBorder : .clear, lineWidth: HomeStyle.hairline))
+                .opacity(configuration.isPressed ? 0.7 : 1)
+        }
     }
 }
 
@@ -97,29 +125,47 @@ struct SettingsPillButtonStyle: ButtonStyle {
 /// look of a title page's Add to Planned).
 struct SettingsPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-            .frame(maxWidth: .infinity).frame(height: 50)
-            .background(HomeStyle.chip, in: Capsule())
-            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 17, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 50)
+                .nativeGlassCapsule(prominent: true).opacity(enabled ? 1 : 0.45)
+        } else {
+            configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                .frame(maxWidth: .infinity).frame(height: 50)
+                .background(HomeStyle.chip, in: Capsule())
+                .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+        }
     }
 }
 
 /// "Disconnect Trakt", "Sign out": a 52 pt dark pill with pink text.
 struct SettingsDestructiveButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
-            .frame(maxWidth: .infinity).frame(height: 52)
-            .pillSurface(border: nil)
-            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-            .opacity(configuration.isPressed ? 0.75 : 1)
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 17, weight: .regular)).frame(maxWidth: .infinity).frame(height: 50)
+                .nativeGlassCapsule(prominent: false, ink: Color(uiColor: .systemRed))
+        } else {
+            configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                .frame(maxWidth: .infinity).frame(height: 52)
+                .pillSurface(border: nil)
+                .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .opacity(configuration.isPressed ? 0.75 : 1)
+        }
     }
 }
 
 /// The design's switch: a 46 × 28 track, the accent with a dark knob when on, #3a3a46 with a light knob when off.
 struct SettingsToggleStyle: ToggleStyle {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    func makeBody(configuration: Configuration) -> some View {
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            // Native: the system switch, in the system's green (as in Settings).
+            Toggle(configuration).toggleStyle(.switch).tint(Color(uiColor: .systemGreen))
+        } else {
+            custom(configuration)
+        }
+    }
+    private func custom(_ configuration: Configuration) -> some View {
         HStack(spacing: 12) {
             configuration.label
             Button { configuration.isOn.toggle() } label: {
@@ -162,7 +208,7 @@ struct SeasonProgressCard: View {
                 Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
             } label: {
                 HStack(spacing: 8) {
-                    Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(.white).lineLimit(1)
+                    Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(HomeStyle.ink).lineLimit(1)
                     if seasons.count > 1 { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(themed: "#A78BDB")) }
                 }.padding(.leading, 16).padding(.trailing, 14).frame(minHeight: 44)
                     .background(Color(themed: "#1E1E22"), in: Capsule()).fixedSize()
@@ -179,7 +225,7 @@ struct SeasonProgressCard: View {
                 .frame(minWidth: 58, alignment: .trailing)
         }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
             .background(Color(themed: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.07), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
             .accessibilityElement(children: .contain)
     }
 }
@@ -283,11 +329,12 @@ struct SettingsInfoButton: View {
 struct SettingsFieldStyle: ViewModifier {
     var monospaced = false
     func body(content: Content) -> some View {
-        content.font(.system(size: 15, design: monospaced ? .monospaced : .default)).foregroundStyle(HomeStyle.primary)
+        let native = ThemeStore.current.native
+        content.font(.system(size: native ? 17 : 15, design: monospaced ? .monospaced : .default)).foregroundStyle(HomeStyle.primary)
             .textInputAutocapitalization(.never).autocorrectionDisabled()
-            .padding(.horizontal, 14).frame(height: 50)
-            .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+            .padding(.horizontal, 14).frame(height: native ? 46 : 50)
+            .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: native ? 12 : 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(native ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
     }
 }
 extension View {
@@ -298,7 +345,15 @@ extension View {
 struct SettingsWideButtonStyle: ButtonStyle {
     var outlined = false
     @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration: Configuration) -> some View {
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 17, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity).frame(height: 50)
+                .nativeGlassCapsule(prominent: !outlined).opacity(enabled ? 1 : 0.5)
+        } else {
+            classic(configuration)
+        }
+    }
+    private func classic(_ configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 15, weight: .bold)).lineLimit(1)
             .foregroundStyle(outlined ? (enabled ? HomeStyle.primary : HomeStyle.secondary) : HomeStyle.chipText)
             .frame(maxWidth: .infinity).frame(height: 50)

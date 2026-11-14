@@ -42,7 +42,7 @@ struct LibraryTitleRow: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.11)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.11)))
             .contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue([
                 archived ? "In Trash" : title.status.capitalized,

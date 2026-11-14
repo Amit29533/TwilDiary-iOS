@@ -429,7 +429,7 @@ struct TitleDetailView: View {
         }.padding(19)
             // Design: a 28 pt card in rgba(18 16 26 / .58) with a white 8 % hairline.
             .background(Color(red: 18 / 255, green: 16 / 255, blue: 26 / 255).opacity(0.58), in: RoundedRectangle(cornerRadius: 28))
-            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.white.opacity(0.08), lineWidth: HomeStyle.hairline))
+            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
     private func episodeSlider(_ title: MediaTitle, card: WatchCard) -> some View {
@@ -452,7 +452,7 @@ struct TitleDetailView: View {
                 VStack(alignment: .leading, spacing: 3) { Text("UP NEXT").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.accent); Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(3).multilineTextAlignment(.leading) }
                 Spacer(minLength: 0)
             }.overlay(alignment: .topTrailing) { if let runtime = title.runtimeMinutes { Text("\(runtime) min").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) } }
-                .padding(.vertical, 16).padding(.horizontal, 10).frame(minHeight: 98).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+                .padding(.vertical, 16).padding(.horizontal, 10).frame(minHeight: 98).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
     }
     /// Episodes: heading with the count and season, All / Unwatched beside a list–grid switch,
@@ -746,7 +746,7 @@ struct NotesEditor: View {
         let count = text.utf16.count
         VStack(alignment: .leading, spacing: 12) {
             TextEditor(text: $text).scrollContentBackground(.hidden).padding(10).frame(height: 150)
-                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty { Text("Add your personal note…").foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 18).allowsHitTesting(false) }
                 }

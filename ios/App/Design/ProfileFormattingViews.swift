@@ -32,13 +32,13 @@ struct ProfileFacts: View {
                 }.padding(.vertical, 4)
             }
             ForEach(Array(wide.enumerated()), id: \.element.id) { index, fact in
-                if index > 0 || !short.isEmpty { Divider().overlay(.white.opacity(0.06)).padding(.horizontal, 12).accessibilityHidden(true) }
+                if index > 0 || !short.isEmpty { Divider().overlay(Color.primary.opacity(0.06)).padding(.horizontal, 12).accessibilityHidden(true) }
                 row(fact)
             }
         }
         .foregroundStyle(Color(themed: "#e6e2ec")).tint(Color(themed: "#d1cdd8"))
         .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
     }
     private func label(_ fact: ProfileFact) -> some View {
         HStack(spacing: 5) {
@@ -147,8 +147,8 @@ struct ProfileAliases: View {
                     ForEach(visible, id: \.self) { name in
                         Text(name).font(.subheadline).foregroundStyle(HomeStyle.primary).lineLimit(2)
                             .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(.white.opacity(0.06), in: Capsule())
-                            .overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
                             .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = name } }
                     }
                     if aliases.count > Self.shown {
@@ -162,7 +162,7 @@ struct ProfileAliases: View {
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
             .accessibilityElement(children: .contain).accessibilityLabel("Also known as")
             .accessibilityIdentifier("profile-aliases")
         }
@@ -471,7 +471,7 @@ struct ProfileSourceRow: View {
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
             .contentShape(RoundedRectangle(cornerRadius: 16))
         }.buttonStyle(.plain)
             .accessibilityElement(children: .combine)

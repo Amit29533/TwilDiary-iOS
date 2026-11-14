@@ -46,7 +46,7 @@ struct TitleHero<Ratings: View>: View {
             // right starting 8 pt below the poster's top.
             HStack(alignment: .top, spacing: 14) {
                 Artwork(path: poster, title: name, initialsOnly: false).frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.12), lineWidth: HomeStyle.hairline))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.12), lineWidth: HomeStyle.hairline))
                     .shadow(color: .black.opacity(0.6), radius: 14, y: 10)
                     .contentShape(RoundedRectangle(cornerRadius: 16)).fullScreenArtwork(poster, title: name)
                     .accessibilityIdentifier("title-hero-poster")

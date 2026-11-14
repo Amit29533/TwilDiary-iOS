@@ -142,7 +142,7 @@ struct LibraryView: View {
     }
     private func roundTool(_ icon: String) -> some View {
         DiaryIcon(name: icon, size: 19).foregroundStyle(Color(themed: "#c5c0cf")).frame(width: 44, height: 44)
-            .background(.white.opacity(0.08), in: Circle()).contentShape(Circle())
+            .background(Color.primary.opacity(0.08), in: Circle()).contentShape(Circle())
     }
     /// The toggle names what it switches to: Grid → List → Shelves → Grid.
     private var nextLayoutLabel: String { switch layout { case .grid: "List layout"; case .list: "Genre sections"; case .shelves: "Grid layout" } }
@@ -251,7 +251,7 @@ struct LibraryView: View {
                 Text("All titles").font(.system(size: 22, weight: .bold)).tracking(-0.5)
                 Spacer()
                 Text(filtered.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
-                    .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                    .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
                 ForEach(filtered.prefix(5)) { title in poster(title) }
@@ -266,7 +266,7 @@ struct LibraryView: View {
                             }.padding(.horizontal, 6)
                         }
                         .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.springPress).accessibilityLabel("See all \(filtered.count) titles").accessibilityIdentifier("library-see-all")
             }
@@ -278,13 +278,13 @@ struct LibraryView: View {
             ForEach(shelves.filter { $0.genre != "Without a genre" }) { shelf in
                 Button { genres = [shelf.genre] } label: {
                     HStack {
-                        Text(shelf.genre).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        Text(shelf.genre).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Spacer()
                         Text(shelf.titles.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
-                            .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                            .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
                         DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
-                    }.padding(.horizontal, 16).frame(minHeight: 60).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).contentShape(Rectangle())
+                    }.padding(.horizontal, 16).frame(minHeight: 60).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08))).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("library-genre-row-" + shelf.genre)
             }
         }.padding(.horizontal, 14)
@@ -306,8 +306,8 @@ struct LibraryView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), spacing: 16) {
             ForEach(0..<9, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.06)).posterAspect()
-                    Capsule().fill(.white.opacity(0.06)).frame(height: 8)
+                    RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)).posterAspect()
+                    Capsule().fill(Color.primary.opacity(0.06)).frame(height: 8)
                 }
             }
         }.padding(.horizontal, 14).accessibilityLabel("Loading your library")
@@ -635,7 +635,7 @@ struct LibraryPosterCard: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
             Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
             Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
         }.contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
@@ -676,7 +676,7 @@ struct LibraryListRow: View {
                 Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)
                 HStack(spacing: 6) {
                     Text(title.status.capitalized).font(.system(size: 11, weight: .medium)).foregroundStyle(Color(themed: "#c5c0cf"))
-                        .padding(.horizontal, 8).frame(height: 20).overlay(Capsule().strokeBorder(.white.opacity(0.16)))
+                        .padding(.horizontal, 8).frame(height: 20).overlay(Capsule().strokeBorder(Color.primary.opacity(0.16)))
                     if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")) }
                 }.padding(.top, 2)
             }
@@ -685,7 +685,7 @@ struct LibraryListRow: View {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).foregroundStyle(selected ? theme.accent : Color(themed: "#a09aa9"))
             } else { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(Color(themed: "#a09aa9")) }
         }.padding(10).background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected == true ? theme.accent.opacity(0.7) : .white.opacity(0.1)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected == true ? theme.accent.opacity(0.7) : Color.primary.opacity(0.1)))
             .contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue(LibraryPosterCard.details(title, score: score, progress: store.libraryProgress(title), present: store.hasPresentLocation(title.id)))
     }
@@ -703,7 +703,7 @@ struct GlanceView: View {
             Text(name).font(.system(size: 24, weight: .bold)).tracking(-0.6)
             Spacer()
             Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
-                .padding(.horizontal, 9).frame(height: 26).background(.white.opacity(0.09), in: Capsule())
+                .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
         }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 2)
     }
     var body: some View {

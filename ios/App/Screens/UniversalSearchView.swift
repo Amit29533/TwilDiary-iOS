@@ -41,8 +41,8 @@ struct SearchLandingView: View {
                         ForEach(recent, id: \.self) { query in
                             Button { choose(query) } label: {
                                 HStack(spacing: 6) { Image(systemName: "clock").font(.system(size: 12)); Text(query).lineLimit(1) }
-                                    .font(.system(size: 15, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 12).frame(height: 36)
-                                    .background(.white.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.1)))
+                                    .font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 12).frame(height: 36)
+                                    .background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
                             }.buttonStyle(.plain).accessibilityLabel("Search again for " + query)
                         }
                     }
@@ -57,7 +57,7 @@ struct SearchLandingView: View {
                                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 60, height: 76)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                    Text(item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                                     HStack(spacing: 8) {
                                         if let score = item.rating, score > 0 {
                                             HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
@@ -72,14 +72,14 @@ struct SearchLandingView: View {
                                 Spacer(minLength: 0)
                                 Text("\(index + 1)").font(.system(size: 28, weight: .bold)).monospacedDigit()
                                     .foregroundStyle(index < 3 ? theme.accent : Color.white.opacity(0.3))
-                            }.padding(10).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08))).contentShape(Rectangle())
+                            }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08))).contentShape(Rectangle())
                         }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
                     }
                     if !allTop && shows.count > 6 {
                         Button { allTop = true } label: {
                             Text("See all \(min(10, shows.count))").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
-                                .frame(maxWidth: .infinity, minHeight: 50).background(.white.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(.white.opacity(0.08)))
+                                .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
                         }.buttonStyle(.springPress).accessibilityIdentifier("search-top-all")
                     }
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")

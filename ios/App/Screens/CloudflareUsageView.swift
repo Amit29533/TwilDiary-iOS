@@ -78,7 +78,7 @@ struct CloudflareUsageView: View {
         // The ring leads on the left; the name, amount and allowance read down the right.
         return HStack(spacing: 12) {
             ZStack {
-                Circle().stroke(.white.opacity(0.1), lineWidth: 6)
+                Circle().stroke(Color.primary.opacity(0.1), lineWidth: 6)
                 Circle().trim(from: 0, to: share ?? 0).stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
                 Text(share.map(percent) ?? "–").font(.system(size: 13, weight: .semibold)).monospacedDigit()
             }.frame(width: 58, height: 58)
@@ -89,7 +89,7 @@ struct CloudflareUsageView: View {
             }
             Spacer(minLength: 0)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+            .background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.1)))
             .accessibilityElement(children: .combine).accessibilityIdentifier("cloudflare-today-\(key)")
     }
 
@@ -127,7 +127,7 @@ struct CloudflareUsageView: View {
                 .chartYScale(domain: 0...top)
                 .chartYAxis {
                     AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
-                        AxisGridLine().foregroundStyle(.white.opacity(0.08))
+                        AxisGridLine().foregroundStyle(Color.primary.opacity(0.08))
                         AxisValueLabel { if let number = value.as(Double.self) { Text(amount(Int(number), bytes: bytes)).font(.system(size: 10)) } }
                     }
                 }
@@ -139,7 +139,7 @@ struct CloudflareUsageView: View {
                 .environment(\.calendar, Self.utcCalendar).environment(\.timeZone, Self.utc)
                 .frame(height: 150).accessibilityHidden(true)
             }
-        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
+        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.1)))
             .accessibilityElement(children: .combine).accessibilityLabel(title + ", " + (unavailable ? "not available" : caption))
             .accessibilityIdentifier("cloudflare-chart-\(key)")
     }
@@ -149,7 +149,7 @@ struct CloudflareUsageView: View {
             Text("Connect Cloudflare").font(.system(size: 18, weight: .bold))
             Text("Add a read-only analytics token to the server to see usage here.").font(.subheadline).foregroundStyle(.secondary)
             Text("Account Analytics: Read → CF_ANALYTICS_TOKEN").font(.system(size: 13, design: .monospaced))
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
         }.diaryPanel().accessibilityElement(children: .contain).accessibilityIdentifier("cloudflare-setup")
     }
 

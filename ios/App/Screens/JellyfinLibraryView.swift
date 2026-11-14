@@ -88,8 +88,8 @@ struct JellyfinLibraryView: View {
     private func chip(_ text: String, on: Bool, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
-                .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : .white.opacity(0.06), in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : .white.opacity(0.12)))
+                .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : Color.primary.opacity(0.06), in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : Color.primary.opacity(0.12)))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(id)
     }
     /// At home, Jellyfin itself (and the server gets the list if it changed); away, the server's
@@ -112,7 +112,7 @@ struct JellyfinEntryCard: View {
         let label = VStack(alignment: .leading, spacing: 6) {
             Color.clear.posterAspect()
                 .overlay { poster(entry) }
-                .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
+                .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.1)))
                 .overlay(alignment: .topLeading) {
                     if entry.diaryID != nil {
                         Text("In diary").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
@@ -176,8 +176,8 @@ struct JellyfinPresenceRow: View {
                     }
                     Spacer(minLength: 0)
                 }.padding(.horizontal, 14).padding(.vertical, 12)
-                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.1)))
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.1)))
                     .accessibilityElement(children: .combine).accessibilityIdentifier("title-jellyfin-presence")
             }
         }

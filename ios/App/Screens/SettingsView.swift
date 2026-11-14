@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AuthenticationServices
 import TwilDiaryCore
 import UniformTypeIdentifiers
@@ -211,14 +212,16 @@ struct SettingsView: View {
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
         // Design: a 13 pt bold #9a9aa8 label, 16 pt above a #0e0e12 card (radius 22).
-        VStack(alignment: .leading, spacing: 16) {
-            Text(name).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20).padding(.top, 8)
+        let native = ThemeStore.current.native
+        VStack(alignment: .leading, spacing: native ? 7 : 16) {
+            Text(name).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20)
+                .padding(.top, 8).padding(.leading, native ? 16 : 0)
             VStack(spacing: 0, content: content).modifier(SettingsCard())
         }
     }
     /// A full-width #1c1c23 hairline between rows.
-    private var divider: some View { Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline) }
-    private var chevron: some View { Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78")) }
+    private var divider: some View { SettingsDivider() }
+    private var chevron: some View { SettingsChevron() }
     /// iOS Settings-style tiles: a white SF Symbol on a solid colour, fixed across themes.
     enum TileTint {
         case purple, indigo, blue, cyan, teal, mint, green, yellow, orange, red, pink, cloudflare
@@ -238,11 +241,33 @@ struct SettingsView: View {
             case .cloudflare: Color(themed: "#F38020")
             }
         }
+        /// The system colour of the same name (Native's tiles, right in light and dark).
+        var system: Color {
+            let colour: UIColor = switch self {
+            case .purple: .systemPurple
+            case .indigo: .systemIndigo
+            case .blue: .systemBlue
+            case .cyan: .systemCyan
+            case .teal: .systemTeal
+            case .mint: .systemMint
+            case .green: .systemGreen
+            case .yellow: .systemYellow
+            case .orange, .cloudflare: .systemOrange
+            case .red: .systemRed
+            case .pink: .systemPink
+            }
+            return Color(uiColor: colour)
+        }
     }
-    private func tile(_ symbol: String, _ tint: TileTint) -> some View {
-        // Design: one style for every row, a #cdbbff icon on a 38 pt #2a2440 tile.
-        Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
-            .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
+    @ViewBuilder private func tile(_ symbol: String, _ tint: TileTint) -> some View {
+        if ThemeStore.current.native {
+            // Native: the Settings app's tiles, a white symbol on the row's own system colour.
+            NativeTile(symbol: symbol, size: 30, color: tint.system)
+        } else {
+            // Design: one style for every row, a #cdbbff icon on a 38 pt #2a2440 tile.
+            Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+                .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
+        }
     }
     private func settingsRow(_ icon: String, _ tint: TileTint, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false, padded: Bool = true) -> some View {
         settingsRow(leading: tile(icon, tint), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: padded)
@@ -251,14 +276,14 @@ struct SettingsView: View {
         HStack(spacing: 14) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+                Text(title).font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
             }.layoutPriority(1)
             Spacer(minLength: 4)
             // The value gives way (one line, …) before the title wraps.
             if let value { Text(value).font(.system(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).lineLimit(1).truncationMode(.tail) }
             if disclosure { chevron }
-        }.padding(.horizontal, padded ? 15 : 0).frame(minHeight: padded ? 64 : 40).contentShape(Rectangle())
+        }.padding(.horizontal, padded ? (ThemeStore.current.native ? 16 : 15) : 0).frame(minHeight: padded ? (ThemeStore.current.native ? 52 : 64) : 40).contentShape(Rectangle())
     }
     private func exportDiary() {
         // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.
@@ -275,8 +300,13 @@ struct SettingsView: View {
 /// Settings' card: #0e0e12, radius 22, a #23232b hairline (design).
 struct SettingsCard: ViewModifier {
     func body(content: Content) -> some View {
-        content.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+        if ThemeStore.current.native {
+            // Native: an inset grouped list's section, continuous corners and no outline.
+            content.nativeCard().clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        } else {
+            content.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+        }
     }
 }
 
