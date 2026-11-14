@@ -130,6 +130,42 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SimklBody.shift("2024-12-28", by: 7), "2025-01-04")
     }
 
+    /// From Simkl's real lists (2026-11-14): several episodes on one day.
+    func testEpisodesOutTheSameDay() {
+        // Edgerunners: the whole season one day, each with its TVDB number.
+        let season = SimklAPI.episodes(from: Data(("[" + (1...10).map {
+            #"{"episode":\#($0),"type":"episode","date":"2022-09-13T16:00:00+09:00","tvdb":{"season":1,"episode":\#($0)}}"#
+        }.joined(separator: ",") + "]").utf8))
+        XCTAssertEqual(SimklBody.find(day: "2022-09-13", in: season, season: 1, number: 5)?.number, 5)
+        XCTAssertEqual(SimklBody.find(day: "2022-09-13", in: season, season: 1, number: 10)?.number, 10)
+        XCTAssertNil(SimklBody.find(day: "2022-09-13", in: season), "no number: no guess")
+        XCTAssertNil(SimklBody.find(day: "2022-09-13", in: season, season: 2, number: 14), "nothing decides: no guess (TVDB's seasons place it)")
+
+        // Without TVDB numbers: Simkl's own number decides for a regular episode.
+        let premiere = SimklAPI.episodes(from: Data(#"""
+        [{"episode":1,"type":"episode","date":"2023-09-29T23:00:00+09:00"},{"episode":2,"type":"episode","date":"2023-09-29T23:00:00+09:00"},
+         {"episode":3,"type":"episode","date":"2023-09-29T23:00:00+09:00"},{"episode":5,"type":"episode","date":"2023-10-06T23:00:00+09:00"}]
+        """#.utf8))
+        XCTAssertEqual(SimklBody.find(day: "2023-09-29", in: premiere, season: 1, number: 3)?.number, 3)
+        XCTAssertEqual(SimklBody.locate(day: "2023-10-06", in: premiere, special: false, season: 1, number: 5)?.number, 5, "a weekly episode as before")
+
+        // Demon Slayer: TMDB's specials 1–3 on one day are an OVA entry's episodes 1–3; specials
+        // numbered differently: their place in the day decides, when both list as many.
+        let ova = SimklAPI.episodes(from: Data(#"""
+        [{"episode":1,"type":"episode","date":"2020-08-26"},{"episode":2,"type":"episode","date":"2020-08-26"},{"episode":3,"type":"episode","date":"2020-08-26"}]
+        """#.utf8))
+        XCTAssertEqual(SimklBody.find(day: "2020-08-26", in: ova, special: true, season: 0, number: 2, sameDay: [1, 2, 3])?.number, 2)
+        XCTAssertEqual(SimklBody.find(day: "2020-08-26", in: ova, special: true, season: 0, number: 12, sameDay: [11, 12, 13])?.number, 2)
+        XCTAssertNil(SimklBody.find(day: "2020-08-26", in: ova, special: true, season: 0, number: 12, sameDay: [12, 13]), "TMDB lists fewer: no guess")
+        XCTAssertNil(SimklBody.find(day: "2020-08-26", in: ova, special: true, season: 0, number: 2), "a special's number alone doesn't decide")
+
+        // Mob Psycho: two specials a day apart: the one dated that very day.
+        let specials = SimklAPI.episodes(from: Data(#"""
+        [{"episode":1,"type":"special","date":"2016-09-28"},{"episode":7,"type":"special","date":"2016-09-27"}]
+        """#.utf8))
+        XCTAssertEqual(SimklBody.find(day: "2016-09-27", in: specials, special: true, season: 0, number: 1, sameDay: [1])?.number, 7)
+    }
+
     /// From Simkl's real replies (2026-11-14): Re:Zero's later cours are their own entries sharing
     /// TMDB's id; Bubble is an ONA Simkl files as anime with no TMDB id.
     func testCoursFilmsAndEntries() throws {

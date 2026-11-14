@@ -358,15 +358,37 @@ enum SimklBody {
     /// never placed on a special; a special prefers a special (an OVA entry lists its parts as
     /// regular episodes). `anyKind` false: a special matches only a special (inside a show's own
     /// entries).
-    static func find(day: String, in episodes: [SimklAPI.Episode], special: Bool = false, anyKind: Bool = true) -> SimklAPI.Episode? {
-        episodes.filter { episode in (special ? anyKind || episode.special : !episode.special) && (episode.day.map { daysApart($0, day) <= 1 } ?? false) }
-            .min { (daysApart($0.day ?? "", day), $0.special == special ? 0 : 1) < (daysApart($1.day ?? "", day), $1.special == special ? 0 : 1) }
+    ///
+    /// Several on (nearly) the same day (a season released at once, a multi-episode premiere,
+    /// specials out together): the date can't tell them apart, so the same number decides (TVDB's,
+    /// then for a regular episode Simkl's), then the same place in the day when TMDB lists as many
+    /// that day (`sameDay`: TMDB's numbers within a day of this one), then the only one dated that
+    /// very day. Otherwise no guess. Tested 2026-11-14: Edgerunners, Frieren's premiere, Demon
+    /// Slayer's three specials.
+    static func find(day: String, in episodes: [SimklAPI.Episode], special: Bool = false, anyKind: Bool = true,
+                     season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil) -> SimklAPI.Episode? {
+        let near = episodes.filter { episode in (special ? anyKind || episode.special : !episode.special) && (episode.day.map { daysApart($0, day) <= 1 } ?? false) }
+        let preferred = near.filter { $0.special == special }
+        let pool = preferred.isEmpty ? near : preferred
+        guard pool.count > 1 else { return pool.first }
+        if let number {
+            let byTVDB = pool.filter { season != nil && $0.tvdbSeason == season && $0.tvdbEpisode == number }
+            if byTVDB.count == 1 { return byTVDB[0] }
+            let byNumber = special ? [] : pool.filter { $0.number == number }
+            if byNumber.count == 1 { return byNumber[0] }
+            if let sameDay = sameDay?.sorted(), sameDay.count == pool.count, let place = sameDay.firstIndex(of: number) {
+                return pool.sorted { $0.number < $1.number }[place]
+            }
+        }
+        let exact = pool.filter { daysApart($0.day ?? "", day) == 0 }
+        return exact.count == 1 ? exact[0] : nil
     }
     /// `find`, and for a regular episode Simkl dates differently (a premiere it dates by its early
     /// screening: Re:Zero's third season), the one before the episode a week later, or after the one
     /// a week earlier: weekly shows keep their order.
-    static func locate(day: String, in episodes: [SimklAPI.Episode], special: Bool, anyKind: Bool = true) -> SimklAPI.Episode? {
-        if let found = find(day: day, in: episodes, special: special, anyKind: anyKind) { return found }
+    static func locate(day: String, in episodes: [SimklAPI.Episode], special: Bool, anyKind: Bool = true,
+                       season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil) -> SimklAPI.Episode? {
+        if let found = find(day: day, in: episodes, special: special, anyKind: anyKind, season: season, number: number, sameDay: sameDay) { return found }
         guard !special else { return nil }
         if let later = shift(day, by: 7).flatMap({ find(day: $0, in: episodes) }),
            let found = episodes.first(where: { !$0.special && $0.number == later.number - 1 }) { return found }
