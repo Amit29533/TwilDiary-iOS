@@ -363,6 +363,19 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(Set(compared.events.map(\.id)), ["w-inc-", "w-rz-rz-1-26"])
     }
 
+    /// Force Match takes a whole title off Simkl with no seasons (all of it), apart from episodes.
+    func testAWholeTitleComesOffWithoutSeasons() throws {
+        var whole = SimklJob(kind: .unwatch, tmdb: 95396, movie: false, name: "Severance"); whole.wholeTitle = true
+        var episode = SimklJob(kind: .unwatch, tmdb: 95396, movie: false, name: "Severance", season: 1, number: 2)
+        episode.watchedAt = nil
+        let groups = SimklBody.groups([whole, episode], simkl: { _ in nil }, external: { _ in nil })
+        XCTAssertEqual(groups.count, 2, "the whole title and the episode go as separate items")
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: SimklBody.body(groups)) as? [String: Any])
+        let shows = try XCTUnwrap(root["shows"] as? [[String: Any]])
+        XCTAssertEqual(shows.filter { $0["seasons"] == nil }.count, 1)
+        XCTAssertEqual(shows.filter { $0["seasons"] != nil }.count, 1)
+    }
+
     func testSearchAnswer() {
         XCTAssertEqual(SimklAPI.match(from: Data(#"[{"type":"anime","title":"Attack on Titan","ids":{"simkl":39687,"slug":"attack-on-titan"}}]"#.utf8)),
                        SimklAPI.Match(simkl: 39687, kind: "anime"))

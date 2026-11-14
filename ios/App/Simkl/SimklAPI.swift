@@ -252,7 +252,7 @@ enum SimklBody {
     static func groups(_ jobs: [SimklJob], simkl: (SimklJob) -> Int?, external: (SimklJob) -> SimklExternalIDs?) -> [Group] {
         var order: [String] = [], byKey: [String: [SimklJob]] = [:]
         for job in jobs {
-            let key = "\(job.titleKey)|\(job.entry ?? 0)|\(job.ownNumbering)|\(job.entry == nil ? job.tvdbEpisode ?? 0 : 0)"
+            let key = "\(job.titleKey)|\(job.entry ?? 0)|\(job.ownNumbering)|\(job.entry == nil ? job.tvdbEpisode ?? 0 : 0)|\(job.wholeTitle == true)"
             if byKey[key] == nil { order.append(key) }
             byKey[key, default: []].append(job)
         }
@@ -291,6 +291,8 @@ enum SimklBody {
                     }
                 } else if first.movie {
                     if first.kind == .watch, let when = first.watchedAt { item["watched_at"] = when }
+                } else if first.wholeTitle == true {
+                    // The whole title off Simkl (Force Match): no seasons.
                 } else {
                     // Anime in TVDB's seasons (TMDB's mostly match), unless placed in Simkl's own numbering.
                     if first.anime && !first.ownNumbering && first.entry == nil { item["use_tvdb_anime_seasons"] = true }

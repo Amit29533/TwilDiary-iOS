@@ -43,6 +43,8 @@ struct SimklJob: Codable, Equatable, Identifiable, Sendable {
     var tvdbEpisode: Int?
     /// Its TVDB id was tried: TVDB's seasons are the last try.
     var tvdbEpisodeTried: Bool?
+    /// A removal of the whole title (Force Match taking off what the diary doesn't have).
+    var wholeTitle: Bool?
 
     var titleKey: String { (movie ? "movie:" : "show:") + String(tmdb) }
     var itemKey: String { titleKey + (season.map { ":\($0):\(number ?? 0)" } ?? "") }
@@ -259,7 +261,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
             // TVDB's seasons can name another entry, and Simkl takes it without a word (TMDB's
             // Bleach S2 is Thousand-Year Blood War; TVDB's S2 is the 2004 show's second season).
             // TVDB's seasons are the fallback when Simkl lists no such date.
-            let unplaced = batch.filter { $0.anime && !$0.movie && $0.entry == nil && $0.datesChecked != true && ($0.kind == .watch || $0.kind == .unwatch) }
+            let unplaced = batch.filter { $0.anime && !$0.movie && $0.entry == nil && $0.datesChecked != true && $0.wholeTitle != true && ($0.kind == .watch || $0.kind == .unwatch) }
             if !unplaced.isEmpty {
                 for key in order where unplaced.contains(where: { $0.titleKey == key }) {
                     await placeFirst(unplaced.filter { $0.titleKey == key }, match: found[key] ?? nil, api: api)
@@ -576,6 +578,52 @@ struct SimklQueue: Codable, Equatable, Sendable {
         }
         _ = try await api.send("/sync/playback/\(id)", method: "DELETE")
         UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    /// Force Match (the diary as the source of truth): the plan's additions as "Make Simkl
+    /// match", and what Simkl has that the diary doesn't taken off: plays (an anime episode by its
+    /// remembered place), ratings, Plan to watch, and titles the diary doesn't have at all. A title
+    /// Simkl has as Dropped while the diary doesn't goes to the diary's list instead (taking it off
+    /// would take its watches too). Only what was read back in the diary's terms is touched;
+    /// what couldn't be matched is never taken off. Returns how many were queued.
+    @discardableResult func enqueue(force plan: ForceMatchPlan, store: DiaryStore) -> Int {
+        guard !store.isPreview else { return 0 }
+        var count = enqueue(plan.send, store: store)
+        let diary = store.diaryToMatch
+        var titles: [String: MediaTitle] = [:]
+        for title in diary.activeTitles { if let tmdb = title.tmdbId { titles[(title.isSeries ? "show:" : "movie:") + String(tmdb)] = title } }
+        func base(_ item: ForceMatchPlan.Item, kind: SimklJob.Kind) -> SimklJob {
+            let title = titles[(item.movie ? "movie:" : "show:") + String(item.tmdbId)]
+            return SimklJob(kind: kind, tmdb: item.tmdbId, movie: item.movie, anime: title.map(Self.isAnime) ?? false, name: title?.name ?? item.name, year: title?.year)
+        }
+        var jobs: [SimklJob] = []
+        for play in plan.plays {
+            var job = base(play.title, kind: .unwatch)
+            if !play.title.movie {
+                guard let season = play.season, let number = play.episode else { continue }
+                job.season = season; job.number = number
+                // An anime episode by where it was placed (that's how it was read back).
+                if let placed = placements["\(play.title.tmdbId):\(season):\(number)"], let entry = placed.entry {
+                    job.diarySeason = season; job.diaryNumber = number
+                    job.entry = entry; job.season = placed.season; job.number = placed.number
+                    job.ownNumbering = true; job.placedByDate = true; job.datesChecked = true
+                }
+            }
+            jobs.append(job)
+        }
+        for item in plan.ratings { jobs.append(base(item, kind: .unrate)) }
+        for item in plan.watchlist + plan.wipe { var job = base(item, kind: .unwatch); job.wholeTitle = true; jobs.append(job) }
+        for item in plan.wipe { jobs.append(base(item, kind: .unrate)) }
+        for item in plan.dropped {
+            let status = titles[(item.movie ? "movie:" : "show:") + String(item.tmdbId)]?.status
+            var job = base(item, kind: .list); job.list = status.flatMap { Self.list(for: $0, movie: item.movie) } ?? (item.movie ? "completed" : "watching")
+            if job.list != "dropped" { jobs.append(job) }
+        }
+        for job in jobs { queue.add(job) }
+        save()
+        Task { await resume() }
+        count += jobs.count
+        return count
     }
 
     /// What Simkl didn't keep, as the comparison leaves it out ("movie:tmdb", "show:tmdb:s:n").

@@ -642,7 +642,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         guard await readFresh(tracker, store: store, full: full), let service = libraries[tracker] else { return nil }
         switch source {
         case .diary:
-            let diary = store.diaryToMatch
+            let diary = tracker == .simkl ? SimklLibrary.comparable(store.diaryToMatch, placements: SimklMirror.shared.placements, notKept: SimklMirror.shared.notKeptKeys)
+                : store.diaryToMatch
             // An empty source would take everything off the other side: far more likely a diary
             // that hasn't loaded than one you emptied on purpose.
             guard !diary.activeTitles.isEmpty else {
@@ -758,6 +759,13 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         }
         guard !plan.isEmpty else {
             writeResults[tracker] = "Force Match: \(plan.tracker.name) already matches, within what both sides keep."
+            return
+        }
+        if tracker == .simkl {
+            // Simkl: each change through its own sync (placed in Simkl's numbering), in the background.
+            let queued = SimklMirror.shared.enqueue(force: plan, store: store)
+            writeResults[.simkl] = "Force Match: \(queued.formatted()) \(queued == 1 ? "change" : "changes") on the way to Simkl. Simkl is checked again after."
+            refreshSoon(.simkl, store: store, after: 60)
             return
         }
         // Everything is sent again, what didn't stick before included.
