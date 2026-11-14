@@ -81,14 +81,14 @@ struct ThemePalette: Equatable, Sendable {
     static let native = ThemePalette(
         primary: Color(uiColor: .label), secondary: Color(uiColor: .secondaryLabel), muted: Color(uiColor: .tertiaryLabel),
         soft: adaptive(dark: 0.9, light: 0.22),
-        card: Color(uiColor: .secondarySystemGroupedBackground), cardBorder: Color(uiColor: .separator).opacity(0.55),
+        card: Color(uiColor: .secondarySystemBackground), cardBorder: Color(uiColor: .separator).opacity(0.55),
         round: Color(uiColor: .tertiarySystemFill),
         chip: Color(uiColor: .systemBlue).opacity(0.15), chipText: Color(uiColor: .systemBlue),
         dateChipBorder: Color(uiColor: .separator), dateChipText: Color(uiColor: .secondaryLabel),
-        shortcut: Color(uiColor: .secondarySystemGroupedBackground), shortcutBorder: .clear,
+        shortcut: Color(uiColor: .secondarySystemBackground), shortcutBorder: .clear,
         accentTop: Color(uiColor: .systemBlue), accentBottom: Color(uiColor: .systemBlue), accentInk: .white, chipInk: .white,
         watchTop: Color(uiColor: .systemBlue), watchBottom: Color(uiColor: .systemBlue), watchInk: .white,
-        canvas: Color(uiColor: .systemGroupedBackground), ambientArtwork: true, usesGlass: true, neutralizesViolet: false,
+        canvas: Color(uiColor: .systemBackground), ambientArtwork: false, usesGlass: true, neutralizesViolet: false,
         followsSystemAppearance: true, native: true)
 
     /// A cool neutral grey of lightness `dark` in dark mode and `light` in light mode.
@@ -148,10 +148,10 @@ struct ThemePalette: Equatable, Sendable {
     /// A grey's lightness on a dark screen → (dark mode, light mode) lightness in Native.
     static func nativeGrey(_ l: Double) -> (Double, Double) {
         switch l {
-        case ..<0.05: (0, 0.949)         // the page (#0a0a0e, the title page's ground, included)
-        case ..<0.075: (0.11, 1)         // cards
-        case ..<0.11: (0.15, 0.955)      // a raised fill inside a card
-        case ..<0.2: (0.19, 0.91)        // chips, pills, dividers
+        case ..<0.05: (0, 1)             // the page (#0a0a0e, the title page's ground, included): black or white
+        case ..<0.075: (0.11, 0.949)     // cards: raised grey on the page, as Apple Music's
+        case ..<0.11: (0.15, 0.925)      // a raised fill inside a card
+        case ..<0.2: (0.19, 0.895)       // chips, pills, dividers
         case ..<0.36: (0.27, 0.8)        // strong fills, outlines
         default: (l, 0.62 * (1 - (l - 0.36) / 0.64))   // text, lightest to darkest
         }

@@ -68,10 +68,14 @@ extension View {
 private struct NativeGlassCard: ViewModifier {
     let radius: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.nativeOnArtwork) private var onArtwork
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        if reduceTransparency {
-            content.background(Color(uiColor: .secondarySystemGroupedBackground), in: shape)
+        // Glass needs something behind it: on a plain white page it would vanish, so there the card is
+        // the quiet raised grey Apple Music uses; on black and on artwork-tinted pages it is glass.
+        if reduceTransparency || (colorScheme == .light && !onArtwork) {
+            content.background(Color(uiColor: .secondarySystemBackground), in: shape)
         } else {
             content.glassEffect(.regular, in: shape)
         }
@@ -92,8 +96,22 @@ private struct CardSurface: ViewModifier {
 private struct NativeGlassCapsule: ViewModifier {
     let prominent: Bool
     let ink: Color?
-    func body(content: Content) -> some View {
+    @Environment(\.nativeOnArtwork) private var onArtwork
+    @ViewBuilder func body(content: Content) -> some View {
         let accent = Color(uiColor: .systemBlue)
+        if onArtwork {
+            // On an artwork-tinted page, as Apple Music's Play: a solid white capsule with black text,
+            // and the other actions clear glass with white text.
+            if prominent {
+                content.foregroundStyle(ink ?? .black).background(.white, in: Capsule()).contentShape(Capsule())
+            } else {
+                content.foregroundStyle(ink ?? .white).glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
+            }
+        } else {
+            onPage(content, accent: accent)
+        }
+    }
+    private func onPage(_ content: Content, accent: Color) -> some View {
         content.foregroundStyle(ink ?? (prominent ? .white : accent))
             .glassEffect(prominent ? .regular.tint(accent).interactive() : .regular.interactive(), in: Capsule())
             .contentShape(Capsule())
@@ -143,6 +161,34 @@ struct NativeMeshGlow: View {
                 [0, 0.5], [0.5 + x, 0.5 + y], [1, 0.5],
                 [0, 1], [0.5, 1], [1, 1],
             ], colors: Self.colours)
+        }
+    }
+}
+
+private struct NativeOnArtworkKey: EnvironmentKey {
+    static var defaultValue: Bool { false }
+}
+extension EnvironmentValues {
+    /// Native: this page is tinted by its artwork (a title's page), so it is dark with white text,
+    /// its cards are glass and its main action is a white capsule.
+    var nativeOnArtwork: Bool {
+        get { self[NativeOnArtworkKey.self] }
+        set { self[NativeOnArtworkKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// A title's page in Native: tinted by its artwork, dark with white text (in light mode too), as
+    /// Apple Music's album and playlist pages. Nothing changes in the other themes (already dark).
+    func nativeArtworkPage() -> some View { modifier(NativeArtworkPage()) }
+}
+
+private struct NativeArtworkPage: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.environment(\.colorScheme, .dark).environment(\.nativeOnArtwork, true)
+        } else {
+            content
         }
     }
 }

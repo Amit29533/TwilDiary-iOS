@@ -73,13 +73,13 @@ final class ThemePaletteTests: XCTestCase {
         }
         // Its page and cards are the grouped list's: grey page and white cards in light mode, black and dark grey in dark.
         let page = rgb(ThemePalette.native.canvas, .light), card = rgb(ThemePalette.native.card, .light)
-        XCTAssertGreaterThan(page.r, 0.9); XCTAssertGreaterThan(card.r, page.r)
+        XCTAssertGreaterThan(page.r, 0.99); XCTAssertLessThan(card.r, page.r); XCTAssertGreaterThan(card.r, 0.9)
         XCTAssertLessThan(rgb(ThemePalette.native.canvas, .dark).r, 0.05)
     }
 
     func testNativeMapsTheDesignsGreysOntoLightAndDark() {
         // The page, a card and text, drawn for a dark screen.
-        let page = ("#000000", dark: Float(0), light: Float(0.949)), card = ("#0e0e12", dark: Float(0.11), light: Float(1))
+        let page = ("#000000", dark: Float(0), light: Float(1)), card = ("#0e0e12", dark: Float(0.11), light: Float(0.949))
         for item in [page, card] {
             XCTAssertEqual(rgb(ThemePalette.native(hex: item.0), .dark).g, item.dark, accuracy: 0.02, item.0)
             XCTAssertEqual(rgb(ThemePalette.native(hex: item.0), .light).g, item.light, accuracy: 0.02, item.0)

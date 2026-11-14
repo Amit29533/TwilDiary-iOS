@@ -9,7 +9,7 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
     var field: Color {
         switch self {
         case .premiere: Color(webHex: "#121212")
-        case .native: Color(uiColor: .secondarySystemGroupedBackground)
+        case .native: Color(uiColor: .secondarySystemBackground)
         default: Color(webHex: "#111115")
         }
     }
@@ -113,7 +113,10 @@ extension View {
 /// The round › that opens a section's full page: the same button everywhere in the app.
 struct RoundChevron: View {
     var body: some View {
-        if ThemeStore.current.native { NativeRoundGlass(size: 34) } else { classic }
+        if ThemeStore.current.native {
+            Image(systemName: "chevron.right").font(.system(size: 19, weight: .bold)).foregroundStyle(.secondary)
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        } else { classic }
     }
     private var classic: some View {
         Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)

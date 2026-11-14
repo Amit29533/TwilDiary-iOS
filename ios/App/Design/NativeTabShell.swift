@@ -18,7 +18,7 @@ import UIKit
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection, canPage: canPage, onReselect: onReselect) }
     func makeUIViewController(context: Context) -> UITabBarController {
         let controller = UITabBarController()
-        controller.view.backgroundColor = ThemeStore.current.followsSystemAppearance ? .systemGroupedBackground : .black
+        controller.view.backgroundColor = ThemeStore.current.followsSystemAppearance ? .systemBackground : .black
         // Scrolling down shrinks the tab bar into a small pill; scrolling up (or a tap) brings it back.
         // UI tests keep it open so they can reach every tab, unless they ask for the real behaviour.
         let arguments = ProcessInfo.processInfo.arguments
@@ -47,7 +47,7 @@ import UIKit
         coordinator.selection = $selection; coordinator.canPage = canPage
         coordinator.onReselect = onReselect
         controller.tabBar.tintColor = accent
-        controller.view.backgroundColor = ThemeStore.current.followsSystemAppearance ? .systemGroupedBackground : .black
+        controller.view.backgroundColor = ThemeStore.current.followsSystemAppearance ? .systemBackground : .black
         coordinator.showSync(syncing, in: controller, accent: accent)
         // Reassigning a root re-diffs that whole tab. Doing all five on every root update
         // (opening Surprise me, any state the root body read) rebuilt every screen.

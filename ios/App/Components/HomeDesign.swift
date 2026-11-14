@@ -52,7 +52,14 @@ struct HomeRoundIcon: View {
     var system: String = "chevron.right"
     var selected = false
     var body: some View {
-        if ThemeStore.current.native { NativeRoundGlass(system: system, selected: selected) } else { classic }
+        if ThemeStore.current.native {
+            if system == "chevron.right" {
+                Image(systemName: system).font(.system(size: 19, weight: .bold)).foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            } else {
+                NativeRoundGlass(system: system, selected: selected)
+            }
+        } else { classic }
     }
     private var classic: some View {
         Image(systemName: system).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)

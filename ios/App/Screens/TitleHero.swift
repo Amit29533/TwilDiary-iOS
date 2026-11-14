@@ -120,10 +120,22 @@ struct TitleArtworkBackdrop: View {
     let name: String
     var topExtension: CGFloat = 0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    /// Native: the artwork's main colour, which the whole page takes on (as Apple Music's pages).
+    @State private var tint: Color?
     var body: some View {
         GeometryReader { proxy in cover(width: proxy.size.width) }
             .offset(y: -topExtension).allowsHitTesting(false).accessibilityHidden(true)
+            .task(id: ThemeStore.current.native ? path : nil) {
+                guard ThemeStore.current.native, let path else { tint = nil; return }
+                var found = GlassArtworkCache.shared.cached(path)
+                if found == nil { found = await GlassArtworkCache.shared.image(path) }
+                guard let found else { return }
+                let deep = Color(red: found.red * 0.46, green: found.green * 0.46, blue: found.blue * 0.46)
+                withAnimation(.smooth(duration: 0.5)) { tint = deep }
+            }
     }
+    /// The page's ground: the original near-black, or in Native the artwork's deepened colour.
+    private var ground: Color { ThemeStore.current.native ? (tint ?? .black) : Color(themed: "#0a0a0e") }
     private func cover(width: CGFloat) -> some View {
         let artwork = TitleCover.artworkHeight(width: width)
         // Owner's reference: the cover stays crisp; below it a strong, very smooth wash of its own
@@ -134,23 +146,21 @@ struct TitleArtworkBackdrop: View {
             art.frame(width: width * 1.3, height: artwork)
                 .scaleEffect(x: 1, y: -1)
                 .blur(radius: 60).saturation(1.2)
-                // Native: a quieter wash, so the title's text under the cover reads in light mode too.
-                .opacity(ThemeStore.current.native ? 0.55 : 0.95)
+                .opacity(0.95)
                 .offset(y: artwork - 50)
                 .frame(width: width)
             // The page darkens over the wash: clear at the cover's foot, dark by ~190 pt below it.
             // An even ramp (owner's light-cover reference): a pale cover stays pale behind the poster and
             // title, and every cover reaches the page's dark at about the rating boxes.
-            let native = ThemeStore.current.native
             LinearGradient(stops: [
-                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.3 : 0), location: 0),
-                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.55 : 0.18), location: 0.25),
-                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.75 : 0.45), location: 0.5),
-                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.9 : 0.78), location: 0.75),
-                .init(color: Color(themed: "#0a0a0e"), location: 1)
+                .init(color: ground.opacity(0), location: 0),
+                .init(color: ground.opacity(0.18), location: 0.25),
+                .init(color: ground.opacity(0.45), location: 0.5),
+                .init(color: ground.opacity(0.78), location: 0.75),
+                .init(color: ground, location: 1)
             ], startPoint: .top, endPoint: .bottom)
                 .frame(height: 250).offset(y: artwork - 20)
-            Color(themed: "#0a0a0e").frame(height: 4000).offset(y: artwork + 229)
+            ground.frame(height: 4000).offset(y: artwork + 229)
             // The cover itself, crisp; only a light shade behind the status bar and buttons, and a
             // short soft foot so it melts into the wash instead of ending on a line.
             art.frame(width: width, height: artwork).clipped()

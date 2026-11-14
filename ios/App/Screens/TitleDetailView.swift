@@ -99,7 +99,7 @@ struct TitleDetailView: View {
                                 .background(alignment: .top) {
                                     TitleArtworkBackdrop(path: ["again", "night", "severance"].contains(title.id) ? "scene:" + title.id : title.backdrop ?? title.poster, name: title.name, topExtension: geometry.safeAreaInsets.top)
                                 }
-                        }.scrollClipDisabled().scrollDismissesKeyboard(.interactively).diaryScreenBackground(path: title.backdrop ?? title.poster, name: title.name)
+                        }.scrollClipDisabled().scrollDismissesKeyboard(.interactively).diaryScreenBackground(path: title.backdrop ?? title.poster, name: title.name).nativeArtworkPage()
                             .onScrollPhaseChange { _, phase in if phase == .tracking || phase == .interacting { pendingScrollTarget = nil } }
                             .task(id: ScrollFocus(target: pendingScrollTarget, height: contentHeight, notes: showNotes, files: showLocation)) {
                                 guard let target = pendingScrollTarget else { return }
