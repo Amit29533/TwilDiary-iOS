@@ -307,6 +307,7 @@ struct PageHeader: View {
     var height: CGFloat = 56
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var taps: [Double] = []
     @State private var angle = 0.0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -333,7 +334,7 @@ struct PageHeader: View {
                 // See-through glass, as the other header buttons (owner's choice over a dark face);
                 // held to the dark look so it doesn't flip between light and dark over bright artwork.
                 .glassEffect(.regular.interactive(), in: Circle())
-                .environment(\.colorScheme, ThemeStore.current.native ? nil : .dark)
+                .environment(\.colorScheme, ThemeStore.current.native ? colorScheme : .dark)
                 // The tap shape sits outside the glass; otherwise the interactive glass takes the tap.
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain)

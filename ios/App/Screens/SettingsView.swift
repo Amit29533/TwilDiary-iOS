@@ -213,7 +213,7 @@ struct SettingsView: View {
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
         // Design: a 13 pt bold #9a9aa8 label, 16 pt above a #0e0e12 card (radius 22).
         let native = ThemeStore.current.native
-        VStack(alignment: .leading, spacing: native ? 7 : 16) {
+        return VStack(alignment: .leading, spacing: native ? 7 : 16) {
             Text(name).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20)
                 .padding(.top, 8).padding(.leading, native ? 16 : 0)
             VStack(spacing: 0, content: content).modifier(SettingsCard())

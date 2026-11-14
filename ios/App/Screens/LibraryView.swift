@@ -334,7 +334,7 @@ struct LibraryView: View {
         }
     }
     private func checkCircle(_ on: Bool) -> some View {
-        Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.system(size: 22))
+        Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity)
             .foregroundStyle(on ? theme.accent : .white).shadow(color: .black.opacity(0.7), radius: 3)
     }
 
@@ -682,7 +682,7 @@ struct LibraryListRow: View {
             }
             Spacer(minLength: 0)
             if let selected {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).foregroundStyle(selected ? theme.accent : Color(themed: "#a09aa9"))
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity).foregroundStyle(selected ? theme.accent : Color(themed: "#a09aa9"))
             } else { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(Color(themed: "#a09aa9")) }
         }.padding(10).background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected == true ? theme.accent.opacity(0.7) : Color.primary.opacity(0.1)))

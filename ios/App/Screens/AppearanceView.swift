@@ -27,6 +27,16 @@ struct AppearanceView: View {
 private struct ThemeCard: View {
     let item: DiaryTheme
     let selected: Bool
+    /// Each theme's own ground, whichever theme is on screen; Native's is half light, half dark (it follows the iPhone).
+    @ViewBuilder private var preview: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        if item == .native {
+            HStack(spacing: 0) { Color(white: 0.95); Color(white: 0.08) }.clipShape(shape)
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
+        } else {
+            shape.fill(Color(webHex: "#08080c"))
+        }
+    }
     var body: some View {
         // Design (board 2): a 104 pt #08080c preview (radius 14) with the accent tile and bars, a 22 pt
         // selection ring, then the name (15 pt bold, 8 pt dot) and the line under it (12 pt).
@@ -36,13 +46,13 @@ private struct ThemeCard: View {
                     HStack(alignment: .top, spacing: 8) {
                         RoundedRectangle(cornerRadius: 9).fill(item.accent).frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 6) {
-                            Capsule().fill(Color(themed: "#3a3a46")).frame(width: 71, height: 5)
+                            Capsule().fill(item == .native ? Color.gray.opacity(0.5) : Color(webHex: "#3a3a46")).frame(width: 71, height: 5)
                             Capsule().fill(item.accent).frame(width: 45, height: 5)
                         }.padding(.top, 6)
                     }
                     Capsule().fill(HomeStyle.cardBorder).frame(height: 5).padding(.top, 10)
                 }.padding(.horizontal, 12).padding(.top, 34).frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
-                    .background(Color(themed: "#08080c"), in: RoundedRectangle(cornerRadius: 14))
+                    .background { preview }
                 ZStack {
                     if selected {
                         Circle().fill(item.accent)
