@@ -68,7 +68,13 @@ struct HomeShortcut: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         HStack(spacing: 10) {
-            DiaryIcon(name: icon, size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).background(theme.accent, in: Circle())
+            if ThemeStore.current.native {
+                // Native: an app-style tile in a system colour, as Apple's own shortcut rows.
+                DiaryIcon(name: icon, size: 17).foregroundStyle(.white).frame(width: 34, height: 34)
+                    .background(Color(uiColor: name == "Canvas" ? .systemPurple : .systemOrange).gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            } else {
+                DiaryIcon(name: icon, size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).background(theme.accent, in: Circle())
+            }
             Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)

@@ -38,7 +38,7 @@ struct PersonProfilePage<Content: View>: View {
                     // facts about (no birthday, birthplace…) used to get the older full-photo header.
                     let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
                                              largeText: dynamicType.isAccessibilitySize)
-                    cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
+                    cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit).nativeHero()
                     let below = heroFacts.indices.filter { !fit.beside.contains($0) }.map { heroFacts[$0] }
                     if !below.isEmpty {
                         ProfileFacts(items: below).padding(.horizontal, 14).padding(.bottom, 6)
@@ -51,7 +51,7 @@ struct PersonProfilePage<Content: View>: View {
                 // iOS 26's scroll-edge material is independent of the toolbar
                 // background. It otherwise blurs a hard strip over the portrait.
                 .scrollEdgeEffectHidden(true, for: .top)
-                .background(.black).tint(Color(themed: "#e6e2ec"))
+                .background(ThemeStore.current.canvas).tint(Color(themed: "#e6e2ec"))
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)

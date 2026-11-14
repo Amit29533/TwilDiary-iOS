@@ -327,8 +327,10 @@ struct PersonalProfileView: View {
                 Artwork(path: art?.backdrop ?? art?.poster, title: art?.name ?? "")
                     // Reaches up under the status bar (owner's request): 80 pt taller, starting 80 pt higher.
                     .frame(height: 310).clipped()
+                    // Native: the picture fades into the page (light or dark), not into black.
                     .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0.05), location: 0.3),
-                                                    .init(color: .black.opacity(0.55), location: 0.7), .init(color: .black, location: 1)],
+                                                    .init(color: ThemeStore.current.native ? ThemeStore.current.canvas.opacity(0.6) : .black.opacity(0.55), location: 0.7),
+                                                    .init(color: ThemeStore.current.native ? ThemeStore.current.canvas : .black, location: 1)],
                                             startPoint: .top, endPoint: .bottom))
                     .padding(.horizontal, -16).offset(y: -140).allowsHitTesting(false).accessibilityHidden(true)
             }

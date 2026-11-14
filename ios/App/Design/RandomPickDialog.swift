@@ -139,7 +139,7 @@ private struct RandomPickSurface: UIViewRepresentable {
         view.accessibilityIdentifier = "random-pick-dialog"
         view.layer.cornerRadius = 26
         view.layer.borderWidth = 1
-        view.backgroundColor = UIColor(red: 13 / 255, green: 13 / 255, blue: 18 / 255, alpha: 1)
+        view.backgroundColor = ThemeStore.current.native ? .secondarySystemGroupedBackground : UIColor(red: 13 / 255, green: 13 / 255, blue: 18 / 255, alpha: 1)
         return view
     }
     func updateUIView(_ view: UIView, context: Context) {

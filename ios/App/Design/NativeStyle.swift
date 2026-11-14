@@ -71,6 +71,34 @@ private struct NativeGlassCapsule: ViewModifier {
     }
 }
 
+extension View {
+    /// Native: an artwork header keeps its dark look (white text on the picture, in light mode too)
+    /// and ends in rounded corners on the page, as a featured header in Apple's apps. Other themes
+    /// are dark already, so nothing changes there.
+    func nativeHero(radius: CGFloat = 34) -> some View { modifier(NativeHero(radius: radius)) }
+}
+
+private struct NativeHero: ViewModifier {
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.environment(\.colorScheme, .dark).clipShape(HeroClip(radius: radius))
+        } else {
+            content
+        }
+    }
+}
+
+/// The header's shape: open at the top (artwork reaching up under the status bar or stretched by a
+/// pull stays whole), rounded at the bottom.
+private struct HeroClip: Shape {
+    let radius: CGFloat
+    func path(in rect: CGRect) -> Path {
+        let tall = CGRect(x: rect.minX, y: rect.minY - 4000, width: rect.width, height: rect.height + 4000)
+        return UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous).path(in: tall)
+    }
+}
+
 /// A round Liquid Glass button face (see all, layout, more): the glass circle iOS 26 uses for a
 /// bar's icon buttons, with the symbol in the primary label colour.
 struct NativeRoundGlass: View {

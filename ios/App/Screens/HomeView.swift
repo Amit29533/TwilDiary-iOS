@@ -204,7 +204,7 @@ struct HomeView: View {
             // instead of cutting from one picture to the next.
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
             .allowsHitTesting(false).accessibilityHidden(true)
-        }
+        }.nativeHero()
     }
     /// Recently watched titles that TMDB knows, newest first, each once.
     private static func recommendationSeeds(_ recent: [HistoryEntry]) -> [MediaTitle] {

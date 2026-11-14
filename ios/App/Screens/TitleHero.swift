@@ -134,17 +134,19 @@ struct TitleArtworkBackdrop: View {
             art.frame(width: width * 1.3, height: artwork)
                 .scaleEffect(x: 1, y: -1)
                 .blur(radius: 60).saturation(1.2)
-                .opacity(0.95)
+                // Native: a quieter wash, so the title's text under the cover reads in light mode too.
+                .opacity(ThemeStore.current.native ? 0.55 : 0.95)
                 .offset(y: artwork - 50)
                 .frame(width: width)
             // The page darkens over the wash: clear at the cover's foot, dark by ~190 pt below it.
             // An even ramp (owner's light-cover reference): a pale cover stays pale behind the poster and
             // title, and every cover reaches the page's dark at about the rating boxes.
+            let native = ThemeStore.current.native
             LinearGradient(stops: [
-                .init(color: Color(themed: "#0a0a0e").opacity(0), location: 0),
-                .init(color: Color(themed: "#0a0a0e").opacity(0.18), location: 0.25),
-                .init(color: Color(themed: "#0a0a0e").opacity(0.45), location: 0.5),
-                .init(color: Color(themed: "#0a0a0e").opacity(0.78), location: 0.75),
+                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.3 : 0), location: 0),
+                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.55 : 0.18), location: 0.25),
+                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.75 : 0.45), location: 0.5),
+                .init(color: Color(themed: "#0a0a0e").opacity(native ? 0.9 : 0.78), location: 0.75),
                 .init(color: Color(themed: "#0a0a0e"), location: 1)
             ], startPoint: .top, endPoint: .bottom)
                 .frame(height: 250).offset(y: artwork - 20)

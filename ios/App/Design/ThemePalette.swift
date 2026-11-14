@@ -148,7 +148,7 @@ struct ThemePalette: Equatable, Sendable {
     /// A grey's lightness on a dark screen → (dark mode, light mode) lightness in Native.
     static func nativeGrey(_ l: Double) -> (Double, Double) {
         switch l {
-        case ..<0.035: (0, 0.949)        // the page
+        case ..<0.05: (0, 0.949)         // the page (#0a0a0e, the title page's ground, included)
         case ..<0.075: (0.11, 1)         // cards
         case ..<0.11: (0.15, 0.955)      // a raised fill inside a card
         case ..<0.2: (0.19, 0.91)        // chips, pills, dividers
