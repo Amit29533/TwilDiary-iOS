@@ -542,6 +542,8 @@ private struct CatalogSeasonPreview: View {
     private func name(_ episode: CatalogEpisode) -> String { hidden(episode) ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name }
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
+            // Seasons, as on a diary show's page; a tile picks the season shown below.
+            SeasonCardsSection(preview: details, selected: $selected)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
@@ -678,6 +680,8 @@ struct CastAndRelated: View {
     var sourceTitle: String? = nil
     /// Anime show their characters (AniList) above the cast.
     var anime: (year: Int?, movie: Bool)? = nil
+    /// Anime show Related (AniList) above More like this; the preview page's `anime` does too.
+    var related: (year: Int?, movie: Bool)? = nil
     /// The show page's "See all" (its Cast and crew page).
     var seeAll: ShowPageRoute? = nil
     @Environment(AppRouter.self) private var router
@@ -716,7 +720,7 @@ struct CastAndRelated: View {
               }
             }
             // Anime: its sequels, side stories and the like (AniList), just above More like this.
-            if let anime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: anime.year, movie: anime.movie) }
+            if let info = related ?? anime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: info.year, movie: info.movie) }
             if !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
