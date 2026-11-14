@@ -13,6 +13,15 @@ struct SimklSettingsView: View {
     @State private var message: String?
     @State private var confirmRemove = false
 
+    /// "Paused until 5:35 am · 590 requests today": why it is waiting and how much of the day is used.
+    private var waitingDetail: String {
+        let usage = SimklUsage.today()
+        let today = "\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") today"
+        if let wake = mirror.queue.nextWake, wake.timeIntervalSinceNow > 600 {
+            return (usage.limitReachedAt != nil ? "Daily limit reached · resumes " : "Paused until ") + wake.formatted(date: .omitted, time: .shortened) + " · " + today
+        }
+        return today
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -49,8 +58,12 @@ struct SimklSettingsView: View {
                     if !mirror.queue.jobs.isEmpty || mirror.lastProblem != nil {
                         SettingsGroup(label: "Waiting") {
                             HStack {
-                                Text(mirror.sending ? "Sending \(mirror.queue.jobs.count)…" : "\(mirror.queue.jobs.count) waiting")
-                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(mirror.sending ? "Sending \(mirror.queue.jobs.count)…" : "\(mirror.queue.jobs.count) waiting")
+                                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                    // Where it stands: paused until a time (Simkl's daily limit or a long wait), and today's requests.
+                                    Text(waitingDetail).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                                }
                                 Spacer()
                                 Button("Send now") { Task { await mirror.sendNow() } }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
                                     .disabled(mirror.sending || !account.saving)

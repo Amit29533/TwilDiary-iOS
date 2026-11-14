@@ -1,5 +1,37 @@
 import Foundation
 
+/// How many requests TwilDiary sent Simkl today (Simkl's day runs on UTC) and whether today's
+/// allowance ran out. Simkl reports neither, so the app counts its own (owner's request: see where
+/// the daily limit stands). Kept with the add-on's other data, so Disconnect and remove clears it.
+enum SimklUsage {
+    struct Day: Codable, Equatable, Sendable {
+        var day: String
+        var count: Int
+        var limitReachedAt: Date?
+    }
+    private static let key = "simkl.addon.usage"
+    private static let lock = NSLock()
+    static func dayKey(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .gmt
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+    /// Today's numbers (a new UTC day starts from nothing).
+    static func today(now: Date = .now) -> Day {
+        let fresh = Day(day: dayKey(now), count: 0, limitReachedAt: nil)
+        guard let data = UserDefaults.standard.data(forKey: key), let saved = try? JSONDecoder().decode(Day.self, from: data),
+              saved.day == fresh.day else { return fresh }
+        return saved
+    }
+    static func counted(now: Date = .now) { change(now) { $0.count += 1 } }
+    static func limitReached(now: Date = .now) { change(now) { $0.limitReachedAt = now } }
+    private static func change(_ now: Date, _ edit: (inout Day) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        var day = today(now: now); edit(&day)
+        if let data = try? JSONEncoder().encode(day) { UserDefaults.standard.set(data, forKey: key) }
+    }
+}
+
 /// Simkl's API as the add-on uses it: your sign-in as Bearer, the app ID as `simkl-api-key`, and
 /// the app's name and version on every request, as Simkl asks.
 struct SimklAPI: Sendable {
@@ -39,6 +71,7 @@ struct SimklAPI: Sendable {
 
     private func send(_ path: String, method: String, query: [String: String], body: Data?) async throws -> Data {
         let data: Data, response: URLResponse
+        SimklUsage.counted()
         do { (data, response) = try await session.data(for: request(path, method: method, query: query, body: body)) }
         catch { throw Failure.unavailable(error.localizedDescription) }
         let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
@@ -51,7 +84,9 @@ struct SimklAPI: Sendable {
         switch status {
         case 401, 403: throw Failure.signIn
         // The account's daily allowance used up ("user_limit_exceeded"): waits for the next day (UTC).
-        case 429 where text.contains("user_limit"): throw Failure.busy(untilTomorrow())
+        case 429 where text.contains("user_limit"):
+            SimklUsage.limitReached()
+            throw Failure.busy(untilTomorrow())
         case 429: throw Failure.busy(Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30)
         // Simkl takes one write per account at a time; a second one is refused with "rate_limit".
         case 400 where text.contains("rate_limit"): throw Failure.busy(5)

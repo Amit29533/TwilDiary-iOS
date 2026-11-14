@@ -439,4 +439,18 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertThrowsError(try SimklAccount.tokens(from: Data(#"{"error":"invalid_grant"}"#.utf8), status: 400))
     }
 
+
+    func testTodaysRequestsAreCountedOnSimklsUtcDay() {
+        let noon = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(SimklUsage.dayKey(noon), "2027-01-15")
+        UserDefaults.standard.removeObject(forKey: "simkl.addon.usage")
+        SimklUsage.counted(now: noon); SimklUsage.counted(now: noon)
+        XCTAssertEqual(SimklUsage.today(now: noon).count, 2)
+        XCTAssertNil(SimklUsage.today(now: noon).limitReachedAt)
+        SimklUsage.limitReached(now: noon)
+        XCTAssertEqual(SimklUsage.today(now: noon).limitReachedAt, noon)
+        // The next UTC day starts from nothing.
+        XCTAssertEqual(SimklUsage.today(now: noon.addingTimeInterval(86_400)).count, 0)
+        UserDefaults.standard.removeObject(forKey: "simkl.addon.usage")
+    }
 }

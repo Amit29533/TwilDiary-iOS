@@ -127,7 +127,7 @@ struct ServiceLimitsView: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 16) {
                 if let limits {
-                    dailyCard(limits.daily)
+                    if tracker == .simkl { simklUsageCard } else { dailyCard(limits.daily) }
                     if !limits.rows.isEmpty {
                         SettingsGroup(label: limits.plan ?? "Account limits", info: planNote) {
                             ForEach(Array(limits.rows.enumerated()), id: \.element.id) { index, row in
@@ -164,6 +164,31 @@ struct ServiceLimitsView: View {
                     }
                 } else {
                     Text(noDailyText).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
+        }.accessibilityElement(children: .combine).accessibilityIdentifier("limits-daily")
+    }
+    /// Simkl: TwilDiary's own count of today's requests, whether the limit was reached and when
+    /// sending resumes, and what's still waiting (Simkl reports none of it).
+    private var simklUsageCard: some View {
+        let usage = SimklUsage.today()
+        let waiting = SimklMirror.shared.queue.jobs.count
+        let resets = Date().addingTimeInterval(SimklAPI.untilTomorrow())
+        let time = resets.formatted(date: .omitted, time: .shortened)
+        return SettingsGroup(label: "Daily requests", info: dailyNote) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") from TwilDiary today")
+                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+                if let reached = usage.limitReachedAt {
+                    Text("Simkl’s daily limit was reached at \(reached.formatted(date: .omitted, time: .shortened)). Sending resumes at \(time).")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Simkl’s day starts again at \(time). Simkl doesn’t say how many are left, so TwilDiary counts its own.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                if waiting > 0 {
+                    Text("\(waiting.formatted()) \(waiting == 1 ? "change" : "changes") waiting to send")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                 }
             }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("limits-daily")
