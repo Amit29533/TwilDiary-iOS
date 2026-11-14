@@ -314,6 +314,53 @@ final class SimklAddOnTests: XCTestCase {
                        "an episode sent by TVDB id isn't asked about: TVDB's seasons are next")
     }
 
+    // MARK: Reading Simkl back (phase 2)
+
+    private func title(_ id: String, _ name: String, category: String, tmdb: Int) -> MediaTitle {
+        MediaTitle(id: id, name: name, category: category, year: nil, overview: "", poster: nil, backdrop: nil, communityScore: nil, tmdbId: tmdb,
+                   genres: [], tags: [], runtimeMinutes: nil, status: "watching", favorite: false, queued: false, score: nil, notes: "", deletedAt: nil,
+                   version: 1, seasons: [], createdAt: nil)
+    }
+    private func episode(_ title: String, _ season: Int, _ number: Int) -> Episode {
+        Episode(id: "\(title)-\(season)-\(number)", titleId: title, season: season, number: number, name: "", overview: "", airedOn: nil, still: nil, hidden: nil, communityScore: nil)
+    }
+    private func watched(_ title: String, _ episode: String?) -> WatchEvent {
+        WatchEvent(id: "w-\(title)-\(episode ?? "")", operationId: "o", titleId: title, episodeId: episode, watchedAt: "2026-11-14T07:00:00Z",
+                   recordedAt: "2026-11-14T07:00:00Z", revokedAt: nil, origin: "manual", version: 1)
+    }
+
+    /// From the test account's real library (2026-11-14): movies and shows by TMDB id; anime through
+    /// where the diary's episodes were placed (Re:Zero's second cour has no TMDB id on Simkl).
+    func testSimklsLibraryReadsInTheDiarysTerms() {
+        let diary = Workspace(titles: [title("inc", "Inception", category: "movie", tmdb: 27205), title("bb", "Breaking Bad", category: "show", tmdb: 1396),
+                                       title("rz", "Re:ZERO", category: "anime", tmdb: 65942), title("yn", "Your Name.", category: "anime-movie", tmdb: 372058)],
+                              episodes: [episode("bb", 1, 2), episode("rz", 1, 26), episode("rz", 1, 27)],
+                              events: [watched("inc", nil), watched("bb", "bb-1-2"), watched("rz", "rz-1-26"), watched("rz", "rz-1-27")], locations: [])
+        let placements = ["65942:1:26": SimklPlacement(entry: 1063491, season: 1, number: 1, at: .now),
+                          "65942:1:27": SimklPlacement(entry: nil, season: nil, number: nil, at: .now)]
+        let mapping = SimklLibrary.mapping(placements: placements, diary: diary)
+        var library = TraktLibrary()
+        SimklLibrary.apply("movies", Data(#"{"movies":[{"last_watched_at":"2026-11-14T07:00:00Z","user_rated_at":"2026-11-14T07:37:48Z","user_rating":8,"status":"completed","movie":{"title":"Inception","year":2010,"ids":{"simkl":472214,"imdb":"tt1375666","tmdb":"27205"}}}]}"#.utf8), mapping: mapping, into: &library)
+        SimklLibrary.apply("shows", Data(#"{"shows":[{"status":"watching","show":{"title":"Breaking Bad","ids":{"simkl":11121,"tmdb":"1396"}},"seasons":[{"number":1,"episodes":[{"number":2,"watched_at":"2026-11-14T07:00:00Z"}]}]},{"status":"dropped","added_to_watchlist_at":"2026-11-14T07:37:50Z","show":{"title":"Severance","ids":{"simkl":1203662,"tmdb":"95396"}}}]}"#.utf8), mapping: mapping, into: &library)
+        SimklLibrary.apply("anime", Data(#"""
+        {"anime":[{"status":"plantowatch","added_to_watchlist_at":"2026-11-14T07:37:50Z","anime_type":"movie","show":{"title":"Kimi no Na wa.","ids":{"simkl":543146,"tmdb":"372058"}}},
+          {"status":"watching","anime_type":"tv","show":{"title":"Re:Zero kara Hajimeru Isekai Seikatsu","ids":{"simkl":1063491,"mal":"39587"}},"seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2026-11-14T07:00:00Z"},{"number":2,"watched_at":"2026-11-14T07:00:00Z"}]}]},
+          {"status":"watching","anime_type":"ova","show":{"title":"Kimetsu Gakuen","ids":{"simkl":2853600,"tmdb":"312924"}},"seasons":[{"number":1,"episodes":[{"number":2,"watched_at":"2026-11-14T07:00:00Z"}]}]}]}
+        """#.utf8), mapping: mapping, into: &library)
+        XCTAssertTrue(library.plays.contains { $0.title.tmdbId == 27205 && $0.title.kind == .movie })
+        XCTAssertTrue(library.plays.contains { $0.title.tmdbId == 1396 && $0.season == 1 && $0.episode == 2 })
+        XCTAssertTrue(library.plays.contains { $0.title.tmdbId == 65942 && $0.season == 1 && $0.episode == 26 }, "the cour's episode 1 is the diary's S1 E26")
+        XCTAssertEqual(library.plays.filter { $0.title.tmdbId == 65942 }.count, 1)
+        XCTAssertEqual(library.ratings.first?.rating, 8)
+        XCTAssertEqual(library.watchlist.map(\.title.tmdbId), [372058], "an anime film by its TMDB id")
+        XCTAssertEqual(library.dropped.map(\.title.tmdbId), [95396])
+        XCTAssertEqual(library.skipped, 3, "the cour's episode 2 (no diary episode there) and the OVA (a TMDB id the diary doesn't have) are counted, not guessed")
+
+        // The diary as compared: Re:Zero S1 E27, which Simkl lists nowhere, is left out; so is what Simkl didn't keep.
+        let compared = SimklLibrary.comparable(diary, placements: placements, notKept: ["show:1396:1:2"])
+        XCTAssertEqual(Set(compared.events.map(\.id)), ["w-inc-", "w-rz-rz-1-26"])
+    }
+
     func testSearchAnswer() {
         XCTAssertEqual(SimklAPI.match(from: Data(#"[{"type":"anime","title":"Attack on Titan","ids":{"simkl":39687,"slug":"attack-on-titan"}}]"#.utf8)),
                        SimklAPI.Match(simkl: 39687, kind: "anime"))

@@ -202,7 +202,7 @@ struct ConnectionsView: View {
             }
             Menu {
                 if !isMain, MainTracker.offered.contains(tracker) { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
-                if tracker != .simkl { Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on) }
+                Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on)
                 // Connected through your server: move the Trakt sign-in onto this iPhone in one tap.
                 if tracker == .trakt, on, !store.traktSignedInOnPhone {
                     Button("Sign in on this iPhone", systemImage: "iphone") { Task { await signIn(.trakt) } }

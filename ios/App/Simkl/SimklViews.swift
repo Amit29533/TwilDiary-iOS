@@ -6,6 +6,7 @@ import TwilDiaryCore
 struct SimklSettingsView: View {
     @State private var account = SimklAccount.shared
     @State private var mirror = SimklMirror.shared
+    @State private var others = TrackerPreviewStore.shared
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.webAuthenticationSession) private var webSession
     @State private var working = false
@@ -56,6 +57,10 @@ struct SimklSettingsView: View {
                             }.padding(.horizontal, 15).frame(minHeight: 56)
                         }
                         if let problem = mirror.lastProblem { SettingsFootnote(text: problem) }
+                    }
+                    TrackerPreviewPanel(tracker: .simkl)
+                    if others.simklWaiting > 0 {
+                        SettingsFootnote(text: "\(others.simklWaiting.formatted()) anime \(others.simklWaiting == 1 ? "episode is" : "episodes are") still being matched with Simkl’s entries, a few shows at a time. They’re left out of the comparison until then.")
                     }
                     NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
                         SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }

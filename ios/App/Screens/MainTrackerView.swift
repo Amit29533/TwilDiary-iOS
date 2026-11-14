@@ -254,7 +254,8 @@ struct TrackerPreviewPanel: View {
                          + "\n\nNothing is removed from your \(tracker.name) history. \(tracker.name) keeps one watch per episode, so the first is sent and rewatches stay in your diary.")
                 }
         }
-        forceMatchSection
+        // Simkl's Force Match comes with its own sync's removals (not yet).
+        if tracker != .simkl { forceMatchSection }
     }
 
     /// Force Match: one side made exactly like the other, after a preview of what's added and taken off.

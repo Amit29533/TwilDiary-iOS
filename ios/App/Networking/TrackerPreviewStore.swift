@@ -30,7 +30,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     private let folder: URL
     init(folder: URL = URL.applicationSupportDirectory.appending(path: "Trackers")) {
         self.folder = folder
-        for tracker in MainTracker.others {
+        for tracker in MainTracker.others + MainTracker.alsoSynced {
             var saved = (try? Data(contentsOf: file(tracker))).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
             // MDBList copies saved before its show and season rows were left out.
             if tracker == .mdblist { saved?.plays.removeAll { !$0.isMovieOrEpisode } }
@@ -48,6 +48,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         do {
             // Edits still waiting go first; while they can't, the phone keeps showing them.
             if !(pending[tracker] ?? []).isEmpty { guard await sendPending(tracker, store: store, session: session) else { return } }
+            if tracker == .simkl { try await checkSimkl(store: store, started: started, session: session, editsAtStart: editsAtStart); return }
             let config = await store.freshProviderConfig(tracker.provider)
             let client = store.directClient
             var requests = 1
@@ -138,6 +139,30 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             if !Task.isCancelled, session == generation { errors[tracker] = error.localizedDescription }
         }
     }
+    /// Simkl, read by its own sync (SimklMirror.readLibrary): its library in the diary's terms,
+    /// anime through where the diary's episodes were placed. What can't be matched is counted as
+    /// skipped; diary anime not placed yet are left out until they are (a few titles per read).
+    private func checkSimkl(store: DiaryStore, started: Date, session: UUID, editsAtStart: Int) async throws {
+        var library = libraries[.simkl] ?? TraktLibrary()
+        let read = try await SimklMirror.shared.readLibrary(into: &library, store: store)
+        library.fetchedAt = Date.now.formatted(.iso8601)
+        guard session == generation else { return }
+        if edits != editsAtStart { refreshSoon(.simkl, store: store, after: 2); return }
+        libraries[.simkl] = library
+        readCounts[.simkl, default: 0] += 1
+        save(library, .simkl)
+        simklWaiting = read.waiting
+        guard let analysed = await analyse(.simkl, store: store) else { return }
+        guard session == generation else { return }
+        reports[.simkl] = .init(seconds: Date.now.timeIntervalSince(started), requests: read.requests, fetched: [.history, .ratings, .watchlist, .dropped],
+                                unavailable: [], skipped: library.skipped, comparison: analysed.comparison)
+        plans[.simkl] = analysed.plan
+        // Diary anime still waiting to be placed: the next read places more.
+        if read.waiting > 0 { refreshSoon(.simkl, store: store, after: 60) }
+    }
+    /// Diary anime episodes whose place on Simkl isn't known yet (left out of the comparison).
+    private(set) var simklWaiting = 0
+
     /// Titles the comparison could only show by key ("movie:100068": WeTrakr sends no name for
     /// some, and they aren't in the diary): looked up on TMDB (24 at a time, kept in the phone's
     /// catalog), then the comparison is worked out again with their names.
@@ -163,7 +188,10 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     /// holds (sent before and not kept by the service).
     private func analyse(_ tracker: MainTracker, store: DiaryStore) async -> (comparison: TraktComparison, plan: TraktWritePlan?)? {
         guard let read = libraries[tracker] else { return nil }
-        let diary = store.diaryToMatch, planned = store.diaryService != tracker
+        // Simkl: without what can't be compared yet (anime not placed, what Simkl didn't keep).
+        let diary = tracker == .simkl ? SimklLibrary.comparable(store.diaryToMatch, placements: SimklMirror.shared.placements, notKept: SimklMirror.shared.notKeptKeys)
+            : store.diaryToMatch
+        let planned = store.diaryService != tracker
         let ledger = MatchLedger.tokens(tracker), names = PhoneCatalog.shared.titles.mapValues(\.name)
         return await Task.detached(priority: .utility) {
             (TraktComparison.compare(read, with: diary, tracker: tracker, except: ledger, names: names),
@@ -450,7 +478,9 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
 
     func matchPlan(_ tracker: MainTracker, store: DiaryStore) -> TraktWritePlan? {
         guard store.diaryService != tracker else { return nil }
-        return libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: store.diaryToMatch, tracker: tracker, except: MatchLedger.tokens(tracker)) }
+        let diary = tracker == .simkl ? SimklLibrary.comparable(store.diaryToMatch, placements: SimklMirror.shared.placements, notKept: SimklMirror.shared.notKeptKeys)
+            : store.diaryToMatch
+        return libraries[tracker].map { TraktWritePlan.make(library: $0, workspace: diary, tracker: tracker, except: MatchLedger.tokens(tracker)) }
     }
     /// A backup or an import into MDBList or WeTrakr while it holds the diary: only what it
     /// lacks (watches at their dates, ratings where it has none, Planned for titles never
@@ -494,6 +524,13 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     func makeMatch(_ tracker: MainTracker, store: DiaryStore) async {
         guard writing == nil, running == nil, let plan = matchPlan(tracker, store: store), !plan.isEmpty else { return }
         if store.isPreview { errors[tracker] = "Writing to \(tracker.name) needs a real \(tracker.name) connection."; return }
+        if tracker == .simkl {
+            // Simkl: each change goes through its own sync, placed in Simkl's numbering, in the background.
+            let queued = SimklMirror.shared.enqueue(plan, store: store)
+            writeResults[.simkl] = queued == 0 ? "Nothing to send to Simkl." : "\(queued.formatted()) \(queued == 1 ? "change" : "changes") on the way to Simkl. They go in the background; Simkl is checked again after."
+            refreshSoon(.simkl, store: store, after: 45)
+            return
+        }
         writing = tracker; errors[tracker] = nil; writeResults[tracker] = nil
         MatchInBackground.shared.begin("Matching \(tracker.name)", provider: tracker.provider)
         var sent = 0, tally = TraktDirectStore.ReplyTally()
