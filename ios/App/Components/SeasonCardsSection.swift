@@ -145,16 +145,19 @@ struct SeasonCardsSection: View {
         var rows: [Row] = []
         switch source {
         case .diary(let title):
-            let episodes = store.workspace.episodes.filter { $0.titleId == title.id && $0.skipped != true }
-            let watched = store.watchedEpisodeIDs(title.id)
-            var numbers = Set(title.seasons.map(\.number))
-            numbers.formUnion(episodes.map(\.season))
-            rows = numbers.map { number in
+            let episodes: [Episode] = store.workspace.episodes.filter { $0.titleId == title.id && $0.skipped != true }
+            let watched: Set<String> = store.watchedEpisodeIDs(title.id)
+            let seasons: [Season] = title.seasons ?? []
+            var numbers = Set<Int>()
+            for season in seasons { numbers.insert(season.number) }
+            for episode in episodes { numbers.insert(episode.season) }
+            for number in numbers {
                 let inSeason = episodes.filter { $0.season == number }
-                let season = title.seasons.first { $0.number == number }
-                let total = inSeason.isEmpty ? (season?.expectedEpisodes ?? 0) : inSeason.count
-                return Row(number: number, name: Self.name(number, season?.name), watched: inSeason.filter { watched.contains($0.id) }.count, total: total)
-            }.filter { $0.total > 0 || ($0.watched ?? 0) > 0 }
+                let season: Season? = seasons.first { $0.number == number }
+                let total: Int = inSeason.isEmpty ? (season?.expectedEpisodes ?? 0) : inSeason.count
+                let seen: Int = inSeason.filter { watched.contains($0.id) }.count
+                if total > 0 || seen > 0 { rows.append(Row(number: number, name: Self.name(number, season?.name), watched: seen, total: total)) }
+            }
         case .preview(let details, _):
             rows = (details.seasons ?? []).map { Row(number: $0.number, name: Self.name($0.number, $0.name), watched: nil, total: $0.expectedEpisodes ?? 0) }
         }
