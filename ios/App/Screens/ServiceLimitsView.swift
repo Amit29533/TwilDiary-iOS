@@ -172,19 +172,29 @@ struct ServiceLimitsView: View {
     /// sending resumes, and what's still waiting (Simkl reports none of it).
     private var simklUsageCard: some View {
         let usage = SimklUsage.today()
+        let quota = ProviderQuota.daily(host: SimklAPI.quotaHost)
         let waiting = SimklMirror.shared.queue.jobs.count
-        let resets = Date().addingTimeInterval(SimklAPI.untilTomorrow())
+        let resets = quota?.resetsAt ?? Date().addingTimeInterval(SimklAPI.untilTomorrow())
         let time = resets.formatted(date: .omitted, time: .shortened)
+        let reached = usage.limitReachedAt != nil || (quota.map { $0.used >= $0.limit } ?? false)
         return SettingsGroup(label: "Daily requests", info: dailyNote) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") from TwilDiary today")
-                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
-                if let reached = usage.limitReachedAt {
-                    Text("Simkl’s daily limit was reached at \(reached.formatted(date: .omitted, time: .shortened)). Sending resumes at \(time).")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).fixedSize(horizontal: false, vertical: true)
+                if let quota {
+                    // Simkl's own count for the whole account (every connected app shares it).
+                    Text("\(quota.used.formatted()) of \(quota.limit.formatted()) used today")
+                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+                    LimitBar(fraction: Double(quota.used) / Double(max(1, quota.limit)), accent: theme.accent)
+                    if resets > .now { Text("Resets in " + Self.untilText(resets)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
+                    Text("TwilDiary sent \(usage.count.formatted()) of them.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                 } else {
-                    Text("Simkl’s day starts again at \(time). Simkl doesn’t say how many are left, so TwilDiary counts its own.")
+                    Text("\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") from TwilDiary today")
+                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+                    Text("Simkl’s count for your account shows after TwilDiary’s next request.")
                         .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                if reached {
+                    Text("Simkl’s daily limit is reached. Sending resumes at \(time).")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).fixedSize(horizontal: false, vertical: true)
                 }
                 if waiting > 0 {
                     Text("\(waiting.formatted()) \(waiting == 1 ? "change" : "changes") waiting to send")
@@ -206,7 +216,7 @@ struct ServiceLimitsView: View {
         case .trakt: "Trakt allows 1,000 reads every 5 minutes and one change a second; TwilDiary waits when Trakt asks it to."
         case .mdblist: "Free accounts get 1,000 requests a day. Supporter tiers raise it to 10,000, 25,000, 100,000 or 250,000."
         case .wetrakr: "WeTrakr is still testing daily quotas: going over keeps working for now."
-        case .simkl: "Simkl limits each account’s requests per day and takes one change at a time. TwilDiary keeps its look-ups on this iPhone to stay well within it."
+        case .simkl: "Free accounts get 500 requests a day, PRO 1,000 and VIP 10,000. The allowance belongs to your Simkl account, so every app you connect draws on the same pool. Simkl takes one change a second; TwilDiary keeps its look-ups on this iPhone to stay within it."
         }
     }
     private var planNote: String {

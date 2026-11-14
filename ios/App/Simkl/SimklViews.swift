@@ -16,7 +16,9 @@ struct SimklSettingsView: View {
     /// "Paused until 5:35 am · 590 requests today": why it is waiting and how much of the day is used.
     private var waitingDetail: String {
         let usage = SimklUsage.today()
-        let today = "\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") today"
+        // Simkl's own count for the account when known ("222 of 500 today"), else TwilDiary's.
+        let today = ProviderQuota.daily(host: SimklAPI.quotaHost).map { "\($0.used.formatted()) of \($0.limit.formatted()) today" }
+            ?? "\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") today"
         if let wake = mirror.queue.nextWake, wake.timeIntervalSinceNow > 600 {
             return (usage.limitReachedAt != nil ? "Daily limit reached · resumes " : "Paused until ") + wake.formatted(date: .omitted, time: .shortened) + " · " + today
         }

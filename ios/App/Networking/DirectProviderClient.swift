@@ -506,6 +506,11 @@ enum ProviderQuota {
         guard let daily = parse(headers, now: now), let data = try? JSONEncoder().encode(daily) else { return }
         UserDefaults.standard.set(data, forKey: prefix + host)
     }
+    /// A count read some other way than MDBList's headers (Simkl's X-RateLimit headers).
+    static func record(host: String, used: Int, limit: Int, resetsAt: Date?, now: Date = .now) {
+        guard limit > 0, let data = try? JSONEncoder().encode(Daily(used: max(0, used), limit: limit, resetsAt: resetsAt, readAt: now)) else { return }
+        UserDefaults.standard.set(data, forKey: prefix + host)
+    }
     /// The last count for `host`; once its reset time has passed it's a new day (nothing used yet).
     static func daily(host: String, now: Date = .now) -> Daily? {
         guard let data = UserDefaults.standard.data(forKey: prefix + host),

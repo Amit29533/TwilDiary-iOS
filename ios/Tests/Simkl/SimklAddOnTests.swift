@@ -453,4 +453,19 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SimklUsage.today(now: noon.addingTimeInterval(86_400)).count, 0)
         UserDefaults.standard.removeObject(forKey: "simkl.addon.usage")
     }
+
+    func testSimklsOwnDailyCountIsRead() throws {
+        let key = "providerQuota." + SimklAPI.quotaHost
+        UserDefaults.standard.removeObject(forKey: key)
+        let url = try XCTUnwrap(URL(string: "https://api.simkl.com/sync/history"))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        SimklAPI.recordQuota(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["X-RateLimit-Limit": "500", "X-RateLimit-Remaining": "278"]), now: now)
+        let daily = try XCTUnwrap(ProviderQuota.daily(host: SimklAPI.quotaHost, now: now))
+        XCTAssertEqual(daily.used, 222); XCTAssertEqual(daily.limit, 500)
+        XCTAssertGreaterThan(try XCTUnwrap(daily.resetsAt), now)
+        // A new sign-in's first answer has no count: nothing changes.
+        SimklAPI.recordQuota(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [:]), now: now)
+        XCTAssertEqual(ProviderQuota.daily(host: SimklAPI.quotaHost, now: now)?.used, 222)
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }

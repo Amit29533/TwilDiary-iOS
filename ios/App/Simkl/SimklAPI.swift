@@ -36,6 +36,8 @@ enum SimklUsage {
 /// the app's name and version on every request, as Simkl asks.
 struct SimklAPI: Sendable {
     static let base = "https://api.simkl.com"
+    /// Where Simkl's daily count is kept (`ProviderQuota`).
+    static let quotaHost = "api.simkl.com"
     let token: String?
     var session: URLSession = .shared
 
@@ -75,6 +77,7 @@ struct SimklAPI: Sendable {
         do { (data, response) = try await session.data(for: request(path, method: method, query: query, body: body)) }
         catch { throw Failure.unavailable(error.localizedDescription) }
         let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
+        Self.recordQuota(http)
         if (200..<300).contains(status) { return data }
         try Self.check(status: status, data: data, http: http)
         return data
@@ -85,8 +88,9 @@ struct SimklAPI: Sendable {
         case 401, 403: throw Failure.signIn
         // The account's daily allowance used up ("user_limit_exceeded"): waits for the next day (UTC).
         case 429 where text.contains("user_limit"):
+            // Simkl says how long until the day's allowance comes back.
             SimklUsage.limitReached()
-            throw Failure.busy(untilTomorrow())
+            throw Failure.busy(Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "").map { $0 + 60 } ?? untilTomorrow())
         case 429: throw Failure.busy(Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30)
         // Simkl takes one write per account at a time; a second one is refused with "rate_limit".
         case 400 where text.contains("rate_limit"): throw Failure.busy(5)
@@ -95,6 +99,15 @@ struct SimklAPI: Sendable {
         }
     }
 
+    /// Simkl's own count of the account's requests today (AUTH V2: `X-RateLimit-Limit` and
+    /// `X-RateLimit-Remaining`), shared by every app the account has connected. A brand-new sign-in's
+    /// first answer has none.
+    static func recordQuota(_ http: HTTPURLResponse?, now: Date = .now) {
+        guard let http, let limit = Int(http.value(forHTTPHeaderField: "X-RateLimit-Limit") ?? ""),
+              let remaining = Int(http.value(forHTTPHeaderField: "X-RateLimit-Remaining") ?? "") else { return }
+        let resets = Double(http.value(forHTTPHeaderField: "Retry-After") ?? "").map { now.addingTimeInterval($0) } ?? now.addingTimeInterval(untilTomorrow(now: now))
+        ProviderQuota.record(host: quotaHost, used: limit - remaining, limit: limit, resetsAt: resets, now: now)
+    }
     static func untilTomorrow(now: Date = .now) -> TimeInterval {
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .gmt
         let next = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 5), matchingPolicy: .nextTime) ?? now.addingTimeInterval(3_600)
