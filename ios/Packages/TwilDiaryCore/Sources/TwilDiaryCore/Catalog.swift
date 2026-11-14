@@ -129,7 +129,8 @@ public enum CatalogTools {
         workspace.activeTitles.first { $0.id == item.inLibraryId || ($0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv)) }?.id
     }
     public static func image(_ path: String?, size: String = "w500") -> String? {
-        guard let path, ["w185", "w500", "w780"].contains(size),
+        // w342: the season cards' size (it was missing here, so every season poster came back nil).
+        guard let path, ["w185", "w342", "w500", "w780"].contains(size),
               path.range(of: #"^/[a-zA-Z0-9_-]+\.(jpg|png|webp)$"#, options: .regularExpression) != nil else { return nil }
         return "https://image.tmdb.org/t/p/" + size + path
     }

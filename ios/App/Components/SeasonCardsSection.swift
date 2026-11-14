@@ -196,9 +196,12 @@ struct SeasonCardsSection: View {
             }
         } else { return }
         guard !Task.isCancelled else { return }
+        posters = found
+        // Only an answer with posters is kept: "none" (TMDB unreachable, the server without them)
+        // is asked again next time instead of sticking for the session.
+        guard !found.isEmpty else { return }
         if Self.posterCache.count > 200 { Self.posterCache.removeAll() }
         Self.posterCache[tmdb] = found
-        posters = found
     }
     @MainActor private static var posterCache: [Int: [Int: String]] = [:]
 
