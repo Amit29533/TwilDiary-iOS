@@ -392,7 +392,8 @@ struct SearchField: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Gemini's blue, violet, rose and gold, round the border and back to blue.
-    static let geminiColors = [Color(webHex: "#4285F4"), Color(webHex: "#9B72CB"), Color(webHex: "#D96570"), Color(webHex: "#F2A60C"), Color(webHex: "#4285F4")]
+    /// AI looks the same everywhere: CineMind's glow colours on the AI pill and the field's ring.
+    static let geminiColors = CineGlow.colours + [CineGlow.colours[0]]
     private var aiOn: Bool { ai?.wrappedValue == true }
     var body: some View {
         HStack(spacing: 10) {
