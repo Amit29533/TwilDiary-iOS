@@ -50,7 +50,7 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
     var colorScheme: ColorScheme? { palette.followsSystemAppearance ? nil : .dark }
     /// The scheme on screen: Native's own choice (Automatic, Light or Dark), every other theme dark.
     func colorScheme(native appearance: NativeAppearance) -> ColorScheme? {
-        palette.followsSystemAppearance ? appearance.scheme : .dark
+        palette.followsSystemAppearance ? appearance.scheme : colorScheme
     }
 }
 

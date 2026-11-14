@@ -59,10 +59,6 @@ extension View {
     func cardSurface(_ radius: CGFloat) -> some View {
         modifier(CardSurface(radius: radius))
     }
-    /// A light tap under the finger in Native when `trigger` changes (a choice made), as system pickers give.
-    func nativeSelectionFeedback<T: Equatable>(_ trigger: T) -> some View {
-        sensoryFeedback(.selection, trigger: trigger) { _, _ in ThemeStore.current.native }
-    }
 }
 
 private struct NativeGlassCard: ViewModifier {
