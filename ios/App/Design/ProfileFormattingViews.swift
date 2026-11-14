@@ -36,15 +36,14 @@ struct ProfileFacts: View {
                 row(fact)
             }
         }
-        .foregroundStyle(Color(themed: "#e6e2ec")).tint(Color(themed: "#d1cdd8"))
-        .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
+        .foregroundStyle(ThemeStore.current.native ? Color(uiColor: .label) : Color(themed: "#e6e2ec")).tint(Color(themed: "#d1cdd8"))
+        .modifier(ProfileCardSurface())
     }
     private func label(_ fact: ProfileFact) -> some View {
         HStack(spacing: 5) {
             Image(systemName: fact.icon).imageScale(.small).accessibilityHidden(true)
             Text(fact.label).fixedSize(horizontal: false, vertical: true)
-        }.font(.caption).foregroundStyle(Color(themed: "#a9a7b6"))
+        }.font(.caption).foregroundStyle(ThemeStore.current.native ? Color(uiColor: .secondaryLabel) : Color(themed: "#a9a7b6"))
     }
     private func value(_ fact: ProfileFact) -> Text {
         Text(AniListText.formatted(fact.value, hideSpoilers: false)).font(.subheadline.weight(.semibold))
@@ -129,6 +128,29 @@ struct ProfileSourceNote: View {
     }
 }
 
+/// A profile page's card (facts, other names, biography): the original dark card, or Native's card
+/// (Liquid Glass on the portrait-tinted page).
+struct ProfileCardSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.nativeCard(radius: 20)
+        } else {
+            content.background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
+        }
+    }
+}
+
+private struct ProfileChipSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            content.background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+        }
+    }
+}
+
 /// "Also known as" on cast, voice actor and character pages: a card in the facts box's style with
 /// each name as a chip (the first eight, then "+N more"), instead of a run-on sentence of up to
 /// twenty names in several scripts (owner's request). Hold a name to copy it.
@@ -142,13 +164,17 @@ struct ProfileAliases: View {
         if !aliases.isEmpty {
             let visible = expanded ? aliases : Array(aliases.prefix(Self.shown))
             VStack(alignment: .leading, spacing: 10) {
-                Text("ALSO KNOWN AS").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                if ThemeStore.current.native {
+                    // Native: a plain heading, as the sections of an Apple Music artist page.
+                    Text("Also known as").font(.headline).foregroundStyle(Color(uiColor: .label))
+                } else {
+                    Text("ALSO KNOWN AS").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                }
                 InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                     ForEach(visible, id: \.self) { name in
                         Text(name).font(.subheadline).foregroundStyle(HomeStyle.primary).lineLimit(2)
                             .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Color.primary.opacity(0.06), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                            .modifier(ProfileChipSurface())
                             .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = name } }
                     }
                     if aliases.count > Self.shown {
@@ -161,8 +187,7 @@ struct ProfileAliases: View {
                 }
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
+            .modifier(ProfileCardSurface())
             .accessibilityElement(children: .contain).accessibilityLabel("Also known as")
             .accessibilityIdentifier("profile-aliases")
         }
@@ -470,8 +495,7 @@ struct ProfileSourceRow: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
+            .modifier(ProfileCardSurface())
             .contentShape(RoundedRectangle(cornerRadius: 16))
         }.buttonStyle(.plain)
             .accessibilityElement(children: .combine)

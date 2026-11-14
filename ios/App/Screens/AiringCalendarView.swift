@@ -94,7 +94,15 @@ struct AiringCalendarView: View {
 
     // MARK: Header pieces
 
-    private var tabs: some View {
+    @ViewBuilder private var tabs: some View {
+        if ThemeStore.current.native {
+            NativeSegmentedControl(segments: Tab.allCases.map { NativeSegment(value: $0, title: $0.title, id: "calendar-tab-" + $0.id) }, selection: $tab)
+                .padding(.vertical, 4)
+        } else {
+            underlinedTabs
+        }
+    }
+    private var underlinedTabs: some View {
         HStack(spacing: 24) {
             ForEach(Tab.allCases) { item in
                 let on = tab == item

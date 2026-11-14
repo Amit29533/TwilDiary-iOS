@@ -38,7 +38,7 @@ struct PersonProfilePage<Content: View>: View {
                     // facts about (no birthday, birthplace…) used to get the older full-photo header.
                     let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
                                              largeText: dynamicType.isAccessibilitySize)
-                    cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit).nativeHero()
+                    cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
                     let below = heroFacts.indices.filter { !fit.beside.contains($0) }.map { heroFacts[$0] }
                     if !below.isEmpty {
                         ProfileFacts(items: below).padding(.horizontal, 14).padding(.bottom, 6)
@@ -52,6 +52,8 @@ struct PersonProfilePage<Content: View>: View {
                 // background. It otherwise blurs a hard strip over the portrait.
                 .scrollEdgeEffectHidden(true, for: .top)
                 .background(ThemeStore.current.canvas).tint(Color(themed: "#e6e2ec"))
+                // Native: an Apple Music artist page, dark with the portrait's colour, in light mode too.
+                .nativeArtworkPage()
                 .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 .toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
@@ -217,10 +219,11 @@ struct ProfileBiography: View {
                     Button { expanded = true } label: {
                         HStack(spacing: 5) { Text(moreLabel); Image(systemName: "chevron.right").font(.caption) }
                             .font(.subheadline).frame(minHeight: 44)
-                    }.buttonStyle(.plain).foregroundStyle(HomeStyle.chipText).fontWeight(.semibold)
+                    }.buttonStyle(.plain).foregroundStyle(ThemeStore.current.native ? Color(uiColor: .label) : HomeStyle.chipText).fontWeight(.semibold)
                         .accessibilityLabel("Read the whole " + (identifier == "profile-aliases" ? "list of names" : "biography"))
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(BiographyCard())
                 .onChange(of: String(text.characters)) { _, _ in expanded = false }
                 .sheet(isPresented: $expanded) {
                     NavigationStack {
@@ -233,8 +236,31 @@ struct ProfileBiography: View {
         }
     }
     private var prose: some View {
-        Text(text).font(style).lineSpacing(5).foregroundStyle(Color(themed: "#cfccda"))
+        Text(text).font(style).lineSpacing(5).foregroundStyle(ThemeStore.current.native ? Color(uiColor: .label).opacity(0.86) : Color(themed: "#cfccda"))
             .tint(Color(themed: "#d1cdd8")).frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A website button's face: the original dark tile, or a Liquid Glass circle in Native.
+private struct WebsiteButtonSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            content.background(Color(themed: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
+        }
+    }
+}
+
+/// Native: the biography in a card, as the About card of an Apple Music artist page.
+private struct BiographyCard: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            content.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6).nativeCard(radius: 20)
+        } else {
+            content
+        }
     }
 }
 
@@ -250,8 +276,7 @@ struct ProfileWebsiteButtons: View {
                             else { Image(systemName: link.symbol).resizable().scaledToFit() }
                         }.frame(width: 20, height: 20).foregroundStyle(.white)
                             .frame(width: 44, height: 44)
-                            .background(Color(themed: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
+                            .modifier(WebsiteButtonSurface())
                     }.buttonStyle(.plain).accessibilityLabel(link.label)
                         .accessibilityHint(ProfileDeepLink.parse(link.url) == nil ? "Opens website" : "Opens inside TwilDiary").accessibilityIdentifier("profile-site-" + link.id)
                 }

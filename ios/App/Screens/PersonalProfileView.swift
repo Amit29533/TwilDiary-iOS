@@ -298,7 +298,40 @@ struct PersonalProfileView: View {
         if store.traktSignedInOnPhone, let name = store.providerSettings.config(for: .trakt).username, !name.isEmpty { return "@" + name }
         return ""
     }
-    private var header: some View {
+    @ViewBuilder private var header: some View {
+        if ThemeStore.current.native { accountHeader } else { classicHeader }
+    }
+    /// Native: the avatar, name and handle centred, Edit profile as a glass capsule, as Apple's account page.
+    private var accountHeader: some View {
+        let art = store.activeEvents.max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) }.flatMap { store.title($0.titleId) }
+        return VStack(spacing: 6) {
+            Button { showAvatarPicker = true } label: {
+                PersonalAvatar(size: 104).overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "camera.fill").font(.system(size: 12)).foregroundStyle(.white).frame(width: 30, height: 30)
+                        .background(.black.opacity(0.75), in: Circle())
+                }
+            }.buttonStyle(.plain).accessibilityLabel("Change profile picture").accessibilityIdentifier("profile-avatar")
+            Text(profile.name).font(.system(size: 28, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center).padding(.top, 8)
+            if !handle.isEmpty { Text(handle).font(.system(size: 16)).foregroundStyle(.secondary) }
+            if let joined = trakt?.joined {
+                HStack(spacing: 6) { Image(systemName: "calendar"); Text("Joined " + joined.formatted(.dateTime.month(.wide).year())) }
+                    .font(.system(size: 14)).foregroundStyle(.secondary)
+            }
+            Button { editing = true } label: {
+                Text("Edit profile").font(.system(size: 15, weight: .semibold)).padding(.horizontal, 18).frame(height: 36)
+                    .nativeGlassCapsule(prominent: false)
+            }.buttonStyle(.plain).accessibilityIdentifier("profile-edit-name").padding(.top, 8)
+        }.frame(maxWidth: .infinity).padding(.top, 70)
+            .background(alignment: .top) {
+                Artwork(path: art?.backdrop ?? art?.poster, title: art?.name ?? "")
+                    .frame(height: 310).clipped()
+                    .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0.05), location: 0.3),
+                                                    .init(color: ThemeStore.current.canvas.opacity(0.6), location: 0.7), .init(color: ThemeStore.current.canvas, location: 1)],
+                                            startPoint: .top, endPoint: .bottom))
+                    .padding(.horizontal, -16).offset(y: -140).allowsHitTesting(false).accessibilityHidden(true)
+            }
+    }
+    private var classicHeader: some View {
         let art = store.activeEvents.max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) }.flatMap { store.title($0.titleId) }
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .bottom) {

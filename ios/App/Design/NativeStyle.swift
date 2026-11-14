@@ -193,6 +193,44 @@ private struct NativeArtworkPage: ViewModifier {
     }
 }
 
+/// One choice of a `NativeSegmentedControl`.
+struct NativeSegment<Value: Hashable>: Identifiable {
+    let value: Value
+    let title: String
+    /// The accessibility identifier (UI tests find segments by it).
+    let id: String
+}
+
+/// iOS 26's segmented control on Liquid Glass: the choices share one glass track and the chosen one
+/// sits on a raised thumb that springs across, with a light tap.
+struct NativeSegmentedControl<Value: Hashable>: View {
+    let segments: [NativeSegment<Value>]
+    @Binding var selection: Value
+    @Namespace private var thumb
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(segments) { segment in
+                let on = segment.value == selection
+                Button {
+                    withAnimation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22)) { selection = segment.value }
+                } label: {
+                    Text(segment.title).font(.system(size: 14, weight: on ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
+                        .lineLimit(1).minimumScaleFactor(0.85).padding(.horizontal, 8).frame(maxWidth: .infinity, minHeight: 34)
+                        .background {
+                            if on {
+                                Capsule().fill(ThemePalette.adaptive(dark: 0.4, light: 1)).shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                                    .matchedGeometryEffect(id: "thumb", in: thumb)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(segment.id)
+            }
+        }.padding(3).glassEffect(.regular, in: Capsule())
+            .sensoryFeedback(.selection, trigger: selection)
+    }
+}
+
 /// A round Liquid Glass button face (see all, layout, more): the glass circle iOS 26 uses for a
 /// bar's icon buttons, with the symbol in the primary label colour.
 struct NativeRoundGlass: View {
