@@ -464,7 +464,7 @@ struct RelatedTitlesPage: View {
                     else { CatalogGrid(items: items, showsLayoutToggle: false) }
                 } else if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
-                } else { DiaryLoadingPlaceholder(height: 320, label: "Loading titles") }
+                } else { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ShowPageTitle(title: "More like this", subtitle: title) }
@@ -549,7 +549,7 @@ struct PreviewEpisodesPage: View {
                         }
                     }
                 }
-                if controller?.loading == true && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
+                if controller?.loading == true && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season", layout: .list(rows: 6)) }
                 if let error = controller?.error { RetryNotice(message: error) { Task { await controller?.load(season, reveal: !hideSpoilers, force: true) } } }
                 if items.isEmpty && controller?.loading == false { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
                 if !items.isEmpty {
@@ -791,7 +791,7 @@ struct InListsPage: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) { ForEach(Tab.allCases, id: \.self) { item in ShowFilterChip(label: item.rawValue, on: tab == item) { tab = item } } }
-                if loading && lists.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading lists") }
+                if loading && lists.isEmpty { DiaryLoadingPlaceholder(label: "Loading lists", layout: .list(rows: 4)) }
                 else if lists.isEmpty {
                     Text(failure ?? (tab == .yours ? "None of your Trakt lists has this title." : "No public Trakt lists have this title yet."))
                         .font(.subheadline).foregroundStyle(.secondary).padding(.top, 8)

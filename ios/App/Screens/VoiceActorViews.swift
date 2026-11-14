@@ -41,7 +41,7 @@ struct VoiceActorCharactersView: View {
                     }
                     if roles.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
                 } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                else { DiaryLoadingPlaceholder(height: 300, label: "Loading characters") }
+                else { DiaryLoadingPlaceholder(label: "Loading characters", layout: .posterGrid(columns: 3, rows: 2)) }
             }.padding(.horizontal, 14).padding(.bottom, 40).smoothChange(of: roles == nil)
         }.diaryScreenBackground().navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task(id: route) { if roles == nil { await load() } }

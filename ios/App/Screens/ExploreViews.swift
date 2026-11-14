@@ -114,7 +114,7 @@ private struct DiscoveryShelfView: View {
         VStack(alignment: .leading, spacing: 10) {
             ExploreHeading(section: section)
             DiscoveryTrack(items: results.items)
-            if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading titles") }
+            if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf) }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await load() } } }
             else if !results.loading && results.items.isEmpty { DiscoveryNotice(text: "No titles available.") }
         }.smoothChange(of: results.items.isEmpty).task { if results.page == 0 { await load() } }
@@ -158,7 +158,7 @@ private struct RecommendedDiscoveryView: View {
         VStack(alignment: .leading, spacing: 10) {
             ExploreHeading(section: .recommended)
             DiscoveryTrack(items: results.items)
-            if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading recommendations") }
+            if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf) }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await results.load(refresh: true) } } }
             else if !results.loading && !results.connected {
                 // A way in, not a dead end: Trakt's settings page connects it.
@@ -343,7 +343,7 @@ private struct DiscoveryBrowser: View {
             if !displayed.isEmpty {
                 CatalogGrid(items: displayed, showsLayoutToggle: false)
             }
-            if busy && displayed.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading titles") }
+            if busy && displayed.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2)) }
             if let error = section == .recommended ? recommendations.error : results.error {
                 DiscoveryNotice(text: error) { Task { if section == .recommended { await recommendations.load(limit: 24, refresh: true) } else { await results.load(filters.query(section: section), more: results.page > 0) } } }
             } else if !busy && displayed.isEmpty {

@@ -18,7 +18,7 @@ struct JellyfinLibraryView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
-                if loading && entries.isEmpty { DiaryLoadingPlaceholder(height: 220, label: "Reading Jellyfin") }
+                if loading && entries.isEmpty { DiaryLoadingPlaceholder(label: "Reading Jellyfin", layout: .list(rows: 4)) }
                 else if let failure, entries.isEmpty { RetryNotice(message: failure) { Task { await load() } } }
                 else { content }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)

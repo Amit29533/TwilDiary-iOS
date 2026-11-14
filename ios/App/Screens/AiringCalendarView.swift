@@ -63,7 +63,7 @@ struct AiringCalendarView: View {
             VStack(alignment: .leading, spacing: 16) {
                 tabs
                 if tab == .everything { UniversalCalendarSection() }
-                else if computed == nil { DiaryLoadingPlaceholder(height: 260, label: "Loading the calendar") }
+                else if computed == nil { DiaryLoadingPlaceholder(label: "Loading the calendar", layout: .list(rows: 4)) }
                 else { switch tab {
                 case .upcoming:
                     monthCard(upcomingItems)

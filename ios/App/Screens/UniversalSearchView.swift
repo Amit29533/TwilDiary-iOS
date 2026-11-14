@@ -110,7 +110,7 @@ struct SearchLandingView: View {
                     }
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
-            if loading && items.isEmpty && shows.isEmpty { DiaryLoadingPlaceholder(height: 210, label: "Loading trending titles") }
+            if loading && items.isEmpty && shows.isEmpty { DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .list(rows: 6)) }
             if !items.isEmpty { Text("Trending movies").font(.system(size: 22, weight: .bold)).tracking(-0.5) }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
             ScrollView(.horizontal) {

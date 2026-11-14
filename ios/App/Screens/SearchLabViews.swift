@@ -392,7 +392,7 @@ struct SearchLabResultsView: View {
                         }.buttonStyle(.springPress).onAppear { if item.key == items.last?.key { Task { await load(more: true) } } }
                     }
                 }
-                if loading && items.isEmpty { DiaryLoadingPlaceholder(height: 240, label: "Loading titles") }
+                if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2)) }
                 if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 if !loading && shown.isEmpty && failure == nil {
                     Text("No titles match these filters. Remove one to widen the search.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)

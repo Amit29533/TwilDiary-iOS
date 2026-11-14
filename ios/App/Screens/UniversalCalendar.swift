@@ -229,7 +229,7 @@ struct UniversalCalendarSection: View {
                 } else if let moreFailure {
                     RetryNotice(message: "Later days couldn’t be loaded. " + moreFailure) { Task { await load() } }
                 }
-            } else { DiaryLoadingPlaceholder(height: 260, label: "Finding releases") }
+            } else { DiaryLoadingPlaceholder(label: "Finding releases", layout: .list(rows: 4)) }
         }
         .task(id: loadKey) { await load() }
         .sheet(isPresented: $showGenres) {

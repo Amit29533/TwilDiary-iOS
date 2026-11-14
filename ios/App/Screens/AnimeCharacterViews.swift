@@ -108,7 +108,7 @@ struct CharacterView: View {
             } else {
                 EdgeToEdgeScroll {
                     if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
-                    else { DiaryLoadingPlaceholder(height: 310, label: "Loading character").padding(14) }
+                    else { DiaryLoadingPlaceholder(label: "Loading character", layout: .profile).padding(14) }
                 }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar)
             }
         }.task(id: route.id) { if character == nil { await load() } }

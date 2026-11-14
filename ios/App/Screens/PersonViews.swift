@@ -62,7 +62,7 @@ struct PersonView: View {
                         Text("No profile was found for \(routeName ?? "this person").").font(.subheadline).foregroundStyle(.secondary).padding(14)
                             .accessibilityIdentifier("person-missing")
                     } else if let failure { RetryNotice(message: failure) { Task { await load() } }.padding(14) }
-                    else { DiaryLoadingPlaceholder(height: 310, label: "Loading person").padding(14) }
+                    else { DiaryLoadingPlaceholder(label: "Loading person", layout: .profile).padding(14) }
                 }.diaryScreenBackground().navigationTitle("").toolbar(.visible, for: .navigationBar).tint(.white)
             }
         }.task(id: start) { if person == nil && actor == nil { await load() } }
@@ -382,7 +382,7 @@ struct PersonFilmographyView: View {
                             if shown < items.count { ScrollLoadTrigger(token: shown, loading: false) { shown += 40 } }
                         }
                     } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                    else { DiaryLoadingPlaceholder(height: 240, label: "Loading filmography").padding(14) }
+                    else { DiaryLoadingPlaceholder(label: "Loading filmography", layout: .posterGrid(columns: 3, rows: 2)).padding(14) }
                 }.padding(.horizontal, 14).padding(.bottom, 100)
             }.scrollDismissesKeyboard(.interactively)
         }.diaryScreenBackground().navigationTitle(barTitle).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)

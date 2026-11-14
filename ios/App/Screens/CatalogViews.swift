@@ -123,7 +123,7 @@ struct CatalogSearchView: View {
                 // Online (TMDB): only while it's loading, has results, or failed.
                 if (loading && results.isEmpty) || !visibleOnline.isEmpty || failure != nil {
                 if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows" : "Not in library").font(.system(size: 15, weight: .semibold)) }
-                if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
+                if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online", layout: .list(rows: 5)) }
                 if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
                 CollectionLayout(grid: grid, columns: 3) { ForEach(Array(visibleOnline.prefix(onlineShown)), id: \.key) { item in
                     Button { chooseCatalog(item.route) } label: { onlineRow(item) }
@@ -229,7 +229,7 @@ struct CatalogSearchView: View {
             if !shown.isEmpty || loading || failure != nil {
                 Text("SHOWS & MOVIES").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 6)
             }
-            if loading && shown.isEmpty { DiaryLoadingPlaceholder(label: "Searching online") }
+            if loading && shown.isEmpty { DiaryLoadingPlaceholder(label: "Searching online", layout: .list(rows: 5)) }
             if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
             ForEach(shown.prefix(onlineExpanded ? 100 : 8)) { result in resultCard(result) }
             if shown.count > 8 && !onlineExpanded {
@@ -582,7 +582,7 @@ private struct CatalogSeasonPreview: View {
                     Spacer(minLength: 0)
                     layoutSwitch
                 }
-                if controller.loading && controller.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season") }
+                if controller.loading && controller.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season", layout: .list(rows: 6)) }
                 if let error = controller.error { RetryNotice(message: error) { Task { await controller.load(selected, reveal: !hideSpoilers || controller.revealed, force: true) } } }
                 if controller.items.isEmpty && !controller.loading && controller.error == nil { Text("No episode metadata yet").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
                 if episodesGrid {
