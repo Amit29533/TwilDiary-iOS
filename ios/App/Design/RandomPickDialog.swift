@@ -72,10 +72,11 @@ struct RandomPickDialog: View {
                                 .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 14)))
                             HStack(spacing: 10) {
                                 Button { choose() } label: { HStack(spacing: 7) { DiaryIcon(name: "shuffle", size: 18); Text("Pick again") }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.glass)
+                                    .buttonStyle(.glass).controlSize(.large)
                                     .disabled(active.count < 2 || rolling).accessibilityIdentifier("random-pick-again")
                                 Button { onOpen(picked.id) } label: { HStack(spacing: 7) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 18) }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.diaryPrimary).accessibilityIdentifier("random-pick-open")
+                                    // The same kind and size as Pick again (owner's request): system Liquid Glass, this one in the accent.
+                                    .buttonStyle(.glassProminent).controlSize(.large).accessibilityIdentifier("random-pick-open")
                             }.font(.system(size: 14, weight: .semibold)).padding(.top, 16)
                         } else {
                             VStack(spacing: 14) {
