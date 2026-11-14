@@ -231,12 +231,21 @@ struct SimklQueue: Codable, Equatable, Sendable {
         guard !sending, SimklAccount.shared.canSend, !queue.jobs.isEmpty else { return }
         sending = true
         defer { sending = false; scheduleWake() }
+        // The same Live Activity as the other services' sends ("Simkl · 5 of 40").
+        var total = queue.jobs.count, done = 0
+        let live = BackgroundSyncCoordinator.shared
         while true {
             let batch = queue.batch(now: .now)
             guard !batch.isEmpty, SimklAccount.shared.canSend else { return }
             guard let token = await SimklAccount.shared.token(session: session) else { SimklAccount.shared.signInLapsed(); return }
+            if done == 0 { live.updateForProviderBatch(provider: .simkl, completed: 0, total: total) }
+            let before = queue.jobs.count
             let carryOn = await send(batch, api: SimklAPI(token: token, session: session))
             save()
+            done += max(0, before - queue.jobs.count)
+            total = max(total, done + queue.jobs.count)
+            live.updateForProviderBatch(provider: .simkl, completed: min(done, total), total: total,
+                                        phase: queue.jobs.isEmpty ? .completed : carryOn ? .flushingOutbox : .paused)
             guard carryOn else { return }
             try? await Task.sleep(for: .milliseconds(800))
         }
@@ -529,8 +538,9 @@ struct SimklQueue: Codable, Equatable, Sendable {
     // MARK: Check-in
 
     /// Checks in on Simkl (`/scrobble/checkin`): a movie or show by its ids; an anime episode in
-    /// Simkl's own numbering, placed as a watch would be (its entry by Simkl id), else by the
-    /// episode's TVDB id. Simkl marks it watched when the runtime has passed.
+    /// Simkl's own numbering, placed as a watch would be (its entry by Simkl id). Tested
+    /// 2026-11-14 (Frieren E3, Breaking Bad S1E2, Inception). Simkl marks it watched when the
+    /// runtime has passed.
     func checkIn(_ title: MediaTitle, episode: Episode?, store: DiaryStore) async throws -> String {
         self.store = store
         guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so Simkl can’t find it.") }
@@ -550,9 +560,8 @@ struct SimklQueue: Codable, Equatable, Sendable {
                 var entryIDs: [String: Any] = ["simkl": spot.entry]
                 for (key, value) in spot.native ?? [:] { entryIDs[key] = Int(value) ?? value }
                 body = ["anime": ["ids": entryIDs], "episode": ["season": spot.season ?? 1, "number": spot.number ?? episode.number]]
-            } else if job.anime, let tvdb = await tvdbEpisodeID(job) {
-                body = ["show": ["title": title.name, "ids": SimklBody.ids(job, simkl: nil, external: ids)], "episode": ["ids": ["tvdb": String(tvdb)]]]
             } else if job.anime {
+                // (Simkl's check-in by an episode's TVDB id answered 404 for anime, 2026-11-14.)
                 throw APIError.message("Simkl numbers this episode differently and TwilDiary can’t place it, so it can’t be checked in.")
             } else {
                 body = ["show": ["title": title.name, "ids": SimklBody.ids(job, simkl: nil, external: ids)], "episode": ["season": episode.season, "number": episode.number]]
