@@ -232,7 +232,7 @@ private struct FilterPillSurface: ViewModifier {
     func body(content: Content) -> some View {
         if ThemeStore.current.native {
             // Native: clear glass, or the accent glass when a filter is on.
-            content.background(active ? accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
+            content.glassEffect(active ? .regular.tint(accent).interactive() : .regular.interactive(), in: Capsule())
         } else if !active, ThemeStore.current.usesGlass {
             content.glassEffect(.regular.interactive(), in: Capsule())
         } else {
@@ -687,7 +687,7 @@ struct CategoryPicker: View {
                                 .contentTransition(.numericText())
                         }
                     }.font(.system(size: 14, weight: selected ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
-                        .lineLimit(1).padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 36)
+                        .lineLimit(1).minimumScaleFactor(0.75).padding(.horizontal, 6).frame(maxWidth: .infinity, minHeight: 36)
                         .background {
                             if selected {
                                 Capsule().fill(ThemePalette.adaptive(dark: 0.4, light: 1))

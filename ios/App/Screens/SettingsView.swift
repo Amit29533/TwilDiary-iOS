@@ -37,11 +37,11 @@ struct SettingsView: View {
                     settingsSection("LIBRARY") {
                         HStack(spacing: 12) {
                             tile("star.fill", .purple)
-                            VStack(alignment: .leading, spacing: 2) { Text("Public ratings").font(.system(size: 15, weight: .semibold)); Text("Community scores, not your rating").font(.system(size: 12)).foregroundStyle(.secondary) }
+                            SettingsRowTitle("Public ratings", "Community scores, not your rating")
                             Spacer(minLength: 0)
                             Menu { Picker("Library ratings", selection: $ratingSource) { ForEach(PublicRatingSource.allCases) { Text($0.label).tag($0) } } }
                                 label: { FilterPill(label: ratingSource.label) }.fixedSize().accessibilityLabel("Library ratings").accessibilityValue(ratingSource.label).accessibilityIdentifier("settings-rating-source")
-                        }.padding(.horizontal, 15).frame(minHeight: 64)
+                        }.settingsRowFrame()
                         divider
                         NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
                         divider
@@ -51,10 +51,10 @@ struct SettingsView: View {
                         HStack(spacing: 12) {
                             tile("eye.slash.fill", .indigo)
                             Toggle(isOn: $hideSpoilers) {
-                                VStack(alignment: .leading, spacing: 2) { Text("Hide spoilers").font(.system(size: 15, weight: .semibold)); Text("Names and stills until watched").font(.system(size: 12)).foregroundStyle(.secondary) }
+                                SettingsRowTitle("Hide spoilers", "Names and stills until watched")
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }.tint(theme.accent)
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).frame(minHeight: 64)
+                        }.frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame()
                         divider
                         NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
                         divider
@@ -76,11 +76,11 @@ struct SettingsView: View {
                         divider
                         HStack(spacing: 12) {
                             tile("rectangle.portrait.and.arrow.forward", .orange)
-                            VStack(alignment: .leading, spacing: 2) { Text("Opens on").font(.system(size: 15, weight: .semibold)); Text("The screen TwilDiary starts on").font(.system(size: 12)).foregroundStyle(.secondary) }
+                            SettingsRowTitle("Opens on", "The screen TwilDiary starts on")
                             Spacer(minLength: 0)
                             Menu { Picker("Opens on", selection: $launchTab) { ForEach(AppTab.allCases, id: \.self) { Text($0.label).tag($0) } } }
                                 label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
-                        }.padding(.horizontal, 15).frame(minHeight: 64)
+                        }.settingsRowFrame()
                         divider
                         settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
                         divider
@@ -277,7 +277,8 @@ struct SettingsView: View {
             leading
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let subtitle { Text(subtitle).font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+                // Native: no explanation on the list (owner); the row's own page explains.
+                if let subtitle, !ThemeStore.current.native { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
             }.layoutPriority(1)
             Spacer(minLength: 4)
             // The value gives way (one line, …) before the title wraps.
@@ -533,7 +534,7 @@ struct ExternalProviderConnectionView: View {
                     Text("Send my edits to \(displayName)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     Text("Sent as you make them.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.toggleStyle(SettingsToggleStyle()).padding(.horizontal, 15).frame(minHeight: 64)
+            }.toggleStyle(SettingsToggleStyle()).settingsRowFrame()
                 .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
                 .accessibilityIdentifier("\(provider.rawValue)-enable-toggle")
             if pendingOutboxCount > 0 {

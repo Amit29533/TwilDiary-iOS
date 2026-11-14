@@ -43,6 +43,63 @@ struct SettingsGroup<Content: View>: View {
     }
 }
 
+/// A hand-built row's title and its explanation. Native shows the title alone, as iOS Settings
+/// (owner: no explanations on the settings list; a page that needs to explain does it inside).
+struct SettingsRowTitle: View {
+    let title: String
+    let subtitle: String
+    init(_ title: String, _ subtitle: String) { self.title = title; self.subtitle = subtitle }
+    var body: some View {
+        if ThemeStore.current.native {
+            Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+        } else {
+            VStack(alignment: .leading, spacing: 2) { Text(title).font(.system(size: 15, weight: .semibold)); Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary) }
+        }
+    }
+}
+
+extension View {
+    /// A settings row's padding and height: the same for every row (52 pt in Native, as iOS Settings).
+    func settingsRowFrame() -> some View {
+        padding(.horizontal, ThemeStore.current.native ? 16 : 15).frame(minHeight: ThemeStore.current.native ? 52 : 64)
+    }
+    /// A small button's face in Native: Liquid Glass (owner: glass suits the small buttons), the accent
+    /// glass with white text when `prominent`.
+    func nativeSmallGlass(prominent: Bool, ink: Color? = nil) -> some View {
+        let accent = Color(uiColor: .systemBlue)
+        return foregroundStyle(ink ?? (prominent ? .white : accent))
+            .glassEffect(prominent ? .regular.tint(accent).interactive() : .regular.interactive(), in: Capsule())
+            .contentShape(Capsule())
+    }
+}
+
+/// A settings row that does something: its title (and a short line), with a small glass button on the
+/// right, as iOS Settings' "Force sync · Run" (owner's reference, in place of full-width buttons).
+struct SettingsActionRow: View {
+    let title: String
+    var subtitle: String? = nil
+    let button: String
+    var destructive = false
+    var busy = false
+    var disabled = false
+    let identifier: String
+    let action: () -> Void
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+            }
+            Spacer(minLength: 8)
+            if busy { ProgressView().controlSize(.small) }
+            Button(action: action) {
+                Text(button).font(.system(size: 15, weight: .semibold)).lineLimit(1).padding(.horizontal, 14).frame(height: 34)
+                    .nativeSmallGlass(prominent: !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
+            }.buttonStyle(.plain).disabled(disabled || busy).opacity(disabled || busy ? 0.5 : 1).accessibilityIdentifier(identifier)
+        }.frame(minHeight: 52).accessibilityElement(children: .contain)
+    }
+}
+
 /// The full-width hairline between two rows of a card.
 struct SettingsDivider: View {
     var body: some View {
@@ -109,7 +166,7 @@ struct SettingsPillButtonStyle: ButtonStyle {
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
         if ThemeStore.current.native {
             configuration.label.font(.system(size: 15, weight: .semibold)).padding(.horizontal, 14).frame(height: 34)
-                .nativeGlassCapsule(prominent: !outlined)
+                .nativeSmallGlass(prominent: !outlined)
         } else {
             configuration.label.font(.system(size: 13, weight: outlined ? .semibold : .bold))
                 .foregroundStyle(outlined ? HomeStyle.primary : HomeStyle.chipText)

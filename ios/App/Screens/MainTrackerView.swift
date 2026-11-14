@@ -190,16 +190,31 @@ struct TrackerPreviewPanel: View {
                     Text("\(tracker.name) holds your diary; nothing is sent from here.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
                 } else { trackerMatchSection }
+                if ThemeStore.current.native {
+                    // Native: rows with a small button, as iOS Settings (owner's reference), not full-width buttons.
+                    SettingsDivider()
+                    SettingsActionRow(title: "Compare with your diary", button: running ? "Reading…" : "Check", busy: running,
+                                      disabled: trakt.writing || others.writing != nil, identifier: id + "-check") {
+                        Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
+                    }
+                } else {
                 Button {
                     Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
                 } label: {
                     Label(running ? "Reading \(tracker.name)…" : "Check now", systemImage: "arrow.clockwise")
                 }.buttonStyle(SettingsWideButtonStyle()).disabled(running || trakt.writing || others.writing != nil).accessibilityIdentifier(id + "-check")
+                }
                 if tracker != .trakt, let log = SyncReport.text(tracker.provider) {
                     // What the last match sent and what came back, to see why something didn't land.
+                    if ThemeStore.current.native {
+                        SettingsDivider()
+                        SettingsActionRow(title: "Last sync report", subtitle: "What was sent and what came back", button: copiedReport ? "Copied" : "Copy",
+                                          identifier: id + "-report") { UIPasteboard.general.string = log; copiedReport = true }
+                    } else {
                     Button { UIPasteboard.general.string = log; copiedReport = true } label: {
                         Label(copiedReport ? "Copied" : "Copy last sync report", systemImage: copiedReport ? "checkmark" : "doc.on.doc")
                     }.buttonStyle(SettingsWideButtonStyle()).accessibilityIdentifier(id + "-report")
+                    }
                 }
                 let ledger = MatchLedger.tokens(tracker)
                 if !ledger.isEmpty {
@@ -257,9 +272,17 @@ struct TrackerPreviewPanel: View {
                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("simkl-send-status")
         }
         if let plan, !plan.isEmpty, others.writing == nil {
-            Button { confirmMatch = true } label: {
-                Label("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
-            }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier(tracker.rawValue + "-make-match")
+            Group {
+                if ThemeStore.current.native {
+                    SettingsDivider()
+                    SettingsActionRow(title: "Make \(tracker.name) match the diary", subtitle: plan.summary.first, button: "Send", disabled: running,
+                                      identifier: tracker.rawValue + "-make-match") { confirmMatch = true }
+                } else {
+                    Button { confirmMatch = true } label: {
+                        Label("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                    }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier(tracker.rawValue + "-make-match")
+                }
+            }
                 .confirmationDialog("Make \(tracker.name) match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
                     Button("Send to \(tracker.name)") { Task { await others.makeMatch(tracker, store: store) } }
                     Button("Cancel", role: .cancel) {}
@@ -292,27 +315,23 @@ struct TrackerPreviewPanel: View {
                         Text(forceSource == .diary ? "Diary" : tracker.name)
                         Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
                     }.font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                        .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
+                        .padding(.horizontal, 12).frame(height: 32).modifier(SourceMenuFace())
                 }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
                     .accessibilityIdentifier(tracker.rawValue + "-force-source")
             }
-            Button {
-                // Both sides are read and the changes shown before anything is sent.
-                let source = forceSource
-                readingForForce = true
-                Task {
-                    let plan = await others.forcePlan(tracker, source: source, store: store)
-                    readingForForce = false
-                    // A read that failed says why in the panel.
-                    guard let plan else { return }
-                    // Nothing to change: the run says so itself.
-                    if plan.isEmpty { await others.forceRun(tracker, source: source, store: store); return }
-                    forcePreview = plan; forcePreviewSource = source; confirmForce = true
+            Group {
+                if ThemeStore.current.native {
+                    SettingsActionRow(title: "Force Match", subtitle: "Make one side exactly like the other",
+                                      button: others.writing == tracker ? "Matching…" : readingForForce ? "Reading…" : "Run",
+                                      busy: others.writing == tracker || readingForForce, disabled: running || others.writing != nil,
+                                      identifier: tracker.rawValue + "-force-match") { startForceMatch() }
+                } else {
+                    Button { startForceMatch() } label: {
+                        Label(others.writing == tracker ? "Force matching…" : readingForForce ? "Reading both sides…" : "Force Match", systemImage: "equal.circle").frame(maxWidth: .infinity)
+                    }.buttonStyle(SettingsWideButtonStyle()).disabled(running || others.writing != nil || readingForForce)
+                        .accessibilityIdentifier(tracker.rawValue + "-force-match")
                 }
-            } label: {
-                Label(others.writing == tracker ? "Force matching…" : readingForForce ? "Reading both sides…" : "Force Match", systemImage: "equal.circle").frame(maxWidth: .infinity)
-            }.buttonStyle(SettingsWideButtonStyle()).disabled(running || others.writing != nil || readingForForce)
-                .accessibilityIdentifier(tracker.rawValue + "-force-match")
+            }
                 .alert(forcePreviewSource == .service ? "Change your diary to match \(tracker.name)?" : "Make \(tracker.name) match your diary?", isPresented: $confirmForce) {
                     Button(forcePreviewSource == .service ? "Change my diary" : "Force Match", role: .destructive) {
                         let source = forcePreviewSource
@@ -323,6 +342,20 @@ struct TrackerPreviewPanel: View {
                     Text(forceConfirmation)
                 }
         }.onChange(of: intoDiary) { _, can in if !can { forceSource = .diary } }
+    }
+    /// Both sides are read and the changes shown before anything is sent.
+    private func startForceMatch() {
+        let source = forceSource
+        readingForForce = true
+        Task {
+            let plan = await others.forcePlan(tracker, source: source, store: store)
+            readingForForce = false
+            // A read that failed says why in the panel.
+            guard let plan else { return }
+            // Nothing to change: the run says so itself.
+            if plan.isEmpty { await others.forceRun(tracker, source: source, store: store); return }
+            forcePreview = plan; forcePreviewSource = source; confirmForce = true
+        }
     }
     /// What the previewed Force Match would do, one line per kind of change.
     private var forceConfirmation: String {
@@ -389,5 +422,13 @@ struct TrackerPreviewPanel: View {
                 Text("· \(item.title) — \(item.detail)").font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
+    }
+}
+
+/// The Source of truth menu's face: the accent chip, or a small glass button in Native.
+private struct SourceMenuFace: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native { content.glassEffect(.regular.interactive(), in: Capsule()) }
+        else { content.background(HomeStyle.chip, in: Capsule()) }
     }
 }
