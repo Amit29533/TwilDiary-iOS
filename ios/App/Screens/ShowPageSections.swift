@@ -106,8 +106,10 @@ struct TitleMetaChips: View {
     let extras: TitleExtras?
     var series = true
     var anime = false
+    /// Native's centred title header.
+    var centered = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: centered ? .center : .leading, spacing: 6) {
             if !genres.isEmpty {
                 ViewThatFits(in: .horizontal) {
                     chips(Array(genres.prefix(3)))

@@ -214,6 +214,7 @@ struct CineMindView: View {
     #endif
     @State private var work: Task<Void, Never>?
     @FocusState private var typing: Bool
+    @Namespace private var glassSpace
 
     struct Message: Identifiable, Equatable {
         let id = UUID()
@@ -410,17 +411,21 @@ struct CineMindView: View {
         }.scrollIndicators(.hidden).padding(.top, 4).padding(.bottom, 2)
     }
     private var inputBar: some View {
+        // One glass container, so the close button melts out of the field and back (Liquid Glass morphing).
+        GlassEffectContainer(spacing: 10) {
         HStack(alignment: .bottom, spacing: 8) {
             if typing {
                 Button { typing = false } label: {
                     Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
                         .frame(width: 48, height: 48).glassEffect(.regular.interactive(), in: Circle())
+                        .glassEffectID("close", in: glassSpace)
                 }.buttonStyle(.plain).accessibilityLabel("Hide keyboard").accessibilityIdentifier("cinemind-hide-keyboard")
                     .transition(.scale.combined(with: .opacity))
             }
             inputField
         }
-        .animation(.snappy(duration: 0.2), value: typing)
+        }
+        .animation(.snappy(duration: 0.3), value: typing)
         .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10)
     }
     private var inputField: some View {
@@ -438,6 +443,7 @@ struct CineMindView: View {
                 .accessibilityLabel("Send").accessibilityIdentifier("cinemind-send")
         }
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .glassEffectID("field", in: glassSpace)
         .cineGlow(RoundedRectangle(cornerRadius: 24, style: .continuous), active: typing || thinking)
     }
     private var canSend: Bool { hasKey && !thinking && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

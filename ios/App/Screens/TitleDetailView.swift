@@ -117,6 +117,14 @@ struct TitleDetailView: View {
                                 ToolbarItem(placement: .principal) {
                                     CompactTitleNavigation(name: title.name, poster: title.poster, state: headerState)
                                 }
+                                // Native: Share beside •••, the two in one glass capsule, as on an Apple Music page.
+                                if ThemeStore.current.native, let tmdb = title.tmdbId, let link = URL(string: "https://www.themoviedb.org/\(title.isSeries ? "tv" : "movie")/\(tmdb)") {
+                                    ToolbarItem(placement: .topBarTrailing) {
+                                        ShareLink(item: link,
+                                                  subject: Text(title.name)) { Image(systemName: "square.and.arrow.up") }
+                                            .accessibilityLabel("Share " + title.name).accessibilityIdentifier("title-share")
+                                    }
+                                }
                                 // One ••• button (owner's design) holds every action; files moved here from the page.
                                 ToolbarItem(placement: .topBarTrailing) {
                                     Menu {
