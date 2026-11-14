@@ -28,7 +28,7 @@ struct TrashView: View {
                     Spacer(minLength: 0)
                     if archived.isEmpty {
                         Text("Empty").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
-                            .padding(.horizontal, 12).frame(height: 25).background(HomeStyle.round, in: Capsule())
+                            .padding(.horizontal, 12).frame(height: 25).pillSurface(border: nil)
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     } else {
                         Menu {

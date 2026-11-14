@@ -314,7 +314,7 @@ struct AiringCalendarView: View {
             Button { confirmMarkAll = true } label: {
                 Group { if marking { ProgressView().controlSize(.small) } else { Text("Mark all") } }
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                    .padding(.horizontal, 16).frame(height: 40).background(HomeStyle.round, in: Capsule())
+                    .padding(.horizontal, 16).frame(height: 40).pillSurface(border: nil)
                     .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             }.buttonStyle(.springPress).disabled(marking || store.writesBlocked).accessibilityIdentifier("calendar-mark-all")
                 .confirmationDialog("Mark \(items.count.counted("episode", "episodes")) watched?", isPresented: $confirmMarkAll, titleVisibility: .visible) {
@@ -452,8 +452,7 @@ enum CalendarStyle {
         }.font(.system(size: 14, weight: .semibold)).fixedSize()
             .foregroundStyle(active ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 38)
-            .background(active ? HomeStyle.chip : HomeStyle.card, in: Capsule())
-            .overlay(Capsule().strokeBorder(active ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
+            .pillSurface(HomeStyle.card, chosen: active ? HomeStyle.chip : nil)
             .frame(minHeight: 44).contentShape(Capsule())
     }
     /// "This week (12)", "Today (8)".
@@ -537,7 +536,7 @@ struct CalendarGenreSheet: View {
             HStack(spacing: 10) {
                 Button("Clear") { withAnimation(.snappy) { pending = [] } }
                     .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                    .frame(width: 110, height: 52).background(HomeStyle.round, in: Capsule())
+                    .frame(width: 110, height: 52).pillSurface(border: nil)
                     .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     .buttonStyle(.plain).disabled(pending.isEmpty).opacity(pending.isEmpty ? 0.5 : 1)
                 Button { chosen = pending; dismiss() } label: {

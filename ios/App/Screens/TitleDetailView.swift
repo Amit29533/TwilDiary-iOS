@@ -467,7 +467,7 @@ struct TitleDetailView: View {
                 Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                 if !episodes.isEmpty {
                     Text(episodes.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
-                        .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+                        .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
                         .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                 }
                 Spacer(minLength: 0)
@@ -484,7 +484,7 @@ struct TitleDetailView: View {
                             .frame(width: 40, height: 36).background(episodesGrid ? HomeStyle.chip : .clear, in: Capsule())
                         DiaryIcon(name: "list", size: 17).foregroundStyle(episodesGrid ? HomeStyle.secondary : HomeStyle.chipText)
                             .frame(width: 40, height: 36).background(episodesGrid ? .clear : HomeStyle.chip, in: Capsule())
-                    }.padding(3).background(HomeStyle.round, in: Capsule())
+                    }.padding(3).pillSurface(border: nil)
                         .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Show episodes as " + (episodesGrid ? "list" : "grid")).accessibilityValue(episodesGrid ? "Grid" : "List").accessibilityIdentifier("episodes-layout")
             }
@@ -519,7 +519,7 @@ struct TitleDetailView: View {
                     HStack(spacing: 6) { Text("Show all \(episodes.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .frame(maxWidth: .infinity).frame(height: 48)
-                        .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
+                        .pillSurface(border: HomeStyle.shortcutBorder)
                 }.buttonStyle(.springPress).accessibilityIdentifier("title-all-episodes")
             }
         }
@@ -557,17 +557,16 @@ struct TitleDetailView: View {
                 Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 if seasonNumbers.count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(HomeStyle.secondary) }
             }.padding(.horizontal, 18).frame(height: 44)
-                .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .pillSurface(border: HomeStyle.dateChipBorder)
                 .frame(minHeight: 44).contentShape(Capsule())
         }.disabled(seasonNumbers.count < 2).accessibilityLabel("Season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)").accessibilityIdentifier("title-season")
     }
     private func episodeFilter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            // Design: 44 pt pills, 14 pt semibold; the chosen one #0b0b10 on the accent.
+            // Design: 44 pt pills, 14 pt semibold; the chosen one in the accent ink on the accent.
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
                 .padding(.horizontal, 20).frame(height: 44)
-                .background(on ? theme.accent : HomeStyle.round, in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .pillSurface(chosen: on ? theme.accent : nil)
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("episodes-filter-" + (name == "Unwatched" ? "unwatched" : "all"))
     }
     @ViewBuilder private func episodeArtwork(_ episode: Episode) -> some View {

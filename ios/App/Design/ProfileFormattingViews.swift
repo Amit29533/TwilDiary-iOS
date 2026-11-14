@@ -368,7 +368,7 @@ private struct ProfileChip: View {
         Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.system(size: 14, weight: .semibold))
             .foregroundStyle(HomeStyle.primary).tint(HomeStyle.chipText).lineLimit(1)
             .padding(.horizontal, 12).frame(minHeight: 32)
-            .background(HomeStyle.round, in: Capsule())
+            .pillSurface(border: nil)
             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
     }
 }

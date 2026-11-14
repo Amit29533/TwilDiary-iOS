@@ -109,7 +109,7 @@ struct SettingsView: View {
                         Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                         Button { confirmSignOut = true } label: {
                             Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
-                                .frame(maxWidth: .infinity, minHeight: 52).background(HomeStyle.round, in: Capsule())
+                                .frame(maxWidth: .infinity, minHeight: 52).pillSurface(border: nil)
                         }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
                     }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
                 }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)

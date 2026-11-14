@@ -16,13 +16,18 @@ final class ThemePaletteTests: XCTestCase {
         XCTAssertEqual(DiaryTheme.premiere.palette, .premiere)
         XCTAssertFalse(ThemePalette.classic.neutralizesViolet)
         XCTAssertTrue(ThemePalette.premiere.neutralizesViolet)
+        // Premiere's colour comes from the artwork behind the glass, never a fixed tint.
+        XCTAssertTrue(ThemePalette.premiere.ambientArtwork); XCTAssertTrue(ThemePalette.premiere.usesGlass)
+        XCTAssertFalse(ThemePalette.classic.ambientArtwork); XCTAssertFalse(ThemePalette.classic.usesGlass)
     }
 
     func testPremiereMakesVioletTintsNeutralAndVioletAccentsRed() {
-        // A violet surface and a lavender text colour become greys of the same lightness.
+        // A violet surface and a lavender text colour become cool neutral greys of the same lightness
+        // (no red or violet cast: blue at most a few percent above red).
         for hex in ["#2a2440", "#c5c0cf", "#211d2d", "#a9a7b6"] {
             let c = rgb(ThemePalette.premiere(hex: hex))
-            XCTAssertEqual(c.r, c.g, accuracy: 0.01, hex); XCTAssertEqual(c.g, c.b, accuracy: 0.01, hex)
+            XCTAssertEqual(c.r, c.g, accuracy: 0.02, hex); XCTAssertEqual(c.g, c.b, accuracy: 0.05, hex)
+            XCTAssertGreaterThanOrEqual(c.b, c.r, hex)
         }
         // The lilac accent becomes red.
         for hex in ["#a98bff", "#8b6cf6", "#6c4cf0"] {
@@ -31,7 +36,7 @@ final class ThemePaletteTests: XCTestCase {
         }
         // Near-white lilac (highlighted text) becomes near-white, not pink.
         let light = rgb(ThemePalette.premiere(hex: "#cdbbff"))
-        XCTAssertEqual(light.r, light.b, accuracy: 0.01)
+        XCTAssertEqual(light.r, light.b, accuracy: 0.05); XCTAssertGreaterThan(light.r, 0.8)
     }
 
     func testPremiereLeavesOtherColoursAlone() {

@@ -110,7 +110,7 @@ struct SettingsDestructiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
             .frame(maxWidth: .infinity).frame(height: 52)
-            .background(HomeStyle.round, in: Capsule())
+            .pillSurface(border: nil)
             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             .opacity(configuration.isPressed ? 0.75 : 1)
     }
@@ -241,7 +241,7 @@ struct SettingsKeeps: View {
             InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                 ForEach(items, id: \.self) { item in
                     Text(item).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                        .padding(.horizontal, 11).frame(height: 30).background(HomeStyle.round, in: Capsule())
+                        .padding(.horizontal, 11).frame(height: 30).pillSurface(border: nil)
                         .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                 }
             }

@@ -549,7 +549,7 @@ private struct CatalogSeasonPreview: View {
                     Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     if !controller.items.isEmpty {
                         Text(controller.items.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
-                            .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+                            .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     }
                     Spacer(minLength: 0)
@@ -562,7 +562,7 @@ private struct CatalogSeasonPreview: View {
                             Text(selected == 0 ? "Specials" : "Season \(selected)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             if (details.seasons ?? []).count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(HomeStyle.secondary) }
                         }.padding(.horizontal, 18).frame(height: 44)
-                            .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                            .pillSurface(border: HomeStyle.dateChipBorder)
                     }.disabled((details.seasons ?? []).count < 2).accessibilityLabel("Season").accessibilityValue(selected == 0 ? "Specials" : "Season \(selected)").accessibilityIdentifier("catalog-season")
                 }
                 HStack(spacing: 8) {
@@ -601,7 +601,7 @@ private struct CatalogSeasonPreview: View {
                         HStack(spacing: 6) { Text("Show all \(controller.items.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(maxWidth: .infinity).frame(height: 48)
-                            .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
+                            .pillSurface(border: HomeStyle.shortcutBorder)
                     }.buttonStyle(.springPress).accessibilityIdentifier("catalog-all-episodes")
                 }
             }
@@ -627,8 +627,7 @@ private struct CatalogSeasonPreview: View {
         Button(action: action) {
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
                 .padding(.horizontal, 20).frame(height: 44)
-                .background(on ? AnyShapeStyle(.tint) : AnyShapeStyle(HomeStyle.round), in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .pillSurface(chosen: on ? ThemeStore.accent : nil)
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
     private var layoutSwitch: some View {
@@ -638,7 +637,7 @@ private struct CatalogSeasonPreview: View {
                     .frame(width: 40, height: 36).background(episodesGrid ? HomeStyle.chip : .clear, in: Capsule())
                 DiaryIcon(name: "list", size: 17).foregroundStyle(episodesGrid ? HomeStyle.secondary : HomeStyle.chipText)
                     .frame(width: 40, height: 36).background(episodesGrid ? .clear : HomeStyle.chip, in: Capsule())
-            }.padding(3).background(HomeStyle.round, in: Capsule())
+            }.padding(3).pillSurface(border: nil)
                 .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("Show episodes as " + (episodesGrid ? "list" : "grid")).accessibilityIdentifier("catalog-episodes-layout")
     }

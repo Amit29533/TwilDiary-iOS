@@ -61,7 +61,7 @@ struct SeasonCardsSection: View {
                         Text(newestFirst ? "Newest" : "Oldest").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         Image(systemName: "arrow.up.arrow.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                     }.padding(.horizontal, 18).frame(height: 44)
-                        .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                        .pillSurface(border: HomeStyle.dateChipBorder)
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityLabel(newestFirst ? "Newest season first" : "Oldest season first").accessibilityIdentifier("title-seasons-order")
             }
@@ -70,7 +70,7 @@ struct SeasonCardsSection: View {
     /// The Episodes heading's count chip.
     private func chip(_ text: String) -> some View {
         Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft).lineLimit(1)
-            .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+            .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
     }
 

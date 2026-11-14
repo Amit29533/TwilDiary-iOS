@@ -144,22 +144,22 @@ struct DiaryScreenBackground: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.black
-                // The theme's wash at the top (Premiere's grey-violet), fading into black: one gradient, no blur.
-                if let wash = ThemeStore.current.screenWash {
-                    LinearGradient(colors: [wash, wash.opacity(0.35), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.6))
-                }
-                if forceGlass && !reduceTransparency, let bitmap = bitmap ?? artwork.flatMap({ GlassArtworkCache.shared.cached($0) }) {
-                    Color(red: bitmap.red, green: bitmap.green, blue: bitmap.blue).opacity(0.5)
+                ThemeStore.current.canvas
+                if glass && !reduceTransparency, let bitmap = bitmap ?? artwork.flatMap({ GlassArtworkCache.shared.cached($0) }) {
+                    // The artwork, pre-blurred once and kept (no live blur). Premiere keeps it low,
+                    // and darker toward the bottom, so the screen stays near-black with the art's colour.
+                    let ambient = !forceGlass
+                    Color(red: bitmap.red, green: bitmap.green, blue: bitmap.blue).opacity(ambient ? 0.28 : 0.5)
                     Image(decorative: bitmap.image, scale: 1).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                        .opacity(0.44)
-                    LinearGradient(colors: [.black.opacity(0.28), .black.opacity(0.55)], startPoint: .top, endPoint: .bottom)
+                        .opacity(ambient ? 0.3 : 0.44)
+                    LinearGradient(colors: ambient ? [.black.opacity(0.2), .black.opacity(0.62), .black.opacity(0.9)] : [.black.opacity(0.28), .black.opacity(0.55)],
+                                   startPoint: .top, endPoint: .bottom)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
-            .task(id: BackgroundKey(path: artwork, glass: forceGlass, reduced: reduceTransparency)) {
-                guard forceGlass, !reduceTransparency, let artwork else { bitmap = nil; return }
+            .task(id: BackgroundKey(path: artwork, glass: glass, reduced: reduceTransparency)) {
+                guard glass, !reduceTransparency, let artwork else { bitmap = nil; return }
                 if let saved = GlassArtworkCache.shared.cached(artwork) { bitmap = saved; return }
                 let result: GlassArtworkBitmap?
                 if let local = localArtwork(artwork) {
@@ -170,6 +170,8 @@ struct DiaryScreenBackground: View {
             }
     }
     private struct BackgroundKey: Equatable { let path: String?; let glass: Bool; let reduced: Bool }
+    /// The artwork behind: on screens that ask for it, and on every screen in a theme that does (Premiere).
+    private var glass: Bool { forceGlass || ThemeStore.current.ambientArtwork }
     private func localArtwork(_ path: String) -> CGImage? {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing"), GlassArtworkCache.publicArtworkURL(path) != nil {

@@ -488,8 +488,7 @@ struct LibraryView: View {
                 Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary).lineLimit(1)
                 if let count { Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary) }
             }.padding(.horizontal, 16).frame(height: 42)
-                .background(on ? theme.accent : HomeStyle.round, in: Capsule())
-                .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .pillSurface(chosen: on ? theme.accent : nil)
                 .contentShape(Capsule())
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
@@ -727,7 +726,7 @@ struct GlanceView: View {
                         } label: {
                             HStack(spacing: 6) { Text(sort.wrappedValue.label); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
                                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                                .padding(.horizontal, 14).frame(height: 40).background(HomeStyle.round, in: Capsule())
+                                .padding(.horizontal, 14).frame(height: 40).pillSurface(border: nil)
                                 .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                         }.accessibilityLabel("Order").accessibilityValue(sort.wrappedValue.label).accessibilityIdentifier("glance-sort")
                         Spacer(minLength: 0)

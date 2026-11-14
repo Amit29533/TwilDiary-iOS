@@ -162,6 +162,20 @@ extension ButtonStyle where Self == DiaryCapsuleButtonStyle {
 }
 
 /// A filter as a pill that opens its menu, as on Canvas and Explore.
+/// The filter pill's surface: tinted when a filter is on; otherwise a faint fill, or Liquid Glass in Premiere.
+private struct FilterPillSurface: ViewModifier {
+    let active: Bool
+    let accent: Color
+    func body(content: Content) -> some View {
+        if !active, ThemeStore.current.usesGlass {
+            content.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            content.background(active ? accent.opacity(0.12) : .white.opacity(0.08), in: Capsule())
+                .overlay(Capsule().strokeBorder(active ? accent.opacity(0.5) : .white.opacity(0.14)))
+        }
+    }
+}
+
 struct FilterPill: View {
     let label: String
     var icon: String? = nil
@@ -174,8 +188,7 @@ struct FilterPill: View {
             DiaryIcon(name: "chevron-down", size: 13)
         }.foregroundStyle(active ? theme.accent : Color(themed: "#f3f0f7"))
             .padding(.horizontal, 14).frame(height: 38)
-            .background(active ? theme.accent.opacity(0.12) : .white.opacity(0.08), in: Capsule())
-            .overlay(Capsule().strokeBorder(active ? theme.accent.opacity(0.5) : .white.opacity(0.14)))
+            .modifier(FilterPillSurface(active: active, accent: theme.accent))
             .frame(minHeight: 44).contentShape(Capsule())
     }
 }

@@ -16,7 +16,7 @@ struct ShowSectionHeading<Value: Hashable>: View {
             if let count {
                 // Design: 13 pt semibold #d8d4e6 on #17171d, 28 pt tall, #26262e hairline.
                 Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
-                    .padding(.horizontal, 10).frame(height: 28).background(HomeStyle.round, in: Capsule())
+                    .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
                     .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             }
             Spacer(minLength: 0)
@@ -347,7 +347,7 @@ struct TitleTagsSection: View {
                 Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 17))
                 Text(keyword.name.capitalizedTag).font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
             }.padding(.horizontal, 14).frame(height: 44).fixedSize()
-                .background(HomeStyle.round, in: Capsule()).overlay(Capsule().strokeBorder(Color(themed: "#2a2a33"), lineWidth: HomeStyle.hairline))
+                .pillSurface(border: Color(themed: "#2a2a33"))
         }.buttonStyle(.springPress).accessibilityIdentifier("title-tag-\(keyword.id)")
     }
     private func route(_ keyword: TitleKeyword) -> ExploreSectionRoute {
