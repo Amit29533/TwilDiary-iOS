@@ -647,7 +647,7 @@ struct OnThisDayView: View {
                     }
                     if !reduceMotion {
                         Button { paused.toggle() } label: {
-                            Image(systemName: paused ? "play.fill" : "pause.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                            Image(systemName: paused ? "play.fill" : "pause.fill").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.secondary)
                                 .frame(width: 44, height: 44).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel(paused ? "Play memories" : "Pause memories").accessibilityIdentifier("on-this-day-pause")
                     }

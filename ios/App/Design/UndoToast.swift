@@ -43,7 +43,7 @@ struct UndoToast: View {
                 let notice = store.undoNoticeID
                 do { try await Task.sleep(for: .seconds(UIAccessibility.isVoiceOverRunning || Self.slowRunner ? 8 : 4.5)) } catch { return }
                 guard !Task.isCancelled, notice == store.undoNoticeID else { return }
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { store.dismissUndo() }
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { store.dismissUndo() }
             }
     }
 }

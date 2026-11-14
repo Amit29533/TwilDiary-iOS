@@ -37,7 +37,7 @@ struct SearchLabView: View {
                         }
                         if names.count > 7 {
                             Button { withAnimation(.snappy) { allGenres.toggle() } } label: {
-                                HStack(spacing: 5) { Text(allGenres ? "Fewer" : "\(names.count - 7) more"); Image(systemName: allGenres ? "chevron.up" : "chevron.down").font(.system(size: 11, weight: .bold)) }
+                                HStack(spacing: 5) { Text(allGenres ? "Fewer" : "\(names.count - 7) more"); Image(systemName: allGenres ? "chevron.up" : "chevron.down").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold)) }
                                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 15).frame(height: 40)
                                     .overlay(Capsule().strokeBorder(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
                                     .contentShape(Capsule())

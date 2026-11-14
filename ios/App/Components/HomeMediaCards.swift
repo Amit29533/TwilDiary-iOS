@@ -80,7 +80,7 @@ private struct ActivityStatusBadge: View {
             Text(model.status).font(.caption2.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 4)
                 .background(.black.opacity(0.75), in: Capsule())
         } else {
-            Image(systemName: model.isRewatch ? "arrow.counterclockwise" : "checkmark")
+            Image(systemName: model.isRewatch ? "arrow.counterclockwise" : "checkmark").contentTransition(.symbolEffect(.replace))
                 .font(.caption.weight(.semibold)).frame(width: 26, height: 26)
                 .background(.black.opacity(0.75), in: Circle()).overlay(Circle().strokeBorder(.white.opacity(0.65)))
         }

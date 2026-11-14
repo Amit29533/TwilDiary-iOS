@@ -148,7 +148,7 @@ struct TrackerPreviewPanel: View {
                 HStack(spacing: 12) {
                     Group {
                         if running || trakt.writeProgress != nil { ProgressView().controlSize(.small).tint(HomeStyle.chipText) }
-                        else { Image(systemName: matched ? "checkmark" : "arrow.triangle.2.circlepath").font(.system(size: 14, weight: .bold)) }
+                        else { Image(systemName: matched ? "checkmark" : "arrow.triangle.2.circlepath").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .bold)) }
                     }.foregroundStyle(HomeStyle.chipText).frame(width: 36, height: 36).background(HomeStyle.chip, in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(headline).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)

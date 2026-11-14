@@ -20,7 +20,8 @@ struct AnswerText: View {
     let accent: Color
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(Self.blocks(text).enumerated()), id: \.offset) { _, block in
+            ForEach(Array(Self.blocks(text).enumerated()), id: \.offset) { index, block in
+                Group {
                 switch block {
                 case .paragraph(let line):
                     Text(CineMindView.markdown(line)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(HomeStyle.soft)
@@ -35,6 +36,7 @@ struct AnswerText: View {
                             .tint(HomeStyle.chipText).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                }.cineReveal(order: index)
             }
         }
     }
@@ -79,29 +81,114 @@ private struct ThinkingRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(spacing: 10) {
-            CineMindMark(size: 24)
+            CineMindMark(size: 24, breathing: true)
             TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
                 let time = context.date.timeIntervalSinceReferenceDate
                 HStack(spacing: 5) {
                     ForEach(0..<3, id: \.self) { index in
                         let phase = reduceMotion ? 0 : sin((time * 5) - Double(index) * 0.8)
-                        Circle().fill(Color(themed: "#b9a6ff")).frame(width: 7, height: 7)
+                        Circle().fill(CineGlow.colours[index * 2 % CineGlow.colours.count]).frame(width: 7, height: 7)
                             .offset(y: -3 * max(0, phase)).opacity(0.45 + 0.55 * max(0, phase))
                     }
                 }
-            }.padding(.horizontal, 14).frame(height: 34).background(HomeStyle.card, in: Capsule())
+            }.padding(.horizontal, 14).frame(height: 34).background(ThemeStore.current.native ? HomeStyle.round : HomeStyle.card, in: Capsule())
         }.accessibilityElement(children: .ignore).accessibilityLabel("Thinking")
     }
 }
 
-/// The star in a violet square.
+/// The star on CineMind's glow: a square of the assistant's colours (orange, pink, violet, blue).
 struct CineMindMark: View {
     let size: CGFloat
+    /// While CineMind thinks: the star breathes and the colours turn.
+    var breathing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Image(systemName: "sparkle").font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)
+            .symbolEffect(.breathe, options: .repeating, isActive: breathing && !reduceMotion)
+            .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
             .frame(width: size, height: size)
-            .background(LinearGradient(colors: [Color(themed: "#a98bff"), Color(themed: "#6c4cf0")], startPoint: .topLeading, endPoint: .bottomTrailing),
+            .background(AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .degrees(-40)),
                         in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+    }
+}
+
+extension View {
+    /// Arrives as the assistant's words do: rising a little, from soft focus to sharp, each part a
+    /// beat after the one before (`order`). Simply appears under Reduce Motion.
+    func cineReveal(order: Int) -> some View { modifier(CineReveal(order: order)) }
+}
+
+private struct CineReveal: ViewModifier {
+    let order: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+    func body(content: Content) -> some View {
+        content.blur(radius: shown || reduceMotion ? 0 : 8).opacity(shown || reduceMotion ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 8)
+            .onAppear {
+                guard !shown, !reduceMotion else { return }
+                withAnimation(.smooth(duration: 0.55).delay(min(Double(order), 12) * 0.07)) { shown = true }
+            }
+    }
+}
+
+/// While CineMind thinks, the assistant's colours glow around the whole sheet and breathe, as a
+/// phone's assistant lights the screen's edge while it listens.
+private struct CineEdgeGlow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        Color.clear
+            .cineGlow(RoundedRectangle(cornerRadius: 36, style: .continuous), active: true, lineWidth: 2.4)
+            .phaseAnimator(reduceMotion ? [1.0] : [0.5, 1.0]) { view, strength in view.opacity(strength) } animation: { _ in .smooth(duration: 1.2) }
+            .ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// CineMind's look, after the voice assistants of today's phones (owner's request: "some Siri AI
+/// theme"): one ring of warm-to-cool colours that glows around what the assistant owns (its
+/// questions, the field while you type or it thinks) and slowly turns. The same in every theme.
+enum CineGlow {
+    static let colours = [Color(webHex: "#ff9f43"), Color(webHex: "#ff4fa3"), Color(webHex: "#a35cff"), Color(webHex: "#4f8bff"), Color(webHex: "#3fd9f2")]
+    static var linear: LinearGradient { LinearGradient(colors: colours, startPoint: .leading, endPoint: .trailing) }
+}
+
+extension View {
+    /// A ring of the glow's colours on `shape`'s edge: thin when calm, brighter with a soft halo when
+    /// `active` (typing, thinking), turning slowly while it shows (still under Reduce Motion).
+    func cineGlow<S: InsettableShape>(_ shape: S, active: Bool, lineWidth: CGFloat = 1.2) -> some View {
+        modifier(CineGlowRing(shape: shape, active: active, lineWidth: lineWidth))
+    }
+}
+
+private struct CineGlowRing<S: InsettableShape>: ViewModifier {
+    let shape: S
+    let active: Bool
+    let lineWidth: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var spin = 0.0
+    func body(content: Content) -> some View {
+        content
+            .background {
+                // The halo: the ring blurred outward, only while active.
+                ring(width: lineWidth * 5).blur(radius: 9).opacity(active ? 0.55 : 0)
+            }
+            .overlay { ring(width: active ? lineWidth * 1.6 : lineWidth).opacity(active ? 1 : 0.65) }
+            .animation(.smooth(duration: 0.35), value: active)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) { spin = 360 }
+            }
+    }
+    private func ring(width: CGFloat) -> some View {
+        GeometryReader { proxy in
+            let side = max(proxy.size.width, proxy.size.height) * 1.6
+            AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .zero)
+                .frame(width: side, height: side)
+                .rotationEffect(.degrees(spin))
+                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+        }
+        .mask(shape.strokeBorder(lineWidth: width))
+        .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 
@@ -115,7 +202,13 @@ struct CineMindView: View {
     @State private var thinking = false
     @State private var spoilerSafe = true
     @State private var addingKey = false
-    @State private var hasKey = SemanticSearch.key != nil
+    @State private var hasKey = SemanticSearch.key != nil || CineMindView.uiTestKey
+    #if DEBUG
+    /// UI tests: show the suggestions as if a key were set (nothing is sent).
+    static var uiTestKey: Bool { ProcessInfo.processInfo.arguments.contains("--ui-cinemind-key") }
+    #else
+    static let uiTestKey = false
+    #endif
     @State private var work: Task<Void, Never>?
     @FocusState private var typing: Bool
 
@@ -155,6 +248,9 @@ struct CineMindView: View {
                 }
             }
             .scrollEdgeEffectStyle(.soft, for: .all)
+            .overlay { if thinking { CineEdgeGlow().transition(.opacity) } }
+            .animation(.smooth(duration: 0.45), value: thinking)
+            .sensoryFeedback(.impact(weight: .light), trigger: messages.count)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         }
@@ -175,7 +271,7 @@ struct CineMindView: View {
             Spacer(minLength: 8)
             if progress != nil || !title.isSeries {
                 Button { withAnimation(.snappy(duration: 0.2)) { spoilerSafe.toggle() } } label: {
-                    Image(systemName: spoilerSafe ? "eye.slash.fill" : "eye").font(.system(size: 15, weight: .semibold))
+                    Image(systemName: spoilerSafe ? "eye.slash.fill" : "eye").contentTransition(.symbolEffect(.replace)).font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(spoilerSafe ? .white : HomeStyle.secondary).contentTransition(.symbolEffect(.replace))
                         .frame(width: 40, height: 40)
                         .background(spoilerSafe ? Self.accent.opacity(0.85) : Color.primary.opacity(0.06), in: Circle())
@@ -198,15 +294,18 @@ struct CineMindView: View {
             ("person.2.fill", "Who is the main cast?"),
             ("text.alignleft", title.isSeries ? "What is this show about?" : "What is this movie about?"),
         ]
-        return VStack(alignment: .leading, spacing: 10) {
+        // Smaller pills (owner's request), each on glass with the assistant's ring and a coloured symbol.
+        return VStack(alignment: .leading, spacing: 8) {
             ForEach(items, id: \.text) { item in
                 Button { ask(item.text) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: item.icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(Self.accent).frame(width: 24)
-                        Text(item.text).font(.system(size: 17, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    }.padding(.horizontal, 18).frame(height: 52)
+                    HStack(spacing: 7) {
+                        Image(systemName: item.icon).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(CineGlow.linear).frame(width: 17)
+                        Text(item.text).font(.system(size: 14.5, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    }.padding(.leading, 12).padding(.trailing, 14).frame(height: 38)
                         .glassEffect(.regular.interactive(), in: Capsule())
-                }.buttonStyle(.plain).accessibilityIdentifier("cinemind-suggestion")
+                        .cineGlow(Capsule(), active: false, lineWidth: 0.9)
+                }.buttonStyle(.springPress).accessibilityIdentifier("cinemind-suggestion")
+                    .cineReveal(order: items.firstIndex { $0.text == item.text } ?? 0)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 4)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -226,7 +325,7 @@ struct CineMindView: View {
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
-            }.padding(14).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
+            }.padding(14).background(ThemeStore.current.native ? HomeStyle.round : HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
         }.buttonStyle(.springPress).padding(.top, 8).accessibilityIdentifier("cinemind-add-key")
     }
@@ -297,11 +396,11 @@ struct CineMindView: View {
                 ForEach(followups.prefix(4), id: \.self) { item in
                     Button { ask(item) } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "sparkle").font(.system(size: 10, weight: .bold)).foregroundStyle(Self.accent)
-                            Text(item).font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                        }.padding(.horizontal, 13).frame(height: 34)
-                            .background(Self.accent.opacity(0.12), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Self.accent.opacity(0.35), lineWidth: 0.75))
+                            Image(systemName: "sparkle").font(.system(size: 10, weight: .bold)).foregroundStyle(CineGlow.linear)
+                            Text(item).font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        }.padding(.horizontal, 12).frame(height: 32)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                            .cineGlow(Capsule(), active: false, lineWidth: 0.8)
                     }.buttonStyle(.springPress)
                 }
             }.padding(.horizontal, 16)
@@ -330,12 +429,13 @@ struct CineMindView: View {
             Button { send() } label: {
                 Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundStyle(canSend ? .white : HomeStyle.secondary)
                     .frame(width: 36, height: 36)
-                    .background(canSend ? AnyShapeStyle(LinearGradient(colors: [Color(themed: "#9a7cff"), Color(themed: "#6c4cf0")], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color.primary.opacity(0.08)), in: Circle())
+                    .background(canSend ? AnyShapeStyle(AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .degrees(-60))) : AnyShapeStyle(Color.primary.opacity(0.08)), in: Circle())
                     .animation(.snappy(duration: 0.15), value: canSend)
             }.buttonStyle(.plain).disabled(!canSend).padding(.trailing, 6).padding(.bottom, 6)
                 .accessibilityLabel("Send").accessibilityIdentifier("cinemind-send")
         }
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .cineGlow(RoundedRectangle(cornerRadius: 24, style: .continuous), active: typing || thinking)
     }
     private var canSend: Bool { hasKey && !thinking && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 

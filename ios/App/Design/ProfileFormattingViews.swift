@@ -153,7 +153,7 @@ struct ProfileAliases: View {
                     }
                     if aliases.count > Self.shown {
                         Button(expanded ? "Fewer" : "+\(aliases.count - Self.shown) more") {
-                            withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                            withAnimation(.snappy) { expanded.toggle() }
                         }.font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.chipText)
                             .padding(.horizontal, 12).padding(.vertical, 6).background(HomeStyle.chip, in: Capsule())
                             .buttonStyle(.plain).accessibilityIdentifier("profile-aliases-more")

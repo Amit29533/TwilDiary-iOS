@@ -45,6 +45,31 @@ import XCTest
         }
     }
 
+    /// CineMind (the AI chat) from a title's ••• menu: the sheet at half height, then pulled up full.
+    func testCineMindSnapshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "-launchTab", "home", "--ui-cinemind-key"]
+        app.launchArguments += Self.themeArguments
+        app.launch()
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        func shot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+        let title = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'progress-title-'")).firstMatch
+        guard title.waitForExistence(timeout: 10) else { return XCTFail("No title to open") }
+        title.tap()
+        let more = app.buttons["title-more"]
+        guard more.waitForExistence(timeout: 10) else { return XCTFail("No ••• menu") }
+        more.tap()
+        let ask = app.buttons["title-cinemind"]
+        guard ask.waitForExistence(timeout: 5) else { return XCTFail("No Ask CineMind") }
+        ask.tap(); Thread.sleep(forTimeInterval: 2.5)
+        shot("cinemind-0")
+        app.swipeUp(); Thread.sleep(forTimeInterval: 1.5)
+        shot("cinemind-1")
+        // Typing: the field's ring glows.
+        let field = app.descendants(matching: .any).matching(identifier: "cinemind-field").firstMatch
+        if field.waitForExistence(timeout: 3) { field.tap(); Thread.sleep(forTimeInterval: 1.5); shot("cinemind-typing") }
+    }
+
     /// Settings: the root, then each restyled page (one screen each, plus a scroll of the root).
     func testSettingsSnapshots() {
         let app = XCUIApplication()

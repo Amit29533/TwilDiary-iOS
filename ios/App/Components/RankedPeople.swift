@@ -62,7 +62,7 @@ struct FavouriteHeartButton: View {
             FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
             feedback += 1
         } label: {
-            Image(systemName: saved ? "heart.fill" : "heart").font(.system(size: size * 0.46, weight: .semibold))
+            Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.system(size: size * 0.46, weight: .semibold))
                 .foregroundStyle(saved ? HomeStyle.chipText : .white)
                 .frame(width: size, height: size)
                 .background(tinted ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.black.opacity(0.55)), in: Circle())

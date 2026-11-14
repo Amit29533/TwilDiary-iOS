@@ -202,7 +202,7 @@ struct HomeView: View {
             }
             // On the container (outside the art's identity), so switching titles cross-fades
             // instead of cutting from one picture to the next.
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: current.id)
             .allowsHitTesting(false).accessibilityHidden(true)
         }.nativeHero()
     }

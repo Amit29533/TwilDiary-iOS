@@ -112,7 +112,7 @@ private struct CanvasContent: View {
                 // The page swaps at once (no cross-fade flash); only the words change weight.
                 Button { tab = item; if item == .movies { network = nil } } label: {
                     Text(item.label).font(.system(size: 30, weight: .bold)).tracking(-0.6).lineLimit(1)
-                        .foregroundStyle(on ? Color.white : Color(themed: "#8a8794"))
+                        .foregroundStyle(on ? HomeStyle.ink : Color(themed: "#8a8794"))
                         .animation(.snappy(duration: 0.2), value: on)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)

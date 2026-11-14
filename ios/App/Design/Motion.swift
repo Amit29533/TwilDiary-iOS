@@ -2,10 +2,11 @@ import SwiftUI
 import UIKit
 import TwilDiaryCore
 
-/// One spring for the whole app: quick to settle, with a little bounce.
+/// The app's motion, on Apple's own named springs (owner's request: "follow Apple native animations"):
+/// `.snappy` for things that move into place, a quick spring for a press, `.smooth` for content.
 enum Motion {
-    static var spring: Animation { .spring(duration: 0.42, bounce: 0.3) }
-    static var press: Animation { .spring(duration: 0.28, bounce: 0.45) }
+    static var spring: Animation { .snappy }
+    static var press: Animation { .spring(duration: 0.3, bounce: 0.25) }
     /// `nil` under Reduce Motion, so changes simply appear.
     static func spring(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : spring }
     /// Apple's "smooth" curve (no bounce) for content that arrives or changes: a list replacing its

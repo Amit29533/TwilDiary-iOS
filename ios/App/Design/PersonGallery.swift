@@ -121,7 +121,7 @@ struct PersonPhotoViewer: View {
             TabView(selection: $index) {
                 ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
                     ZoomablePhoto(path: photo.link(size: "w780"), name: name, active: offset == index, zoomed: $zoomed,
-                                  onTap: { withAnimation(.easeInOut(duration: 0.2)) { controls.toggle() } },
+                                  onTap: { withAnimation(.smooth(duration: 0.25)) { controls.toggle() } },
                                   onPull: { pulled = $0 }, onClose: { dismiss() })
                         // Each page fills the whole screen (not just the safe area), so a zoomed
                         // photo reaches the edges instead of being clipped to an inner box.

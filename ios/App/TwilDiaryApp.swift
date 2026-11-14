@@ -203,7 +203,7 @@ struct RootView: View {
     @State private var splashWaited = false
     private func liftSplash() {
         guard showSplash, splashPlayed, readyToShow, !ProcessInfo.processInfo.arguments.contains("--ui-splash-hold") else { return }
-        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeInOut(duration: 0.35)) { showSplash = false }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .smooth(duration: 0.45)) { showSplash = false }
     }
     var body: some View {
         @Bindable var router = router

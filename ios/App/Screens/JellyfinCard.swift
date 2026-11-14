@@ -30,7 +30,7 @@ struct JellyfinCard: View {
                             ForEach(readable) { library in
                                 let on = sync?.isOn(library) == true
                                 Button { sync?.toggle(library) } label: {
-                                    HStack(spacing: 6) { Image(systemName: on ? "checkmark" : "plus").font(.system(size: 11, weight: .bold)); Text(library.name) }
+                                    HStack(spacing: 6) { Image(systemName: on ? "checkmark" : "plus").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold)); Text(library.name) }
                                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
                                         .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : Color.primary.opacity(0.06), in: Capsule())
                                         .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : Color.primary.opacity(0.12)))

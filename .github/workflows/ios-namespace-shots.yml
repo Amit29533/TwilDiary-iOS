@@ -93,7 +93,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          tests=(testHomeSnapshots testCalendarSnapshots testShowSnapshots testPreviewSnapshots testEpisodesPageSnapshots
+          tests=(testHomeSnapshots testCalendarSnapshots testShowSnapshots testCineMindSnapshots testPreviewSnapshots testEpisodesPageSnapshots
                  testEpisodeSheetSnapshots testLibrarySnapshots testLibraryOverviewSnapshots testGlanceSnapshots testSearchSnapshots
                  testSettingsSnapshots testSettingsServiceSnapshots testProfileStatsSnapshots testExploreSnapshots
                  testCanvasSnapshots testFavouritesSnapshots testPersonSnapshots testSeeAllPageSnapshots)

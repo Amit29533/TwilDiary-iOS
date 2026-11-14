@@ -381,7 +381,7 @@ struct StatsStudiosCard: View {
             }
             if rows.count > 5 {
                 Button { withAnimation(.smooth(duration: 0.25)) { all.toggle() } } label: {
-                    HStack(spacing: 4) { Text(all ? "Show fewer" : "+\(rows.count - 5) more"); Image(systemName: all ? "chevron.up" : "chevron.right").font(.system(size: 11, weight: .bold)) }
+                    HStack(spacing: 4) { Text(all ? "Show fewer" : "+\(rows.count - 5) more"); Image(systemName: all ? "chevron.up" : "chevron.right").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold)) }
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 36)
                 }.buttonStyle(.plain)
             }

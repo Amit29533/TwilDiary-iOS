@@ -218,7 +218,7 @@ struct ConnectionsView: View {
             Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(Color(themed: "#8e8e9c"))
             // Account pictures live on each service's own host (not TMDB's), so they load directly.
             if let path, let url = URL(string: path), url.scheme == "https" {
-                AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                AsyncImage(url: url, transaction: Transaction(animation: .smooth(duration: 0.25))) { phase in
                     if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
                 }.clipShape(Circle())
             }

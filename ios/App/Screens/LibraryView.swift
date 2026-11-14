@@ -392,7 +392,7 @@ struct LibraryView: View {
                             Button { withAnimation(.smooth(duration: 0.25)) { showAllGenres.toggle() } } label: {
                                 HStack(spacing: 6) {
                                     Text(showAllGenres ? "Fewer" : "\(allGenres.count - visible.count) more")
-                                    Image(systemName: showAllGenres ? "chevron.up" : "chevron.down").font(.system(size: 11, weight: .bold))
+                                    Image(systemName: showAllGenres ? "chevron.up" : "chevron.down").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold))
                                 }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 16).frame(height: 42)
                                     .overlay(Capsule().strokeBorder(HomeStyle.chipText.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))

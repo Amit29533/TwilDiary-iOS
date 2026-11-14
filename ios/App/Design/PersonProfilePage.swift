@@ -181,7 +181,7 @@ private struct ProfileFavourite: View {
             feedback += 1
         } label: {
             // The bar's own Liquid Glass (same as the back button beside it).
-            Image(systemName: saved ? "heart.fill" : "heart").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+            Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
         }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
             .sensoryFeedback(.selection, trigger: feedback)

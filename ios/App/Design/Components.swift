@@ -400,7 +400,7 @@ struct SearchField: View {
         }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 12), field: true) }
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(focused && !aiOn ? theme.accent.opacity(0.65) : .clear))
             .overlay { if aiOn { geminiGlow.transition(.opacity) } }
-            .animation(.easeInOut(duration: 0.3), value: aiOn)
+            .animation(.smooth(duration: 0.3), value: aiOn)
             .onChange(of: aiOn, initial: true) { _, on in
                 spin = 0
                 guard on, !reduceMotion else { return }
@@ -818,7 +818,7 @@ struct ProgressCard: View {
             // an empty card ("E0 of 0", episodes not read yet) counts as not known (at most 2 s).
             Group { if notStarted { startRow } else { progressRow } }
                 .opacity(progressKnown || waitedForProgress ? 1 : 0)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: progressKnown || waitedForProgress)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: progressKnown || waitedForProgress)
                 .task { try? await Task.sleep(for: .seconds(2)); waitedForProgress = true }
         }.padding(.horizontal, 8).frame(height: 196)
     }

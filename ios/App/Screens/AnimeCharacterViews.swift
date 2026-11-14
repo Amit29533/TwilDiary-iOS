@@ -324,7 +324,7 @@ struct FavouritesView: View {
             ForEach([true, false], id: \.self) { isGrid in
                 let on = grid.wrappedValue == isGrid
                 Button { withAnimation(.smooth(duration: 0.28)) { grid.wrappedValue = isGrid } } label: {
-                    Image(systemName: isGrid ? "square.grid.2x2" : "list.bullet").font(.system(size: 14, weight: .semibold))
+                    Image(systemName: isGrid ? "square.grid.2x2" : "list.bullet").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(on ? HomeStyle.chipText : HomeStyle.secondary)
                         .frame(width: 40, height: 34).background { if on { Capsule().fill(HomeStyle.chip) } }.contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityLabel(isGrid ? "Show favourites as grid" : "Show favourites as list")
