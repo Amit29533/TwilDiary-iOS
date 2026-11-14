@@ -22,7 +22,19 @@ struct ServiceLimits: Sendable {
         case .trakt: return try await trakt(store)
         case .mdblist: return try await mdblist(store)
         case .wetrakr: return try await wetrakr(store)
+        case .simkl: return try await simkl(store)
         }
+    }
+
+    /// Simkl's plan from /users/settings (Free, PRO or VIP). Simkl allows each account a daily
+    /// number of requests but doesn't say how many are used; TwilDiary waits when it runs out.
+    private static func simkl(_ store: DiaryStore) async throws -> ServiceLimits {
+        guard let token = await SimklAccount.shared.token() else { throw APIError.message("Sign in to Simkl first, in Connections.") }
+        let data = try await SimklAPI(token: token).get("/users/settings")
+        let plan = AccountProfiles.account(from: data, tracker: .simkl).plan
+        var value = ServiceLimits(plan: plan.map { $0 == "Free" ? "Free plan" : "Simkl " + $0 })
+        value.daily = ProviderQuota.daily(host: "api.simkl.com")
+        return value
     }
 
     /// Trakt's caps from /users/settings; what's used from the phone's copy of your Trakt library
@@ -161,6 +173,7 @@ struct ServiceLimitsView: View {
         case .trakt: "Trakt has no daily request cap."
         case .mdblist: "MDBList didn't report today's count."
         case .wetrakr: "Shows after the next WeTrakr read."
+        case .simkl: "Simkl doesn’t report today’s count. If the limit is reached, TwilDiary waits until it resets."
         }
     }
     private var dailyNote: String {
@@ -168,6 +181,7 @@ struct ServiceLimitsView: View {
         case .trakt: "Trakt allows 1,000 reads every 5 minutes and one change a second; TwilDiary waits when Trakt asks it to."
         case .mdblist: "Free accounts get 1,000 requests a day. Supporter tiers raise it to 10,000, 25,000, 100,000 or 250,000."
         case .wetrakr: "WeTrakr is still testing daily quotas: going over keeps working for now."
+        case .simkl: "Simkl limits each account’s requests per day and takes one change at a time. TwilDiary keeps its look-ups on this iPhone to stay well within it."
         }
     }
     private var planNote: String {
@@ -175,6 +189,7 @@ struct ServiceLimitsView: View {
         case .trakt: "Trakt sets these per account; VIP raises them. Lists, watchlist, favourites and notes show what you use."
         case .mdblist: "MDBList's plan."
         case .wetrakr: "From WeTrakr's plan usage. VIP raises the caps."
+        case .simkl: "Simkl’s plan. Rewatches need PRO or VIP."
         }
     }
     static func untilText(_ date: Date, now: Date = .now) -> String {

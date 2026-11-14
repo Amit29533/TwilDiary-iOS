@@ -9,7 +9,7 @@ struct MainTrackerView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     static let key = "mainTracker"
-    private var tracker: MainTracker { MainTracker(rawValue: selection) ?? .trakt }
+    private var tracker: MainTracker { MainTracker(main: selection) ?? .trakt }
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -95,10 +95,10 @@ struct MainTrackerView: View {
 
 extension MainTracker {
     var brand: BrandLogo.Service {
-        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
+        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl }
     }
     var provider: SyncProviderKind {
-        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
+        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl }
     }
 }
 
@@ -327,6 +327,7 @@ struct TrackerPreviewPanel: View {
         case .trakt: "Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed."
         case .mdblist: "Reads your MDBList watched items, ratings, dropped shows and watchlist and compares them with your diary. Items it can’t read are counted, not guessed. Nothing changes until you send."
         case .wetrakr: "Reads your WeTrakr plays (rewatches included), ratings, watchlist, favourites and dropped titles, then only its journal of what changed, and compares them with your diary. Nothing changes until you send."
+        case .simkl: "Reads your Simkl history, ratings and lists, and checks each diary episode where Simkl keeps it. What can't be matched is counted, not guessed. Nothing changes until you send."
         }
     }
 

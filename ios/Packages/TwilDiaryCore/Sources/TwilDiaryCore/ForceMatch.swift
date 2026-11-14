@@ -350,6 +350,8 @@ public struct ForceMatchPlan: Equatable, Sendable {
                 }
                 add(path, ["movies": movies, "shows": showBodies], "plays taken off", batch.count)
             }
+        // Simkl's are placed and sent by the app's Simkl sync (its anime numbering), not built here.
+        case .simkl: break
         }
         // Titles cleared altogether, with each service's own calls.
         for batch in batches(wipe) {
@@ -373,6 +375,7 @@ public struct ForceMatchPlan: Equatable, Sendable {
                 add("/sync/ratings/remove", split(batch), "ratings cleared", count)
                 add("/watchlist/items/remove", split(batch), "taken off the watchlist", count)
                 add("/sync/dropped/remove", split(batch), "taken off dropped", count)
+            case .simkl: break
             }
         }
         for batch in batches(ratings) { add("/sync/ratings/remove", split(batch), "ratings taken off", batch.count) }
@@ -381,6 +384,7 @@ public struct ForceMatchPlan: Equatable, Sendable {
             case .trakt: add("/sync/watchlist/remove", split(batch), "taken off the watchlist", batch.count)
             case .wetrakr: add("/sync/tracking/remove", split(batch, ["status": "planning"]), "taken off the watchlist", batch.count)
             case .mdblist: add("/watchlist/items/remove", split(batch), "taken off the watchlist", batch.count)
+            case .simkl: break
             }
         }
         for batch in batches(favourites) { add("/sync/favorites/remove", split(batch), "favourites taken off", batch.count) }
@@ -389,6 +393,7 @@ public struct ForceMatchPlan: Equatable, Sendable {
             case .trakt: add("/users/hidden/dropped/remove", ["shows": batch.filter { !$0.movie }.map(ids)], "taken off dropped", batch.count)
             case .wetrakr: add("/sync/tracking/remove", split(batch, ["status": "dropped"]), "taken off dropped", batch.count)
             case .mdblist: add("/sync/dropped/remove", split(batch), "taken off dropped", batch.count)
+            case .simkl: break
             }
         }
         return result

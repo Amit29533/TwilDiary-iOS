@@ -113,7 +113,9 @@ private func diary() throws -> Workspace {
     #expect(MainTracker.mdblist.keptInCloudflare.contains("favourite titles"))
     #expect(MainTracker.mdblist.keptInCloudflare.contains("notes"))
     #expect(MainTracker.wetrakr.keptInCloudflare == ["notes"])
-    #expect(MainTracker.allCases == [.trakt, .mdblist, .wetrakr])
+    #expect(MainTracker.simkl.keptInCloudflare.contains("rewatch counts"))
+    #expect(MainTracker.allCases == [.trakt, .mdblist, .wetrakr, .simkl])
+    #expect(MainTracker.offered == [.trakt, .mdblist, .wetrakr])
 }
 
 @Test func withoutRewatchesTheComparisonChecksWatchedAtLeastOnce() throws {

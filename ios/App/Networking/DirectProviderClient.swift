@@ -63,6 +63,7 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         case .mdblist: base = "https://api.mdblist.com"; headers = mdblistAuth(config).headers.merging(["Accept": "application/json", "Content-Type": "application/json"]) { first, _ in first }
         case .wetrakr: base = "https://api.wetrakr.com"; headers = WeTrakrWrite.headers(clientId: config.clientId ?? "", accessToken: config.accessToken)
         case .cloudflare: throw APIError.message("Diary mutations must use the authenticated diary API.")
+        case .simkl: throw APIError.message("Simkl’s edits go through its own sync.")
         }
         var components = URLComponents(string: base + delivery.path)!
         if config.provider == .mdblist, !mdblistAuth(config).query.isEmpty { components.queryItems = mdblistAuth(config).query }
@@ -240,6 +241,16 @@ enum DeviceCodePollStatus: Equatable, Sendable {
 
     /// Trades the code from the sign-in sheet for tokens.
     func finishWebSignIn(_ request: ProviderWebSignIn.Request, code: String) async throws -> ProviderDeviceSignIn.Tokens {
+        if request.provider == .simkl {
+            // Simkl: a form to its token route; a sign-in without media:write can't copy anything.
+            let (data, status) = try await postForm(SimklAccount.tokenURL, ProviderWebSignIn.tokenBody(code: code, for: request))
+            _ = try SimklAccount.tokens(from: data, status: status)
+            switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
+            case .authorized(let tokens): return tokens
+            case .failed(let message): throw APIError.message(message)
+            default: throw APIError.message("Simkl didn’t finish the sign-in (HTTP \(status)).")
+            }
+        }
         if request.provider == .wetrakr {
             let body = WeTrakrWrite.codeBody(code: code, clientId: request.clientId, verifier: request.verifier, redirect: ProviderWebSignIn.redirect(for: .wetrakr))
             let (data, status) = try await post(WeTrakrWrite.tokenURL, body, json: true, extra: ["wetrakr-api-version": "1"])
@@ -282,6 +293,16 @@ enum DeviceCodePollStatus: Equatable, Sendable {
     }
     /// A new access token from the refresh token (MDBList: 30-day tokens; WeTrakr: 7 days).
     func refreshSignIn(provider: SyncProviderKind, clientId: String, refreshToken: String) async throws -> ProviderDeviceSignIn.Tokens {
+        if provider == .simkl {
+            // Simkl's tokens last a week; renewed a day before with the refresh token.
+            let (data, status) = try await postForm(SimklAccount.tokenURL, ProviderDeviceSignIn.refreshBody(clientId: clientId, refreshToken: refreshToken))
+            switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
+            case .authorized(let tokens): return tokens
+            case .failed(let message) where status == 400 || status == 401: throw ProviderRenewalError.signInEnded(message)
+            case .failed(let message): throw APIError.message(message)
+            default: throw APIError.message("Simkl didn’t renew the sign-in (HTTP \(status)).")
+            }
+        }
         if provider == .wetrakr {
             // WeTrakr rotates the refresh token on every renewal (7-day access tokens).
             let (data, status) = try await post(WeTrakrWrite.refreshURL, WeTrakrWrite.refreshBody(refreshToken: refreshToken), json: true, extra: ["wetrakr-api-version": "1"])
@@ -444,6 +465,7 @@ enum ProviderCooldowns {
         case "api.trakt.tv": "Trakt"
         case "api.mdblist.com": "MDBList"
         case "api.wetrakr.com": "WeTrakr"
+        case "api.simkl.com": "Simkl"
         default: host
         }
     }

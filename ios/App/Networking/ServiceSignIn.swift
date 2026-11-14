@@ -14,6 +14,7 @@ import TwilDiaryCore
         case .trakt: "TwilDiaryTraktClientID"
         case .mdblist: "TwilDiaryMDBListClientID"
         case .wetrakr: "TwilDiaryWeTrakrClientID"
+        case .simkl: nil
         case .cloudflare: nil
         }
     }
@@ -22,6 +23,8 @@ import TwilDiaryCore
         // UI tests show the one-tap buttons (they never open a real sign-in page).
         if provider == .trakt, ProcessInfo.processInfo.arguments.contains("--ui-testing") { return "preview-trakt" }
         #endif
+        // Simkl: TwilDiary's Simkl app, registered with the redirect twildiary://auth/simkl.
+        if provider == .simkl { return SimklAccount.clientId }
         if let key = infoKey(provider), let built = Bundle.main.object(forInfoDictionaryKey: key) as? String, let value = clean(built) { return value }
         return (defaults.dictionary(forKey: defaultsKey) as? [String: String])?[provider.rawValue].flatMap(clean)
     }
@@ -48,7 +51,7 @@ import TwilDiaryCore
 }
 
 /// One-tap sign-in: the service's own page in Apple's sign-in sheet, back to the app signed in.
-/// Trakt, MDBList and WeTrakr: each service's own sign-in page.
+/// Trakt, MDBList, WeTrakr and Simkl: each service's own sign-in page.
 enum ServiceSignIn {
     enum Outcome: Equatable { case signedIn(String), cancelled }
 
@@ -84,6 +87,7 @@ enum ServiceSignIn {
         signedIn.connection = .signIn; signedIn.enabled = true
         if !signedIn.loggingMethod.includesDirectAPI { signedIn.loggingMethod = .serverAndDirectAPI }
         guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
+        if provider == .simkl { await SimklAccount.shared.signedIn(store: store) }
         return .signedIn(provider.displayName)
     }
 }

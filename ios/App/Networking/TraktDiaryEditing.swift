@@ -37,18 +37,21 @@ extension DiaryStore {
         switch service {
         case .trakt: try TraktDirectStore.shared.write(path, body: body, store: self, resolve: resolve)
         case .mdblist, .wetrakr: try TrackerPreviewStore.shared.write(service, path, body: body, store: self)
+        case .simkl: break // Simkl is never the diary's service (MainTracker(main:) never returns it).
         }
     }
     private func updateCopy(_ change: (inout TraktLibrary) -> Void) {
         switch service {
         case .trakt: TraktDirectStore.shared.update(store: self, change)
         case .mdblist, .wetrakr: TrackerPreviewStore.shared.update(service, store: self, change)
+        case .simkl: break
         }
     }
     private func refreshCopySoon() {
         switch service {
         case .trakt: TraktDirectStore.shared.refreshSoon(store: self)
         case .mdblist, .wetrakr: TrackerPreviewStore.shared.refreshSoon(service, store: self)
+        case .simkl: break
         }
     }
 
@@ -63,6 +66,7 @@ extension DiaryStore {
         case .trakt: path = listed ? "/sync/watchlist" : "/sync/watchlist/remove"
         case .mdblist: path = listed ? "/watchlist/items/add" : "/watchlist/items/remove"
         case .wetrakr: path = listed ? "/sync/tracking" : "/sync/tracking/remove"
+        case .simkl: return
         }
         func entry(_ title: MediaTitle) throws -> [String: Any] {
             var value = try serviceRef(title)
@@ -83,6 +87,8 @@ extension DiaryStore {
 
     /// Queues an edit for the connected mirrors, never the service the diary comes from.
     func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .mdblist, .wetrakr]) {
+        // Simkl: its own sync places each edit in Simkl's numbering and sends it (never the main tracker).
+        SimklMirror.shared.capture(mutation, store: self)
         var skip: Set<SyncProviderKind> = [.cloudflare]
         if let diaryService { skip.insert(providerKind(diaryService)) }
         // The service holding the diary gets your edits directly (one writer, one pace), also
@@ -351,6 +357,7 @@ extension DiaryStore {
                     if wasDropped { try send("/sync/tracking/remove", [slot: [tracking("dropped")]]) }
                     serviceHolds = false
                 }
+            case .simkl: break
             }
         }
         let favourite = values["favorite"] as? Bool
