@@ -416,30 +416,26 @@ struct SearchField: View {
     @State private var didAutoFocus = false
     @State private var spin = 0.0
     @FocusState private var focused: Bool
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Gemini's blue, violet, rose and gold, round the border and back to blue.
     /// AI looks the same everywhere: CineMind's glow colours on the AI pill and the field's ring.
     static let geminiColors = CineGlow.colours + [CineGlow.colours[0]]
     private var aiOn: Bool { ai?.wrappedValue == true }
-    /// Native: a capsule (iOS's search field); the original 12 pt corners elsewhere.
-    private var fieldRadius: CGFloat { native ? 24 : 12 }
-    private var native: Bool { ThemeStore.current.native }
+    /// A capsule, as iOS's search field.
+    private let fieldRadius: CGFloat = 24
     var body: some View {
         HStack(spacing: 10) {
-            // Native: iOS's own search bar (the system magnifying glass, 17 pt text, the round clear button).
-            if native { Image(systemName: "magnifyingglass").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary).accessibilityHidden(true) }
-            else { DiaryIcon(name: "search", size: 19).foregroundStyle(Color(themed: "#a09aa9")) }
-            TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: native ? 17 : 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false; onSearch?() }.accessibilityLabel(aiOn ? "Search by description" : label)
+            // iOS's own search bar in every theme (owner's request): the system magnifying glass, 17 pt
+            // text, the round clear button, a capsule; each theme keeps its own fill.
+            Image(systemName: "magnifyingglass").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField(aiOn ? "Describe a movie or show…" : placeholder, text: $text).font(.system(size: 17)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search).focused($focused).onSubmit { focused = false; onSearch?() }.accessibilityLabel(aiOn ? "Search by description" : label)
             if let ai { aiPill(ai) }
             if !text.isEmpty {
                 Button { text = ""; focused = true } label: {
-                    if native { Image(systemName: "xmark.circle.fill").font(.system(size: 17)).foregroundStyle(.tertiary).frame(width: 26, height: 32) }
-                    else { DiaryIcon(name: "x", size: 16).frame(width: 26, height: 32) }
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 17)).foregroundStyle(.tertiary).frame(width: 26, height: 32)
                 }.buttonStyle(.plain).accessibilityLabel("Clear search")
             }
         }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: fieldRadius, style: .continuous), field: true) }
-            .overlay(RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).strokeBorder(focused && !aiOn && !native ? theme.accent.opacity(0.65) : .clear))
             // The assistant's glow while AI search is on, in every theme (owner's request).
             .overlay { if aiOn { geminiGlow.transition(.opacity) } }
             .animation(.smooth(duration: 0.3), value: aiOn)
