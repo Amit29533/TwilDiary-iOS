@@ -76,14 +76,16 @@ import XCTest
         }
     }
     /// Profile → Connections: Trakt, MDBList and WeTrakr in one list, the main tracker
-    /// ticked, and quick actions under ⋯.
+    /// ticked, Simkl kept in sync below, and quick actions under ⋯.
     func testConnectionsListTheTrackersWithTheMainOneTicked() {
         let app = launch()
         app.tabBars.buttons["Profile"].tap(); openConnections(app)
         for id in ["settings-trakt", "settings-mdblist", "settings-wetrakr"] { XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id) }
         XCTAssertTrue(app.buttons["settings-trakt"].label.contains("Main"), "Trakt is the default main tracker")
         XCTAssertFalse(app.buttons["settings-mdblist"].label.contains("Main"))
-        XCTAssertFalse(app.buttons["settings-simkl"].exists, "Simkl is no longer offered")
+        // Simkl: kept in sync below them, never the main tracker.
+        XCTAssertTrue(app.buttons["settings-simkl"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["settings-simkl"].label.contains("Main"))
         let actions = app.buttons["mdblist-actions"]
         reveal(actions, app: app); actions.tap()
         XCTAssertTrue(app.buttons["Check now"].waitForExistence(timeout: 5))

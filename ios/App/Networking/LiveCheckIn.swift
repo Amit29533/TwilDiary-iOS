@@ -65,6 +65,8 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
             case .wetrakr:
                 let config = await store.freshProviderConfig(tracker.provider)
                 _ = try await store.directClient.read(config, path: "/scrobble/playing", method: "DELETE")
+            case .simkl:
+                break
             case .mdblist:
                 let config = await store.freshProviderConfig(tracker.provider)
                 let slot = active.isSeries ? "show" : "movie"

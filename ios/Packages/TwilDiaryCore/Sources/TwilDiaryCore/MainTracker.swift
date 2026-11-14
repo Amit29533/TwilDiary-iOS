@@ -6,11 +6,19 @@ import Foundation
 // service can't hold stays in Cloudflare. Read-only for now: nothing here writes anywhere.
 
 public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
-    case trakt, mdblist, wetrakr
+    case trakt, mdblist, wetrakr, simkl
     public var id: String { rawValue }
-    /// The services TwilDiary offers. (Simkl was removed, owner's choice, 2026-11-13: a saved
-    /// "simkl" no longer reads as a tracker, so it falls back to Trakt wherever it was chosen.)
+    /// The services that can hold the diary. Simkl never does (owner's choice, 2026-11-14): it
+    /// is kept in step with the diary, like the others, but can't be made main.
     public static let offered: [MainTracker] = [.trakt, .mdblist, .wetrakr]
+    /// Kept in step with the diary, never main.
+    public static let alsoSynced: [MainTracker] = [.simkl]
+    /// A saved main tracker, read back: only one that can hold the diary (a saved "simkl", from
+    /// Simkl's first integration, isn't one).
+    public init?(main name: String) {
+        guard let tracker = MainTracker(rawValue: name), Self.offered.contains(tracker) else { return nil }
+        self = tracker
+    }
     /// The services besides Trakt that the app reads and writes on the phone.
     public static let others: [MainTracker] = [.mdblist, .wetrakr]
 
@@ -30,7 +38,7 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 
     public var name: String {
-        switch self { case .trakt: "Trakt"; case .mdblist: "MDBList"; case .wetrakr: "WeTrakr" }
+        switch self { case .trakt: "Trakt"; case .mdblist: "MDBList"; case .wetrakr: "WeTrakr"; case .simkl: "Simkl" }
     }
 
     public var capabilities: Capabilities {
@@ -39,6 +47,10 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true, keepsSpecials: false)
         // WeTrakr keeps every play, favourites and dropped titles, and its journal names what changed.
         case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true)
+        // Simkl keeps one watched state per episode or movie (rewatches are for paid accounts),
+        // ratings, its lists (Plan to watch, Watching, Completed, On hold, Dropped), no favourites;
+        // `/sync/activities` says what changed.
+        case .simkl: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true)
         }
     }
 
@@ -48,6 +60,7 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         case .trakt: "History with rewatches, ratings, watchlist, favourites, dropped shows, notes up to 500 characters."
         case .mdblist: "History, ratings, watchlist and dropped. No notes or favourites."
         case .wetrakr: "History with rewatches, ratings, watchlist, favourites and dropped. Notes stay in TwilDiary."
+        case .simkl: "History, ratings, Plan to watch, Watching, Completed, On hold and Dropped. No rewatches, favourites or notes."
         }
     }
 

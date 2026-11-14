@@ -78,3 +78,16 @@ private final class ControlledProviderSecrets: ProviderSecretStoring, @unchecked
     let loaded = try store.load().wetrakr
     #expect(loaded.accessToken == "synthetic-wetrakr-access" && loaded.refreshToken == "synthetic-wetrakr-refresh")
 }
+
+@Test func simklTokensStayOutOfPreferences() throws {
+    let suiteName = "twildiary.secure-test.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = UserDefaultsProviderSettingsStore(defaults: defaults, key: "settings", secrets: ControlledProviderSecrets())
+    let simkl = ExternalProviderConfig(provider: .simkl, enabled: true, clientId: "app", accessToken: "synthetic-simkl-access", refreshToken: "synthetic-simkl-refresh")
+    try store.save(ProviderConnectionSettings(simkl: simkl))
+    let raw = String(decoding: defaults.data(forKey: "settings") ?? Data(), as: UTF8.self)
+    #expect(!raw.contains("synthetic-simkl-access") && !raw.contains("synthetic-simkl-refresh"))
+    let loaded = try store.load().simkl
+    #expect(loaded.accessToken == "synthetic-simkl-access" && loaded.refreshToken == "synthetic-simkl-refresh" && loaded.isAuthenticated)
+}

@@ -116,7 +116,7 @@ import TwilDiaryCore
     /// The service a phone-only diary comes from (an older saved "true" means Trakt).
     static var savedPhoneOnly: MainTracker? {
         let value = UserDefaults.standard.object(forKey: phoneOnlyKey)
-        if let name = value as? String { return MainTracker(rawValue: name) }
+        if let name = value as? String { return MainTracker(main: name) }
         return (value as? Bool) == true ? .trakt : nil
     }
     /// Which diary is on screen: "trakt" (Trakt, or On this phone), "mdblist" or "wetrakr";
@@ -133,7 +133,7 @@ import TwilDiaryCore
     }
     /// Phase 5: the diary built from MDBList or WeTrakr; edits go to it (TraktDiaryEditing).
     var diaryFromTracker: MainTracker? {
-        get { MainTracker(rawValue: diarySource).flatMap { $0 == .trakt ? nil : $0 } }
+        get { MainTracker(main: diarySource).flatMap { $0 == .trakt ? nil : $0 } }
         set { diarySource = newValue?.rawValue ?? "server" }
     }
     var mutationRefreshNotice: String? {
@@ -923,6 +923,9 @@ import TwilDiaryCore
         case .wetrakr:
             guard config.isAuthenticated else { throw APIError.message("Sign in to WeTrakr, or enter its app key and an access token.") }
             _ = try await directClient.read(config, path: "/sync/last_activities")
+        case .simkl:
+            guard config.isAuthenticated, let token = config.accessToken else { throw APIError.message("Sign in to Simkl first, in Connections.") }
+            _ = try await SimklAPI(token: token).get("/users/settings")
         case .cloudflare:
             break
         }

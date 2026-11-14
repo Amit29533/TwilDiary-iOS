@@ -238,6 +238,8 @@ public struct TraktWritePlan: Equatable, Sendable {
             for batch in batches(watchlistAdd) { add("/watchlist/items/add", split(batch), "added to the watchlist", batch.count) }
             for batch in batches(watchlistRemove) { add("/watchlist/items/remove", split(batch), "taken off the watchlist", batch.count) }
             for batch in batches(dropped) { add("/sync/dropped", ["shows": batch.map(ids)], "dropped shows", batch.count) }
+        // Simkl's are placed and sent by the app's Simkl sync (its anime numbering), not built here.
+        case .simkl: break
         }
         return result
     }

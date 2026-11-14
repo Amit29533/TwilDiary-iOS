@@ -1,8 +1,9 @@
 import XCTest
+import TwilDiaryCore
 @testable import TwilDiary
 
-/// The Simkl add-on: its copy queue, the bodies it sends, how it reads Simkl's answers, sign-in
-/// checks, and that it stays in its folder (so removing it stays one folder and three lines).
+/// Simkl's sync: its copy queue, the bodies it sends, how it reads Simkl's answers, sign-in, and
+/// that Simkl is kept in step but never the main tracker.
 final class SimklAddOnTests: XCTestCase {
     private func watch(_ number: Int, season: Int = 1, at time: String = "2026-11-14T20:00:00.000Z", tmdb: Int = 1429) -> SimklJob {
         SimklJob(kind: .watch, tmdb: tmdb, movie: false, anime: true, name: "Attack on Titan", year: 2013, season: season, number: number, airedOn: "2013-04-07", watchedAt: time)
@@ -337,16 +338,36 @@ final class SimklAddOnTests: XCTestCase {
 
     // MARK: Sign-in
 
+    /// Simkl signs in through the shared web sign-in: its page, PKCE, back to twildiary://auth/simkl.
     func testSignInPageAndReply() throws {
-        let attempt = SimklAccount.start { Array(repeating: 7, count: $0) }
-        let items = URLComponents(url: attempt.url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertEqual(attempt.url.host, "simkl.com")
+        let request = try XCTUnwrap(ProviderWebSignIn.start(provider: .simkl, clientId: SimklAccount.clientId) { Array(repeating: 7, count: $0) })
+        let items = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(request.url.host, "simkl.com"); XCTAssertEqual(request.url.path, "/oauth2/authorize")
         XCTAssertEqual(items.first { $0.name == "redirect_uri" }?.value, "twildiary://auth/simkl")
+        XCTAssertEqual(items.first { $0.name == "scope" }?.value, "media:read media:write")
         XCTAssertEqual(items.first { $0.name == "code_challenge_method" }?.value, "S256")
-        let back = try XCTUnwrap(URL(string: "twildiary://auth/simkl?code=abc&state=\(attempt.state)"))
-        XCTAssertEqual(try SimklAccount.code(from: back, for: attempt), "abc")
-        XCTAssertThrowsError(try SimklAccount.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=other")!, for: attempt))
-        XCTAssertThrowsError(try SimklAccount.code(from: URL(string: "twildiary://auth/simkl?error=access_denied&state=\(attempt.state)")!, for: attempt))
+        let back = try XCTUnwrap(URL(string: "twildiary://auth/simkl?code=abc&state=\(request.state)"))
+        XCTAssertEqual(try ProviderWebSignIn.code(from: back, for: request), "abc")
+        XCTAssertThrowsError(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?code=abc&state=other")!, for: request))
+        XCTAssertThrowsError(try ProviderWebSignIn.code(from: URL(string: "twildiary://auth/simkl?error=access_denied&state=\(request.state)")!, for: request))
+        let body = String(decoding: ProviderWebSignIn.tokenBody(code: "abc", for: request), as: UTF8.self)
+        XCTAssertTrue(body.contains("redirect_uri=twildiary%3A%2F%2Fauth%2Fsimkl")); XCTAssertTrue(body.contains("code_verifier="))
+    }
+
+    /// Simkl is a service of its own, never the main tracker; a saved "simkl" never becomes main.
+    func testSimklIsKeptInSyncButNeverMain() throws {
+        XCTAssertFalse(MainTracker.offered.contains(.simkl)); XCTAssertEqual(MainTracker.alsoSynced, [.simkl])
+        XCTAssertNil(MainTracker(main: "simkl")); XCTAssertEqual(MainTracker(main: "wetrakr"), .wetrakr)
+        var settings = ProviderConnectionSettings()
+        var simkl = settings.simkl
+        simkl.clientId = SimklAccount.clientId; simkl.accessToken = "token"; simkl.enabled = true
+        settings.setConfig(simkl)
+        XCTAssertTrue(settings.config(for: .simkl).isAuthenticated)
+        XCTAssertFalse(settings.activeDirectLoggingProviders.contains(.simkl), "Simkl's edits go through its own sync")
+        let saved = try JSONDecoder().decode(ProviderConnectionSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(saved.simkl.accessToken, "token")
+        let old = Data(#"{"trakt":{"provider":"trakt","enabled":false,"loggingMethod":"server_and_direct"},"mdblist":{"provider":"mdblist","enabled":false,"loggingMethod":"server_and_direct"},"simkl":{"provider":"simkl","enabled":true,"loggingMethod":"server_and_direct","accessToken":"old"}}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(ProviderConnectionSettings.self, from: old).simkl.accessToken, "the first integration's entry isn't read")
     }
 
     func testTokensNeedWriteAccess() throws {
@@ -356,25 +377,4 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertThrowsError(try SimklAccount.tokens(from: Data(#"{"error":"invalid_grant"}"#.utf8), status: 400))
     }
 
-    // MARK: Contained
-
-    /// Simkl appears only in App/Simkl, its three hook lines, and the few places that named it
-    /// before (its logo, the one-time cleanup of the old Simkl support, two comments).
-    func testTheAddOnStaysInItsFolder() throws {
-        let app = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("App")
-        guard FileManager.default.fileExists(atPath: app.path) else { throw XCTSkip("The app's sources aren't on this machine.") }
-        // The three hooks, then what named Simkl before the add-on (no more than it did then).
-        let allowed = ["TraktDiaryEditing.swift": 1, "ConnectionsView.swift": 1, "TwilDiaryApp.swift": 1,
-                       "Components.swift": 3, "DiaryStore.swift": 12, "ServiceIDs.swift": 1, "APIsView.swift": 1]
-        var outside: [String] = []
-        let files = FileManager.default.enumerator(at: app, includingPropertiesForKeys: nil)?.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []
-        XCTAssertFalse(files.isEmpty)
-        for file in files where !file.path.contains("/App/Simkl/") {
-            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: .newlines).filter { $0.localizedCaseInsensitiveContains("simkl") }
-            guard !lines.isEmpty else { continue }
-            if let most = allowed[file.lastPathComponent], lines.count <= most { continue }
-            outside.append("\(file.lastPathComponent): \(lines.count) line(s)")
-        }
-        XCTAssertEqual(outside, [], "Simkl code outside App/Simkl: keep the add-on in its folder.")
-    }
 }

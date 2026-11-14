@@ -1,31 +1,5 @@
 import SwiftUI
-
-/// The add-on's row in Connections (the one line ConnectionsView has for it).
-struct SimklConnectionsRow: View {
-    @State private var account = SimklAccount.shared
-    @State private var mirror = SimklMirror.shared
-    var body: some View {
-        SettingsGroup(label: "Also save to") {
-            NavigationLink { SimklSettingsView() } label: {
-                HStack(spacing: 14) {
-                    BrandLogo(service: .simkl, size: 38)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Simkl").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                        Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
-                    }
-                    Spacer(minLength: 4)
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
-                }.padding(.horizontal, 15).frame(minHeight: 64).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("connections-simkl")
-        }
-    }
-    private var subtitle: String {
-        guard account.signedIn else { return "Not connected" }
-        guard account.saving else { return "Connected · not saving" }
-        let waiting = mirror.queue.jobs.count
-        return waiting > 0 ? "Saving your activity · \(waiting) waiting" : "Saving your activity"
-    }
-}
+import TwilDiaryCore
 
 /// Simkl's page: sign in, the "Also save my activity to Simkl" switch, what's waiting, what Simkl
 /// couldn't take, and "Disconnect and remove".
@@ -83,6 +57,10 @@ struct SimklSettingsView: View {
                         }
                         if let problem = mirror.lastProblem { SettingsFootnote(text: problem) }
                     }
+                    NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
+                        SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
+                            .modifier(SettingsCard())
+                    }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")
                 }
                 if !mirror.notKept.isEmpty {
                     SettingsGroup(label: "Not kept on Simkl", info: "Simkl couldn’t find these, even by air date. They aren’t sent again; the rest of your activity carries on.") {

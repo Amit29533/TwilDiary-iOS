@@ -5,7 +5,8 @@ import TwilDiaryCore
 /// Profile → Connections. On top, where your diary lives: Trakt, MDBList and WeTrakr in one list.
 /// The ticked one is your main tracker (the diary comes from it; edits go to it, and also to the
 /// others you're signed in to). Each row opens that service's page; ⋯ has the quick actions.
-/// Below: how this iPhone reaches your server, and the services that use a key.
+/// Then the services kept in step that can't be main (Simkl). Below: how this iPhone reaches your
+/// server, and the services that use a key.
 struct ConnectionsView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -22,7 +23,7 @@ struct ConnectionsView: View {
     @State private var signingIn: MainTracker?
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
-    private var main: MainTracker { MainTracker(rawValue: mainTracker) ?? .trakt }
+    private var main: MainTracker { MainTracker(main: mainTracker) ?? .trakt }
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -41,7 +42,12 @@ struct ConnectionsView: View {
                         SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
                     }
                 }
-                SimklConnectionsRow() // The Simkl add-on (App/Simkl).
+                SettingsGroup(label: "Also kept in sync", info: "Your edits are copied to these too. They can’t hold your diary.") {
+                    ForEach(Array(MainTracker.alsoSynced.enumerated()), id: \.element) { index, tracker in
+                        if index > 0 { divider }
+                        trackerRow(tracker)
+                    }
+                }
                 SettingsGroup(label: "Your server") {
                     // No sign-in (owner's choice): the app reaches your server with its own key.
                     HStack(spacing: 14) {
@@ -90,6 +96,7 @@ struct ConnectionsView: View {
                 }
             }
             .onChange(of: server) { _, on in ExtrasStorage.switched(on, store: store) }
+            .task { SimklAccount.shared.adopt(store) }
     }
 
     // MARK: Trackers
@@ -100,6 +107,7 @@ struct ConnectionsView: View {
         case .trakt: store.traktSignedInOnPhone
         case .mdblist: store.providerSettings.mdblist.isAuthenticated
         case .wetrakr: store.providerSettings.wetrakr.isAuthenticated
+        case .simkl: store.providerSettings.simkl.isAuthenticated
         }
     }
     /// Signed in and syncing (Trakt always syncs once signed in).
@@ -113,6 +121,7 @@ struct ConnectionsView: View {
             store.traktSignedInOnPhone ? "Connected" : "Not connected"
         case .mdblist: connected(.mdblist) ? "Connected" : "Not connected"
         case .wetrakr: connected(.wetrakr) ? "Connected" : "Not connected"
+        case .simkl: connected(.simkl) ? "Connected" : "Not connected"
         }
     }
     private func account(_ tracker: MainTracker) -> String? {
@@ -120,6 +129,7 @@ struct ConnectionsView: View {
         case .trakt: store.traktSignedInOnPhone ? store.providerSettings.trakt.username : nil
         case .mdblist: store.providerSettings.mdblist.username
         case .wetrakr: store.providerSettings.wetrakr.username
+        case .simkl: store.providerSettings.simkl.username
         }
     }
     private func checkedAt(_ tracker: MainTracker) -> Date? {
@@ -142,7 +152,7 @@ struct ConnectionsView: View {
 
     private func trackerRow(_ tracker: MainTracker) -> some View {
         let isMain = tracker == main, on = connected(tracker)
-        let destination: AppDestination = switch tracker { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr }
+        let destination: AppDestination = switch tracker { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl }
         let profile = on ? profiles.account(tracker) : nil
         let checked = checkedAt(tracker).map { $0.formatted(.relative(presentation: .named)) }
         let sync = syncing(tracker)
@@ -191,8 +201,8 @@ struct ConnectionsView: View {
                 }.buttonStyle(.plain).disabled(signingIn != nil).accessibilityIdentifier(tracker.rawValue + "-quick-sign-in")
             }
             Menu {
-                if !isMain { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
-                Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on)
+                if !isMain, MainTracker.offered.contains(tracker) { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
+                if tracker != .simkl { Button("Check now", systemImage: "arrow.clockwise") { Task { await check(tracker) } }.disabled(!on) }
                 // Connected through your server: move the Trakt sign-in onto this iPhone in one tap.
                 if tracker == .trakt, on, !store.traktSignedInOnPhone {
                     Button("Sign in on this iPhone", systemImage: "iphone") { Task { await signIn(.trakt) } }

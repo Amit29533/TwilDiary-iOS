@@ -419,6 +419,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .mdblist: .mdblist
         case .wetrakr: .wetrakr
+        case .simkl: .simkl
         case .trakt: .trakt
         case .cloudflare: .cloudflare
         }
@@ -428,6 +429,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
+        case .simkl: "Simkl"
         case .trakt: "Trakt"
         case .cloudflare: "TwilDiary"
         }
@@ -437,6 +439,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .mdblist: "Public ratings, watch history and watchlist."
         case .wetrakr: "Watch history with rewatches, ratings and lists."
+        case .simkl: "Watch history, ratings and lists."
         case .trakt: "Watch history, ratings and watchlist."
         case .cloudflare: "Hosted diary sync."
         }
@@ -446,6 +449,7 @@ struct ExternalProviderConnectionView: View {
         switch provider {
         case .mdblist: "Watch history · Ratings · Watchlist · Dropped shows"
         case .wetrakr: "Watch history · Ratings · Watchlist · Favourites · Dropped"
+        case .simkl: "Watch history · Ratings · Plan to watch · Watching · Completed · On hold · Dropped"
         case .trakt, .cloudflare: "Watch history · Ratings · Watchlist"
         }
     }
@@ -488,7 +492,7 @@ struct ExternalProviderConnectionView: View {
     }
 
     private var tracker: MainTracker? {
-        switch provider { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .cloudflare: nil }
+        switch provider { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl; case .cloudflare: nil }
     }
 
     /// One switch: whether your edits go to this service, and what's still on its way.
@@ -589,7 +593,7 @@ struct ExternalProviderConnectionView: View {
                         }
                         Link(destination: URL(string: "https://trakt.tv/oauth/applications")!) { SettingsLinkLabel(text: "Open Trakt’s app settings") }
                     }
-                case .mdblist, .wetrakr:
+                case .mdblist, .wetrakr, .simkl:
                     // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
                     // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
                     let appId = appClientId ?? ProfileText.line(signInAppID)
@@ -655,7 +659,7 @@ struct ExternalProviderConnectionView: View {
         let listed: String? = switch provider {
         case .mdblist: apps?.mdblist
         case .trakt: apps?.trakt
-        case .wetrakr: nil
+        case .wetrakr, .simkl: nil
         case .cloudflare: nil
         }
         return listed.flatMap { $0.isEmpty ? nil : $0 } ?? ProviderAppIDs.id(for: provider)

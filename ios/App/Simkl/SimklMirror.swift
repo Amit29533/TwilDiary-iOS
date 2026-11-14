@@ -150,10 +150,12 @@ struct SimklQueue: Codable, Equatable, Sendable {
 
     // MARK: Taking edits
 
-    /// An edit made in TwilDiary (the hook in `DiaryStore.mirror`): turned into jobs while the diary
+    /// An edit made in TwilDiary (from `DiaryStore.mirror`): turned into jobs while the diary
     /// still has everything they need, then sent in the background.
     func capture(_ mutation: OptimisticMutation, store: DiaryStore) {
-        guard SimklAccount.shared.canSend, !store.isPreview else { return }
+        guard !store.isPreview else { return }
+        SimklAccount.shared.adopt(store)
+        guard SimklAccount.shared.canSend else { return }
         self.store = store
         for job in Self.jobs(for: mutation, store: store) { queue.add(job) }
         save()
@@ -219,7 +221,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
 
     /// Sends what's waiting, one request at a time (Simkl takes one write per account at a time).
     func resume(store: DiaryStore? = nil) async {
-        if let store, !store.isPreview { self.store = store }
+        if let store, !store.isPreview { self.store = store; SimklAccount.shared.adopt(store) }
         guard !sending, SimklAccount.shared.canSend, !queue.jobs.isEmpty else { return }
         sending = true
         defer { sending = false; scheduleWake() }

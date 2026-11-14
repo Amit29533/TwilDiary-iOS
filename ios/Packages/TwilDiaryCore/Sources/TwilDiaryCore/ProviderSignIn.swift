@@ -21,7 +21,7 @@ public enum ProviderDeviceSignIn {
         case .wetrakr:
             Endpoints(authorize: URL(string: "https://api.wetrakr.com/oauth/device/code")!,
                       token: URL(string: "https://api.wetrakr.com/oauth/token")!, scope: "")
-        case .trakt, .cloudflare:
+        case .trakt, .simkl, .cloudflare:
             nil
         }
     }
@@ -124,6 +124,8 @@ public enum ProviderWebSignIn {
     public static let returnSite = "https://twildiary-auth.amit29533.workers.dev"
     /// The redirect registered with the service (and sent in the token exchange).
     public static func redirect(for provider: SyncProviderKind) -> String {
+        // Simkl: the app address registered with Simkl (its pages accept custom schemes).
+        if provider == .simkl { return callbackScheme + "://auth/simkl" }
         // Trakt, MDBList and WeTrakr (as Cinopsys signs in to them) through the https page.
         returnSite + "/" + provider.rawValue
     }
@@ -132,12 +134,14 @@ public enum ProviderWebSignIn {
         case .mdblist: URL(string: "https://mdblist.com/oauth/authorize/")
         case .trakt: URL(string: "https://auth.trakt.tv/oauth/authorize")
         case .wetrakr: URL(string: "https://api.wetrakr.com/oauth/authorize")
+        case .simkl: URL(string: "https://simkl.com/oauth2/authorize")
         case .cloudflare: nil
         }
     }
     /// What the app asks for. Trakt has no scopes: a sign-in can always read and write.
     static func scope(for provider: SyncProviderKind) -> String? {
-        provider == .trakt || provider == .wetrakr ? nil : ProviderDeviceSignIn.endpoints(for: provider)?.scope
+        if provider == .simkl { return "media:read media:write" }
+        return provider == .trakt || provider == .wetrakr ? nil : ProviderDeviceSignIn.endpoints(for: provider)?.scope
     }
 
     /// One sign-in attempt: what to open, and what to check when the service comes back.

@@ -79,7 +79,7 @@ enum AppTab: String, CaseIterable, Hashable {
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, appearance, trakt, tmdb, mdblist, wetrakr, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, appearance, trakt, tmdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -276,7 +276,7 @@ struct RootView: View {
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
-                    await SimklMirror.shared.resume(store: store) // The Simkl add-on (App/Simkl).
+                    await SimklMirror.shared.resume(store: store)
                     // Alerts first: quick, on this phone, and not held up by the syncs below.
                     await EpisodeNotifications.reschedule(store: store)
                     // No server: tags, Queue, notes, files, favourite people and Trash from Drive.
@@ -362,6 +362,7 @@ struct RootView: View {
                     case .backups: BackupsView()
                     case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
                     case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)
+                    case .simkl: SimklSettingsView()
                     case .about: AboutView()
                     case .languageRegion: LanguageRegionView()
                     case .syncBackup: SyncBackupView()

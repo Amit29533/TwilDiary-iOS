@@ -38,7 +38,7 @@ public enum ProviderConnectionMethod: String, Codable, Sendable {
     case apiKey = "api_key"
 }
 
-/// Configuration for an external sync provider (Trakt, MDBList, WeTrakr).
+/// Configuration for an external sync provider (Trakt, MDBList, WeTrakr, Simkl).
 public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable {
     public let provider: SyncProviderKind
     public var enabled: Bool
@@ -93,7 +93,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     /// True when the required API credentials for this provider have been entered.
     public var hasCredentials: Bool {
         switch provider {
-        case .trakt, .wetrakr:
+        case .trakt, .wetrakr, .simkl:
             guard let cid = Self.trimmed(clientId), !cid.isEmpty else { return false }
             return true
         case .mdblist:
@@ -107,7 +107,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
     /// True when the provider has both an API key/client ID and an user access token (or API key for MDBList).
     public var isAuthenticated: Bool {
         switch provider {
-        case .trakt, .wetrakr:
+        case .trakt, .wetrakr, .simkl:
             guard let cid = Self.trimmed(clientId), !cid.isEmpty,
                   let token = Self.trimmed(accessToken), !token.isEmpty else { return false }
             return true
@@ -138,8 +138,12 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public var trakt: ExternalProviderConfig
     public var mdblist: ExternalProviderConfig
     public var wetrakr: ExternalProviderConfig
+    /// Simkl as a service of its own (2026-11-14): never the main tracker; its edits go through
+    /// its own placement (the app's Simkl sync), not the shared delivery planner.
+    public var simkl: ExternalProviderConfig
 
-    private enum CodingKeys: String, CodingKey { case customTmdbToken, trakt, mdblist, wetrakr }
+    // "simkl2": an older "simkl" entry (Simkl's first integration, removed 2026-11-13) is never read.
+    private enum CodingKeys: String, CodingKey { case customTmdbToken, trakt, mdblist, wetrakr, simkl = "simkl2" }
     /// Settings saved before WeTrakr came back have no entry for it. Settings saved while Simkl was
     /// offered still hold a "simkl" entry; it isn't read (and the next save leaves it out).
     public init(from decoder: Decoder) throws {
@@ -148,19 +152,22 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
         trakt = try c.decode(ExternalProviderConfig.self, forKey: .trakt)
         mdblist = try c.decode(ExternalProviderConfig.self, forKey: .mdblist)
         wetrakr = try c.decodeIfPresent(ExternalProviderConfig.self, forKey: .wetrakr) ?? ExternalProviderConfig(provider: .wetrakr)
+        simkl = try c.decodeIfPresent(ExternalProviderConfig.self, forKey: .simkl) ?? ExternalProviderConfig(provider: .simkl)
     }
 
     public init(
         customTmdbToken: String? = nil,
         trakt: ExternalProviderConfig = ExternalProviderConfig(provider: .trakt),
         mdblist: ExternalProviderConfig = ExternalProviderConfig(provider: .mdblist),
-        wetrakr: ExternalProviderConfig = ExternalProviderConfig(provider: .wetrakr)
+        wetrakr: ExternalProviderConfig = ExternalProviderConfig(provider: .wetrakr),
+        simkl: ExternalProviderConfig = ExternalProviderConfig(provider: .simkl)
     ) {
         self.customTmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         if self.customTmdbToken?.isEmpty == true { self.customTmdbToken = nil }
         self.trakt = trakt
         self.mdblist = mdblist
         self.wetrakr = wetrakr
+        self.simkl = simkl
     }
 
     public func config(for provider: SyncProviderKind) -> ExternalProviderConfig {
@@ -168,6 +175,7 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
         case .trakt: trakt
         case .mdblist: mdblist
         case .wetrakr: wetrakr
+        case .simkl: simkl
         case .cloudflare: ExternalProviderConfig(provider: .cloudflare, enabled: true)
         }
     }
@@ -177,11 +185,13 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
         case .trakt: trakt = config
         case .mdblist: mdblist = config
         case .wetrakr: wetrakr = config
+        case .simkl: simkl = config
         case .cloudflare: break
         }
     }
 
     /// Returns all direct providers that are currently enabled, authenticated, and configured to receive watch logs.
+    /// (Simkl isn't one: its edits are placed and sent by the app's own Simkl sync.)
     public var activeDirectLoggingProviders: Set<SyncProviderKind> {
         var result: Set<SyncProviderKind> = []
         for item in [trakt, mdblist, wetrakr] {
@@ -314,7 +324,7 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
     private static func stripped(_ settings: ProviderConnectionSettings) -> ProviderConnectionSettings {
         var value = settings
         value.customTmdbToken = nil
-        for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr] {
+        for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr, .simkl] {
             var config = value.config(for: provider)
             config.accessToken = nil; config.apiKey = nil; config.refreshToken = nil
             value.setConfig(config)
@@ -412,6 +422,7 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         case .trakt: "TK"
         case .mdblist: "ML"
         case .wetrakr: "WT"
+        case .simkl: "SK"
         case .cloudflare: "TD"
         }
     }
@@ -421,6 +432,7 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         case .trakt: "Trakt"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
+        case .simkl: "Simkl"
         case .cloudflare: "TwilDiary"
         }
     }
@@ -455,6 +467,7 @@ public struct SyncLiveActivityState: Codable, Equatable, Hashable, Sendable {
         case .trakt: "Trakt"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
+        case .simkl: "Simkl"
         case .cloudflare: "TwilDiary"
         }
         let title: String = switch phase {

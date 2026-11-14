@@ -6,6 +6,7 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
     case trakt
     case mdblist
     case wetrakr
+    case simkl
     public var id: Self { self }
     public var displayName: String {
         switch self {
@@ -13,6 +14,7 @@ public enum SyncProviderKind: String, Codable, CaseIterable, Identifiable, Hasha
         case .trakt: "Trakt"
         case .mdblist: "MDBList"
         case .wetrakr: "WeTrakr"
+        case .simkl: "Simkl"
         }
     }
 }

@@ -90,13 +90,14 @@ public enum ProviderDeliveryPlanner {
                 return ProviderDeliveryPlan(deliveries: [], blocked: ["A mapped episode is required before this removal can sync."])
             }
             return one("history-remove", "/sync/watched/remove", body)
-        case .cloudflare:
+        // Simkl's edits are placed and sent by the app's Simkl sync, never planned here.
+        case .cloudflare, .simkl:
             return ProviderDeliveryPlan(deliveries: [], blocked: [])
         }
     }
 
     public static func plan(_ entry: SyncOutboxEntry, provider: SyncProviderKind, in workspace: Workspace) -> ProviderDeliveryPlan {
-        guard provider != .cloudflare, !entry.pendingProviders.contains(.cloudflare) else { return ProviderDeliveryPlan(deliveries: [], blocked: ["Waiting for diary confirmation."]) }
+        guard provider != .cloudflare, provider != .simkl, !entry.pendingProviders.contains(.cloudflare) else { return ProviderDeliveryPlan(deliveries: [], blocked: ["Waiting for diary confirmation."]) }
         if case .revokeWatch(let eventID, _, _, _) = entry.mutation, let detached = DetachedWatch(eventID: eventID) {
             return detachedRemoval(detached, provider: provider)
         }
@@ -173,7 +174,7 @@ public enum ProviderDeliveryPlanner {
                     blocked.append("A mapped episode is required before this removal can sync."); break
                 }
                 add("history-remove", "/sync/watched/remove", watch)
-            case .cloudflare: break
+            case .cloudflare, .simkl: break
             }
         case .patchTitle(_, _, let status, let score, let clearScore, let favorite, _, _, _):
             if clearScore || score != nil {
@@ -227,7 +228,7 @@ public enum ProviderDeliveryPlanner {
         if status == "planned" { return true }
         switch provider {
         case .trakt, .mdblist: return status == "dropped" && isSeries
-        case .wetrakr: return status == "dropped"
+        case .wetrakr, .simkl: return status == "dropped"
         case .cloudflare: return true
         }
     }
