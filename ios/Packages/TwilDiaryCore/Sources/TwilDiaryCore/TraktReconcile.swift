@@ -80,7 +80,7 @@ public struct TraktWritePlan: Equatable, Sendable {
         // watch the service keeps at another time (it rounds or shifts times) still counts: a
         // movie or episode gets new plays only when the diary has more of them than the service,
         // or every match would log it again (WeTrakr had films twice that way).
-        var traktTimes: [String: [Date]] = [:]
+        var traktTimes: [String: [Date]] = [:], diaryMoments: [String: [Date]] = [:]
         var unmatched: [String: [Play]] = [:], slotOrder: [String] = []
         var allServiceSlots: [String: Int] = [:]
         for play in library.plays {
@@ -97,6 +97,11 @@ public struct TraktWritePlan: Equatable, Sendable {
             let slot = key(titleRef.movie, titleRef.tmdbId) + (episode.map { "|s\($0.season)e\($0.number)" } ?? "")
             if except.contains("play|" + slot) { continue }
             guard let when = DiaryDate.parse(event.watchedAt) else { plan.skippedPlays += 1; continue }
+            // A second diary watch at the same moment: the service keeps one ("Already added!"), so it isn't sent.
+            if !can.keepsSamePlayTwice {
+                if (diaryMoments[slot] ?? []).contains(where: { abs($0.timeIntervalSince(when)) <= 60 }) { continue }
+                diaryMoments[slot, default: []].append(when)
+            }
             if !can.keepsRewatches {
                 // One watch per episode or movie: the first one, and only when the service has none.
                 if !(traktTimes[slot] ?? []).isEmpty || sentSlots.contains(slot) { continue }

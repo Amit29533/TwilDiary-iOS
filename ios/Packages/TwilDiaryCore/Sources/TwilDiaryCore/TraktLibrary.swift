@@ -304,11 +304,17 @@ public struct TraktComparison: Equatable, Sendable {
             let named = label(key, play.title.name)
             labels[full] = play.season.map { "\(named) S\($0)E\(play.episode ?? 0)" } ?? named
         }
+        var diaryMoments: [String: [Date]] = [:]
         for event in workspace.activeEvents {
             guard let key = titleKey[event.titleId] else { continue }
             let episode = event.episodeId.flatMap { episodes[$0] }
             if episode?.season == 0, !can.keepsSpecials { continue }
             let full = playKey(key, episode?.season, episode?.number)
+            // The same watch twice in the diary is one play on a service that keeps one per moment.
+            if !can.keepsSamePlayTwice, let when = DiaryDate.parse(event.watchedAt) {
+                if (diaryMoments[full] ?? []).contains(where: { abs($0.timeIntervalSince(when)) <= 60 }) { continue }
+                diaryMoments[full, default: []].append(when)
+            }
             diary[full, default: 0] += 1
             if labels[full] == nil { labels[full] = episode.map { "\(name(key)) S\($0.season)E\($0.number)" } ?? name(key) }
         }

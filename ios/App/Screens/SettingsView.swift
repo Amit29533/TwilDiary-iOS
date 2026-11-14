@@ -575,19 +575,90 @@ struct ExternalProviderConnectionView: View {
         VStack(alignment: .leading, spacing: 12) {
             Button { withAnimation(Motion.smooth) { showOwnKey.toggle() } } label: {
                 HStack {
+                    let native = ThemeStore.current.native
                     Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        .font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
+                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(native ? Color(uiColor: .tertiaryLabel) : Color(themed: "#6a6a78"))
                         .rotationEffect(.degrees(showOwnKey ? 180 : 0))
-                }.padding(.horizontal, 15).frame(minHeight: 56).contentShape(Rectangle()).modifier(SettingsCard())
+                }.padding(.horizontal, ThemeStore.current.native ? 16 : 15).frame(minHeight: ThemeStore.current.native ? 52 : 56).contentShape(Rectangle()).modifier(SettingsCard())
             }.buttonStyle(.plain).accessibilityIdentifier("\(provider.rawValue)-own-key")
             if showOwnKey { apiSettingsCard }
         }
     }
 
     /// Two ways in: sign in to the service, or (below) your own API key or token.
-    private var connectCard: some View {
+    @ViewBuilder private var connectCard: some View {
+        if ThemeStore.current.native { nativeConnect } else { classicConnect }
+    }
+    /// Native: an Account list as iOS Settings: who you're signed in as with a small Sign in button,
+    /// Sign out in red, and the one-time setup as rows only while it's needed.
+    private var nativeConnect: some View {
+        let isTrakt = provider == .trakt
+        let signedIn = isTrakt ? store.traktSignedInOnPhone : currentConfig.isAuthenticated
+        let appId = appClientId ?? ProfileText.line(signInAppID)
+        let needsSetup = appClientId == nil
+        let developer = isTrakt ? "https://trakt.tv/oauth/applications" : provider == .wetrakr ? "https://api.wetrakr.com/" : "https://mdblist.com/developer/"
+        let setupInfo: String? = !needsSetup ? nil : isTrakt
+            ? "On trakt.tv/oauth/applications, open your app and add \(ProviderWebSignIn.redirect(for: .trakt)) as a redirect URI, then paste its client ID here."
+            : provider == .mdblist
+            ? "Create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here or under Connections → All keys."
+            : provider == .wetrakr
+            ? "In WeTrakr, open Settings → API, create an app with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID (the app key) here."
+            : "Create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here or under Connections → All keys."
+        return VStack(alignment: .leading, spacing: 8) {
+            SettingsGroup(label: "Account", info: setupInfo) {
+                SettingsRow(title: signedIn ? (currentConfig.username.map { "@" + $0 } ?? "Signed in") : "Not signed in") {
+                    Button(signingIn ? "Signing in…" : signedIn ? "Sign in again" : "Sign in") {
+                        if let appId { startSignIn(appId) } else {
+                            errorMessage = "First, paste your \(displayName) app’s client ID below (one-time setup)."
+                            appIDFocused = true
+                        }
+                    }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                }.accessibilityIdentifier(isTrakt ? "trakt-sign-in-state" : "\(provider.rawValue)-account")
+                if let approval {
+                    SettingsDivider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Approve TwilDiary on \(displayName) with this code:").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(approval.userCode).font(.system(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
+                            .accessibilityIdentifier("\(provider.rawValue)-user-code")
+                        HStack(spacing: 10) {
+                            Button("Open \(displayName)") { openURL(approval.verificationURLComplete ?? approval.verificationURL) }.buttonStyle(SettingsPillButtonStyle())
+                            Button("Cancel") { signInTask?.cancel(); self.approval = nil; signingIn = false }.buttonStyle(SettingsPillButtonStyle(outlined: true))
+                        }
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if needsSetup {
+                    SettingsDivider()
+                    TextField("\(displayName) app client ID", text: $signInAppID).font(.system(size: 17, design: .monospaced))
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($appIDFocused).submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
+                        .settingsRowFrame().accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
+                    SettingsDivider()
+                    Link(destination: URL(string: developer)!) {
+                        SettingsRow(title: isTrakt ? "Trakt app settings" : "\(displayName) developer page") {
+                            Image(systemName: "arrow.up.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        }
+                    }.buttonStyle(.plain)
+                }
+                if isTrakt {
+                    SettingsDivider()
+                    NavigationLink(value: AppDestination.trakt) { SettingsRow(title: "Trakt page") { SettingsChevron() } }
+                        .buttonStyle(.plain).accessibilityIdentifier("trakt-open-page")
+                }
+                if isTrakt && signedIn {
+                    SettingsDivider()
+                    Button { confirmTraktSignOut = true } label: {
+                        Text("Sign out of Trakt").font(.system(size: 17)).foregroundStyle(Color(uiColor: .systemRed))
+                            .frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame().contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("trakt-sign-out")
+                }
+            }
+            messages.padding(.horizontal, 16)
+        }
+    }
+    private var classicConnect: some View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsLabel(text: "Connect") { EmptyView() }
             VStack(alignment: .leading, spacing: 12) {

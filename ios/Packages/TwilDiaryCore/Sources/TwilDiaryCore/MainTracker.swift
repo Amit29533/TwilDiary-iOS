@@ -35,6 +35,10 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         /// Specials (season 0). MDBList answers "added" but never keeps them, so they're neither
         /// sent there nor counted as missing.
         public var keepsSpecials = true
+        /// Two plays of one episode or movie at the same moment (within a minute). WeTrakr keeps one
+        /// and answers the second with "Already added!", so a diary that has the same watch twice
+        /// counts it once there, or every match would send it again.
+        public var keepsSamePlayTwice = true
     }
 
     public var name: String {
@@ -46,7 +50,7 @@ public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
         case .trakt: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: 500, changeCheck: true)
         case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true, keepsSpecials: false)
         // WeTrakr keeps every play, favourites and dropped titles, and its journal names what changed.
-        case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true)
+        case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true, keepsSamePlayTwice: false)
         // Simkl keeps one watched state per episode or movie (rewatches are for paid accounts),
         // ratings, its lists (Plan to watch, Watching, Completed, On hold, Dropped), no favourites;
         // `/sync/activities` says what changed.

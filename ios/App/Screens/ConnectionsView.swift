@@ -50,6 +50,13 @@ struct ConnectionsView: View {
                 }
                 SettingsGroup(label: "Your server") {
                     // No sign-in (owner's choice): the app reaches your server with its own key.
+                    if ThemeStore.current.native {
+                        // Native: a settings row with the system switch, the same height as the rows below.
+                        HStack(spacing: 12) {
+                            SettingsTile(symbol: "server.rack")
+                            Toggle(isOn: $server) { SettingsRowTitle("Your server", "") }
+                        }.settingsRowFrame().accessibilityIdentifier("connections-server")
+                    } else {
                     HStack(spacing: 14) {
                         SettingsTile(symbol: "server.rack")
                         VStack(alignment: .leading, spacing: 2) {
@@ -60,6 +67,7 @@ struct ConnectionsView: View {
                         Spacer(minLength: 4)
                         Toggle("", isOn: $server).labelsHidden().tint(theme.accent)
                     }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("connections-server")
+                    }
                     // The browsing preview shows them too (its UI tests open them).
                     if server || store.isPreview {
                         divider
@@ -78,8 +86,12 @@ struct ConnectionsView: View {
                             value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, destination: .anilist, id: "settings-anilist")
                         divider
                         NavigationLink(value: AppDestination.apis) {
-                            Text("All keys").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                                .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
+                            if ThemeStore.current.native {
+                                rowLabel(SettingsTile(symbol: "key.fill"), "All keys", "", value: nil)
+                            } else {
+                                Text("All keys").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
+                            }
                         }.buttonStyle(.plain).accessibilityIdentifier("settings-apis")
                     }
                 }
@@ -159,33 +171,38 @@ struct ConnectionsView: View {
         let detail = on ? [profile?.name ?? account(tracker), sync ? checked : "Sync off"].compactMap { $0 }.joined(separator: " · ") : ""
         // A connection that needs attention says so (in amber), instead of looking healthy.
         let status = badge(tracker), problem = ["Reconnect", "Unavailable"].contains(status)
+        let native = ThemeStore.current.native
         return HStack(spacing: 4) {
             NavigationLink(value: destination) {
                 HStack(spacing: 14) {
                     // As Cinopsys: your picture on the service, its logo on the corner.
                     avatar(profile?.avatar, on: on)
                         .overlay(alignment: .bottomTrailing) {
-                            BrandLogo(service: tracker.brand, size: 20)
-                                .overlay(RoundedRectangle(cornerRadius: 20 * 0.225).strokeBorder(Color(themed: "#111115"), lineWidth: 2))
+                            BrandLogo(service: tracker.brand, size: native ? 18 : 20)
+                                .overlay(RoundedRectangle(cornerRadius: 20 * 0.225).strokeBorder(native ? Color(uiColor: .secondarySystemBackground) : Color(themed: "#111115"), lineWidth: 2))
                                 .offset(x: 4, y: 4)
                         }.opacity(on || isMain ? 1 : 0.6)
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: native ? 1 : 3) {
                         HStack(spacing: 6) {
-                            Text(tracker.name).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                            if let plan = profile?.plan { Text("· " + plan).font(.system(size: 15)).foregroundStyle(HomeStyle.secondary) }
+                            // Native: a list row's 17 pt title and 13 pt line, as the other settings rows.
+                            Text(tracker.name).font(.system(size: native ? 17 : 16, weight: native ? .semibold : .bold)).foregroundStyle(HomeStyle.primary)
+                            if let plan = profile?.plan { Text("· " + plan).font(.system(size: native ? 17 : 15)).foregroundStyle(HomeStyle.secondary) }
                             if isMain {
                                 Image(systemName: "checkmark.seal.fill").font(.system(size: 15)).symbolRenderingMode(.palette)
                                     .foregroundStyle(.white, theme.accent).accessibilityHidden(true)
                             }
                         }.lineLimit(1)
                         HStack(spacing: 6) {
-                            if on && !problem { Circle().fill(sync ? Color(themed: "#7fe0b5") : Color(themed: "#8e8e9c")).frame(width: 6, height: 6) }
-                            Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: 12))
-                                .foregroundStyle(problem ? Color(themed: "#f5c26b") : HomeStyle.secondary).lineLimit(1)
+                            if on && !problem {
+                                Circle().fill(native ? Color(uiColor: sync ? .systemGreen : .systemGray) : sync ? Color(themed: "#7fe0b5") : Color(themed: "#8e8e9c"))
+                                    .frame(width: 6, height: 6)
+                            }
+                            Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: native ? 13 : 12))
+                                .foregroundStyle(problem ? (native ? Color(uiColor: .systemOrange) : Color(themed: "#f5c26b")) : HomeStyle.secondary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 0)
-                }.padding(.leading, 15).padding(.vertical, 12).contentShape(Rectangle())
+                }.padding(.leading, native ? 16 : 15).padding(.vertical, native ? 10 : 12).frame(minHeight: native ? 64 : nil).contentShape(Rectangle())
             }.buttonStyle(.plain)
                 .task(id: on) { if on { await profiles.refresh(tracker, store: store) } }
                 // VoiceOver hears the status even when the row shows the account instead.
@@ -193,12 +210,19 @@ struct ConnectionsView: View {
                 .accessibilityIdentifier("settings-" + tracker.rawValue)
             // Not signed in: one tap opens the service's own sign-in page right here.
             if !on || problem, ServiceSignIn.supportsSheet(tracker.provider) {
+                if native {
+                    // Native: the same small button as every other row's ("Run", "Check").
+                    Button(signingIn == tracker ? "Opening…" : problem ? "Reconnect" : "Sign in") { Task { await signIn(tracker) } }
+                        .buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(signingIn != nil)
+                        .accessibilityIdentifier(tracker.rawValue + "-quick-sign-in")
+                } else {
                 Button { Task { await signIn(tracker) } } label: {
                     Group {
                         if signingIn == tracker { ProgressView().controlSize(.small) }
                         else { Text(problem ? "Reconnect" : "Sign in").font(.system(size: 13, weight: .semibold)).lineLimit(1) }
                     }.padding(.horizontal, 14).frame(height: 32).foregroundStyle(HomeStyle.chipText).background(HomeStyle.chip, in: Capsule())
                 }.buttonStyle(.plain).disabled(signingIn != nil).accessibilityIdentifier(tracker.rawValue + "-quick-sign-in")
+                }
             }
             Menu {
                 if !isMain, MainTracker.offered.contains(tracker) { Button("Make main tracker", systemImage: "checkmark.circle") { makeMain(tracker) }.disabled(!on) }
@@ -219,21 +243,21 @@ struct ConnectionsView: View {
                 Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
-        }.background(isMain ? Color(themed: "#1d1934") : .clear)
+        }.background(isMain && !native ? Color(themed: "#1d1934") : .clear)
     }
 
     /// Your picture on the service, or a plain person while it's unknown or you're not signed in.
     private func avatar(_ path: String?, on: Bool) -> some View {
         ZStack {
-            Circle().fill(Color(themed: "#2a2a31"))
-            Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(Color(themed: "#8e8e9c"))
+            Circle().fill(ThemeStore.current.native ? Color(uiColor: .systemGray4) : Color(themed: "#2a2a31"))
+            Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(ThemeStore.current.native ? Color.white : Color(themed: "#8e8e9c"))
             // Account pictures live on each service's own host (not TMDB's), so they load directly.
             if let path, let url = URL(string: path), url.scheme == "https" {
                 AsyncImage(url: url, transaction: Transaction(animation: .smooth(duration: 0.25))) { phase in
                     if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
                 }.clipShape(Circle())
             }
-        }.frame(width: 46, height: 46)
+        }.frame(width: ThemeStore.current.native ? 42 : 46, height: ThemeStore.current.native ? 42 : 46)
     }
     private func signIn(_ tracker: MainTracker) async {
         signingIn = tracker; note = nil
@@ -267,16 +291,27 @@ struct ConnectionsView: View {
     private func row<Leading: View>(_ leading: Leading, _ title: String, _ subtitle: String, value: String?, destination: AppDestination, id: String) -> some View {
         NavigationLink(value: destination) { rowLabel(leading, title, subtitle, value: value) }.buttonStyle(.plain).accessibilityIdentifier(id)
     }
-    private func rowLabel<Leading: View>(_ leading: Leading, _ title: String, _ subtitle: String, value: String?) -> some View {
-        HStack(spacing: 14) {
-            leading
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
-            }
-            Spacer(minLength: 4)
-            if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
-            SettingsChevron()
-        }.padding(.horizontal, 15).frame(minHeight: 64).contentShape(Rectangle())
+    @ViewBuilder private func rowLabel<Leading: View>(_ leading: Leading, _ title: String, _ subtitle: String, value: String?) -> some View {
+        if ThemeStore.current.native {
+            // Native: as iOS Settings, the title alone with its value and chevron, 52 pt like every row.
+            HStack(spacing: 12) {
+                leading.frame(width: 30, height: 30).clipShape(RoundedRectangle(cornerRadius: 7))
+                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Spacer(minLength: 4)
+                if let value { Text(value).font(.system(size: 17)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                SettingsChevron()
+            }.settingsRowFrame().contentShape(Rectangle())
+        } else {
+            HStack(spacing: 14) {
+                leading
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                }
+                Spacer(minLength: 4)
+                if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                SettingsChevron()
+            }.padding(.horizontal, 15).frame(minHeight: 64).contentShape(Rectangle())
+        }
     }
 }

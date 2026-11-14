@@ -235,6 +235,20 @@ private func diary() throws -> Workspace {
     #expect(body.contains("\"allow_rewatch\":false") && !body.contains("\"allow_rewatch\":true"))
 }
 
+@Test func theSameWatchTwiceIsOnePlayOnWeTrakr() throws {
+    // The diary has E12 twice within a minute; WeTrakr keeps one ("Already added!" for the other),
+    // so with that one there, nothing is sent again and nothing shows as missing. Trakt keeps both.
+    var workspace = try diary()
+    workspace.events = workspace.events.map { var event = $0; event.revokedAt = nil; return event }
+    let spooky = TraktTitleRef(kind: .show, traktId: nil, tmdbId: 284172, name: "Spooky in Love")
+    let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: spooky, season: 1, episode: 11, watchedAt: "2026-11-04T07:42:00.000Z"),
+                                       TraktPlay(historyId: 2, title: spooky, season: 1, episode: 12, watchedAt: "2026-10-31T23:16:00.000Z")])
+    let plan = TraktWritePlan.make(library: library, workspace: workspace, tracker: .wetrakr)
+    #expect(!plan.plays.contains { $0.title.tmdbId == 284172 })
+    #expect(!TraktComparison.compare(library, with: workspace, tracker: .wetrakr).onlyInDiary.contains { $0.title.contains("S1E12") })
+    #expect(TraktWritePlan.make(library: library, workspace: workspace, tracker: .trakt).plays.contains { $0.title.tmdbId == 284172 && $0.episode == 12 })
+}
+
 @Test func whatDidntStickIsNeitherResentNorADifference() throws {
     // The ledger (sent once, not kept by the service) is left out of the plan and the differences.
     let library = TraktLibrary()

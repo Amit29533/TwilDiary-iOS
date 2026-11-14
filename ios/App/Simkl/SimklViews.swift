@@ -26,7 +26,20 @@ struct SimklSettingsView: View {
     }
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: ThemeStore.current.native ? 16 : 20) {
+                if ThemeStore.current.native {
+                    // Native: the same header and Account list as the other services' pages.
+                    SettingsServiceHeader(logo: .simkl, title: "Simkl", subtitle: account.signedIn ? (account.username.map { "@" + $0 } ?? "Signed in") : "Your activity, copied to Simkl",
+                                          badge: account.signedIn ? ("Connected", .good) : nil) { EmptyView() }
+                    if !account.signedIn {
+                        SettingsGroup(label: "Account") {
+                            SettingsRow(title: "Not signed in") {
+                                Button(working ? "Opening…" : "Sign in") { Task { await signIn() } }.buttonStyle(SettingsPillButtonStyle())
+                                    .disabled(working).accessibilityIdentifier("simkl-sign-in")
+                            }
+                        }
+                    }
+                } else {
                 SettingsGroup(label: "Account") {
                     HStack(spacing: 14) {
                         BrandLogo(service: .simkl, size: 44)
@@ -45,7 +58,9 @@ struct SimklSettingsView: View {
                         }
                     }.padding(.horizontal, 15).frame(minHeight: 72)
                 }
+                }
                 if account.signedIn {
+                    if !ThemeStore.current.native {
                     SettingsGroup {
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -57,7 +72,18 @@ struct SimklSettingsView: View {
                         }.padding(.horizontal, 15).frame(minHeight: 64)
                     }
                     SettingsFootnote(text: "Watches, removals, ratings and Planned, Watching, Completed, On hold and Dropped are copied as you make them, from now on. Your diary stays where it is; Simkl gets a copy.")
-                    if !mirror.queue.jobs.isEmpty || mirror.lastProblem != nil {
+                    }
+                    if ThemeStore.current.native, !mirror.queue.jobs.isEmpty || mirror.lastProblem != nil {
+                        // Native: one row with the small button, and the bar under it.
+                        SettingsGroup(label: "Waiting") {
+                            SettingsRow(title: mirror.sending ? "Sending \(mirror.queue.jobs.count)…" : "\(mirror.queue.jobs.count) waiting", subtitle: waitingDetail) {
+                                Button("Send now") { Task { await mirror.sendNow() } }.buttonStyle(SettingsPillButtonStyle())
+                                    .disabled(mirror.sending || !account.saving)
+                            }
+                            if let fraction = mirror.sendFraction { SendProgressBar(fraction: fraction).padding(.horizontal, 16).padding(.bottom, 12) }
+                        }
+                        if let problem = mirror.lastProblem { SettingsFootnote(text: problem) }
+                    } else if !mirror.queue.jobs.isEmpty || mirror.lastProblem != nil {
                         SettingsGroup(label: "Waiting") {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -75,7 +101,9 @@ struct SimklSettingsView: View {
                         if let problem = mirror.lastProblem { SettingsFootnote(text: problem) }
                     }
                     if ThemeStore.current.native {
-                        TrackerPreviewPanel(tracker: .simkl, trailingOptions: AnyView(
+                        TrackerPreviewPanel(tracker: .simkl, leadingOptions: AnyView(
+                            Toggle(isOn: $account.saving) { SettingsRowTitle("Also save my activity to Simkl", "") }
+                                .settingsRowFrame().accessibilityIdentifier("simkl-saving")), trailingOptions: AnyView(
                             NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
                                 SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
                             }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")))
@@ -134,7 +162,8 @@ struct SimklSettingsView: View {
                 if let message { SettingsFootnote(text: message) }
                 if account.signedIn || !mirror.queue.jobs.isEmpty || !mirror.notKept.isEmpty {
                     Button(role: .destructive) { confirmRemove = true } label: {
-                        Text("Disconnect and remove").font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 50)
+                        Text("Disconnect and remove").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                            .frame(maxWidth: .infinity, minHeight: ThemeStore.current.native ? 52 : 50)
                     }.buttonStyle(.plain).foregroundStyle(.red).cardSurface(16)
                         .accessibilityIdentifier("simkl-remove")
                     SettingsFootnote(text: "Signs out and deletes everything TwilDiary kept for Simkl on this iPhone. Nothing on Simkl changes.")
