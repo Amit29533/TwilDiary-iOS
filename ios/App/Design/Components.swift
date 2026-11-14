@@ -232,7 +232,7 @@ private struct FilterPillSurface: ViewModifier {
     func body(content: Content) -> some View {
         if ThemeStore.current.native {
             // Native: clear glass, or the accent glass when a filter is on.
-            content.glassEffect(active ? .regular.tint(accent.opacity(0.85)).interactive() : .regular.interactive(), in: Capsule())
+            content.background(active ? accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
         } else if !active, ThemeStore.current.usesGlass {
             content.glassEffect(.regular.interactive(), in: Capsule())
         } else {
@@ -396,7 +396,7 @@ struct PageHeader: View {
     private func glassButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             DiaryIcon(name: icon, size: 20).foregroundStyle(Color(themed: "#e6e2ec")).frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: Circle()).frame(width: 44, height: 44).contentShape(Circle())
+                .modifier(HeaderButtonFace()).frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(label).accessibilityIdentifier(id)
     }
 }
@@ -432,7 +432,7 @@ struct SearchField: View {
             if !text.isEmpty { Button { text = ""; focused = true } label: { DiaryIcon(name: "x", size: 16).frame(width: 26, height: 32) }.buttonStyle(.plain).accessibilityLabel("Clear search") }
         }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: fieldRadius, style: .continuous), field: true) }
             .overlay(RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).strokeBorder(focused && !aiOn ? theme.accent.opacity(0.65) : .clear))
-            .overlay { if aiOn { geminiGlow.transition(.opacity) } }
+            .overlay { if aiOn && !ThemeStore.current.native { geminiGlow.transition(.opacity) } }
             .animation(.smooth(duration: 0.3), value: aiOn)
             .onChange(of: aiOn, initial: true) { _, on in
                 spin = 0
@@ -693,7 +693,7 @@ struct CategoryPicker: View {
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityIdentifier("category-" + category.rawValue.lowercased()).accessibilityAddTraits(selected ? .isSelected : [])
             }
-        }.padding(3).glassEffect(.regular, in: Capsule())
+        }.padding(3).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             .padding(.horizontal, 16).padding(.vertical, 4)
             .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22), value: selection)
             .sensoryFeedback(.selection, trigger: shown)
@@ -754,6 +754,14 @@ enum WatchStyle {
     // The theme's play button: lilac in the original themes, white with black text in Premiere.
     static var fill: LinearGradient { LinearGradient(colors: [ThemeStore.current.watchTop, ThemeStore.current.watchBottom], startPoint: .top, endPoint: .bottom) }
     static var ink: Color { ThemeStore.current.watchInk }
+}
+
+/// A page header's round button: glass, or a flat grey circle in Native.
+private struct HeaderButtonFace: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native { content.background(Color(uiColor: .tertiarySystemFill), in: Circle()) }
+        else { content.glassEffect(.regular.interactive(), in: Circle()) }
+    }
 }
 
 private struct CardCircle: ViewModifier {

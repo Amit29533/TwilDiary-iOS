@@ -56,7 +56,10 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
         Group {
-            if (field && !ThemeStore.current.native) || reduceTransparency {
+            if ThemeStore.current.native {
+                // Native: a flat fill, as iOS's search fields and Settings (no glass edge).
+                shape.fill(Color(uiColor: .tertiarySystemFill))
+            } else if field || reduceTransparency {
                 shape.fill(Color(themed: field ? "#111115" : "#222226"))
                     .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : Color.primary.opacity(0.13), lineWidth: 1))
             } else {

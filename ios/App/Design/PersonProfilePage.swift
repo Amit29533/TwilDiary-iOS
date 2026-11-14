@@ -245,7 +245,7 @@ struct ProfileBiography: View {
 private struct WebsiteButtonSurface: ViewModifier {
     func body(content: Content) -> some View {
         if ThemeStore.current.native {
-            content.glassEffect(.regular.interactive(), in: Circle())
+            content.background(Color(uiColor: .tertiarySystemFill), in: Circle())
         } else {
             content.background(Color(themed: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))

@@ -81,7 +81,7 @@ struct ThemePalette: Equatable, Sendable {
     static let native = ThemePalette(
         primary: Color(uiColor: .label), secondary: Color(uiColor: .secondaryLabel), muted: Color(uiColor: .tertiaryLabel),
         soft: adaptive(dark: 0.9, light: 0.22),
-        card: Color(uiColor: .secondarySystemBackground), cardBorder: Color(uiColor: .separator).opacity(0.55),
+        card: Color(uiColor: .secondarySystemBackground), cardBorder: .clear,
         round: Color(uiColor: .tertiarySystemFill),
         chip: Color(uiColor: .systemBlue).opacity(0.15), chipText: Color(uiColor: .systemBlue),
         dateChipBorder: Color(uiColor: .separator), dateChipText: Color(uiColor: .secondaryLabel),
@@ -240,6 +240,9 @@ private struct PillSurface: ViewModifier {
     func body(content: Content) -> some View {
         if let chosen {
             content.background(chosen, in: Capsule())
+        } else if ThemeStore.current.native {
+            // Native: a flat grey fill, as iOS Settings (no glass edge).
+            content.background(Color(uiColor: .tertiarySystemFill), in: Capsule())
         } else if ThemeStore.current.usesGlass {
             content.glassEffect(.regular.interactive(), in: Capsule())
         } else {

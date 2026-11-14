@@ -144,7 +144,7 @@ struct ProfileCardSurface: ViewModifier {
 private struct ProfileChipSurface: ViewModifier {
     func body(content: Content) -> some View {
         if ThemeStore.current.native {
-            content.glassEffect(.regular, in: Capsule())
+            content.background(Color(uiColor: .tertiarySystemFill), in: Capsule())
         } else {
             content.background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
         }

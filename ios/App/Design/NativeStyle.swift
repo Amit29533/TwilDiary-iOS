@@ -49,17 +49,17 @@ struct NativeTile: View {
 }
 
 extension View {
-    /// A Liquid Glass capsule: the accent glass with white text (`prominent`, as `.glassProminent`),
-    /// or clear glass with accent text, as iOS 26's own buttons.
+    /// A capsule button as iOS Settings draws one: solid accent with white text (`prominent`), or a
+    /// grey fill with accent text. Flat, no glass edge (owner: Settings has no shiny borders).
     func nativeGlassCapsule(prominent: Bool, ink: Color? = nil) -> some View {
         modifier(NativeGlassCapsule(prominent: prominent, ink: ink))
     }
-    /// Native's card: Liquid Glass with continuous corners and no outline (owner's request: more
-    /// glass), over the page's soft artwork glow; a plain raised fill under Reduce Transparency.
+    /// Native's card: the grouped list's raised colour with continuous corners, flat and with no
+    /// outline, as iOS Settings (owner: no shiny glass borders on cards).
     func nativeCard(radius: CGFloat = 26) -> some View {
         modifier(NativeGlassCard(radius: radius))
     }
-    /// A card's surface: the theme's card colour, or Liquid Glass in Native.
+    /// A card's surface: the theme's card colour, or Native's flat card.
     func cardSurface(_ radius: CGFloat) -> some View {
         modifier(CardSurface(radius: radius))
     }
@@ -67,18 +67,8 @@ extension View {
 
 private struct NativeGlassCard: ViewModifier {
     let radius: CGFloat
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.nativeOnArtwork) private var onArtwork
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        // Glass needs something behind it: on a plain white page it would vanish, so there the card is
-        // the quiet raised grey Apple Music uses; on black and on artwork-tinted pages it is glass.
-        if reduceTransparency || (colorScheme == .light && !onArtwork) {
-            content.background(Color(uiColor: .secondarySystemBackground), in: shape)
-        } else {
-            content.glassEffect(.regular, in: shape)
-        }
+        content.background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
     }
 }
 
@@ -96,24 +86,10 @@ private struct CardSurface: ViewModifier {
 private struct NativeGlassCapsule: ViewModifier {
     let prominent: Bool
     let ink: Color?
-    @Environment(\.nativeOnArtwork) private var onArtwork
-    @ViewBuilder func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         let accent = Color(uiColor: .systemBlue)
-        if onArtwork {
-            // On an artwork-tinted page, as Apple Music's Play: a solid white capsule with black text,
-            // and the other actions clear glass with white text.
-            if prominent {
-                content.foregroundStyle(ink ?? .black).background(.white, in: Capsule()).contentShape(Capsule())
-            } else {
-                content.foregroundStyle(ink ?? .white).glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
-            }
-        } else {
-            onPage(content, accent: accent)
-        }
-    }
-    private func onPage(_ content: Content, accent: Color) -> some View {
         content.foregroundStyle(ink ?? (prominent ? .white : accent))
-            .glassEffect(prominent ? .regular.tint(accent).interactive() : .regular.interactive(), in: Capsule())
+            .background(prominent ? accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
             .contentShape(Capsule())
     }
 }
@@ -230,7 +206,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(segment.id)
             }
-        }.padding(3).glassEffect(.regular, in: Capsule())
+        }.padding(3).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             .sensoryFeedback(.selection, trigger: selection)
     }
 }
@@ -245,7 +221,7 @@ struct NativeRoundGlass: View {
         Image(systemName: system).font(.system(size: size * 0.4, weight: .semibold))
             .foregroundStyle(selected ? Color.white : Color(uiColor: .label))
             .frame(width: size, height: size)
-            .glassEffect(selected ? .regular.tint(Color(uiColor: .systemBlue)).interactive() : .regular.interactive(), in: Circle())
+            .background(selected ? Color(uiColor: .systemBlue) : Color(uiColor: .tertiarySystemFill), in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
     }
 }
