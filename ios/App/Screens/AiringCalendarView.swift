@@ -442,7 +442,7 @@ struct AiringCalendarView: View {
 
 /// The calendar's pieces, shared by every tab (Upcoming, Missed, Following and Global look alike:
 /// owner's request): filter pills, section headings, badges, posters and the row layout.
-enum CalendarStyle {
+@MainActor enum CalendarStyle {
     /// One poster size across the calendar.
     static let posterWidth: CGFloat = 72
     static func pill(_ label: String, active: Bool = false) -> some View {
