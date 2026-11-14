@@ -83,7 +83,7 @@ struct PersonProfilePage<Content: View>: View {
                         NavigationLink(value: PersonPhotosRoute(name: name, photos: photos)) {
                             HStack(spacing: 6) { Image(systemName: "square.on.square").font(.system(size: 13, weight: .semibold)); Text("Photos").font(.system(size: 14, weight: .semibold)) }
                                 .foregroundStyle(.white).padding(.horizontal, 12).frame(height: 36).background(.black.opacity(0.6), in: Capsule())
-                                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.15)))
+                                .overlay(Capsule().strokeBorder(HomeStyle.outline(0.15)))
                         }.buttonStyle(.springPress).padding(10).accessibilityIdentifier(identifier + "-photos")
                     }
                 }
@@ -248,7 +248,7 @@ private struct WebsiteButtonSurface: ViewModifier {
             content.background(Color(uiColor: .tertiarySystemFill), in: Circle())
         } else {
             content.background(Color(themed: "#1b1b20"), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.outline(0.12)))
         }
     }
 }

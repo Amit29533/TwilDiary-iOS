@@ -266,7 +266,7 @@ struct LibraryView: View {
                             }.padding(.horizontal, 6)
                         }
                         .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.springPress).accessibilityLabel("See all \(filtered.count) titles").accessibilityIdentifier("library-see-all")
             }
@@ -284,7 +284,7 @@ struct LibraryView: View {
                             .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
                         DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                     }.padding(.horizontal, 16).frame(minHeight: 60).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08))).contentShape(Rectangle())
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08))).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("library-genre-row-" + shelf.genre)
             }
         }.padding(.horizontal, 14)
@@ -635,7 +635,7 @@ struct LibraryPosterCard: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
             Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
             Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
         }.contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
@@ -676,7 +676,7 @@ struct LibraryListRow: View {
                 Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)
                 HStack(spacing: 6) {
                     Text(title.status.capitalized).font(.system(size: 11, weight: .medium)).foregroundStyle(Color(themed: "#c5c0cf"))
-                        .padding(.horizontal, 8).frame(height: 20).overlay(Capsule().strokeBorder(Color.primary.opacity(0.16)))
+                        .padding(.horizontal, 8).frame(height: 20).overlay(Capsule().strokeBorder(HomeStyle.outline(0.16)))
                     if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")) }
                 }.padding(.top, 2)
             }

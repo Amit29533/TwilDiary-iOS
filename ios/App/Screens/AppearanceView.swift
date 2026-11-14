@@ -42,7 +42,7 @@ private struct ThemeCard: View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         if item == .native {
             HStack(spacing: 0) { Color(white: 0.95); Color(white: 0.08) }.clipShape(shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
+                .overlay(shape.strokeBorder(HomeStyle.outline(0.08)))
         } else {
             shape.fill(Color(webHex: "#08080c"))
         }

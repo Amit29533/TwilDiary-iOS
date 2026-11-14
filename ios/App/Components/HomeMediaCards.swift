@@ -65,7 +65,7 @@ struct WatchActivityCard: View {
         }.foregroundStyle(Color(themed: "#f3f0f7"))
             .background(Color(themed: "#111115"), in: RoundedRectangle(cornerRadius: 14))
             .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.outline(0.12)))
             .multilineTextAlignment(.leading).contentShape(RoundedRectangle(cornerRadius: 14))
             .accessibilityElement(children: .ignore).accessibilityLabel(model.accessibilityLabel)
     }
@@ -148,7 +148,7 @@ private struct EpisodeRowSurface: ViewModifier {
         } else {
             content.background(Color(themed: "#111115"), in: RoundedRectangle(cornerRadius: 12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.outline(0.12)))
         }
     }
 }

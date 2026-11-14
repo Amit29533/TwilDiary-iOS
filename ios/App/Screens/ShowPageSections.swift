@@ -305,7 +305,7 @@ struct RatingCircles: View {
             // so the row never changes shape.
             Button { onCommunity?() } label: {
                 ZStack {
-                    Circle().stroke(Color.primary.opacity(0.1), lineWidth: 4)
+                    Circle().stroke(HomeStyle.outline(0.1), lineWidth: 4)
                     if let community {
                         Circle().trim(from: 0, to: min(1, max(0, community / 10))).stroke(Self.color(community), style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .rotationEffect(.degrees(-90))
@@ -426,7 +426,7 @@ struct RatingTrendCard: View {
                         }
                     }
                 }.padding(18).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 24))
-                    .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.08)))
+                    .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.outline(0.08)))
                     .accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-trend")
             } else {
                 // A real view keeps the task alive; on an empty Group it never ran.
@@ -485,7 +485,7 @@ struct CompanyLogo: View {
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08)))
     }
     static func tint(_ name: String) -> Color {
         let values = ["#6ee07a", "#ff9b4a", "#ff6b7d", "#5cc8ff", "#ffd54a", "#b48cff"]
@@ -559,7 +559,7 @@ struct ListCollageCard: View {
             Text(list.itemCount.counted("item", "items")).font(.system(size: 13)).foregroundStyle(.secondary)
         }.padding(14).frame(width: width, alignment: .topLeading)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.outline(0.08)))
     }
 }
 

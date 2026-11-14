@@ -100,7 +100,7 @@ struct StatsJourneyCard: View {
                         LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
                     }
                 }
-            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.primary.opacity(0.14)))
+            }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(HomeStyle.outline(0.14)))
             .accessibilityElement(children: .contain).accessibilityIdentifier("stats-journey")
     }
     private func tile(_ value: Int, _ label: String) -> some View {

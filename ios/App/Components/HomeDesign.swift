@@ -21,6 +21,8 @@ enum HomeStyle {
     /// Strong text that was drawn white on the dark themes: the system label in Native (dark on light).
     /// Text over artwork stays `.white`.
     static var ink: Color { ThemeStore.current.native ? Color(uiColor: .label) : .white }
+    /// A faint outline round a card, chip or tile; none in Native, as iOS Settings draws none (owner's request).
+    static func outline(_ opacity: Double) -> Color { ThemeStore.current.native ? .clear : Color.primary.opacity(opacity) }
     static let match = Color(webHex: "#7be495")
     static let hairline: CGFloat = 0.67
 }
@@ -173,7 +175,7 @@ struct HomePoster<Badge: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: artwork, title: name, initialsOnly: initialsOnly).frame(width: 128, height: 192)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                 .multilineTextAlignment(.leading).padding(.top, 9)

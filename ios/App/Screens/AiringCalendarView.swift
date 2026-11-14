@@ -477,7 +477,7 @@ struct AiringCalendarView: View {
     }
     static func poster(_ path: String?, name: String) -> some View {
         Artwork(path: path, title: name, initialsOnly: false).frame(width: posterWidth, height: posterWidth * 1.4)
-            .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+            .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
     }
     /// "Today", "Tomorrow", "In 6d", "2d ago".
     static func away(_ days: Int) -> String { days == 0 ? "Today" : days == 1 ? "Tomorrow" : days < 0 ? "\(-days)d ago" : "In \(days)d" }

@@ -66,7 +66,7 @@ struct SearchLandingView: View {
                             Button { choose(query) } label: {
                                 HStack(spacing: 6) { Image(systemName: "clock").font(.system(size: 12)); Text(query).lineLimit(1) }
                                     .font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 12).frame(height: 36)
-                                    .background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
+                                    .background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.1)))
                             }.buttonStyle(.plain).accessibilityLabel("Search again for " + query)
                         }
                     }
@@ -98,14 +98,14 @@ struct SearchLandingView: View {
                                 Text("\(index + 1)").font(.system(size: 28, weight: .bold)).monospacedDigit()
                                     .foregroundStyle(index < 3 ? theme.accent : Color.white.opacity(0.3))
                             }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.08))).contentShape(Rectangle())
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08))).contentShape(Rectangle())
                             }
                         }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
                     }
                     if !allTop && shows.count > 6 {
                         Button { allTop = true } label: {
                             Text("See all \(min(10, shows.count))").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
-                                .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                                .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.08)))
                         }.buttonStyle(.springPress).accessibilityIdentifier("search-top-all")
                     }
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")

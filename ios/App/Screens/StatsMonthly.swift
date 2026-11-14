@@ -173,7 +173,7 @@ struct StatsMonthCard: View {
             Text(detail).font(.system(size: 12)).foregroundStyle(StatsHero.ink.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.8)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.14))).contentShape(Rectangle())
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.outline(0.14))).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
 }

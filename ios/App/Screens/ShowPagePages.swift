@@ -246,7 +246,7 @@ struct ShowFilterChip: View {
             Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#e6e1ee"))
                 .padding(.horizontal, 16).frame(height: 40)
                 .background(on ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.primary.opacity(0.07)), in: Capsule())
-                .overlay { if !on { Capsule().strokeBorder(Color.primary.opacity(0.1)) } }
+                .overlay { if !on { Capsule().strokeBorder(HomeStyle.outline(0.1)) } }
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
 }
@@ -392,7 +392,7 @@ struct EpisodesPage: View {
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
                 }.padding(.horizontal, 8).padding(.vertical, 8).contentShape(Rectangle())
                     .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07)))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
             if open { list(episodes, title: title, watched: watched, dates: dates, next: nextIndex.map { store.episodesForSeason(titleID, season: season)[$0].id }) }
         }
@@ -623,7 +623,7 @@ struct PreviewEpisodesPage: View {
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
                 }.padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
                     .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07)))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
             if open { list(episodes) }
         }
@@ -726,7 +726,7 @@ struct CastCreditsPage: View {
                         }.buttonStyle(.springPress).accessibilityLabel(actor.name)
                     }
                 }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07)))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }
         }
     }
@@ -766,7 +766,7 @@ struct CastCreditsPage: View {
             Spacer(minLength: 0)
             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
         }.padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07))).contentShape(Rectangle())
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07))).contentShape(Rectangle())
     }
     private func load() async {
         failure = nil
@@ -885,7 +885,7 @@ struct TMDbCollectionPage: View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false).aspectRatio(2 / 3, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
             Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 9)
             Text(item.year.map(String.init) ?? "Movie").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
         }
@@ -930,7 +930,7 @@ struct CompaniesPage: View {
                                 Spacer(minLength: 0)
                                 DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                             }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.07))).contentShape(Rectangle())
+                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07))).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("companies-page-\(company.key)")
                     }
                 }

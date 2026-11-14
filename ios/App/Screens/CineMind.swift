@@ -396,7 +396,7 @@ struct CineMindView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false)
                                 .frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.75))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HomeStyle.outline(0.08), lineWidth: 0.75))
                             Text(match.item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
                                 .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: 112, alignment: .leading)
                             if let tag = match.why.split(separator: "|").first.map({ String($0).trimmingCharacters(in: .whitespaces) }), !tag.isEmpty {

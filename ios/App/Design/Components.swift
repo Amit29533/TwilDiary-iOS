@@ -208,7 +208,7 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
                 .padding(.horizontal, compact ? 12 : 16).frame(minHeight: compact ? 36 : 44)
                 .foregroundStyle(bright ? WatchStyle.ink : prominent ? HomeStyle.chipText : destructive ? Color(themed: "#ff8a80") : theme.accent)
                 .background(bright ? AnyShapeStyle(WatchStyle.fill) : prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.primary.opacity(0.07)), in: Capsule())
-                .overlay { if !prominent { Capsule().strokeBorder(Color.primary.opacity(0.12)) } }
+                .overlay { if !prominent { Capsule().strokeBorder(HomeStyle.outline(0.12)) } }
                 .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
                 .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
@@ -460,7 +460,7 @@ struct SearchField: View {
                 .padding(.horizontal, 9).frame(height: 24)
                 .background {
                     if ai.wrappedValue { Capsule().fill(LinearGradient(colors: Array(Self.geminiColors.prefix(3)), startPoint: .leading, endPoint: .trailing)) }
-                    else { Capsule().fill(Color.primary.opacity(0.08)).overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75)) }
+                    else { Capsule().fill(Color.primary.opacity(0.08)).overlay(Capsule().strokeBorder(HomeStyle.outline(0.14), lineWidth: 0.75)) }
                 }
                 .frame(minWidth: 36, minHeight: 36).contentShape(Rectangle())
         }.buttonStyle(.plain).sensoryFeedback(.selection, trigger: ai.wrappedValue)
@@ -909,7 +909,7 @@ struct ProgressCard: View {
                         .frame(width: 48, height: 48)
                         .background(Color(red: 120 / 255, green: 122 / 255, blue: 132 / 255).opacity(0.32), in: Circle())
                         .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+                        .overlay(Circle().strokeBorder(HomeStyle.outline(0.12), lineWidth: 1))
                 }.buttonStyle(.plain)
                     .accessibilityLabel(title.queued == true ? "Remove from Queue" : "Add to Queue")
             }.padding(.top, 14)

@@ -225,7 +225,7 @@ struct SeasonProgressCard: View {
                 .frame(minWidth: 58, alignment: .trailing)
         }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
             .background(Color(themed: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.outline(0.07), lineWidth: 1))
             .accessibilityElement(children: .contain)
     }
 }

@@ -136,7 +136,7 @@ struct ProfileCardSurface: ViewModifier {
             content.nativeCard(radius: 20)
         } else {
             content.background(Color(themed: "#141418"), in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08)))
         }
     }
 }
@@ -146,7 +146,7 @@ private struct ProfileChipSurface: ViewModifier {
         if ThemeStore.current.native {
             content.background(Color(uiColor: .tertiarySystemFill), in: Capsule())
         } else {
-            content.background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+            content.background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.08)))
         }
     }
 }

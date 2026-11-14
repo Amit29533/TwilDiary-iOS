@@ -78,7 +78,7 @@ struct CloudflareUsageView: View {
         // The ring leads on the left; the name, amount and allowance read down the right.
         return HStack(spacing: 12) {
             ZStack {
-                Circle().stroke(Color.primary.opacity(0.1), lineWidth: 6)
+                Circle().stroke(HomeStyle.outline(0.1), lineWidth: 6)
                 Circle().trim(from: 0, to: share ?? 0).stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
                 Text(share.map(percent) ?? "–").font(.system(size: 13, weight: .semibold)).monospacedDigit()
             }.frame(width: 58, height: 58)
@@ -89,7 +89,7 @@ struct CloudflareUsageView: View {
             }
             Spacer(minLength: 0)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.1)))
+            .background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.1)))
             .accessibilityElement(children: .combine).accessibilityIdentifier("cloudflare-today-\(key)")
     }
 
@@ -139,7 +139,7 @@ struct CloudflareUsageView: View {
                 .environment(\.calendar, Self.utcCalendar).environment(\.timeZone, Self.utc)
                 .frame(height: 150).accessibilityHidden(true)
             }
-        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.1)))
+        }.padding(16).background(theme.field, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.1)))
             .accessibilityElement(children: .combine).accessibilityLabel(title + ", " + (unavailable ? "not available" : caption))
             .accessibilityIdentifier("cloudflare-chart-\(key)")
     }

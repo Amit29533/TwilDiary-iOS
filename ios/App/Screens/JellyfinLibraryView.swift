@@ -112,7 +112,7 @@ struct JellyfinEntryCard: View {
         let label = VStack(alignment: .leading, spacing: 6) {
             Color.clear.posterAspect()
                 .overlay { poster(entry) }
-                .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.1)))
+                .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.outline(0.1)))
                 .overlay(alignment: .topLeading) {
                     if entry.diaryID != nil {
                         Text("In diary").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
@@ -177,7 +177,7 @@ struct JellyfinPresenceRow: View {
                     Spacer(minLength: 0)
                 }.padding(.horizontal, 14).padding(.vertical, 12)
                     .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.1)))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.1)))
                     .accessibilityElement(children: .combine).accessibilityIdentifier("title-jellyfin-presence")
             }
         }

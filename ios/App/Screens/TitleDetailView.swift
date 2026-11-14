@@ -441,7 +441,7 @@ struct TitleDetailView: View {
         }.padding(19)
             // Design: a 28 pt card in rgba(18 16 26 / .58) with a white 8 % hairline.
             .modifier(TitleProgressSurface())
-            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Color.primary.opacity(0.08), lineWidth: HomeStyle.hairline))
+            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
     private func episodeSlider(_ title: MediaTitle, card: WatchCard) -> some View {

@@ -46,7 +46,7 @@ struct StatsView: View {
                         .background { if tab == item { Capsule().fill(theme.accent) } }.contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityAddTraits(tab == item ? .isSelected : []).accessibilityIdentifier("stats-tab-" + item.rawValue.lowercased())
             }
-        }.padding(4).background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+        }.padding(4).background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.08)))
     }
     var body: some View {
         let data = store.statsProjection(period: period, year: year, at: clock)
@@ -159,7 +159,7 @@ struct StatsView: View {
                     } label: {
                         HStack(spacing: 6) { Text(String(data.selectedYear)); Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold)) }
                             .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
-                            .background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.12)))
+                            .background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.12)))
                     }.accessibilityLabel("Year").accessibilityValue(String(data.selectedYear)).accessibilityIdentifier("stats-year")
                 }
             }
@@ -321,7 +321,7 @@ struct StatsView: View {
             Text(value).font(.system(size: 18, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity).padding(.vertical, 14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.08))).accessibilityElement(children: .combine)
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08))).accessibilityElement(children: .combine)
     }
 
     /// Days with a dated watch: all of them, since the first, and this year.

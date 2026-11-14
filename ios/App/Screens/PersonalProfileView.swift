@@ -344,7 +344,7 @@ struct PersonalProfileView: View {
                 Spacer()
                 Button { editing = true } label: {
                     Text("Edit profile").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 20).frame(height: 46)
-                        .background(Color.primary.opacity(0.1), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.15)))
+                        .background(Color.primary.opacity(0.1), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.15)))
                 }.buttonStyle(.plain).accessibilityIdentifier("profile-edit-name")
             }
             Text(profile.name).font(.system(size: 30, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.ink).padding(.top, 6)
@@ -837,7 +837,7 @@ struct EditProfileView: View {
                     }.scrollIndicators(.hidden)
                     PhotosPicker(selection: $selection, matching: .images) {
                         Label("Upload a photo", systemImage: "camera").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
-                            .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(Color.primary.opacity(0.12)))
+                            .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.12)))
                     }.accessibilityIdentifier("profile-custom-photo")
                     if let error = error ?? catalog.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
