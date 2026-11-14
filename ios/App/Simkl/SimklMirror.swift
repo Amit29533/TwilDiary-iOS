@@ -524,6 +524,60 @@ struct SimklQueue: Codable, Equatable, Sendable {
         Task { await resume() }
         return jobs.count
     }
+    // MARK: Check-in
+
+    /// Checks in on Simkl (`/scrobble/checkin`): a movie or show by its ids; an anime episode in
+    /// Simkl's own numbering, placed as a watch would be (its entry by Simkl id), else by the
+    /// episode's TVDB id. Simkl marks it watched when the runtime has passed.
+    func checkIn(_ title: MediaTitle, episode: Episode?, store: DiaryStore) async throws -> String {
+        self.store = store
+        guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so Simkl can’t find it.") }
+        guard let token = await SimklAccount.shared.token() else { throw APIError.message("Sign in to Simkl first, in Connections.") }
+        let api = SimklAPI(token: token, session: session)
+        var job = SimklJob(kind: .watch, tmdb: tmdb, movie: !title.isSeries, anime: Self.isAnime(title), name: title.name, year: title.year)
+        if let episode { job.season = episode.season; job.number = episode.number; job.airedOn = episode.airedOn }
+        let ids = await externalIDs(job)
+        var body: [String: Any]
+        if !title.isSeries {
+            var item: [String: Any] = ["title": title.name, "ids": SimklBody.ids(job, simkl: nil, external: ids)]
+            if let year = title.year { item["year"] = year }
+            body = ["movie": item]
+        } else {
+            guard let episode else { throw APIError.message("There’s no next episode to check in to.") }
+            if job.anime, let spot = await spot(for: job, match: try? await match(for: job, ids: ids, api: api), api: api) {
+                var entryIDs: [String: Any] = ["simkl": spot.entry]
+                for (key, value) in spot.native ?? [:] { entryIDs[key] = Int(value) ?? value }
+                body = ["anime": ["ids": entryIDs], "episode": ["season": spot.season ?? 1, "number": spot.number ?? episode.number]]
+            } else if job.anime, let tvdb = await tvdbEpisodeID(job) {
+                body = ["show": ["title": title.name, "ids": SimklBody.ids(job, simkl: nil, external: ids)], "episode": ["ids": ["tvdb": String(tvdb)]]]
+            } else if job.anime {
+                throw APIError.message("Simkl numbers this episode differently and TwilDiary can’t place it, so it can’t be checked in.")
+            } else {
+                body = ["show": ["title": title.name, "ids": SimklBody.ids(job, simkl: nil, external: ids)], "episode": ["season": episode.season, "number": episode.number]]
+            }
+        }
+        let reply = try await api.post("/scrobble/checkin", body: try JSONSerialization.data(withJSONObject: body))
+        if let id = ((try? JSONSerialization.jsonObject(with: reply)) as? [String: Any])?["id"] { UserDefaults.standard.set("\(id)", forKey: SimklStorage.prefix + "checkin") }
+        return title.isSeries ? "Checked in to \(title.name) S\(episode?.season ?? 0) E\(episode?.number ?? 0) on Simkl. It’s logged when the episode ends."
+            : "Checked in to \(title.name) on Simkl. It’s logged when the movie ends."
+    }
+    /// Cancels the check-in: its playback is deleted (Simkl's way), so nothing is logged.
+    func cancelCheckIn(store: DiaryStore) async throws {
+        guard let token = await SimklAccount.shared.token() else { throw APIError.message("Sign in to Simkl first, in Connections.") }
+        let api = SimklAPI(token: token, session: session)
+        let key = SimklStorage.prefix + "checkin"
+        if let id = UserDefaults.standard.string(forKey: key), (try? await api.send("/sync/playback/\(id)", method: "DELETE")) != nil {
+            UserDefaults.standard.removeObject(forKey: key); return
+        }
+        // Not that id: the newest playback Simkl lists is the check-in.
+        let list = ((try? JSONSerialization.jsonObject(with: try await api.get("/sync/playback"))) as? [[String: Any]]) ?? []
+        guard let newest = list.max(by: { ($0["paused_at"] as? String ?? "") < ($1["paused_at"] as? String ?? "") }), let id = newest["id"] else {
+            throw APIError.message("Simkl has no check-in running.")
+        }
+        _ = try await api.send("/sync/playback/\(id)", method: "DELETE")
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     /// What Simkl didn't keep, as the comparison leaves it out ("movie:tmdb", "show:tmdb:s:n").
     var notKeptKeys: Set<String> {
         Set(notKept.compactMap { item in

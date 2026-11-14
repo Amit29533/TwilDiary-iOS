@@ -24,7 +24,8 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
 /// Live check-in: checks in on the service, shows a banner with the time left and Cancel, and when
 /// it ends (the service logs the watch itself) reads the service so the watch is in the diary.
 /// Cancelling uses each service's own way, as Cinopsys does: Trakt DELETE /checkin, MDBList
-/// scrobble/stop at 0 % then scrobble/clear, WeTrakr DELETE /scrobble/playing.
+/// scrobble/stop at 0 % then scrobble/clear, WeTrakr DELETE /scrobble/playing, Simkl deleting the
+/// check-in's playback (/sync/playback/{id}).
 @MainActor @Observable final class LiveCheckIn {
     static let shared = LiveCheckIn()
     nonisolated private static let key = "activeCheckIn"
@@ -66,7 +67,7 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
                 let config = await store.freshProviderConfig(tracker.provider)
                 _ = try await store.directClient.read(config, path: "/scrobble/playing", method: "DELETE")
             case .simkl:
-                break
+                try await SimklMirror.shared.cancelCheckIn(store: store)
             case .mdblist:
                 let config = await store.freshProviderConfig(tracker.provider)
                 let slot = active.isSeries ? "show" : "movie"
@@ -108,6 +109,14 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
         guard logged, let ended, let tracker = ended.tracker else { return }
         // The service logs the watch itself as the check-in ends: read it a moment later.
         if tracker == .trakt { TraktDirectStore.shared.refreshSoon(store: store, after: 20) }
+        else if tracker == .simkl {
+            // Simkl never holds the diary: the watch goes into the diary too, at the check-in's end
+            // (and from there to the other services; Simkl already has it).
+            guard let title = store.title(ended.titleId) else { return }
+            let episode = ended.season.flatMap { season in store.workspace.episodes.first { $0.titleId == title.id && $0.season == season && $0.number == ended.episode } }
+            if title.isSeries && episode == nil { return }
+            Task { await store.recordViewing(title, episode: episode, watchedAt: ended.endsAt) }
+        }
         else { TrackerPreviewStore.shared.refreshSoon(tracker, store: store, after: 20) }
     }
 

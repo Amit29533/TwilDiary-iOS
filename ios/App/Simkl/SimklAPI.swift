@@ -20,6 +20,7 @@ struct SimklAPI: Sendable {
 
     func get(_ path: String, query: [String: String] = [:]) async throws -> Data { try await send(path, method: "GET", query: query, body: nil) }
     func post(_ path: String, query: [String: String] = [:], body: Data) async throws -> Data { try await send(path, method: "POST", query: query, body: body) }
+    func send(_ path: String, method: String) async throws -> Data { try await send(path, method: method, query: [:], body: nil) }
 
     private func request(_ path: String, method: String, query: [String: String], body: Data?) -> URLRequest {
         var components = URLComponents(string: Self.base + path)!

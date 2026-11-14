@@ -390,6 +390,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         guard let tmdb = title.tmdbId else { throw APIError.message("“\(title.name)” has no TMDB id, so \(tracker.name) can’t find it.") }
         if title.isSeries && episode == nil { throw APIError.message("There’s no next episode to check in to.") }
         if tracker == .trakt { return try await TraktDirectStore.shared.checkIn(title, episode: episode, store: store) }
+        if tracker == .simkl { return try await SimklMirror.shared.checkIn(title, episode: episode, store: store) }
         let config = await store.freshProviderConfig(tracker.provider)
         let client = store.directClient
         let slot = title.isSeries ? "show" : "movie"

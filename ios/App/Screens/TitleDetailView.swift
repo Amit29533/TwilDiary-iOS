@@ -165,6 +165,15 @@ struct TitleDetailView: View {
                 }
             }.accessibilityIdentifier("title-check-in")
         }
+        // Simkl, kept in sync: checked in there, and the watch goes into the diary when it ends.
+        if store.providerSettings.simkl.isAuthenticated, LiveCheckIn.shared.active == nil {
+            Button("Check in on Simkl", systemImage: "checkmark.circle.badge.questionmark") {
+                Task {
+                    do { try await LiveCheckIn.shared.start(.simkl, title, episode: nextEpisode(title), store: store) }
+                    catch { checkInMessage = error.localizedDescription }
+                }
+            }.accessibilityIdentifier("title-check-in-simkl")
+        }
     }
     /// The next episode to check in to: the first aired, unskipped regular episode you haven't watched.
     private func nextEpisode(_ title: MediaTitle) -> Episode? {
