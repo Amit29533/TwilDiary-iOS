@@ -681,7 +681,7 @@ struct CastAndRelated: View {
     /// Anime show their characters (AniList) above the cast.
     var anime: (year: Int?, movie: Bool)? = nil
     /// Anime show Related (AniList) above More like this; the preview page's `anime` does too.
-    var related: (year: Int?, movie: Bool)? = nil
+    var relatedAnime: (year: Int?, movie: Bool)? = nil
     /// The show page's "See all" (its Cast and crew page).
     var seeAll: ShowPageRoute? = nil
     @Environment(AppRouter.self) private var router
@@ -720,7 +720,7 @@ struct CastAndRelated: View {
               }
             }
             // Anime: its sequels, side stories and the like (AniList), just above More like this.
-            if let info = related ?? anime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: info.year, movie: info.movie) }
+            if let info = relatedAnime ?? anime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: info.year, movie: info.movie) }
             if !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

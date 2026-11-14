@@ -85,7 +85,7 @@ struct TitleDetailView: View {
                                     let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId)
                                     // Anime: Related (AniList) above More like this; characters are shown above already.
                                     CastAndRelated(route: route, sourceTitle: title.name,
-                                                   related: title.category.hasPrefix("anime") ? (title.year, !title.isSeries) : nil,
+                                                   relatedAnime: title.category.hasPrefix("anime") ? (title.year, !title.isSeries) : nil,
                                                    seeAll: .cast(route, title: title.name, anime: title.category.hasPrefix("anime"), year: title.year))
                                     if let extras { CompaniesSection(route: route, title: title.name, extras: extras, animated: title.category.hasPrefix("anime") || title.genres.contains("Animation")) }
                                     InListsSection(route: route, title: title.name)
