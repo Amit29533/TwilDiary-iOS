@@ -127,7 +127,7 @@ public enum ProviderWebSignIn {
         // Simkl: the app address registered with Simkl (its pages accept custom schemes).
         if provider == .simkl { return callbackScheme + "://auth/simkl" }
         // Trakt, MDBList and WeTrakr (as Cinopsys signs in to them) through the https page.
-        returnSite + "/" + provider.rawValue
+        return returnSite + "/" + provider.rawValue
     }
     static func authorizePage(for provider: SyncProviderKind) -> URL? {
         switch provider {
