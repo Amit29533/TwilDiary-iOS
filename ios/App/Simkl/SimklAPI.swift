@@ -41,12 +41,20 @@ struct SimklAPI: Sendable {
         let text = String(data: data.prefix(300), encoding: .utf8) ?? ""
         switch status {
         case 401, 403: throw Failure.signIn
+        // The account's daily allowance used up ("user_limit_exceeded"): waits for the next day (UTC).
+        case 429 where text.contains("user_limit"): throw Failure.busy(Self.untilTomorrow())
         case 429: throw Failure.busy(Double(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 30)
         // Simkl takes one write per account at a time; a second one is refused with "rate_limit".
         case 400 where text.contains("rate_limit"): throw Failure.busy(5)
         case 500...: throw Failure.unavailable("Simkl answered HTTP \(status).")
         default: throw Failure.refused(status, text.isEmpty ? "HTTP \(status)" : text)
         }
+    }
+
+    static func untilTomorrow(now: Date = .now) -> TimeInterval {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .gmt
+        let next = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 5), matchingPolicy: .nextTime) ?? now.addingTimeInterval(3_600)
+        return max(60, next.timeIntervalSince(now))
     }
 
     // MARK: Finding a title
@@ -87,7 +95,7 @@ struct SimklAPI: Sendable {
 
     /// The entries Simkl links to an anime (its sequels, prequels, side stories): the other cours
     /// of a long series share its TMDB id.
-    struct Related: Equatable, Sendable { let simkl: Int; let tmdb: String?; let year: Int?; var type: String? = nil }
+    struct Related: Codable, Equatable, Sendable { let simkl: Int; let tmdb: String?; let year: Int?; var type: String? = nil }
     func related(to simkl: Int) async throws -> [Related] {
         Self.related(from: try await get("/anime/\(simkl)", query: ["extended": "full"]))
     }
@@ -103,7 +111,7 @@ struct SimklAPI: Sendable {
 
     // MARK: A show's episodes (for placing one by its air date)
 
-    struct Episode: Equatable, Sendable {
+    struct Episode: Codable, Equatable, Sendable {
         let number: Int
         /// The day it aired ("2026-11-14").
         let day: String?
@@ -222,15 +230,16 @@ enum SimklBody {
     /// The episode Simkl lists on that day (a day either side: time zones). A regular episode is
     /// never placed on a special; a special prefers a special (an OVA entry lists its parts as
     /// regular episodes).
-    static func find(day: String, in episodes: [SimklAPI.Episode], special: Bool = false) -> SimklAPI.Episode? {
-        episodes.filter { episode in (special || !episode.special) && (episode.day.map { daysApart($0, day) <= 1 } ?? false) }
+    /// `anyKind` false: a special matches only a special (inside a show's own entries).
+    static func find(day: String, in episodes: [SimklAPI.Episode], special: Bool = false, anyKind: Bool = true) -> SimklAPI.Episode? {
+        episodes.filter { episode in (special ? anyKind || episode.special : !episode.special) && (episode.day.map { daysApart($0, day) <= 1 } ?? false) }
             .min { (daysApart($0.day ?? "", day), $0.special == special ? 0 : 1) < (daysApart($1.day ?? "", day), $1.special == special ? 0 : 1) }
     }
     /// `find`, and for a regular episode Simkl dates differently (a premiere it dates by its early
     /// screening: Re:Zero's third season), the one before the episode a week later, or after the one
     /// a week earlier: weekly shows keep their order.
-    static func locate(day: String, in episodes: [SimklAPI.Episode], special: Bool) -> SimklAPI.Episode? {
-        if let found = find(day: day, in: episodes, special: special) { return found }
+    static func locate(day: String, in episodes: [SimklAPI.Episode], special: Bool, anyKind: Bool = true) -> SimklAPI.Episode? {
+        if let found = find(day: day, in: episodes, special: special, anyKind: anyKind) { return found }
         guard !special else { return nil }
         if let later = shift(day, by: 7).flatMap({ find(day: $0, in: episodes) }),
            let found = episodes.first(where: { !$0.special && $0.number == later.number - 1 }) { return found }

@@ -113,6 +113,8 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SimklBody.find(day: "2013-09-28", in: list)?.number, 26)
         XCTAssertEqual(SimklBody.find(day: "2013-12-09", in: list, special: true)?.special, true, "a special")
         XCTAssertNil(SimklBody.find(day: "2013-12-09", in: list), "a regular episode never lands on a special")
+        XCTAssertNil(SimklBody.find(day: "2013-04-07", in: list, special: true, anyKind: false), "in a show's own entry a special matches only a special")
+        XCTAssertEqual(SimklBody.find(day: "2013-04-07", in: list, special: true)?.number, 1, "an OVA entry lists its parts as regular episodes")
         XCTAssertNil(SimklBody.find(day: "2014-01-01", in: list))
 
         // Re:Zero's third season on Simkl: episode 1 dated by its early screening, a special on the
