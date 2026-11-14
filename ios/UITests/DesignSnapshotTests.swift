@@ -3,12 +3,21 @@ import XCTest
 /// Screens captured top to bottom on sample data, to compare with the owner's design files.
 /// Run on its own (`-only-testing:TwilDiaryUITests/DesignSnapshotTests`); it checks nothing.
 @MainActor final class DesignSnapshotTests: XCTestCase {
+    /// A theme for the whole tour (`SNAPSHOT_THEME=premiere`, passed by the screenshot workflow as
+    /// TEST_RUNNER_SNAPSHOT_THEME): the app reads "theme" from its arguments, so every screen
+    /// shows in that theme.
+    static var themeArguments: [String] {
+        guard let theme = ProcessInfo.processInfo.environment["SNAPSHOT_THEME"], !theme.isEmpty else { return [] }
+        return ["-theme", theme]
+    }
+
     override func setUp() async throws { continueAfterFailure = true }
 
     /// The animated splash, recorded from outside the test (simctl recordVideo) while it plays.
     func testSplashPlays() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-splash"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "splash"; shot.lifetime = .keepAlways; add(shot)
         // It lifts once it has played and the diary is ready: the tabs are there after it.
@@ -19,6 +28,7 @@ import XCTest
     func testFirstScreenSnapshots() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-signed-out"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 2)
@@ -39,6 +49,7 @@ import XCTest
     func testSettingsSnapshots() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "-launchTab", "more"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 3)
@@ -72,6 +83,7 @@ import XCTest
     func testSettingsServiceSnapshots() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "-launchTab", "more"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 3)
@@ -136,6 +148,7 @@ import XCTest
     func testProfileStatsSnapshots() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "-launchTab", "more"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 3)
@@ -200,6 +213,7 @@ import XCTest
         for (kind, id) in [("character", 138100), ("character", 417), ("voice", 124390), ("cast", 172069), ("voice", 95065)] {
             let app = XCUIApplication()
             app.launchArguments = ["--ui-testing", "--ui-profile-repairs", "--ui-profile-format=\(kind):\(id)"]
+            app.launchArguments += Self.themeArguments
             app.launch()
             Thread.sleep(forTimeInterval: 4)
             for page in 0..<3 {
@@ -238,6 +252,7 @@ import XCTest
     func testTabBarNoPumping() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-tabbar-minimize", "--ui-keep-launch-tab", "-launchTab", "home"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         Thread.sleep(forTimeInterval: 2)
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
@@ -375,6 +390,7 @@ import XCTest
         }
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-profile-repairs", "--ui-profile-format=cast:172069"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         Thread.sleep(forTimeInterval: 4)
         func shot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
@@ -535,6 +551,7 @@ import XCTest
     func testEpisodeSheetSnapshots() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", "home"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 4)
@@ -589,6 +606,7 @@ import XCTest
     func testHomeHeroPull() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", "home"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 5)
@@ -607,6 +625,7 @@ import XCTest
     func testScrollEveryScreen() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-large-diary", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", "home"]
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 3)
@@ -634,6 +653,7 @@ import XCTest
     private func capture(tab: String, name: String, pages: Int, extra: [String] = [], open: ((XCUIApplication) -> Void)? = nil) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-design-data", "--ui-keep-launch-tab", "--ui-keep-home-layouts", "-launchTab", tab] + extra
+        app.launchArguments += Self.themeArguments
         app.launch()
         _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 4)

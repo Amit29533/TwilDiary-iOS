@@ -1,0 +1,123 @@
+# Screenshot tour on the Namespace Apple Silicon runner: the app's design snapshot tests on preview
+# data (calendar, home, title pages, library, search, settings, stats…), in a chosen theme, with
+# every screenshot exported as an artifact (downscaled JPEGs) to look at. Start it by pushing a tag
+# (`git tag namespace-shots-<short sha> && git push origin namespace-shots-<short sha>`; the theme
+# is Premiere) or run it by hand with a theme. Read-only: no signing, no release, no deploy.
+name: iOS screenshots (Namespace)
+run-name: namespace screenshots ${{ github.ref_name }} ${{ inputs.theme || 'premiere' }}
+
+on:
+  push:
+    tags: ['namespace-shots-*']
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: 'Theme for every screen'
+        type: choice
+        default: premiere
+        options: [premiere, twilight, ocean, jade, rose, amber]
+
+concurrency:
+  group: ios-namespace-shots-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 100
+    env:
+      SNAPSHOT_THEME: ${{ inputs.theme || 'premiere' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Choose Xcode 26.6 and an iPhone simulator
+        run: |
+          set -euo pipefail
+          dev=""
+          for app in /Applications/Xcode_26.6.app $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
+            if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then dev="$app/Contents/Developer"; break; fi
+          done
+          [ -n "$dev" ] || dev="$(xcode-select -p)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          mkdir -p ios/.artifacts/logs
+          DEVELOPER_DIR="$dev" xcrun simctl list devices available -j > ios/.artifacts/devices.json
+          python3 - <<'PY'
+          import json, os, re
+          devices = json.load(open('ios/.artifacts/devices.json'))['devices']
+          # The runtime that matches Xcode 26's SDK (a newer one makes the asset compiler warn).
+          options = [(runtime, d) for runtime, items in devices.items() if 'iOS-26' in runtime
+                     for d in items if d['name'].startswith('iPhone') and d.get('isAvailable', True)]
+          if not options: raise SystemExit('No iPhone simulator available')
+          runtime, device = max(options, key=lambda o: (tuple(map(int, re.findall(r'\d+', o[0]))), 'Pro' in o[1]['name']))
+          print('Simulator:', device['name'], runtime)
+          open(os.environ['GITHUB_ENV'], 'a').write('SIMULATOR_ID=' + device['udid'] + '\n')
+          PY
+      - name: Cache Swift packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.spm
+          key: spm-namespace-${{ runner.arch }}-${{ hashFiles('ios/**/Package.resolved', 'ios/**/Package.swift', 'ios/project.yml') }}
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Build for testing
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          bash ios/scripts/ci.sh build-simulator
+      - name: Screenshot tour
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          tests=(testHomeSnapshots testCalendarSnapshots testShowSnapshots testPreviewSnapshots testEpisodesPageSnapshots
+                 testEpisodeSheetSnapshots testLibrarySnapshots testLibraryOverviewSnapshots testGlanceSnapshots testSearchSnapshots
+                 testSettingsSnapshots testSettingsServiceSnapshots testProfileStatsSnapshots testExploreSnapshots
+                 testCanvasSnapshots testFavouritesSnapshots testPersonSnapshots testSeeAllPageSnapshots)
+          only=(); for t in "${tests[@]}"; do only+=("-only-testing:TwilDiaryUITests/DesignSnapshotTests/$t"); done
+          TEST_RUNNER_SNAPSHOT_THEME="$SNAPSHOT_THEME" xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+            -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
+            -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 400 -maximum-test-execution-time-allowance 500 \
+            "${only[@]}" -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath ios/.artifacts/Shots.xcresult \
+            2>&1 | tee ios/.artifacts/logs/shots.log
+      - name: Export the screenshots
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p ios/.artifacts/raw ios/.artifacts/shots
+          xcrun xcresulttool export attachments --path ios/.artifacts/Shots.xcresult --output-path ios/.artifacts/raw
+          python3 - <<'PY'
+          import json, pathlib, re, shutil, subprocess
+          raw, out = pathlib.Path('ios/.artifacts/raw'), pathlib.Path('ios/.artifacts/shots')
+          names = {}
+          manifest = raw / 'manifest.json'
+          if manifest.exists():
+              for test in json.loads(manifest.read_text()):
+                  case = str(test.get('testIdentifier', 'case')).split('/')[-1].rstrip('()')
+                  for item in test.get('attachments', []):
+                      label = item.get('suggestedHumanReadableName') or item.get('exportedFileName', '')
+                      names[item.get('exportedFileName', '')] = case + '__' + label
+          count = 0
+          for image in sorted(p for p in raw.iterdir() if p.suffix.lower() in ('.png', '.jpg', '.jpeg', '.heic')):
+              name = re.sub(r'[^A-Za-z0-9._-]+', '-', names.get(image.name, image.stem))[:150].strip('-') or image.stem
+              target = out / (pathlib.Path(name).stem + '.jpg')
+              subprocess.run(['sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', '70', '-Z', '1200', str(image), '--out', str(target)],
+                             check=True, capture_output=True)
+              count += 1
+          print('Exported', count, 'screenshots')
+          PY
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-screenshots-${{ env.SNAPSHOT_THEME }}
+          path: |
+            ios/.artifacts/shots
+            ios/.artifacts/logs
+          include-hidden-files: true
+          retention-days: 7
