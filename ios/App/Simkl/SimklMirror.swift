@@ -790,9 +790,43 @@ struct SimklQueue: Codable, Equatable, Sendable {
             await self?.resume()
         }
     }
-    private func save() { SimklStorage.save(queue, "queue.json") }
+    private func save() {
+        SimklStorage.save(queue, "queue.json")
+        // This round's size: the most that were waiting since the queue was last empty.
+        let next = queue.jobs.isEmpty ? 0 : max(sendTotal, queue.jobs.count)
+        if next != sendTotal { sendTotal = next }
+    }
+    /// How many changes this round of sending started with (for "612 of 1,828 sent"); kept across launches.
+    private(set) var sendTotal = UserDefaults.standard.integer(forKey: "simkl.addon.sendTotal") {
+        didSet { UserDefaults.standard.set(sendTotal, forKey: "simkl.addon.sendTotal") }
+    }
+    /// Sent so far this round, as a fraction (nil when nothing is waiting).
+    var sendFraction: Double? {
+        let waiting = queue.jobs.count, total = max(sendTotal, waiting)
+        guard waiting > 0, total > 0 else { return nil }
+        return Double(total - waiting) / Double(total)
+    }
 
     /// Sends what's waiting now, without waiting for its time.
+    /// Where sending stands, for the compare panel: what's waiting and, when nothing is going, why
+    /// ("Paused: Simkl's daily limit is used up · resumes 5:35 am"). Nil when nothing is waiting.
+    var status: (text: String, paused: Bool)? {
+        let waiting = queue.jobs.count
+        guard waiting > 0 else { return nil }
+        let total = max(sendTotal, waiting)
+        let count = total > waiting ? "\((total - waiting).formatted()) of \(total.formatted()) sent · \(waiting.formatted()) waiting"
+            : "\(waiting.formatted()) \(waiting == 1 ? "change" : "changes") waiting"
+        if !SimklAccount.shared.signedIn { return (count + " · paused: sign in to Simkl again to send", true) }
+        if !SimklAccount.shared.saving { return (count + " · paused: turn on “Also save my activity to Simkl” to send", true) }
+        if sending { return ("Sending · " + count, false) }
+        if let wake = queue.nextWake, wake.timeIntervalSinceNow > 60 {
+            let time = wake.formatted(date: .omitted, time: .shortened)
+            let quota = ProviderQuota.daily(host: SimklAPI.quotaHost)
+            let limit = SimklUsage.today().limitReachedAt != nil || (quota.map { $0.used >= $0.limit } ?? false)
+            return (count + (limit ? " · paused: Simkl’s daily limit is used up · resumes \(time)" : " · next try \(time)"), true)
+        }
+        return (count, false)
+    }
     func sendNow() async {
         for index in queue.jobs.indices { queue.jobs[index].notBefore = nil }
         save()

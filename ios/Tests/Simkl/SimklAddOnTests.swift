@@ -468,4 +468,11 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(ProviderQuota.daily(host: SimklAPI.quotaHost, now: now)?.used, 222)
         UserDefaults.standard.removeObject(forKey: key)
     }
+
+    func testSendProgressIsReadFromTheProgressLine() {
+        XCTAssertEqual(SendProgress.fraction("Sending 3 of 10: 100 watches…") ?? -1, 0.25, accuracy: 0.001)
+        XCTAssertEqual(SendProgress.fraction("Changing 1,200 of 1,828: 50 ratings…") ?? -1, 1199.5 / 1828, accuracy: 0.001)
+        XCTAssertNil(SendProgress.fraction("Reading both sides…"))
+        XCTAssertNil(SendProgress.fraction(nil))
+    }
 }

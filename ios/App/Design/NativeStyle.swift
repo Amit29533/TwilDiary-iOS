@@ -189,6 +189,29 @@ private struct NativeArtworkPage: ViewModifier {
     }
 }
 
+/// How far a send has got, read from its progress line ("Sending 3 of 10: …" → 0.25), so every
+/// service's send (Trakt, MDBList, WeTrakr) can show a bar without each keeping numbers apart.
+enum SendProgress {
+    static func fraction(_ text: String?) -> Double? {
+        guard let text, let match = text.firstMatch(of: #/(\d[\d,]*) of (\d[\d,]*)/#),
+              let done = Double(match.1.replacingOccurrences(of: ",", with: "")),
+              let total = Double(match.2.replacingOccurrences(of: ",", with: "")), total > 0 else { return nil }
+        return min(1, max(0, (done - 0.5) / total))
+    }
+}
+
+/// A slim progress bar in the theme's accent for a send under way (every service, every theme).
+struct SendProgressBar: View {
+    let fraction: Double
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        ProgressView(value: fraction).tint(theme.accent)
+            .animation(reduceMotion ? nil : .smooth, value: fraction)
+            .accessibilityLabel("Sent").accessibilityValue("\(Int((fraction * 100).rounded())) percent")
+    }
+}
+
 /// One choice of a `NativeSegmentedControl`.
 struct NativeSegment<Value: Hashable>: Identifiable {
     let value: Value

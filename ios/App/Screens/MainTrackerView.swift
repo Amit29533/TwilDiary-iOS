@@ -157,6 +157,7 @@ struct TrackerPreviewPanel: View {
                     }
                     Spacer(minLength: 0)
                 }
+                if let fraction = SendProgress.fraction(trakt.writeProgress) { SendProgressBar(fraction: fraction).accessibilityIdentifier(id + "-progress") }
                 if let error { Text(error).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error") }
                 Button {
                     Task { await trakt.check(store: store) }
@@ -237,10 +238,23 @@ struct TrackerPreviewPanel: View {
     @ViewBuilder private var trackerMatchSection: some View {
         let plan = report != nil ? others.plans[tracker] : nil
         if others.writing == tracker, let progress = others.writeProgress {
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 6) {
+                if let fraction = SendProgress.fraction(progress) { SendProgressBar(fraction: fraction).accessibilityIdentifier(tracker.rawValue + "-progress") }
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
+            }
         } else if let result = others.writeResults[tracker] {
             Label(result, systemImage: "checkmark").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(tracker.rawValue + "-match-result")
+        }
+        // Simkl sends in the background: where that stands now (the line above is when it was asked).
+        if tracker == .simkl, let fraction = SimklMirror.shared.sendFraction {
+            SendProgressBar(fraction: fraction).accessibilityIdentifier("simkl-progress")
+        }
+        if tracker == .simkl, let status = SimklMirror.shared.status {
+            Label(status.text, systemImage: status.paused ? "pause.circle" : "arrow.up.circle")
+                .font(.caption.weight(status.paused ? .semibold : .regular))
+                .foregroundStyle(status.paused ? Color(themed: "#f5c26b") : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("simkl-send-status")
         }
         if let plan, !plan.isEmpty, others.writing == nil {
             Button { confirmMatch = true } label: {

@@ -65,6 +65,7 @@ struct SimklSettingsView: View {
                                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                     // Where it stands: paused until a time (Simkl's daily limit or a long wait), and today's requests.
                                     Text(waitingDetail).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                                    if let fraction = mirror.sendFraction { SendProgressBar(fraction: fraction).padding(.top, 4) }
                                 }
                                 Spacer()
                                 Button("Send now") { Task { await mirror.sendNow() } }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
