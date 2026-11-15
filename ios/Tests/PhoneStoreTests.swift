@@ -62,6 +62,32 @@ import TwilDiaryCore
         XCTAssertEqual(store.title("movie:603")?.status, "planned")
     }
 
+    /// Up, added as Planned, then set to another status from the title page's menu (owner's
+    /// recordings, 2026-11-16): the page turned to "Title unavailable" and Search offered Add again.
+    /// Every status must keep the title, with that status.
+    func testAStatusChangeKeepsANewlyAddedTitle() async throws {
+        let store = makeStore()
+        defer {
+            TraktDirectStore.shared.useLocal(false)
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        await store.startOnThisPhone()
+        for (tmdb, status) in [(14160, "watching"), (14161, "completed"), (14162, "dropped")] {
+            let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":\#(tmdb),"mediaType":"movie","name":"Up \#(status)","year":2009,"overview":"","posterPath":"/u.jpg","genres":["Animation"],"suggestedCategory":"movie"}"#.utf8))
+            let added = await store.importTitle(details, category: "movie")
+            let id = try XCTUnwrap(added, "\(status): Add to Planned failed: \(store.error ?? "no error")")
+            await store.waitForTitle(id)
+            let title = try XCTUnwrap(store.title(id), "\(status): not in the diary after Add to Planned")
+            XCTAssertEqual(title.status, "planned", status)
+            let done = await store.setSeasonStatus(title, season: 1, status: status, watchedAt: Date(timeIntervalSince1970: 1_800_000_000))
+            XCTAssertTrue(done, "\(status): the change failed: \(store.error ?? "no error")")
+            await store.waitForTitle(id)
+            XCTAssertNotNil(store.title(id), "\(status): the title left the diary")
+            XCTAssertEqual(store.title(id)?.status, status, "\(status): wrong status after the change")
+        }
+    }
+
     func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
         let store = makeStore(providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
