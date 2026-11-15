@@ -558,6 +558,16 @@ enum SimklBody {
         let exact = pool.filter { daysApart($0.day ?? "", day) == 0 }
         return exact.count == 1 ? exact[0] : nil
     }
+    /// A film's series as Simkl may file it: the name before its subtitle ("Date A Bullet: Nightmare
+    /// or Queen" → "Date A Bullet"); nil without one.
+    static func seriesName(_ name: String) -> String? {
+        for mark in [": ", " - ", " – "] {
+            guard let range = name.range(of: mark) else { continue }
+            let head = name[..<range.lowerBound].trimmingCharacters(in: .whitespaces)
+            return head.count >= 3 ? head : nil
+        }
+        return nil
+    }
     /// The part of a film entry in parts that is this film: the one part whose title the film's
     /// name holds ("Date A Bullet: Nightmare or Queen" holds "Nightmare or Queen", part 2).
     static func filmPart(_ name: String, in parts: [SimklAPI.Episode]) -> Int? {

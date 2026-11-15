@@ -270,7 +270,8 @@ struct SimklQueue: Codable, Equatable, Sendable {
             // TVDB's seasons can name another entry, and Simkl takes it without a word (TMDB's
             // Bleach S2 is Thousand-Year Blood War; TVDB's S2 is the 2004 show's second season).
             // TVDB's seasons are the fallback when Simkl lists no such date.
-            let unplaced = batch.filter { $0.anime && !$0.movie && $0.entry == nil && $0.datesChecked != true && $0.wholeTitle != true && ($0.kind == .watch || $0.kind == .unwatch) }
+            // (Anime films too: one part of a film entry in parts must go as that part.)
+            let unplaced = batch.filter { $0.anime && $0.entry == nil && $0.datesChecked != true && $0.wholeTitle != true && ($0.kind == .watch || $0.kind == .unwatch) }
             if !unplaced.isEmpty {
                 for key in order where unplaced.contains(where: { $0.titleKey == key }) {
                     await placeFirst(unplaced.filter { $0.titleKey == key }, match: found[key] ?? nil, api: api)
@@ -427,9 +428,14 @@ struct SimklQueue: Codable, Equatable, Sendable {
             // Neither its day nor its title on Simkl: a regular episode goes by its own TVDB id next
             // (Simkl's mapping), then TVDB's seasons. A special doesn't (Simkl's mapping put Demon
             // Slayer's S0 E2 on another year's special).
-            let tvdbEpisode = spot == nil && job.season != 0 && job.tvdbEpisodeTried != true ? await tvdbEpisodeID(job) : nil
+            let tvdbEpisode = spot == nil && !job.movie && job.season != 0 && job.tvdbEpisodeTried != true ? await tvdbEpisodeID(job) : nil
             guard let index = queue.jobs.firstIndex(where: { $0.id == job.id }) else { continue }
             queue.jobs[index].datesChecked = true
+            // A film: where it is, kept for reading Simkl back; it still goes by its TMDB id (Simkl's
+            // own match) unless it's one part of a film entry in parts, which goes as that part alone.
+            // By TMDB id, Dead or Bullet marked both of Date a Bullet's parts watched (test account,
+            // 2026-11-15).
+            if job.movie, spot?.number == nil { remember(job, entry: spot?.entry, season: nil, number: nil); continue }
             guard let spot else { queue.jobs[index].tvdbEpisode = tvdbEpisode; remember(job, entry: nil, season: nil, number: nil); continue }
             queue.jobs[index].diarySeason = job.season; queue.jobs[index].diaryNumber = job.number
             queue.jobs[index].entry = spot.entry; queue.jobs[index].season = spot.season; queue.jobs[index].number = spot.number
@@ -701,14 +707,23 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// same-day rules), else by its title when exactly one episode across those entries has it.
     private func spot(for job: SimklJob, match: SimklAPI.Match?, api: SimklAPI) async -> (entry: Int, season: Int?, number: Int?, native: [String: String]?)? {
         if job.movie {
-            guard job.anime, let found = try? await api.searchAnime(title: job.name, year: job.year) else { return nil }
+            guard job.anime else { return nil }
+            var found: SimklAPI.Match? = (try? await api.searchAnime(title: job.name, year: job.year)) ?? nil
+            // A film in parts is filed under its series' name: "Date A Bullet: Nightmare or Queen" is
+            // found only as "Date A Bullet" (test account, 2026-11-15). Found so, it must be a part.
+            var bySeries = false
+            if found == nil, let series = SimklBody.seriesName(job.name) {
+                found = (try? await api.searchAnime(title: series, year: job.year)) ?? nil
+                bySeries = found != nil
+            }
+            guard let found else { return nil }
             let parts = await episodes(found.simkl, kind: "anime", api: api).filter { !$0.special }
             let native = (try? await detail(found.simkl, api: api))?.native
             // One part: the film. Several: the part titled as the film (Date a Bullet's part 2 is
             // Nightmare or Queen), sent and read as that part. Otherwise not here: Simkl's search
             // can answer with a series of a similar name, and a film placed there was read as the
             // whole series (Immortal King's ONA, 2026-11-15).
-            if parts.count <= 1 { return (found.simkl, nil, nil, native) }
+            if parts.count <= 1 { return bySeries ? nil : (found.simkl, nil, nil, native) }
             guard let part = SimklBody.filmPart(job.name, in: parts) else { return nil }
             return (found.simkl, 1, part, native)
         }

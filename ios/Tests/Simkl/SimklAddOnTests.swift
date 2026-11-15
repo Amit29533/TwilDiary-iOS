@@ -426,6 +426,8 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SimklBody.filmPart("Date A Bullet: Nightmare or Queen", in: parts), 2)
         XCTAssertEqual(SimklBody.filmPart("Date A Bullet: Dead or Bullet", in: parts), 1)
         XCTAssertNil(SimklBody.filmPart("Date A Bullet", in: parts), "no part's title in the name: not placed")
+        XCTAssertEqual(SimklBody.seriesName("Date A Bullet: Nightmare or Queen"), "Date A Bullet", "Simkl's search finds the entry only by this")
+        XCTAssertNil(SimklBody.seriesName("A Whisker Away"))
 
         let workspace = try diary(titles: [("db", "Date A Bullet: Dead or Bullet", "anime-movie", 685099), ("nq", "Date A Bullet: Nightmare or Queen", "anime-movie", 760161)],
                                   episodes: [], watched: [("db", nil), ("nq", nil)])
