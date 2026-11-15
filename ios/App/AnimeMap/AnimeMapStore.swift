@@ -1,15 +1,20 @@
 import Foundation
 import TwilDiaryCore
 
-/// The anime map on this iPhone (`AnimeMap`): built once a week from the two public maps,
-/// downloaded on Wi-Fi only (about 16 MB), then kept as one file of about 560 KB, every anime TMDB
-/// knows; the downloads are thrown away. Simkl's and AniList's syncs ask it first and fall back to
-/// their own matching where it's silent or its answer fails the air-date check.
+/// The anime map on this iPhone (`AnimeMap`). Once a week, on Wi-Fi only, the two public maps are
+/// downloaded (about 15 MB) and kept whole in the app's own folder, out of iCloud backups (they can
+/// always be downloaded again); from them the lookup file is built (about 710 KB, every anime TMDB
+/// knows), which the syncs read. Simkl's and AniList's syncs ask it first and fall back to their own
+/// matching where it's silent or its answer fails the air-date check.
 @MainActor final class AnimeMapStore {
     static let shared = AnimeMapStore()
     static let mappingsURL = URL(string: "https://github.com/anibridge/anibridge-mappings/releases/download/v3/mappings.min.json")!
     static let animeApiURL = URL(string: "https://raw.githubusercontent.com/nattadasu/animeApi/v3/database/animeapi.tsv")!
-    private static var file: URL { URL.applicationSupportDirectory.appending(path: "AnimeMap/anime-map.json") }
+    private static var folder: URL { URL.applicationSupportDirectory.appending(path: "AnimeMap") }
+    private static var file: URL { folder.appending(path: "anime-map.json") }
+    /// The downloads, kept whole.
+    static var mappingsFile: URL { folder.appending(path: "mappings.min.json") }
+    static var animeApiFile: URL { folder.appending(path: "animeapi.tsv") }
     private static let checkedKey = "animeMap.checkedAt"
 
     /// The map, once one has been built on this iPhone.
@@ -20,8 +25,10 @@ import TwilDiaryCore
         map = (try? Data(contentsOf: Self.file)).flatMap { try? JSONDecoder().decode(AnimeMap.self, from: $0) }
     }
 
-    /// Builds the map when there is none or it's a week old, on Wi-Fi only. Quietly does nothing
-    /// otherwise (cellular, Low Data Mode, offline): the syncs carry on with their own matching.
+    /// Downloads the maps when there are none or they're a week old, on Wi-Fi only, keeps them, and
+    /// builds the lookup file. Without Wi-Fi (cellular, Low Data Mode, offline) it builds from the
+    /// downloads already kept, if the lookup file is missing; otherwise it quietly does nothing and
+    /// the syncs carry on with their own matching.
     func refreshIfNeeded(now: Date = .now) async {
         guard !building else { return }
         if let checked = UserDefaults.standard.object(forKey: Self.checkedKey) as? Date, map != nil, now.timeIntervalSince(checked) < 7 * 86_400 { return }
@@ -34,21 +41,45 @@ import TwilDiaryCore
         configuration.timeoutIntervalForRequest = 60
         let session = URLSession(configuration: configuration)
         defer { session.finishTasksAndInvalidate() }
+        var downloaded = false
         do {
             async let mappings = Self.fetch(Self.mappingsURL, session)
             async let animeApi = Self.fetch(Self.animeApiURL, session)
             let (first, second) = try await (mappings, animeApi)
-            let builtAt = now.formatted(.iso8601)
-            // Reading 16 MB takes a moment: off the main thread.
-            let built = try await Task.detached(priority: .utility) { try AnimeMap.build(mappings: first, animeApi: second, builtAt: builtAt) }.value
-            guard built.shows.count > 1000, built.simklAniList.count > 1000 else { return }   // a broken download keeps the last map
-            try FileManager.default.createDirectory(at: Self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(built).write(to: Self.file, options: .atomic)
+            // Checked before the kept ones are replaced: a broken download keeps the last good pair.
+            let built = try await Self.build(first, second, now: now)
+            try Self.keep(first, at: Self.mappingsFile)
+            try Self.keep(second, at: Self.animeApiFile)
+            try Self.keep(JSONEncoder().encode(built), at: Self.file)
             map = built
+            downloaded = true
             UserDefaults.standard.set(now, forKey: Self.checkedKey)
         } catch {
             // Not on Wi-Fi, or a map couldn't be read: tried again next time the app opens.
         }
+        // No new download, and no lookup file: built from the downloads kept on this iPhone.
+        if !downloaded, map == nil, let first = try? Data(contentsOf: Self.mappingsFile), let second = try? Data(contentsOf: Self.animeApiFile),
+           let built = try? await Self.build(first, second, now: now) {
+            try? Self.keep(JSONEncoder().encode(built), at: Self.file)
+            map = built
+        }
+    }
+    /// The lookup file from the two downloads (off the main thread: 15 MB takes a moment). Throws
+    /// when they're too small to be the real maps.
+    private nonisolated static func build(_ mappings: Data, _ animeApi: Data, now: Date) async throws -> AnimeMap {
+        let builtAt = now.formatted(.iso8601)
+        let built = try await Task.detached(priority: .utility) { try AnimeMap.build(mappings: mappings, animeApi: animeApi, builtAt: builtAt) }.value
+        guard built.shows.count > 1000, built.simklAniList.count > 1000 else { throw CocoaError(.fileReadCorruptFile) }
+        return built
+    }
+    /// Written whole, out of iCloud backups.
+    private static func keep(_ data: Data, at url: URL) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+        var target = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try target.setResourceValues(values)
     }
     private nonisolated static func fetch(_ url: URL, _ session: URLSession) async throws -> Data {
         var request = URLRequest(url: url)
