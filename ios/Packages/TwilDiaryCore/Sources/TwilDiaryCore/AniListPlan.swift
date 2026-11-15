@@ -27,9 +27,11 @@ public enum AniListPlan {
         public var startedAt: String?
         public var completedAt: String?
         public var repeatCount: Int
-        public init(mediaId: Int, status: String, progress: Int, score: Int? = nil, startedAt: String? = nil, completedAt: String? = nil, repeatCount: Int = 0) {
+        /// The diary's note on the title (every one of its entries carries it).
+        public var notes: String? = nil
+        public init(mediaId: Int, status: String, progress: Int, score: Int? = nil, startedAt: String? = nil, completedAt: String? = nil, repeatCount: Int = 0, notes: String? = nil) {
             self.mediaId = mediaId; self.status = status; self.progress = progress; self.score = score
-            self.startedAt = startedAt; self.completedAt = completedAt; self.repeatCount = repeatCount
+            self.startedAt = startedAt; self.completedAt = completedAt; self.repeatCount = repeatCount; self.notes = notes
         }
     }
     /// One watch of a title in the diary: the episode (nil for a film), the day it aired, and when it was watched.
@@ -170,22 +172,25 @@ public enum AniListPlan {
         return (holding.isEmpty ? begun : holding).max { ($0.start ?? "") < ($1.start ?? "") }
     }
 
-    /// Each entry's state from the title's diary status, rating and watches. `chain`: the title's
-    /// entries in order (a film: its one). Watches with no air day go to the only entry, if there is
-    /// one; otherwise they're counted as unplaced. An entry with nothing watched is sent only as
-    /// Planning (the first, while the diary has the title Planned) or Dropped/Paused (a film).
-    public static func entries(status diary: String, score: Double?, film: Bool, watches: [Watch], chain: [Media]) -> (entries: [Entry], unplaced: Int) {
+    /// Each entry's state from the title's diary status, rating, note and watches. `chain`: the
+    /// title's entries in order (a film: its one). Watches with no air day go to the only entry, if
+    /// there is one; otherwise they're counted as unplaced. An entry with nothing watched is sent
+    /// only as Planning (the first, while the diary has the title Planned) or Dropped/Paused (a
+    /// film). A completed entry you're watching again (the diary has the title Watching, some
+    /// episodes once more than the rest) is Rewatching, its progress the rewatch's.
+    public static func entries(status diary: String, score: Double?, film: Bool, watches: [Watch], chain: [Media], notes: String? = nil) -> (entries: [Entry], unplaced: Int) {
         guard let first = chain.first else { return ([], watches.count) }
         let score = score.map { min(100, max(0, Int(($0 * 10).rounded()))) }
+        let notes = notes.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
         func day(_ text: String?) -> String? { text.map { String($0.prefix(10)) }.flatMap { $0.count == 10 ? $0 : nil } }
         if film {
             let times = watches.compactMap { day($0.watchedAt) }.sorted()
             if watches.isEmpty {
                 guard ["planned", "dropped", "paused", "on_hold"].contains(diary) else { return ([], 0) }
-                return ([Entry(mediaId: first.id, status: status(diary), progress: 0, score: score)], 0)
+                return ([Entry(mediaId: first.id, status: status(diary), progress: 0, score: score, notes: notes)], 0)
             }
             return ([Entry(mediaId: first.id, status: "COMPLETED", progress: first.episodes ?? 1, score: score,
-                           startedAt: times.first, completedAt: times.last, repeatCount: max(0, watches.count - 1))], 0)
+                           startedAt: times.first, completedAt: times.last, repeatCount: max(0, watches.count - 1), notes: notes)], 0)
         }
         var assigned: [Int: [Watch]] = [:], unplaced = 0
         for watch in watches {
@@ -196,19 +201,28 @@ public enum AniListPlan {
         var result: [Entry] = []
         for media in chain {
             let watched = assigned[media.id] ?? []
-            var plays: [String: Int] = [:]
-            for watch in watched { plays["\(watch.season ?? 0)x\(watch.number ?? 0)", default: 0] += 1 }
+            // Each episode's watch days, in order.
+            var plays: [String: [String]] = [:]
+            for watch in watched { plays["\(watch.season ?? 0)x\(watch.number ?? 0)", default: []].append(day(watch.watchedAt) ?? "") }
             let progress = min(plays.count, media.episodes ?? Int.max)
             if progress == 0 {
-                if media.id == first.id, diary == "planned" { result.append(Entry(mediaId: media.id, status: "PLANNING", progress: 0, score: score)) }
+                if media.id == first.id, diary == "planned" { result.append(Entry(mediaId: media.id, status: "PLANNING", progress: 0, score: score, notes: notes)) }
                 continue
             }
             let complete = media.episodes.map { progress >= $0 } ?? false
             let times = watched.compactMap { day($0.watchedAt) }.sorted()
             let held = ["dropped", "paused", "on_hold"].contains(diary)
-            result.append(Entry(mediaId: media.id, status: complete ? "COMPLETED" : held ? status(diary) : "CURRENT", progress: progress, score: score,
-                                startedAt: times.first, completedAt: complete ? times.last : nil,
-                                repeatCount: complete ? max(0, (plays.values.min() ?? 1) - 1) : 0))
+            guard complete else {
+                result.append(Entry(mediaId: media.id, status: held ? status(diary) : "CURRENT", progress: progress, score: score, startedAt: times.first, notes: notes))
+                continue
+            }
+            // Complete: every episode watched `passes` times; finished when the last of them was.
+            let counts = plays.values.map(\.count), passes = counts.min() ?? 1
+            let finished = plays.values.compactMap { days in days.sorted().dropFirst(passes - 1).first }.filter { !$0.isEmpty }.max()
+            let again = counts.filter { $0 > passes }.count
+            let rewatching = diary == "watching" && again > 0
+            result.append(Entry(mediaId: media.id, status: rewatching ? "REPEATING" : "COMPLETED", progress: rewatching ? again : progress, score: score,
+                                startedAt: times.first, completedAt: finished, repeatCount: passes - 1, notes: notes))
         }
         return (result, unplaced)
     }

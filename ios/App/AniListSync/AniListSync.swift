@@ -153,6 +153,20 @@ struct AniListSyncAPI: Sendable {
         }
     }
     var canSend: Bool { signedIn && saving }
+    private static let notesKey = AniListSyncStorage.prefix + "notes"
+    private static let privateKey = AniListSyncStorage.prefix + "private"
+    private var notesValue = UserDefaults.standard.object(forKey: AniListSyncAccount.notesKey) as? Bool ?? true
+    /// Your diary notes go to each entry's notes (on unless you turn it off).
+    var sendNotes: Bool {
+        get { notesValue }
+        set { notesValue = newValue; UserDefaults.standard.set(newValue, forKey: Self.notesKey); AniListSync.shared.resendAll() }
+    }
+    private var privateValue = UserDefaults.standard.bool(forKey: AniListSyncAccount.privateKey)
+    /// Entries saved as private on AniList (off unless you turn it on).
+    var keepPrivate: Bool {
+        get { privateValue }
+        set { privateValue = newValue; UserDefaults.standard.set(newValue, forKey: Self.privateKey); AniListSync.shared.resendAll() }
+    }
     /// The token while it's valid.
     func token() -> String? { signedIn ? AniListSyncStorage.secret("token") : nil }
 
@@ -179,7 +193,11 @@ struct AniListSyncAPI: Sendable {
             throw AniListSyncAPI.Failure.refused("AniList didn’t say who’s signed in.")
         }
         userId = id; UserDefaults.standard.set(id, forKey: Self.idKey)
-        if let name = viewer["name"] as? String { username = name; UserDefaults.standard.set(name, forKey: Self.nameKey) }
+        if let name = viewer["name"] as? String {
+            username = name; UserDefaults.standard.set(name, forKey: Self.nameKey)
+            // Favourites → Characters ranks from this profile; filled in if you haven't set one.
+            if (UserDefaults.standard.string(forKey: AniListMostWatched.userKey) ?? "").isEmpty { UserDefaults.standard.set(name, forKey: AniListMostWatched.userKey) }
+        }
         return id
     }
     /// The token from AniList's redirect: twildiary://auth/anilist#access_token=…&expires_in=31536000.
@@ -240,6 +258,8 @@ struct AniListSyncAPI: Sendable {
     private(set) var checkedAt: Date?
     private(set) var checking = false
     private(set) var checkProblem: String?
+    /// AniList's list-entry ids from the last check (Force Match takes entries off by them).
+    @ObservationIgnored private var listIds: [Int: Int] = [:]
     @ObservationIgnored private var chains: [String: Chain] = AniListSyncStorage.load([String: Chain].self, "chains.json") ?? [:]
     @ObservationIgnored private var sent: [Int: Sent] = AniListSyncStorage.load([Int: Sent].self, "sent.json") ?? [:]
     @ObservationIgnored private var days: [String: [Int: String]] = AniListSyncStorage.load([String: [Int: String]].self, "days.json") ?? [:]
@@ -356,7 +376,8 @@ struct AniListSyncAPI: Sendable {
             if aired == nil, chain.count > 1, let episode, let tmdb = title.tmdbId { aired = await airDay(tmdb, episode.season, episode.number) }
             watches.append(AniListPlan.Watch(season: episode?.season, number: episode?.number, aired: aired, watchedAt: event.watchedAt))
         }
-        return AniListPlan.entries(status: title.status, score: title.score, film: film, watches: watches, chain: chain)
+        return AniListPlan.entries(status: title.status, score: title.score, film: film, watches: watches, chain: chain,
+                                   notes: AniListSyncAccount.shared.sendNotes ? title.notes : nil)
     }
 
     // MARK: Reading AniList back (phase 2)
@@ -375,9 +396,10 @@ struct AniListSyncAPI: Sendable {
             try await pace()
             let reply = try await api.call("""
                 query($id: Int) { MediaListCollection(userId: $id, type: ANIME) { lists { entries {
-                  id mediaId status progress repeat score(format: POINT_100) startedAt { year month day } completedAt { year month day } media { title { romaji english } } } } } }
+                  id mediaId status progress repeat notes score(format: POINT_100) startedAt { year month day } completedAt { year month day } media { title { romaji english } } } } } }
                 """, ["id": userId])
             let lists = (AniListSyncAPI.data(reply)["MediaListCollection"] as? [String: Any])?["lists"] as? [[String: Any]] ?? []
+            listIds = [:]
             var listed: [AniListPlan.Listed] = [], actual: [Int: (listId: Int, entry: AniListPlan.Entry)] = [:]
             for row in lists.flatMap({ $0["entries"] as? [[String: Any]] ?? [] }) {
                 guard let mediaId = row["mediaId"] as? Int, let listId = row["id"] as? Int, actual[mediaId] == nil else { continue }
@@ -388,7 +410,9 @@ struct AniListSyncAPI: Sendable {
                 listed.append(AniListPlan.Listed(mediaId: mediaId, listId: listId, status: status, progress: progress, score: score, title: name))
                 actual[mediaId] = (listId, AniListPlan.Entry(mediaId: mediaId, status: status, progress: progress, score: score,
                                                               startedAt: AniListSyncAPI.day(row["startedAt"]), completedAt: AniListSyncAPI.day(row["completedAt"]),
-                                                              repeatCount: row["repeat"] as? Int ?? 0))
+                                                              repeatCount: row["repeat"] as? Int ?? 0,
+                                                              notes: (row["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 }))
+                listIds[mediaId] = listId
             }
             var expected: [AniListPlan.Expected] = [], notLookedUp = 0, keyOf: [Int: String] = [:]
             for title in store.workspace.activeTitles where Self.counts(title) {
@@ -417,14 +441,32 @@ struct AniListSyncAPI: Sendable {
         } catch { checkProblem = error.localizedDescription }
     }
     /// "Make AniList match": every title with a difference is sent again (what AniList holds isn't
-    /// trusted as sent), then AniList is read again.
-    func makeMatch(store: DiaryStore) {
+    /// trusted as sent), then AniList is read again. `force`: entries only on AniList come off too,
+    /// so AniList is exactly your diary.
+    func makeMatch(store: DiaryStore, force: Bool = false) {
         guard let comparison else { return }
         self.store = store
         for difference in comparison.missing + comparison.different { sent[difference.mediaId] = nil }
         AniListSyncStorage.save(sent, "sent.json")
         mark(comparison.keysToSend)
-        Task { await resume(); await check(store: store) }
+        let extra = force ? comparison.onlyOnAniList.compactMap { listIds[$0.mediaId] } : []
+        Task {
+            if !extra.isEmpty, let token = AniListSyncAccount.shared.token() {
+                let api = AniListSyncAPI(token: token)
+                for listId in extra {
+                    do { try await pace(); _ = try await api.call("mutation($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }", ["id": listId]) }
+                    catch { lastProblem = "Force Match stopped taking entries off AniList: " + error.localizedDescription; break }
+                }
+            }
+            await resume(); await check(store: store)
+        }
+    }
+    /// The notes or private setting changed: every entry sent so far goes again.
+    func resendAll() {
+        let keys = Array(Set(sent.values.map(\.key))).sorted()
+        sent = [:]; AniListSyncStorage.save(sent, "sent.json")
+        mark(keys)
+        Task { await resume() }
     }
 
     private func save(_ entry: AniListPlan.Entry, key: String, api: AniListSyncAPI) async throws {
@@ -434,10 +476,12 @@ struct AniListSyncAPI: Sendable {
         let empty: [String: any Sendable] = ["year": AniListSyncAPI.Null(), "month": AniListSyncAPI.Null(), "day": AniListSyncAPI.Null()]
         variables["startedAt"] = AniListSyncAPI.fuzzy(entry.startedAt).map { $0 as [String: any Sendable] } ?? empty
         variables["completedAt"] = AniListSyncAPI.fuzzy(entry.completedAt).map { $0 as [String: any Sendable] } ?? empty
+        variables["notes"] = entry.notes ?? ""
+        variables["private"] = AniListSyncAccount.shared.keepPrivate
         try await pace()
         let reply = try await api.call("""
-            mutation($mediaId: Int, $status: MediaListStatus, $progress: Int, $scoreRaw: Int, $repeat: Int, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {
-              SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, scoreRaw: $scoreRaw, repeat: $repeat, startedAt: $startedAt, completedAt: $completedAt) { id }
+            mutation($mediaId: Int, $status: MediaListStatus, $progress: Int, $scoreRaw: Int, $repeat: Int, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput, $notes: String, $private: Boolean) {
+              SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, scoreRaw: $scoreRaw, repeat: $repeat, startedAt: $startedAt, completedAt: $completedAt, notes: $notes, private: $private) { id }
             }
             """, variables)
         let listId = (AniListSyncAPI.data(reply)["SaveMediaListEntry"] as? [String: Any])?["id"] as? Int

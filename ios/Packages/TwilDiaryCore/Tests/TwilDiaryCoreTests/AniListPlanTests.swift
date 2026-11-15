@@ -96,3 +96,14 @@ private func weekly(_ season: Int, _ range: ClosedRange<Int>, from first: String
     #expect(result.keysToSend == ["movie:912598", "tv:65942"])
     #expect(result.notLookedUp == 2 && !result.matches)
 }
+
+@Test func aCompletedSeasonWatchedAgainIsRewatchingWithTheRewatchsProgress() {
+    let once = weekly(1, 1...12, from: "2013-04-06", watched: "2021-04-07T12:04:00Z")
+    let again = weekly(1, 1...4, from: "2013-04-06", watched: "2024-02-01T20:00:00Z")
+    let dateALive = [AniListPlan.Media(id: 15583, format: "TV", episodes: 12, start: "2013-04-06", end: "2013-06-22")]
+    let watching = AniListPlan.entries(status: "watching", score: 8, film: false, watches: once + again, chain: dateALive, notes: "  Kurumi!  ")
+    #expect(watching.entries == [AniListPlan.Entry(mediaId: 15583, status: "REPEATING", progress: 4, score: 80, startedAt: "2021-04-07", completedAt: "2021-04-07", repeatCount: 0, notes: "Kurumi!")])
+    let done = AniListPlan.entries(status: "completed", score: 8, film: false, watches: once + again, chain: dateALive)
+    #expect(done.entries.first?.status == "COMPLETED" && done.entries.first?.progress == 12, "finished in the diary: Completed, the rewatch not counted till it's whole")
+    #expect(AniListPlan.entries(status: "planned", score: nil, film: true, watches: [], chain: dateALive, notes: "").entries.first?.notes == nil, "an empty note is no note")
+}

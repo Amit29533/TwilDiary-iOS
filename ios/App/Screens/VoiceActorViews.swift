@@ -197,20 +197,20 @@ struct AniListMostWatched: View {
 struct AniListSettingsView: View {
     @AppStorage(AniListMostWatched.userKey) private var user = ""
     @State private var draft = ""
+    @State private var account = AniListSyncAccount.shared
     var body: some View {
         EdgeToEdgeScroll {
-            // Design (board 8): the service card, ACCOUNT, CHANGE PROFILE, then the profile link.
+            // Top to bottom as Simkl's page: the header with what AniList keeps, the sync (Account,
+            // Direct from AniList, Options, Waiting, Not kept, Disconnect), then the Characters profile.
             VStack(alignment: .leading, spacing: 16) {
-                SettingsServiceHeader(logo: .anilist, title: "AniList", subtitle: "Characters and voice actors",
-                                      badge: user.isEmpty ? ("Not set", .missing) : ("Connected", .good)) {
-                    HStack(spacing: 8) {
-                        Text("Ranks your favourite characters.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
-                        Spacer(minLength: 0)
-                        SettingsInfoButton(text: "Favourites ranks your characters from your public AniList profile. Only the username is used: no sign-in, no password.")
-                    }
+                SettingsServiceHeader(logo: .anilist, title: "AniList",
+                                      subtitle: account.username.map { "@" + $0 } ?? (user.isEmpty ? "Your anime list and characters" : "@" + user),
+                                      badge: account.signedIn ? ("Connected", .good) : user.isEmpty ? ("Not set", .missing) : ("Profile set", .configured)) {
+                    SettingsKeeps(items: ["Progress", "Status", "Score", "Dates", "Rewatches", "Notes"])
                 }
+                AniListSyncSection()
                 if !user.isEmpty {
-                    SettingsGroup(label: "Account") {
+                    SettingsGroup(label: "Characters profile", info: "Favourites ranks your characters from this public AniList profile (filled in when you sign in). Only the username is used.") {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Connected").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
@@ -223,7 +223,7 @@ struct AniListSettingsView: View {
                         }.padding(.horizontal, 15).frame(minHeight: 64)
                     }
                 }
-                SettingsGroup(label: user.isEmpty ? "Profile" : "Change profile") {
+                SettingsGroup(label: user.isEmpty ? "Characters profile" : "Change characters profile") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Username or profile link").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         TextField("twilight29533 or anilist.co/user/…", text: $draft).settingsField()
@@ -239,8 +239,6 @@ struct AniListSettingsView: View {
                     Link(destination: URL(string: "https://anilist.co/user/" + user)!) { SettingsLinkLabel(text: "Open profile on AniList") }
                         .padding(.horizontal, 4)
                 }
-                // Saving your anime activity to AniList (sign-in, separate from the public profile above).
-                AniListSyncSection()
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("AniList").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .onAppear { draft = user }
