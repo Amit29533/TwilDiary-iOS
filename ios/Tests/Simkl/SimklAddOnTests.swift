@@ -363,6 +363,29 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(Set(compared.events.map(\.id)), ["w-inc-", "w-rz-rz-1-26"])
     }
 
+    /// Memos as the test account returned them (memos=yes, 2026-11-15): one note per title; an
+    /// anime's cours that are one diary title join theirs; a title the diary lacks keeps Simkl's id.
+    func testSimklMemosBecomeEachTitlesNote() throws {
+        let workspace = try diary(titles: [("inc", "Inception", "movie", 27205), ("rz", "Re:ZERO", "anime", 65942)],
+                                  episodes: [("rz", 1, 1), ("rz", 1, 26)], watched: [("inc", nil), ("rz", "rz-1-1"), ("rz", "rz-1-26")])
+        let placements = ["65942:1:1": SimklPlacement(entry: 37151, season: 1, number: 1, at: .now),
+                          "65942:1:26": SimklPlacement(entry: 1063491, season: 1, number: 1, at: .now)]
+        let mapping = SimklLibrary.mapping(placements: placements, diary: workspace)
+        var library = TraktLibrary()
+        SimklLibrary.apply("movies", Data(#"{"movies":[{"status":"completed","last_watched_at":"2020-03-01T20:00:00Z","movie":{"title":"Inception","year":2010,"ids":{"simkl":472214,"tmdb":"27205"}},"memo":{"text":"  Watched with dad, 2020  ","is_private":true}},{"status":"completed","movie":{"title":"Heat","ids":{"simkl":1,"tmdb":"949"}},"memo":{"text":"","is_private":true}}]}"#.utf8), mapping: mapping, into: &library)
+        SimklLibrary.apply("anime", Data(#"""
+        {"anime":[{"status":"completed","anime_type":"tv","show":{"title":"Re:Zero","ids":{"simkl":37151,"tmdb":"65942"}},"memo":{"text":"Season one: loved it","is_private":true}},
+          {"status":"completed","anime_type":"tv","show":{"title":"Re:Zero 2nd Season Part 2","ids":{"simkl":1063491}},"memo":{"text":"Part 2 was slow","is_private":false}},
+          {"status":"completed","anime_type":"ova","show":{"title":"Kimetsu Gakuen","ids":{"simkl":2853600,"tmdb":"312924"}},"memo":{"text":"Silly OVA","is_private":true}}]}
+        """#.utf8), mapping: mapping, into: &library)
+        let notes = Dictionary(uniqueKeysWithValues: library.notes.compactMap { note in note.title?.diaryKey.map { ($0, note.text) } })
+        XCTAssertEqual(notes["movie:27205"], "Watched with dad, 2020", "trimmed")
+        XCTAssertNil(notes["movie:949"], "an empty memo is no note")
+        XCTAssertEqual(notes["tv:65942"], "Season one: loved it\n\nPart 2 was slow", "both cours' memos on the one diary show")
+        XCTAssertEqual(notes["tv:312924"], "Silly OVA", "a title the diary doesn't have keeps its note, by Simkl's TMDB id")
+        XCTAssertEqual(library.notes.count, 3)
+    }
+
     /// Force Match takes a whole title off Simkl with no seasons (all of it), apart from episodes.
     func testAWholeTitleComesOffWithoutSeasons() throws {
         var whole = SimklJob(kind: .unwatch, tmdb: 95396, movie: false, name: "Severance"); whole.wholeTitle = true

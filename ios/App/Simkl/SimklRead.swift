@@ -51,8 +51,9 @@ enum SimklLibrary {
         return mapping
     }
 
-    /// One `/sync/all-items/{movies|shows|anime}` reply (extended=full, episode_watched_at=yes)
-    /// added to the library: plays, ratings, Plan to watch (the watchlist) and Dropped.
+    /// One `/sync/all-items/{movies|shows|anime}` reply (extended=full, episode_watched_at=yes,
+    /// memos=yes) added to the library: plays, ratings, Plan to watch (the watchlist), Dropped and
+    /// each title's note (Simkl's memo).
     static func apply(_ kind: String, _ data: Data, mapping: Mapping, into library: inout TraktLibrary) {
         let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         for item in (root[kind] as? [[String: Any]]) ?? [] {
@@ -88,6 +89,14 @@ enum SimklLibrary {
                     }
                 }
             }
+            // The title's memo, on the diary's title, or else on Simkl's own TMDB id (an anime cour
+            // or OVA the diary doesn't have still has its note copied).
+            if let text = memo(item) {
+                let film = kind == "movies" || (item["anime_type"] as? String) == "movie"
+                if let noteRef = ref ?? tmdb.map({ TraktTitleRef(kind: film ? .movie : .show, traktId: nil, tmdbId: $0, imdbId: imdb, name: name, year: year) }) {
+                    addNote(text, for: noteRef, into: &library)
+                }
+            }
             guard let ref else { library.skipped += 1; continue }
             if ref.kind == .movie, item["last_watched_at"] is String || (item["status"] as? String) == "completed" {
                 library.plays.append(TraktPlay(historyId: TrackerDecode.playID("simkl|movie|\(ref.tmdbId ?? 0)"), title: ref, watchedAt: item["last_watched_at"] as? String))
@@ -106,6 +115,24 @@ enum SimklLibrary {
                 library.dropped.append(TraktListed(title: ref, listedAt: item["added_to_watchlist_at"] as? String))
             default: break
             }
+        }
+    }
+    /// A row's memo text (`"memo": {"text", "is_private"}`), nil when empty.
+    static func memo(_ item: [String: Any]) -> String? {
+        let raw = (item["memo"] as? [String: Any])?["text"] as? String ?? item["memo"] as? String
+        let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
+    /// One note per diary title: Simkl entries that are one diary title (an anime's cours) join
+    /// their memos, each once.
+    private static func addNote(_ text: String, for ref: TraktTitleRef, into library: inout TraktLibrary) {
+        guard let key = ref.diaryKey else { return }
+        if let index = library.notes.firstIndex(where: { $0.title?.diaryKey == key }) {
+            let old = library.notes[index]
+            guard !old.text.contains(text) else { return }
+            library.notes[index] = TraktNote(id: old.id, title: old.title, text: old.text + "\n\n" + text, updatedAt: nil)
+        } else {
+            library.notes.append(TraktNote(id: TrackerDecode.playID("simkl|note|" + key), title: ref, text: text, updatedAt: nil))
         }
     }
     /// The watched episodes of an all-items row (`seasons[].episodes[]`).

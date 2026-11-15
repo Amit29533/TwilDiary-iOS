@@ -7,6 +7,9 @@ struct SimklSettingsView: View {
     @State private var account = SimklAccount.shared
     @State private var mirror = SimklMirror.shared
     @State private var others = TrackerPreviewStore.shared
+    @State private var notesCopy = SimklNotesCopy.shared
+    @State private var confirmCopy = false
+    @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.webAuthenticationSession) private var webSession
     @State private var working = false
@@ -119,6 +122,16 @@ struct SimklSettingsView: View {
                                 .modifier(SettingsCard())
                         }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")
                     }
+                    if store.traktSignedInOnPhone && !TraktDirectStore.shared.localOnly {
+                        // Simkl's memos as private Trakt notes, where Trakt has none yet.
+                        SettingsGroup(label: "Notes", info: "Your Simkl notes become private notes on Trakt, only for titles with no note there yet. Nothing changes on Simkl.") {
+                            SettingsRow(title: "Copy notes to Trakt", subtitle: notesCopy.progress ?? notesDetail) {
+                                Button(notesCopy.running ? "Copying…" : "Copy") { confirmCopy = true }.buttonStyle(SettingsPillButtonStyle())
+                                    .lineLimit(1).disabled(notesCopy.running)
+                            }.accessibilityIdentifier("simkl-copy-notes")
+                        }
+                        if let result = notesCopy.result { SettingsFootnote(text: result) }
+                    }
                 }
                 if !mirror.notKept.isEmpty {
                     SettingsGroup(label: "Not kept on Simkl", info: "Simkl couldn’t find these, even by air date. They aren’t sent again; the rest of your activity carries on.") {
@@ -170,10 +183,22 @@ struct SimklSettingsView: View {
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().diaryPageNavigation("Simkl")
+            .confirmationDialog("Copy your Simkl notes to Trakt?", isPresented: $confirmCopy, titleVisibility: .visible) {
+                Button("Copy notes") { Task { await notesCopy.run(store: store) } }
+            } message: {
+                Text("Simkl and Trakt are read first. Each note goes to Trakt as a private note, only for titles with no note there; nothing on Simkl changes.")
+            }
             .confirmationDialog("Disconnect Simkl and remove what TwilDiary kept for it?", isPresented: $confirmRemove, titleVisibility: .visible) {
                 Button("Disconnect and remove", role: .destructive) { account.removeEverything(); message = "Simkl is disconnected and removed from this iPhone." }
             }
             .task { await mirror.resume() }
+    }
+
+    /// "12 on Simkl · 9 not on Trakt yet", from the last reads.
+    private var notesDetail: String {
+        guard let count = notesCopy.onSimkl else { return "Reads your Simkl notes first" }
+        let missing = notesCopy.plan.send.count
+        return "\(count.formatted()) on Simkl · " + (missing == 0 ? "all on Trakt" : "\(missing.formatted()) not on Trakt yet")
     }
 
     private func signIn() async {

@@ -462,9 +462,10 @@ struct SimklQueue: Codable, Equatable, Sendable {
         }
         for kind in ["movies", "shows", "anime"] {
             let saved = library.activities?.stamps[kind]
-            guard saved != stamps[kind] || SimklStorage.load(Data.self, "library-\(kind).json") == nil else { continue }
-            let data = try await api.get("/sync/all-items/\(kind)/", query: ["extended": "full", "episode_watched_at": "yes"])
-            SimklStorage.save(data, "library-\(kind).json")
+            guard saved != stamps[kind] || SimklStorage.load(Data.self, Self.libraryFile(kind)) == nil else { continue }
+            // memos=yes: Simkl leaves each title's note (its memo) out unless asked (tested 2026-11-15).
+            let data = try await api.get("/sync/all-items/\(kind)/", query: ["extended": "full", "episode_watched_at": "yes", "memos": "yes"])
+            SimklStorage.save(data, Self.libraryFile(kind))
             requests += 1
         }
         let diary = store.diaryToMatch
@@ -475,11 +476,14 @@ struct SimklQueue: Codable, Equatable, Sendable {
         let mapping = SimklLibrary.mapping(placements: placements, diary: diary)
         var read = TraktLibrary(activities: TraktActivities(all: root["all"] as? String, stamps: stamps))
         for kind in ["movies", "shows", "anime"] {
-            if let data = SimklStorage.load(Data.self, "library-\(kind).json") { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }
+            if let data = SimklStorage.load(Data.self, Self.libraryFile(kind)) { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }
         }
         library = read
         return (requests, unplacedAnime(diary).count)
     }
+    /// Each kind's last reply, kept on this iPhone. "-v2": the replies with memos, so the copies
+    /// saved before they were asked for are read again once.
+    static func libraryFile(_ kind: String) -> String { "library-\(kind)-v2.json" }
     /// Diary anime episodes (watched) and films whose place on Simkl isn't known yet.
     private func unplacedAnime(_ diary: Workspace) -> [SimklJob] {
         let titles = Dictionary(diary.activeTitles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
