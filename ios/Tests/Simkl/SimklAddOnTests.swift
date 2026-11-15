@@ -363,6 +363,39 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(Set(compared.events.map(\.id)), ["w-inc-", "w-rz-rz-1-26"])
     }
 
+    /// Simkl files some films as an OVA or ONA with no TMDB id (Voices of a Distant Star as the OVA
+    /// "Hoshi no Koe", test account 2026-11-15): the entry the diary's film was placed in is read as
+    /// that film, its watch and rating included.
+    func testAFilmSimklFilesAsAnOVAIsReadAsTheFilm() throws {
+        let workspace = try diary(titles: [("vd", "Voices of a Distant Star", "anime-movie", 37228)], episodes: [], watched: [("vd", nil)])
+        let mapping = SimklLibrary.mapping(placements: ["movie:37228": SimklPlacement(entry: 37116, season: nil, number: nil, at: .now)], diary: workspace)
+        var library = TraktLibrary()
+        SimklLibrary.apply("anime", Data(#"{"anime":[{"status":"completed","last_watched_at":"2021-04-06T18:30:00Z","user_rating":7,"user_rated_at":"2026-11-15T05:24:57Z","anime_type":"ova","watched_episodes_count":1,"show":{"title":"Hoshi no Koe","ids":{"simkl":37116,"mal":"256","anidb":"104"}},"seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2021-04-06T18:30:00Z"}]}]}]}"#.utf8), mapping: mapping, into: &library)
+        XCTAssertEqual(library.plays.map(\.title.diaryKey), ["movie:37228"])
+        XCTAssertEqual(library.ratings.map(\.rating), [7])
+        XCTAssertEqual(library.skipped, 0, "no longer an unreadable show")
+    }
+
+    /// Simkl answered for TONIKAWA (the show was on the list from its rating) but kept no episode
+    /// (test account 2026-11-15): an anime episode counts as sent only when that episode is watched
+    /// there; a TV episode sent by its ids still counts once Simkl has the title.
+    func testAnAnimeEpisodeCountsAsSentOnlyWhenSimklHasThatEpisode() throws {
+        let toni = SimklJob(kind: .watch, tmdb: 100049, movie: false, anime: true, name: "TONIKAWA", year: 2020, season: 1, number: 1, airedOn: nil, watchedAt: "2021-04-07T12:04:00Z")
+        let drama = SimklJob(kind: .watch, tmdb: 1396, movie: false, name: "Breaking Bad", season: 1, number: 3, watchedAt: "2020-03-03T20:00:00Z")
+        let groups = SimklBody.groups([toni, drama], simkl: { _ in nil }, external: { _ in nil })
+        let reply = Data(#"{"added":{"episodes":0,"statuses":[{"request":{"ids":{"tmdb":100049},"type":"show"},"response":{"status":"watching","simkl_type":"anime","anime_type":"tv"}},{"request":{"ids":{"tmdb":1396},"type":"show"},"response":{"status":"watching","simkl_type":"tv"}}]},"not_found":{"movies":[],"shows":[],"episodes":[]}}"#.utf8)
+        XCTAssertEqual(SimklBody.toCheck(reply, groups: groups, missing: []), [0], "the anime is checked although Simkl answered for it")
+
+        let question = SimklBody.watchedQuestion(groups, asking: [0, 1])
+        let items = try XCTUnwrap(JSONSerialization.jsonObject(with: question.body) as? [[String: Any]])
+        XCTAssertEqual(items.compactMap { $0["type"] as? String }, ["show", "show"], "a TMDB id alone can name a movie")
+
+        let dropped = Data(#"[{"result":true,"list":"watching","seasons":[{"number":1,"episodes":[{"number":1,"watched":false},{"number":2,"watched":false}]}]},{"result":true,"list":"watching"}]"#.utf8)
+        XCTAssertEqual(SimklBody.confirmed(dropped, groups: groups, asked: [0, 1]), [drama.id], "the show listed with nothing watched isn't the episode")
+        let kept = Data(#"[{"result":true,"list":"watching","seasons":[{"number":1,"episodes":[{"number":1,"watched":true}]}]}]"#.utf8)
+        XCTAssertEqual(SimklBody.confirmed(kept, groups: groups, asked: [0]), [toni.id])
+    }
+
     /// Force Match takes a whole title off Simkl with no seasons (all of it), apart from episodes.
     func testAWholeTitleComesOffWithoutSeasons() throws {
         var whole = SimklJob(kind: .unwatch, tmdb: 95396, movie: false, name: "Severance"); whole.wholeTitle = true

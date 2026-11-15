@@ -472,14 +472,27 @@ enum SimklBody {
         let answered = filed(reply, groups: groups)
         return groups.indices.filter { index in answered[index] == nil && !groups[index].jobs.contains { missing.contains($0.id) } }
     }
+    /// The groups checked on the account after a watch: those Simkl said nothing about, and every
+    /// anime episode sent in a numbering that can be asked about (Simkl's own, or TVDB's seasons),
+    /// answered or not. Simkl answers for the show and can still drop the episode (TONIKAWA S1 E1
+    /// on the test account, 2026-11-15: the show listed as Watching, 0 watched). One sent by its
+    /// TVDB episode id is left as before: Simkl may file it in another entry than the show's.
+    static func toCheck(_ reply: Data, groups: [Group], missing: Set<String>) -> [Int] {
+        let silent = Set(unclear(reply, groups: groups, missing: missing))
+        return groups.indices.filter { index in
+            silent.contains(index) || (!groups[index].jobs.contains { missing.contains($0.id) }
+                && groups[index].jobs.contains { $0.kind == .watch && $0.anime && !$0.movie && !($0.entry == nil && $0.tvdbEpisode != nil) })
+        }
+    }
     /// `/sync/watched`'s question for those groups (an episode sent by TVDB id can't be asked about:
-    /// it goes on to TVDB's seasons).
+    /// it goes on to TVDB's seasons). A show asked by TMDB id says it's a show: alone, the id can
+    /// name a movie (TMDB 100049 came back as another title, test account 2026-11-15).
     static func watchedQuestion(_ groups: [Group], asking: [Int]) -> (body: Data, asked: [Int]) {
         var items: [[String: Any]] = [], asked: [Int] = []
         for index in asking {
             guard let first = groups[index].jobs.first, !(first.entry == nil && first.tvdbEpisode != nil) else { continue }
             var item: [String: Any] = ["ids": groups[index].ids]
-            if first.movie && first.entry == nil { item["type"] = "movie" }
+            if first.entry == nil { item["type"] = first.movie ? "movie" : "show" }
             items.append(item); asked.append(index)
         }
         return ((try? JSONSerialization.data(withJSONObject: items, options: [.sortedKeys])) ?? Data("[]".utf8), asked)
@@ -492,7 +505,10 @@ enum SimklBody {
         for (row, index) in zip(rows, asked) where (row["result"] as? Bool) == true {
             let seasons = (row["seasons"] as? [[String: Any]]) ?? []
             for job in groups[index].jobs {
-                guard job.entry != nil || job.ownNumbering, !job.movie || job.entry != nil else { out.insert(job.id); continue }
+                // A movie, or a show's episode sent by its ids (not anime): the title there is enough.
+                // An anime episode needs that very episode watched (in the numbering it was sent in).
+                if job.movie && job.entry == nil { out.insert(job.id); continue }
+                if !job.movie && job.entry == nil && !job.ownNumbering && !job.anime { out.insert(job.id); continue }
                 let season = job.movie ? 1 : job.season ?? 1, number = job.movie ? 1 : job.number ?? 0
                 let watched = seasons.contains { s in
                     (s["number"] as? NSNumber)?.intValue == season

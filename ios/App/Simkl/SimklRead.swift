@@ -72,9 +72,14 @@ enum SimklLibrary {
                 ref = tmdb.map { TraktTitleRef(kind: .show, traktId: nil, tmdbId: $0, imdbId: imdb, name: mapping.diaryShows[$0] ?? name, year: year) }
                 episodes = watched(item)
             default:
-                if (item["anime_type"] as? String) == "movie" {
+                // A film: Simkl's "movie", or any entry (OVA, ONA, special) a diary film was placed in.
+                // Simkl files Voices of a Distant Star as an OVA and A Whisker Away as an ONA, both
+                // without a TMDB id (test account, 2026-11-15); read as shows, their watches and
+                // ratings were lost.
+                let placedFilm = entry.flatMap { mapping.films[$0] }
+                if (item["anime_type"] as? String) == "movie" || placedFilm != nil {
                     // An anime film: by its TMDB id when the diary has that film, else where one was placed.
-                    let film = tmdb.flatMap { mapping.diaryMovies[$0] != nil ? $0 : nil } ?? entry.flatMap { mapping.films[$0] }
+                    let film = tmdb.flatMap { mapping.diaryMovies[$0] != nil ? $0 : nil } ?? placedFilm
                     ref = film.map { TraktTitleRef(kind: .movie, traktId: nil, tmdbId: $0, imdbId: imdb, name: mapping.diaryMovies[$0] ?? name, year: year) }
                 } else {
                     let show = entry.flatMap { mapping.shows[$0] } ?? tmdb.flatMap { mapping.diaryShows[$0] != nil ? $0 : nil }

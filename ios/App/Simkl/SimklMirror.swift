@@ -339,7 +339,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
         }
         if filedDifferently.count > 50 { filedDifferently = Array(filedDifferently.prefix(50)) }
         if !filed.isEmpty { SimklStorage.save(filedDifferently, "filed.json") }
-        let unclear = SimklBody.unclear(reply, groups: groups, missing: missing)
+        let unclear = SimklBody.toCheck(reply, groups: groups, missing: missing)
         guard !unclear.isEmpty else { return [] }
         let question = SimklBody.watchedQuestion(groups, asking: unclear)
         var landed = Set<String>()
@@ -462,9 +462,12 @@ struct SimklQueue: Codable, Equatable, Sendable {
         }
         for kind in ["movies", "shows", "anime"] {
             let saved = library.activities?.stamps[kind]
-            guard saved != stamps[kind] || SimklStorage.load(Data.self, "library-\(kind).json") == nil else { continue }
-            let data = try await api.get("/sync/all-items/\(kind)/", query: ["extended": "full", "episode_watched_at": "yes"])
-            SimklStorage.save(data, "library-\(kind).json")
+            guard saved != stamps[kind] || SimklStorage.load(Data.self, Self.libraryFile(kind)) == nil else { continue }
+            // include_all_episodes: without it Simkl lists the episodes of titles still being
+            // watched only; a completed show came back as a count (696 watched, 40 listed, on the
+            // test account 2026-11-15), so its watches looked missing and were offered again.
+            let data = try await api.get("/sync/all-items/\(kind)/", query: ["extended": "full", "episode_watched_at": "yes", "include_all_episodes": "yes"])
+            SimklStorage.save(data, Self.libraryFile(kind))
             requests += 1
         }
         let diary = store.diaryToMatch
@@ -475,11 +478,14 @@ struct SimklQueue: Codable, Equatable, Sendable {
         let mapping = SimklLibrary.mapping(placements: placements, diary: diary)
         var read = TraktLibrary(activities: TraktActivities(all: root["all"] as? String, stamps: stamps))
         for kind in ["movies", "shows", "anime"] {
-            if let data = SimklStorage.load(Data.self, "library-\(kind).json") { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }
+            if let data = SimklStorage.load(Data.self, Self.libraryFile(kind)) { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }
         }
         library = read
         return (requests, unplacedAnime(diary).count)
     }
+    /// Each kind's last reply, kept on this iPhone. "-v2": with every episode, so the copies saved
+    /// before include_all_episodes are read again once.
+    static func libraryFile(_ kind: String) -> String { "library-\(kind)-v2.json" }
     /// Diary anime episodes (watched) and films whose place on Simkl isn't known yet.
     private func unplacedAnime(_ diary: Workspace) -> [SimklJob] {
         let titles = Dictionary(diary.activeTitles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -667,7 +673,12 @@ struct SimklQueue: Codable, Equatable, Sendable {
             guard job.anime, let found = try? await api.searchAnime(title: job.name, year: job.year) else { return nil }
             return (found.simkl, nil, nil, (try? await detail(found.simkl, api: api))?.native)
         }
-        guard let day = job.airedOn else { return nil }
+        // The diary built from a tracker keeps no air dates: TMDB's season (your server's without
+        // your TMDB key, or when TMDB can't be reached) gives the day, so the episode is placed by
+        // date instead of Simkl's TVDB mapping (which dropped TONIKAWA S1 E1, 2026-11-15).
+        var aired = job.airedOn
+        if aired == nil, let number = job.number { aired = await seasonDays(job)?.days[number] }
+        guard let day = aired else { return nil }
         var root = match
         if root == nil, job.anime { root = try? await api.searchAnime(title: job.name, year: job.year) }
         guard let root else { return nil }
@@ -720,7 +731,13 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// day of this one, sorted, and this one's title. Kept like Simkl's lists: a day while the
     /// season airs, else a month.
     private func tmdbEpisode(_ job: SimklJob, day: String) async -> (sameDay: [Int]?, name: String?) {
-        guard let season = job.season else { return (nil, nil) }
+        guard let days = await seasonDays(job) else { return (nil, nil) }
+        return (days.days.filter { SimklBody.daysApart($0.value, day) <= 1 }.map(\.key).sorted(), job.number.flatMap { days.names?[$0] })
+    }
+    /// TMDB's air day and title of each episode of the job's season, read once and kept (a season
+    /// still airing is read again after a day, others after a month).
+    private func seasonDays(_ job: SimklJob) async -> Lookups.Days? {
+        guard let season = job.season else { return nil }
         let key = "\(job.tmdb)/\(season)"
         var days = lookups.tmdbDays?[key]
         if let known = days {
@@ -728,14 +745,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
             let airing = SimklBody.daysApart(latest, DiaryDate.day(.now)) <= 30
             if known.names == nil || Date().timeIntervalSince(known.at) >= (airing ? 86_400 : 30 * 86_400) { days = nil }
         }
-        if days == nil, let store, let token = TMDBDirect.token(store),
-           let data = try? await TMDBDirect.data("tv/\(job.tmdb)/season/\(season)", query: [:], token: token),
-           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+        if days == nil, let store, let page = try? await store.catalogEpisodes(CatalogRoute(kind: .tv, id: job.tmdb), season: season, reveal: true) {
             var list: [Int: String] = [:], names: [Int: String] = [:]
-            for episode in root["episodes"] as? [[String: Any]] ?? [] {
-                guard let number = (episode["episode_number"] as? NSNumber)?.intValue else { continue }
-                if let aired = episode["air_date"] as? String, aired.count == 10 { list[number] = aired }
-                if let name = episode["name"] as? String, !name.isEmpty { names[number] = name }
+            for episode in page.items {
+                if let aired = episode.airedOn.map({ String($0.prefix(10)) }), aired.count == 10 { list[episode.number] = aired }
+                if !episode.name.isEmpty { names[episode.number] = episode.name }
             }
             days = .init(at: .now, days: list, names: names)
             var all = lookups.tmdbDays ?? [:]
@@ -743,8 +757,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
             lookups.tmdbDays = all
             trimAndSaveLookups()
         }
-        guard let days = days ?? lookups.tmdbDays?[key] else { return (nil, nil) }
-        return (days.days.filter { SimklBody.daysApart($0.value, day) <= 1 }.map(\.key).sorted(), job.number.flatMap { days.names?[$0] })
+        return days ?? lookups.tmdbDays?[key]
     }
     /// The episode's own TVDB id, from TMDB (your TMDB key; without it, none).
     private func tvdbEpisodeID(_ job: SimklJob) async -> Int? {
