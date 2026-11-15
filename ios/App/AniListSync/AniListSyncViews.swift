@@ -1,14 +1,13 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// AniList's page → Sync (phase 1): the one-time app setup, sign-in, "Also save my activity to
-/// AniList", what's waiting, Send everything, and what AniList couldn't take.
+/// AniList's page → Sync (phase 1): sign-in, "Also save my activity to AniList", what's waiting,
+/// Send everything, and what AniList couldn't take.
 struct AniListSyncSection: View {
     @State private var account = AniListSyncAccount.shared
     @State private var sync = AniListSync.shared
     @Environment(DiaryStore.self) private var store
     @Environment(\.webAuthenticationSession) private var webSession
-    @State private var clientDraft = ""
     @State private var working = false
     @State private var message: String?
     @State private var confirmEverything = false
@@ -31,28 +30,10 @@ struct AniListSyncSection: View {
                             .disabled(!account.saving || sync.sending)
                     }.accessibilityIdentifier("anilist-sync-everything")
                 } else {
-                    if (account.clientId ?? "").isEmpty {
-                        TextField("AniList app client ID", text: $clientDraft).font(.system(size: 17, design: .monospaced))
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.numberPad)
-                            .submitLabel(.done).onSubmit(saveClient).settingsRowFrame().accessibilityIdentifier("anilist-sync-client")
-                        SettingsDivider()
-                        Link(destination: URL(string: "https://anilist.co/settings/developer")!) {
-                            SettingsRow(title: "AniList developer page") {
-                                Image(systemName: "arrow.up.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
-                            }
-                        }.buttonStyle(.plain)
-                        SettingsDivider()
-                    }
                     SettingsRow(title: "Not signed in") {
-                        Button(working ? "Opening…" : "Sign in") {
-                            if (account.clientId ?? "").isEmpty { saveClient() }
-                            Task { await signIn() }
-                        }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(working).accessibilityIdentifier("anilist-sync-sign-in")
+                        Button(working ? "Opening…" : "Sign in") { Task { await signIn() } }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(working).accessibilityIdentifier("anilist-sync-sign-in")
                     }
                 }
-            }
-            if !account.signedIn, (account.clientId ?? "").isEmpty {
-                SettingsFootnote(text: "One-time setup: on AniList’s developer page, create an app with the redirect \(AniListSyncAccount.redirect), then paste its client ID above.")
             }
             if !sync.waiting.isEmpty || sync.lastProblem != nil {
                 SettingsGroup(label: "Waiting") {
@@ -81,13 +62,12 @@ struct AniListSyncSection: View {
                 }
             }
             if let message { SettingsFootnote(text: message) }
-            if account.signedIn || !(account.clientId ?? "").isEmpty {
+            if account.signedIn || !sync.waiting.isEmpty || !sync.notKept.isEmpty {
                 Button(role: .destructive) { confirmRemove = true } label: {
                     Text("Disconnect AniList sync").font(.system(size: 17)).frame(maxWidth: .infinity, minHeight: 52)
                 }.buttonStyle(.plain).foregroundStyle(.red).cardSurface(16).accessibilityIdentifier("anilist-sync-remove")
             }
         }
-        .onAppear { clientDraft = account.clientId ?? "" }
         .task { await sync.resume(store: store) }
         .confirmationDialog("Send your whole anime diary to AniList?", isPresented: $confirmEverything, titleVisibility: .visible) {
             Button("Send everything") { sync.sendEverything(store: store) }
@@ -95,16 +75,12 @@ struct AniListSyncSection: View {
             Text("Each anime’s seasons get their progress, status, score and dates on AniList, about two seconds a title, in the background. Entries already on AniList are updated to match your diary.")
         }
         .confirmationDialog("Disconnect the AniList sync?", isPresented: $confirmRemove, titleVisibility: .visible) {
-            Button("Disconnect and remove", role: .destructive) { account.removeEverything(); clientDraft = ""; message = "AniList sync is disconnected and removed from this iPhone. Nothing on AniList changed." }
+            Button("Disconnect and remove", role: .destructive) { account.removeEverything(); message = "AniList sync is disconnected and removed from this iPhone. Nothing on AniList changed." }
         } message: {
             Text("Signs out and deletes what TwilDiary kept for the AniList sync on this iPhone. Your AniList list stays as it is.")
         }
     }
 
-    private func saveClient() {
-        let id = clientDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !id.isEmpty { account.clientId = id }
-    }
     private func signIn() async {
         working = true; message = nil
         defer { working = false }

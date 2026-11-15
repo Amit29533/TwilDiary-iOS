@@ -115,23 +115,18 @@ struct AniListSyncAPI: Sendable {
     }
 }
 
-/// AniList's sign-in and the "Also save my activity to AniList" switch. You add TwilDiary's AniList
-/// app once (its client ID, made on AniList's developer page with the redirect below); signing in
-/// opens AniList's page in Apple's sheet and comes back with a token valid for a year.
+/// AniList's sign-in and the "Also save my activity to AniList" switch. Signing in opens AniList's
+/// page in Apple's sheet for TwilDiary's AniList app and comes back with a token valid for a year.
 @MainActor @Observable final class AniListSyncAccount {
     static let shared = AniListSyncAccount()
     static let redirect = ProviderWebSignIn.callbackScheme + "://auth/anilist"
-    private static let clientKey = AniListSyncStorage.prefix + "clientId"
+    /// TwilDiary's AniList app (redirect twildiary://auth/anilist). A client ID is public; the
+    /// implicit grant has no secret.
+    nonisolated static let clientId = "57066"
     private static let nameKey = AniListSyncStorage.prefix + "username"
     private static let savingKey = AniListSyncStorage.prefix + "saving"
     private static let expiresKey = AniListSyncStorage.prefix + "expires"
 
-    private var clientValue: String? = UserDefaults.standard.string(forKey: AniListSyncAccount.clientKey)
-    /// TwilDiary's AniList app (a client ID is public; the implicit grant has no secret).
-    var clientId: String? {
-        get { clientValue }
-        set { clientValue = newValue; UserDefaults.standard.set(newValue, forKey: Self.clientKey) }
-    }
     private(set) var username: String? = UserDefaults.standard.string(forKey: AniListSyncAccount.nameKey)
     private(set) var expiresAt: Date? = {
         let seconds = UserDefaults.standard.double(forKey: AniListSyncAccount.expiresKey)
@@ -155,11 +150,8 @@ struct AniListSyncAPI: Sendable {
 
     /// Signs in on AniList's page. Returns false if cancelled.
     func signIn(using session: WebAuthenticationSession) async throws -> Bool {
-        guard let clientId = clientId?.trimmingCharacters(in: .whitespacesAndNewlines), !clientId.isEmpty else {
-            throw APIError.message("First add TwilDiary’s AniList app: paste its client ID below (one-time setup).")
-        }
         var page = URLComponents(string: "https://anilist.co/api/v2/oauth/authorize")!
-        page.queryItems = [URLQueryItem(name: "client_id", value: clientId), URLQueryItem(name: "response_type", value: "token")]
+        page.queryItems = [URLQueryItem(name: "client_id", value: Self.clientId), URLQueryItem(name: "response_type", value: "token")]
         let callback: URL
         do { callback = try await session.authenticate(using: page.url!, callbackURLScheme: ProviderWebSignIn.callbackScheme) }
         catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin { return false }
@@ -196,10 +188,10 @@ struct AniListSyncAPI: Sendable {
         UserDefaults.standard.removeObject(forKey: Self.expiresKey); UserDefaults.standard.removeObject(forKey: Self.nameKey)
         hasToken = false; expiresAt = nil; username = nil
     }
-    /// Signs out and removes everything the AniList sync kept here (the client ID too). Nothing on AniList changes.
+    /// Signs out and removes everything the AniList sync kept here. Nothing on AniList changes.
     func removeEverything() {
         AniListSyncStorage.removeEverything()
-        hasToken = false; expiresAt = nil; username = nil; clientId = nil; saving = false
+        hasToken = false; expiresAt = nil; username = nil; saving = false
         AniListSync.shared.forget()
     }
 }
