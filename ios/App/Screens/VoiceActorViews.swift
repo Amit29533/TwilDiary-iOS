@@ -352,7 +352,7 @@ struct MostWatchedCast: View {
     /// nil without a TMDB key.
     func round(_ kind: CastRanking.Kind, store: DiaryStore) async -> Round? {
         guard let token = TMDBDirect.token(store) else { return nil }
-        let watched = CastRanking.watched(store.workspace, kind: kind)
+        let watched = CastRanking.watched(store.workspace)
         let missing = watched.filter { casts[$0.key] == nil }.prefix(20)
         let fetched = await withTaskGroup(of: (String, [CastRanking.Member]?).self) { group in
             for title in missing {
@@ -375,6 +375,6 @@ struct MostWatchedCast: View {
             try? JSONEncoder().encode(casts).write(to: file, options: .atomic)
         }
         let counted = watched.filter { casts[$0.key] != nil }.count
-        return Round(rows: CastRanking.rank(watched, casts: casts), counted: counted, total: watched.count, pending: watched.count - counted)
+        return Round(rows: CastRanking.rank(watched, casts: casts, kind: kind), counted: counted, total: watched.count, pending: watched.count - counted)
     }
 }

@@ -88,10 +88,32 @@ import TwilDiaryTestSupport
         "tv:2": [CastRanking.Member(id: 7, name: "Kana Ichinose", character: "Ryo (voice)", profilePath: "/k.jpg")],
         "tv:3": [atsumi]
     ]
-    let rows = CastRanking.rank(watched, casts: casts)
+    let rows = CastRanking.rank(watched, casts: casts, kind: .voice)
     #expect(rows.map(\.id) == [7, 8])
     #expect(rows[0].titles == 2 && rows[0].plays == 40 && rows[0].character == "Fern" && rows[0].title == "Frieren")
     #expect(rows[1].titles == 2 && rows[1].plays == 31)
+}
+
+/// VC or Cast is decided per role (2026-11-16): TMDB's "(voice)" makes a voice role in any title;
+/// an animated title that marks some roles so has its unmarked ones played on camera; one that
+/// marks none (most anime) is all voice.
+@Test func voiceOrCastIsDecidedPerRole() {
+    let watched = [CastRanking.Watched(key: "movie:118340", name: "Guardians of the Galaxy", plays: 1, animated: false),
+                   CastRanking.Watched(key: "movie:2300", name: "Space Jam", plays: 1, animated: true),
+                   CastRanking.Watched(key: "tv:209867", name: "Frieren", plays: 28, animated: true)]
+    let casts: [String: [CastRanking.Member]] = [
+        "movie:118340": [CastRanking.Member(id: 1, name: "Chris Pratt", character: "Peter Quill", profilePath: nil),
+                         CastRanking.Member(id: 2, name: "Vin Diesel", character: "Groot (voice)", profilePath: nil)],
+        "movie:2300": [CastRanking.Member(id: 3, name: "Michael Jordan", character: "Himself", profilePath: nil),
+                       CastRanking.Member(id: 4, name: "Billy West", character: "Bugs Bunny / Elmer Fudd (voice)", profilePath: nil)],
+        "tv:209867": [CastRanking.Member(id: 5, name: "Atsumi Tanezaki", character: "Frieren", profilePath: nil)]
+    ]
+    let voice = CastRanking.rank(watched, casts: casts, kind: .voice).map(\.name)
+    let cast = CastRanking.rank(watched, casts: casts, kind: .cast).map(\.name)
+    #expect(Set(voice) == ["Vin Diesel", "Billy West", "Atsumi Tanezaki"])
+    #expect(Set(cast) == ["Chris Pratt", "Michael Jordan"])
+    #expect(CastRanking.rank(watched, casts: casts, kind: .voice).first { $0.name == "Billy West" }?.character == "Bugs Bunny / Elmer Fudd")
+    #expect(CastRanking.isVoice(CastRanking.Member(id: 6, name: "X", character: "Narrator (voice) (uncredited)", profilePath: nil), animated: false, titleMarksVoices: true))
 }
 
 /// New-episode alerts: the calendar's shows (any not dropped), episodes airing in the next two weeks,
