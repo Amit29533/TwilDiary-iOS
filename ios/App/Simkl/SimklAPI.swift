@@ -347,9 +347,10 @@ enum SimklBody {
             case .watch, .unwatch:
                 if first.movie && first.entry != nil {
                     // A film Simkl files as an anime entry: its one episode (a removal takes the entry).
-                    if first.kind == .watch {
-                        var episode: [String: Any] = ["number": 1]
-                        if let when = first.watchedAt { episode["watched_at"] = when }
+                    // A part of a film entry in parts (Date a Bullet's part 2) goes, and comes off, alone.
+                    if first.kind == .watch || first.number != nil {
+                        var episode: [String: Any] = ["number": first.number ?? 1]
+                        if first.kind == .watch, let when = first.watchedAt { episode["watched_at"] = when }
                         item["seasons"] = [["number": 1, "episodes": [episode]] as [String: Any]]
                     }
                 } else if first.movie {
@@ -509,7 +510,7 @@ enum SimklBody {
                 // An anime episode needs that very episode watched (in the numbering it was sent in).
                 if job.movie && job.entry == nil { out.insert(job.id); continue }
                 if !job.movie && job.entry == nil && !job.ownNumbering && !job.anime { out.insert(job.id); continue }
-                let season = job.movie ? 1 : job.season ?? 1, number = job.movie ? 1 : job.number ?? 0
+                let season = job.movie ? 1 : job.season ?? 1, number = job.movie ? job.number ?? 1 : job.number ?? 0
                 let watched = seasons.contains { s in
                     (s["number"] as? NSNumber)?.intValue == season
                         && ((s["episodes"] as? [[String: Any]]) ?? []).contains { ($0["number"] as? NSNumber)?.intValue == number && ($0["watched"] as? Bool) == true }
@@ -556,6 +557,13 @@ enum SimklBody {
         }
         let exact = pool.filter { daysApart($0.day ?? "", day) == 0 }
         return exact.count == 1 ? exact[0] : nil
+    }
+    /// The part of a film entry in parts that is this film: the one part whose title the film's
+    /// name holds ("Date A Bullet: Nightmare or Queen" holds "Nightmare or Queen", part 2).
+    static func filmPart(_ name: String, in parts: [SimklAPI.Episode]) -> Int? {
+        guard let film = titleKey(name).map({ " \($0) " }) else { return nil }
+        let named = parts.filter { part in !part.special && titleKey(part.title).map { film.contains(" \($0) ") } == true }
+        return named.count == 1 ? named[0].number : nil
     }
     /// An episode title as compared: lower case, words of letters and digits. A generic one
     /// ("Episode 3", "Volume 1", "OAD") is no evidence: nil.

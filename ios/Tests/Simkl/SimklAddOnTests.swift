@@ -417,6 +417,41 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(library.plays.map { "\($0.title.diaryKey ?? "")|\($0.season ?? 0)|\($0.episode ?? 0)" }.sorted(), ["tv:98123|1|1", "tv:98123|1|2"])
     }
 
+    /// Simkl keeps Date a Bullet as one film entry in two parts (Dead or Bullet, Nightmare or Queen;
+    /// test account 2026-11-15). Each diary film is placed on its part by title, read back from it,
+    /// and both share the entry's one rating.
+    @MainActor func testAFilmEntryInPartsIsReadAsEachPartsFilm() throws {
+        let parts = [SimklAPI.Episode(number: 1, day: "2020-08-14", special: false, tvdbSeason: nil, tvdbEpisode: nil, title: "Dead or Bullet"),
+                     SimklAPI.Episode(number: 2, day: "2020-11-13", special: false, tvdbSeason: nil, tvdbEpisode: nil, title: "Nightmare or Queen")]
+        XCTAssertEqual(SimklBody.filmPart("Date A Bullet: Nightmare or Queen", in: parts), 2)
+        XCTAssertEqual(SimklBody.filmPart("Date A Bullet: Dead or Bullet", in: parts), 1)
+        XCTAssertNil(SimklBody.filmPart("Date A Bullet", in: parts), "no part's title in the name: not placed")
+
+        let workspace = try diary(titles: [("db", "Date A Bullet: Dead or Bullet", "anime-movie", 685099), ("nq", "Date A Bullet: Nightmare or Queen", "anime-movie", 760161)],
+                                  episodes: [], watched: [("db", nil), ("nq", nil)])
+        let mapping = SimklLibrary.mapping(placements: ["movie:760161": SimklPlacement(entry: 1168961, season: 1, number: 2, at: .now)], diary: workspace)
+        var library = TraktLibrary()
+        SimklLibrary.apply("anime", Data(#"{"anime":[{"status":"completed","last_watched_at":"2021-04-06T18:30:00Z","user_rating":8,"user_rated_at":"2026-11-15T05:24:57Z","anime_type":"movie","watched_episodes_count":2,"total_episodes_count":2,"show":{"title":"Date a Bullet","ids":{"simkl":1168961,"tmdb":"685099"}},"seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2021-04-05T18:30:00Z"},{"number":2,"watched_at":"2021-04-06T18:30:00Z"}]}]}]}"#.utf8), mapping: mapping, into: &library)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: library.plays.compactMap { play in play.title.diaryKey.map { ($0, play.watchedAt ?? "") } }),
+                       ["movie:685099": "2021-04-05T18:30:00Z", "movie:760161": "2021-04-06T18:30:00Z"])
+        XCTAssertEqual(library.ratings.map(\.rating), [8, 8], "one rating for both parts")
+        XCTAssertEqual(library.skipped, 0)
+
+        // Sent, and taken off, as that part alone; known as the film wherever it was placed.
+        var watch = SimklJob(kind: .watch, tmdb: 760161, movie: true, anime: true, name: "Date A Bullet: Nightmare or Queen", watchedAt: "2021-04-06T18:30:00Z")
+        let unplacedKey = SimklMirror.changeKey(watch)
+        watch.entry = 1168961; watch.season = 1; watch.number = 2; watch.ownNumbering = true
+        XCTAssertEqual(SimklMirror.changeKey(watch), unplacedKey)
+        var off = watch; off.kind = .unwatch; off.watchedAt = nil
+        for job in [watch, off] {
+            let body = SimklBody.body(SimklBody.groups([job], simkl: { _ in nil }, external: { _ in nil }))
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let episode = try XCTUnwrap(((((root["shows"] as? [[String: Any]])?.first?["seasons"] as? [[String: Any]])?.first)?["episodes"] as? [[String: Any]])?.first)
+            XCTAssertEqual(episode["number"] as? Int, 2, "\(job.kind): part 2 alone")
+            XCTAssertEqual(episode["watched_at"] != nil, job.kind == .watch)
+        }
+    }
+
     /// Simkl answered for TONIKAWA (the show was on the list from its rating) but kept no episode
     /// (test account 2026-11-15): an anime episode counts as sent only when that episode is watched
     /// there; a TV episode sent by its ids still counts once Simkl has the title.

@@ -406,6 +406,12 @@ struct SimklQueue: Codable, Equatable, Sendable {
             // An anime episode whose date was already looked for: TVDB's place was the last try.
             let tried = job.datesChecked == true && !job.movie
             if !job.placedByDate, !tried, let spot = await spot(for: job, match: match, api: api) {
+                // A later part's rating would replace the whole entry's (Simkl keeps one for all parts).
+                if job.movie, job.kind == .rate || job.kind == .unrate, let part = spot.number, part >= 2 {
+                    remember(job, entry: spot.entry, season: spot.season, number: spot.number)
+                    finish([job], reason: "Simkl keeps one rating for all parts of this film; this is part \(part).", reply: reply)
+                    continue
+                }
                 if queue.jobs[index].diarySeason == nil { queue.jobs[index].diarySeason = job.season; queue.jobs[index].diaryNumber = job.number }
                 queue.jobs[index].entry = spot.entry; queue.jobs[index].season = spot.season; queue.jobs[index].number = spot.number
                 queue.jobs[index].entryIDs = spot.native; queue.jobs[index].ownNumbering = true; queue.jobs[index].placedByDate = true
@@ -634,6 +640,10 @@ struct SimklQueue: Codable, Equatable, Sendable {
         var jobs: [SimklJob] = []
         for play in plan.plays {
             var job = base(play.title, kind: .unwatch)
+            if play.title.movie, let placed = placements["movie:\(play.title.tmdbId)"], let entry = placed.entry, let part = placed.number {
+                // One part of a film entry comes off alone (taking the entry would take the others).
+                job.entry = entry; job.season = 1; job.number = part; job.ownNumbering = true; job.placedByDate = true; job.datesChecked = true
+            }
             if !play.title.movie {
                 guard let season = play.season, let number = play.episode else { continue }
                 job.season = season; job.number = number
@@ -692,11 +702,15 @@ struct SimklQueue: Codable, Equatable, Sendable {
     private func spot(for job: SimklJob, match: SimklAPI.Match?, api: SimklAPI) async -> (entry: Int, season: Int?, number: Int?, native: [String: String]?)? {
         if job.movie {
             guard job.anime, let found = try? await api.searchAnime(title: job.name, year: job.year) else { return nil }
-            // Only into an entry that is a film: two parts at most (Date A Bullet's film has two).
-            // Simkl's search can answer with a series of a similar name, and a film placed there
-            // was read as the whole series.
-            guard await episodes(found.simkl, kind: "anime", api: api).filter({ !$0.special }).count <= 2 else { return nil }
-            return (found.simkl, nil, nil, (try? await detail(found.simkl, api: api))?.native)
+            let parts = await episodes(found.simkl, kind: "anime", api: api).filter { !$0.special }
+            let native = (try? await detail(found.simkl, api: api))?.native
+            // One part: the film. Several: the part titled as the film (Date a Bullet's part 2 is
+            // Nightmare or Queen), sent and read as that part. Otherwise not here: Simkl's search
+            // can answer with a series of a similar name, and a film placed there was read as the
+            // whole series (Immortal King's ONA, 2026-11-15).
+            if parts.count <= 1 { return (found.simkl, nil, nil, native) }
+            guard let part = SimklBody.filmPart(job.name, in: parts) else { return nil }
+            return (found.simkl, 1, part, native)
         }
         // The diary built from a tracker keeps no air dates: TMDB's season (your server's without
         // your TMDB key, or when TMDB can't be reached) gives the day, so the episode is placed by
@@ -827,7 +841,8 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// One change, in the diary's numbering ("rate|movie:760161", "watch|show:46004:1:11"): the
     /// same change refused twice is one Not kept row, and isn't queued again until Try again.
     static func changeKey(_ job: SimklJob) -> String {
-        let season = job.diarySeason ?? job.season, number = job.diaryNumber ?? job.number
+        // A film is the film, whichever part of an entry it was placed on.
+        let season = job.movie ? nil : job.diarySeason ?? job.season, number = job.diaryNumber ?? job.number
         return job.kind.rawValue + "|" + job.titleKey + (season.map { ":\($0):\(number ?? 0)" } ?? "")
     }
     /// "Date A Bullet · Rating": a watch is the title alone; anything else says what it was.

@@ -11,9 +11,9 @@ struct SimklPlacement: Codable, Equatable, Sendable {
     var at: Date
     /// The placing rules it was made with; older ones are placed again. 2: air dates filled from
     /// TMDB, and the episode titled the same comes before the date. 3: a film goes only into an
-    /// entry of two parts at most (2026-11-15).
+    /// entry that is one. 4: a film entry in parts, on the part titled as the film (2026-11-15).
     var rule: Int? = nil
-    static let currentRule = 3
+    static let currentRule = 4
     var current: Bool { rule == Self.currentRule }
 }
 
@@ -33,6 +33,9 @@ enum SimklLibrary {
         /// A Simkl entry → the diary's show or film it belongs to.
         var shows: [Int: Int] = [:]
         var films: [Int: Int] = [:]
+        /// A film entry in parts → its later parts' diary films (Date a Bullet's part 2 is the
+        /// diary's Nightmare or Queen); part 1 is in `films` (or the entry's own TMDB id).
+        var filmParts: [Int: [Int: Int]] = [:]
         /// The diary's titles, by TMDB id, with their names.
         var diaryShows: [Int: String] = [:]
         var diaryMovies: [Int: String] = [:]
@@ -49,7 +52,10 @@ enum SimklLibrary {
         for (key, placed) in placements.sorted(by: { $0.key < $1.key }) {
             guard let entry = placed.entry else { continue }
             let parts = key.split(separator: ":").map(String.init)
-            if parts.count == 2, parts[0] == "movie", let tmdb = Int(parts[1]) { mapping.films[entry] = tmdb; continue }
+            if parts.count == 2, parts[0] == "movie", let tmdb = Int(parts[1]) {
+                if let part = placed.number, part >= 2 { mapping.filmParts[entry, default: [:]][part] = tmdb } else { mapping.films[entry] = tmdb }
+                continue
+            }
             guard parts.count == 3, let tmdb = Int(parts[0]), let season = Int(parts[1]), let number = Int(parts[2]), let simklNumber = placed.number else { continue }
             mapping.episodes[Mapping.key(entry, placed.season ?? 1, simklNumber)] = Spot(tmdb: tmdb, season: season, number: number)
             if mapping.shows[entry] == nil { mapping.shows[entry] = tmdb }
@@ -71,6 +77,7 @@ enum SimklLibrary {
             let imdb = (ids["imdb"] as? String).flatMap { $0.hasPrefix("tt") ? $0 : nil }
             var ref: TraktTitleRef?
             var episodes: [(season: Int, number: Int, at: String?)] = []
+            var partFilms: [(part: Int, film: TraktTitleRef)] = []
             switch kind {
             case "movies":
                 ref = tmdb.map { TraktTitleRef(kind: .movie, traktId: nil, tmdbId: $0, imdbId: imdb, name: mapping.diaryMovies[$0] ?? name, year: year) }
@@ -90,6 +97,10 @@ enum SimklLibrary {
                     // An anime film: by its TMDB id when the diary has that film, else where one was placed.
                     let film = tmdb.flatMap { mapping.diaryMovies[$0] != nil ? $0 : nil } ?? placedFilm
                     ref = film.map { TraktTitleRef(kind: .movie, traktId: nil, tmdbId: $0, imdbId: imdb, name: mapping.diaryMovies[$0] ?? name, year: year) }
+                    // A film entry in parts: each later part is the diary film placed there.
+                    for (part, tmdb) in (entry.flatMap { mapping.filmParts[$0] } ?? [:]).sorted(by: { $0.key < $1.key }) {
+                        partFilms.append((part, TraktTitleRef(kind: .movie, traktId: nil, tmdbId: tmdb, name: mapping.diaryMovies[tmdb] ?? name, year: nil)))
+                    }
                 } else {
                     let show = entry.flatMap { mapping.shows[$0] } ?? tmdb.flatMap { mapping.diaryShows[$0] != nil ? $0 : nil }
                     ref = show.map { TraktTitleRef(kind: .show, traktId: nil, tmdbId: $0, name: mapping.diaryShows[$0] ?? name, year: year) }
@@ -102,9 +113,25 @@ enum SimklLibrary {
                     }
                 }
             }
+            // A film entry in parts: each part's film is watched when that part is, and shares the
+            // entry's one rating (Simkl keeps one for all its parts).
+            let listedParts = partFilms.isEmpty ? [] : watched(item)
+            if !partFilms.isEmpty {
+                let rating = number(item["user_rating"]).flatMap { (1...10).contains($0) ? $0 : nil }
+                for (part, film) in partFilms {
+                    if let watch = listedParts.first(where: { $0.number == part }) {
+                        library.plays.append(TraktPlay(historyId: TrackerDecode.playID("simkl|movie|\(film.tmdbId ?? 0)"), title: film, watchedAt: watch.at))
+                    }
+                    if let rating, !library.ratings.contains(where: { $0.title.diaryKey == film.diaryKey }) {
+                        library.ratings.append(TraktRating(title: film, rating: rating, ratedAt: item["user_rated_at"] as? String))
+                    }
+                }
+            }
             guard let ref else { library.skipped += 1; continue }
-            if ref.kind == .movie, item["last_watched_at"] is String || (item["status"] as? String) == "completed" {
-                library.plays.append(TraktPlay(historyId: TrackerDecode.playID("simkl|movie|\(ref.tmdbId ?? 0)"), title: ref, watchedAt: item["last_watched_at"] as? String))
+            // Part 1 is watched when it's listed so; without the list, as before (watched or completed).
+            let firstPart = listedParts.first { $0.number == 1 }
+            if ref.kind == .movie, listedParts.isEmpty ? item["last_watched_at"] is String || (item["status"] as? String) == "completed" : firstPart != nil {
+                library.plays.append(TraktPlay(historyId: TrackerDecode.playID("simkl|movie|\(ref.tmdbId ?? 0)"), title: ref, watchedAt: firstPart?.at ?? item["last_watched_at"] as? String))
             }
             for episode in episodes {
                 library.plays.append(TraktPlay(historyId: TrackerDecode.playID("simkl|\(kind)|\(ref.tmdbId ?? 0)|\(episode.season)|\(episode.number)"), title: ref,
