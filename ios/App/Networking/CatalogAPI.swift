@@ -42,7 +42,10 @@ extension DiaryStore {
         // TMDB from the phone with your key; whether it's already in your diary comes from the diary on the phone.
         if let token = TMDBDirect.token(self), let details = try? await TMDBDirect.details(route, token: token) {
             let saved = workspace.titles.first { $0.tmdbId == route.id && $0.isSeries == (route.kind == .tv) }
-            return CatalogBrowse(details: details, libraryTitle: saved.map { CatalogBrowse.Saved(id: $0.id, trashed: $0.deletedAt != nil) })
+            // No server: a title in the phone's Trash isn't in the diary; its page says so (Restore).
+            let trashed = saved == nil ? phoneTrashed(route) : nil
+            return CatalogBrowse(details: details, libraryTitle: saved.map { CatalogBrowse.Saved(id: $0.id, trashed: $0.deletedAt != nil) }
+                                    ?? trashed.map { CatalogBrowse.Saved(id: $0.id, trashed: true) })
         }
         return try await read(CatalogTools.apiPath("/api/metadata/browse", query: ["type": route.kind.rawValue, "id": String(route.id)]))
     }
@@ -110,6 +113,11 @@ extension DiaryStore {
         }
         if let token = TMDBDirect.token(self), let direct = try? await TMDBDirect.season(route.id, number: season, reveal: reveal, token: token) { return direct }
         return try await read(CatalogTools.apiPath("/api/metadata/season", query: ["type": route.kind.rawValue, "id": String(route.id), "season": String(season), "reveal": reveal ? "1" : "0"]))
+    }
+    /// The title in the phone's Trash for this page, when the diary has no server.
+    func phoneTrashed(_ route: CatalogRoute) -> MediaTitle? {
+        guard phoneOnly else { return nil }
+        return PhoneTrash.shared.titles.first { $0.tmdbId == route.id && $0.isSeries == (route.kind == .tv) }
     }
     /// A title you add goes on the watchlist of the service the diary lives on (or into the diary on
     /// this phone), with its details kept on the phone.

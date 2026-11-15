@@ -394,7 +394,12 @@ struct CatalogDetailView: View {
                             TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), backdrop: CatalogTools.image(details.details.backdropPath, size: "w780"), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top), onNameScrolled: { headerState.update($0) }) {
                                 RatingBoxes(scores: criticScores, tmdbFallback: details.details.communityScore)
                             }
-                            if details.libraryTitle?.trashed == true {
+                            if details.libraryTitle?.trashed == true, let trashed = store.phoneTrashed(route) {
+                                // In the phone's Trash (opened from Trash, say): restored here, with its rating.
+                                Button { Task { if await store.restore(trashed) { await store.waitForTitle(trashed.id); await load() } } } label: {
+                                    primaryLabel(store.busy ? "Restoring…" : "Restore", icon: "arrow.uturn.backward")
+                                }.buttonStyle(.springPress).disabled(store.busy || store.writesBlocked).accessibilityIdentifier("catalog-restore")
+                            } else if details.libraryTitle?.trashed == true {
                                 NavigationLink(value: AppDestination.trash) { primaryLabel("Restore from Trash", icon: "arrow.uturn.backward") }.buttonStyle(.springPress)
                             } else if let saved = details.libraryTitle {
                                 Button { accepted(saved.id) } label: { primaryLabel("Open in Library", icon: "books.vertical") }.buttonStyle(.springPress)

@@ -149,6 +149,33 @@ import TwilDiaryCore
         XCTAssertEqual(store.title(id)?.status, "dropped", "still in the diary, dropped")
     }
 
+    /// Trash's titles open their page, which knows the title is in the phone's Trash and restores
+    /// it there (owner's request, 2026-11-16: Trash's titles couldn't be opened).
+    func testATrashedTitlesPageRestoresIt() async throws {
+        let store = makeStore()
+        defer {
+            PhoneTrash.shared.remove(["movie:14180"])
+            TraktDirectStore.shared.useLocal(false)
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        await store.startOnThisPhone()
+        let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":14180,"mediaType":"movie","name":"Restore me","year":2009,"overview":"","posterPath":"/r.jpg","genres":["Animation"],"suggestedCategory":"movie"}"#.utf8))
+        let added = await store.importTitle(details, category: "movie")
+        let id = try XCTUnwrap(added)
+        await store.waitForTitle(id)
+        let title = try XCTUnwrap(store.title(id))
+        let trashed = await store.trash(title)
+        XCTAssertTrue(trashed)
+        let route = CatalogRoute(kind: .movie, id: 14180)
+        let inTrash = try XCTUnwrap(store.phoneTrashed(route), "the page knows it's in Trash")
+        let restored = await store.restore(inTrash)
+        XCTAssertTrue(restored)
+        await store.waitForTitle(id)
+        XCTAssertEqual(store.title(id)?.status, "planned", "back in the diary")
+        XCTAssertNil(store.phoneTrashed(route), "out of Trash")
+    }
+
     func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
         let store = makeStore(providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
