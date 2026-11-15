@@ -233,6 +233,11 @@ public enum ProviderDeliveryPlanner {
         }
     }
 
+    /// A removal answered "not found": the service didn't hold it, so there was nothing to take
+    /// off. MDBList answers taking a title off a watchlist it isn't on {"not_found":{"movies":1}}
+    /// (spare account, 2026-11-16); read as "couldn't find this title", every status change of a
+    /// title that wasn't Planned there was set aside.
+    public static func nothingToRemove(path: String, reply: Data) -> Bool { path.hasSuffix("/remove") && notFound(reply) }
     /// The service answered but couldn't find the title (by its TMDB id): sending again won't help.
     public static func notFound(_ data: Data) -> Bool {
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }

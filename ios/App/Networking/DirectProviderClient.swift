@@ -95,6 +95,8 @@ enum DeviceCodePollStatus: Equatable, Sendable {
             if config.provider == .wetrakr { sendHeaders["Idempotency-Key"] = Self.idempotencyKey(entry.operationId + "-" + delivery.key, body: prepared.body) }
             data = ServiceIDs.reply(try await send(url: components.url!, method: "POST", headers: sendHeaders, rawBody: prepared.body), adding: prepared.missing)
         }
+        // Taking off what the service doesn't hold is done already (nothing was there).
+        if ProviderDeliveryPlanner.nothingToRemove(path: delivery.path, reply: data) { return }
         guard ProviderDeliveryPlanner.confirms(data) else {
             // A title the service can't find is set aside (said once), not retried forever.
             if ProviderDeliveryPlanner.notFound(data) { throw APIError.rejected(404, "\(config.provider.displayName) couldn’t find this title by its TMDB id, so it wasn’t changed there.") }

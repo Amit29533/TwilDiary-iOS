@@ -139,3 +139,14 @@ import TwilDiaryTestSupport
     #expect(alerts[1].title == "Planned" && alerts[1].body == "S1 E1 is out today.")
     #expect(alerts[2].body == "S2 E5 is out today.")
 }
+
+/// MDBList's own replies (spare account, 2026-11-16): taking Up off a watchlist it isn't on says
+/// not found; that's nothing to remove, not a failure. Adding something it can't find still is.
+@Test func aRemovalOfWhatTheServiceDoesntHoldIsDone() {
+    let notListed = Data(#"{"removed":{"movies":0,"shows":0},"not_found":{"movies":1,"shows":0}}"#.utf8)
+    let removed = Data(#"{"removed":{"movies":1,"shows":0},"not_found":{"movies":0,"shows":0}}"#.utf8)
+    #expect(ProviderDeliveryPlanner.nothingToRemove(path: "/watchlist/items/remove", reply: notListed))
+    #expect(!ProviderDeliveryPlanner.nothingToRemove(path: "/watchlist/items/remove", reply: removed), "it was removed: confirmed as usual")
+    #expect(!ProviderDeliveryPlanner.nothingToRemove(path: "/watchlist/items/add", reply: notListed), "an add that isn't found is still refused")
+    #expect(ProviderDeliveryPlanner.notFound(notListed))
+}
