@@ -154,8 +154,11 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         simklWaiting = read.waiting
         guard let analysed = await analyse(.simkl, store: store) else { return }
         guard session == generation else { return }
+        // Each missing watch says where it was placed on Simkl (or that it wasn't).
+        var comparison = analysed.comparison
+        comparison.onlyInDiary = comparison.onlyInDiary.map(SimklMirror.shared.placementNote)
         reports[.simkl] = .init(seconds: Date.now.timeIntervalSince(started), requests: read.requests, fetched: [.history, .ratings, .watchlist, .dropped],
-                                unavailable: [], skipped: library.skipped, comparison: analysed.comparison)
+                                unavailable: [], skipped: library.skipped, comparison: comparison)
         plans[.simkl] = analysed.plan
         // Diary anime still waiting to be placed: the next read places more.
         if read.waiting > 0 { refreshSoon(.simkl, store: store, after: 60) }

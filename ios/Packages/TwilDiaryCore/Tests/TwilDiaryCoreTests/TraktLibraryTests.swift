@@ -90,6 +90,7 @@ private func diary() throws -> Workspace {
     var result = TraktComparison.compare(library, with: try diary())
     #expect(result.matchingPlays == 2, "The removed S1E12 copy does not count")
     #expect(result.onlyInDiary.map(\.title) == ["Diary only"])
+    #expect(result.onlyInDiary.first?.key != nil, "each difference says which watch it is")
     #expect(result.onlyOnTrakt.isEmpty && result.ratingDifferences.isEmpty && result.plannedDifferences.isEmpty && result.favoriteDifferences.isEmpty)
     // Trakt says 8, an extra rewatch, Obsession off the watchlist, Spooky dropped and not a favourite.
     library.ratings = [TraktRating(title: spooky, rating: 8, ratedAt: nil)]

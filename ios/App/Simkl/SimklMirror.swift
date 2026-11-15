@@ -513,6 +513,15 @@ struct SimklQueue: Codable, Equatable, Sendable {
             guard let key = Self.placementKey(job), placements[key]?.current != true, seen.insert(key).inserted else { continue }
             jobs.append(job)
         }
+        // Anime films not watched yet (Planned, Dropped) too: Simkl files some as an OVA or ONA with
+        // no TMDB id (Bubble, Alice in Deadly School), so only a placement links its Plan to watch
+        // entry back to the diary's film (new account, 2026-11-15).
+        for title in diary.activeTitles where Self.isAnime(title) && !title.isSeries {
+            guard let tmdb = title.tmdbId else { continue }
+            let job = SimklJob(kind: .watch, tmdb: tmdb, movie: true, anime: true, name: title.name, year: title.year)
+            guard let key = Self.placementKey(job), placements[key]?.current != true, seen.insert(key).inserted else { continue }
+            jobs.append(job)
+        }
         return jobs
     }
     /// Places diary anime not placed yet, a few titles at a time (each title's look-ups are kept,
@@ -693,6 +702,25 @@ struct SimklQueue: Codable, Equatable, Sendable {
             case .unwatch, .unrate: return nil
             }
         })
+    }
+    /// A missing diary watch with where it was placed on Simkl ("on Simkl: entry 1258030, episode 4",
+    /// "not placed on Simkl"), so a mismatch shows whether it's the placing or the reading.
+    func placementNote(_ difference: TraktComparison.Difference) -> TraktComparison.Difference { Self.placementNote(difference, placements: placements) }
+    nonisolated static func placementNote(_ difference: TraktComparison.Difference, placements: [String: SimklPlacement]) -> TraktComparison.Difference {
+        guard let key = difference.key else { return difference }
+        let parts = key.split(separator: "|").map(String.init)
+        let id = parts[0].split(separator: ":").last.map(String.init) ?? ""
+        let placementKey: String
+        if parts[0].hasPrefix("movie:") { placementKey = "movie:" + id }
+        else if parts.count == 2, let s = parts[1].dropFirst().split(separator: "e").first, let e = parts[1].split(separator: "e").last { placementKey = "\(id):\(s):\(e)" }
+        else { return difference }
+        guard let placed = placements[placementKey] else { return difference }
+        let note: String
+        if let entry = placed.entry {
+            if parts[0].hasPrefix("movie:") { note = placed.number.map { "on Simkl: entry \(entry), part \($0)" } ?? "on Simkl: entry \(entry)" }
+            else { note = "on Simkl: entry \(entry), " + (placed.season == 0 ? "special " : "episode ") + "\(placed.number ?? 0)" }
+        } else { note = "not placed on Simkl" }
+        return TraktComparison.Difference(title: difference.title, detail: difference.detail + " · " + note, key: key)
     }
     /// What Simkl didn't keep, as the comparison leaves it out ("movie:tmdb", "show:tmdb:s:n").
     var notKeptKeys: Set<String> {

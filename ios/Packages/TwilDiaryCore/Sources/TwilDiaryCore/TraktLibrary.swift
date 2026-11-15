@@ -247,6 +247,9 @@ public struct TraktComparison: Equatable, Sendable {
     public struct Difference: Equatable, Sendable {
         public let title: String
         public let detail: String
+        /// A play's key ("tv:98123|s1e1", "movie:912598"): which watch it is, for notes added later.
+        public var key: String? = nil
+        public init(title: String, detail: String, key: String? = nil) { self.title = title; self.detail = detail; self.key = key }
     }
     public var matchingPlays = 0
     public var onlyOnTrakt: [Difference] = []
@@ -324,8 +327,8 @@ public struct TraktComparison: Equatable, Sendable {
             result.matchingPlays += min(onTrakt, inDiary)
             // What was already tried and didn't stick (the ledger) isn't a difference to act on.
             if except.contains("play|" + key) { continue }
-            if onTrakt > inDiary && !oneWay { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on \(service), \(inDiary) in the diary")) }
-            if inDiary > onTrakt { result.onlyInDiary.append(Difference(title: labels[key] ?? key, detail: "\(inDiary) in the diary, \(onTrakt) on \(service)")) }
+            if onTrakt > inDiary && !oneWay { result.onlyOnTrakt.append(Difference(title: labels[key] ?? key, detail: "\(onTrakt) on \(service), \(inDiary) in the diary", key: key)) }
+            if inDiary > onTrakt { result.onlyInDiary.append(Difference(title: labels[key] ?? key, detail: "\(inDiary) in the diary, \(onTrakt) on \(service)", key: key)) }
         }
 
         // Title facts: ratings, Planned = watchlist, favourites, Dropped.

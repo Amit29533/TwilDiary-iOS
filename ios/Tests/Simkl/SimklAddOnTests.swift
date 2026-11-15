@@ -403,6 +403,21 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(library.skipped, 0, "no longer an unreadable show")
     }
 
+    /// A missing diary watch says where it was placed on Simkl, so a mismatch shows whether it's
+    /// the placing or the reading (Immortal King's first episodes, new account 2026-11-15).
+    func testAMissingWatchSaysWhereItWasPlaced() {
+        let missing = TraktComparison.Difference(title: "The Daily Life of the Immortal King S1E1", detail: "1 in the diary, 0 on Simkl", key: "tv:98123|s1e1")
+        let placed = ["98123:1:1": SimklPlacement(entry: 1258030, season: 1, number: 4, at: .now),
+                      "723343": SimklPlacement(entry: nil, season: nil, number: nil, at: .now),
+                      "movie:723343": SimklPlacement(entry: 1168961, season: 1, number: 2, at: .now)]
+        XCTAssertEqual(SimklMirror.placementNote(missing, placements: placed).detail, "1 in the diary, 0 on Simkl · on Simkl: entry 1258030, episode 4")
+        XCTAssertEqual(SimklMirror.placementNote(missing, placements: ["98123:1:1": SimklPlacement(entry: nil, season: nil, number: nil, at: .now)]).detail,
+                       "1 in the diary, 0 on Simkl · not placed on Simkl")
+        XCTAssertEqual(SimklMirror.placementNote(missing, placements: [:]), missing, "never placed: as it was")
+        let film = TraktComparison.Difference(title: "Date A Bullet: Nightmare or Queen", detail: "1 in the diary, 0 on Simkl", key: "movie:723343")
+        XCTAssertEqual(SimklMirror.placementNote(film, placements: placed).detail, "1 in the diary, 0 on Simkl · on Simkl: entry 1168961, part 2")
+    }
+
     /// A film placed in a series entry (Simkl's search answered with Immortal King's 15-episode
     /// ONA) doesn't make the series a film: its episodes are still read (test account 2026-11-15).
     func testASeriesEntryAFilmLandedInIsStillTheSeries() throws {
