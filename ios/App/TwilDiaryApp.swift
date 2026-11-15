@@ -299,6 +299,7 @@ struct RootView: View {
                 if scenePhase == .active {
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
                     await SimklMirror.shared.resume(store: store)
+                    await AniListSync.shared.resume(store: store)
                     // Alerts first: quick, on this phone, and not held up by the syncs below.
                     await EpisodeNotifications.reschedule(store: store)
                     // No server: tags, Queue, notes, files, favourite people and Trash from Drive.

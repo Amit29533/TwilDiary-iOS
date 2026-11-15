@@ -89,6 +89,8 @@ extension DiaryStore {
     func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .mdblist, .wetrakr]) {
         // Simkl: its own sync places each edit in Simkl's numbering and sends it (never the main tracker).
         SimklMirror.shared.capture(mutation, store: self)
+        // AniList: its own sync works out the title's entries from the diary and saves them.
+        AniListSync.shared.capture(mutation, store: self)
         var skip: Set<SyncProviderKind> = [.cloudflare]
         if let diaryService { skip.insert(providerKind(diaryService)) }
         // The service holding the diary gets your edits directly (one writer, one pace), also

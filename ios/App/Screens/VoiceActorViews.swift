@@ -239,6 +239,8 @@ struct AniListSettingsView: View {
                     Link(destination: URL(string: "https://anilist.co/user/" + user)!) { SettingsLinkLabel(text: "Open profile on AniList") }
                         .padding(.horizontal, 4)
                 }
+                // Saving your anime activity to AniList (sign-in, separate from the public profile above).
+                AniListSyncSection()
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("AniList").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .onAppear { draft = user }
