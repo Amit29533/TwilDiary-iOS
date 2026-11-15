@@ -134,6 +134,93 @@ public enum AniListPlan {
         return result
     }
 
+    // MARK: Source of truth: AniList (its changes into the diary)
+
+    /// An entry on your AniList list with what the diary could take from it.
+    public struct ListedDetail: Equatable, Sendable {
+        public let mediaId: Int
+        public let status: String
+        public let progress: Int
+        public let score: Int?
+        public let notes: String?
+        /// When AniList last changed it ("2026-11-15T12:00:00Z"): the time for watches it adds.
+        public let updatedAt: String?
+        public init(mediaId: Int, status: String, progress: Int, score: Int?, notes: String?, updatedAt: String?) {
+            self.mediaId = mediaId; self.status = status; self.progress = progress; self.score = score; self.notes = notes; self.updatedAt = updatedAt
+        }
+    }
+    /// An episode AniList has watched that the diary hasn't, and when to log it.
+    public struct EpisodeAdd: Equatable, Sendable {
+        public let season: Int
+        public let number: Int
+        public let at: String?
+        public init(season: Int, number: Int, at: String?) { self.season = season; self.number = number; self.at = at }
+    }
+    /// What one diary title would take from AniList.
+    public struct Adoption: Equatable, Sendable {
+        public var status: String?
+        public var score: Double?
+        public var notes: String?
+        /// AniList's note differs from a note the diary has: the diary's stays.
+        public var noteLeft = false
+        /// A film AniList has watched and the diary hasn't: when.
+        public var filmWatch: String?
+        public var episodes: [EpisodeAdd] = []
+        /// AniList episodes TwilDiary can't name (TMDB's air days don't reach them).
+        public var unplaced = 0
+        public var isEmpty: Bool { status == nil && score == nil && notes == nil && filmWatch == nil && episodes.isEmpty }
+        public init() {}
+    }
+    /// The diary status for a title's AniList entries: watching while any is, then on hold or
+    /// dropped, Completed when every listed one is, Planned when all are.
+    public static func diaryStatus(fromAniList statuses: [String]) -> String? {
+        guard !statuses.isEmpty else { return nil }
+        if statuses.contains(where: { $0 == "CURRENT" || $0 == "REPEATING" }) { return "watching" }
+        if statuses.contains("PAUSED") { return "paused" }
+        if statuses.contains("DROPPED") { return "dropped" }
+        if statuses.allSatisfy({ $0 == "COMPLETED" }) { return "completed" }
+        if statuses.allSatisfy({ $0 == "PLANNING" }) { return "planned" }
+        return "watching"
+    }
+    /// What a diary title would take from its AniList entries: the status, the score (the first
+    /// entry's), the note (only where the diary has none), and the episodes AniList has watched in
+    /// each entry that the diary hasn't (an entry's first `progress` episodes, found by TMDB's air
+    /// days in `seasons`: season → episode → day). Nothing is taken off the diary.
+    public static func adoption(diaryStatus: String, diaryScore: Double?, diaryNotes: String, film: Bool, watches: [Watch],
+                                chain: [Media], listed: [ListedDetail], seasons: [Int: [Int: String]]) -> Adoption {
+        var result = Adoption()
+        let ids = chain.map(\.id)
+        let mine = listed.filter { ids.contains($0.mediaId) }.sorted { (ids.firstIndex(of: $0.mediaId) ?? 0) < (ids.firstIndex(of: $1.mediaId) ?? 0) }
+        guard !mine.isEmpty else { return result }
+        if let status = Self.diaryStatus(fromAniList: mine.map(\.status)), status != diaryStatus,
+           !(status == "paused" && diaryStatus == "on_hold") { result.status = status }
+        if let score = mine.compactMap(\.score).first(where: { $0 > 0 }), score != diaryScore.map({ Int(($0 * 10).rounded()) }) {
+            result.score = Double(score) / 10
+        }
+        let note = mine.compactMap(\.notes).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        let current = diaryNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let note, note != current { if current.isEmpty { result.notes = note } else { result.noteLeft = true } }
+        if film {
+            if watches.isEmpty, let entry = mine.first, entry.status == "COMPLETED" || entry.status == "REPEATING" || entry.progress > 0 {
+                result.filmWatch = entry.updatedAt
+            }
+            return result
+        }
+        let watched = Set(watches.compactMap { watch in watch.season.map { "\($0)x\(watch.number ?? 0)" } })
+        var byMedia: [Int: [(season: Int, number: Int)]] = [:]
+        for (season, list) in seasons where season > 0 {
+            for (number, day) in list { if let media = media(for: day, in: chain) { byMedia[media.id, default: []].append((season, number)) } }
+        }
+        for entry in mine where entry.progress > 0 {
+            let episodes = (byMedia[entry.mediaId] ?? []).sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+            if episodes.count < entry.progress { result.unplaced += entry.progress - episodes.count }
+            for episode in episodes.prefix(entry.progress) where !watched.contains("\(episode.season)x\(episode.number)") {
+                result.episodes.append(EpisodeAdd(season: episode.season, number: episode.number, at: entry.updatedAt))
+            }
+        }
+        return result
+    }
+
     /// AniList's list status for a diary status.
     public static func status(_ diary: String) -> String {
         switch diary {

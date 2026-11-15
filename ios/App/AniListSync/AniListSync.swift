@@ -156,6 +156,13 @@ struct AniListSyncAPI: Sendable {
         }
     }
     var canSend: Bool { signedIn && saving }
+    private static let truthKey = AniListSyncStorage.prefix + "truth"
+    private var truthValue = UserDefaults.standard.bool(forKey: AniListSyncAccount.truthKey)
+    /// Source of truth: your diary (off) or AniList (on: Force Match brings AniList into the diary).
+    var aniListWins: Bool {
+        get { truthValue }
+        set { truthValue = newValue; UserDefaults.standard.set(newValue, forKey: Self.truthKey) }
+    }
     private static let notesKey = AniListSyncStorage.prefix + "notes"
     private static let privateKey = AniListSyncStorage.prefix + "private"
     private var notesValue = UserDefaults.standard.object(forKey: AniListSyncAccount.notesKey) as? Bool ?? true
@@ -272,6 +279,15 @@ struct AniListSyncAPI: Sendable {
     private(set) var checkedAt: Date?
     private(set) var checking = false
     private(set) var checkProblem: String?
+    /// While Check looks titles up: how many of how many.
+    private(set) var lookupProgress: (done: Int, total: Int)?
+    /// What the last Check read, as Simkl's card says it.
+    struct ReadStats: Equatable { let seconds: Double; let requests: Int; let entries: Int; let byStatus: [String: Int] }
+    private(set) var readStats: ReadStats?
+    /// What each diary title would take from AniList (Source of truth: AniList), from the last Check.
+    private(set) var adoptions: [String: (name: String, adoption: AniListPlan.Adoption)] = [:]
+    /// The last Make match, Force Match or bring-in, said under the comparison.
+    private(set) var lastResult: String?
     /// AniList's list-entry ids from the last check (Force Match takes entries off by them).
     @ObservationIgnored private var listIds: [Int: Int] = [:]
     @ObservationIgnored private var chains: [String: Chain] = AniListSyncStorage.load([String: Chain].self, AniListSync.chainsFile) ?? [:]
@@ -304,7 +320,10 @@ struct AniListSyncAPI: Sendable {
         AniListSyncStorage.save(waiting, "waiting.json")
     }
     func clearNotKept() { notKept = []; AniListSyncStorage.save(notKept, "not-kept.json") }
-    func forget() { waiting = []; notKept = []; chains = [:]; sent = [:]; days = [:]; lastProblem = nil; progress = nil; comparison = nil; checkedAt = nil }
+    func forget() {
+        waiting = []; notKept = []; chains = [:]; sent = [:]; days = [:]; lastProblem = nil; progress = nil; comparison = nil; checkedAt = nil
+        readStats = nil; adoptions = [:]; lastResult = nil
+    }
 
     // MARK: Sending
 
@@ -420,33 +439,47 @@ struct AniListSyncAPI: Sendable {
         guard !checking, let token = AniListSyncAccount.shared.token() else { return }
         self.store = store
         checking = true; checkProblem = nil
-        defer { checking = false }
-        let api = AniListSyncAPI(token: token)
+        defer { checking = false; lookupProgress = nil }
+        let api = AniListSyncAPI(token: token), started = Date.now
+        var requests = 0
         do {
+            // Titles not looked up yet are looked up first (reading AniList only): the comparison
+            // needs every title's entries, whether or not saving is on.
+            let titles = store.workspace.activeTitles.filter(Self.counts)
+            let missing = titles.filter { Self.key($0).map { chains[$0] == nil } ?? false }
+            for (index, title) in missing.enumerated() {
+                lookupProgress = (index, missing.count)
+                guard let key = Self.key(title) else { continue }
+                do { _ = try await chain(for: title, key: key, api: api); requests += 2 }
+                catch AniListSyncAPI.Failure.busy(let seconds) { try? await Task.sleep(for: .seconds(min(max(seconds, 5), 90))) }
+            }
+            lookupProgress = nil
             let userId = try await AniListSyncAccount.shared.viewerId(api)
-            try await pace()
+            try await pace(); requests += 1
             let reply = try await api.call("""
                 query($id: Int) { MediaListCollection(userId: $id, type: ANIME) { lists { entries {
-                  id mediaId status progress repeat notes score(format: POINT_100) startedAt { year month day } completedAt { year month day } media { title { romaji english } } } } } }
+                  id mediaId status progress repeat notes updatedAt score(format: POINT_100) startedAt { year month day } completedAt { year month day } media { title { romaji english } } } } } }
                 """, ["id": userId])
             let lists = (AniListSyncAPI.data(reply)["MediaListCollection"] as? [String: Any])?["lists"] as? [[String: Any]] ?? []
             listIds = [:]
-            var listed: [AniListPlan.Listed] = [], actual: [Int: (listId: Int, entry: AniListPlan.Entry)] = [:]
+            var listed: [AniListPlan.Listed] = [], actual: [Int: (listId: Int, entry: AniListPlan.Entry)] = [:], details: [AniListPlan.ListedDetail] = []
             for row in lists.flatMap({ $0["entries"] as? [[String: Any]] ?? [] }) {
                 guard let mediaId = row["mediaId"] as? Int, let listId = row["id"] as? Int, actual[mediaId] == nil else { continue }
                 let status = row["status"] as? String ?? "CURRENT", progress = row["progress"] as? Int ?? 0
                 let score = (row["score"] as? NSNumber).map { Int($0.doubleValue.rounded()) }.flatMap { $0 > 0 ? $0 : nil }
                 let titles = (row["media"] as? [String: Any])?["title"] as? [String: Any]
                 let name = (titles?["english"] as? String) ?? (titles?["romaji"] as? String) ?? "AniList \(mediaId)"
+                let notes = (row["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                let updated = (row["updatedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue).ISO8601Format() }
                 listed.append(AniListPlan.Listed(mediaId: mediaId, listId: listId, status: status, progress: progress, score: score, title: name))
+                details.append(AniListPlan.ListedDetail(mediaId: mediaId, status: status, progress: progress, score: score, notes: notes, updatedAt: updated))
                 actual[mediaId] = (listId, AniListPlan.Entry(mediaId: mediaId, status: status, progress: progress, score: score,
                                                               startedAt: AniListSyncAPI.day(row["startedAt"]), completedAt: AniListSyncAPI.day(row["completedAt"]),
-                                                              repeatCount: row["repeat"] as? Int ?? 0,
-                                                              notes: (row["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 }))
+                                                              repeatCount: row["repeat"] as? Int ?? 0, notes: notes))
                 listIds[mediaId] = listId
             }
-            var expected: [AniListPlan.Expected] = [], notLookedUp = 0, keyOf: [Int: String] = [:]
-            for title in store.workspace.activeTitles where Self.counts(title) {
+            var expected: [AniListPlan.Expected] = [], notLookedUp = 0, keyOf: [Int: String] = [:], found: [String: (name: String, adoption: AniListPlan.Adoption)] = [:]
+            for title in titles {
                 guard let key = Self.key(title) else { continue }
                 guard let chain = chains[key]?.media else { notLookedUp += 1; continue }
                 for media in chain { keyOf[media.id] = key }
@@ -455,6 +488,8 @@ struct AniListSyncAPI: Sendable {
                     let part = chain.count > 1 ? ((chain.first { $0.id == entry.mediaId }?.title).map { " · " + $0 } ?? "") : ""
                     expected.append(AniListPlan.Expected(key: key, label: title.name + part, entry: entry))
                 }
+                // What AniList would bring into the diary (Source of truth: AniList).
+                if let adoption = await adoption(for: title, chain: chain, details: details), !adoption.isEmpty { found[key] = (title.name, adoption) }
             }
             for (mediaId, key) in keyOf {
                 if let there = actual[mediaId] { sent[mediaId] = Sent(listId: there.listId, entry: there.entry, key: key) }
@@ -462,6 +497,9 @@ struct AniListSyncAPI: Sendable {
             }
             AniListSyncStorage.save(sent, "sent.json")
             comparison = AniListPlan.compare(expected: expected, listed: listed, notLookedUp: notLookedUp)
+            adoptions = found
+            readStats = ReadStats(seconds: Date.now.timeIntervalSince(started), requests: requests, entries: listed.count,
+                                  byStatus: Dictionary(grouping: listed, by: \.status).mapValues(\.count))
             checkedAt = .now
         } catch let failure as AniListSyncAPI.Failure {
             switch failure {
@@ -471,6 +509,83 @@ struct AniListSyncAPI: Sendable {
             }
         } catch { checkProblem = error.localizedDescription }
     }
+
+    /// What one title would take from AniList, with TMDB's air days fetched for its seasons when
+    /// AniList has episodes the diary hasn't.
+    private func adoption(for title: MediaTitle, chain: [AniListPlan.Media], details: [AniListPlan.ListedDetail]) async -> AniListPlan.Adoption? {
+        guard let store else { return nil }
+        let ids = Set(chain.map(\.id))
+        guard details.contains(where: { ids.contains($0.mediaId) }) else { return nil }
+        let film = !title.isSeries
+        let episodes = Dictionary(store.workspace.episodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let watches: [AniListPlan.Watch] = store.workspace.activeEvents.filter { $0.titleId == title.id }.map { event in
+            let episode = event.episodeId.flatMap { episodes[$0] }
+            return AniListPlan.Watch(season: episode?.season, number: episode?.number, aired: episode?.airedOn, watchedAt: event.watchedAt)
+        }
+        func plan(_ seasons: [Int: [Int: String]]) -> AniListPlan.Adoption {
+            AniListPlan.adoption(diaryStatus: title.status, diaryScore: title.score, diaryNotes: title.notes, film: film, watches: watches,
+                                 chain: chain, listed: details, seasons: seasons)
+        }
+        var result = plan([:])
+        guard !film, result.unplaced > 0, let tmdb = title.tmdbId else { return result }
+        // AniList has episodes the diary hasn't: TMDB's seasons name them (the diary's, and one more).
+        let known = Set(watches.compactMap(\.season)).filter { $0 > 0 }
+        var seasons: [Int: [Int: String]] = [:]
+        for season in 1...min(10, (known.max() ?? 0) + 1) {
+            _ = await airDay(tmdb, season, 1)
+            if let list = days["\(tmdb)/\(season)"], !list.isEmpty { seasons[season] = list }
+        }
+        result = plan(seasons)
+        return result
+    }
+
+    /// Source of truth: AniList. Each title takes AniList's status, score and note (where the diary
+    /// has none), and the episodes AniList has watched that the diary hasn't, logged at the time
+    /// AniList last changed that entry. Nothing is taken off the diary. Then AniList is read again.
+    func bringIntoDiary(store: DiaryStore) {
+        self.store = store
+        let work = adoptions.sorted { $0.key < $1.key }
+        guard !work.isEmpty else { return }
+        Task {
+            var titlesDone = 0, watches = 0, failed: [String] = []
+            for (key, item) in work {
+                guard let title = store.workspace.activeTitles.first(where: { Self.key($0) == key }) else { continue }
+                let adoption = item.adoption
+                var values: [String: Any] = [:]
+                if let status = adoption.status { values["status"] = status }
+                if let score = adoption.score { values["score"] = score }
+                if let notes = adoption.notes { values["notes"] = notes }
+                do {
+                    if !values.isEmpty { _ = await store.patch(title, values: values) }
+                    if let at = adoption.filmWatch {
+                        try await store.serviceAddPlays(title, episodes: [], at: Self.date(at)); watches += 1
+                    }
+                    for (at, group) in Dictionary(grouping: adoption.episodes, by: { $0.at ?? "" }) {
+                        try await store.serviceAddPlays(title, episodes: group.map { (season: $0.season, number: $0.number) }, at: Self.date(at.isEmpty ? nil : at))
+                        watches += group.count
+                    }
+                    titlesDone += 1
+                } catch { failed.append(item.name) }
+            }
+            lastResult = "From AniList: " + titlesDone.counted("title", "titles") + " updated, " + watches.counted("watch", "watches") + " added to your diary."
+                + (failed.isEmpty ? "" : " Not brought in: " + failed.prefix(3).joined(separator: ", ") + (failed.count > 3 ? " and \(failed.count - 3) more." : "."))
+            await check(store: store)
+        }
+    }
+    /// Force Match from the chosen side: your diary onto AniList (entries only on AniList taken
+    /// off), or AniList into your diary.
+    func forceMatch(store: DiaryStore) {
+        if AniListSyncAccount.shared.aniListWins { bringIntoDiary(store: store) }
+        else {
+            let count = (comparison?.keysToSend.count ?? 0) + (comparison?.onlyOnAniList.count ?? 0)
+            lastResult = "Force Match: " + count.counted("change", "changes") + " on the way to AniList. AniList is checked again after."
+            makeMatch(store: store, force: true)
+        }
+    }
+    private static func date(_ text: String?) -> Date {
+        text.flatMap { try? Date($0, strategy: .iso8601) } ?? .now
+    }
+
     /// "Make AniList match": every title with a difference is sent again (what AniList holds isn't
     /// trusted as sent), then AniList is read again. `force`: entries only on AniList come off too,
     /// so AniList is exactly your diary.
@@ -480,6 +595,7 @@ struct AniListSyncAPI: Sendable {
         for difference in comparison.missing + comparison.different { sent[difference.mediaId] = nil }
         AniListSyncStorage.save(sent, "sent.json")
         mark(comparison.keysToSend)
+        if !force { lastResult = comparison.keysToSend.count.counted("title", "titles") + " on the way to AniList. They go in the background; AniList is checked again after." }
         let extra = force ? comparison.onlyOnAniList.compactMap { listIds[$0.mediaId] } : []
         Task {
             if !extra.isEmpty, let token = AniListSyncAccount.shared.token() {

@@ -130,3 +130,66 @@ private func weekly(_ season: Int, _ range: ClosedRange<Int>, from first: String
     #expect(AniListPlan.searchNames("KissXSis").contains("Kiss x Sis"))
     #expect(AniListPlan.searchNames("Frieren") == ["Frieren"])
 }
+
+// MARK: Source of truth: AniList
+
+private func days(_ watches: [AniListPlan.Watch]) -> [Int: String] {
+    Dictionary(uniqueKeysWithValues: watches.map { ($0.number ?? 0, $0.aired ?? "") })
+}
+private let reZeroSeasons: [Int: [Int: String]] = [
+    1: days(weekly(1, 1...25, from: "2016-04-04")),
+    2: days(weekly(2, 1...13, from: "2020-07-08")).merging(days(weekly(2, 14...25, from: "2021-01-06"))) { a, _ in a }]
+
+@Test func aniListsExtraEpisodesScoreAndNoteComeIntoTheDiary() {
+    let watches = weekly(1, 1...25, from: "2016-04-04") + weekly(2, 1...5, from: "2020-07-08")
+    let listed = [AniListPlan.ListedDetail(mediaId: 21355, status: "COMPLETED", progress: 25, score: 85, notes: nil, updatedAt: "2026-11-10T08:00:00Z"),
+                  AniListPlan.ListedDetail(mediaId: 108632, status: "CURRENT", progress: 9, score: 85, notes: "  Great  ", updatedAt: "2026-11-14T20:30:00Z"),
+                  AniListPlan.ListedDetail(mediaId: 999, status: "COMPLETED", progress: 12, score: 40, notes: "someone else", updatedAt: nil)]
+    let adoption = AniListPlan.adoption(diaryStatus: "watching", diaryScore: 9, diaryNotes: "", film: false, watches: watches,
+                                        chain: reZero, listed: listed, seasons: reZeroSeasons)
+    #expect(adoption.status == nil, "both sides are watching")
+    #expect(adoption.score == 8.5)
+    #expect(adoption.notes == "Great")
+    #expect(adoption.episodes == (6...9).map { AniListPlan.EpisodeAdd(season: 2, number: $0, at: "2026-11-14T20:30:00Z") })
+    #expect(adoption.unplaced == 0 && !adoption.isEmpty)
+}
+@Test func theDiarysOwnNoteStaysAndNothingIsTakenOff() {
+    let watches = weekly(1, 1...25, from: "2016-04-04") + weekly(2, 1...13, from: "2020-07-08")
+    let listed = [AniListPlan.ListedDetail(mediaId: 21355, status: "COMPLETED", progress: 20, score: 90, notes: "AniList's", updatedAt: nil),
+                  AniListPlan.ListedDetail(mediaId: 108632, status: "COMPLETED", progress: 13, score: nil, notes: nil, updatedAt: nil)]
+    let adoption = AniListPlan.adoption(diaryStatus: "watching", diaryScore: 9, diaryNotes: "Mine", film: false, watches: watches,
+                                        chain: reZero, listed: listed, seasons: reZeroSeasons)
+    #expect(adoption.notes == nil && adoption.noteLeft)
+    #expect(adoption.score == nil, "90 is the diary's 9")
+    #expect(adoption.episodes.isEmpty, "AniList's lower progress takes nothing off")
+    #expect(adoption.status == "completed", "every listed entry is completed")
+}
+@Test func episodesTMDBCantNameAreCountedNotGuessed() {
+    let seasons: [Int: [Int: String]] = [1: reZeroSeasons[1]!, 2: days(weekly(2, 1...10, from: "2020-07-08"))]
+    let listed = [AniListPlan.ListedDetail(mediaId: 108632, status: "COMPLETED", progress: 13, score: nil, notes: nil, updatedAt: "2026-11-01T00:00:00Z")]
+    let adoption = AniListPlan.adoption(diaryStatus: "watching", diaryScore: nil, diaryNotes: "", film: false, watches: [],
+                                        chain: reZero, listed: listed, seasons: seasons)
+    #expect(adoption.episodes.count == 10 && adoption.unplaced == 3)
+}
+@Test func aFilmWatchedOnAniListIsLoggedOnce() {
+    let film = [AniListPlan.Media(id: 21519, format: "MOVIE", episodes: 1, start: "2016-08-26", end: nil)]
+    let listed = [AniListPlan.ListedDetail(mediaId: 21519, status: "COMPLETED", progress: 1, score: nil, notes: nil, updatedAt: "2026-11-12T19:00:00Z")]
+    let unseen = AniListPlan.adoption(diaryStatus: "planned", diaryScore: nil, diaryNotes: "", film: true, watches: [], chain: film, listed: listed, seasons: [:])
+    #expect(unseen.filmWatch == "2026-11-12T19:00:00Z" && unseen.status == "completed")
+    let seen = AniListPlan.adoption(diaryStatus: "completed", diaryScore: nil, diaryNotes: "", film: true,
+                                    watches: [AniListPlan.Watch(season: nil, number: nil, aired: nil, watchedAt: "2020-01-01T00:00:00Z")],
+                                    chain: film, listed: listed, seasons: [:])
+    #expect(seen.isEmpty)
+}
+@Test func diaryStatusFromAniListEntries() {
+    #expect(AniListPlan.diaryStatus(fromAniList: []) == nil)
+    #expect(AniListPlan.diaryStatus(fromAniList: ["COMPLETED", "REPEATING"]) == "watching")
+    #expect(AniListPlan.diaryStatus(fromAniList: ["COMPLETED", "PAUSED"]) == "paused")
+    #expect(AniListPlan.diaryStatus(fromAniList: ["COMPLETED", "DROPPED"]) == "dropped")
+    #expect(AniListPlan.diaryStatus(fromAniList: ["COMPLETED", "COMPLETED"]) == "completed")
+    #expect(AniListPlan.diaryStatus(fromAniList: ["PLANNING"]) == "planned")
+    #expect(AniListPlan.diaryStatus(fromAniList: ["COMPLETED", "PLANNING"]) == "watching")
+    let onHold = AniListPlan.adoption(diaryStatus: "on_hold", diaryScore: nil, diaryNotes: "", film: false, watches: [], chain: reZero,
+                                      listed: [AniListPlan.ListedDetail(mediaId: 21355, status: "PAUSED", progress: 0, score: nil, notes: nil, updatedAt: nil)], seasons: [:])
+    #expect(onHold.status == nil, "on_hold is the diary's word for paused")
+}
