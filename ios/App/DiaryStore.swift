@@ -485,6 +485,15 @@ import TwilDiaryCore
         return scope
     }
     func title(_ id: String) -> MediaTitle? { titleIndex[id] }
+    /// Waits (three seconds at most) for a title just added to reach the diary. Adding rebuilds the
+    /// diary in the background: the saved title's page opened before then read "Title unavailable"
+    /// for a moment (Add to Planned, 2026-11-16), and Favourite or Queue on it did nothing.
+    func waitForTitle(_ id: String) async {
+        for _ in 0..<30 {
+            if title(id) != nil || Task.isCancelled { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
     func episodesForSeason(_ titleID: String, season: Int) -> [Episode] { episodesBySeason[titleID]?[season] ?? [] }
     func watchedEpisodeIDs(_ titleID: String) -> Set<String> { watchedEpisodesByTitle[titleID] ?? [] }
     /// History rows for one filter state, reused until the diary or the filters change.

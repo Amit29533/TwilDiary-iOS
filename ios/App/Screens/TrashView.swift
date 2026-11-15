@@ -130,7 +130,11 @@ struct TrashView: View {
         query.archived = true
         query.category = category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all"
         query.sort = sort == "name" ? .title : sort == "year" ? .year : .library
-        return query.titles(in: store.workspace)
+        // No server: the phone's own Trash, whose titles have left the diary (they were looked for
+        // in the diary, so the header said "6 titles" over an empty grid, 2026-11-16).
+        var source = store.workspace
+        if store.phoneOnly { source.titles = PhoneTrash.shared.titles }
+        return query.titles(in: source)
     }
     private func trashCard(_ title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 10) {
