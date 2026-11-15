@@ -119,6 +119,36 @@ import TwilDiaryCore
         }
     }
 
+    /// A title moved to Trash earlier, then added again from its page: it leaves the phone's Trash,
+    /// and a status change afterwards keeps it (it stayed in Trash before, and vanished).
+    func testAddingATrashedTitleAgainBringsItBack() async throws {
+        let store = makeStore()
+        defer {
+            PhoneTrash.shared.remove(["movie:14170"])
+            TraktDirectStore.shared.useLocal(false)
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        await store.startOnThisPhone()
+        let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":14170,"mediaType":"movie","name":"Up again","year":2009,"overview":"","posterPath":"/u.jpg","genres":["Animation"],"suggestedCategory":"movie"}"#.utf8))
+        let first = await store.importTitle(details, category: "movie")
+        let id = try XCTUnwrap(first)
+        await store.waitForTitle(id)
+        let toTrash = try XCTUnwrap(store.title(id))
+        let trashed = await store.trash(toTrash)
+        XCTAssertTrue(trashed)
+        XCTAssertTrue(PhoneTrash.shared.contains(id))
+        let again = await store.importTitle(details, category: "movie")
+        XCTAssertEqual(again, id)
+        XCTAssertFalse(PhoneTrash.shared.contains(id), "added again: out of Trash")
+        await store.waitForTitle(id)
+        let title = try XCTUnwrap(store.title(id))
+        let dropped = await store.setSeasonStatus(title, season: 1, status: "dropped", watchedAt: Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertTrue(dropped)
+        await store.waitForTitle(id)
+        XCTAssertEqual(store.title(id)?.status, "dropped", "still in the diary, dropped")
+    }
+
     func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
         let store = makeStore(providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
