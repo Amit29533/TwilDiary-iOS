@@ -133,8 +133,10 @@ enum ExtrasStorage {
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(AppConfiguration.backend.absoluteString, forHTTPHeaderField: "Origin")
         }
+        // Every change names your server as its origin, a delete too: it has no body, went without
+        // one, and the server refuses a write that doesn't (Delete backup, HTTP 403, 2026-11-15).
+        if Self.isWrite(method) { request.setValue(AppConfiguration.backend.absoluteString, forHTTPHeaderField: "Origin") }
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status), (response as? HTTPURLResponse)?.mimeType == "application/json" else {
@@ -146,6 +148,8 @@ enum ExtrasStorage {
     /// What went wrong, in words, and who said it: your server's own message (JSON or plain text),
     /// or Cloudflare Access's page (401: the token isn't recognised; 403: it is, but no policy on
     /// this app lets it in).
+    /// A request that changes something on your server (anything but reading): it must name its origin.
+    nonisolated static func isWrite(_ method: String) -> Bool { !["GET", "HEAD", "OPTIONS"].contains(method.uppercased()) }
     private static func explain(_ status: Int, _ data: Data, _ response: URLResponse? = nil) -> String {
         if let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let message = (json["error"] as? [String: Any])?["message"] as? String { return message }
