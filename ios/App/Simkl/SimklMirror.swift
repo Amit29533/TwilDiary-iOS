@@ -661,6 +661,23 @@ struct SimklQueue: Codable, Equatable, Sendable {
         return count
     }
 
+    /// What Simkl refused, in the match plan's terms ("play|tv:46004|s1e11", "rating|movie:760161",
+    /// "planned|…", "dropped|…"): left out of Make match and its count until Try again.
+    var notKeptTokens: Set<String> {
+        Set(notKept.compactMap { item -> String? in
+            guard let job = item.job else { return nil }
+            let key = (job.movie ? "movie:" : "tv:") + String(job.tmdb)
+            switch job.kind {
+            case .watch:
+                guard !job.movie else { return "play|" + key }
+                guard let season = job.diarySeason ?? job.season else { return nil }
+                return "play|\(key)|s\(season)e\(job.diaryNumber ?? job.number ?? 0)"
+            case .rate: return "rating|" + key
+            case .list: return job.list == "plantowatch" ? "planned|" + key : job.list == "dropped" ? "dropped|" + key : nil
+            case .unwatch, .unrate: return nil
+            }
+        })
+    }
     /// What Simkl didn't keep, as the comparison leaves it out ("movie:tmdb", "show:tmdb:s:n").
     var notKeptKeys: Set<String> {
         Set(notKept.compactMap { item in
@@ -675,6 +692,10 @@ struct SimklQueue: Codable, Equatable, Sendable {
     private func spot(for job: SimklJob, match: SimklAPI.Match?, api: SimklAPI) async -> (entry: Int, season: Int?, number: Int?, native: [String: String]?)? {
         if job.movie {
             guard job.anime, let found = try? await api.searchAnime(title: job.name, year: job.year) else { return nil }
+            // Only into an entry that is a film: two parts at most (Date A Bullet's film has two).
+            // Simkl's search can answer with a series of a similar name, and a film placed there
+            // was read as the whole series.
+            guard await episodes(found.simkl, kind: "anime", api: api).filter({ !$0.special }).count <= 2 else { return nil }
             return (found.simkl, nil, nil, (try? await detail(found.simkl, api: api))?.native)
         }
         // The diary built from a tracker keeps no air dates: TMDB's season (your server's without

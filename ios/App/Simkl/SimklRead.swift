@@ -10,9 +10,10 @@ struct SimklPlacement: Codable, Equatable, Sendable {
     var number: Int?
     var at: Date
     /// The placing rules it was made with; older ones are placed again. 2: air dates filled from
-    /// TMDB, and the episode titled the same comes before the date (2026-11-15).
+    /// TMDB, and the episode titled the same comes before the date. 3: a film goes only into an
+    /// entry of two parts at most (2026-11-15).
     var rule: Int? = nil
-    static let currentRule = 2
+    static let currentRule = 3
     var current: Bool { rule == Self.currentRule }
 }
 
@@ -77,11 +78,14 @@ enum SimklLibrary {
                 ref = tmdb.map { TraktTitleRef(kind: .show, traktId: nil, tmdbId: $0, imdbId: imdb, name: mapping.diaryShows[$0] ?? name, year: year) }
                 episodes = watched(item)
             default:
-                // A film: Simkl's "movie", or any entry (OVA, ONA, special) a diary film was placed in.
-                // Simkl files Voices of a Distant Star as an OVA and A Whisker Away as an ONA, both
-                // without a TMDB id (test account, 2026-11-15); read as shows, their watches and
-                // ratings were lost.
-                let placedFilm = entry.flatMap { mapping.films[$0] }
+                // A film: Simkl's "movie" (as Cinopsys and CrossWatch read it), or an OVA, ONA or
+                // special a diary film was placed in that is itself film-sized: two parts at most,
+                // and no diary show's episodes placed there. Simkl files Voices of a Distant Star as
+                // an OVA and A Whisker Away as an ONA, both without a TMDB id; but a film placed in
+                // a series (Immortal King's 15-episode ONA) read the whole series as that film and
+                // hid its episodes (test account, 2026-11-15).
+                let parts = number(item["total_episodes_count"]) ?? watched(item).count
+                let placedFilm = entry.flatMap { mapping.shows[$0] == nil && parts <= 2 ? mapping.films[$0] : nil }
                 if (item["anime_type"] as? String) == "movie" || placedFilm != nil {
                     // An anime film: by its TMDB id when the diary has that film, else where one was placed.
                     let film = tmdb.flatMap { mapping.diaryMovies[$0] != nil ? $0 : nil } ?? placedFilm

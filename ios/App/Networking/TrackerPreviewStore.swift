@@ -204,7 +204,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             MatchLedger.remove(tracker, settled)
             ledger.subtract(settled)
         }
-        let except = ledger
+        // Simkl: what it refused (Not kept) isn't offered again by Make match, nor counted in it.
+        let except = tracker == .simkl ? ledger.union(SimklMirror.shared.notKeptTokens) : ledger
         return await Task.detached(priority: .utility) {
             (TraktComparison.compare(read, with: diary, tracker: tracker, except: except, names: names),
              planned ? TraktWritePlan.make(library: read, workspace: diary, tracker: tracker, except: except) : nil)

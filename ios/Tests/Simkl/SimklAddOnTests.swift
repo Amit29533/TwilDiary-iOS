@@ -403,6 +403,20 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(library.skipped, 0, "no longer an unreadable show")
     }
 
+    /// A film placed in a series entry (Simkl's search answered with Immortal King's 15-episode
+    /// ONA) doesn't make the series a film: its episodes are still read (test account 2026-11-15).
+    func testASeriesEntryAFilmLandedInIsStillTheSeries() throws {
+        let workspace = try diary(titles: [("ik", "The Daily Life of the Immortal King", "anime", 98123), ("fm", "A Film", "anime-movie", 555)],
+                                  episodes: [("ik", 1, 1), ("ik", 1, 2)], watched: [("ik", "ik-1-1"), ("ik", "ik-1-2"), ("fm", nil)])
+        let placements = ["98123:1:1": SimklPlacement(entry: 1258030, season: 1, number: 1, at: .now),
+                          "98123:1:2": SimklPlacement(entry: 1258030, season: 1, number: 2, at: .now),
+                          "movie:555": SimklPlacement(entry: 1258030, season: nil, number: nil, at: .now)]
+        let mapping = SimklLibrary.mapping(placements: placements, diary: workspace)
+        var library = TraktLibrary()
+        SimklLibrary.apply("anime", Data(#"{"anime":[{"status":"watching","last_watched_at":"2021-04-06T18:30:00Z","anime_type":"ona","watched_episodes_count":2,"total_episodes_count":15,"show":{"title":"Xian Wang De Richang Shenghuo","ids":{"simkl":1258030,"tmdb":"98123"}},"seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2021-04-06T18:30:00Z"},{"number":2,"watched_at":"2021-04-06T18:30:00Z"}]}]}]}"#.utf8), mapping: mapping, into: &library)
+        XCTAssertEqual(library.plays.map { "\($0.title.diaryKey ?? "")|\($0.season ?? 0)|\($0.episode ?? 0)" }.sorted(), ["tv:98123|1|1", "tv:98123|1|2"])
+    }
+
     /// Simkl answered for TONIKAWA (the show was on the list from its rating) but kept no episode
     /// (test account 2026-11-15): an anime episode counts as sent only when that episode is watched
     /// there; a TV episode sent by its ids still counts once Simkl has the title.
