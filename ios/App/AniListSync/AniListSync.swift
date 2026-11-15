@@ -265,6 +265,7 @@ struct AniListSyncAPI: Sendable {
     @ObservationIgnored private var days: [String: [Int: String]] = AniListSyncStorage.load([String: [Int: String]].self, "days.json") ?? [:]
     @ObservationIgnored private weak var store: DiaryStore?
     @ObservationIgnored private var lastCall = Date.distantPast
+    @ObservationIgnored private var notReadyTries: [String: Int] = [:]
 
     nonisolated static func key(_ title: MediaTitle) -> String? {
         title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) }
@@ -281,7 +282,8 @@ struct AniListSyncAPI: Sendable {
         let id = mutation.titleId
         guard let title = store.title(id) ?? PhoneCatalog.shared.titles[id], Self.counts(title), let key = Self.key(title) else { return }
         mark([key])
-        Task { await resume() }
+        // A moment's wait: adding a title rebuilds the diary in the background.
+        Task { try? await Task.sleep(for: .seconds(2)); await resume() }
     }
     /// "Send everything": every animated title in the diary waits to be sent (the first full sync).
     func sendEverything(store: DiaryStore) {
@@ -310,7 +312,11 @@ struct AniListSyncAPI: Sendable {
             progress = (done, done + waiting.count)
             do {
                 try await send(key, api: AniListSyncAPI(token: token))
-                waiting.removeFirst(); done += 1; lastProblem = nil
+                waiting.removeAll { $0 == key }; done += 1; lastProblem = nil
+            } catch is NotReady {
+                // Tried again in a few seconds (it stays waiting).
+                Task { try? await Task.sleep(for: .seconds(5)); await resume() }
+                break
             } catch let failure as AniListSyncAPI.Failure {
                 switch failure {
                 case .busy(let seconds):
@@ -324,7 +330,7 @@ struct AniListSyncAPI: Sendable {
                     lastProblem = message + " What’s waiting goes when AniList answers."
                 case .refused(let message):
                     record(key, "AniList refused it: " + message)
-                    waiting.removeFirst(); done += 1
+                    waiting.removeAll { $0 == key }; done += 1
                     continue
                 }
                 break
@@ -338,12 +344,21 @@ struct AniListSyncAPI: Sendable {
         AniListSyncStorage.save(sent, "sent.json")
     }
 
+    /// A title added a moment ago that the diary doesn't have yet: tried again shortly.
+    private struct NotReady: Error {}
     /// One title: its entries worked out from the diary, then saved (only what changed), and any
     /// it no longer has taken off AniList.
     private func send(_ key: String, api: AniListSyncAPI) async throws {
         guard let store else { return }
-        let title = store.workspace.activeTitles.first { Self.key($0) == key }
-        guard let title else {
+        let found = store.workspace.titles.first { Self.key($0) == key && $0.deletedAt == nil } ?? store.workspace.titles.first { Self.key($0) == key }
+        guard let title = found, title.deletedAt == nil else {
+            // Just added on this phone, the diary not rebuilt yet: not "gone".
+            // At most three tries (a trashed title may linger in the phone's catalog).
+            if found == nil, PhoneCatalog.shared.titles.values.contains(where: { Self.key($0) == key }), notReadyTries[key, default: 0] < 3 {
+                notReadyTries[key, default: 0] += 1
+                throw NotReady()
+            }
+            notReadyTries[key] = nil
             // Trashed (or gone): its entries come off AniList.
             for (mediaId, record) in sent where record.key == key { try await delete(mediaId, record, api: api) }
             return

@@ -107,3 +107,10 @@ private func weekly(_ season: Int, _ range: ClosedRange<Int>, from first: String
     #expect(done.entries.first?.status == "COMPLETED" && done.entries.first?.progress == 12, "finished in the diary: Completed, the rewatch not counted till it's whole")
     #expect(AniListPlan.entries(status: "planned", score: nil, film: true, watches: [], chain: dateALive, notes: "").entries.first?.notes == nil, "an empty note is no note")
 }
+
+@Test func aSpecialDoesntCountAsASeasonsEpisode() {
+    let recap = AniListPlan.Watch(season: 0, number: 1, aired: "2016-06-15", watchedAt: "2021-04-07T12:04:00Z")
+    let plan = AniListPlan.entries(status: "watching", score: nil, film: false, watches: weekly(1, 1...3, from: "2016-04-04") + [recap], chain: reZero)
+    #expect(plan.entries.map(\.progress) == [3], "the recap aired mid-season isn't episode 4")
+    #expect(plan.unplaced == 0)
+}

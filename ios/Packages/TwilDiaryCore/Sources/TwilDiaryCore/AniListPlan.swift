@@ -193,7 +193,8 @@ public enum AniListPlan {
                            startedAt: times.first, completedAt: times.last, repeatCount: max(0, watches.count - 1), notes: notes)], 0)
         }
         var assigned: [Int: [Watch]] = [:], unplaced = 0
-        for watch in watches {
+        // Specials (season 0) aren't a season's episodes: AniList keeps them as entries of their own.
+        for watch in watches where watch.season != 0 {
             if let aired = day(watch.aired), let media = media(for: aired, in: chain) { assigned[media.id, default: []].append(watch) }
             else if chain.count == 1 { assigned[first.id, default: []].append(watch) }
             else { unplaced += 1 }
