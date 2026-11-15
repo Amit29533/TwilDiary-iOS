@@ -12,8 +12,10 @@ public enum AniListPlan {
         public let episodes: Int?
         public let start: String?
         public let end: String?
-        public init(id: Int, format: String?, episodes: Int?, start: String?, end: String?) {
-            self.id = id; self.format = format; self.episodes = episodes; self.start = start; self.end = end
+        /// AniList's name for it (English, else romaji), for the comparison.
+        public var title: String? = nil
+        public init(id: Int, format: String?, episodes: Int?, start: String?, end: String?, title: String? = nil) {
+            self.id = id; self.format = format; self.episodes = episodes; self.start = start; self.end = end; self.title = title
         }
     }
     /// What one AniList entry should hold. `score` is out of 100; dates are "2021-04-07".
@@ -45,6 +47,89 @@ public enum AniListPlan {
         public let media: Media
         public let names: [String]
         public init(media: Media, names: [String]) { self.media = media; self.names = names }
+    }
+
+    /// An entry on your AniList list, as read back.
+    public struct Listed: Equatable, Sendable {
+        public let mediaId: Int
+        public let listId: Int
+        public let status: String
+        public let progress: Int
+        public let score: Int?
+        public let title: String
+        public init(mediaId: Int, listId: Int, status: String, progress: Int, score: Int?, title: String) {
+            self.mediaId = mediaId; self.listId = listId; self.status = status; self.progress = progress; self.score = score; self.title = title
+        }
+    }
+    /// An entry the diary expects: the title it belongs to ("tv:98123") and what it should hold.
+    public struct Expected: Equatable, Sendable {
+        public let key: String
+        public let label: String
+        public let entry: Entry
+        public init(key: String, label: String, entry: Entry) { self.key = key; self.label = label; self.entry = entry }
+    }
+    public struct Difference: Equatable, Sendable {
+        /// The diary title it belongs to; nil for an entry only on AniList.
+        public let key: String?
+        public let mediaId: Int
+        public let title: String
+        public let detail: String
+    }
+    /// Your AniList list against what the diary expects, entry by entry: progress, status and score.
+    public struct Comparison: Equatable, Sendable {
+        public var matching = 0
+        public var missing: [Difference] = []
+        public var different: [Difference] = []
+        public var onlyOnAniList: [Difference] = []
+        /// Diary titles whose AniList entries aren't looked up yet (Send everything looks them up).
+        public var notLookedUp = 0
+        public var matches: Bool { missing.isEmpty && different.isEmpty && onlyOnAniList.isEmpty }
+        /// The diary titles Make match sends again, in order.
+        public var keysToSend: [String] {
+            var seen = Set<String>()
+            return (missing + different).compactMap(\.key).filter { seen.insert($0).inserted }
+        }
+        public init() {}
+    }
+    public static func label(_ status: String) -> String {
+        switch status {
+        case "PLANNING": "Planned"
+        case "CURRENT": "Watching"
+        case "COMPLETED": "Completed"
+        case "PAUSED": "On hold"
+        case "DROPPED": "Dropped"
+        case "REPEATING": "Rewatching"
+        default: status.capitalized
+        }
+    }
+    public static func compare(expected: [Expected], listed: [Listed], notLookedUp: Int = 0) -> Comparison {
+        var result = Comparison()
+        result.notLookedUp = notLookedUp
+        let byMedia = Dictionary(listed.map { ($0.mediaId, $0) }, uniquingKeysWith: { first, _ in first })
+        var wanted = Set<Int>()
+        for item in expected {
+            let entry = item.entry
+            wanted.insert(entry.mediaId)
+            guard let there = byMedia[entry.mediaId] else {
+                result.missing.append(Difference(key: item.key, mediaId: entry.mediaId, title: item.label, detail: "\(label(entry.status)) in the diary, not on AniList"))
+                continue
+            }
+            var details: [String] = []
+            // Rewatching is Completed watched again: the same here.
+            let sameStatus = there.status == entry.status || (there.status == "REPEATING" && entry.status == "COMPLETED")
+            if !sameStatus { details.append("\(label(entry.status)) in the diary, \(label(there.status)) on AniList") }
+            if there.progress != entry.progress { details.append("\(entry.progress) watched in the diary, \(there.progress) on AniList") }
+            if (there.score ?? 0) != (entry.score ?? 0) {
+                func points(_ value: Int?) -> String { value.map { $0 == 0 ? "none" : String(format: "%g", Double($0) / 10) } ?? "none" }
+                details.append("rated \(points(entry.score)) in the diary, \(points(there.score)) on AniList")
+            }
+            if details.isEmpty { result.matching += 1 }
+            else { result.different.append(Difference(key: item.key, mediaId: entry.mediaId, title: item.label, detail: details.joined(separator: "; "))) }
+        }
+        for there in listed where !wanted.contains(there.mediaId) {
+            result.onlyOnAniList.append(Difference(key: nil, mediaId: there.mediaId, title: there.title, detail: "\(label(there.status)) on AniList, not in the diary"))
+        }
+        return result
     }
 
     /// AniList's list status for a diary status.

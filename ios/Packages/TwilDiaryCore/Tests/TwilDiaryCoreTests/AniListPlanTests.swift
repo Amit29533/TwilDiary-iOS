@@ -76,3 +76,23 @@ private func weekly(_ season: Int, _ range: ClosedRange<Int>, from first: String
     #expect(AniListPlan.pick(candidates, names: ["Something Else"], year: 2022, film: true, strict: true) == nil, "strict: only one named the same")
     #expect(AniListPlan.status("paused") == "PAUSED" && AniListPlan.status("planned") == "PLANNING")
 }
+
+@Test func theComparisonFindsMissingDifferentAndExtraEntries() {
+    let expected = [
+        AniListPlan.Expected(key: "tv:65942", label: "Re:ZERO", entry: AniListPlan.Entry(mediaId: 21355, status: "COMPLETED", progress: 25, score: 90)),
+        AniListPlan.Expected(key: "tv:65942", label: "Re:ZERO · 2nd Season", entry: AniListPlan.Entry(mediaId: 108632, status: "CURRENT", progress: 5, score: 90)),
+        AniListPlan.Expected(key: "tv:46004", label: "Date A Live", entry: AniListPlan.Entry(mediaId: 15583, status: "COMPLETED", progress: 12, score: 80)),
+        AniListPlan.Expected(key: "movie:912598", label: "Bubble", entry: AniListPlan.Entry(mediaId: 142455, status: "PLANNING", progress: 0))]
+    let listed = [
+        AniListPlan.Listed(mediaId: 21355, listId: 1, status: "REPEATING", progress: 25, score: 90, title: "Re:Zero"),
+        AniListPlan.Listed(mediaId: 108632, listId: 2, status: "CURRENT", progress: 3, score: 85, title: "Re:Zero 2nd Season"),
+        AniListPlan.Listed(mediaId: 15583, listId: 3, status: "COMPLETED", progress: 12, score: 80, title: "Date A Live"),
+        AniListPlan.Listed(mediaId: 1, listId: 4, status: "PLANNING", progress: 0, score: nil, title: "Cowboy Bebop")]
+    let result = AniListPlan.compare(expected: expected, listed: listed, notLookedUp: 2)
+    #expect(result.matching == 2, "Rewatching counts as Completed")
+    #expect(result.different.map(\.detail) == ["5 watched in the diary, 3 on AniList; rated 9 in the diary, 8.5 on AniList"])
+    #expect(result.missing.map(\.title) == ["Bubble"])
+    #expect(result.onlyOnAniList.map(\.title) == ["Cowboy Bebop"])
+    #expect(result.keysToSend == ["movie:912598", "tv:65942"])
+    #expect(result.notLookedUp == 2 && !result.matches)
+}
