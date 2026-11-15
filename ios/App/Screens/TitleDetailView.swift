@@ -32,7 +32,6 @@ struct TitleDetailView: View {
     @State private var showRating = false
     @State private var showInformation = false
     @State private var showCineMind = false
-    @State private var checkInMessage: String?
     @State private var confirmRemoveHistory = false
     @State private var headerState = CompactHeaderState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -122,11 +121,11 @@ struct TitleDetailView: View {
                                     Menu {
                                         Button("Sentiments", systemImage: "info.circle") { showInformation = true }.accessibilityIdentifier("title-information")
                                         Button("Ask CineMind", systemImage: "sparkle") { showCineMind = true }.accessibilityIdentifier("title-cinemind")
-                                        Button(title.favorite ? "Remove from Favourites" : "Add to Favourites", systemImage: title.favorite ? "heart.slash" : "heart") {
+                                        // "Favourite" either way; the filled heart says it is one.
+                                        Button("Favourite", systemImage: title.favorite ? "heart.fill" : "heart") {
                                             Task { await store.patch(title, values: ["favorite": !title.favorite]) }
                                         }.disabled(store.writesBlocked).accessibilityIdentifier("title-favorite")
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
-                                        checkInButton(title)
                                         // Move to Trash does what Remove from watch history did (every watch off
                                         // the service), then takes the title out; there's no separate item.
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
@@ -154,39 +153,6 @@ struct TitleDetailView: View {
                 }
             } else { ContentUnavailableView("Title unavailable", systemImage: "film") }
         }
-    }
-    /// "Check in on <service>" (a movie, or the next episode): the service holding your diary
-    /// (MDBList or WeTrakr), else Trakt when it's connected.
-    @ViewBuilder private func checkInButton(_ title: MediaTitle) -> some View {
-        if let tracker = store.diaryFromTracker ?? ((store.traktSignedInOnPhone || store.traktHoldsDiary) ? MainTracker.trakt : nil),
-           LiveCheckIn.shared.active == nil {
-            Button("Check in on \(tracker.name)", systemImage: "checkmark.circle.badge.questionmark") {
-                Task {
-                    // The banner above the tab bar shows it from here (time left, Cancel).
-                    do { try await LiveCheckIn.shared.start(tracker, title, episode: nextEpisode(title), store: store) }
-                    catch { checkInMessage = error.localizedDescription }
-                }
-            }.accessibilityIdentifier("title-check-in")
-        }
-        // Simkl, kept in sync: checked in there, and the watch goes into the diary when it ends.
-        if store.providerSettings.simkl.isAuthenticated, LiveCheckIn.shared.active == nil {
-            Button("Check in on Simkl", systemImage: "checkmark.circle.badge.questionmark") {
-                Task {
-                    do { try await LiveCheckIn.shared.start(.simkl, title, episode: nextEpisode(title), store: store) }
-                    catch { checkInMessage = error.localizedDescription }
-                }
-            }.accessibilityIdentifier("title-check-in-simkl")
-        }
-    }
-    /// The next episode to check in to: the first aired, unskipped regular episode you haven't watched.
-    private func nextEpisode(_ title: MediaTitle) -> Episode? {
-        guard title.isSeries else { return nil }
-        let watched = Set(store.workspace.events.filter { $0.titleId == title.id && $0.revokedAt == nil }.compactMap(\.episodeId))
-        let today = DiaryDate.day(store.now)
-        return store.workspace.episodes.filter { episode in
-            episode.titleId == title.id && episode.season > 0 && episode.skipped != true && !watched.contains(episode.id)
-                && (episode.airedOn.map { String($0.prefix(10)) <= today } ?? false)
-        }.min { ($0.season, $0.number) < ($1.season, $1.number) }
     }
     private func detailPresentations(title: MediaTitle, content: some View) -> some View {
         content
@@ -235,9 +201,6 @@ struct TitleDetailView: View {
                 Button("Remove", role: .destructive) { Task { await store.removeWatchHistory(title); await loadCard(title) } }
                 Button("Cancel", role: .cancel) {}
             } message: { Text(store.diaryFromService ? "They come off \(store.diaryService?.name ?? "Trakt") too. Your rating, notes and lists stay." : "Your rating, notes and lists stay.") }
-            .alert(checkInMessage ?? "", isPresented: Binding(get: { checkInMessage != nil }, set: { if !$0 { checkInMessage = nil } })) {
-                Button("OK", role: .cancel) {}
-            }
             .alert("Move \(title.name) to Trash?", isPresented: $confirmTrash) {
                 Button("Move to Trash", role: .destructive) { Task { if await store.trash(title) { dismissPage() } } }
                 Button("Cancel", role: .cancel) {}

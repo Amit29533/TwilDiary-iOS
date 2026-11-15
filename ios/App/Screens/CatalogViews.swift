@@ -436,7 +436,7 @@ struct CatalogDetailView: View {
                             Button("Ask CineMind", systemImage: "sparkle") { showCineMind = true }.disabled(details == nil).accessibilityIdentifier("catalog-cinemind")
                             // Sentiments, File location and Share only read; the library edits need write access.
                             let canEdit = store.canMutate && !store.busy && details?.libraryTitle?.trashed != true
-                            Button(saved?.favorite == true ? "Remove from Favourites" : "Add to Favourites", systemImage: saved?.favorite == true ? "heart.slash" : "heart") {
+                            Button("Favourite", systemImage: saved?.favorite == true ? "heart.fill" : "heart") {
                                 Task { await libraryAction(["favorite": saved?.favorite != true]) }
                             }.disabled(!canEdit).accessibilityIdentifier("catalog-favorite")
                             Button(saved?.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") {

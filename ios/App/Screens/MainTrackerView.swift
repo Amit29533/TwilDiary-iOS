@@ -317,9 +317,10 @@ struct TrackerPreviewPanel: View {
                             .font(.subheadline.weight(.semibold)).foregroundStyle(Color(themed: "#f5c26b"))
                     }.id(clearedLetters).accessibilityIdentifier(id + "-set-aside")
                 }
-            }.padding(15).modifier(SettingsCard())
+            // Full width, as the Options list under it, however short its lines are.
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(15).modifier(SettingsCard())
                 .smoothChange(of: report?.comparison.matchingPlays ?? -1)
-        }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
     }
 
 
