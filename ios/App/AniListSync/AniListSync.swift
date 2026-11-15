@@ -69,8 +69,7 @@ struct AniListSyncAPI: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
-        let body: [String: Any] = ["query": text, "variables": variables]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try Self.body(text, variables)
         let data: Data, response: URLResponse
         do { (data, response) = try await URLSession.shared.data(for: request) }
         catch { throw Failure.unavailable(error.localizedDescription) }
@@ -84,6 +83,17 @@ struct AniListSyncAPI: Sendable {
             throw Failure.refused(message.isEmpty ? "AniList refused it (HTTP \(status))." : message)
         }
         return data
+    }
+    /// A null for AniList (a date it should clear: left out, it keeps the old one; checked 2026-11-15).
+    struct Null: Sendable {}
+    /// The request body, with `Null` as JSON's null.
+    static func body(_ text: String, _ variables: [String: any Sendable]) throws -> Data {
+        func json(_ value: any Sendable) -> Any {
+            if value is Null { return NSNull() }
+            if let object = value as? [String: any Sendable] { return object.mapValues(json) }
+            return value
+        }
+        return try JSONSerialization.data(withJSONObject: ["query": text, "variables": variables.mapValues(json)] as [String: Any])
     }
     /// The `data` object of a reply.
     static func data(_ reply: Data) -> [String: Any] {
@@ -332,8 +342,10 @@ struct AniListSyncAPI: Sendable {
     private func save(_ entry: AniListPlan.Entry, key: String, api: AniListSyncAPI) async throws {
         var variables: [String: any Sendable] = ["mediaId": entry.mediaId, "status": entry.status, "progress": entry.progress,
                                                  "repeat": entry.repeatCount, "scoreRaw": entry.score ?? 0]
-        if let started = AniListSyncAPI.fuzzy(entry.startedAt) { variables["startedAt"] = started }
-        if let completed = AniListSyncAPI.fuzzy(entry.completedAt) { variables["completedAt"] = completed }
+        // Both dates always: an entry no longer complete has its finish date cleared.
+        let empty: [String: any Sendable] = ["year": AniListSyncAPI.Null(), "month": AniListSyncAPI.Null(), "day": AniListSyncAPI.Null()]
+        variables["startedAt"] = AniListSyncAPI.fuzzy(entry.startedAt).map { $0 as [String: any Sendable] } ?? empty
+        variables["completedAt"] = AniListSyncAPI.fuzzy(entry.completedAt).map { $0 as [String: any Sendable] } ?? empty
         try await pace()
         let reply = try await api.call("""
             mutation($mediaId: Int, $status: MediaListStatus, $progress: Int, $scoreRaw: Int, $repeat: Int, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {

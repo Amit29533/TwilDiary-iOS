@@ -18,4 +18,14 @@ final class AniListSyncTests: XCTestCase {
         XCTAssertNil(AniListSyncAPI.day(["year": 2016, "month": NSNull(), "day": NSNull()] as [String: Any]), "a year alone isn't a day")
         XCTAssertEqual(AniListSyncAPI.fuzzy("2021-04-07T12:04:00Z"), ["year": 2021, "month": 4, "day": 7])
     }
+
+    /// A date to clear goes as nulls (left out, AniList keeps the old one: checked on the test account).
+    func testAClearedDateGoesAsNulls() throws {
+        let empty: [String: any Sendable] = ["year": AniListSyncAPI.Null(), "month": AniListSyncAPI.Null(), "day": AniListSyncAPI.Null()]
+        let data = try AniListSyncAPI.body("mutation", ["mediaId": 15583, "completedAt": empty, "startedAt": ["year": 2021, "month": 4, "day": 7] as [String: any Sendable]])
+        let variables = try XCTUnwrap((JSONSerialization.jsonObject(with: data) as? [String: Any])?["variables"] as? [String: Any])
+        XCTAssertTrue((variables["completedAt"] as? [String: Any])?["year"] is NSNull)
+        XCTAssertEqual((variables["startedAt"] as? [String: Any])?["day"] as? Int, 7)
+        XCTAssertEqual(variables["mediaId"] as? Int, 15583)
+    }
 }
