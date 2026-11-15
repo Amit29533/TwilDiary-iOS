@@ -11,7 +11,6 @@ struct AniListSyncSection: View {
     @Environment(\.webAuthenticationSession) private var webSession
     @State private var working = false
     @State private var message: String?
-    @State private var confirmEverything = false
     @State private var confirmForce = false
     @State private var confirmRemove = false
 
@@ -69,11 +68,6 @@ struct AniListSyncSection: View {
             }
         }
         .task { await sync.resume(store: store) }
-        .confirmationDialog("Send your whole anime diary to AniList?", isPresented: $confirmEverything, titleVisibility: .visible) {
-            Button("Send everything") { sync.sendEverything(store: store) }
-        } message: {
-            Text("Each anime’s seasons get their progress, status, score, dates and your note on AniList, about two seconds a title, in the background. Entries already on AniList are updated to match your diary.")
-        }
         .confirmationDialog("Make AniList exactly like your diary?", isPresented: $confirmForce, titleVisibility: .visible) {
             Button("Force Match", role: .destructive) { sync.makeMatch(store: store, force: true) }
         } message: {
@@ -108,7 +102,7 @@ struct AniListSyncSection: View {
         if sync.checking { return "Reading AniList…" }
         if let problem = sync.checkProblem { return problem }
         if let comparison = sync.comparison, comparison.notLookedUp > 0 {
-            return comparison.notLookedUp.counted("title", "titles") + " not looked up on AniList yet: Send everything does it."
+            return comparison.notLookedUp.counted("title", "titles") + " not looked up on AniList yet; they’re sent on their own, about two seconds each."
         }
         if sync.comparison == nil { return "Tap Check to read AniList." }
         return sync.checkedAt.map { "Checked " + $0.formatted(date: .omitted, time: .shortened) }
@@ -146,11 +140,6 @@ struct AniListSyncSection: View {
                     .disabled(sync.checking)
             }.accessibilityIdentifier("anilist-sync-compare")
             SettingsDivider()
-            SettingsRow(title: "Send everything", subtitle: "Your anime diary, once; about two seconds a title") {
-                Button("Send") { confirmEverything = true }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1)
-                    .disabled(!account.saving || sync.sending)
-            }.accessibilityIdentifier("anilist-sync-everything")
-            SettingsDivider()
             Toggle(isOn: $account.sendNotes) { SettingsRowTitle("Send my notes", "") }
                 .settingsRowFrame().accessibilityIdentifier("anilist-sync-notes")
             SettingsDivider()
@@ -173,7 +162,7 @@ struct AniListSyncSection: View {
         working = true; message = nil
         defer { working = false }
         do {
-            if try await account.signIn(using: webSession) { message = "Signed in. Turn on “Also save my activity to AniList”, then Send everything once." }
+            if try await account.signIn(using: webSession) { message = "Signed in. Turn on “Also save my activity to AniList”: your anime go on their own, about two seconds each." }
         } catch { message = error.localizedDescription }
     }
 }

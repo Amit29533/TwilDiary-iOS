@@ -196,57 +196,21 @@ struct AniListMostWatched: View {
 /// voice actors from. A username or a pasted profile link; nothing else is asked or stored.
 struct AniListSettingsView: View {
     @AppStorage(AniListMostWatched.userKey) private var user = ""
-    @State private var draft = ""
     @State private var account = AniListSyncAccount.shared
     var body: some View {
         EdgeToEdgeScroll {
-            // Top to bottom as Simkl's page: the header with what AniList keeps, the sync (Account,
-            // Direct from AniList, Options, Waiting, Not kept, Disconnect), then the Characters profile.
+            // Top to bottom as Simkl's page: the header with what AniList keeps, then the sync
+            // (Account, Direct from AniList, Options, Waiting, Not kept, Disconnect). Characters
+            // ranks from the signed-in account (its name is the profile, filled in at sign-in).
             VStack(alignment: .leading, spacing: 16) {
                 SettingsServiceHeader(logo: .anilist, title: "AniList",
                                       subtitle: account.username.map { "@" + $0 } ?? (user.isEmpty ? "Your anime list and characters" : "@" + user),
-                                      badge: account.signedIn ? ("Connected", .good) : user.isEmpty ? ("Not set", .missing) : ("Profile set", .configured)) {
+                                      badge: account.signedIn ? ("Connected", .good) : ("Not signed in", .missing)) {
                     SettingsKeeps(items: ["Progress", "Status", "Score", "Dates", "Rewatches", "Notes"])
                 }
                 AniListSyncSection()
-                if !user.isEmpty {
-                    SettingsGroup(label: "Characters profile", info: "Favourites ranks your characters from this public AniList profile (filled in when you sign in). Only the username is used.") {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Connected").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
-                                Text("@" + user).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                            Button("Remove", role: .destructive) { user = ""; draft = "" }
-                                .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
-                                .padding(.horizontal, 16).frame(height: 36).background(Color(themed: "#3a1d26"), in: Capsule())
-                                .buttonStyle(.plain).accessibilityIdentifier("anilist-user-remove")
-                        }.padding(.horizontal, 15).frame(minHeight: 64)
-                    }
-                }
-                SettingsGroup(label: user.isEmpty ? "Characters profile" : "Change characters profile") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Username or profile link").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        TextField("twilight29533 or anilist.co/user/…", text: $draft).settingsField()
-                            .submitLabel(.done).onSubmit(save).accessibilityIdentifier("anilist-user-field")
-                        if !draft.isEmpty && AniListError.username(draft) == nil {
-                            Text("That doesn’t look like an AniList username or profile link.").font(.system(size: 12)).foregroundStyle(Color(themed: "#f5c26b"))
-                        }
-                        Button("Save", action: save).buttonStyle(SettingsWideButtonStyle(outlined: true))
-                            .disabled(AniListError.username(draft) == nil || AniListError.username(draft) == user).accessibilityIdentifier("anilist-user-save")
-                    }.padding(15)
-                }
-                if !user.isEmpty {
-                    Link(destination: URL(string: "https://anilist.co/user/" + user)!) { SettingsLinkLabel(text: "Open profile on AniList") }
-                        .padding(.horizontal, 4)
-                }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("AniList").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .onAppear { draft = user }
-    }
-    private func save() {
-        guard let name = AniListError.username(draft) else { return }
-        user = name; draft = name
-        Task { await AniListClient.shared.forgetStats() }
     }
 }
 

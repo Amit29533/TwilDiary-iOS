@@ -795,14 +795,11 @@ import UIKit
         let connect = app.buttons["anilist-connect"]
         XCTAssertTrue(connect.waitForExistence(timeout: 5)); XCTAssertFalse(app.textFields["anilist-user-field"].exists, "No input box on the tab")
         connect.tap()
-        let profile = app.textFields["anilist-user-field"]
-        XCTAssertTrue(profile.waitForExistence(timeout: 5)); profile.tap(); profile.typeText("https://anilist.co/user/twilight29533/stats/anime/voiceActors")
-        app.buttons["anilist-user-save"].tap()
-        XCTAssertTrue(app.buttons["anilist-user-remove"].waitForExistence(timeout: 5)); capture("Settings AniList connected")
+        // The profile is the signed-in AniList account now (no username box): the page offers Sign in.
+        XCTAssertTrue(app.buttons["anilist-sync-sign-in"].waitForExistence(timeout: 5)); capture("Settings AniList")
+        XCTAssertFalse(app.textFields["anilist-user-field"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        // No AniList pill on Favourites (owner's request); the ranking still loads from the profile.
-        XCTAssertTrue(app.buttons["top-character-1"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["anilist-user"].exists)
-        capture("Favourites most watched characters")
+        XCTAssertFalse(app.buttons["anilist-user"].exists, "No AniList pill on Favourites (owner's request)")
         // Cast and voice actors rank from the diary.
         app.buttons["favourites-tab-cast"].tap()
         XCTAssertFalse(app.buttons["favourite-character:2"].exists)

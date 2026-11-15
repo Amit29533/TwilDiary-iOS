@@ -129,6 +129,9 @@ struct AniListSyncAPI: Sendable {
     private static let savingKey = AniListSyncStorage.prefix + "saving"
     private static let expiresKey = AniListSyncStorage.prefix + "expires"
     private static let idKey = AniListSyncStorage.prefix + "userId"
+    private static let avatarKey = AniListSyncStorage.prefix + "avatar"
+    /// Your AniList picture (Connections shows it, as the other services' rows do).
+    private(set) var avatar: String? = UserDefaults.standard.string(forKey: AniListSyncAccount.avatarKey)
     /// The signed-in account's AniList id (its list is read by it).
     private(set) var userId: Int? = {
         let value = UserDefaults.standard.integer(forKey: AniListSyncAccount.idKey)
@@ -185,14 +188,23 @@ struct AniListSyncAPI: Sendable {
         Task { await AniListSync.shared.resume() }
         return true
     }
-    /// The signed-in account's id (and name), asked once.
+    /// Your name and picture, asked again if the picture isn't known (signed in before it was asked).
+    func refreshProfile() async {
+        guard avatar == nil, let token = token() else { return }
+        userId = nil
+        _ = try? await viewerId(AniListSyncAPI(token: token))
+    }
+    /// The signed-in account's id (and name and picture), asked once.
     func viewerId(_ api: AniListSyncAPI) async throws -> Int {
         if let userId { return userId }
-        let reply = try await api.call("{ Viewer { id name } }")
+        let reply = try await api.call("{ Viewer { id name avatar { large medium } } }")
         guard let viewer = AniListSyncAPI.data(reply)["Viewer"] as? [String: Any], let id = viewer["id"] as? Int else {
             throw AniListSyncAPI.Failure.refused("AniList didn’t say who’s signed in.")
         }
         userId = id; UserDefaults.standard.set(id, forKey: Self.idKey)
+        if let picture = viewer["avatar"] as? [String: Any], let url = (picture["large"] as? String) ?? (picture["medium"] as? String) {
+            avatar = url; UserDefaults.standard.set(url, forKey: Self.avatarKey)
+        }
         if let name = viewer["name"] as? String {
             username = name; UserDefaults.standard.set(name, forKey: Self.nameKey)
             // Favourites → Characters ranks from this profile; filled in if you haven't set one.
@@ -220,13 +232,13 @@ struct AniListSyncAPI: Sendable {
     func signOut() {
         AniListSyncStorage.setSecret(nil, "token")
         UserDefaults.standard.removeObject(forKey: Self.expiresKey); UserDefaults.standard.removeObject(forKey: Self.nameKey)
-        UserDefaults.standard.removeObject(forKey: Self.idKey)
-        hasToken = false; expiresAt = nil; username = nil; userId = nil
+        UserDefaults.standard.removeObject(forKey: Self.idKey); UserDefaults.standard.removeObject(forKey: Self.avatarKey)
+        hasToken = false; expiresAt = nil; username = nil; userId = nil; avatar = nil
     }
     /// Signs out and removes everything the AniList sync kept here. Nothing on AniList changes.
     func removeEverything() {
         AniListSyncStorage.removeEverything()
-        hasToken = false; expiresAt = nil; username = nil; userId = nil; saving = false
+        hasToken = false; expiresAt = nil; username = nil; userId = nil; avatar = nil; saving = false
         AniListSync.shared.forget()
     }
 }
@@ -253,6 +265,8 @@ struct AniListSyncAPI: Sendable {
     private(set) var lastProblem: String?
     /// While sending: how many titles are done of how many.
     private(set) var progress: (done: Int, total: Int)?
+    /// When AniList last took a change (Connections shows it).
+    private(set) var lastSentAt: Date? = UserDefaults.standard.object(forKey: AniListSyncStorage.prefix + "lastSent") as? Date
     /// Your AniList list against the diary (phase 2), as last checked.
     private(set) var comparison: AniListPlan.Comparison?
     private(set) var checkedAt: Date?
@@ -260,7 +274,7 @@ struct AniListSyncAPI: Sendable {
     private(set) var checkProblem: String?
     /// AniList's list-entry ids from the last check (Force Match takes entries off by them).
     @ObservationIgnored private var listIds: [Int: Int] = [:]
-    @ObservationIgnored private var chains: [String: Chain] = AniListSyncStorage.load([String: Chain].self, "chains.json") ?? [:]
+    @ObservationIgnored private var chains: [String: Chain] = AniListSyncStorage.load([String: Chain].self, AniListSync.chainsFile) ?? [:]
     @ObservationIgnored private var sent: [Int: Sent] = AniListSyncStorage.load([Int: Sent].self, "sent.json") ?? [:]
     @ObservationIgnored private var days: [String: [Int: String]] = AniListSyncStorage.load([String: [Int: String]].self, "days.json") ?? [:]
     @ObservationIgnored private weak var store: DiaryStore?
@@ -285,12 +299,6 @@ struct AniListSyncAPI: Sendable {
         // A moment's wait: adding a title rebuilds the diary in the background.
         Task { try? await Task.sleep(for: .seconds(2)); await resume() }
     }
-    /// "Send everything": every animated title in the diary waits to be sent (the first full sync).
-    func sendEverything(store: DiaryStore) {
-        self.store = store
-        mark(store.workspace.activeTitles.filter(Self.counts).compactMap(Self.key))
-        Task { await resume() }
-    }
     private func mark(_ keys: [String]) {
         for key in keys where !waiting.contains(key) { waiting.append(key) }
         AniListSyncStorage.save(waiting, "waiting.json")
@@ -303,6 +311,10 @@ struct AniListSyncAPI: Sendable {
     /// Sends what's waiting, a title at a time, paced to AniList's limit (30 a minute for now).
     func resume(store: DiaryStore? = nil) async {
         if let store, !store.isPreview { self.store = store }
+        // Every anime not sent yet goes on its own: the first full sync, and titles added since.
+        if !sending, AniListSyncAccount.shared.canSend, let diary = self.store?.workspace {
+            mark(diary.activeTitles.filter(Self.counts).compactMap(Self.key).filter { chains[$0] == nil })
+        }
         guard !sending, AniListSyncAccount.shared.canSend, self.store != nil, !waiting.isEmpty else { return }
         sending = true
         defer { sending = false; progress = nil }
@@ -371,6 +383,10 @@ struct AniListSyncAPI: Sendable {
         for media in chain where !kept.contains(media.id) {
             if let record = sent[media.id] { try await delete(media.id, record, api: api) }
         }
+        // Entries saved for this title before that aren't its entries now (a wrong match, such as
+        // the commercial "Your Name." was first matched to): taken off AniList.
+        let current = Set(chain.map(\.id))
+        for (mediaId, record) in sent where record.key == key && !current.contains(mediaId) { try await delete(mediaId, record, api: api) }
         if unplaced > 0 {
             record(key, title.name, "\(unplaced) \(unplaced == 1 ? "watch has" : "watches have") no air date to tell which AniList season it belongs to; left out.")
         } else {
@@ -501,6 +517,7 @@ struct AniListSyncAPI: Sendable {
             """, variables)
         let listId = (AniListSyncAPI.data(reply)["SaveMediaListEntry"] as? [String: Any])?["id"] as? Int
         sent[entry.mediaId] = Sent(listId: listId, entry: entry, key: key)
+        lastSentAt = .now; UserDefaults.standard.set(lastSentAt, forKey: AniListSyncStorage.prefix + "lastSent")
     }
     private func delete(_ mediaId: Int, _ record: Sent, api: AniListSyncAPI) async throws {
         if let listId = record.listId {
@@ -535,21 +552,38 @@ struct AniListSyncAPI: Sendable {
     private func chain(for title: MediaTitle, key: String, api: AniListSyncAPI) async throws -> [AniListPlan.Media] {
         if let known = chains[key], Date.now.timeIntervalSince(known.at) < 7 * 86_400 { return known.media }
         let film = !title.isSeries
-        try await pace()
-        let reply = try await api.call("""
-            query($search: String) { Page(perPage: 10) { media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
-              id format episodes startDate { year month day } endDate { year month day } title { romaji english native } synonyms } } }
-            """, ["search": title.name])
-        let rows = (AniListSyncAPI.data(reply)["Page"] as? [String: Any])?["media"] as? [[String: Any]] ?? []
-        let candidates: [AniListPlan.Candidate] = rows.compactMap { row in
-            guard let media = AniListSyncAPI.media(row) else { return nil }
-            let titles = row["title"] as? [String: Any] ?? [:]
-            let names = ["romaji", "english", "native"].compactMap { titles[$0] as? String } + (row["synonyms"] as? [String] ?? [])
-            return AniListPlan.Candidate(media: media, names: names)
+        var root: AniListPlan.Media?
+        // 1. The TMDB-to-AniList id map (the community anime lists; TMDB ids only are sent).
+        if let tmdb = title.tmdbId, let id = await Self.mappedID(tmdb: tmdb, film: film) {
+            try await pace()
+            let reply = try await api.call("""
+                query($id: Int) { Media(id: $id, type: ANIME) { id format episodes startDate { year month day } endDate { year month day } title { romaji english } } }
+                """, ["id": id])
+            root = (AniListSyncAPI.data(reply)["Media"] as? [String: Any]).flatMap(AniListSyncAPI.media)
         }
-        let strict = !(title.category == "anime" || title.category == "anime-movie")
-        guard let root = AniListPlan.pick(candidates, names: [title.name], year: title.year, film: film, strict: strict) else {
-            chains[key] = Chain(media: [], at: .now); AniListSyncStorage.save(chains, "chains.json")
+        // 2. AniList's search, under simpler names when the full one finds nothing.
+        if root == nil {
+            let names = AniListPlan.searchNames(title.name)
+            let strict = !(title.category == "anime" || title.category == "anime-movie")
+            for name in names.prefix(4) {
+                try await pace()
+                let reply = try await api.call("""
+                    query($search: String) { Page(perPage: 10) { media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                      id format episodes startDate { year month day } endDate { year month day } title { romaji english native } synonyms } } }
+                    """, ["search": name])
+                let rows = (AniListSyncAPI.data(reply)["Page"] as? [String: Any])?["media"] as? [[String: Any]] ?? []
+                let candidates: [AniListPlan.Candidate] = rows.compactMap { row in
+                    guard let media = AniListSyncAPI.media(row) else { return nil }
+                    let titles = row["title"] as? [String: Any] ?? [:]
+                    let names = ["romaji", "english", "native"].compactMap { titles[$0] as? String } + (row["synonyms"] as? [String] ?? [])
+                    return AniListPlan.Candidate(media: media, names: names)
+                }
+                root = AniListPlan.pick(candidates, names: names, year: title.year, film: film, strict: strict)
+                if root != nil { break }
+            }
+        }
+        guard let root else {
+            chains[key] = Chain(media: [], at: .now); AniListSyncStorage.save(chains, Self.chainsFile)
             return []
         }
         var chain = [root]
@@ -570,8 +604,31 @@ struct AniListSyncAPI: Sendable {
             }
         }
         chains[key] = Chain(media: chain, at: .now)
-        AniListSyncStorage.save(chains, "chains.json")
+        AniListSyncStorage.save(chains, Self.chainsFile)
         return chain
+    }
+    /// The looked-up entries. "-v2": found by the id map (the first look-ups searched by name only,
+    /// and matched "Your Name." to a commercial), so every title is looked up again once.
+    static let chainsFile = "chains-v2.json"
+    /// The AniList id for a TMDB id from the community anime lists (arm.haglund.dev, as CrossWatch
+    /// uses them): a film's entry, or a show's first season. Nil when it isn't listed.
+    static func mappedID(tmdb: Int, film: Bool) async -> Int? {
+        guard let url = URL(string: "https://arm.haglund.dev/api/v2/themoviedb?id=\(tmdb)"),
+              let reply = try? await URLSession.shared.data(from: url), (reply.1 as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return mappedID(from: reply.0, film: film)
+    }
+    /// From the id map's reply: entries of the right kind (TMDB's movie and TV ids overlap) with an
+    /// AniList id; a show's first season (or its lowest), a film's first.
+    nonisolated static func mappedID(from data: Data, film: Bool) -> Int? {
+        let rows = ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]) ?? []
+        let fitting = rows.filter { row in
+            guard row["anilist"] as? Int != nil else { return false }
+            let media = row["media"] as? String ?? ""
+            return film ? media == "MOVIE" : media != "MOVIE"
+        }
+        if film { return fitting.first?["anilist"] as? Int }
+        let seasons = fitting.sorted { (($0["themoviedb-season"] as? Int) ?? 999) < (($1["themoviedb-season"] as? Int) ?? 999) }
+        return seasons.first?["anilist"] as? Int
     }
 
     /// An episode's air day from TMDB's season (your server's without TMDB), kept.

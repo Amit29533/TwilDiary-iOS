@@ -114,3 +114,19 @@ private func weekly(_ season: Int, _ range: ClosedRange<Int>, from first: String
     #expect(plan.entries.map(\.progress) == [3], "the recap aired mid-season isn't episode 4")
     #expect(plan.unplaced == 0)
 }
+
+@Test func theFilmItselfWinsOverACommercialNamedTheSame() {
+    // AniList lists a Suntory commercial with "Your Name." among its names, before the film (2026-11-15).
+    let candidates = [
+        AniListPlan.Candidate(media: AniListPlan.Media(id: 97962, format: "SPECIAL", episodes: 1, start: "2016-08-01", end: nil), names: ["Suntory Minami Alps no Tennen Mizu", "Kimi no Na wa.", "Your Name."]),
+        AniListPlan.Candidate(media: AniListPlan.Media(id: 21519, format: "MOVIE", episodes: 1, start: "2016-08-26", end: nil), names: ["Kimi no Na wa.", "Your Name."])]
+    #expect(AniListPlan.pick(candidates, names: ["Your Name."], year: 2016, film: true)?.id == 21519)
+}
+
+@Test func simplerNamesForAniListsSearch() {
+    #expect(AniListPlan.searchNames("Nagi-Asu: A Lull in the Sea") == ["Nagi-Asu: A Lull in the Sea", "Nagi-Asu", "A Lull in the Sea"])
+    #expect(AniListPlan.searchNames("A Silent Voice: The Movie").contains("A Silent Voice"))
+    #expect(AniListPlan.searchNames("Yamada-kun and the Seven Witches").contains("Yamada-kun and the 7 Witches"))
+    #expect(AniListPlan.searchNames("KissXSis").contains("Kiss x Sis"))
+    #expect(AniListPlan.searchNames("Frieren") == ["Frieren"])
+}

@@ -11,7 +11,8 @@ struct ConnectionsView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
-    @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
+    @State private var aniList = AniListSyncAccount.shared
+    @State private var aniListSync = AniListSync.shared
     /// Your server switched on (here, in Sync & backup, or by a Cloudflare sign-in).
     @AppStorage(ExtrasStorage.serverKey) private var server = false
     /// Trakt's real state (Not connected, Reconnect…), from your server.
@@ -21,6 +22,7 @@ struct ConnectionsView: View {
     @State private var matching: MainTracker?
     @State private var note: String?
     @State private var signingIn: MainTracker?
+    @State private var signingInAniList = false
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     private var main: MainTracker { MainTracker(main: mainTracker) ?? .trakt }
@@ -47,6 +49,9 @@ struct ConnectionsView: View {
                         if index > 0 { divider }
                         trackerRow(tracker)
                     }
+                }
+                SettingsGroup(label: "Anime sync", info: "Your anime activity is copied to these as you log it: each season’s progress, status and score.") {
+                    aniListRow
                 }
                 SettingsGroup(label: "Your server") {
                     // No sign-in (owner's choice): the app reaches your server with its own key.
@@ -81,9 +86,6 @@ struct ConnectionsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     SettingsGroup(label: "Keys", info: "Keys are kept encrypted on this iPhone, and TwilDiary reads each service with them directly.") {
                         row(BrandLogo(service: .tmdb, size: 38), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
-                        divider
-                        row(BrandLogo(service: .anilist, size: 38), "AniList", "Characters and voice actors",
-                            value: anilistUser.isEmpty ? "Not set" : "@" + anilistUser, destination: .anilist, id: "settings-anilist")
                         divider
                         NavigationLink(value: AppDestination.apis) {
                             if ThemeStore.current.native {
@@ -244,6 +246,58 @@ struct ConnectionsView: View {
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
         }.background(isMain && !native ? Color(themed: "#1d1934") : .clear)
+    }
+
+    /// AniList, as the trackers' rows: your picture with its logo on the corner, @name and when it
+    /// last sent, a Sign in button while signed out, and ⋯ (Check now, Make AniList match).
+    private var aniListRow: some View {
+        let on = aniList.signedIn, sync = on && aniList.saving
+        let native = ThemeStore.current.native
+        let sent = aniListSync.lastSentAt.map { $0.formatted(.relative(presentation: .named)) }
+        let detail = on ? [aniList.username.map { "@" + $0 }, sync ? sent : "Sync off"].compactMap { $0 }.joined(separator: " · ") : "Not signed in"
+        return HStack(spacing: 4) {
+            NavigationLink(value: AppDestination.anilist) {
+                HStack(spacing: 14) {
+                    avatar(on ? aniList.avatar : nil, on: on)
+                        .overlay(alignment: .bottomTrailing) {
+                            BrandLogo(service: .anilist, size: native ? 18 : 20)
+                                .overlay(RoundedRectangle(cornerRadius: 20 * 0.225).strokeBorder(native ? Color(uiColor: .secondarySystemBackground) : Color(themed: "#111115"), lineWidth: 2))
+                                .offset(x: 4, y: 4)
+                        }.opacity(on ? 1 : 0.6)
+                    VStack(alignment: .leading, spacing: native ? 1 : 3) {
+                        Text("AniList").font(.system(size: native ? 17 : 16, weight: native ? .semibold : .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        HStack(spacing: 6) {
+                            if on {
+                                Circle().fill(native ? Color(uiColor: sync ? .systemGreen : .systemGray) : sync ? Color(themed: "#7fe0b5") : Color(themed: "#8e8e9c"))
+                                    .frame(width: 6, height: 6)
+                            }
+                            Text(detail).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }.padding(.leading, native ? 16 : 15).padding(.vertical, native ? 10 : 12).frame(minHeight: native ? 64 : nil).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+                .task(id: on) { if on { await aniList.refreshProfile() } }
+                .accessibilityLabel(["AniList", detail].joined(separator: ", ")).accessibilityIdentifier("settings-anilist")
+            if !on {
+                Button(signingInAniList ? "Opening…" : "Sign in") {
+                    Task {
+                        signingInAniList = true; defer { signingInAniList = false }
+                        do { if try await aniList.signIn(using: webAuthenticationSession) { note = "Signed in to AniList" + (aniList.username.map { " as @" + $0 } ?? "") + "." } }
+                        catch { note = error.localizedDescription }
+                    }
+                }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(signingInAniList).accessibilityIdentifier("anilist-quick-sign-in")
+            }
+            Menu {
+                Button("Check now", systemImage: "arrow.clockwise") { Task { await aniListSync.check(store: store) } }.disabled(!on)
+                if let comparison = aniListSync.comparison, !comparison.keysToSend.isEmpty {
+                    Button("Make AniList match the diary", systemImage: "arrow.triangle.2.circlepath") { aniListSync.makeMatch(store: store) }.disabled(!aniList.canSend)
+                }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }.accessibilityLabel("AniList actions").accessibilityIdentifier("anilist-actions").padding(.trailing, 6)
+        }
     }
 
     /// Your picture on the service, or a plain person while it's unknown or you're not signed in.

@@ -157,10 +157,35 @@ public enum AniListPlan {
             guard let year, let started = candidate.media.start.flatMap({ Int($0.prefix(4)) }) else { return true }
             return abs(started - year) <= 1
         }
-        if let named = fitting.first(where: { !wanted.isDisjoint(with: $0.names.map(plain)) }) { return named.media }
+        // Several named the same: the film or the series itself before an OVA, a special or an ad
+        // ("Your Name." is also a synonym of a Suntory commercial, listed first; 2026-11-15).
+        let order = film ? ["MOVIE", "ONA", "OVA", "SPECIAL"] : ["TV", "TV_SHORT", "ONA", "OVA"]
+        func rank(_ candidate: Candidate) -> Int { order.firstIndex(of: candidate.media.format ?? "") ?? order.count }
+        if let named = fitting.filter({ !wanted.isDisjoint(with: $0.names.map(plain)) }).min(by: { rank($0) < rank($1) }) { return named.media }
         if strict { return nil }
         // A film is MOVIE unless named the same (Simkl files some as an OVA or ONA, and so may AniList).
         return fitting.first { !film || $0.media.format == "MOVIE" }?.media
+    }
+
+    /// Simpler ways to search for a title AniList's search finds nothing for: it wants its own
+    /// wording ("Nagi-Asu: A Lull in the Sea" finds nothing, "A Lull in the Sea" does; "Seven" vs
+    /// "7"; "KissXSis" vs "Kiss x Sis"; checked 2026-11-15). The full name first.
+    public static func searchNames(_ name: String) -> [String] {
+        var names = [name]
+        func add(_ text: String) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if trimmed.count >= 3, !names.contains(trimmed) { names.append(trimmed) }
+        }
+        for mark in [": ", " - ", " – "] where name.contains(mark) {
+            for part in name.components(separatedBy: mark) { add(part) }
+        }
+        add(name.replacingOccurrences(of: #"[:\-–]?\s*(The )?Movie$"#, with: "", options: .regularExpression))
+        let numbers = ["One": "1", "Two": "2", "Three": "3", "Four": "4", "Five": "5", "Six": "6", "Seven": "7", "Eight": "8", "Nine": "9", "Ten": "10"]
+        var digits = name
+        for (word, digit) in numbers { digits = digits.replacingOccurrences(of: #"\b\#(word)\b"#, with: digit, options: .regularExpression) }
+        add(digits)
+        add(name.replacingOccurrences(of: #"(?<=[a-z])X(?=[A-Z])"#, with: " x ", options: .regularExpression))
+        return names
     }
 
     /// Which entry an episode that aired on `day` belongs to: the one whose run holds the day (two

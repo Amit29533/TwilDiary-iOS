@@ -28,4 +28,15 @@ final class AniListSyncTests: XCTestCase {
         XCTAssertEqual((variables["startedAt"] as? [String: Any])?["day"] as? Int, 7)
         XCTAssertEqual(variables["mediaId"] as? Int, 15583)
     }
+
+    /// The id map's reply (arm.haglund.dev, 2026-11-15): a film by its MOVIE entry, a show by its
+    /// first TMDB season; TMDB's movie and TV ids overlap, so the kind must fit.
+    @MainActor func testTheIdMapGivesTheFilmOrTheShowsFirstSeason() {
+        let film = Data(#"[{"anilist":21519,"media":"MOVIE","themoviedb":372058,"themoviedb-season":null,"myanimelist":32281}]"#.utf8)
+        XCTAssertEqual(AniListSync.mappedID(from: film, film: true), 21519)
+        XCTAssertNil(AniListSync.mappedID(from: film, film: false), "a TV id that happens to equal a film's isn't that film")
+        let show = Data(#"[{"anilist":108632,"media":"TV","themoviedb-season":2},{"anilist":21355,"media":"TV","themoviedb-season":1},{"media":"TV","themoviedb-season":3}]"#.utf8)
+        XCTAssertEqual(AniListSync.mappedID(from: show, film: false), 21355)
+        XCTAssertNil(AniListSync.mappedID(from: Data("[]".utf8), film: false))
+    }
 }
