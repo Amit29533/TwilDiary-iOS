@@ -15,6 +15,10 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
 @MainActor @Observable final class TrackerPreviewStore {
     static let shared = TrackerPreviewStore()
     private(set) var libraries: [MainTracker: TraktLibrary] = [:]
+    #if DEBUG
+    /// Tests: a service's copy as if just read (nil clears it).
+    func seedForTesting(_ tracker: MainTracker, _ library: TraktLibrary?) { libraries[tracker] = library }
+    #endif
     private(set) var reports: [MainTracker: TraktDirectStore.Report] = [:]
     private(set) var running: MainTracker?
     var errors: [MainTracker: String] = [:]

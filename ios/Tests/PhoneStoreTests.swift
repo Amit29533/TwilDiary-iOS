@@ -88,6 +88,37 @@ import TwilDiaryCore
         }
     }
 
+    /// The same with the diary on MDBList and on WeTrakr: neither holds Watching or Completed for
+    /// a movie (Completed logs a watch), and MDBList drops only shows.
+    func testAStatusChangeKeepsANewlyAddedTitleOnEachService() async throws {
+        let store = makeStore()
+        defer {
+            for tracker in [MainTracker.mdblist, .wetrakr] { TrackerPreviewStore.shared.seedForTesting(tracker, nil) }
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        store.enterPhoneOnlyForTesting()
+        var tmdb = 15000
+        for tracker in [MainTracker.mdblist, .wetrakr] {
+            TrackerPreviewStore.shared.seedForTesting(tracker, TraktLibrary())
+            store.diaryFromTracker = tracker
+            for status in ["watching", "completed", "dropped"] {
+                tmdb += 1
+                let label = "\(tracker.name) \(status)"
+                let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":\#(tmdb),"mediaType":"movie","name":"Film \#(tmdb)","year":2009,"overview":"","posterPath":"/f.jpg","genres":["Animation"],"suggestedCategory":"movie"}"#.utf8))
+                let added = await store.importTitle(details, category: "movie")
+                let id = try XCTUnwrap(added, "\(label): Add to Planned failed: \(store.error ?? "no error")")
+                await store.waitForTitle(id)
+                let title = try XCTUnwrap(store.title(id), "\(label): not in the diary after Add to Planned")
+                let done = await store.setSeasonStatus(title, season: 1, status: status, watchedAt: Date(timeIntervalSince1970: 1_800_000_000))
+                XCTAssertTrue(done, "\(label): the change failed: \(store.error ?? "no error")")
+                await store.waitForTitle(id)
+                XCTAssertNotNil(store.title(id), "\(label): the title left the diary")
+                XCTAssertEqual(store.title(id)?.status, status, "\(label): wrong status after the change")
+            }
+        }
+    }
+
     func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
         let store = makeStore(providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))
