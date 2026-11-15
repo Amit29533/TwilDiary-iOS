@@ -11,10 +11,17 @@ struct SimklPlacement: Codable, Equatable, Sendable {
     var at: Date
     /// The placing rules it was made with; older ones are placed again. 2: air dates filled from
     /// TMDB, and the episode titled the same comes before the date. 3: a film goes only into an
-    /// entry that is one. 4: a film entry in parts, on the part titled as the film (2026-11-15).
+    /// entry that is one. 4: a film entry in parts, on the part titled as the film. 5: a special
+    /// titled the same comes before the date too (2026-11-15).
     var rule: Int? = nil
-    static let currentRule = 4
-    var current: Bool { rule == Self.currentRule }
+    static let currentRule = 5
+    /// Made with the current rules, for the diary's `key`. Rule 5 changed only specials, so other
+    /// places made with rule 4 stand (placing again costs Simkl's daily allowance).
+    func isCurrent(for key: String) -> Bool {
+        if rule == Self.currentRule { return true }
+        let parts = key.split(separator: ":")
+        return rule == 4 && !(parts.count == 3 && parts[1] == "0")
+    }
 }
 
 /// Simkl's library read back for the comparison (phase 2), in the diary's own terms.
@@ -46,7 +53,8 @@ enum SimklLibrary {
         static func key(_ entry: Int, _ season: Int, _ number: Int) -> String { "\(entry):\(season):\(number)" }
     }
 
-    /// From the placements ("tmdb:season:number" for an episode, "movie:tmdb" for a film) and the diary.
+    /// From the placements ("tmdb:season:number" for an episode, "movie:tmdb" for a film,
+    /// "show:tmdb" for an anime series' own entry) and the diary.
     static func mapping(placements: [String: SimklPlacement], diary: Workspace) -> Mapping {
         var mapping = Mapping()
         for title in diary.activeTitles {
@@ -57,6 +65,13 @@ enum SimklLibrary {
         for (key, placed) in placements.sorted(by: { $0.key < $1.key }) {
             guard let entry = placed.entry else { continue }
             let parts = key.split(separator: ":").map(String.init)
+            // An anime series not watched yet: its entry (Simkl lists ViVid Strike! with no TMDB id,
+            // so its Plan to watch read as missing forever; owner's account, 2026-11-15). Its
+            // episodes' places, sorted first, win.
+            if parts.count == 2, parts[0] == "show", let tmdb = Int(parts[1]) {
+                if mapping.shows[entry] == nil { mapping.shows[entry] = tmdb }
+                continue
+            }
             if parts.count == 2, parts[0] == "movie", let tmdb = Int(parts[1]) {
                 if let part = placed.number, part >= 2 { mapping.filmParts[entry, default: [:]][part] = tmdb } else { mapping.films[entry] = tmdb }
                 continue

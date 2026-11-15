@@ -398,8 +398,8 @@ final class SimklAddOnTests: XCTestCase {
         let rating = SimklJob(kind: .rate, tmdb: 760161, movie: true, name: "Date A Bullet: Nightmare or Queen", rating: 8)
         XCTAssertNotEqual(SimklMirror.changeKey(rating), SimklMirror.changeKey(SimklJob(kind: .watch, tmdb: 760161, movie: true, name: "Date A Bullet: Nightmare or Queen")))
         XCTAssertEqual(SimklMirror.notKeptLabel(rating), "Date A Bullet: Nightmare or Queen · Rating")
-        XCTAssertFalse(SimklPlacement(entry: 37935, season: 1, number: 12, at: .now).current, "placed before titles counted: placed again")
-        XCTAssertTrue(SimklPlacement(entry: 37935, season: 1, number: 11, at: .now, rule: SimklPlacement.currentRule).current)
+        XCTAssertFalse(SimklPlacement(entry: 37935, season: 1, number: 12, at: .now).isCurrent(for: "1:1:12"), "placed before titles counted: placed again")
+        XCTAssertTrue(SimklPlacement(entry: 37935, season: 1, number: 11, at: .now, rule: SimklPlacement.currentRule).isCurrent(for: "1:1:11"))
     }
 
     /// Simkl files some films as an OVA or ONA with no TMDB id (Voices of a Distant Star as the OVA
@@ -625,5 +625,42 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SendProgress.fraction("Changing 1,200 of 1,828: 50 ratings…") ?? -1, 1199.5 / 1828, accuracy: 0.001)
         XCTAssertNil(SendProgress.fraction("Reading both sides…"))
         XCTAssertNil(SendProgress.fraction(nil))
+    }
+
+    /// Angel Beats! (owner's account, 2026-11-15): TMDB dates Stairway to Heaven (S0 E2) and Another
+    /// Epilogue (S0 E3) both 22 December 2010; Simkl numbers them specials 2 and 1, dated the 4th and
+    /// the 22nd. By date both landed on special 1, and special 2 was never marked.
+    func testASpecialTitledTheSameComesBeforeTheDate() {
+        let simkl = [SimklAPI.Episode(number: 1, day: "2010-12-22", special: true, tvdbSeason: nil, tvdbEpisode: nil, title: "Another Epilogue"),
+                     SimklAPI.Episode(number: 2, day: "2010-12-04", special: true, tvdbSeason: nil, tvdbEpisode: nil, title: "Stairway to Heaven"),
+                     SimklAPI.Episode(number: 3, day: "2015-06-24", special: true, tvdbSeason: nil, tvdbEpisode: nil, title: "Hell's Kitchen"),
+                     SimklAPI.Episode(number: 1, day: "2010-04-03", special: false, tvdbSeason: 1, tvdbEpisode: 1, title: "Departure")]
+        XCTAssertEqual(SimklBody.locate(day: "2010-12-22", in: simkl, special: true, anyKind: false, season: 0, number: 2, title: "Stairway to Heaven")?.number, 2)
+        XCTAssertEqual(SimklBody.locate(day: "2010-12-22", in: simkl, special: true, anyKind: false, season: 0, number: 3, title: "Another Epilogue")?.number, 1)
+        XCTAssertEqual(SimklBody.locate(day: "2015-06-24", in: simkl, special: true, anyKind: false, season: 0, number: 5)?.number, 3, "no title: the date, as before")
+        XCTAssertNil(SimklBody.locate(day: "2010-04-03", in: simkl, special: true, anyKind: false, season: 0, number: 9, title: "Departure"), "a special matches only a special")
+    }
+    /// Rule 5 changed only specials: other places made with rule 4 aren't made again.
+    func testOnlySpecialsArePlacedAgainForRuleFive() {
+        let four = SimklPlacement(entry: 38481, season: 0, number: 1, at: .now, rule: 4)
+        XCTAssertFalse(four.isCurrent(for: "42942:0:2"))
+        XCTAssertTrue(four.isCurrent(for: "42942:1:2"))
+        XCTAssertTrue(four.isCurrent(for: "movie:372058"))
+        XCTAssertTrue(four.isCurrent(for: "show:68096"))
+        XCTAssertFalse(SimklPlacement(entry: 1, season: 1, number: 1, at: .now, rule: 3).isCurrent(for: "42942:1:2"))
+    }
+    /// ViVid Strike! on Plan to watch (test account, 2026-11-15): Simkl lists it as anime with no
+    /// TMDB id; its entry, found once, links it back to the diary's planned series.
+    func testAPlannedAnimeSeriesIsReadThroughItsEntry() throws {
+        let workspace = try diary(titles: [("vs", "ViVid Strike!", "anime", 68096)], episodes: [], watched: [])
+        let row = Data(#"{"anime":[{"status":"plantowatch","added_to_watchlist_at":"2026-11-15T14:00:00Z","anime_type":"tv","total_episodes_count":12,"show":{"title":"ViVid Strike!","year":2016,"ids":{"simkl":612999,"mal":"33589","anilist":"21871"}}}]}"#.utf8)
+        var before = TraktLibrary()
+        SimklLibrary.apply("anime", row, mapping: SimklLibrary.mapping(placements: [:], diary: workspace), into: &before)
+        XCTAssertTrue(before.watchlist.isEmpty, "without its entry it can't be read")
+        var after = TraktLibrary()
+        let placements = ["show:68096": SimklPlacement(entry: 612999, season: nil, number: nil, at: .now, rule: SimklPlacement.currentRule)]
+        SimklLibrary.apply("anime", row, mapping: SimklLibrary.mapping(placements: placements, diary: workspace), into: &after)
+        XCTAssertEqual(after.watchlist.map(\.title.tmdbId), [68096])
+        XCTAssertEqual(after.watchlist.first?.title.name, "ViVid Strike!")
     }
 }

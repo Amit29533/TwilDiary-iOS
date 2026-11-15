@@ -449,6 +449,8 @@ struct SimklQueue: Codable, Equatable, Sendable {
         placements[key] = SimklPlacement(entry: entry, season: season, number: number, at: .now, rule: SimklPlacement.currentRule)
         SimklStorage.save(placements, "placements.json")
     }
+    /// An anime series' own entry, for one with nothing watched.
+    static func seriesKey(_ tmdb: Int) -> String { "show:\(tmdb)" }
     static func placementKey(_ job: SimklJob) -> String? {
         if job.movie { return "movie:\(job.tmdb)" }
         guard let season = job.diarySeason ?? job.season, let number = job.diaryNumber ?? job.number else { return nil }
@@ -510,7 +512,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
                 guard let id = event.episodeId, let episode = episodes[id] else { continue }
                 job.season = episode.season; job.number = episode.number; job.airedOn = episode.airedOn
             }
-            guard let key = Self.placementKey(job), placements[key]?.current != true, seen.insert(key).inserted else { continue }
+            guard let key = Self.placementKey(job), placements[key]?.isCurrent(for: key) != true, seen.insert(key).inserted else { continue }
             jobs.append(job)
         }
         // Anime films not watched yet (Planned, Dropped) too: Simkl files some as an OVA or ONA with
@@ -519,8 +521,17 @@ struct SimklQueue: Codable, Equatable, Sendable {
         for title in diary.activeTitles where Self.isAnime(title) && !title.isSeries {
             guard let tmdb = title.tmdbId else { continue }
             let job = SimklJob(kind: .watch, tmdb: tmdb, movie: true, anime: true, name: title.name, year: title.year)
-            guard let key = Self.placementKey(job), placements[key]?.current != true, seen.insert(key).inserted else { continue }
+            guard let key = Self.placementKey(job), placements[key]?.isCurrent(for: key) != true, seen.insert(key).inserted else { continue }
             jobs.append(job)
+        }
+        // Anime series with nothing watched (Planned, Dropped): Simkl lists some with no TMDB id
+        // (ViVid Strike!), so only their entry, found once, links Plan to watch back to the diary.
+        let watchedTitles = Set(diary.activeEvents.map(\.titleId))
+        for title in diary.activeTitles where Self.isAnime(title) && title.isSeries && !watchedTitles.contains(title.id) {
+            guard let tmdb = title.tmdbId else { continue }
+            let key = Self.seriesKey(tmdb)
+            guard placements[key]?.isCurrent(for: key) != true, seen.insert(key).inserted else { continue }
+            jobs.append(SimklJob(kind: .watch, tmdb: tmdb, movie: false, anime: true, name: title.name, year: title.year))
         }
         return jobs
     }
@@ -537,6 +548,14 @@ struct SimklQueue: Codable, Equatable, Sendable {
             let match = try? await match(for: first, ids: ids, api: api)
             requests += 2
             for job in waiting where job.titleKey == key {
+                // A series with nothing watched: its own entry, by TMDB id, else by name.
+                if !job.movie, job.season == nil, job.number == nil {
+                    var entry = (match ?? nil)?.simkl
+                    if entry == nil { entry = ((try? await api.searchAnime(title: job.name, year: job.year)) ?? nil)?.simkl; requests += 1 }
+                    placements[Self.seriesKey(job.tmdb)] = SimklPlacement(entry: entry, season: nil, number: nil, at: .now, rule: SimklPlacement.currentRule)
+                    SimklStorage.save(placements, "placements.json")
+                    continue
+                }
                 let spot = await spot(for: job, match: match ?? nil, api: api)
                 remember(job, entry: spot?.entry, season: spot?.season, number: spot?.number)
             }

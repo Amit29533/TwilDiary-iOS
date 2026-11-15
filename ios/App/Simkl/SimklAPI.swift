@@ -605,6 +605,14 @@ enum SimklBody {
             let named = titled(title, in: episodes, special: false, anyKind: anyKind)
             if named.count == 1, let only = named.first, let aired = only.day, daysApart(aired, day) <= 21 { return only }
         }
+        // A special too, at any distance: TMDB and Simkl date specials by different releases.
+        // Angel Beats!' Stairway to Heaven and Another Epilogue share TMDB's 22 December 2010
+        // (Simkl: the 4th and the 22nd), so by date S0 E2 landed on Another Epilogue and its own
+        // special was never marked (owner's account, 2026-11-15).
+        if special, let title {
+            let named = titled(title, in: episodes, special: true, anyKind: anyKind)
+            if named.count == 1 { return named[0] }
+        }
         // Then the same TVDB number, then the same number, within two weeks. TMDB can date two
         // episodes one day and Simkl spell a title its own way: I'm Standing on a Million Lives' E4
         // ("Kahvel" on TMDB, 30 October, with E5; "Kavhel" on Simkl, 23 October) landed on E5 by
