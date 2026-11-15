@@ -550,16 +550,15 @@ struct SimklQueue: Codable, Equatable, Sendable {
     // MARK: Make Simkl match: three tries
 
     /// What Make Simkl match sent and Simkl hasn't shown yet (RetryStop): three sends that don't
-    /// read back, and it's parked in the "didn't stick" list for 30 days.
+    /// read back, and it's ignored from then on.
     @ObservationIgnored private var retry = SimklStorage.load(RetryStop.self, "retry.json") ?? RetryStop()
     func noteSent(_ tokens: Set<String>) { retry.sent(tokens); SimklStorage.save(retry, "retry.json") }
-    func observeRetries(missing: Set<String>) -> (parked: [String], released: [String]) {
-        let change = retry.observe(missing: missing)
+    /// What's ignored from now on.
+    func observeRetries(missing: Set<String>) -> [String] {
+        let ignored = retry.observe(missing: missing)
         SimklStorage.save(retry, "retry.json")
-        return change
+        return ignored
     }
-    /// "Try them again": each counts from nothing.
-    func retryParked() { retry.retry(Array(retry.parked.keys)); SimklStorage.save(retry, "retry.json") }
 
     /// Places diary anime not placed yet, a few titles at a time (each title's look-ups are kept,
     /// so its other episodes cost nothing more). Returns roughly the requests it made.

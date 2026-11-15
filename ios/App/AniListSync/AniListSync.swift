@@ -288,17 +288,13 @@ struct AniListSyncAPI: Sendable {
     private(set) var adoptions: [String: (name: String, adoption: AniListPlan.Adoption)] = [:]
     /// The last Make match, Force Match or bring-in, said under the comparison.
     private(set) var lastResult: String?
-    /// What Make AniList match sent that AniList still doesn't match (RetryStop): three sends, then
-    /// parked for 30 days, shown apart with Try again, and left out of the differences.
+    /// What Make AniList match sent that AniList still doesn't match (RetryStop): three sends, and
+    /// it's ignored from then on, quietly: not sent, not shown, counted as in sync. The key is the
+    /// title with the state it should have ("key|mediaId:status:progress:score,…"), so a later
+    /// watch or rating is a new state, sent and checked as usual.
     @ObservationIgnored private var retry = AniListSyncStorage.load(RetryStop.self, "retry.json") ?? RetryStop()
-    /// Parked titles, with their names.
-    private(set) var parked: [(key: String, name: String)] = []
-    /// Try again: each parked title is offered and sent as new.
-    func tryParkedAgain(store: DiaryStore) {
-        retry.retry(Array(retry.parked.keys)); AniListSyncStorage.save(retry, "retry.json")
-        parked = []
-        Task { await check(store: store) }
-    }
+    /// Each title's expected-state key, from the last check.
+    @ObservationIgnored private var stateKeys: [String: String] = [:]
     /// AniList's list-entry ids from the last check (Force Match takes entries off by them).
     @ObservationIgnored private var listIds: [Int: Int] = [:]
     @ObservationIgnored private var chains: [String: Chain] = AniListSyncStorage.load([String: Chain].self, AniListSync.chainsFile) ?? [:]
@@ -520,18 +516,17 @@ struct AniListSyncAPI: Sendable {
             }
             AniListSyncStorage.save(sent, "sent.json")
             var compared = AniListPlan.compare(expected: expected, listed: listed, notLookedUp: notLookedUp)
-            // Sent three times and still different (nothing waiting to go): parked, and not shown.
-            if waiting.isEmpty, !sending {
-                let change = retry.observe(missing: Set(compared.keysToSend))
-                AniListSyncStorage.save(retry, "retry.json")
-                if !change.parked.isEmpty {
-                    lastResult = change.parked.count.counted("title", "titles") + " didn’t match on AniList after three tries, so \(change.parked.count == 1 ? "it isn’t" : "they aren’t") sent again on \(change.parked.count == 1 ? "its" : "their") own for 30 days."
-                }
+            stateKeys = Dictionary(grouping: expected, by: \.key).mapValues { group in
+                (group.first?.key ?? "") + "|" + group.map { "\($0.entry.mediaId):\($0.entry.status):\($0.entry.progress):\($0.entry.score ?? 0)" }.sorted().joined(separator: ",")
             }
-            compared.missing.removeAll { difference in difference.key.map { retry.isParked($0) } ?? false }
-            compared.different.removeAll { difference in difference.key.map { retry.isParked($0) } ?? false }
-            let names = Dictionary(titles.compactMap { title in Self.key(title).map { ($0, title.name) } }, uniquingKeysWith: { first, _ in first })
-            parked = retry.parked.keys.sorted().map { ($0, names[$0] ?? $0) }
+            // Sent three times and still different (nothing waiting to go): ignored from now on.
+            if waiting.isEmpty, !sending {
+                retry.observe(missing: Set(compared.keysToSend.compactMap { stateKeys[$0] }))
+                AniListSyncStorage.save(retry, "retry.json")
+            }
+            let ignored = { (difference: AniListPlan.Difference) in difference.key.flatMap { self.stateKeys[$0] }.map { self.retry.isParked($0) } ?? false }
+            compared.missing.removeAll(where: ignored)
+            compared.different.removeAll(where: ignored)
             comparison = compared
             adoptions = found
             readStats = ReadStats(seconds: Date.now.timeIntervalSince(started), requests: requests, entries: listed.count,
@@ -631,7 +626,7 @@ struct AniListSyncAPI: Sendable {
         for difference in comparison.missing + comparison.different { sent[difference.mediaId] = nil }
         AniListSyncStorage.save(sent, "sent.json")
         mark(comparison.keysToSend)
-        retry.sent(comparison.keysToSend); AniListSyncStorage.save(retry, "retry.json")
+        retry.sent(comparison.keysToSend.compactMap { stateKeys[$0] }); AniListSyncStorage.save(retry, "retry.json")
         if !force { lastResult = comparison.keysToSend.count.counted("title", "titles") + " on the way to AniList. They go in the background; AniList is checked again after." }
         let extra = force ? comparison.onlyOnAniList.compactMap { listIds[$0.mediaId] } : []
         Task {

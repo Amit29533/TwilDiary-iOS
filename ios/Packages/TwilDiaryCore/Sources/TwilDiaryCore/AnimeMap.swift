@@ -146,13 +146,13 @@ public struct AnimeMap: Codable, Equatable, Sendable {
     }
 }
 
-/// Stops sending what never lands (CrossWatch's "blackbox", 2026-11-15): something sent three
-/// times that the service still lacks when read back is parked for 30 days, shown apart with
-/// Try again, and no longer offered as a difference. Angel Beats!' S0 E2 went to Simkl on every
-/// Make match and came back missing every time.
+/// Stops sending what never lands (after CrossWatch's "blackbox", 2026-11-15): something sent
+/// three times that the service still lacks when read back is ignored from then on: not sent by
+/// Make match again, not shown, and counted as in sync (the owner's choice). Angel Beats!' S0 E2
+/// went to Simkl on every Make match and came back missing every time. Keys name the exact thing
+/// that failed (an episode; an AniList title's expected state), so a later change is a new key.
 public struct RetryStop: Codable, Equatable, Sendable {
     public static let limit = 3
-    public static let parkDays = 30
     /// Times sent since it last read back as missing.
     public var tries: [String: Int] = [:]
     /// Parked, and when.
@@ -160,19 +160,15 @@ public struct RetryStop: Codable, Equatable, Sendable {
     public init() {}
 
     public mutating func sent(_ keys: some Sequence<String>) { for key in keys { tries[key, default: 0] += 1 } }
-    /// After a read, with `missing` what the service still lacks (parked things left out): what
-    /// landed is forgotten, what was sent `limit` times and is still missing is parked, and what
-    /// was parked 30 days ago comes back. Returns what was parked and what came back.
+    /// After a read, with `missing` what the service still lacks (ignored things left out): what
+    /// landed is forgotten, and what was sent `limit` times and is still missing is ignored from
+    /// now on. Returns what was ignored just now.
     @discardableResult
-    public mutating func observe(missing: Set<String>, now: Date = .now) -> (parked: [String], released: [String]) {
+    public mutating func observe(missing: Set<String>, now: Date = .now) -> [String] {
         for key in Array(tries.keys) where !missing.contains(key) { tries[key] = nil }
-        var released: [String] = []
-        for (key, at) in parked where now.timeIntervalSince(at) >= Double(Self.parkDays) * 86_400 { parked[key] = nil; released.append(key) }
         var newly: [String] = []
         for (key, count) in tries where count >= Self.limit && missing.contains(key) { parked[key] = now; tries[key] = nil; newly.append(key) }
-        return (newly.sorted(), released.sorted())
+        return newly.sorted()
     }
     public func isParked(_ key: String) -> Bool { parked[key] != nil }
-    /// Try again: sent once more as if new.
-    public mutating func retry(_ keys: some Sequence<String>) { for key in keys { parked[key] = nil; tries[key] = nil } }
 }

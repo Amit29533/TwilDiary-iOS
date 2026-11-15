@@ -291,7 +291,8 @@ struct TrackerPreviewPanel: View {
                     }
                 }
                 let ledger = MatchLedger.tokens(tracker)
-                if !ledger.isEmpty {
+                // Simkl: what didn't stick after three tries is ignored quietly (the owner's choice).
+                if !ledger.isEmpty, tracker != .simkl {
                     // Sent before and not kept by the service: not resent on every match.
                     HStack(spacing: 8) {
                         Label("\(ledger.count) didn’t stick on \(tracker.name)", systemImage: "arrow.uturn.backward.circle")

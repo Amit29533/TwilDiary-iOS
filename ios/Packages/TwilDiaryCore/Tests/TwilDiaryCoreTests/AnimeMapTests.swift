@@ -91,20 +91,19 @@ private func built() throws -> AnimeMap { try AnimeMap.build(mappings: mappings,
     #expect(adoption.unplaced == 0)
 }
 
-@Test func whatNeverLandsIsParkedAfterThreeSends() {
+@Test func whatNeverLandsIsIgnoredForGoodAfterThreeSends() {
     var stop = RetryStop()
     let day = Date(timeIntervalSince1970: 1_800_000_000)
     for round in 1...3 {
         stop.sent(["play|tv:42942|s0e2", "play|tv:1|s1e1"])
-        let result = stop.observe(missing: ["play|tv:42942|s0e2"], now: day)
-        #expect(result.parked == (round == 3 ? ["play|tv:42942|s0e2"] : []))
+        #expect(stop.observe(missing: ["play|tv:42942|s0e2"], now: day) == (round == 3 ? ["play|tv:42942|s0e2"] : []))
     }
     #expect(stop.isParked("play|tv:42942|s0e2"))
     #expect(stop.tries["play|tv:1|s1e1"] == nil, "it landed: forgotten")
-    #expect(stop.observe(missing: [], now: day.addingTimeInterval(29 * 86_400)).released.isEmpty)
-    #expect(stop.observe(missing: [], now: day.addingTimeInterval(30 * 86_400)).released == ["play|tv:42942|s0e2"], "back after 30 days")
-    stop.sent(["a"]); stop.sent(["a"]); stop.sent(["a"])
-    stop.observe(missing: ["a"], now: day)
-    stop.retry(["a"])
-    #expect(!stop.isParked("a") && stop.tries["a"] == nil, "Try again: as new")
+    #expect(stop.observe(missing: [], now: day.addingTimeInterval(400 * 86_400)).isEmpty)
+    #expect(stop.isParked("play|tv:42942|s0e2"), "ignored for good: it doesn't come back")
+    // AniList's keys carry the state: a later watch is a new key, sent and checked as usual.
+    stop.sent(["frieren|154587:CURRENT:5:0"]); stop.sent(["frieren|154587:CURRENT:5:0"]); stop.sent(["frieren|154587:CURRENT:5:0"])
+    stop.observe(missing: ["frieren|154587:CURRENT:5:0"], now: day)
+    #expect(stop.isParked("frieren|154587:CURRENT:5:0") && !stop.isParked("frieren|154587:CURRENT:6:0"))
 }
