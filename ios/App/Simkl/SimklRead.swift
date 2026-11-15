@@ -39,6 +39,10 @@ enum SimklLibrary {
         /// The diary's titles, by TMDB id, with their names.
         var diaryShows: [Int: String] = [:]
         var diaryMovies: [Int: String] = [:]
+        /// Diary shows not marked anime (anime is Japanese animation: a Chinese donghua such as
+        /// Immortal King is a show). They go to Simkl as shows, by TMDB id, and are never placed;
+        /// Simkl may still file one as anime, numbered as the show is.
+        var plainShows: Set<Int> = []
         static func key(_ entry: Int, _ season: Int, _ number: Int) -> String { "\(entry):\(season):\(number)" }
     }
 
@@ -48,6 +52,7 @@ enum SimklLibrary {
         for title in diary.activeTitles {
             guard let tmdb = title.tmdbId else { continue }
             if title.isSeries { mapping.diaryShows[tmdb] = title.name } else { mapping.diaryMovies[tmdb] = title.name }
+            if title.isSeries, title.category != "anime" { mapping.plainShows.insert(tmdb) }
         }
         for (key, placed) in placements.sorted(by: { $0.key < $1.key }) {
             guard let entry = placed.entry else { continue }
@@ -104,6 +109,13 @@ enum SimklLibrary {
                 } else {
                     let show = entry.flatMap { mapping.shows[$0] } ?? tmdb.flatMap { mapping.diaryShows[$0] != nil ? $0 : nil }
                     ref = show.map { TraktTitleRef(kind: .show, traktId: nil, tmdbId: $0, name: mapping.diaryShows[$0] ?? name, year: year) }
+                    // A diary show not marked anime that Simkl files as anime (Immortal King, by its
+                    // TMDB id): read in the numbering it was sent in, as a show is. Its episodes were
+                    // all skipped before, as if never placed (new account, 2026-11-15).
+                    if let show, entry.flatMap({ mapping.shows[$0] }) == nil, mapping.plainShows.contains(show) {
+                        episodes = watched(item)
+                        break
+                    }
                     // Each watched episode through its placement: Simkl's numbering isn't the diary's.
                     for episode in watched(item) {
                         guard let entry, let spot = mapping.episodes[Mapping.key(entry, episode.season, episode.number)] else { library.skipped += 1; continue }

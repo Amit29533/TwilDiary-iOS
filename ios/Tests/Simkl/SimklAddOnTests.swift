@@ -432,6 +432,19 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(library.plays.map { "\($0.title.diaryKey ?? "")|\($0.season ?? 0)|\($0.episode ?? 0)" }.sorted(), ["tv:98123|1|1", "tv:98123|1|2"])
     }
 
+    /// Immortal King is Chinese, so the diary has it as a show, sent by TMDB id and never placed;
+    /// Simkl files it as an anime ONA numbered as the show (new account, 2026-11-15). Read in that
+    /// numbering, not skipped as unplaced anime.
+    func testAShowSimklFilesAsAnimeIsReadAsTheShow() throws {
+        let workspace = try diary(titles: [("ik", "The Daily Life of the Immortal King", "show", 98123)],
+                                  episodes: [("ik", 1, 1), ("ik", 1, 2)], watched: [("ik", "ik-1-1"), ("ik", "ik-1-2")])
+        let mapping = SimklLibrary.mapping(placements: [:], diary: workspace)
+        var library = TraktLibrary()
+        SimklLibrary.apply("anime", Data(#"{"anime":[{"status":"watching","anime_type":"ona","watched_episodes_count":2,"total_episodes_count":15,"show":{"title":"Xian Wang De Richang Shenghuo","ids":{"simkl":1258030,"tmdb":"98123"}},"seasons":[{"number":1,"episodes":[{"number":1,"watched_at":"2021-04-06T18:30:00Z"},{"number":2,"watched_at":"2021-04-06T18:30:00Z"}]}]}]}"#.utf8), mapping: mapping, into: &library)
+        XCTAssertEqual(library.plays.map { "\($0.title.diaryKey ?? "")|\($0.season ?? 0)|\($0.episode ?? 0)" }.sorted(), ["tv:98123|1|1", "tv:98123|1|2"])
+        XCTAssertEqual(library.skipped, 0)
+    }
+
     /// Simkl keeps Date a Bullet as one film entry in two parts (Dead or Bullet, Nightmare or Queen;
     /// test account 2026-11-15). Each diary film is placed on its part by title, read back from it,
     /// and both share the entry's one rating.
