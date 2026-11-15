@@ -605,6 +605,17 @@ enum SimklBody {
             let named = titled(title, in: episodes, special: false, anyKind: anyKind)
             if named.count == 1, let only = named.first, let aired = only.day, daysApart(aired, day) <= 21 { return only }
         }
+        // Then the same TVDB number, then the same number, within two weeks. TMDB can date two
+        // episodes one day and Simkl spell a title its own way: I'm Standing on a Million Lives' E4
+        // ("Kahvel" on TMDB, 30 October, with E5; "Kavhel" on Simkl, 23 October) landed on E5 by
+        // date, and Simkl's E4 was never sent (new account, 2026-11-15).
+        if !special, let number {
+            func near(_ episode: SimklAPI.Episode) -> Bool { episode.day.map { daysApart($0, day) <= 14 } ?? false }
+            let byTVDB = episodes.filter { !$0.special && season != nil && $0.tvdbSeason == season && $0.tvdbEpisode == number && near($0) }
+            if byTVDB.count == 1 { return byTVDB[0] }
+            let byNumber = episodes.filter { !$0.special && $0.number == number && near($0) }
+            if byNumber.count == 1 { return byNumber[0] }
+        }
         if let found = find(day: day, in: episodes, special: special, anyKind: anyKind, season: season, number: number, sameDay: sameDay, title: title) { return found }
         guard !special else { return nil }
         if let later = shift(day, by: 7).flatMap({ find(day: $0, in: episodes) }),

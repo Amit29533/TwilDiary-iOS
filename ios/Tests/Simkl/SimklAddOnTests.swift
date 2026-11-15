@@ -379,6 +379,18 @@ final class SimklAddOnTests: XCTestCase {
                        "a title a year away is another episode")
     }
 
+    /// I'm Standing on a Million Lives: TMDB dates E4 with E5 (30 October) and spells it "Kahvel";
+    /// Simkl dates it a week earlier as "Kavhel" (new account, 2026-11-15). The same TVDB number,
+    /// within two weeks, places it on Simkl's E4, not E5.
+    func testTheSameNumberWinsWhenTMDBDatesTwoEpisodesOneDay() {
+        let simkl = [(1, "2020-10-02", "Unqualified Heroes"), (2, "2020-10-09", "This City I Hate So Much"), (3, "2020-10-16", "Help Me"),
+                     (4, "2020-10-23", "Kavhel of Cortonel"), (5, "2020-10-30", "What a Life Is Worth"), (6, "2020-11-06", "The Ancient Ruins")]
+            .map { SimklAPI.Episode(number: $0.0, day: $0.1, special: false, tvdbSeason: 1, tvdbEpisode: $0.0, title: $0.2) }
+        XCTAssertEqual(SimklBody.locate(day: "2020-10-30", in: simkl, special: false, anyKind: false, season: 1, number: 4, sameDay: [4, 5], title: "Kahvel of Cortonel")?.number, 4)
+        XCTAssertEqual(SimklBody.locate(day: "2020-10-30", in: simkl, special: false, anyKind: false, season: 1, number: 5, sameDay: [4, 5], title: "What a Life Is Worth")?.number, 5)
+        XCTAssertNil(SimklBody.locate(day: "2021-10-30", in: simkl, special: false, anyKind: false, season: 2, number: 4), "a later season's E4 isn't this one")
+    }
+
     /// A change Simkl refused is one Not kept row, however often it's refused, and says what it was.
     @MainActor func testARefusedChangeIsKnownByItsDiaryPlace() {
         var placed = watch(11, tmdb: 46004); placed.diarySeason = 1; placed.diaryNumber = 11; placed.season = 1; placed.number = 12; placed.entry = 37935
