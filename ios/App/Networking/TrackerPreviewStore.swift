@@ -798,6 +798,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         if tracker == .simkl {
             // Simkl: each change through its own sync (placed in Simkl's numbering), in the background.
             let queued = SimklMirror.shared.enqueue(force: plan, store: store)
+            // The next read is a full one: Simkl's change stamps can lag its writes.
+            libraries[.simkl]?.activities = nil
             writeResults[.simkl] = "Force Match: \(queued.formatted()) \(queued == 1 ? "change" : "changes") on the way to Simkl. Simkl is checked again after."
             refreshSoon(.simkl, store: store, after: 60)
             return

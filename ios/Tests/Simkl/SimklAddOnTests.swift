@@ -665,4 +665,26 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(after.watchlist.map(\.title.tmdbId), [68096])
         XCTAssertEqual(after.watchlist.first?.title.name, "ViVid Strike!")
     }
+
+    /// ViVid Strike! (owner's account, 2026-11-15): Planned, on Simkl's Plan to watch with no TMDB
+    /// id, and not placed yet. The anime map links it at read time.
+    func testTheAnimeMapLinksAPlannedTitleBeforeItsPlaced() throws {
+        let workspace = try diary(titles: [("vs", "ViVid Strike!", "anime", 68096)], episodes: [], watched: [])
+        var map = AnimeMap(); map.simklShows["68096"] = 612999
+        let row = Data(#"{"anime":[{"status":"plantowatch","anime_type":"tv","total_episodes_count":12,"show":{"title":"ViVid Strike!","year":2016,"ids":{"simkl":612999,"anilist":"21871"}}}]}"#.utf8)
+        var library = TraktLibrary()
+        SimklLibrary.apply("anime", row, mapping: SimklLibrary.mapping(placements: [:], diary: workspace, map: map), into: &library)
+        XCTAssertEqual(library.watchlist.map(\.title.tmdbId), [68096])
+    }
+    /// A plain show Simkl files as anime (Immortal King) still reads in the show's own numbering
+    /// when the map links its entry.
+    func testAPlainShowLinkedByTheMapReadsAsAShow() throws {
+        let workspace = try diary(titles: [("ik", "The Daily Life of the Immortal King", "show", 98123)], episodes: [("ik", 1, 2)], watched: [("ik", "ik-1-2")])
+        var map = AnimeMap(); map.simklShows["98123"] = 1250000
+        let row = Data(#"{"anime":[{"status":"watching","anime_type":"ona","total_episodes_count":15,"show":{"title":"Xian Wang de Richang Shenghuo","ids":{"simkl":1250000}},"seasons":[{"number":1,"episodes":[{"number":2,"watched_at":"2026-11-14T07:00:00Z"}]}]}]}"#.utf8)
+        var library = TraktLibrary()
+        SimklLibrary.apply("anime", row, mapping: SimklLibrary.mapping(placements: [:], diary: workspace, map: map), into: &library)
+        XCTAssertEqual(library.plays.map { "\($0.title.tmdbId ?? 0)|s\($0.season ?? -1)e\($0.episode ?? -1)" }, ["98123|s1e2"])
+        XCTAssertEqual(library.skipped, 0)
+    }
 }

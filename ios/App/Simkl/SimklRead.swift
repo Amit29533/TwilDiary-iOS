@@ -52,12 +52,14 @@ enum SimklLibrary {
         /// Immortal King is a show). They go to Simkl as shows, by TMDB id, and are never placed;
         /// Simkl may still file one as anime, numbered as the show is.
         var plainShows: Set<Int> = []
+        /// Entries some diary episode was placed in (a plain show's entry never is).
+        var placedEntries: Set<Int> = []
         static func key(_ entry: Int, _ season: Int, _ number: Int) -> String { "\(entry):\(season):\(number)" }
     }
 
     /// From the placements ("tmdb:season:number" for an episode, "movie:tmdb" for a film,
     /// "show:tmdb" for an anime series' own entry) and the diary.
-    static func mapping(placements: [String: SimklPlacement], diary: Workspace) -> Mapping {
+    static func mapping(placements: [String: SimklPlacement], diary: Workspace, map: AnimeMap? = nil) -> Mapping {
         var mapping = Mapping()
         for title in diary.activeTitles {
             guard let tmdb = title.tmdbId else { continue }
@@ -80,7 +82,21 @@ enum SimklLibrary {
             }
             guard parts.count == 3, let tmdb = Int(parts[0]), let season = Int(parts[1]), let number = Int(parts[2]), let simklNumber = placed.number else { continue }
             mapping.episodes[Mapping.key(entry, placed.season ?? 1, simklNumber)] = Spot(tmdb: tmdb, season: season, number: number)
+            mapping.placedEntries.insert(entry)
             if mapping.shows[entry] == nil { mapping.shows[entry] = tmdb }
+        }
+        // The anime map links each diary title to its Simkl entry where nothing placed yet does (no
+        // request, no daily allowance): ViVid Strike!, Planned and listed by Simkl with no TMDB id,
+        // read as missing until the sync got round to placing it (owner's account, 2026-11-15).
+        if let map {
+            for title in diary.activeTitles {
+                guard let tmdb = title.tmdbId else { continue }
+                if title.isSeries {
+                    if let entry = map.simkl(tmdb: tmdb, film: false), mapping.shows[entry] == nil, mapping.films[entry] == nil { mapping.shows[entry] = tmdb }
+                } else if let entry = map.simkl(tmdb: tmdb, film: true), mapping.films[entry] == nil, mapping.shows[entry] == nil {
+                    mapping.films[entry] = tmdb
+                }
+            }
         }
         return mapping
     }
@@ -129,7 +145,7 @@ enum SimklLibrary {
                     // A diary show not marked anime that Simkl files as anime (Immortal King, by its
                     // TMDB id): read in the numbering it was sent in, as a show is. Its episodes were
                     // all skipped before, as if never placed (new account, 2026-11-15).
-                    if let show, entry.flatMap({ mapping.shows[$0] }) == nil, mapping.plainShows.contains(show) {
+                    if let show, !(entry.map { mapping.placedEntries.contains($0) } ?? false), mapping.plainShows.contains(show) {
                         episodes = watched(item)
                         break
                     }

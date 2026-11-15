@@ -492,7 +492,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
         // and the other apps you connect (each check spent about 50, owner's recording).
         let room = ProviderQuota.daily(host: SimklAPI.quotaHost).map { max(0, ($0.limit - $0.used - 150) / 4) } ?? budget
         requests += await placeAhead(diary, api: api, budget: min(budget, room))
-        let mapping = SimklLibrary.mapping(placements: placements, diary: diary)
+        let mapping = SimklLibrary.mapping(placements: placements, diary: diary, map: AnimeMapStore.shared.map)
         var read = TraktLibrary(activities: TraktActivities(all: root["all"] as? String, stamps: stamps))
         for kind in ["movies", "shows", "anime"] {
             if let data = SimklStorage.load(Data.self, Self.libraryFile(kind)) { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }
@@ -533,7 +533,9 @@ struct SimklQueue: Codable, Equatable, Sendable {
         for title in diary.activeTitles where Self.isAnime(title) && title.isSeries && !watchedTitles.contains(title.id) {
             guard let tmdb = title.tmdbId else { continue }
             let key = Self.seriesKey(tmdb)
-            guard placements[key]?.isCurrent(for: key) != true, seen.insert(key).inserted else { continue }
+            // Found, or looked for in the last week (an empty look-up is tried again after that).
+            let settled = placements[key].map { $0.isCurrent(for: key) && ($0.entry != nil || Date.now.timeIntervalSince($0.at) < 7 * 86_400) } ?? false
+            guard !settled, seen.insert(key).inserted else { continue }
             jobs.append(SimklJob(kind: .watch, tmdb: tmdb, movie: false, anime: true, name: title.name, year: title.year))
         }
         return jobs
