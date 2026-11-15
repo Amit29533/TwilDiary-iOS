@@ -126,8 +126,12 @@ import TwilDiaryCore
 
     /// The extras as the record TraktDiary.build lays the service's diary over (in place of the
     /// server's): one title per key the service has, with its tags, Queue, note, status and
-    /// favourite, and the Jellyfin folders.
-    nonisolated static func workspace(_ entries: [String: Entry], locations: [FileLocation], library: TraktLibrary, catalog: [String: MediaTitle]) -> Workspace {
+    /// favourite, and the Jellyfin folders. Also a title the service has nothing for whose status
+    /// you set here (Watching, Completed or Dropped for an unwatched movie: MDBList holds none of
+    /// them, so the title left the watchlist and vanished, "Title unavailable", 2026-11-16), when
+    /// the phone knows its details and it isn't in the phone's Trash (trashing empties the service).
+    nonisolated static func workspace(_ entries: [String: Entry], locations: [FileLocation], library: TraktLibrary, catalog: [String: MediaTitle],
+                                      trashed: Set<String> = []) -> Workspace {
         guard !entries.isEmpty || !locations.isEmpty else { return Workspace() }
         var refs: [String: TraktTitleRef] = [:]
         for ref in library.plays.map(\.title) + library.ratings.map(\.title) + library.watchlist.map(\.title)
@@ -136,9 +140,13 @@ import TwilDiaryCore
         }
         var titles: [MediaTitle] = []
         for (key, entry) in entries.sorted(by: { $0.key < $1.key }) where !entry.isEmpty {
-            guard let ref = refs[key], let tmdb = ref.tmdbId else { continue }
-            var title = catalog[key] ?? MediaTitle.imported(id: key, name: ref.name, series: ref.kind != .movie, year: ref.year, tmdbId: tmdb,
-                                                             status: "planned", score: nil, createdAt: "")
+            var title: MediaTitle
+            if let ref = refs[key], let tmdb = ref.tmdbId {
+                title = catalog[key] ?? MediaTitle.imported(id: key, name: ref.name, series: ref.kind != .movie, year: ref.year, tmdbId: tmdb,
+                                                            status: "planned", score: nil, createdAt: "")
+            } else if entry.status != nil, !trashed.contains(key), let known = catalog[key], known.tmdbId != nil {
+                title = known
+            } else { continue }
             title.tags = entry.tags ?? []
             title.queued = entry.queued ?? false
             title.notes = entry.notes ?? ""

@@ -361,9 +361,10 @@ import TwilDiaryCore
             if let library = TraktDirectStore.shared.library {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles, episodes = PhoneCatalog.shared.episodes
                 let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
+                let trashed = Set(PhoneTrash.shared.titles.map(PhoneExtras.key))
                 buildDiary {
                     // No server: the phone's extras (tags, Queue, full notes, statuses, files) take its place.
-                    let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles) } ?? server
+                    let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles, trashed: trashed) } ?? server
                     return TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: record, catalog: titles), catalog: episodes)
                 }
             } else if !TraktDirectStore.shared.running {
@@ -373,8 +374,9 @@ import TwilDiaryCore
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles
                 let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
+                let trashed = Set(PhoneTrash.shared.titles.map(PhoneExtras.key))
                 buildDiary {
-                    let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles) } ?? server
+                    let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles, trashed: trashed) } ?? server
                     return TraktDiary.build(library: library, server: record, tracker: tracker, catalog: titles)
                 }
             } else {

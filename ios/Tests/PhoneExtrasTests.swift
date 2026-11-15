@@ -32,6 +32,22 @@ import TwilDiaryCore
         XCTAssertFalse(diary.titles.contains { $0.id == "tv:42" })
     }
 
+    /// Up, unwatched, set to Completed with the diary on MDBList (2026-11-16): MDBList holds no
+    /// status for an unwatched movie, so it left the watchlist and the title vanished. The status
+    /// set here keeps it, from the phone's details; a title in the phone's Trash doesn't come back.
+    func testAStatusSetHereKeepsATitleTheServiceHasNothingFor() {
+        let up = MediaTitle.imported(id: "movie:14160", name: "Up", series: false, year: 2009, tmdbId: 14160, status: "planned", score: nil, createdAt: "")
+        let gone = MediaTitle.imported(id: "movie:9", name: "Trashed", series: false, year: 2001, tmdbId: 9, status: "planned", score: nil, createdAt: "")
+        let entries: [String: PhoneExtras.Entry] = ["movie:14160": .init(status: "completed", at: .now), "movie:9": .init(status: "completed", at: .now),
+                                                     "tv:42": .init(tags: ["gone"], at: .now)]
+        let library = TraktLibrary()
+        let record = PhoneExtras.workspace(entries, locations: [], library: library, catalog: ["movie:14160": up, "movie:9": gone, "tv:42": up],
+                                           trashed: ["movie:9"])
+        XCTAssertEqual(record.titles.map(\.id), ["movie:14160"], "only a status keeps it; tags alone don't, nor a trashed title")
+        let diary = TraktDiary.build(library: library, server: record, tracker: .mdblist)
+        XCTAssertEqual(diary.titles.first { $0.id == "movie:14160" }?.status, "completed")
+    }
+
     func testClearedEntryIsKeptButLeavesNoTrace() {
         let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: movie, watchedAt: nil)])
         let record = PhoneExtras.workspace(["movie:603": .init(at: .now)], locations: [], library: library, catalog: [:])
