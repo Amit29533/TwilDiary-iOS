@@ -579,6 +579,14 @@ enum SimklBody {
     /// a week earlier: weekly shows keep their order.
     static func locate(day: String, in episodes: [SimklAPI.Episode], special: Bool, anyKind: Bool = true,
                        season: Int? = nil, number: Int? = nil, sameDay: [Int]? = nil, title: String? = nil) -> SimklAPI.Episode? {
+        // Simkl's own dates can be a week or more off TMDB's (Date A Live dated a week early,
+        // Fuuka's two-episode premiere, Darling in the Franxx's recap week; test account
+        // 2026-11-15), and by date each episode landed one along. The one regular episode titled
+        // as TMDB titles it, within three weeks, comes first.
+        if !special, let title {
+            let named = titled(title, in: episodes, special: false, anyKind: anyKind)
+            if named.count == 1, let only = named.first, let aired = only.day, daysApart(aired, day) <= 21 { return only }
+        }
         if let found = find(day: day, in: episodes, special: special, anyKind: anyKind, season: season, number: number, sameDay: sameDay, title: title) { return found }
         guard !special else { return nil }
         if let later = shift(day, by: 7).flatMap({ find(day: $0, in: episodes) }),

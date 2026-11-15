@@ -25,12 +25,14 @@ struct SimklSettingsView: View {
         return today
     }
     var body: some View {
-        ScrollView {
+        EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: ThemeStore.current.native ? 16 : 20) {
                 if ThemeStore.current.native {
                     // Native: the same header and Account list as the other services' pages.
                     SettingsServiceHeader(logo: .simkl, title: "Simkl", subtitle: account.signedIn ? (account.username.map { "@" + $0 } ?? "Signed in") : "Your activity, copied to Simkl",
-                                          badge: account.signedIn ? ("Connected", .good) : nil) { EmptyView() }
+                                          badge: account.signedIn ? ("Connected", .good) : nil) {
+                        SettingsKeeps(items: ["Watch history", "Ratings", "Plan to watch", "Watching", "Completed", "On hold", "Dropped"])
+                    }
                     if !account.signedIn {
                         SettingsGroup(label: "Account") {
                             SettingsRow(title: "Not signed in") {
@@ -168,8 +170,8 @@ struct SimklSettingsView: View {
                         .accessibilityIdentifier("simkl-remove")
                     SettingsFootnote(text: "Signs out and deletes everything TwilDiary kept for Simkl on this iPhone. Nothing on Simkl changes.")
                 }
-            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
-        }.diaryScreenBackground().diaryPageNavigation("Simkl")
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+        }.diaryScreenBackground().navigationTitle("Simkl").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .confirmationDialog("Disconnect Simkl and remove what TwilDiary kept for it?", isPresented: $confirmRemove, titleVisibility: .visible) {
                 Button("Disconnect and remove", role: .destructive) { account.removeEverything(); message = "Simkl is disconnected and removed from this iPhone." }
             }

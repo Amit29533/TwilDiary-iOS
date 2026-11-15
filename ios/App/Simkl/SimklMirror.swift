@@ -434,7 +434,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// The place of a diary episode or film on Simkl, kept for reading Simkl back.
     private func remember(_ job: SimklJob, entry: Int?, season: Int?, number: Int?) {
         guard let key = Self.placementKey(job) else { return }
-        placements[key] = SimklPlacement(entry: entry, season: season, number: number, at: .now)
+        placements[key] = SimklPlacement(entry: entry, season: season, number: number, at: .now, rule: SimklPlacement.currentRule)
         SimklStorage.save(placements, "placements.json")
     }
     static func placementKey(_ job: SimklJob) -> String? {
@@ -498,7 +498,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
                 guard let id = event.episodeId, let episode = episodes[id] else { continue }
                 job.season = episode.season; job.number = episode.number; job.airedOn = episode.airedOn
             }
-            guard let key = Self.placementKey(job), placements[key] == nil, seen.insert(key).inserted else { continue }
+            guard let key = Self.placementKey(job), placements[key]?.current != true, seen.insert(key).inserted else { continue }
             jobs.append(job)
         }
         return jobs
@@ -552,6 +552,10 @@ struct SimklQueue: Codable, Equatable, Sendable {
         for rating in plan.ratings { var job = base(rating.title, kind: .rate); job.rating = rating.rating; jobs.append(job) }
         for ref in plan.watchlistAdd { var job = base(ref, kind: .list); job.list = "plantowatch"; jobs.append(job) }
         for ref in plan.dropped { var job = base(ref, kind: .list); job.list = "dropped"; jobs.append(job) }
+        // What Simkl refused already (Not kept) waits for Try again: sent again each match, it was
+        // refused again and listed once more (Date A Bullet four times, 2026-11-15).
+        let refused = Set(notKept.compactMap { $0.job.map(Self.changeKey) })
+        jobs.removeAll { refused.contains(Self.changeKey($0)) }
         for job in jobs { queue.add(job) }
         save()
         Task { await resume() }
@@ -793,9 +797,27 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// Off the queue for good, listed on the Simkl page.
     private func finish(_ jobs: [SimklJob], reason: String, reply: String? = nil) {
         remove(jobs)
-        notKept.insert(contentsOf: jobs.map { SimklNotKept(label: $0.label, reason: reason, at: .now, reply: reply, job: $0) }, at: 0)
+        let keys = Set(jobs.map(Self.changeKey))
+        notKept.removeAll { $0.job.map(Self.changeKey).map(keys.contains) == true }
+        notKept.insert(contentsOf: jobs.map { SimklNotKept(label: Self.notKeptLabel($0), reason: reason, at: .now, reply: reply, job: $0) }, at: 0)
         if notKept.count > 100 { notKept = Array(notKept.prefix(100)) }
         SimklStorage.save(notKept, "not-kept.json")
+    }
+    /// One change, in the diary's numbering ("rate|movie:760161", "watch|show:46004:1:11"): the
+    /// same change refused twice is one Not kept row, and isn't queued again until Try again.
+    static func changeKey(_ job: SimklJob) -> String {
+        let season = job.diarySeason ?? job.season, number = job.diaryNumber ?? job.number
+        return job.kind.rawValue + "|" + job.titleKey + (season.map { ":\($0):\(number ?? 0)" } ?? "")
+    }
+    /// "Date A Bullet · Rating": a watch is the title alone; anything else says what it was.
+    static func notKeptLabel(_ job: SimklJob) -> String {
+        switch job.kind {
+        case .watch: job.label
+        case .unwatch: job.label + " · Removal"
+        case .rate: job.label + " · Rating"
+        case .unrate: job.label + " · Rating removal"
+        case .list: job.label + " · List"
+        }
     }
     /// Tried again later: Simkl's wait, or longer after each failure; given up after 10 tries.
     private func delay(_ jobs: [SimklJob], by seconds: TimeInterval?, counting: Bool, problem: String?) {

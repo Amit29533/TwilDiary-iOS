@@ -363,6 +363,33 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(Set(compared.events.map(\.id)), ["w-inc-", "w-rz-rz-1-26"])
     }
 
+    /// Simkl dates Date A Live a week early (its episode 1 on 31 March 2013; the show began on
+    /// 6 April), so by date each diary episode landed one along (test account 2026-11-15). The
+    /// episode titled as TMDB titles it comes first; without a title, the date still decides.
+    func testTheSameTitleWinsOverASimklDateAWeekOff() {
+        let titles = ["April 1x", "Another Close Encounter", "For the Sky and the Sword", "Sullen Rain", "Frozen Ground", "Romantic Hot Springs",
+                      "Visitors", "Triple Capriccio", "Frenzied Nightmare", "Flame Spirit (Ifrit)", "Countdown", "That Which Cannot Be Forgiven"]
+        let simkl = titles.enumerated().map { index, title in
+            SimklAPI.Episode(number: index + 1, day: SimklBody.shift("2013-03-31", by: 7 * index), special: false, tvdbSeason: nil, tvdbEpisode: nil, title: title)
+        }
+        XCTAssertEqual(SimklBody.locate(day: "2013-06-15", in: simkl, special: false, anyKind: false, title: "Countdown")?.number, 11, "not 12, dated 16 June")
+        XCTAssertEqual(SimklBody.locate(day: "2013-04-06", in: simkl, special: false, anyKind: false, title: "April 1x")?.number, 1)
+        XCTAssertEqual(SimklBody.locate(day: "2013-06-15", in: simkl, special: false, anyKind: false)?.number, 12, "no title: the date, as before")
+        XCTAssertEqual(SimklBody.locate(day: "2014-06-15", in: simkl, special: false, anyKind: false, title: "Countdown")?.number, nil,
+                       "a title a year away is another episode")
+    }
+
+    /// A change Simkl refused is one Not kept row, however often it's refused, and says what it was.
+    @MainActor func testARefusedChangeIsKnownByItsDiaryPlace() {
+        var placed = watch(11, tmdb: 46004); placed.diarySeason = 1; placed.diaryNumber = 11; placed.season = 1; placed.number = 12; placed.entry = 37935
+        XCTAssertEqual(SimklMirror.changeKey(placed), SimklMirror.changeKey(watch(11, tmdb: 46004)), "the same diary episode, wherever it was placed")
+        let rating = SimklJob(kind: .rate, tmdb: 760161, movie: true, name: "Date A Bullet: Nightmare or Queen", rating: 8)
+        XCTAssertNotEqual(SimklMirror.changeKey(rating), SimklMirror.changeKey(SimklJob(kind: .watch, tmdb: 760161, movie: true, name: "Date A Bullet: Nightmare or Queen")))
+        XCTAssertEqual(SimklMirror.notKeptLabel(rating), "Date A Bullet: Nightmare or Queen · Rating")
+        XCTAssertFalse(SimklPlacement(entry: 37935, season: 1, number: 12, at: .now).current, "placed before titles counted: placed again")
+        XCTAssertTrue(SimklPlacement(entry: 37935, season: 1, number: 11, at: .now, rule: SimklPlacement.currentRule).current)
+    }
+
     /// Simkl files some films as an OVA or ONA with no TMDB id (Voices of a Distant Star as the OVA
     /// "Hoshi no Koe", test account 2026-11-15): the entry the diary's film was placed in is read as
     /// that film, its watch and rating included.

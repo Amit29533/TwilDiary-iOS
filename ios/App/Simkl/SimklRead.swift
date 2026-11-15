@@ -9,6 +9,11 @@ struct SimklPlacement: Codable, Equatable, Sendable {
     var season: Int?
     var number: Int?
     var at: Date
+    /// The placing rules it was made with; older ones are placed again. 2: air dates filled from
+    /// TMDB, and the episode titled the same comes before the date (2026-11-15).
+    var rule: Int? = nil
+    static let currentRule = 2
+    var current: Bool { rule == Self.currentRule }
 }
 
 /// Simkl's library read back for the comparison (phase 2), in the diary's own terms.
