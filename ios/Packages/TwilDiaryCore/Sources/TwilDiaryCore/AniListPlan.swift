@@ -187,7 +187,8 @@ public enum AniListPlan {
     /// each entry that the diary hasn't (an entry's first `progress` episodes, found by TMDB's air
     /// days in `seasons`: season → episode → day). Nothing is taken off the diary.
     public static func adoption(diaryStatus: String, diaryScore: Double?, diaryNotes: String, film: Bool, watches: [Watch],
-                                chain: [Media], listed: [ListedDetail], seasons: [Int: [Int: String]]) -> Adoption {
+                                chain: [Media], listed: [ListedDetail], seasons: [Int: [Int: String]],
+                                map: AnimeMap? = nil, tmdb: Int? = nil) -> Adoption {
         var result = Adoption()
         let ids = chain.map(\.id)
         let mine = listed.filter { ids.contains($0.mediaId) }.sorted { (ids.firstIndex(of: $0.mediaId) ?? 0) < (ids.firstIndex(of: $1.mediaId) ?? 0) }
@@ -208,10 +209,27 @@ public enum AniListPlan {
         }
         let watched = Set(watches.compactMap { watch in watch.season.map { "\($0)x\(watch.number ?? 0)" } })
         var byMedia: [Int: [(season: Int, number: Int)]] = [:]
+        let regular = chain.filter { ["TV", "TV_SHORT", "ONA"].contains($0.format ?? "TV") }
         for (season, list) in seasons where season > 0 {
-            for (number, day) in list { if let media = media(for: day, in: chain) { byMedia[media.id, default: []].append((season, number)) } }
+            for (number, day) in list { if let media = media(for: day, in: regular.isEmpty ? chain : regular) { byMedia[media.id, default: []].append((season, number)) } }
         }
         for entry in mine where entry.progress > 0 {
+            // The anime map names each of the entry's episodes (specials too), when it names them all
+            // and their air days (where known) fall in the entry's run.
+            var named: [(season: Int, number: Int)] = []
+            if let map, let tmdb, let media = chain.first(where: { $0.id == entry.mediaId }) {
+                for episode in 1...entry.progress {
+                    guard let at = map.tmdbEpisode(tmdb: tmdb, anilist: entry.mediaId, episode: episode),
+                          AnimeMap.plausible(day: seasons[at.season]?[at.number], start: media.start, end: media.end) else { named = []; break }
+                    named.append(at)
+                }
+            }
+            if !named.isEmpty {
+                for episode in named where !watched.contains("\(episode.season)x\(episode.number)") {
+                    result.episodes.append(EpisodeAdd(season: episode.season, number: episode.number, at: entry.updatedAt))
+                }
+                continue
+            }
             let episodes = (byMedia[entry.mediaId] ?? []).sorted { ($0.season, $0.number) < ($1.season, $1.number) }
             if episodes.count < entry.progress { result.unplaced += entry.progress - episodes.count }
             for episode in episodes.prefix(entry.progress) where !watched.contains("\(episode.season)x\(episode.number)") {
@@ -289,8 +307,12 @@ public enum AniListPlan {
     /// there is one; otherwise they're counted as unplaced. An entry with nothing watched is sent
     /// only as Planning (the first, while the diary has the title Planned) or Dropped/Paused (a
     /// film). A completed entry you're watching again (the diary has the title Watching, some
-    /// episodes once more than the rest) is Rewatching, its progress the rewatch's.
-    public static func entries(status diary: String, score: Double?, film: Bool, watches: [Watch], chain: [Media], notes: String? = nil) -> (entries: [Entry], unplaced: Int) {
+    /// episodes once more than the rest) is Rewatching, its progress the rewatch's. `placed`: the
+    /// anime map's entry for an episode ("1x26" → its AniList id), already checked against air
+    /// dates; it comes first, and a special is sent only so. The rest go by air dates, to the
+    /// show's own seasons only (an OVA or special the map added isn't one).
+    public static func entries(status diary: String, score: Double?, film: Bool, watches: [Watch], chain: [Media], notes: String? = nil,
+                               placed: [String: Int] = [:]) -> (entries: [Entry], unplaced: Int) {
         guard let first = chain.first else { return ([], watches.count) }
         let score = score.map { min(100, max(0, Int(($0 * 10).rounded()))) }
         let notes = notes.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
@@ -305,10 +327,18 @@ public enum AniListPlan {
                            startedAt: times.first, completedAt: times.last, repeatCount: max(0, watches.count - 1), notes: notes)], 0)
         }
         var assigned: [Int: [Watch]] = [:], unplaced = 0
-        // Specials (season 0) aren't a season's episodes: AniList keeps them as entries of their own.
-        for watch in watches where watch.season != 0 {
-            if let aired = day(watch.aired), let media = media(for: aired, in: chain) { assigned[media.id, default: []].append(watch) }
-            else if chain.count == 1 { assigned[first.id, default: []].append(watch) }
+        let ids = Set(chain.map(\.id))
+        let seasons = chain.filter { ["TV", "TV_SHORT", "ONA"].contains($0.format ?? "TV") }
+        let byDate = seasons.isEmpty ? chain : seasons
+        for watch in watches {
+            if let season = watch.season, let number = watch.number, let id = placed["\(season)x\(number)"], ids.contains(id) {
+                assigned[id, default: []].append(watch); continue
+            }
+            // Specials (season 0) aren't a season's episodes: AniList keeps them as entries of their
+            // own, which only the map names.
+            guard watch.season != 0 else { continue }
+            if let aired = day(watch.aired), let media = media(for: aired, in: byDate) { assigned[media.id, default: []].append(watch) }
+            else if byDate.count == 1 { assigned[byDate[0].id, default: []].append(watch) }
             else { unplaced += 1 }
         }
         var result: [Entry] = []

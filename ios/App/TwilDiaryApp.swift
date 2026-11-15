@@ -297,6 +297,8 @@ struct RootView: View {
             .task { try? await Task.sleep(for: .seconds(2.5)); splashWaited = true; liftSplash() }
             .task(id: scenePhase) {
                 if scenePhase == .active {
+                    // The anime map, weekly on Wi-Fi, for Simkl's and AniList's syncs (in the background).
+                    if SimklAccount.shared.signedIn || AniListSyncAccount.shared.signedIn { Task { await AnimeMapStore.shared.refreshIfNeeded() } }
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()
                     await SimklMirror.shared.resume(store: store)
                     await AniListSync.shared.resume(store: store)

@@ -54,6 +54,18 @@ struct AniListSyncSection: View {
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
             }
+            if !sync.parked.isEmpty {
+                SettingsGroup(label: "Tried 3 times", info: "Sent three times and still not matching on AniList. They aren’t sent again on their own for 30 days, nor shown as differences.") {
+                    ForEach(Array(sync.parked.prefix(30).enumerated()), id: \.element.key) { index, item in
+                        if index > 0 { SettingsDivider() }
+                        Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 10)
+                    }
+                    SettingsDivider()
+                    Button("Try them again") { sync.tryParkedAgain(store: store) }.font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 48).accessibilityIdentifier("anilist-sync-try-again")
+                }
+            }
             if let message { SettingsFootnote(text: message) }
             if account.signedIn || !sync.waiting.isEmpty || !sync.notKept.isEmpty {
                 Button(role: .destructive) { confirmRemove = true } label: {

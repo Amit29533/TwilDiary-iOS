@@ -365,6 +365,9 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// by TMDB id through Simkl's `/redirect`, then IMDb's, then TVDB's (shows), as Cinopsys looks
     /// titles up; an answer of the other kind (a movie for a show) is never taken.
     private func match(for job: SimklJob, ids: SimklExternalIDs?, api: SimklAPI) async throws -> SimklAPI.Match? {
+        // The anime map's entry first: no request, and it knows titles Simkl lists with no TMDB id
+        // (ViVid Strike!).
+        if job.anime, let entry = AnimeMapStore.shared.map?.simkl(tmdb: job.tmdb, film: job.movie) { return SimklAPI.Match(simkl: entry, kind: "anime") }
         if let known = matches[job.titleKey], known.match != nil || Date().timeIntervalSince(known.at) < 7 * 86_400 { return known.match }
         func fitting(_ match: SimklAPI.Match?) -> SimklAPI.Match? { match.flatMap { SimklAPI.accepts($0, movie: job.movie) ? $0 : nil } }
         var found = fitting(try await api.redirect(["tmdb": String(job.tmdb), "type": job.movie ? "movie" : "tv"]))
@@ -512,7 +515,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
                 guard let id = event.episodeId, let episode = episodes[id] else { continue }
                 job.season = episode.season; job.number = episode.number; job.airedOn = episode.airedOn
             }
-            guard let key = Self.placementKey(job), placements[key]?.isCurrent(for: key) != true, seen.insert(key).inserted else { continue }
+            guard let key = Self.placementKey(job), !settled(job, key), seen.insert(key).inserted else { continue }
             jobs.append(job)
         }
         // Anime films not watched yet (Planned, Dropped) too: Simkl files some as an OVA or ONA with
@@ -535,6 +538,29 @@ struct SimklQueue: Codable, Equatable, Sendable {
         }
         return jobs
     }
+    /// Placed, and for good: with the current rules, or before the map where the map agrees (or
+    /// says nothing). The map costs no request, so this check is free.
+    private func settled(_ job: SimklJob, _ key: String) -> Bool {
+        guard let placed = placements[key], placed.isCurrent(for: key) else { return false }
+        guard placed.rule != SimklPlacement.currentRule, let season = job.season, let number = job.number, let map = AnimeMapStore.shared.map,
+              let mapped = map.anilist(tmdb: job.tmdb, season: season, episode: number), let entry = map.simkl(anilist: mapped.id) else { return true }
+        return placed.entry == entry && placed.number == mapped.episode
+    }
+
+    // MARK: Make Simkl match: three tries
+
+    /// What Make Simkl match sent and Simkl hasn't shown yet (RetryStop): three sends that don't
+    /// read back, and it's parked in the "didn't stick" list for 30 days.
+    @ObservationIgnored private var retry = SimklStorage.load(RetryStop.self, "retry.json") ?? RetryStop()
+    func noteSent(_ tokens: Set<String>) { retry.sent(tokens); SimklStorage.save(retry, "retry.json") }
+    func observeRetries(missing: Set<String>) -> (parked: [String], released: [String]) {
+        let change = retry.observe(missing: missing)
+        SimklStorage.save(retry, "retry.json")
+        return change
+    }
+    /// "Try them again": each counts from nothing.
+    func retryParked() { retry.retry(Array(retry.parked.keys)); SimklStorage.save(retry, "retry.json") }
+
     /// Places diary anime not placed yet, a few titles at a time (each title's look-ups are kept,
     /// so its other episodes cost nothing more). Returns roughly the requests it made.
     private func placeAhead(_ diary: Workspace, api: SimklAPI, budget: Int) async -> Int {
@@ -779,6 +805,17 @@ struct SimklQueue: Codable, Equatable, Sendable {
         // date instead of Simkl's TVDB mapping (which dropped TONIKAWA S1 E1, 2026-11-15).
         var aired = job.airedOn
         if aired == nil, let number = job.number { aired = await seasonDays(job)?.days[number] }
+        // The anime map first: TMDB's episode is an AniList entry's episode, and that entry's Simkl
+        // entry numbers it the same. Kept only where Simkl lists that episode within 30 days of
+        // TMDB's day (the map has mistakes); otherwise the matching below, as before.
+        if job.anime, let season = job.season, let number = job.number, let map = AnimeMapStore.shared.map,
+           let mapped = map.anilist(tmdb: job.tmdb, season: season, episode: number), let entry = map.simkl(anilist: mapped.id) {
+            let list = await episodes(entry, kind: "anime", api: api)
+            if let episode = list.first(where: { !$0.special && $0.number == mapped.episode }),
+               aired == nil || episode.day == nil || SimklBody.daysApart(episode.day ?? "", aired ?? "") <= 30 {
+                return (entry, 1, episode.number, (try? await detail(entry, api: api))?.native)
+            }
+        }
         guard let day = aired else { return nil }
         var root = match
         if root == nil, job.anime { root = try? await api.searchAnime(title: job.name, year: job.year) }

@@ -12,13 +12,15 @@ struct SimklPlacement: Codable, Equatable, Sendable {
     /// The placing rules it was made with; older ones are placed again. 2: air dates filled from
     /// TMDB, and the episode titled the same comes before the date. 3: a film goes only into an
     /// entry that is one. 4: a film entry in parts, on the part titled as the film. 5: a special
-    /// titled the same comes before the date too (2026-11-15).
+    /// titled the same comes before the date too. 6: the anime map asked first (2026-11-15).
     var rule: Int? = nil
-    static let currentRule = 5
-    /// Made with the current rules, for the diary's `key`. Rule 5 changed only specials, so other
-    /// places made with rule 4 stand (placing again costs Simkl's daily allowance).
+    static let currentRule = 6
+    /// Made with rules that still stand, for the diary's `key`: 5 and 6; 4 except for specials (5
+    /// changed only them). One made before the map is placed again only where the map disagrees
+    /// (`SimklMirror.settled`): placing again costs Simkl's daily allowance.
     func isCurrent(for key: String) -> Bool {
-        if rule == Self.currentRule { return true }
+        guard let rule else { return false }
+        if rule >= 5 { return true }
         let parts = key.split(separator: ":")
         return rule == 4 && !(parts.count == 3 && parts[1] == "0")
     }

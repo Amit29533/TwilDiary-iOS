@@ -648,6 +648,8 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertTrue(four.isCurrent(for: "movie:372058"))
         XCTAssertTrue(four.isCurrent(for: "show:68096"))
         XCTAssertFalse(SimklPlacement(entry: 1, season: 1, number: 1, at: .now, rule: 3).isCurrent(for: "42942:1:2"))
+        XCTAssertTrue(SimklPlacement(entry: 38481, season: 0, number: 2, at: .now, rule: 5).isCurrent(for: "42942:0:2"))
+        XCTAssertTrue(SimklPlacement(entry: 38481, season: 0, number: 2, at: .now, rule: 6).isCurrent(for: "42942:0:2"), "6: the anime map asked first")
     }
     /// ViVid Strike! on Plan to watch (test account, 2026-11-15): Simkl lists it as anime with no
     /// TMDB id; its entry, found once, links it back to the diary's planned series.

@@ -288,6 +288,17 @@ struct AniListSyncAPI: Sendable {
     private(set) var adoptions: [String: (name: String, adoption: AniListPlan.Adoption)] = [:]
     /// The last Make match, Force Match or bring-in, said under the comparison.
     private(set) var lastResult: String?
+    /// What Make AniList match sent that AniList still doesn't match (RetryStop): three sends, then
+    /// parked for 30 days, shown apart with Try again, and left out of the differences.
+    @ObservationIgnored private var retry = AniListSyncStorage.load(RetryStop.self, "retry.json") ?? RetryStop()
+    /// Parked titles, with their names.
+    private(set) var parked: [(key: String, name: String)] = []
+    /// Try again: each parked title is offered and sent as new.
+    func tryParkedAgain(store: DiaryStore) {
+        retry.retry(Array(retry.parked.keys)); AniListSyncStorage.save(retry, "retry.json")
+        parked = []
+        Task { await check(store: store) }
+    }
     /// AniList's list-entry ids from the last check (Force Match takes entries off by them).
     @ObservationIgnored private var listIds: [Int: Int] = [:]
     @ObservationIgnored private var chains: [String: Chain] = AniListSyncStorage.load([String: Chain].self, AniListSync.chainsFile) ?? [:]
@@ -427,7 +438,19 @@ struct AniListSyncAPI: Sendable {
             watches.append(AniListPlan.Watch(season: episode?.season, number: episode?.number, aired: aired, watchedAt: event.watchedAt))
         }
         return AniListPlan.entries(status: title.status, score: title.score, film: film, watches: watches, chain: chain,
-                                   notes: AniListSyncAccount.shared.sendNotes ? title.notes : nil)
+                                   notes: AniListSyncAccount.shared.sendNotes ? title.notes : nil, placed: placed(title, watches, chain))
+    }
+    /// The anime map's entry for each watched episode, where it's one of the title's entries and
+    /// the episode aired within 30 days of that entry's run ("1x26" → AniList id).
+    private func placed(_ title: MediaTitle, _ watches: [AniListPlan.Watch], _ chain: [AniListPlan.Media]) -> [String: Int] {
+        guard title.isSeries, let tmdb = title.tmdbId, let map = AnimeMapStore.shared.map else { return [:] }
+        var result: [String: Int] = [:]
+        for watch in watches {
+            guard let season = watch.season, let number = watch.number, let mapped = map.anilist(tmdb: tmdb, season: season, episode: number),
+                  let media = chain.first(where: { $0.id == mapped.id }), AnimeMap.plausible(day: watch.aired, start: media.start, end: media.end) else { continue }
+            result["\(season)x\(number)"] = media.id
+        }
+        return result
     }
 
     // MARK: Reading AniList back (phase 2)
@@ -496,7 +519,20 @@ struct AniListSyncAPI: Sendable {
                 else { sent[mediaId] = nil }
             }
             AniListSyncStorage.save(sent, "sent.json")
-            comparison = AniListPlan.compare(expected: expected, listed: listed, notLookedUp: notLookedUp)
+            var compared = AniListPlan.compare(expected: expected, listed: listed, notLookedUp: notLookedUp)
+            // Sent three times and still different (nothing waiting to go): parked, and not shown.
+            if waiting.isEmpty, !sending {
+                let change = retry.observe(missing: Set(compared.keysToSend))
+                AniListSyncStorage.save(retry, "retry.json")
+                if !change.parked.isEmpty {
+                    lastResult = change.parked.count.counted("title", "titles") + " didn’t match on AniList after three tries, so \(change.parked.count == 1 ? "it isn’t" : "they aren’t") sent again on \(change.parked.count == 1 ? "its" : "their") own for 30 days."
+                }
+            }
+            compared.missing.removeAll { difference in difference.key.map { retry.isParked($0) } ?? false }
+            compared.different.removeAll { difference in difference.key.map { retry.isParked($0) } ?? false }
+            let names = Dictionary(titles.compactMap { title in Self.key(title).map { ($0, title.name) } }, uniquingKeysWith: { first, _ in first })
+            parked = retry.parked.keys.sorted().map { ($0, names[$0] ?? $0) }
+            comparison = compared
             adoptions = found
             readStats = ReadStats(seconds: Date.now.timeIntervalSince(started), requests: requests, entries: listed.count,
                                   byStatus: Dictionary(grouping: listed, by: \.status).mapValues(\.count))
@@ -524,7 +560,7 @@ struct AniListSyncAPI: Sendable {
         }
         func plan(_ seasons: [Int: [Int: String]]) -> AniListPlan.Adoption {
             AniListPlan.adoption(diaryStatus: title.status, diaryScore: title.score, diaryNotes: title.notes, film: film, watches: watches,
-                                 chain: chain, listed: details, seasons: seasons)
+                                 chain: chain, listed: details, seasons: seasons, map: AnimeMapStore.shared.map, tmdb: title.tmdbId)
         }
         var result = plan([:])
         guard !film, result.unplaced > 0, let tmdb = title.tmdbId else { return result }
@@ -595,6 +631,7 @@ struct AniListSyncAPI: Sendable {
         for difference in comparison.missing + comparison.different { sent[difference.mediaId] = nil }
         AniListSyncStorage.save(sent, "sent.json")
         mark(comparison.keysToSend)
+        retry.sent(comparison.keysToSend); AniListSyncStorage.save(retry, "retry.json")
         if !force { lastResult = comparison.keysToSend.count.counted("title", "titles") + " on the way to AniList. They go in the background; AniList is checked again after." }
         let extra = force ? comparison.onlyOnAniList.compactMap { listIds[$0.mediaId] } : []
         Task {
@@ -666,19 +703,38 @@ struct AniListSyncAPI: Sendable {
     /// The title's AniList entries: found by its name and year, then (a show) each sequel season
     /// or cour in order. Kept for a week (the chain grows while a show airs).
     private func chain(for title: MediaTitle, key: String, api: AniListSyncAPI) async throws -> [AniListPlan.Media] {
-        if let known = chains[key], Date.now.timeIntervalSince(known.at) < 7 * 86_400 { return known.media }
         let film = !title.isSeries
+        // The anime map's entries for the title (its specials and OVAs too). A kept chain without
+        // all of them is looked up again.
+        let map = AnimeMapStore.shared.map
+        let mapped: [Int] = title.tmdbId.map { tmdb in film ? (map?.anilistFilm(tmdb: tmdb).map { [$0] } ?? []) : (map?.anilistEntries(tmdb: tmdb) ?? []) } ?? []
+        if let known = chains[key], Date.now.timeIntervalSince(known.at) < 7 * 86_400, Set(mapped).isSubset(of: Set(known.media.map(\.id))) { return known.media }
+        // 0. The anime map's entries, in one request. They're added to the look-up below, never
+        // instead of it: the map can be wrong for a whole title (it gives Bisque Doll only its
+        // second season's entry, so the first season's watches would have gone there).
+        var fromMap: [AniListPlan.Media] = []
+        if !mapped.isEmpty {
+            try await pace()
+            let reply = try await api.call("""
+                query($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { id format episodes startDate { year month day } endDate { year month day } title { romaji english } } } }
+                """, ["ids": mapped])
+            let rows = ((AniListSyncAPI.data(reply)["Page"] as? [String: Any])?["media"] as? [[String: Any]] ?? []).compactMap(AniListSyncAPI.media)
+            fromMap = mapped.compactMap { id in rows.first { $0.id == id } }
+        }
         var root: AniListPlan.Media?
         // 1. The TMDB-to-AniList id map (the community anime lists; TMDB ids only are sent).
         if let tmdb = title.tmdbId, let id = await Self.mappedID(tmdb: tmdb, film: film) {
-            try await pace()
-            let reply = try await api.call("""
-                query($id: Int) { Media(id: $id, type: ANIME) { id format episodes startDate { year month day } endDate { year month day } title { romaji english } } }
-                """, ["id": id])
-            root = (AniListSyncAPI.data(reply)["Media"] as? [String: Any]).flatMap(AniListSyncAPI.media)
+            if let known = fromMap.first(where: { $0.id == id }) { root = known } else {
+                try await pace()
+                let reply = try await api.call("""
+                    query($id: Int) { Media(id: $id, type: ANIME) { id format episodes startDate { year month day } endDate { year month day } title { romaji english } } }
+                    """, ["id": id])
+                root = (AniListSyncAPI.data(reply)["Media"] as? [String: Any]).flatMap(AniListSyncAPI.media)
+            }
         }
-        // 2. AniList's search, under simpler names when the full one finds nothing.
-        if root == nil {
+        // 2. AniList's search, under simpler names when the full one finds nothing (and the map
+        // has nothing either).
+        if root == nil, fromMap.isEmpty {
             let names = AniListPlan.searchNames(title.name)
             let strict = !(title.category == "anime" || title.category == "anime-movie")
             for name in names.prefix(4) {
@@ -698,30 +754,36 @@ struct AniListSyncAPI: Sendable {
                 if root != nil { break }
             }
         }
-        guard let root else {
+        guard let root = root ?? fromMap.first else {
             chains[key] = Chain(media: [], at: .now); AniListSyncStorage.save(chains, Self.chainsFile)
             return []
         }
         var chain = [root]
         if !film {
-            var current = root.id
-            for _ in 0..<12 {
-                try await pace()
-                let reply = try await api.call("""
-                    query($id: Int) { Media(id: $id) { relations { edges { relationType node { id type format episodes startDate { year month day } endDate { year month day } title { romaji english } } } } } }
-                    """, ["id": current])
-                let edges = ((AniListSyncAPI.data(reply)["Media"] as? [String: Any])?["relations"] as? [String: Any])?["edges"] as? [[String: Any]] ?? []
-                let next = edges.first { edge in
-                    guard edge["relationType"] as? String == "SEQUEL", let node = edge["node"] as? [String: Any] else { return false }
-                    return node["type"] as? String == "ANIME" && ["TV", "TV_SHORT", "ONA"].contains(node["format"] as? String ?? "")
-                }.flatMap { ($0["node"] as? [String: Any]).flatMap(AniListSyncAPI.media) }
-                guard let next, !chain.contains(where: { $0.id == next.id }) else { break }
-                chain.append(next); current = next.id
-            }
+            try await sequels(&chain, api: api)
+            // The map's entries the look-up didn't reach: specials, OVAs, a season it missed.
+            for media in fromMap where !chain.contains(where: { $0.id == media.id }) { chain.append(media) }
         }
         chains[key] = Chain(media: chain, at: .now)
         AniListSyncStorage.save(chains, Self.chainsFile)
         return chain
+    }
+    /// Each sequel season or cour after the chain's last season (TV, TV short or ONA), in order.
+    private func sequels(_ chain: inout [AniListPlan.Media], api: AniListSyncAPI) async throws {
+        guard var current = chain.last(where: { ["TV", "TV_SHORT", "ONA"].contains($0.format ?? "TV") })?.id else { return }
+        for _ in 0..<12 {
+            try await pace()
+            let reply = try await api.call("""
+                query($id: Int) { Media(id: $id) { relations { edges { relationType node { id type format episodes startDate { year month day } endDate { year month day } title { romaji english } } } } } }
+                """, ["id": current])
+            let edges = ((AniListSyncAPI.data(reply)["Media"] as? [String: Any])?["relations"] as? [String: Any])?["edges"] as? [[String: Any]] ?? []
+            let next = edges.first { edge in
+                guard edge["relationType"] as? String == "SEQUEL", let node = edge["node"] as? [String: Any] else { return false }
+                return node["type"] as? String == "ANIME" && ["TV", "TV_SHORT", "ONA"].contains(node["format"] as? String ?? "")
+            }.flatMap { ($0["node"] as? [String: Any]).flatMap(AniListSyncAPI.media) }
+            guard let next, !chain.contains(where: { $0.id == next.id }) else { break }
+            chain.append(next); current = next.id
+        }
     }
     /// The looked-up entries. "-v2": found by the id map (the first look-ups searched by name only,
     /// and matched "Your Name." to a commercial), so every title is looked up again once.

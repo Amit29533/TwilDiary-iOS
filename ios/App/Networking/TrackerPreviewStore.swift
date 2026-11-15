@@ -160,6 +160,23 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         reports[.simkl] = .init(seconds: Date.now.timeIntervalSince(started), requests: read.requests, fetched: [.history, .ratings, .watchlist, .dropped],
                                 unavailable: [], skipped: library.skipped, comparison: comparison)
         plans[.simkl] = analysed.plan
+        // Sent three times by Make Simkl match and still not on Simkl (nothing waiting to go): into
+        // the "didn't stick" list for 30 days, so it isn't sent or shown again on every match.
+        if SimklMirror.shared.queue.jobs.isEmpty, let missing = matchPlan(.simkl, store: store)?.tokens {
+            let change = SimklMirror.shared.observeRetries(missing: missing)
+            if !change.released.isEmpty { MatchLedger.remove(.simkl, Set(change.released)) }
+            if !change.parked.isEmpty {
+                MatchLedger.add(.simkl, Set(change.parked))
+                writeResults[.simkl] = "\(change.parked.count.counted("change", "changes")) didn’t stick on Simkl after three tries, so \(change.parked.count == 1 ? "it isn’t" : "they aren’t") sent again on \(change.parked.count == 1 ? "its" : "their") own for 30 days."
+                if let again = await analyse(.simkl, store: store), session == generation {
+                    var shown = again.comparison
+                    shown.onlyInDiary = shown.onlyInDiary.map(SimklMirror.shared.placementNote)
+                    reports[.simkl] = .init(seconds: Date.now.timeIntervalSince(started), requests: read.requests, fetched: [.history, .ratings, .watchlist, .dropped],
+                                            unavailable: [], skipped: library.skipped, comparison: shown)
+                    plans[.simkl] = again.plan
+                }
+            }
+        }
         // Diary anime still waiting to be placed: the next read places more.
         if read.waiting > 0 { refreshSoon(.simkl, store: store, after: 60) }
     }
@@ -217,6 +234,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
     /// "Try them again": the ledger is cleared, so those go with the next match.
     func retryLedger(_ tracker: MainTracker, store: DiaryStore) async {
         MatchLedger.clear(tracker)
+        if tracker == .simkl { SimklMirror.shared.retryParked() }
         guard let analysed = await analyse(tracker, store: store) else { return }
         if let report = reports[tracker] {
             reports[tracker] = .init(seconds: report.seconds, requests: report.requests, fetched: report.fetched, unavailable: report.unavailable,
@@ -544,6 +562,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         if tracker == .simkl {
             // Simkl: each change goes through its own sync, placed in Simkl's numbering, in the background.
             let queued = SimklMirror.shared.enqueue(plan, store: store)
+            SimklMirror.shared.noteSent(plan.tokens)
             writeResults[.simkl] = queued == 0 ? "Nothing to send to Simkl." : "\(queued.formatted()) \(queued == 1 ? "change" : "changes") on the way to Simkl. They go in the background; Simkl is checked again after."
             refreshSoon(.simkl, store: store, after: 45)
             return
