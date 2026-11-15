@@ -35,18 +35,34 @@ public struct AnimeMap: Codable, Equatable, Sendable {
 
     // MARK: Looking things up
 
-    /// The AniList entry and its episode for TMDB's `season`, `episode` of show `tmdb`.
+    /// The AniList entry and its episode for TMDB's `season`, `episode` of show `tmdb`. A special
+    /// (season 0) only to an entry of its own: the map also lists Frieren's S0 E1-10 under its
+    /// second season's entry, which TMDB's S1 E29-38 are.
     public func anilist(tmdb: Int, season: Int, episode: Int) -> (id: Int, episode: Int)? {
         guard let span = shows["\(tmdb):\(season)"]?.first(where: { $0.holds(episode) }) else { return nil }
+        if season == 0, seasonEntries(tmdb: tmdb).contains(span.anilist) { return nil }
         return (span.anilist, span.start + episode - span.from)
+    }
+    /// The AniList entries TMDB's regular seasons (not specials) of show `tmdb` are.
+    func seasonEntries(tmdb: Int) -> Set<Int> {
+        Set(seasons(of: tmdb).filter { $0.season > 0 }.flatMap { $0.spans.map(\.anilist) })
+    }
+    /// A show's seasons in the map, by direct look-up (not a pass over every show: the map holds
+    /// about 6,500 seasons, and bringing AniList into the diary asks once per episode). Seasons
+    /// run on from 0 and 1; ten missing in a row ends them.
+    func seasons(of tmdb: Int) -> [(season: Int, spans: [Span])] {
+        var result: [(season: Int, spans: [Span])] = [], missing = 0, season = 0
+        while missing < 10 || season <= 1 {
+            if let spans = shows["\(tmdb):\(season)"] { result.append((season, spans)); missing = 0 } else { missing += 1 }
+            season += 1
+        }
+        return result
     }
     /// A show's AniList entries in TMDB's order: its seasons' entries first (by season and first
     /// episode), then the specials' (season 0).
     public func anilistEntries(tmdb: Int) -> [Int] {
         var rows: [(season: Int, from: Int, id: Int)] = []
-        for (key, spans) in shows {
-            let parts = key.split(separator: ":")
-            guard parts.count == 2, parts[0] == Substring(String(tmdb)), let season = Int(parts[1]) else { continue }
+        for (season, spans) in seasons(of: tmdb) {
             for span in spans { rows.append((season == 0 ? Int.max : season, span.from, span.anilist)) }
         }
         var seen = Set<Int>(), out: [Int] = []
@@ -65,9 +81,10 @@ public struct AnimeMap: Codable, Equatable, Sendable {
     public func simkl(anilist: Int) -> Int? { simklAniList[String(anilist)] }
     /// TMDB's season and episode for an AniList entry's `episode` of show `tmdb`.
     public func tmdbEpisode(tmdb: Int, anilist: Int, episode: Int) -> (season: Int, number: Int)? {
-        for (key, spans) in shows.sorted(by: { $0.key < $1.key }) {
-            let parts = key.split(separator: ":")
-            guard parts.count == 2, parts[0] == Substring(String(tmdb)), let season = Int(parts[1]) else { continue }
+        let regular = seasonEntries(tmdb: tmdb).contains(anilist)
+        let all = seasons(of: tmdb)
+        for (season, spans) in all.filter({ $0.season > 0 }) + all.filter({ $0.season == 0 }) {
+            if season == 0, regular { continue }
             for span in spans where span.anilist == anilist && episode >= span.start {
                 let number = span.from + episode - span.start
                 if span.holds(number) { return (season, number) }
@@ -76,10 +93,10 @@ public struct AnimeMap: Codable, Equatable, Sendable {
         return nil
     }
     /// An episode that aired on `day` can belong to an entry that ran `start` to `end`: within 30
-    /// days of its run (Simkl and TMDB date some premieres and home releases weeks apart). True when
-    /// either side has no date: nothing contradicts the map.
+    /// days of its run (Simkl and TMDB date some premieres and home releases weeks apart). False
+    /// when either side has no date: the map is wrong sometimes, and only a date can tell.
     public static func plausible(day: String?, start: String?, end: String?) -> Bool {
-        guard let day = day.map({ String($0.prefix(10)) }), day.count == 10, let start else { return true }
+        guard let day = day.map({ String($0.prefix(10)) }), day.count == 10, let start else { return false }
         if AniListPlan.days(start, day) < -30 { return false }
         if let end, AniListPlan.days(end, day) > 30 { return false }
         return true
@@ -153,18 +170,23 @@ public struct AnimeMap: Codable, Equatable, Sendable {
 /// that failed (an episode; an AniList title's expected state), so a later change is a new key.
 public struct RetryStop: Codable, Equatable, Sendable {
     public static let limit = 3
-    /// Times sent since it last read back as missing.
+    /// Sent and not read back since: counted as one try at the next read, so tapping Make match
+    /// three times before a read is one try, not three.
+    public var pending: Set<String> = []
+    /// Tries: each a send, then a read that still lacked it.
     public var tries: [String: Int] = [:]
     /// Parked, and when.
     public var parked: [String: Date] = [:]
     public init() {}
 
-    public mutating func sent(_ keys: some Sequence<String>) { for key in keys { tries[key, default: 0] += 1 } }
+    public mutating func sent(_ keys: some Sequence<String>) { pending.formUnion(keys) }
     /// After a read, with `missing` what the service still lacks (ignored things left out): what
     /// landed is forgotten, and what was sent `limit` times and is still missing is ignored from
     /// now on. Returns what was ignored just now.
     @discardableResult
     public mutating func observe(missing: Set<String>, now: Date = .now) -> [String] {
+        for key in pending { tries[key, default: 0] += 1 }
+        pending = []
         for key in Array(tries.keys) where !missing.contains(key) { tries[key] = nil }
         var newly: [String] = []
         for (key, count) in tries where count >= Self.limit && missing.contains(key) { parked[key] = now; tries[key] = nil; newly.append(key) }

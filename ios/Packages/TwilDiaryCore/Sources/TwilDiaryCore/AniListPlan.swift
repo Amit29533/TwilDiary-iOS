@@ -208,6 +208,8 @@ public enum AniListPlan {
             return result
         }
         let watched = Set(watches.compactMap { watch in watch.season.map { "\($0)x\(watch.number ?? 0)" } })
+        var aired: [String: String] = [:]
+        for watch in watches { if let season = watch.season, let day = watch.aired { aired["\(season)x\(watch.number ?? 0)"] = day } }
         var byMedia: [Int: [(season: Int, number: Int)]] = [:]
         let regular = chain.filter { ["TV", "TV_SHORT", "ONA"].contains($0.format ?? "TV") }
         for (season, list) in seasons where season > 0 {
@@ -215,12 +217,13 @@ public enum AniListPlan {
         }
         for entry in mine where entry.progress > 0 {
             // The anime map names each of the entry's episodes (specials too), when it names them all
-            // and their air days (where known) fall in the entry's run.
+            // and each one's air day is known and falls in the entry's run (the map is wrong for some
+            // titles: Bisque Doll's season 1 under its second season's entry).
             var named: [(season: Int, number: Int)] = []
             if let map, let tmdb, let media = chain.first(where: { $0.id == entry.mediaId }) {
                 for episode in 1...entry.progress {
                     guard let at = map.tmdbEpisode(tmdb: tmdb, anilist: entry.mediaId, episode: episode),
-                          AnimeMap.plausible(day: seasons[at.season]?[at.number], start: media.start, end: media.end) else { named = []; break }
+                          AnimeMap.plausible(day: seasons[at.season]?[at.number] ?? aired["\(at.season)x\(at.number)"], start: media.start, end: media.end) else { named = []; break }
                     named.append(at)
                 }
             }

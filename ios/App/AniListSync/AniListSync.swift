@@ -562,7 +562,7 @@ struct AniListSyncAPI: Sendable {
         // AniList has episodes the diary hasn't: TMDB's seasons name them (the diary's, and one more).
         let known = Set(watches.compactMap(\.season)).filter { $0 > 0 }
         var seasons: [Int: [Int: String]] = [:]
-        for season in 1...min(10, (known.max() ?? 0) + 1) {
+        for season in 0...min(10, (known.max() ?? 0) + 1) {
             _ = await airDay(tmdb, season, 1)
             if let list = days["\(tmdb)/\(season)"], !list.isEmpty { seasons[season] = list }
         }

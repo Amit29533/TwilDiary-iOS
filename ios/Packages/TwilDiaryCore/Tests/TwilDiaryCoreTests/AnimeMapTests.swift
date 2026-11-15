@@ -13,6 +13,8 @@ private let mappings = Data(#"""
  "tmdb_show:42942:s1":{"anilist:6547":{"1-13":"1-13"}},
  "tmdb_show:42942:s0":{"anilist:10067":{"3":"1"}},
  "tmdb_show:123249:s1":{"anilist:154768":{"1-12":"1-12"}},
+ "tmdb_show:209867:s0":{"anilist:182255":{"1-10":"1-10"},"anilist:189513":{"15-20":"1-6"}},
+ "tmdb_show:209867:s1":{"anilist:154587":{"1-28":"1-28"},"anilist:182255":{"29-38":"1-10"}},
  "tmdb_show:500:s1":{"anilist:1003":{"1-12":"1-6,8-13","13-":"14-|2"}},
  "tmdb_movie:372058":{"anilist:21519":{"1":"1"},"mal:32281":{"1":"1"}},
  "anilist:21355":{"tmdb_show:65942:s1":{"1-25":"1-25"}}}
@@ -28,6 +30,14 @@ No Simkl\t1\t2\t\t3\ttv
 """.utf8)
 private func pair(_ value: (id: Int, episode: Int)?) -> [Int]? { value.map { [$0.id, $0.episode] } }
 private func pair(_ value: (season: Int, number: Int)?) -> [Int]? { value.map { [$0.season, $0.number] } }
+/// `day` plus `weeks` weeks ("2020-07-08", 1 → "2020-07-15").
+private func weekAfter(_ day: String, _ weeks: Int) -> String {
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .gmt
+    let parts = day.split(separator: "-").compactMap { Int($0) }
+    let date = calendar.date(byAdding: .day, value: 7 * weeks, to: calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))!)!
+    let c = calendar.dateComponents([.year, .month, .day], from: date)
+    return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+}
 private func built() throws -> AnimeMap { try AnimeMap.build(mappings: mappings, animeApi: animeApi, builtAt: "2026-11-15T08:42:10Z") }
 
 @Test func theMapNamesEachTMDBEpisodesAniListEntryAndEpisode() throws {
@@ -63,7 +73,8 @@ private func built() throws -> AnimeMap { try AnimeMap.build(mappings: mappings,
     #expect(AnimeMap.plausible(day: "2010-12-22", start: "2010-12-22", end: nil), "a special dated by its release")
     #expect(AnimeMap.plausible(day: "2020-06-20", start: "2020-07-08", end: "2020-09-30"), "within 30 days: an early screening")
     #expect(!AnimeMap.plausible(day: "2020-11-30", start: "2020-07-08", end: "2020-09-30"))
-    #expect(AnimeMap.plausible(day: nil, start: "2020-07-08", end: nil), "no day: nothing contradicts it")
+    #expect(!AnimeMap.plausible(day: nil, start: "2020-07-08", end: nil), "no day: the map isn't trusted")
+    #expect(!AnimeMap.plausible(day: "2020-07-08", start: nil, end: nil))
 }
 
 @Test func theMapPlacesEpisodesAndSpecialsTheDatesCant() {
@@ -85,8 +96,14 @@ private func built() throws -> AnimeMap { try AnimeMap.build(mappings: mappings,
                  AniListPlan.Media(id: 108632, format: "TV", episodes: 13, start: "2020-07-08", end: "2020-09-30")]
     let watches = (1...30).map { AniListPlan.Watch(season: 1, number: $0, aired: nil, watchedAt: "2021-04-07T12:04:00Z") }
     let listed = [AniListPlan.ListedDetail(mediaId: 108632, status: "CURRENT", progress: 9, score: nil, notes: nil, updatedAt: "2026-11-14T20:30:00Z")]
+    // Without the episodes' days the map isn't trusted (the app then fetches TMDB's seasons).
+    let undated = AniListPlan.adoption(diaryStatus: "watching", diaryScore: nil, diaryNotes: "", film: false, watches: watches,
+                                       chain: chain, listed: listed, seasons: [:], map: map, tmdb: 65942)
+    #expect(undated.episodes.isEmpty && undated.unplaced == 9)
+    var days: [Int: String] = [:]
+    for number in 26...38 { days[number] = weekAfter("2020-07-08", number - 26) }
     let adoption = AniListPlan.adoption(diaryStatus: "watching", diaryScore: nil, diaryNotes: "", film: false, watches: watches,
-                                        chain: chain, listed: listed, seasons: [:], map: map, tmdb: 65942)
+                                        chain: chain, listed: listed, seasons: [1: days], map: map, tmdb: 65942)
     #expect(adoption.episodes.map(\.number) == [31, 32, 33, 34], "part 1's episode 9 is TMDB's S1 E34")
     #expect(adoption.unplaced == 0)
 }
@@ -103,7 +120,27 @@ private func built() throws -> AnimeMap { try AnimeMap.build(mappings: mappings,
     #expect(stop.observe(missing: [], now: day.addingTimeInterval(400 * 86_400)).isEmpty)
     #expect(stop.isParked("play|tv:42942|s0e2"), "ignored for good: it doesn't come back")
     // AniList's keys carry the state: a later watch is a new key, sent and checked as usual.
-    stop.sent(["frieren|154587:CURRENT:5:0"]); stop.sent(["frieren|154587:CURRENT:5:0"]); stop.sent(["frieren|154587:CURRENT:5:0"])
-    stop.observe(missing: ["frieren|154587:CURRENT:5:0"], now: day)
+    for _ in 1...3 { stop.sent(["frieren|154587:CURRENT:5:0"]); stop.observe(missing: ["frieren|154587:CURRENT:5:0"], now: day) }
     #expect(stop.isParked("frieren|154587:CURRENT:5:0") && !stop.isParked("frieren|154587:CURRENT:6:0"))
+}
+
+/// Frieren (the real map, 2026-11-15): TMDB's S1 E29-38 are the second season's entry, and the map
+/// also lists S0 E1-10 under that entry. A special never goes to a season's entry, and back from
+/// AniList the second season's episodes are TMDB's season 1, not its specials.
+@Test func aSpecialNeverGoesToASeasonsEntry() throws {
+    let map = try built()
+    #expect(map.anilist(tmdb: 209867, season: 0, episode: 1) == nil)
+    #expect(pair(map.anilist(tmdb: 209867, season: 0, episode: 15)) == [189513, 1], "a specials entry of its own")
+    #expect(pair(map.anilist(tmdb: 209867, season: 1, episode: 30)) == [182255, 2])
+    #expect(pair(map.tmdbEpisode(tmdb: 209867, anilist: 182255, episode: 2)) == [1, 30])
+    #expect(pair(map.tmdbEpisode(tmdb: 209867, anilist: 189513, episode: 1)) == [0, 15])
+}
+@Test func tappingMakeMatchAgainBeforeAReadIsOneTry() {
+    var stop = RetryStop()
+    stop.sent(["a"]); stop.sent(["a"]); stop.sent(["a"])
+    #expect(stop.observe(missing: ["a"]).isEmpty, "three taps, one read: one try")
+    #expect(stop.tries["a"] == 1)
+    stop.sent(["a"]); stop.observe(missing: ["a"])
+    stop.sent(["a"])
+    #expect(stop.observe(missing: ["a"]) == ["a"], "the third send and read")
 }

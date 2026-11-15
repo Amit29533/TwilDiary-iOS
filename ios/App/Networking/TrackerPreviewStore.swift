@@ -560,6 +560,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             // Simkl: each change goes through its own sync, placed in Simkl's numbering, in the background.
             let queued = SimklMirror.shared.enqueue(plan, store: store)
             SimklMirror.shared.noteSent(plan.tokens)
+            // The next read is a full one: Simkl's change stamps can lag its writes.
+            libraries[.simkl]?.activities = nil
             writeResults[.simkl] = queued == 0 ? "Nothing to send to Simkl." : "\(queued.formatted()) \(queued == 1 ? "change" : "changes") on the way to Simkl. They go in the background; Simkl is checked again after."
             refreshSoon(.simkl, store: store, after: 45)
             return

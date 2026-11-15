@@ -805,13 +805,16 @@ struct SimklQueue: Codable, Equatable, Sendable {
         var aired = job.airedOn
         if aired == nil, let number = job.number { aired = await seasonDays(job)?.days[number] }
         // The anime map first: TMDB's episode is an AniList entry's episode, and that entry's Simkl
-        // entry numbers it the same. Kept only where Simkl lists that episode within 30 days of
-        // TMDB's day (the map has mistakes); otherwise the matching below, as before.
-        if job.anime, let season = job.season, let number = job.number, let map = AnimeMapStore.shared.map,
-           let mapped = map.anilist(tmdb: job.tmdb, season: season, episode: number), let entry = map.simkl(anilist: mapped.id) {
+        // entry numbers it the same. Kept only where Simkl lists that episode and both days are
+        // known and within 30 days (the map has mistakes); otherwise the matching below, as before.
+        // A special never onto the show's own entry as a regular episode (Simkl keeps specials
+        // there as specials).
+        if job.anime, let season = job.season, let number = job.number, let day = aired, let map = AnimeMapStore.shared.map,
+           let mapped = map.anilist(tmdb: job.tmdb, season: season, episode: number), let entry = map.simkl(anilist: mapped.id),
+           season != 0 || entry != map.simkl(tmdb: job.tmdb, film: false) {
             let list = await episodes(entry, kind: "anime", api: api)
-            if let episode = list.first(where: { !$0.special && $0.number == mapped.episode }),
-               aired == nil || episode.day == nil || SimklBody.daysApart(episode.day ?? "", aired ?? "") <= 30 {
+            if let episode = list.first(where: { !$0.special && $0.number == mapped.episode }), let simklDay = episode.day,
+               SimklBody.daysApart(simklDay, day) <= 30 {
                 return (entry, 1, episode.number, (try? await detail(entry, api: api))?.native)
             }
         }
