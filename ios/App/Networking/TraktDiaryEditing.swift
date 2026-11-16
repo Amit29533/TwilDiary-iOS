@@ -425,7 +425,8 @@ extension DiaryStore {
             try await TraktDirectStore.shared.setNote(text, for: titleRef(title), store: self)
             rest["notes"] = text.count > 500 ? text : ""
         }
-        if let status, !serviceHolds || (!title.isSeries && title.status == "dropped" && service != .wetrakr) { rest["status"] = status }
+        if let status, !trashing.contains(title.id),
+           !serviceHolds || (!title.isSeries && title.status == "dropped" && service != .wetrakr) { rest["status"] = status }
         if let favourite, !favouritesHere { rest["favorite"] = favourite }
         // A status the service holds clears the phone's.
         if status != nil, rest["status"] == nil { rest["status"] = NSNull() }

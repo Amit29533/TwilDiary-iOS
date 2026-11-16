@@ -124,12 +124,14 @@ extension DiaryStore {
     func importTitle(_ details: CatalogDetails, category: String) async -> String? {
         guard phoneOnly else { return nil }
         let title = PhoneCatalog.shared.add(details, category: category)
-        // Added again, it's back: out of the phone's Trash. A trashed title isn't in the diary, so
-        // its page offers Add to Planned; left in Trash, the first status change hid it again
-        // ("Title unavailable", Up, 2026-11-16).
-        if PhoneTrash.shared.contains(title.id) { PhoneTrash.shared.remove([title.id]) }
-        applyDiarySource()
-        do { try await servicePatch(title, values: ["status": "planned"]); error = nil; return title.id }
+        do {
+            try await servicePatch(title, values: ["status": "planned"])
+            try PhoneTrash.shared.remove(title)
+            try PhoneExtras.shared.clearPurgeForAdd(title)
+            applyDiarySource()
+            error = nil
+            return title.id
+        }
         catch { self.error = error.localizedDescription; return nil }
     }
 }

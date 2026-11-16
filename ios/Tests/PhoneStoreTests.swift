@@ -124,7 +124,7 @@ import TwilDiaryCore
     func testAddingATrashedTitleAgainBringsItBack() async throws {
         let store = makeStore()
         defer {
-            PhoneTrash.shared.remove(["movie:14170"])
+            PhoneTrash.shared.replace(PhoneTrash.shared.titles.filter { $0.id != "movie:14170" })
             TraktDirectStore.shared.useLocal(false)
             UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
             UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
@@ -154,7 +154,7 @@ import TwilDiaryCore
     func testATrashedTitlesPageRestoresIt() async throws {
         let store = makeStore()
         defer {
-            PhoneTrash.shared.remove(["movie:14180"])
+            PhoneTrash.shared.replace(PhoneTrash.shared.titles.filter { $0.id != "movie:14180" })
             TraktDirectStore.shared.useLocal(false)
             UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
             UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
@@ -174,6 +174,59 @@ import TwilDiaryCore
         await store.waitForTitle(id)
         XCTAssertEqual(store.title(id)?.status, "planned", "back in the diary")
         XCTAssertNil(store.phoneTrashed(route), "out of Trash")
+    }
+
+    func testPermanentDeletionSurvivesStaleTrackerRowsAndAllowsAddingAgain() async throws {
+        let store = makeStore()
+        let originalTrash = PhoneTrash.shared.titles
+        PhoneTrash.shared.replace([])
+        defer {
+            PhoneTrash.shared.replace(originalTrash)
+            TraktDirectStore.shared.useLocal(false)
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        await store.startOnThisPhone()
+        // Exercise both the selected-title action and Empty Trash, which used to leave
+        // a local status behind and unhide a title still present in the tracker's copy.
+        for (tmdb, emptyAll) in [(14201, false), (14202, true)] {
+            let details = try JSONDecoder().decode(CatalogDetails.self, from: Data("""
+                {"id":\(tmdb),"mediaType":"movie","name":"Trash fixture","year":2009,"overview":"","posterPath":"/r.jpg","genres":[],"suggestedCategory":"movie"}
+                """.utf8))
+            let added = await store.importTitle(details, category: "movie")
+            let id = try XCTUnwrap(added)
+            await store.waitForTitle(id)
+            let title = try XCTUnwrap(store.title(id))
+            let moved = await store.trash(title)
+            XCTAssertTrue(moved)
+            let archived = try XCTUnwrap(store.phoneTrashed(CatalogRoute(kind: .movie, id: tmdb)))
+            XCTAssertNil(PhoneExtras.shared.entries[PhoneExtras.key(title)]?.status, "moving to Trash must not create a Completed entry")
+            PhoneExtras.shared.update(title, ["status": "completed"])
+            XCTAssertNil(store.title(id))
+
+            let deleted: Bool
+            if emptyAll { deleted = await store.emptyTrash() }
+            else { deleted = await store.manage([archived], change: .purge) }
+            XCTAssertTrue(deleted)
+            XCTAssertFalse(PhoneTrash.shared.contains(id))
+            XCTAssertNil(PhoneExtras.shared.entries[PhoneExtras.key(title)]?.status)
+            let backup = try JSONDecoder().decode(PhoneExtras.Backup.self, from: JSONEncoder().encode(PhoneExtras.shared.backup))
+            XCTAssertEqual(backup.entries[PhoneExtras.key(title)]?.purged, true)
+            XCTAssertNil(store.title(id), "an old phone status cannot recreate the title")
+
+            TraktDirectStore.shared.update(store: store) { library in
+                let ref = TraktTitleRef(kind: .movie, traktId: nil, tmdbId: tmdb, name: title.name, year: title.year)
+                library.watchlist.append(TraktListed(title: ref, listedAt: nil))
+            }
+            store.applyDiarySource()
+            XCTAssertNil(store.title(id), "a stale tracker response cannot recreate the title")
+
+            let readded = await store.importTitle(details, category: "movie")
+            XCTAssertEqual(readded, id)
+            await store.waitForTitle(id)
+            XCTAssertEqual(store.title(id)?.status, "planned")
+            XCTAssertFalse(PhoneTrash.shared.contains(id))
+        }
     }
 
     /// Trash's status only takes a title off the watchlist. Simkl keeps Completed and Watching as

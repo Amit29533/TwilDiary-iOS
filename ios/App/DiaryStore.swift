@@ -363,7 +363,7 @@ import TwilDiaryCore
             if let library = TraktDirectStore.shared.library {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles, episodes = PhoneCatalog.shared.episodes
                 let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
-                let trashed = phoneOnly ? Set(PhoneTrash.shared.titles.map(PhoneExtras.key)) : []
+                let trashed = phoneOnly ? hiddenPhoneTitleKeys : []
                 buildDiary {
                     // No server: the phone's extras (tags, Queue, full notes, statuses, files) take its place.
                     let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles, trashed: trashed) } ?? server
@@ -376,7 +376,7 @@ import TwilDiaryCore
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles
                 let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
-                let trashed = phoneOnly ? Set(PhoneTrash.shared.titles.map(PhoneExtras.key)) : []
+                let trashed = phoneOnly ? hiddenPhoneTitleKeys : []
                 buildDiary {
                     let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles, trashed: trashed) } ?? server
                     return Self.hidingTrashed(TraktDiary.build(library: library, server: record, tracker: tracker, catalog: titles), trashed)
@@ -388,6 +388,11 @@ import TwilDiaryCore
         } else {
             workspace = outbox.project(onto: confirmedWorkspace)
         }
+    }
+    private var hiddenPhoneTitleKeys: Set<String> {
+        var keys = Set(PhoneTrash.shared.titles.map(PhoneExtras.key))
+        for (key, entry) in PhoneExtras.shared.entries where entry.purged == true { keys.insert(key) }
+        return keys
     }
     /// Builds the diary from the service's copy away from the main thread (it reads every play),
     /// then shows it. A run of edits builds once: an older build still running is dropped. Previews
@@ -1185,9 +1190,9 @@ import TwilDiaryCore
         return await perform(refreshing: [title.id]) { try await self.serviceSetStatus(title, status: status, watchedAt: watchedAt ?? self.now) }
     }
     @discardableResult func manage(_ reviewed: [MediaTitle], change: CollectionChange) async -> Bool {
-        // The phone's Trash: restore puts titles back, delete forever just forgets them here.
+        // Restore puts titles back. Permanent deletion must also survive a tracker refresh.
         if phoneOnly, change == .restore || change == .purge {
-            if change == .purge { PhoneTrash.shared.remove(Set(reviewed.map(\.id))); return true }
+            if change == .purge { return purgePhoneTrash(Set(reviewed.map(\.id))) }
             var all = true
             for title in reviewed { if await !restore(title) { all = false } }
             return all
@@ -1221,7 +1226,17 @@ import TwilDiaryCore
     }
     @discardableResult func emptyTrash() async -> Bool {
         guard phoneOnly else { return false }
-        PhoneTrash.shared.removeAll(); return true
+        return purgePhoneTrash(Set(PhoneTrash.shared.titles.map(\.id)))
+    }
+    private func purgePhoneTrash(_ ids: Set<String>) -> Bool {
+        do {
+            try PhoneTrash.shared.purge(ids)
+            applyDiarySource()
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
     }
     func undo() async {
         guard let action = undoAction else { return }

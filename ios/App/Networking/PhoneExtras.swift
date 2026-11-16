@@ -22,6 +22,8 @@ import TwilDiaryCore
         var favorite: Bool?
         /// When it last changed (a cleared entry stays, empty, so the clearing syncs too).
         var at: Date?
+        /// Keeps a permanently deleted title out of the Library even if a tracker still has it.
+        var purged: Bool?
         var isEmpty: Bool { (tags ?? []).isEmpty && queued != true && (notes ?? "").isEmpty && status == nil && favorite == nil }
     }
     /// What a backup carries for the phone: these, favourite people and the phone's Trash.
@@ -60,8 +62,9 @@ import TwilDiaryCore
     }
     private func save(push: Bool = true) {
         BackgroundFiles.save(Saved(entries: entries, locations: locations, changed: changed), to: Self.file)
-        if push { PhoneDriveSync.soon(); PhoneServerSync.shared.soon() }
+        if push { scheduleSync() }
     }
+    private func scheduleSync() { PhoneDriveSync.soon(); PhoneServerSync.shared.soon() }
     /// Favourite people or the phone's Trash changed (sent to Drive in a moment).
     func touch(_ part: Part) { changed[part.rawValue] = .now; save() }
 
@@ -69,11 +72,40 @@ import TwilDiaryCore
         title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } ?? title.id
     }
 
+    func isPurged(_ title: MediaTitle) -> Bool { entries[Self.key(title)]?.purged == true }
+
+    /// Replace any local diary fields with a marker before removing the restorable Trash row.
+    func recordPurge(_ titles: [MediaTitle]) throws {
+        let now = Date.now
+        var updated = entries
+        for title in titles { updated[Self.key(title)] = Entry(at: now, purged: true) }
+        var updatedParts = changed
+        updatedParts[Part.trash.rawValue] = now
+        try persist(updated, changed: updatedParts)
+    }
+
+    /// An explicit Add is allowed to bring a permanently deleted title back.
+    func clearPurgeForAdd(_ title: MediaTitle) throws {
+        let key = Self.key(title)
+        guard entries[key]?.purged == true else { return }
+        var updated = entries
+        updated[key] = Entry(at: .now, purged: false)
+        try persist(updated, changed: changed)
+    }
+
+    private func persist(_ updated: [String: Entry], changed parts: [String: Date]) throws {
+        try BackgroundFiles.saveImmediately(Saved(entries: updated, locations: locations, changed: parts), to: Self.file)
+        entries = updated
+        changed = parts
+        scheduleSync()
+    }
+
     /// Saves an edit's extras: "tags", "queued", "notes", "status" (nil: the service keeps it now)
     /// and "favorite". Only the keys given change.
     func update(_ title: MediaTitle, _ values: [String: Any]) {
         let key = Self.key(title)
         var entry = entries[key] ?? Entry()
+        guard entry.purged != true else { return }
         if let tags = values["tags"] as? [String] { entry.tags = tags.isEmpty ? nil : tags }
         if let queued = values["queued"] as? Bool { entry.queued = queued ? true : nil }
         if values.keys.contains("notes") {
@@ -139,12 +171,13 @@ import TwilDiaryCore
             if let key = ref.diaryKey, refs[key] == nil { refs[key] = ref }
         }
         var titles: [MediaTitle] = []
-        for (key, entry) in entries.sorted(by: { $0.key < $1.key }) where !entry.isEmpty {
+        for (key, entry) in entries.sorted(by: { $0.key < $1.key }) {
+            guard !entry.isEmpty, entry.purged != true, !trashed.contains(key) else { continue }
             var title: MediaTitle
             if let ref = refs[key], let tmdb = ref.tmdbId {
                 title = catalog[key] ?? MediaTitle.imported(id: key, name: ref.name, series: ref.kind != .movie, year: ref.year, tmdbId: tmdb,
                                                             status: "planned", score: nil, createdAt: "")
-            } else if entry.status != nil, !trashed.contains(key), let known = catalog[key], known.tmdbId != nil {
+            } else if entry.status != nil, let known = catalog[key], known.tmdbId != nil {
                 title = known
             } else { continue }
             title.tags = entry.tags ?? []
@@ -176,6 +209,8 @@ extension PhoneExtras {
             let mineAt = mine?.at ?? .distantPast, theirsAt = theirs?.at ?? .distantPast
             if let theirs, theirsAt >= mineAt { merged[key] = theirs; localChanged = true } else { remoteBehind = true }
         }
+        // Trash uses the merged per-title deletion markers when it accepts a remote copy.
+        if localChanged { entries = merged }
         func newer(_ part: Part) -> Bool? {
             let mine = changed[part.rawValue] ?? .distantPast, theirs = remote.changed[part.rawValue] ?? .distantPast
             return theirs > mine ? true : mine > theirs ? false : nil
@@ -184,7 +219,7 @@ extension PhoneExtras {
         switch newer(.favourites) { case true?: FavouritesStore.shared.replace(remote.favourites); localChanged = true; case false?: remoteBehind = true; case nil: break }
         switch newer(.trash) { case true?: PhoneTrash.shared.replace(remote.trash); localChanged = true; case false?: remoteBehind = true; case nil: break }
         for (part, date) in remote.changed where date > (changed[part] ?? .distantPast) { changed[part] = date }
-        if localChanged { entries = merged; save(push: false) }
+        if localChanged { save(push: false) }
         return (localChanged, remoteBehind)
     }
 }
