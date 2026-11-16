@@ -363,11 +363,11 @@ import TwilDiaryCore
             if let library = TraktDirectStore.shared.library {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles, episodes = PhoneCatalog.shared.episodes
                 let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
-                let trashed = Set(PhoneTrash.shared.titles.map(PhoneExtras.key))
+                let trashed = phoneOnly ? Set(PhoneTrash.shared.titles.map(PhoneExtras.key)) : []
                 buildDiary {
                     // No server: the phone's extras (tags, Queue, full notes, statuses, files) take its place.
                     let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles, trashed: trashed) } ?? server
-                    return TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: record, catalog: titles), catalog: episodes)
+                    return Self.hidingTrashed(TraktDiary.addingCatalogEpisodes(TraktDiary.build(library: library, server: record, catalog: titles), catalog: episodes), trashed)
                 }
             } else if !TraktDirectStore.shared.running {
                 Task { await TraktDirectStore.shared.check(store: self) }
@@ -376,10 +376,10 @@ import TwilDiaryCore
             if let library = TrackerPreviewStore.shared.libraries[tracker] {
                 let server = confirmedWorkspace, titles = PhoneCatalog.shared.titles
                 let extras = phoneOnly ? (PhoneExtras.shared.entries, PhoneExtras.shared.locations) : nil
-                let trashed = Set(PhoneTrash.shared.titles.map(PhoneExtras.key))
+                let trashed = phoneOnly ? Set(PhoneTrash.shared.titles.map(PhoneExtras.key)) : []
                 buildDiary {
                     let record = extras.map { PhoneExtras.workspace($0.0, locations: $0.1, library: library, catalog: titles, trashed: trashed) } ?? server
-                    return TraktDiary.build(library: library, server: record, tracker: tracker, catalog: titles)
+                    return Self.hidingTrashed(TraktDiary.build(library: library, server: record, tracker: tracker, catalog: titles), trashed)
                 }
             } else {
                 workspace = outbox.project(onto: confirmedWorkspace)
@@ -489,6 +489,20 @@ import TwilDiaryCore
         return scope
     }
     func title(_ id: String) -> MediaTitle? { titleIndex[id] }
+    /// The diary without what's in the phone's Trash, whatever the service still lists for it: a
+    /// trashed title came back after a restart once the service was read again (a watchlist entry
+    /// Trash hadn't cleared, or an edit not sent yet, 2026-11-16). Restoring or adding it again
+    /// takes it out of Trash, and it shows again.
+    nonisolated static func hidingTrashed(_ diary: Workspace, _ trashed: Set<String>) -> Workspace {
+        guard !trashed.isEmpty else { return diary }
+        let hidden = Set(diary.titles.filter { trashed.contains(PhoneExtras.key($0)) }.map(\.id))
+        guard !hidden.isEmpty else { return diary }
+        var kept = diary
+        kept.titles.removeAll { hidden.contains($0.id) }
+        kept.events.removeAll { hidden.contains($0.titleId) }
+        kept.episodes.removeAll { hidden.contains($0.titleId) }
+        return kept
+    }
     /// Titles being moved to the phone's Trash right now (their last edit is going to the services).
     @ObservationIgnored var trashing: Set<String> = []
     /// Waits (three seconds at most) for a title just added to reach the diary. Adding rebuilds the

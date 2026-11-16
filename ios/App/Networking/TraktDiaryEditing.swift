@@ -254,6 +254,32 @@ extension DiaryStore {
         updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) || (key != nil && $0.title.diaryKey == key) } }
         refreshCopySoon()
     }
+    /// Moved to Trash: off the service's watchlist and dropped list whatever the title's status was.
+    /// Trash cleared the watchlist only for a Planned title, and Dropped only for a dropped one; a
+    /// title listed there with another status came back on the next read (2026-11-16). Taking off
+    /// what isn't listed changes nothing.
+    func serviceClearLists(_ title: MediaTitle) throws {
+        let item = try serviceRef(title), slot = title.isSeries ? "shows" : "movies"
+        switch service {
+        case .trakt:
+            if !TraktDirectStore.shared.localOnly {
+                try send("/sync/watchlist/remove", [slot: [item]])
+                if title.isSeries { try send("/users/hidden/dropped/remove", ["shows": [item]]) }
+            }
+        case .mdblist:
+            try send("/watchlist/items/remove", [slot: [item]])
+            if title.isSeries { try send("/sync/dropped/remove", ["shows": [item]]) }
+        case .wetrakr:
+            try send("/sync/tracking/remove", [slot: [item.merging(["status": "planning"]) { $1 }]])
+            try send("/sync/tracking/remove", [slot: [item.merging(["status": "dropped"]) { $1 }]])
+        case .simkl: return
+        }
+        let key = titleRef(title).diaryKey
+        updateCopy { library in
+            library.watchlist.removeAll { $0.title.diaryKey == key }
+            library.dropped.removeAll { $0.title.diaryKey == key }
+        }
+    }
     /// The service's play behind a watch in the service diary ("trakt-123").
     func servicePlayID(_ event: WatchEvent) -> Int64? {
         guard event.id.hasPrefix("trakt-") else { return nil }

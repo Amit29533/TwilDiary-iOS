@@ -39,6 +39,7 @@ extension DiaryStore {
             trashing.insert(title.id)
             defer { trashing.remove(title.id) }
             try await servicePatch(title, values: ["status": title.isSeries ? "watching" : "completed", "score": NSNull(), "favorite": false])
+            try serviceClearLists(title)
             PhoneTrash.shared.add(title)
             applyDiarySource()
             // Said, with no Undo: the title comes back from Trash itself.

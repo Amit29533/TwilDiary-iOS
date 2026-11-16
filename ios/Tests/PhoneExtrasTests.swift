@@ -48,6 +48,21 @@ import TwilDiaryCore
         XCTAssertEqual(diary.titles.first { $0.id == "movie:14160" }?.status, "completed")
     }
 
+    /// Moved to Trash, a title stays out of the diary even while the service still lists it (it
+    /// came back after a restart, 2026-11-16); other titles are untouched.
+    func testATrashedTitleStaysHiddenWhateverTheServiceLists() {
+        let up = MediaTitle.imported(id: "movie:14160", name: "Up", series: false, year: 2009, tmdbId: 14160, status: "planned", score: nil, createdAt: "")
+        let other = MediaTitle.imported(id: "movie:603", name: "The Matrix", series: false, year: 1999, tmdbId: 603, status: "completed", score: nil, createdAt: "")
+        let diary = Workspace(titles: [up, other], episodes: [],
+                              events: [WatchEvent(id: "trakt-1", operationId: "a", titleId: "movie:14160", episodeId: nil, watchedAt: "2026-11-01T10:00:00.000Z", recordedAt: "2026-11-01T10:00:00.000Z"),
+                                       WatchEvent(id: "trakt-2", operationId: "b", titleId: "movie:603", episodeId: nil, watchedAt: "2026-11-02T10:00:00.000Z", recordedAt: "2026-11-02T10:00:00.000Z")],
+                              locations: [])
+        let shown = DiaryStore.hidingTrashed(diary, ["movie:14160"])
+        XCTAssertEqual(shown.titles.map(\.id), ["movie:603"])
+        XCTAssertEqual(shown.events.map(\.titleId), ["movie:603"])
+        XCTAssertEqual(DiaryStore.hidingTrashed(diary, []).titles.count, 2, "nothing trashed: nothing hidden")
+    }
+
     func testClearedEntryIsKeptButLeavesNoTrace() {
         let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: movie, watchedAt: nil)])
         let record = PhoneExtras.workspace(["movie:603": .init(at: .now)], locations: [], library: library, catalog: [:])
