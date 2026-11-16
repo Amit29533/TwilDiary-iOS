@@ -157,6 +157,8 @@ import TwilDiaryCore
     private var confirmedWorkspace = Workspace()
     @ObservationIgnored private var connectivityMonitor: NWPathMonitor?
     @ObservationIgnored private var directFlushActive = false
+    /// A send was asked for while one ran: the running one goes round again.
+    @ObservationIgnored private var directFlushAgain = false
     var providerSettings = ProviderConnectionSettings()
     @ObservationIgnored let directClient: DirectProviderClient
     private var sessionGeneration = UUID() {
@@ -700,10 +702,23 @@ import TwilDiaryCore
         Task { await flushDirectProviders() }
     }
     /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `mdblist`, `wetrakr`).
+    /// Asked while a send runs (another edit; Trash queues several at once), the running send goes
+    /// round once more when it ends. Before, it returned at once, and an edit queued after the
+    /// running send had passed that service waited for the next round, about ten minutes (WeTrakr,
+    /// "4-5 minutes", 2026-11-16).
     func flushDirectProviders() async {
-        guard !directFlushActive, !needsSignIn else { return }
-        let session = sessionGeneration
+        guard !needsSignIn else { return }
+        if directFlushActive { directFlushAgain = true; return }
         directFlushActive = true; defer { directFlushActive = false }
+        let session = sessionGeneration
+        repeat {
+            directFlushAgain = false
+            await flushDirectProvidersOnce()
+        } while directFlushAgain && session == sessionGeneration && !Task.isCancelled && !needsSignIn
+    }
+    /// One pass over every service's waiting edits.
+    private func flushDirectProvidersOnce() async {
+        let session = sessionGeneration
         let activeProviders = providerSettings.activeDirectLoggingProviders
         guard !activeProviders.isEmpty else { return }
         for provider in activeProviders {
