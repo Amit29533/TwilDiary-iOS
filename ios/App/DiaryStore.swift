@@ -713,7 +713,15 @@ import TwilDiaryCore
                 if blockedTitles.contains(entry.mutation.titleId) { continue }
                 let config = await freshProviderConfig(provider)
                 guard session == sessionGeneration, !Task.isCancelled else { return }
-                let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: workspace)
+                // A title moved to the phone's Trash has left the diary, but its Trash edit (off the
+                // watchlist, rating and favourite cleared) still goes to each service: it's looked up
+                // there too ("A TMDB mapping is required" for every trashed title before, 2026-11-16).
+                var planning = workspace
+                if phoneOnly {
+                    let known = Set(planning.titles.map(\.id))
+                    planning.titles += PhoneTrash.shared.titles.filter { !known.contains($0.id) }
+                }
+                let plan = ProviderDeliveryPlanner.plan(entry, provider: provider, in: planning)
                 do {
                     for delivery in plan.deliveries {
                         let key = provider.rawValue + ":" + delivery.key

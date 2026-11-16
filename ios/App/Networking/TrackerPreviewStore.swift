@@ -123,6 +123,14 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 if let mark = serverTime ?? library.activities?.stamps["journal.since"] { stamps["journal.since"] = mark }
                 library.activities = TraktActivities(all: activities.all, stamps: stamps)
             }
+            // MDBList never moves its "dropped_at" stamp (it stayed empty through drops and removals,
+            // spare account 2026-11-16), so Dropped is read on every check (one request); otherwise
+            // a show taken off it stayed shown as dropped (Makeine).
+            if tracker == .mdblist, !fetched.contains(.dropped) {
+                let dropped = try await mdblistPages(client, config, "/sync/dropped")
+                library.dropped = dropped.items.map { TraktListed(title: $0.title, listedAt: $0.date) }
+                requests += dropped.calls; fetched.append(.dropped)
+            }
             library.fetchedAt = Date.now.formatted(.iso8601)
             // Signed out while reading: the previous account's lists are dropped, not saved.
             guard session == generation else { return }
