@@ -195,10 +195,13 @@ public enum ProviderDeliveryPlanner {
             }
             // Leaving Planned takes the title off the watchlist too, or it stays listed there for
             // good (a match only ever adds). Asked whatever it was before: taking off something
-            // that isn't listed changes nothing. WeTrakr is left to the match, since its removal call isn't confirmed to touch only Planning.
+            // that isn't listed changes nothing. WeTrakr's removal with status "planning" touches
+            // only Planning: a title's watches, Dropped and favourite stayed (spare account,
+            // 2026-11-16); a trashed Planned title stayed in WeTrakr's Planning before.
             if let status, status != "planned" {
                 if provider == .trakt { add("watchlist-remove", "/sync/watchlist/remove") }
                 else if provider == .mdblist { add("watchlist-remove", "/watchlist/items/remove") }
+                else if provider == .wetrakr { var value = item; value["status"] = "planning"; add("watchlist-remove", "/sync/tracking/remove", value) }
             }
             // A status the service doesn't keep (watching and completed come from the watches
             // themselves on Trakt and MDBList) and favourites outside Trakt stay in the diary.
@@ -220,8 +223,8 @@ public enum ProviderDeliveryPlanner {
         guard case .patchTitle(_, _, let status, let score, let clearScore, let favorite, _, _, _) = mutation else { return true }
         if provider == .cloudflare || score != nil || clearScore { return true }
         if let status, statusCarried(status, provider: provider, isSeries: isSeries) { return true }
-        // Any other status still takes the title off Trakt's and MDBList's watchlist.
-        if status != nil, provider == .trakt || provider == .mdblist { return true }
+        // Any other status still takes the title off Trakt's and MDBList's watchlist, and WeTrakr's Planning.
+        if status != nil, provider == .trakt || provider == .mdblist || provider == .wetrakr { return true }
         return favorite != nil && (provider == .trakt || provider == .wetrakr)
     }
     static func statusCarried(_ status: String, provider: SyncProviderKind, isSeries: Bool) -> Bool {
@@ -237,7 +240,15 @@ public enum ProviderDeliveryPlanner {
     /// off. MDBList answers taking a title off a watchlist it isn't on {"not_found":{"movies":1}}
     /// (spare account, 2026-11-16); read as "couldn't find this title", every status change of a
     /// title that wasn't Planned there was set aside.
-    public static func nothingToRemove(path: String, reply: Data) -> Bool { path.hasSuffix("/remove") && notFound(reply) }
+    public static func nothingToRemove(path: String, reply: Data) -> Bool {
+        guard path.hasSuffix("/remove") else { return false }
+        if notFound(reply) { return true }
+        // WeTrakr: HTTP 200 with every item {"errored": {"shows": [{…, "error": "Nothing to remove"}]}}.
+        guard let object = (try? JSONSerialization.jsonObject(with: reply)) as? [String: Any],
+              let errored = (object["errored"] ?? object["errors"]) as? [String: Any] else { return false }
+        let items = errored.values.flatMap { ($0 as? [[String: Any]]) ?? [] }
+        return !items.isEmpty && items.allSatisfy { (($0["error"] as? String) ?? "").localizedCaseInsensitiveContains("nothing to remove") }
+    }
     /// The service answered but couldn't find the title (by its TMDB id): sending again won't help.
     public static func notFound(_ data: Data) -> Bool {
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }

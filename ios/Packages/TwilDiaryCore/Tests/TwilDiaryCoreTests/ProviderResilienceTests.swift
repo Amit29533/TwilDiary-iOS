@@ -150,3 +150,19 @@ import TwilDiaryTestSupport
     #expect(!ProviderDeliveryPlanner.nothingToRemove(path: "/watchlist/items/add", reply: notListed), "an add that isn't found is still refused")
     #expect(ProviderDeliveryPlanner.notFound(notListed))
 }
+
+/// WeTrakr (spare account, 2026-11-16): leaving Planned takes the title off its Planning with
+/// status "planning" (watches, Dropped and favourite stay), and "Nothing to remove" is done.
+@Test func weTrakrLeavesPlanningAndNothingToRemoveIsDone() throws {
+    let base = try SampleWorkspace.mapped()
+    let movie = try #require(base.titles.first { !$0.isSeries && $0.tmdbId != nil })
+    let edit = OptimisticMutation.patchTitle(titleId: movie.id, expectedVersion: 1, status: "completed", score: nil, clearScore: false, favorite: nil, queued: nil, notes: nil)
+    #expect(ProviderDeliveryPlanner.carries(edit, provider: .wetrakr, isSeries: false))
+    let plan = ProviderDeliveryPlanner.plan(SyncOutboxEntry(createdAt: "2026-11-16T00:00:00Z", mutation: edit, pendingProviders: [.wetrakr]), provider: .wetrakr, in: base)
+    let removal = try #require(plan.deliveries.first { $0.path == "/sync/tracking/remove" })
+    #expect(((removal.body["movies"] as? [[String: Any]])?.first?["status"] as? String) == "planning")
+    let nothing = Data(#"{"errored":{"shows":[{"ids":{"tmdb":241535},"status":"planning","error":"Nothing to remove"}]}}"#.utf8)
+    #expect(ProviderDeliveryPlanner.nothingToRemove(path: "/sync/tracking/remove", reply: nothing))
+    let other = Data(#"{"errored":{"shows":[{"ids":{"tmdb":1},"error":"Show not found"}]}}"#.utf8)
+    #expect(!ProviderDeliveryPlanner.nothingToRemove(path: "/sync/tracking/remove", reply: other), "a real error isn't nothing to remove")
+}
