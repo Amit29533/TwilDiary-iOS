@@ -176,6 +176,30 @@ import TwilDiaryCore
         XCTAssertNil(store.phoneTrashed(route), "out of Trash")
     }
 
+    /// Trash's status only takes a title off the watchlist. Simkl keeps Completed and Watching as
+    /// lists of their own, so a trashed Planned film went onto its Completed list (2026-11-16):
+    /// while trashing, the whole title comes off Simkl instead.
+    func testTrashTakesATitleOffSimklInsteadOfMovingItToCompleted() async throws {
+        let store = makeStore()
+        defer {
+            TraktDirectStore.shared.useLocal(false)
+            UserDefaults.standard.set("server", forKey: DiaryStore.diarySourceKey)
+            UserDefaults.standard.removeObject(forKey: DiaryStore.phoneOnlyKey)
+        }
+        await store.startOnThisPhone()
+        let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":14190,"mediaType":"movie","name":"Planned film","year":2009,"overview":"","posterPath":"/p.jpg","genres":["Drama"],"suggestedCategory":"movie"}"#.utf8))
+        let added = await store.importTitle(details, category: "movie")
+        let id = try XCTUnwrap(added)
+        await store.waitForTitle(id)
+        let edit = OptimisticMutation.patchTitle(titleId: id, expectedVersion: nil, status: "completed", score: nil, clearScore: false, favorite: false, queued: nil, notes: nil)
+        XCTAssertEqual(SimklMirror.jobs(for: edit, store: store).map(\.list), ["completed"], "a plain status change: Simkl's list")
+        store.trashing.insert(id)
+        let jobs = SimklMirror.jobs(for: edit, store: store)
+        store.trashing.remove(id)
+        XCTAssertEqual(jobs.map(\.kind), [.unwatch])
+        XCTAssertEqual(jobs.first?.wholeTitle, true, "the whole title off Simkl")
+    }
+
     func testRejectedProviderCredentialSaveDoesNotPublishTheNewConfiguration() {
         let store = makeStore(providerSettingsStore: RejectingProviderSettings())
         XCTAssertFalse(store.updateCustomTmdbToken("synthetic-rejected-token"))

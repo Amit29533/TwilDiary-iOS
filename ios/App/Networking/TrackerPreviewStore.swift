@@ -359,7 +359,8 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 // shows the edit, and their change stamps won't move for one they didn't apply, so
                 // the next read is a full one (otherwise the phone's guess would stay for good).
                 if tracker == .mdblist, !ProviderDeliveryPlanner.confirms(reply) { libraries[tracker]?.activities = nil }
-                if TraktDirectStore.notFoundCount(reply) > 0 {
+                // Taking off what the service doesn't hold answers "not found" too: nothing to fix.
+                if TraktDirectStore.notFoundCount(reply) > 0, !ProviderDeliveryPlanner.nothingToRemove(path: next.path, reply: reply) {
                     refused(tracker, "\(tracker.name) couldn’t find a title by its TMDB id, so it wasn’t changed there.", store: store)
                 }
             } catch {

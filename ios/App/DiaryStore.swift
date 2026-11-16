@@ -487,6 +487,8 @@ import TwilDiaryCore
         return scope
     }
     func title(_ id: String) -> MediaTitle? { titleIndex[id] }
+    /// Titles being moved to the phone's Trash right now (their last edit is going to the services).
+    @ObservationIgnored var trashing: Set<String> = []
     /// Waits (three seconds at most) for a title just added to reach the diary. Adding rebuilds the
     /// diary in the background: the saved title's page opened before then read "Title unavailable"
     /// for a moment (Add to Planned, 2026-11-16), and Favourite or Queue on it did nothing.

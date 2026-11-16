@@ -34,6 +34,10 @@ extension DiaryStore {
     func trashOnPhone(_ title: MediaTitle) async -> Bool {
         do {
             try await removeAllPlays(title)
+            // The status only takes it off the watchlist; a service that keeps that status as a list
+            // of its own (Simkl's Completed and Watching) takes the title off instead (`trashing`).
+            trashing.insert(title.id)
+            defer { trashing.remove(title.id) }
             try await servicePatch(title, values: ["status": title.isSeries ? "watching" : "completed", "score": NSNull(), "favorite": false])
             PhoneTrash.shared.add(title)
             applyDiarySource()

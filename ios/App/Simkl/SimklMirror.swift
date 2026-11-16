@@ -191,7 +191,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
             var jobs: [SimklJob] = []
             if let score { var job = base; job.rating = min(10, max(1, Int(score.rounded()))); jobs.append(job) }
             else if clearScore { var job = base; job.kind = .unrate; jobs.append(job) }
-            if let status, let list = list(for: status, movie: !title.isSeries) { var job = base; job.kind = .list; job.list = list; jobs.append(job) }
+            if store.trashing.contains(titleId), status != nil {
+                // Moved to Trash: the whole title off Simkl (off every list), not onto the Completed or
+                // Watching list the Trash status would name (a Planned film went to Completed).
+                var job = base; job.kind = .unwatch; job.wholeTitle = true; jobs.append(job)
+            } else if let status, let list = list(for: status, movie: !title.isSeries) { var job = base; job.kind = .list; job.list = list; jobs.append(job) }
             return jobs
         default:
             return []
