@@ -17,6 +17,8 @@ concurrency:
 
 permissions:
   contents: read
+env:
+  APP_SOURCE_SHA: b500d51a8baa117904b02d11e42d34d5a4651fed
 
 jobs:
   ipa:
@@ -30,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.APP_SOURCE_SHA }}
           persist-credentials: false
       - name: Choose Xcode 26.6 (the version the other CI builds use)
         run: |
@@ -42,6 +45,8 @@ jobs:
           [ -n "$dev" ] || dev="$(xcode-select -p)"
           echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
           mkdir -p ios/.artifacts/logs
+          test "$(git rev-parse HEAD)" = "$APP_SOURCE_SHA"
+          git rev-parse HEAD > ios/.artifacts/source-commit.txt
           { sw_vers; DEVELOPER_DIR="$dev" xcodebuild -version; DEVELOPER_DIR="$dev" swift --version; } | tee ios/.artifacts/toolchain.txt
       - name: Cache Swift packages
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -51,21 +56,27 @@ jobs:
       - name: Generate Xcode project
         run: bash ios/scripts/xcodegen.sh
       - name: Compile unsigned physical iPhone application (warnings are errors)
-        env:
-          # Optional repository secrets; without them the app asks for its own keys.
-          TWILDIARY_TMDB_KEY: ${{ secrets.TWILDIARY_TMDB_KEY }}
-          # Up to four Gemini keys, taken in turn by the app (empty ones are skipped).
-          TWILDIARY_GEMINI_KEY: ${{ secrets.TWILDIARY_GEMINI_KEY }},${{ secrets.TWILDIARY_GEMINI_KEY_2 }},${{ secrets.TWILDIARY_GEMINI_KEY_3 }},${{ secrets.TWILDIARY_GEMINI_KEY_4 }}
-          # Up to four Groq keys (the AI backup), the same way.
-          TWILDIARY_GROQ_KEY: ${{ secrets.TWILDIARY_GROQ_KEY }},${{ secrets.TWILDIARY_GROQ_KEY_2 }},${{ secrets.TWILDIARY_GROQ_KEY_3 }},${{ secrets.TWILDIARY_GROQ_KEY_4 }}
-          # Up to four Requesty keys, the same way.
-          TWILDIARY_REQUESTY_KEY: ${{ secrets.TWILDIARY_REQUESTY_KEY }},${{ secrets.TWILDIARY_REQUESTY_KEY_2 }},${{ secrets.TWILDIARY_REQUESTY_KEY_3 }},${{ secrets.TWILDIARY_REQUESTY_KEY_4 }}
-          # Cloudflare Access service token for your server (optional).
-          TWILDIARY_CF_ACCESS_CLIENT_ID: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_ID }}
-          TWILDIARY_CF_ACCESS_CLIENT_SECRET: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_SECRET }}
-        run: bash ios/scripts/ci.sh build-device
+        run: |
+          unset TWILDIARY_TMDB_KEY TWILDIARY_GEMINI_KEY TWILDIARY_GROQ_KEY TWILDIARY_REQUESTY_KEY
+          unset TWILDIARY_CF_ACCESS_CLIENT_ID TWILDIARY_CF_ACCESS_CLIENT_SECRET
+          bash ios/scripts/ci.sh build-device
       - name: Package unsigned IPA
         run: bash ios/scripts/ci.sh package
+      - name: Verify that the IPA has no private credentials
+        run: |
+          python3 - <<'PY'
+          import plistlib, zipfile
+          keys = (
+              'TwilDiaryTMDBKey', 'TwilDiaryGeminiKey', 'TwilDiaryGroqKey', 'TwilDiaryRequestyKey',
+              'TwilDiaryAccessClientID', 'TwilDiaryAccessClientSecret',
+          )
+          with zipfile.ZipFile('ios/.artifacts/TwilDiary-unsigned.ipa') as ipa:
+              settings = plistlib.loads(ipa.read('Payload/TwilDiary.app/Info.plist'))
+              for key in keys:
+                  if settings.get(key, '').strip():
+                      raise SystemExit(f'Private credential field populated: {key}')
+          print('Private credential fields are empty.')
+          PY
       - name: Upload IPA
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -74,6 +85,7 @@ jobs:
             ios/.artifacts/TwilDiary-unsigned.ipa
             ios/.artifacts/TwilDiary-unsigned.ipa.sha256
             ios/.artifacts/toolchain.txt
+            ios/.artifacts/source-commit.txt
           if-no-files-found: error
           retention-days: 7
       - name: Upload build logs
@@ -84,8 +96,7 @@ jobs:
           path: ios/.artifacts/logs
           retention-days: 7
 
-  # Alongside the IPA (never holding it back): the core calculations' tests.
-  core-tests:
+  trash-regression:
     runs-on: namespace-profile-mac
     timeout-minutes: 30
     defaults:
@@ -94,16 +105,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.APP_SOURCE_SHA }}
           persist-credentials: false
-      - name: Test core calculations and catalog contracts
+      - name: Test permanent deletion and re-add on an iPhone simulator
         run: |
           set -euo pipefail
           if [ -d /Applications/Xcode_26.6.app ]; then export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer; fi
-          swift test --package-path ios/Packages/TwilDiaryCore 2>&1 | tee core-tests.log
+          test "$(git rev-parse HEAD)" = "$APP_SOURCE_SHA"
+          sim=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r in sorted(d,reverse=True) if "iOS-26" in r for x in d[r] if x["name"].startswith("iPhone")))')
+          bash ios/scripts/xcodegen.sh
+          xcrun simctl boot "$sim" || true
+          xcodebuild test -project ios/TwilDiary.xcodeproj -scheme TwilDiary -clonedSourcePackagesDirPath "$PWD/ios/.spm" \
+            CODE_SIGNING_ALLOWED=NO -destination "platform=iOS Simulator,id=$sim" -parallel-testing-enabled NO \
+            -only-testing:TwilDiaryTests/PhoneStoreTests/testPermanentDeletionSurvivesStaleTrackerRowsAndAllowsAddingAgain \
+            2>&1 | tee trash-regression.log
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: TwilDiary-namespace-core-tests
-          path: core-tests.log
+          name: TwilDiary-trash-regression
+          path: trash-regression.log
           retention-days: 7
