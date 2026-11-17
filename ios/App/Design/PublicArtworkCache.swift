@@ -36,16 +36,19 @@ struct PublicArtworkRequest: Hashable, Sendable {
         guard url.host == "image.tmdb.org", parts.count == 4 else { return url }
         return URL(string: "https://image.tmdb.org/t/p/original/" + parts[3]) ?? url
     }
-    /// Only public artwork hosts: TMDB images and AniList's character and cover images.
+    /// Only the artwork paths on the public catalog image hosts.
     static func publicArtwork(_ url: URL) -> Bool {
         guard url.scheme == "https", url.user == nil, url.password == nil, url.port == nil, url.query == nil, url.fragment == nil else { return false }
-        return (url.host == "image.tmdb.org" && url.path.hasPrefix("/t/p/")) || (url.host == "s4.anilist.co" && url.path.hasPrefix("/file/anilistcdn/"))
+        return (url.host == "image.tmdb.org" && url.path.hasPrefix("/t/p/"))
+            || (url.host == "s4.anilist.co" && url.path.hasPrefix("/file/anilistcdn/"))
+            || (url.host == "artworks.thetvdb.com" && url.path.hasPrefix("/banners/"))
     }
     /// Large tiles and full-width backdrops ask TMDb for a bigger rendition than the saved
     /// w500/w780 URL (w780 up to 1024 px, w1280 above), so they are not upscaled. Never smaller.
     static func sharper(_ url: URL, pixels: Int) -> URL {
         let parts = url.path.split(separator: "/")
-        guard parts.count == 4, parts[2].first == "w", let current = Int(parts[2].dropFirst()) else { return url }
+        guard url.host == "image.tmdb.org", parts.count == 4, parts[2].first == "w",
+              let current = Int(parts[2].dropFirst()) else { return url }
         let wanted = pixels >= 1536 ? 1280 : pixels >= 1024 ? 780 : current
         guard wanted > current else { return url }
         return URL(string: "https://image.tmdb.org/t/p/w\(wanted)/" + parts[3]) ?? url

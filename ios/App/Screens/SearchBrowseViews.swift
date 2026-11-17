@@ -9,8 +9,9 @@ enum SearchBrowseRoute: Hashable {
     case theme(SearchBrowseTheme)
     case people(SearchBrowseShelf, [SearchBrowsePerson])
     case franchise(SearchBrowseFranchise)
-    case ceremony(SearchAwardEdition)
-    case awardTitle(String, MediaKind, ceremonyYear: Int)
+    case tvdbFranchise(TVDBDirect.Franchise)
+    case ceremony(SearchAwardCeremony)
+    case awardNominee(SearchAwardNominee)
 }
 
 struct SearchBrowseShelves: View {
@@ -101,28 +102,26 @@ struct SearchBrowseDestination: View {
         case .titles(let category):
             SearchBrowseTitlesPage(category: category, store: store)
         case .tag(let tag):
-            SearchTagTitlesPage(tag: tag)
+            if tag.anilist { SearchAnimeTagTitlesPage(tag: tag) }
+            else { SearchTagTitlesPage(tag: tag) }
         case .theme(let theme):
-            switch theme.content {
-            case .keyword(let name):
-                SearchTagTitlesPage(tag: SearchBrowseTag(name: name), title: theme.style.title, types: theme.types)
-            case .category(let filter):
-                SearchBrowseTitlesPage(
-                    category: SearchBrowseCategory(title: theme.style.title, symbol: theme.style.icon,
-                                                   tint: theme.style.start, filter: filter, types: theme.types),
-                    store: store
-                )
-            }
+            SearchBrowseTitlesPage(
+                category: SearchBrowseCategory(title: theme.style.title, symbol: theme.style.icon,
+                                               tint: theme.style.start, filter: theme.filter, types: theme.types),
+                store: store
+            )
         case .tags(let tags):
             SearchTagsPage(tags: tags)
         case .people(let shelf, let people):
             SearchPeopleGrid(shelf: shelf, people: people)
         case .franchise(let franchise):
             SearchFranchisePage(franchise: franchise)
-        case .ceremony(let edition):
-            SearchAwardEditionPage(edition: edition)
-        case .awardTitle(let name, let kind, let ceremonyYear):
-            SearchAwardTitlePage(title: name, kind: kind, ceremonyYear: ceremonyYear)
+        case .tvdbFranchise(let franchise):
+            SearchTVDBFranchisePage(franchise: franchise)
+        case .ceremony(let ceremony):
+            SearchAwardCeremonyPage(ceremony: ceremony)
+        case .awardNominee(let nominee):
+            SearchAwardNomineePage(nominee: nominee)
         }
     }
 
@@ -142,14 +141,58 @@ private struct SearchBrowseCategoryGrid: View {
     let shelf: SearchBrowseShelf
     let categories: [SearchBrowseCategory]
     @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var region: SearchBrowseRegion?
+    @State private var text = ""
+
+    private var isCountryShelf: Bool { shelf == .worldCinema || shelf == .internationalTV }
+    private var matching: [SearchBrowseCategory] {
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return categories.filter {
+            (region?.contains($0) ?? true) && (query.isEmpty || $0.title.localizedStandardContains(query))
+        }
+    }
 
     var body: some View {
         EdgeToEdgeScroll(frosted: true) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
-                ForEach(categories) { SearchCategoryLink(category: $0) }
+            VStack(alignment: .leading, spacing: 12) {
+                if isCountryShelf || shelf == .studios {
+                    let prompt = isCountryShelf ? "Find a country" : "Find a studio"
+                    SearchField(placeholder: prompt, text: $text, label: prompt)
+                }
+                if isCountryShelf {
+                    SearchBrowseFilterStrip {
+                        Menu {
+                            Picker("Region", selection: $region) {
+                                Text("All regions").tag(nil as SearchBrowseRegion?)
+                                ForEach(SearchBrowseRegion.allCases) { Text($0.rawValue).tag(Optional($0)) }
+                            }
+                        } label: {
+                            ExplorePill(label: region?.rawValue ?? "Region", icon: "globe", tinted: region != nil)
+                        }.accessibilityIdentifier("search-browse-region")
+                    }
+                }
+                if matching.isEmpty {
+                    ContentUnavailableView("No matches", systemImage: "magnifyingglass")
+                } else {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12),
+                                              count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
+                        ForEach(matching) { SearchCategoryLink(category: $0) }
+                    }
+                }
             }.padding(14).padding(.bottom, 32)
-        }.diaryScreenBackground().navigationTitle(shelf.title).navigationBarTitleDisplayMode(.inline)
+        }.scrollDismissesKeyboard(.interactively)
+            .diaryScreenBackground().navigationTitle(shelf.title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
+    }
+}
+
+struct SearchBrowseFilterStrip<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) { content }.padding(.horizontal, 14)
+        }.scrollIndicators(.hidden).padding(.horizontal, -14)
     }
 }
 
@@ -244,13 +287,30 @@ private struct TitleStudioPlate: View {
 struct SearchBrowseTitlesPage: View {
     let category: SearchBrowseCategory
     @State private var type: MediaKind
+    @State private var refinements = DiscoveryFilters(section: .genres)
     @State private var results: DiscoveryResults
-    @State private var requestedType: MediaKind?
+    @State private var requested: [String: String]?
+
+    private var query: [String: String] { category.query(type: type, refinements: refinements) }
+    private var studios: [SearchBrowseCategory] {
+        SearchBrowseCatalog.studios.filter { $0.types.contains(type) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+    private var decades: [Int] {
+        SearchBrowseCatalog.decades.compactMap { if case .decade(let year) = $0.filter { return year }; return nil }
+    }
+    private var sortLabel: String {
+        switch refinements.sort {
+        case "rating": "Highest rated"
+        case "newest": "Newest"
+        default: "Popular"
+        }
+    }
 
     init(category: SearchBrowseCategory, store: DiaryStore) {
         self.category = category
         _type = State(initialValue: category.types.first ?? .movie)
-        _results = State(initialValue: DiscoveryResults(service: LiveDiscoveryService(store: store)))
+        _results = State(initialValue: DiscoveryResults(service: LiveDiscoveryService(store: store, recoverBrowseReads: true)))
     }
 
     var body: some View {
@@ -260,14 +320,8 @@ struct SearchBrowseTitlesPage: View {
                     Text("TMDB score of 7.0 or higher with 50–500 votes.")
                         .font(.footnote).foregroundStyle(HomeStyle.secondary)
                 }
-                if category.types.count > 1 {
-                    Picker("Title type", selection: $type) {
-                        ForEach(category.types, id: \.self) { value in
-                            Text(value == .movie ? "Movies" : "Shows").tag(value)
-                        }
-                    }.pickerStyle(.segmented)
-                }
-                if requestedType != type || results.loading && results.items.isEmpty {
+                filters
+                if requested != query || results.loading && results.items.isEmpty {
                     DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2))
                 } else {
                     if !results.items.isEmpty { CatalogGrid(items: results.items, showsLayoutToggle: false, forceGrid: true) }
@@ -276,17 +330,109 @@ struct SearchBrowseTitlesPage: View {
                     } else if results.hasMore {
                         ScrollLoadTrigger(token: results.page, loading: results.loading) { Task { await load(more: true) } }
                     } else if results.items.isEmpty {
-                        ContentUnavailableView("No titles found", systemImage: "film")
+                        ContentUnavailableView("No titles found", systemImage: "film",
+                                               description: Text("Try changing a filter."))
                     }
                 }
             }.padding(14).padding(.bottom, 40)
         }.diaryScreenBackground().navigationTitle(category.title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            .task(id: type) { await load() }
+            .task(id: query) { await load(query) }
     }
 
-    private func load(more: Bool = false) async {
-        requestedType = type
-        await results.load(category.query(type: type), more: more)
+    private var filters: some View {
+        SearchBrowseFilterStrip {
+            if category.types.count > 1 {
+                Menu {
+                    ForEach(category.types, id: \.self) { kind in
+                        Button(kind == .movie ? "Movies" : "Shows") {
+                            if !DiscoveryGenre.names(type: kind.rawValue).contains(refinements.genre) { refinements.genre = "" }
+                            if let company = refinements.company, !SearchBrowseCatalog.studios.contains(where: {
+                                $0.filter == .studio(company) && $0.types.contains(kind)
+                            }) {
+                                refinements.company = nil
+                            }
+                            type = kind
+                        }
+                    }
+                } label: { ExplorePill(label: type == .movie ? "Movies" : "Shows", icon: "film") }
+                    .accessibilityIdentifier("search-browse-type")
+            }
+            Menu {
+                Picker("Sort", selection: $refinements.sort) {
+                    Text("Popular").tag("popular")
+                    Text("Highest rated").tag("rating")
+                    Text("Newest").tag("newest")
+                }
+            } label: { ExplorePill(label: sortLabel, icon: "arrow.up.arrow.down", tinted: refinements.sort != "popular") }
+                .accessibilityIdentifier("search-browse-sort")
+            Menu {
+                Picker("Rating", selection: $refinements.minimum) {
+                    Text("Any rating").tag("0")
+                    ForEach(["5", "6", "7", "8", "9"], id: \.self) { Text($0 + "+").tag($0) }
+                }
+            } label: {
+                ExplorePill(label: refinements.minimum == "0" ? "Rating" : refinements.minimum + "+",
+                            icon: "star", tinted: refinements.minimum != "0")
+            }.accessibilityIdentifier("search-browse-rating")
+            if category.allowsStudioFilter {
+                Menu {
+                    Picker("Studio", selection: $refinements.company) {
+                        Text("Any studio").tag(nil as Int?)
+                        ForEach(studios) { studio in
+                            if case .studio(let id) = studio.filter { Text(studio.title).tag(Optional(id)) }
+                        }
+                    }
+                } label: {
+                    let selected = refinements.company.flatMap { id in studios.first { $0.filter == .studio(id) }?.title }
+                    ExplorePill(label: selected ?? "Studio", icon: "building.2", tinted: selected != nil)
+                }.accessibilityIdentifier("search-browse-studio")
+            }
+            if category.allowsPeriodFilter {
+                Menu {
+                    Picker("Period", selection: period) {
+                        Text("Any period").tag(nil as Int?)
+                        ForEach(decades, id: \.self) { Text("\($0)s").tag(Optional($0)) }
+                    }
+                } label: {
+                    ExplorePill(label: refinements.yearFrom.map { "\($0)s" } ?? "Period",
+                                icon: "calendar", tinted: refinements.yearFrom != nil)
+                }.accessibilityIdentifier("search-browse-period")
+            }
+            if category.allowsGenreFilter {
+                Menu {
+                    Picker("Genre", selection: $refinements.genre) {
+                        Text("Any genre").tag("")
+                        ForEach(DiscoveryGenre.all.filter { type == .tv ? $0.tv != nil : $0.movie != nil }.map(\.name), id: \.self) {
+                            Text($0).tag($0)
+                        }
+                    }
+                } label: {
+                    ExplorePill(label: refinements.genre.isEmpty ? "Genre" : refinements.genre,
+                                icon: "square.grid.2x2", tinted: !refinements.genre.isEmpty)
+                }.accessibilityIdentifier("search-browse-genre")
+            }
+            if refinements != DiscoveryFilters(section: .genres) || type != category.types.first {
+                Button("Reset") {
+                    refinements = DiscoveryFilters(section: .genres)
+                    type = category.types.first ?? .movie
+                }.font(.subheadline.weight(.semibold)).tint(ThemeStore.accent).frame(minHeight: 44)
+                    .accessibilityIdentifier("search-browse-reset")
+            }
+        }
+    }
+
+    private var period: Binding<Int?> {
+        Binding(get: { refinements.yearFrom }, set: { year in
+            refinements.yearFrom = year
+            refinements.yearTo = year.map { $0 + 9 }
+        })
+    }
+
+    private func load(_ filters: [String: String]? = nil, more: Bool = false) async {
+        let filters = filters ?? query
+        guard filters == query else { return }
+        requested = filters
+        await results.load(filters, more: more)
     }
 }

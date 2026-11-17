@@ -42,13 +42,14 @@ struct SearchBrowseCategory: Hashable, Identifiable {
     let types: [MediaKind]
     var id: Filter { filter }
 
-    func query(type: MediaKind) -> [String: String] {
-        var filters = DiscoveryFilters(section: .genres)
-        filters.type = type.rawValue
+    func query(type: MediaKind, refinements: DiscoveryFilters = DiscoveryFilters(section: .genres)) -> [String: String] {
+        var filters = refinements
+        filters.type = (types.contains(type) ? type : types.first ?? .movie).rawValue
         switch filter {
         case .genre(let name): filters.genre = name
         case .studio(let id): filters.company = id
         case .decade(let year):
+            filters.year = ""
             filters.yearFrom = year
             filters.yearTo = year + 9
         case .country(let code, _):
@@ -72,6 +73,23 @@ struct SearchBrowseCategory: Hashable, Identifiable {
         return filters.query(section: .genres)
     }
 
+    var allowsGenreFilter: Bool {
+        switch filter {
+        case .genre, .anime, .koreanDrama: false
+        default: true
+        }
+    }
+
+    var allowsStudioFilter: Bool {
+        if case .studio = filter { return false }
+        return true
+    }
+
+    var allowsPeriodFilter: Bool {
+        if case .decade = filter { return false }
+        return true
+    }
+
     func artwork(in titles: [MediaTitle]) -> String? {
         let matches: [MediaTitle]
         switch filter {
@@ -90,20 +108,15 @@ enum SearchBrowseTheme: String, CaseIterable, Identifiable {
     case miniseries, sitcoms, anime, koreanDramas = "k-dramas", docuseries, trueCrime = "true-crime", hiddenGems = "hidden-gems"
     var id: Self { self }
 
-    enum Content {
-        case category(SearchBrowseCategory.Filter)
-        case keyword(String)
-    }
-
-    var content: Content {
+    var filter: SearchBrowseCategory.Filter {
         switch self {
-        case .miniseries: .category(.miniseries)
-        case .sitcoms: .keyword("sitcom")
-        case .anime: .category(.anime)
-        case .koreanDramas: .category(.koreanDrama)
-        case .docuseries: .category(.genre("Documentary"))
-        case .trueCrime: .keyword("true crime")
-        case .hiddenGems: .category(.hiddenGems)
+        case .miniseries: .miniseries
+        case .sitcoms: .tag(193171)
+        case .anime: .anime
+        case .koreanDramas: .koreanDrama
+        case .docuseries: .genre("Documentary")
+        case .trueCrime: .tag(33722)
+        case .hiddenGems: .hiddenGems
         }
     }
 
@@ -124,6 +137,36 @@ enum SearchBrowseTheme: String, CaseIterable, Identifiable {
         case .trueCrime: ("True Crime", "magnifyingglass", "#c12e36", "#891e29")
         case .hiddenGems: ("Hidden Gems", "diamond.fill", "#227e97", "#14586d")
         }
+    }
+}
+
+enum SearchBrowseRegion: String, CaseIterable, Identifiable {
+    case asia = "Asia", europe = "Europe", americas = "Americas", africa = "Africa", oceania = "Oceania"
+    var id: Self { self }
+
+    var codes: [String] {
+        switch self {
+        case .asia: ["KR", "JP", "IN", "HK", "CN", "TW", "TH", "TR", "PH", "ID", "MY", "VN", "SG", "PK", "BD", "IR", "IL", "LB", "SA"]
+        case .europe: ["FR", "GB", "IT", "ES", "DE", "SE", "NO", "DK", "FI", "IS", "PL", "NL", "BE", "PT", "IE", "GR", "CZ", "AT", "CH", "RO", "HU", "UA"]
+        case .americas: ["BR", "MX", "CA", "US", "AR", "CL", "CO", "PE", "UY", "CU"]
+        case .africa: ["EG", "NG", "ZA", "MA", "KE", "TN", "DZ", "SN"]
+        case .oceania: ["AU", "NZ"]
+        }
+    }
+
+    var style: (symbol: String, tint: String) {
+        switch self {
+        case .asia: ("globe.asia.australia", "#69578e")
+        case .europe: ("building.columns", "#51678e")
+        case .americas: ("globe.americas", "#43796c")
+        case .africa: ("sun.horizon", "#9b6245")
+        case .oceania: ("water.waves", "#477b8c")
+        }
+    }
+
+    func contains(_ category: SearchBrowseCategory) -> Bool {
+        guard case .country(let code, _) = category.filter else { return false }
+        return codes.contains(code)
     }
 }
 
@@ -159,10 +202,20 @@ enum SearchBrowseCatalog {
         studio("Marvel Studios", 420, types: [.movie, .tv]), studio("Pixar", 3),
         studio("A24", 41077, types: [.movie, .tv]), studio("Studio Ghibli", 10342),
         studio("Lucasfilm", 1, types: [.movie, .tv]), studio("Universal Pictures", 33),
-        studio("Paramount Pictures", 4), studio("Warner Bros. Pictures", 174)
+        studio("Paramount Pictures", 4), studio("Warner Bros. Pictures", 174),
+        studio("Walt Disney Pictures", 2, types: [.movie, .tv]), studio("DreamWorks Animation", 521, types: [.movie, .tv]),
+        studio("Sony Pictures Animation", 2251, types: [.movie, .tv]), studio("Illumination", 6704),
+        studio("Legendary Pictures", 923, types: [.movie, .tv]), studio("Blumhouse Productions", 3172, types: [.movie, .tv]),
+        studio("New Line Cinema", 12), studio("Focus Features", 10146), studio("Columbia Pictures", 5),
+        studio("Metro-Goldwyn-Mayer", 21, types: [.movie, .tv]), studio("20th Century Studios", 25),
+        studio("Searchlight Pictures", 127928), studio("BBC Studios", 80893, types: [.movie, .tv]),
+        studio("HBO", 3268, types: [.movie, .tv]), studio("Sony Pictures Television", 11073, types: [.tv]),
+        studio("Warner Bros. Television", 1957, types: [.tv]), studio("Universal Television", 26727, types: [.tv]),
+        studio("Toei Animation", 5542, types: [.movie, .tv]), studio("ufotable", 280276, types: [.movie, .tv]),
+        studio("Toho", 882, types: [.movie, .tv]), studio("Yash Raj Films", 1569, types: [.movie, .tv])
     ]
 
-    static let worldCinema: [SearchBrowseCategory] = [
+    static let worldCinema: [SearchBrowseCategory] = countries([
         country("French films", "FR", "building.columns", "#51608e", .movie),
         country("Japanese films", "JP", "mountain.2", "#9b536a", .movie),
         country("South Korean films", "KR", "building.2", "#406a87", .movie),
@@ -171,9 +224,9 @@ enum SearchBrowseCatalog {
         country("Spanish films", "ES", "sun.max", "#9b565c", .movie),
         country("Hong Kong films", "HK", "building.2", "#535b9a", .movie),
         country("Brazilian films", "BR", "mountain.2", "#3e7e69", .movie)
-    ]
+    ], kind: .movie)
 
-    static let internationalTV: [SearchBrowseCategory] = [
+    static let internationalTV: [SearchBrowseCategory] = countries([
         country("Korean TV", "KR", "building.2", "#406a87", .tv),
         country("Japanese TV", "JP", "mountain.2", "#9b536a", .tv),
         country("British TV", "GB", "building.columns", "#72638d", .tv),
@@ -182,7 +235,7 @@ enum SearchBrowseCatalog {
         country("Spanish TV", "ES", "sun.max", "#9b565c", .tv),
         country("Chinese TV", "CN", "mountain.2", "#58688e", .tv),
         country("Thai TV", "TH", "leaf", "#4a7c70", .tv)
-    ]
+    ], kind: .tv)
 
     private static func studio(_ name: String, _ id: Int, types: [MediaKind] = [.movie]) -> SearchBrowseCategory {
         SearchBrowseCategory(title: name, symbol: "film", tint: "#62697f", filter: .studio(id), types: types)
@@ -191,20 +244,84 @@ enum SearchBrowseCatalog {
     private static func country(_ name: String, _ code: String, _ symbol: String, _ tint: String, _ kind: MediaKind) -> SearchBrowseCategory {
         SearchBrowseCategory(title: name, symbol: symbol, tint: tint, filter: .country(code, kind), types: [kind])
     }
+
+    private static func countries(_ featured: [SearchBrowseCategory], kind: MediaKind) -> [SearchBrowseCategory] {
+        let seen = Set(featured.map(\.id))
+        let available = SearchBrowseRegion.allCases.flatMap { region in
+            region.codes.map { code in
+                country(Locale.current.localizedString(forRegionCode: code) ?? code,
+                        code, region.style.symbol, region.style.tint, kind)
+            }
+        }
+        return featured + available.filter { !seen.contains($0.id) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
 }
 
 struct SearchBrowseTag: Hashable, Identifiable {
     let name: String
     var keywordID: Int?
-    var id: String { name.lowercased() }
+    var anilist = false
+    var id: String { (anilist ? "anilist:" : "") + name.lowercased() }
     var emoji: String { name.caseInsensitiveCompare("neo-noir") == .orderedSame ? "🌃" : TagEmoji.symbol(for: name) }
 
-    static let suggestions = ["Time travel", "Coming of age", "Neo-noir", "Superhero", "Mystery", "Friendship",
-                              "Based on novel or book", "Psychological thriller"].map { Self(name: $0) }
+    static let suggestions: [Self] = [
+        .init(name: "Time travel", keywordID: 4379),
+        .init(name: "Coming of age"),
+        .init(name: "Neo-noir", keywordID: 207268),
+        .init(name: "Superhero", keywordID: 9715),
+        .init(name: "Friendship", keywordID: 6054),
+        .init(name: "Based on novel or book", keywordID: 818),
+        .init(name: "Psychological thriller"),
+        .init(name: "Found family", keywordID: 248927),
+        .init(name: "Mystery"),
+        .init(name: "True crime", keywordID: 33722),
+        .init(name: "Survival", keywordID: 10349),
+        .init(name: "Dystopia", keywordID: 4565),
+        .init(name: "Alternate history", keywordID: 12026),
+        .init(name: "Alien invasion", keywordID: 14909),
+        .init(name: "Artificial intelligence", keywordID: 310),
+        .init(name: "Heist", keywordID: 10051),
+        .init(name: "Serial killer", keywordID: 10714),
+        .init(name: "Organized crime", keywordID: 10291),
+        .init(name: "Dark comedy", keywordID: 10123),
+        .init(name: "Satire", keywordID: 8201),
+        .init(name: "Road trip", keywordID: 7312),
+        .init(name: "Small town", keywordID: 1415),
+        .init(name: "Family relationships", keywordID: 10235),
+        .init(name: "Samurai", keywordID: 1462),
+        .init(name: "Post-apocalyptic future", keywordID: 4458),
+        .init(name: "Vampire", keywordID: 3133),
+        .init(name: "Supernatural", keywordID: 6152),
+        .init(name: "Ghost", keywordID: 162846),
+        .init(name: "Zombie", keywordID: 12377),
+        .init(name: "Shōnen", keywordID: 207826),
+        .init(name: "Music", keywordID: 283297),
+        .init(name: "Dragon", keywordID: 12554),
+        .init(name: "Medieval", keywordID: 161257),
+        .init(name: "Revenge"),
+        .init(name: "Courtroom", keywordID: 33519),
+        .init(name: "Espionage", keywordID: 5265),
+        .init(name: "High school"),
+        .init(name: "Period drama", keywordID: 15060),
+        .init(name: "Martial arts"),
+        .init(name: "Haunted house", keywordID: 3358),
+        .init(name: "Isekai", keywordID: 237451),
+        .init(name: "Mecha"),
+        .init(name: "Slice of life"),
+        .init(name: "Cooking", keywordID: 1918),
+        .init(name: "Sports")
+    ]
+
+    static let animeSuggestions = [
+        "Isekai", "Mecha", "Slice of Life", "Iyashikei", "Mahou Shoujo", "Time Loop", "Coming of Age",
+        "Super Power", "Found Family", "School Club", "Idol", "Vampire", "Historical", "Space",
+        "Psychological", "Urban Fantasy", "Robots", "Martial Arts", "Mythology", "Food"
+    ].map { Self(name: $0, anilist: true) }
 
     @MainActor
     static func popular(from shows: [CatalogItem], store: DiaryStore) async -> [Self] {
-        // The tags shared by the current chart, with earlier shows breaking ties.
+        // Earlier shows break ties among recurring tags on the current chart.
         let samples = shows.prefix(5).map(\.route)
         var counts: [Int: (keyword: TitleKeyword, count: Int, first: Int)] = [:]
         for (index, route) in samples.enumerated() {
@@ -220,7 +337,7 @@ struct SearchBrowseTag: Hashable, Identifiable {
             if $0.count != $1.count { return $0.count > $1.count }
             if $0.first != $1.first { return $0.first < $1.first }
             return $0.keyword.name < $1.keyword.name
-        }.prefix(16).map { Self(name: $0.keyword.name, keywordID: $0.keyword.id) }
+        }.prefix(20).map { Self(name: $0.keyword.name, keywordID: $0.keyword.id) }
     }
 
     @MainActor
@@ -230,7 +347,7 @@ struct SearchBrowseTag: Hashable, Identifiable {
         #endif
         let keywords: [TitleKeyword]
         if let token = TMDBDirect.token(store) {
-            keywords = try await TMDBDirect.keywords(query, token: token)
+            keywords = try await SearchBrowseRead.retry { try await TMDBDirect.keywords(query, token: token) }
         } else {
             struct Reply: Decodable { let items: [TitleKeyword] }
             let reply: Reply = try await store.read(CatalogTools.apiPath("/api/metadata/keywords", query: ["q": query]))
@@ -241,7 +358,9 @@ struct SearchBrowseTag: Hashable, Identifiable {
     }
 
     @MainActor
-    func resolve(store: DiaryStore, title: String? = nil, types: [MediaKind] = [.movie, .tv]) async throws -> SearchBrowseCategory {
+    func resolve(store: DiaryStore) async throws -> SearchBrowseCategory {
+        let types: [MediaKind] = [.movie, .tv]
+        let title = name.prefix(1).uppercased() + name.dropFirst()
         let keywordID: Int
         if let known = self.keywordID {
             keywordID = known
@@ -249,7 +368,7 @@ struct SearchBrowseTag: Hashable, Identifiable {
             let search = name.replacingOccurrences(of: "-", with: " ")
             #if DEBUG
             if store.isPreview {
-                return SearchBrowseCategory(title: title ?? name.capitalized, symbol: "tag", tint: "#58667f", filter: .tag(1), types: types)
+                return SearchBrowseCategory(title: title, symbol: "tag", tint: "#58667f", filter: .tag(1), types: types)
             }
             #endif
             guard let match = try await Self.find(search, store: store).first(where: {
@@ -260,58 +379,280 @@ struct SearchBrowseTag: Hashable, Identifiable {
             }
             keywordID = match
         }
-        return SearchBrowseCategory(title: title ?? name.capitalized, symbol: "tag", tint: "#58667f", filter: .tag(keywordID), types: types)
+        return SearchBrowseCategory(title: title, symbol: "tag", tint: "#58667f", filter: .tag(keywordID), types: types)
     }
 }
 
-struct SearchBrowsePerson: Hashable, Identifiable {
+enum SearchBrowseRead {
+    static func isTransportError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        return [.secureConnectionFailed, .timedOut, .networkConnectionLost, .cannotConnectToHost, .dnsLookupFailed]
+            .contains(urlError.code)
+    }
+
+    @MainActor
+    static func retry<Value>(_ read: () async throws -> Value) async throws -> Value {
+        do { return try await read() }
+        catch let error where isTransportError(error) {
+            try await Task.sleep(for: .milliseconds(500))
+            return try await read()
+        }
+    }
+}
+
+struct SearchBrowsePerson: Hashable, Identifiable, Sendable {
     let id: Int
     let name: String
     var image: String? = nil
 
     static func selections(for shelf: SearchBrowseShelf) -> [Self] {
-        if shelf == .directors {
-            return [.init(id: 525, name: "Christopher Nolan"), .init(id: 45400, name: "Greta Gerwig"),
-                    .init(id: 137427, name: "Denis Villeneuve"), .init(id: 488, name: "Steven Spielberg"),
-                    .init(id: 1032, name: "Martin Scorsese")]
-        }
-        return [.init(id: 505710, name: "Zendaya"), .init(id: 1136406, name: "Tom Holland"),
-                .init(id: 1373737, name: "Florence Pugh"), .init(id: 1620, name: "Michelle Yeoh"),
-                .init(id: 6384, name: "Keanu Reeves"), .init(id: 1813, name: "Anne Hathaway")]
+        shelf == .directors ? directors : actors
     }
 
-    @MainActor
-    static func popular(for shelf: SearchBrowseShelf, store: DiaryStore) async -> [Self] {
-        guard !store.isPreview, let token = TMDBDirect.token(store) else { return [] }
-        let department = shelf == .directors ? "Directing" : "Acting"
-        var people: [Self] = []
-        var seen = Set<Int>()
-        for page in 1...(shelf == .directors ? 4 : 2) {
-            guard !Task.isCancelled, let data = try? await TMDBDirect.object("person/popular", query: ["page": String(page)], token: token),
-                  let results = data["results"] as? [[String: Any]], !results.isEmpty else { break }
-            for person in results {
-                guard person["adult"] as? Bool != true, person["known_for_department"] as? String == department,
-                      let id = person["id"] as? Int, id > 0, let name = person["name"] as? String,
-                      !name.isEmpty, seen.insert(id).inserted else { continue }
-                people.append(Self(id: id, name: name, image: CatalogTools.image(person["profile_path"] as? String, size: "w185")))
-            }
-            if people.count >= 12 { break }
+    private static let directors: [Self] = [
+        .init(id: 525, name: "Christopher Nolan"),
+        .init(id: 45400, name: "Greta Gerwig"),
+        .init(id: 137427, name: "Denis Villeneuve", image: "https://image.tmdb.org/t/p/w185/xzQYqb4nR8xT7Zdw5itbEL9K3fd.jpg"),
+        .init(id: 488, name: "Steven Spielberg", image: "https://image.tmdb.org/t/p/w185/tZxcg19YQ3e8fJ0pOs7hjlnmmr6.jpg"),
+        .init(id: 1032, name: "Martin Scorsese"),
+        .init(id: 21684, name: "Bong Joon Ho", image: "https://image.tmdb.org/t/p/w185/stwnTvZAoD8gEJEDHpDQyLCyDy5.jpg"),
+        .init(id: 147021, name: "S. S. Rajamouli", image: "https://image.tmdb.org/t/p/w185/qPskSZxvoYflC8Bye4tGNBSroy5.jpg"),
+        .init(id: 1769, name: "Sofia Coppola", image: "https://image.tmdb.org/t/p/w185/dzHC2LxmarkBxWLhjp2DRa5oCev.jpg"),
+        .init(id: 5655, name: "Wes Anderson", image: "https://image.tmdb.org/t/p/w185/s03CeUeC5yAXyB1acqP0zGNo2SC.jpg"),
+        .init(id: 608, name: "Hayao Miyazaki", image: "https://image.tmdb.org/t/p/w185/ouhjt9KugzhWtdEyBPipihB3ic8.jpg"),
+        .init(id: 5026, name: "Akira Kurosawa", image: "https://image.tmdb.org/t/p/w185/ca8fRqLDfTJTCamLKHp70up23ET.jpg"),
+        .init(id: 309, name: "Pedro Almodóvar", image: "https://image.tmdb.org/t/p/w185/dKlaXJk3NLcsC1CKMx6xmyW5BZD.jpg"),
+        .init(id: 1395183, name: "Chloé Zhao", image: "https://image.tmdb.org/t/p/w185/r8DmTdOqHbDUydCOVb277rncPTK.jpg"),
+        .init(id: 68813, name: "Céline Sciamma", image: "https://image.tmdb.org/t/p/w185/4B5Bt47HYTObsde1einBDha03ka.jpg"),
+        .init(id: 1056121, name: "Ryan Coogler", image: "https://image.tmdb.org/t/p/w185/dux4DCDaL6c639DTXGiV7nm1wcN.jpg"),
+        .init(id: 122423, name: "Yorgos Lanthimos", image: "https://image.tmdb.org/t/p/w185/dvtv8eV1O8Fl385ctOu3sqO2PbD.jpg"),
+        .init(id: 138, name: "Quentin Tarantino"),
+        .init(id: 7467, name: "David Fincher"),
+        .init(id: 2710, name: "James Cameron"),
+        .init(id: 10099, name: "Park Chan-wook"),
+        .init(id: 12453, name: "Wong Kar-wai"),
+        .init(id: 2636, name: "Alfred Hitchcock"),
+        .init(id: 240, name: "Stanley Kubrick"),
+        .init(id: 5602, name: "David Lynch"),
+        .init(id: 10828, name: "Guillermo del Toro"),
+        .init(id: 40654, name: "Jane Campion"),
+        .init(id: 14392, name: "Kathryn Bigelow"),
+        .init(id: 62363, name: "Satoshi Kon"),
+        .init(id: 74091, name: "Makoto Shinkai", image: "https://image.tmdb.org/t/p/w185/z8TN4Nkmhem6XqcnH2jMn5Ayf97.jpg"),
+        .init(id: 1776, name: "Francis Ford Coppola"),
+        .init(id: 578, name: "Ridley Scott"),
+        .init(id: 55934, name: "Taika Waititi")
+    ]
+
+    private static let actors: [Self] = [
+        .init(id: 505710, name: "Zendaya", image: "https://image.tmdb.org/t/p/w185/1qup8tSt95HLbcy2c2xrx4iJNxv.jpg"),
+        .init(id: 1136406, name: "Tom Holland", image: "https://image.tmdb.org/t/p/w185/xKBAaPIa1c7tzZD3Y0MhBLv4hPE.jpg"),
+        .init(id: 1373737, name: "Florence Pugh"),
+        .init(id: 1620, name: "Michelle Yeoh", image: "https://image.tmdb.org/t/p/w185/i6fHvGt7Rb8oVyjjdQVV6vEHB94.jpg"),
+        .init(id: 6384, name: "Keanu Reeves"),
+        .init(id: 1813, name: "Anne Hathaway", image: "https://image.tmdb.org/t/p/w185/s6tflSD20MGz04ZR2R1lZvhmC4Y.jpg"),
+        .init(id: 1253360, name: "Pedro Pascal", image: "https://image.tmdb.org/t/p/w185/cuhkTL3MezjArl80MnYl6QJQ4PQ.jpg"),
+        .init(id: 974169, name: "Jenna Ortega", image: "https://image.tmdb.org/t/p/w185/yiL1tWLHwYrJznkjT2NKmR2YLMs.jpg"),
+        .init(id: 6193, name: "Leonardo DiCaprio", image: "https://image.tmdb.org/t/p/w185/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg"),
+        .init(id: 2524, name: "Tom Hardy", image: "https://image.tmdb.org/t/p/w185/d81K0RH8UX7tZj49tZaQhZ9ewH.jpg"),
+        .init(id: 2037, name: "Cillian Murphy", image: "https://image.tmdb.org/t/p/w185/2lKs67r7FI4bPu0AXxMUJZxmUXn.jpg"),
+        .init(id: 1397778, name: "Anya Taylor-Joy", image: "https://image.tmdb.org/t/p/w185/qYNofOjlRke2MlJVihmJmEdQI4v.jpg"),
+        .init(id: 3223, name: "Robert Downey Jr.", image: "https://image.tmdb.org/t/p/w185/5qHNjhtjMD4YWH3UP0rm4tKwxCL.jpg"),
+        .init(id: 5292, name: "Denzel Washington", image: "https://image.tmdb.org/t/p/w185/jj2Gcobpopokal0YstuCQW0ldJ4.jpg"),
+        .init(id: 150903, name: "Gong Yoo", image: "https://image.tmdb.org/t/p/w185/ocGoFb6TrK3uWGXt4WnuibUG1vD.jpg"),
+        .init(id: 74421, name: "Song Hye-kyo", image: "https://image.tmdb.org/t/p/w185/tlAX3f82Mf5h0rznpVBVK7nD2om.jpg"),
+        .init(id: 35742, name: "Shah Rukh Khan", image: "https://image.tmdb.org/t/p/w185/tKeQhSyXyzlzxNtxFq24iIvzXrC.jpg"),
+        .init(id: 53975, name: "Deepika Padukone", image: "https://image.tmdb.org/t/p/w185/rzvvBQ0r6oiqDdzcsdTRB7jN4Rx.jpg"),
+        .init(id: 3810, name: "Javier Bardem", image: "https://image.tmdb.org/t/p/w185/zfRID0jx8DKBluPGU9xtk9sZWUt.jpg"),
+        .init(id: 1267329, name: "Lupita Nyong'o", image: "https://image.tmdb.org/t/p/w185/y40Wu1T742kynOqtwXASc5Qgm49.jpg"),
+        .init(id: 25072, name: "Oscar Isaac", image: "https://image.tmdb.org/t/p/w185/dW5U5yrIIPmMjRThR9KT2xH6nTz.jpg"),
+        .init(id: 76788, name: "Dev Patel", image: "https://image.tmdb.org/t/p/w185/byAo6xoleVSG5O9YpGrQ5YuCRX7.jpg"),
+        .init(id: 234352, name: "Margot Robbie"),
+        .init(id: 30614, name: "Ryan Gosling"),
+        .init(id: 112, name: "Cate Blanchett"),
+        .init(id: 20738, name: "Song Kang-ho"),
+        .init(id: 1337, name: "Tony Leung Chiu-wai"),
+        .init(id: 224513, name: "Ana de Armas"),
+        .init(id: 955, name: "Penélope Cruz"),
+        .init(id: 1019, name: "Mads Mikkelsen"),
+        .init(id: 19492, name: "Viola Davis"),
+        .init(id: 54693, name: "Emma Stone"),
+        .init(id: 37625, name: "Andrew Garfield"),
+        .init(id: 3063, name: "Tilda Swinton"),
+        .init(id: 36592, name: "Saoirse Ronan", image: "https://image.tmdb.org/t/p/w185/9buDPdqKN9vbnQLLkHEinDtMrCG.jpg"),
+        .init(id: 1190668, name: "Timothée Chalamet")
+    ]
+
+    struct Page {
+        let people: [SearchBrowsePerson]
+        let next: Int?
+    }
+
+    private struct PopularPage: Decodable, Sendable {
+        struct Person: Decodable, Sendable {
+            let id: Int
+            let name: String
+            let adult: Bool?
+            let known_for_department: String?
+            let profile_path: String?
         }
-        return people
+        let page: Int
+        let total_pages: Int
+        let results: [Person]
+    }
+
+    private struct CachedPage {
+        let id: UUID
+        let loadedAt: Date
+        let task: Task<PopularPage, Error>
+    }
+
+    @MainActor private static var cachedRevision: UUID?
+    @MainActor private static var pages: [Int: CachedPage] = [:]
+
+    @MainActor
+    static func popular(
+        for shelf: SearchBrowseShelf, page: Int = 1, store: DiaryStore
+    ) async throws -> Page {
+        guard !store.isPreview, let token = TMDBDirect.token(store) else { return Page(people: [], next: nil) }
+        let department = shelf == .directors ? "Directing" : "Acting"
+        let revision = store.discoveryRevision
+        if revision != cachedRevision { pages.removeAll(); cachedRevision = revision }
+        let entry: CachedPage
+        if let cached = pages[page], Date.now.timeIntervalSince(cached.loadedAt) < 900 {
+            entry = cached
+        } else {
+            let task = Task {
+                let data = try await SearchBrowseRead.retry {
+                    try await TMDBDirect.data("person/popular", query: ["page": String(page)], token: token)
+                }
+                let reply = try JSONDecoder().decode(PopularPage.self, from: data)
+                guard reply.page == page else { throw APIError.message("TMDB returned an unexpected people page.") }
+                return reply
+            }
+            entry = CachedPage(id: UUID(), loadedAt: .now, task: task)
+            pages[page] = entry
+            if pages.count > 40, let oldest = pages.min(by: { $0.value.loadedAt < $1.value.loadedAt })?.key {
+                pages[oldest] = nil
+            }
+        }
+        let reply: PopularPage
+        do { reply = try await entry.task.value }
+        catch {
+            if pages[page]?.id == entry.id { pages[page] = nil }
+            throw error
+        }
+        try Task.checkCancellation()
+        guard revision == store.discoveryRevision else { throw CancellationError() }
+        let people = reply.results.compactMap { person -> Self? in
+            guard person.adult != true, person.known_for_department == department,
+                  person.id > 0, !person.name.isEmpty else { return nil }
+            return Self(id: person.id, name: person.name, image: CatalogTools.image(person.profile_path, size: "w185"))
+        }
+        return Page(people: people, next: page < min(reply.total_pages, 500) ? page + 1 : nil)
     }
 }
 
 struct SearchBrowseFranchise: Hashable, Identifiable {
+    struct Show: Hashable, Sendable {
+        let id: Int
+        let name: String
+        let year: Int
+        let poster: String
+
+        var item: CatalogItem { CatalogItem(id: id, mediaType: .tv, name: name, year: year, posterPath: poster) }
+    }
+
     let id: Int
     let title: String
+    var poster: String? = nil
+    var shows: [Show] = []
 
     static let collections: [Self] = [
-        .init(id: 119, title: "The Lord of the Rings"), .init(id: 535313, title: "Godzilla"),
-        .init(id: 173710, title: "Planet of the Apes"), .init(id: 17255, title: "Resident Evil"),
-        .init(id: 1241, title: "Harry Potter"), .init(id: 131292, title: "Iron Man"),
-        .init(id: 328, title: "Jurassic Park"), .init(id: 263, title: "The Dark Knight"),
-        .init(id: 404609, title: "John Wick"), .init(id: 9485, title: "The Fast and the Furious")
+        .init(id: 119, title: "The Lord of the Rings"),
+        .init(id: 535313, title: "Godzilla"),
+        .init(id: 173710, title: "Planet of the Apes"),
+        .init(id: 17255, title: "Resident Evil"),
+        .init(id: 1241, title: "Harry Potter"),
+        .init(id: 131292, title: "Iron Man"),
+        .init(id: 328, title: "Jurassic Park"),
+        .init(id: 263, title: "The Dark Knight"),
+        .init(id: 404609, title: "John Wick"),
+        .init(id: 9485, title: "The Fast and the Furious"),
+        .init(id: 121938, title: "The Hobbit"),
+        .init(id: 87359, title: "Mission: Impossible"),
+        .init(id: 645, title: "James Bond"),
+        .init(id: 84, title: "Indiana Jones"),
+        .init(id: 2344, title: "The Matrix"),
+        .init(id: 399, title: "Predator"),
+        .init(id: 528, title: "The Terminator"),
+        .init(id: 726871, title: "Dune"),
+        .init(id: 10194, title: "Toy Story"),
+        .init(id: 468222, title: "The Incredibles"),
+        .init(id: 2150, title: "Shrek"),
+        .init(id: 556, title: "Spider-Man"),
+        .init(id: 131295, title: "Captain America"),
+        .init(id: 295, title: "Pirates of the Caribbean"),
+        .init(id: 2602, title: "Scream"),
+        .init(id: 656, title: "Saw"),
+        .init(id: 304, title: "Ocean's"),
+        .init(id: 720879, title: "Sonic the Hedgehog"),
+        .init(id: 23456, title: "One Piece"),
+        .init(id: 10, title: "Star Wars"),
+        .init(id: 435259, title: "Fantastic Beasts"),
+        .init(id: 8091, title: "Alien"),
+        .init(id: 264, title: "Back to the Future"),
+        .init(id: 87096, title: "Avatar"),
+        .init(id: 87118, title: "Cars"),
+        .init(id: 86066, title: "Despicable Me"),
+        .init(id: 89137, title: "How to Train Your Dragon"),
+        .init(id: 77816, title: "Kung Fu Panda"),
+        .init(id: 284433, title: "Guardians of the Galaxy"),
+        .init(id: 86311, title: "Avengers"),
+        .init(id: 448150, title: "Deadpool"),
+        .init(id: 748, title: "X-Men"),
+        .init(id: 131635, title: "The Hunger Games"),
+        .init(id: 295130, title: "The Maze Runner"),
+        .init(id: 313086, title: "The Conjuring"),
+        .init(id: 521226, title: "A Quiet Place"),
+        .init(id: 8945, title: "Mad Max"),
+        .init(id: 1575, title: "Rocky"),
+        .init(id: 553717, title: "Creed"),
+        .init(id: 31562, title: "Bourne"),
+        .init(id: 422837, title: "Blade Runner"),
+        .init(id: 488924, title: "Paddington"),
+        .init(id: 70068, title: "Ip Man")
     ]
+
+    static let television: [Self] = [
+        .init(id: -1399, title: "Game of Thrones", shows: [
+            .init(id: 1399, name: "Game of Thrones", year: 2011, poster: "/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg"),
+            .init(id: 94997, name: "House of the Dragon", year: 2022, poster: "/7V0Ebks0GgpKvQ7QbLAIdX5dos4.jpg"),
+            .init(id: 224372, name: "A Knight of the Seven Kingdoms", year: 2026, poster: "/k8yARbD9iYn2nRX2HvsopfKDN2r.jpg")
+        ]),
+        .init(id: -1402, title: "The Walking Dead", shows: [
+            .init(id: 1402, name: "The Walking Dead", year: 2010, poster: "/ng3cMtxYKt1OSQYqFlnKWnVsqNO.jpg"),
+            .init(id: 62286, name: "Fear the Walking Dead", year: 2015, poster: "/eKt4ELpQZUKGZCKIDobEbwHwk3I.jpg"),
+            .init(id: 194583, name: "The Walking Dead: Dead City", year: 2023, poster: "/wq3vuQzQgbS83zX3malAFWMsSwX.jpg")
+        ]),
+        .init(id: -253, title: "Star Trek", shows: [
+            .init(id: 253, name: "Star Trek", year: 1966, poster: "/9byecLwsbbkAqDxcKuuTI5kEzZ.jpg"),
+            .init(id: 655, name: "Star Trek: The Next Generation", year: 1987, poster: "/vkLzXddgUKH5VcpnYiRzpJFrZhz.jpg"),
+            .init(id: 1855, name: "Star Trek: Voyager", year: 1995, poster: "/gNS5tRSG3UlXodCxznKKOKweqxh.jpg"),
+            .init(id: 314, name: "Star Trek: Enterprise", year: 2001, poster: "/tsbBTABtNgu0ycsFpnIhiQ5woOM.jpg")
+        ]),
+        .init(id: -73586, title: "Yellowstone", shows: [
+            .init(id: 73586, name: "Yellowstone", year: 2018, poster: "/peNC0eyc3TQJa6x4TdKcBPNP4t0.jpg"),
+            .init(id: 118357, name: "1883", year: 2021, poster: "/waLbm384SQDwLTCn6ttPqQS5kfV.jpg"),
+            .init(id: 157744, name: "1923", year: 2022, poster: "/zgZRJZvZn5cpsWAB0zMUdad3iZd.jpg")
+        ]),
+        .init(id: -246, title: "Avatar: The Last Airbender", shows: [
+            .init(id: 246, name: "Avatar: The Last Airbender", year: 2005, poster: "/yaGt4GIutpbXHsv48tWceWg6s56.jpg"),
+            .init(id: 33880, name: "The Legend of Korra", year: 2012, poster: "/dZgYvSfuh1YHDrJuILlVQ5oA2hF.jpg")
+        ])
+    ]
+
+    static let featured = Array(collections.prefix(6)) + television.prefix(2) + collections.dropFirst(6).prefix(2)
 
     private struct CacheKey: Hashable { let id: Int; let session: UUID }
     private struct CachedCollection {
@@ -321,8 +662,33 @@ struct SearchBrowseFranchise: Hashable, Identifiable {
     }
     @MainActor private static var cache: [CacheKey: CachedCollection] = [:]
 
+    struct Page {
+        let collections: [SearchBrowseFranchise]
+        let next: Int?
+    }
+
+    @MainActor
+    static func find(_ query: String, page: Int, store: DiaryStore) async throws -> Page {
+        guard !store.isPreview, let token = TMDBDirect.token(store) else { return Page(collections: [], next: nil) }
+        let reply = try await SearchBrowseRead.retry {
+            try await TMDBDirect.object("search/collection", query: ["query": query, "page": String(page), "include_adult": "false"], token: token)
+        }
+        guard reply["page"] as? Int == page, let results = reply["results"] as? [[String: Any]] else {
+            throw APIError.message("TMDB returned an unexpected collection page.")
+        }
+        let collections = results.compactMap { item -> Self? in
+            guard item["adult"] as? Bool != true, let id = item["id"] as? Int, id > 0,
+                  let name = item["name"] as? String, !name.isEmpty else { return nil }
+            return Self(id: id, title: name, poster: item["poster_path"] as? String)
+        }
+        return Page(collections: collections, next: page < min(reply["total_pages"] as? Int ?? 0, 500) ? page + 1 : nil)
+    }
+
     @MainActor
     func load(store: DiaryStore) async throws -> TitleCollection {
+        if !shows.isEmpty {
+            return TitleCollection(id: id, name: title, overview: "", posterPath: nil, backdropPath: nil, parts: shows.map(\.item))
+        }
         #if DEBUG
         if store.isPreview {
             let preview = PreviewCatalog.discovery(["type": "movie"])
@@ -337,7 +703,9 @@ struct SearchBrowseFranchise: Hashable, Identifiable {
         }
         Self.cache = Self.cache.filter { $0.key.session == key.session && Date.now.timeIntervalSince($0.value.loadedAt) < 3_600 }
         let task = Task<TitleCollection, Error> {
-            if let token = TMDBDirect.token(store) { return try await TMDBDirect.collection(id, token: token) }
+            if let token = TMDBDirect.token(store) {
+                return try await SearchBrowseRead.retry { try await TMDBDirect.collection(id, token: token) }
+            }
             return try await store.read(CatalogTools.apiPath("/api/metadata/collection", query: ["id": String(id)]))
         }
         let entry = CachedCollection(id: UUID(), loadedAt: .now, task: task)

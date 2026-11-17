@@ -402,6 +402,67 @@ actor AniListClient {
         return items
     }
 
+    private var browseTags: (at: Date, names: [String])?
+    private static let browseGenres: Set<String> = ["Mecha", "Slice of Life", "Mahou Shoujo", "Psychological"]
+
+    func searchBrowseTags() async throws -> [String] {
+        if let browseTags, Date.now.timeIntervalSince(browseTags.at) < 86_400 { return browseTags.names }
+        struct Reply: Decodable {
+            struct Tag: Decodable { let name: String; let isAdult: Bool?; let isGeneralSpoiler: Bool? }
+            let MediaTagCollection: [Tag]
+        }
+        let reply: Reply = try await query("query { MediaTagCollection { name isAdult isGeneralSpoiler } }", [:])
+        let tags = reply.MediaTagCollection.filter { $0.isAdult != true && $0.isGeneralSpoiler != true }.map(\.name)
+        let names = Self.browseGenres.union(tags).sorted()
+        browseTags = (.now, names)
+        return names
+    }
+
+    struct BrowseTagPage: Sendable {
+        let items: [AniAppearance]
+        let hasNext: Bool
+    }
+
+    func browseTag(_ tag: String, page: Int, sort: String, minimum: Int?, period: Int?) async throws -> BrowseTagPage {
+        struct Reply: Decodable {
+            struct Media: Decodable {
+                struct Title: Decodable { let english: String?; let romaji: String? }
+                let id: Int; let format: String?; let averageScore: Int?
+                let title: Title; let coverImage: Image?; let startDate: DateParts?
+            }
+            struct Page: Decodable {
+                struct PageInfo: Decodable { let hasNextPage: Bool }
+                let pageInfo: PageInfo; let media: [Media]
+            }
+            let Page: Page
+        }
+        var variables: [String: any Sendable] = ["page": page, "sort": [sort]]
+        variables[Self.browseGenres.contains(tag) ? "genre" : "tag"] = tag
+        if let minimum { variables["minimum"] = minimum * 10 - 1 }
+        if let period {
+            variables["from"] = period * 10_000
+            variables["to"] = (period + 10) * 10_000
+        }
+        let reply: Reply = try await query("""
+            query($tag: String, $genre: String, $page: Int, $sort: [MediaSort], $minimum: Int, $from: FuzzyDateInt, $to: FuzzyDateInt) {
+              Page(page: $page, perPage: 24) {
+                pageInfo { hasNextPage }
+                media(type: ANIME, isAdult: false, tag: $tag, genre: $genre, sort: $sort, averageScore_greater: $minimum,
+                      startDate_greater: $from, startDate_lesser: $to) {
+                  id format averageScore title { english romaji } coverImage { large } startDate { year }
+                }
+              }
+            }
+            """, variables)
+        let items = reply.Page.media.map { item in
+            AniAppearance(id: item.id, title: AnimeTitleChoice.pick(english: item.title.english, romaji: item.title.romaji),
+                          cover: item.coverImage?.large, year: item.startDate?.year, role: nil, voiceActor: nil,
+                          format: item.format, alternateTitles: [item.title.english, item.title.romaji].compactMap { $0 },
+                          rating: item.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+        }
+        return BrowseTagPage(items: items, hasNext: reply.Page.pageInfo.hasNextPage)
+    }
+
     /// Every anime episode airing between two times (AniList's airing schedule, public, no sign-in),
     /// for the calendar's Everything view; adult titles left out. Up to 150, kept 30 min per window.
     private var airingCache: [String: (at: Date, items: [AnimeAiring])] = [:]

@@ -453,7 +453,8 @@ import TwilDiaryCore
                 // A tag, network or studio browses everything that has it: niche tags (anime, smaller
                 // films) mostly have few votes, and a 20-vote floor hid about two thirds of them. By
                 // rating, a few votes still can't put a title first.
-                let browsing = keyword != nil || !keywords.isEmpty || !(q["company"] ?? "").isEmpty || !(q["network"] ?? "").isEmpty
+                let browsing = keyword != nil || !keywords.isEmpty || ["company", "network", "country", "searchTheme"]
+                    .contains { !(q[$0] ?? "").isEmpty }
                 if q["searchTheme"] == "hidden-gems" {
                     params["vote_count.gte"] = "50"
                     params["vote_count.lte"] = "500"

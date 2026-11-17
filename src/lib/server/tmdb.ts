@@ -515,12 +515,17 @@ export function createTmdb(
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
             input.year;
+        const browsing = Boolean(
+          keyword || input.keywords?.length || input.company || input.network ||
+          input.country || input.searchTheme
+        );
         if (input.searchTheme === 'hidden-gems') {
           params['vote_count.gte'] = '50';
           params['vote_count.lte'] = '500';
           params['vote_average.gte'] = String(Math.max(input.minimum, 7));
         } else {
-          params['vote_count.gte'] = input.sort === 'rating' ? '200' : '20';
+          const voteFloor = browsing ? { rating: '50', default: '0' } : { rating: '200', default: '20' };
+          params['vote_count.gte'] = input.sort === 'rating' ? voteFloor.rating : voteFloor.default;
           if (input.minimum) params['vote_average.gte'] = String(input.minimum);
         }
         const today = new Date().toISOString().slice(0, 10);

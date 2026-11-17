@@ -71,6 +71,15 @@ struct TraktDirectClient: Sendable {
         return data
     }
     func get(_ path: String, query: [String: String] = [:]) async throws -> Reply {
+        try await Self.read(path, query: query, clientID: token.clientId, accessToken: token.accessToken, session: session)
+    }
+
+    static func publicRead(_ path: String, query: [String: String] = [:], clientID: String) async throws -> Reply {
+        try await read(path, query: query, clientID: clientID, accessToken: nil, session: .shared)
+    }
+
+    private static func read(_ path: String, query: [String: String], clientID: String, accessToken: String?,
+                             session: URLSession) async throws -> Reply {
         var components = URLComponents(url: Self.base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var request = URLRequest(url: components.url!, timeoutInterval: 30)
@@ -78,8 +87,8 @@ struct TraktDirectClient: Sendable {
         // The same identity as the Worker's Trakt requests, which Trakt's edge accepts.
         request.setValue("TwilDiary/2.0.0", forHTTPHeaderField: "User-Agent")
         request.setValue("2", forHTTPHeaderField: "trakt-api-version")
-        request.setValue(token.clientId, forHTTPHeaderField: "trakt-api-key")
-        request.setValue("Bearer " + token.accessToken, forHTTPHeaderField: "Authorization")
+        request.setValue(clientID, forHTTPHeaderField: "trakt-api-key")
+        if let accessToken { request.setValue("Bearer " + accessToken, forHTTPHeaderField: "Authorization") }
         try ProviderCooldowns.check(Self.base)
         for attempt in 0..<3 {
             let (data, response) = try await session.data(for: request)
@@ -90,7 +99,9 @@ struct TraktDirectClient: Sendable {
                 try await Task.sleep(for: .seconds(min(max(wait, 1), 30)))
                 continue
             }
-            if status == 401 || status == 403 { throw APIError.message("Trakt didn’t accept the sign-in (HTTP \(status)). Reconnect Trakt, then check again.") }
+            if status == 401 || status == 403, accessToken != nil {
+                throw APIError.message("Trakt didn’t accept the sign-in (HTTP \(status)). Reconnect Trakt, then check again.")
+            }
             guard (200..<300).contains(status) else { throw APIError.message("Trakt answered HTTP \(status) for \(path).") }
             return Reply(data: data, pageCount: Int(http?.value(forHTTPHeaderField: "X-Pagination-Page-Count") ?? "") ?? 1)
         }

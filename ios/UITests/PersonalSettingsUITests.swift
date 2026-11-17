@@ -126,11 +126,33 @@ import XCTest
 
         awards.tap()
         XCTAssertTrue(app.navigationBars["Awards"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["search-award-ceremony-filter"].exists)
-        XCTAssertTrue(app.buttons["search-award-year-filter"].exists)
-        app.buttons["search-award-emmy-2026"].tap()
+        let emmys = app.buttons["search-award-ceremony-5"]
+        XCTAssertTrue(emmys.waitForExistence(timeout: 5)); emmys.tap()
+        XCTAssertTrue(app.navigationBars["Primetime Emmy Awards 2004"].waitForExistence(timeout: 5))
+        let year = app.buttons["search-award-year-filter"]
+        XCTAssertTrue(year.exists)
+        XCTAssertTrue(app.buttons["search-award-type-filter"].exists)
+        XCTAssertTrue(app.buttons["search-award-category-filter"].exists)
+        XCTAssertFalse(app.buttons["search-award-year-2004"].exists)
+        year.tap()
+        app.buttons["1999"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Primetime Emmy Awards 1999"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["search-award-nominee-4"].exists)
+        year.tap()
+        app.buttons["2004"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Primetime Emmy Awards 2004"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Outstanding Drama Series"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Winner"].firstMatch.exists)
+        let winner = app.buttons["search-award-nominee-1"]
+        let nominee = app.buttons["search-award-nominee-2"]
+        XCTAssertTrue(winner.exists)
+        XCTAssertTrue(nominee.exists)
+        app.buttons["search-award-winners-filter"].tap()
+        XCTAssertTrue(winner.exists)
+        XCTAssertFalse(nominee.exists)
+        app.buttons["search-award-type-filter"].tap()
+        app.buttons["Acting"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["search-award-nominee-5"].exists)
+        XCTAssertFalse(winner.exists)
     }
 
     func testSearchLoadsLaterPagesAndKeepsAnimeFilmsInAnime() {
@@ -198,8 +220,12 @@ import XCTest
         XCTAssertTrue(more.isHittable)
         more.tap()
         XCTAssertTrue(app.navigationBars["Themes"].waitForExistence(timeout: 5))
-        app.buttons["search-theme-miniseries"].tap()
-        XCTAssertTrue(app.navigationBars["Miniseries"].waitForExistence(timeout: 5))
+        app.buttons["search-theme-sitcoms"].tap()
+        XCTAssertTrue(app.navigationBars["Sitcoms"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["search-browse-sort"].exists)
+        XCTAssertTrue(app.buttons["search-browse-rating"].exists)
+        XCTAssertTrue(app.buttons["search-browse-studio"].exists)
+        XCTAssertTrue(app.buttons["search-browse-period"].exists)
     }
     func testSearchCastCharactersAndVoiceActorsOpenNativeProfiles() {
         executionTimeAllowance = 240

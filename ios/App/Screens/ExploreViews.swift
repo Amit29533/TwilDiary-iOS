@@ -18,7 +18,7 @@ struct ExploreView: View {
 }
 
 /// An Explore filter pill: a dark outlined capsule, lilac-tinted for the order and any filter that's set.
-private struct ExplorePill: View {
+struct ExplorePill: View {
     let label: String
     var icon: String? = nil
     var tinted = false
