@@ -94,6 +94,34 @@ test('online failure preserves local matches and online-only identity resolution
     remote
   );
   assert.equal(only.library[0]!.id, 'renamed');
+  assert.equal(only.library[0]!.matchedName, 'Original online name');
+});
+
+test('online search forwards later pages and classifies anime films and series by genre and language', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const metadata = createTmdb('test', async (input) => {
+    const url = new URL(String(input));
+    assert.equal(url.pathname, '/3/search/multi');
+    assert.equal(url.searchParams.get('page'), '2');
+    return response({
+      page: 2,
+      total_pages: 3,
+      results: [
+        { id: 1, media_type: 'movie', title: 'Anime film', original_language: 'ja', genre_ids: [16] },
+        { id: 2, media_type: 'tv', name: 'Anime series', original_language: 'ja', genre_ids: [16] },
+        { id: 3, media_type: 'tv', name: 'Western animation', original_language: 'en', genre_ids: [16] },
+        { id: 4, media_type: 'movie', title: 'Live action', original_language: 'ja', genre_ids: [18] }
+      ]
+    });
+  });
+  const result = await searchDiary(f.db, new URLSearchParams('q=test&page=2&scope=online'), metadata);
+  assert.equal(result.page, 2);
+  assert.equal(result.totalPages, 3);
+  assert.deepEqual(
+    result.online.map((item) => [item.id, item.isAnime]),
+    [[1, true], [2, true], [3, false], [4, false]]
+  );
 });
 
 test('unified search validates input before upstream calls and remains private/owner guarded', async (t) => {

@@ -44,8 +44,13 @@ PY
     ;;
   build-device)
     # TwilDiary's TMDB key comes from the environment (a secret in CI), never from the repo.
+    # Local device builds can read the TheTVDB key from the ignored keys file.
+    if [[ -z "${TWILDIARY_TVDB_KEY:-}" && -f .local/keys.env ]]; then
+      TWILDIARY_TVDB_KEY=$(sed -n 's/^TWILDIARY_TVDB_KEY=//p' .local/keys.env | tail -n 1)
+    fi
     xcodebuild build "${COMMON[@]}" -destination 'generic/platform=iOS' -configuration Release \
-      -derivedDataPath "$PWD/ios/.derived/device" ${TWILDIARY_TMDB_KEY:+TWILDIARY_TMDB_KEY="$TWILDIARY_TMDB_KEY"} ${TWILDIARY_GEMINI_KEY:+TWILDIARY_GEMINI_KEY="$TWILDIARY_GEMINI_KEY"} ${TWILDIARY_GROQ_KEY:+TWILDIARY_GROQ_KEY="$TWILDIARY_GROQ_KEY"} ${TWILDIARY_REQUESTY_KEY:+TWILDIARY_REQUESTY_KEY="$TWILDIARY_REQUESTY_KEY"} ${TWILDIARY_CF_ACCESS_CLIENT_ID:+TWILDIARY_CF_ACCESS_CLIENT_ID="$TWILDIARY_CF_ACCESS_CLIENT_ID"} ${TWILDIARY_CF_ACCESS_CLIENT_SECRET:+TWILDIARY_CF_ACCESS_CLIENT_SECRET="$TWILDIARY_CF_ACCESS_CLIENT_SECRET"} 2>&1 | tee "$ARTIFACTS/logs/device-build.log"
+      -derivedDataPath "$PWD/ios/.derived/device" ${TWILDIARY_TMDB_KEY:+TWILDIARY_TMDB_KEY="$TWILDIARY_TMDB_KEY"} ${TWILDIARY_TVDB_KEY:+TWILDIARY_TVDB_KEY="$TWILDIARY_TVDB_KEY"} ${TWILDIARY_GEMINI_KEY:+TWILDIARY_GEMINI_KEY="$TWILDIARY_GEMINI_KEY"} ${TWILDIARY_GROQ_KEY:+TWILDIARY_GROQ_KEY="$TWILDIARY_GROQ_KEY"} ${TWILDIARY_REQUESTY_KEY:+TWILDIARY_REQUESTY_KEY="$TWILDIARY_REQUESTY_KEY"} ${TWILDIARY_CF_ACCESS_CLIENT_ID:+TWILDIARY_CF_ACCESS_CLIENT_ID="$TWILDIARY_CF_ACCESS_CLIENT_ID"} ${TWILDIARY_CF_ACCESS_CLIENT_SECRET:+TWILDIARY_CF_ACCESS_CLIENT_SECRET="$TWILDIARY_CF_ACCESS_CLIENT_SECRET"} 2>&1 \
+      | sed 's/^\([[:space:]]*TWILDIARY_TVDB_KEY = \).*/\1[configured]/' | tee "$ARTIFACTS/logs/device-build.log"
     python3 -B ios/tools/test_verify_build_log.py
     python3 ios/tools/verify-build-log.py "$ARTIFACTS/logs/device-build.log" '** BUILD SUCCEEDED **'
     ;;

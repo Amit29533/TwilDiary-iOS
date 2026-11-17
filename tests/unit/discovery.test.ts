@@ -532,3 +532,70 @@ test('Tag search returns matching TMDb keywords and ignores one-letter queries',
   assert.deepEqual(await client.keywords('  isekai '), { items: [{ id: 237451, name: 'isekai' }] });
   assert.deepEqual(await client.keywords('a'), { items: [] });
 });
+
+test('Search regions filter by production country for films and television', async () => {
+  for (const query of ['country=fr', 'country=FRA', 'source=trakt&country=JP'])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+  const requests: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    requests.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(discoveryInput(new URLSearchParams('type=movie&country=FR&sort=trending')));
+  await client.discover(discoveryInput(new URLSearchParams('type=tv&country=KR&yearFrom=2020')));
+  assert.equal(requests[0]!.pathname, '/3/discover/movie');
+  assert.equal(requests[0]!.searchParams.get('with_origin_country'), 'FR');
+  assert.equal(requests[1]!.pathname, '/3/discover/tv');
+  assert.equal(requests[1]!.searchParams.get('with_origin_country'), 'KR');
+  assert.equal(requests[1]!.searchParams.get('with_original_language'), null);
+  assert.equal(requests[1]!.searchParams.get('first_air_date.gte'), '2020-01-01');
+
+  const fixture = await d1Fixture();
+  try {
+    const response = await discoveryRoute({
+      locals: {
+        owner: { subject: 'fixture-owner', email: 'owner@test.invalid' },
+        tmdbTransport: async (url: URL) => {
+          assert.equal(new URL(String(url)).searchParams.get('with_origin_country'), 'JP');
+          return reply({ page: 1, total_pages: 0, results: [] });
+        }
+      },
+      platform: { env: { DB: fixture.binding, TMDB_ACCESS_TOKEN: 'fixture-token' } },
+      url: new URL('https://diary.test/api/discovery?type=movie&country=JP')
+    } as never);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).originCountry, 'JP');
+  } finally {
+    fixture.close();
+  }
+});
+
+test('Search themes apply miniseries type and hidden-gem vote bounds to TMDB', async () => {
+  for (const query of [
+    'type=movie&searchTheme=miniseries',
+    'type=tv&searchTheme=random',
+    'source=trakt&searchTheme=hidden-gems'
+  ])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+
+  const requests: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    requests.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=tv&searchTheme=miniseries&sort=trending'))
+  );
+  assert.equal(requests[0]!.pathname, '/3/discover/tv');
+  assert.equal(requests[0]!.searchParams.get('with_type'), '2');
+  for (const type of ['movie', 'tv']) {
+    await client.discover(
+      discoveryInput(new URLSearchParams({ type, searchTheme: 'hidden-gems' }))
+    );
+    const request = requests.at(-1)!;
+    assert.equal(request.pathname, '/3/discover/' + type);
+    assert.equal(request.searchParams.get('vote_average.gte'), '7');
+    assert.equal(request.searchParams.get('vote_count.gte'), '50');
+    assert.equal(request.searchParams.get('vote_count.lte'), '500');
+  }
+});

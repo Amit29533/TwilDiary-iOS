@@ -495,19 +495,22 @@ import TwilDiaryCore
 
 /// Search with the AI pill on: Gemini's matches above the usual results, each with why it fits.
 struct SemanticSearchSection: View {
-    /// The description you sent (Search pressed); empty until then.
     let query: String
-    /// What's in the field now: sent at once when AI is turned on with text already there.
-    var typed = ""
+    let kind: CatalogSearchView.Kind
     @Environment(DiaryStore.self) private var store
     @State private var matches: [SemanticSearch.Match] = []
     @State private var loading = false
     @State private var failure: String?
     @State private var addingKey = false
     @State private var hasKey = SemanticSearch.key != nil
-    /// Sent when AI was turned on with text already typed.
-    @State private var asked = ""
-    private var description: String { query.isEmpty ? asked : query }
+    private var visible: [SemanticSearch.Match] {
+        matches.filter { match in
+            if let id = store.libraryIdentity(match.item), let title = store.title(id) {
+                return kind.includes(match.item.mediaType, anime: title.category.hasPrefix("anime"))
+            }
+            return kind.includes(match.item.mediaType, anime: match.item.isAnime == true)
+        }
+    }
     /// The last few descriptions' matches, for this app session: opening a title and coming back
     /// (or the list rebuilding the section) shows the same matches instead of asking again.
     @MainActor private static var answered: [String: [SemanticSearch.Match]] = [:]
@@ -539,15 +542,15 @@ struct SemanticSearchSection: View {
                 CineThinking(label: "Finding titles that match").padding(.vertical, 8)
             } else if let failure {
                 Text(failure).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            } else if description.isEmpty {
+            } else if query.isEmpty {
                 Text("Describe it, then press Search.").font(.system(size: 14)).foregroundStyle(.secondary)
-            } else if matches.isEmpty && !loading {
-                Text("Nothing matched that description. Try adding a detail.").font(.system(size: 14)).foregroundStyle(.secondary)
+            } else if visible.isEmpty && !loading {
+                Text(matches.isEmpty ? "Nothing matched that description. Try adding a detail." : "No AI matches in \(kind.rawValue).")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
-            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in row(match).cineReveal(order: index) }
+            ForEach(Array(visible.enumerated()), id: \.element.id) { index, match in row(match).cineReveal(order: index) }
         }
-        .onAppear { if query.isEmpty, asked.isEmpty { asked = typed } }
-        .task(id: description + (hasKey ? "|key" : "")) { await run(description) }
+        .task(id: query + (hasKey ? "|key" : "")) { await run(query) }
         .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         .accessibilityElement(children: .contain).accessibilityIdentifier("semantic-results")
     }
@@ -584,6 +587,7 @@ struct SemanticSearchSection: View {
 
     /// One request per description you send (never while typing).
     private func run(_ text: String) async {
+        matches = []; failure = nil; loading = false
         guard hasKey, !store.isPreview, !text.isEmpty else { return }
         // Already answered (back from a title, or the section rebuilt): show those, no new request.
         if let known = Self.answered[text] { matches = known; failure = nil; loading = false; return }

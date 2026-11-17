@@ -135,6 +135,7 @@ public struct ExternalProviderConfig: Codable, Equatable, Identifiable, Sendable
 /// Consolidated API & connection settings for all external metadata and sync providers.
 public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public var customTmdbToken: String?
+    public var customTvdbKey: String?
     public var trakt: ExternalProviderConfig
     public var mdblist: ExternalProviderConfig
     public var wetrakr: ExternalProviderConfig
@@ -143,12 +144,13 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     public var simkl: ExternalProviderConfig
 
     // "simkl2": an older "simkl" entry (Simkl's first integration, removed 2026-11-13) is never read.
-    private enum CodingKeys: String, CodingKey { case customTmdbToken, trakt, mdblist, wetrakr, simkl = "simkl2" }
+    private enum CodingKeys: String, CodingKey { case customTmdbToken, customTvdbKey, trakt, mdblist, wetrakr, simkl = "simkl2" }
     /// Settings saved before WeTrakr came back have no entry for it. Settings saved while Simkl was
     /// offered still hold a "simkl" entry; it isn't read (and the next save leaves it out).
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         customTmdbToken = try c.decodeIfPresent(String.self, forKey: .customTmdbToken)
+        customTvdbKey = try c.decodeIfPresent(String.self, forKey: .customTvdbKey)
         trakt = try c.decode(ExternalProviderConfig.self, forKey: .trakt)
         mdblist = try c.decode(ExternalProviderConfig.self, forKey: .mdblist)
         wetrakr = try c.decodeIfPresent(ExternalProviderConfig.self, forKey: .wetrakr) ?? ExternalProviderConfig(provider: .wetrakr)
@@ -157,6 +159,7 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
 
     public init(
         customTmdbToken: String? = nil,
+        customTvdbKey: String? = nil,
         trakt: ExternalProviderConfig = ExternalProviderConfig(provider: .trakt),
         mdblist: ExternalProviderConfig = ExternalProviderConfig(provider: .mdblist),
         wetrakr: ExternalProviderConfig = ExternalProviderConfig(provider: .wetrakr),
@@ -164,6 +167,8 @@ public struct ProviderConnectionSettings: Codable, Equatable, Sendable {
     ) {
         self.customTmdbToken = customTmdbToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         if self.customTmdbToken?.isEmpty == true { self.customTmdbToken = nil }
+        self.customTvdbKey = customTvdbKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if self.customTvdbKey?.isEmpty == true { self.customTvdbKey = nil }
         self.trakt = trakt
         self.mdblist = mdblist
         self.wetrakr = wetrakr
@@ -324,6 +329,7 @@ public final class UserDefaultsProviderSettingsStore: ProviderSettingsStoring, @
     private static func stripped(_ settings: ProviderConnectionSettings) -> ProviderConnectionSettings {
         var value = settings
         value.customTmdbToken = nil
+        value.customTvdbKey = nil
         for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr, .simkl] {
             var config = value.config(for: provider)
             config.accessToken = nil; config.apiKey = nil; config.refreshToken = nil

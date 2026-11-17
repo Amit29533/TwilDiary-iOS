@@ -117,6 +117,52 @@ import TwilDiaryCore
         return try JSONDecoder().decode(CastResponse.self, from: JSONSerialization.data(withJSONObject: ["cast": people, "stale": false]))
     }
 
+    static func fullCredits(_ route: CatalogRoute, token: String) async throws -> FullTitleCredits {
+        let television = route.kind == .tv
+        let path = television ? "tv/\(route.id)" : "movie/\(route.id)/credits"
+        let data = try await object(path, query: television ? ["append_to_response": "aggregate_credits"] : [:], token: token)
+        let credits = television ? data["aggregate_credits"] as? [String: Any] : data
+        guard let cast = credits?["cast"] as? [Any], let crew = credits?["crew"] as? [Any] else {
+            throw APIError.message("TMDB returned incomplete credits. Please try again.")
+        }
+        let creators: [Any] = (data["created_by"] as? [[String: Any]] ?? []).map { creator in
+            creator.merging(["job": "Creator"]) { _, job in job }
+        }
+        return FullTitleCredits(cast: creditPeople(cast, role: "character", group: "roles"),
+                                crew: creditPeople(creators + crew, role: "job", group: "jobs"))
+    }
+
+    private static func creditPeople(_ rows: [Any], role: String, group: String) -> [FullTitleCredits.Person] {
+        var indices: [Int: Int] = [:]
+        var people: [FullTitleCredits.Person] = []
+        for value in rows {
+            guard let row = value as? [String: Any], let id = row["id"] as? Int, id > 0,
+                  let name = creditLabel(row["name"]) else { continue }
+            let grouped = (row[group] as? [[String: Any]] ?? []).compactMap { creditLabel($0[role]) }
+            var roles = [creditLabel(row[role])].compactMap { $0 } + grouped
+            if roles.isEmpty, role == "job", let department = creditLabel(row["department"]) { roles = [department] }
+            let image = (row["profile_path"] as? String).flatMap { CatalogTools.image($0) == nil ? nil : $0 }
+            let index = indices[id] ?? people.count
+            let previous = indices[id].map { people[$0] }
+            var seen = Set<String>()
+            let merged = ((previous?.roles ?? []) + roles).filter { seen.insert($0).inserted }
+            let person = FullTitleCredits.Person(id: id, name: previous?.name ?? name,
+                                                profilePath: previous?.profilePath ?? image, roles: merged)
+            if previous == nil {
+                indices[id] = index
+                people.append(person)
+            } else {
+                people[index] = person
+            }
+        }
+        return people
+    }
+
+    private static func creditLabel(_ value: Any?) -> String? {
+        guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return text
+    }
+
     /// TMDB's recommendations for a title (More like this), same type only, at most 20.
     static func related(_ route: CatalogRoute, token: String) async throws -> RelatedResponse {
         let data = try await object("\(route.kind == .movie ? "movie" : "tv")/\(route.id)/recommendations", query: ["page": "1"], token: token)
@@ -136,9 +182,10 @@ import TwilDiaryCore
         let rating = (item["vote_average"] as? Double).flatMap { $0 > 0 && $0 <= 10 ? $0 : nil }
         let ids = item["genre_ids"] as? [Int] ?? []
         let genres = genreNames.filter { ids.contains(kind == .movie ? $0.movie ?? -1 : $0.tv ?? -1) }.map(\.name)
+        let isAnime = (item["original_language"] as? String).map { $0 == "ja" && ids.contains(16) }
         return CatalogItem(id: id, mediaType: kind, name: name, year: date.flatMap { Int($0.prefix(4)) }, overview: item["overview"] as? String ?? "",
                            posterPath: item["poster_path"] as? String, backdropPath: item["backdrop_path"] as? String, rating: rating,
-                           votes: item["vote_count"] as? Int ?? 0, genres: genres)
+                           votes: item["vote_count"] as? Int ?? 0, genres: genres, isAnime: isAnime)
     }
     /// The server's genre table (src/lib/discovery.ts `discoveryGenres`).
     static let genreNames: [(name: String, movie: Int?, tv: Int?)] = [
@@ -226,14 +273,19 @@ import TwilDiaryCore
     }
 
     /// People by name (`search/person`), each once, adults left out.
-    static func searchPeople(_ query: String, token: String) async throws -> [SearchPerson] {
-        let data = try await object("search/person", query: ["query": query, "page": "1", "include_adult": "false", "language": "en-US"], token: token)
+    static func searchPeople(_ query: String, page: Int, token: String) async throws -> SearchPeoplePage {
+        let data = try await object("search/person", query: ["query": query, "page": String(page), "include_adult": "false", "language": "en-US"], token: token)
+        guard let rows = data["results"] as? [[String: Any]], data["page"] as? Int == page,
+              let totalPages = data["total_pages"] as? Int else {
+            throw APIError.message("TMDB returned an incomplete people search.")
+        }
         var seen = Set<Int>()
-        return (data["results"] as? [[String: Any]] ?? []).compactMap { item in
+        let items: [SearchPerson] = rows.compactMap { item in
             guard item["adult"] as? Bool != true, let id = item["id"] as? Int, id > 0,
                   let name = item["name"] as? String, !name.isEmpty, seen.insert(id).inserted else { return nil }
             return SearchPerson(id: id, name: name, image: CatalogTools.image(item["profile_path"] as? String, size: "w185"))
         }
+        return SearchPeoplePage(items: items, page: page, totalPages: min(500, totalPages))
     }
 
     /// Keyword tags by name (`search/keyword`), at most 20.
@@ -367,7 +419,8 @@ import TwilDiaryCore
             let genre = DiscoveryGenre.all.first { $0.name == q["genre"] }
             let genreID = genre.flatMap { kind == .movie ? $0.movie : $0.tv }
             let keyword = q["keyword"].flatMap(Int.init) ?? (kind == .tv && !(q["genre"] ?? "").isEmpty && genreID == nil ? SearchLabData.tvGenreKeywords[q["genre"] ?? ""] : nil)
-            let lab = ["keywords", "genres", "certification", "yearFrom", "yearTo", "status", "language"].contains { !(q[$0] ?? "").isEmpty }
+            let lab = ["keywords", "genres", "certification", "yearFrom", "yearTo", "status", "language", "country", "searchTheme"]
+                .contains { !(q[$0] ?? "").isEmpty }
             trending = sort == "trending" && keyword == nil && (q["company"] ?? "").isEmpty && (q["network"] ?? "").isEmpty && !lab
             if trending {
                 path = "trending/\(type)/week"
@@ -393,14 +446,22 @@ import TwilDiaryCore
                 if let to = q["yearTo"], !to.isEmpty { params[dateField + ".lte"] = to + "-12-31" }
                 if kind == .tv, let status = q["status"], let code = ["returning": "0", "production": "2", "ended": "3", "canceled": "4"][status] { params["with_status"] = code }
                 if let language = q["language"], !language.isEmpty { params["with_original_language"] = language }
+                if let country = q["country"], !country.isEmpty { params["with_origin_country"] = country }
+                if kind == .tv, q["searchTheme"] == "miniseries" { params["with_type"] = "2" }
                 if kind == .tv, let network = q["network"], !network.isEmpty { params["with_networks"] = network }
                 if let year = q["year"], !year.isEmpty { params[kind == .movie ? "primary_release_year" : "first_air_date_year"] = year }
                 // A tag, network or studio browses everything that has it: niche tags (anime, smaller
                 // films) mostly have few votes, and a 20-vote floor hid about two thirds of them. By
                 // rating, a few votes still can't put a title first.
                 let browsing = keyword != nil || !keywords.isEmpty || !(q["company"] ?? "").isEmpty || !(q["network"] ?? "").isEmpty
-                params["vote_count.gte"] = sort == "rating" ? (browsing ? "50" : "200") : (browsing ? "0" : "20")
-                if minimum > 0 { params["vote_average.gte"] = q["minimum"] }
+                if q["searchTheme"] == "hidden-gems" {
+                    params["vote_count.gte"] = "50"
+                    params["vote_count.lte"] = "500"
+                    params["vote_average.gte"] = String(max(minimum, 7))
+                } else {
+                    params["vote_count.gte"] = sort == "rating" ? (browsing ? "50" : "200") : (browsing ? "0" : "20")
+                    if minimum > 0 { params["vote_average.gte"] = q["minimum"] }
+                }
                 let today = Date.now.formatted(.iso8601.year().month().day())
                 if (params[dateField + ".lte"] ?? "9999") > today { params[dateField + ".lte"] = today }
             }

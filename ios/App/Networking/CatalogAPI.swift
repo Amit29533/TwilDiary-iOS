@@ -6,6 +6,13 @@ extension DiaryStore {
         guard DiarySearchTools.ready(query), (1...500).contains(page) else { throw APIError.message("Enter a title or IMDb ID (2–200 characters)") }
         #if DEBUG
         if isPreview {
+            if ProcessInfo.processInfo.arguments.contains("--ui-search-regression"), query == "Animation sample" {
+                let items = page == 1
+                    ? [CatalogItem(id: 901001, mediaType: .movie, name: "Sample anime film", isAnime: true),
+                       CatalogItem(id: 901002, mediaType: .tv, name: "Sample western animation", isAnime: false)]
+                    : [CatalogItem(id: 901003, mediaType: .tv, name: "Sample anime show", isAnime: true)]
+                return DiarySearchPage(library: [], online: items, page: page, totalPages: 2)
+            }
             if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation"), query == "Frieren: Beyond Journey’s End" {
                 return DiarySearchPage(library: [], online: [CatalogItem(id: 209867, mediaType: .tv, name: query, year: 2023)], page: 1, totalPages: 1)
             }
@@ -24,7 +31,7 @@ extension DiaryStore {
             var library: [SearchLibraryTitle] = [], online: [CatalogItem] = []
             for item in found.items {
                 if let saved = workspace.activeTitles.first(where: { $0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv) }) {
-                    if !library.contains(where: { $0.id == saved.id }) { library.append(SearchLibraryTitle(saved)) }
+                    if !library.contains(where: { $0.id == saved.id }) { library.append(SearchLibraryTitle(saved, matchedName: item.name)) }
                 } else { online.append(item) }
             }
             return DiarySearchPage(library: library, online: online, page: found.page, totalPages: found.totalPages)
@@ -62,6 +69,22 @@ extension DiaryStore {
         // TMDB from the phone with your key; the diary server is the backup.
         if let token = TMDBDirect.token(self), let direct = try? await TMDBDirect.cast(route, token: token) { return direct }
         return try await read(CatalogTools.apiPath("/api/metadata/cast", query: ["type": route.kind.rawValue, "id": String(route.id)]))
+    }
+    func fullCredits(_ route: CatalogRoute) async throws -> FullTitleCredits {
+        #if DEBUG
+        if isPreview {
+            let previewCast = try await cast(route).cast.map { person in
+                FullTitleCredits.Person(id: person.id, name: person.name, profilePath: person.profilePath,
+                                        roles: person.character.isEmpty ? [] : [person.character])
+            }
+            return FullTitleCredits(cast: previewCast, crew: [])
+        }
+        #endif
+        if let token = TMDBDirect.token(self) {
+            do { return try await TMDBDirect.fullCredits(route, token: token) }
+            catch { try Task.checkCancellation() }
+        }
+        return try await read(CatalogTools.apiPath("/api/metadata/credits", query: ["type": route.kind.rawValue, "id": String(route.id)]))
     }
     func related(_ route: CatalogRoute) async throws -> RelatedResponse {
         #if DEBUG

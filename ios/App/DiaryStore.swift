@@ -694,6 +694,12 @@ import TwilDiaryCore
         invalidateDiscovery()
         return true
     }
+    @discardableResult func updateCustomTvdbKey(_ key: String?) -> Bool {
+        var next = providerSettings
+        let trimmed = key?.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.customTvdbKey = trimmed?.isEmpty == false ? trimmed : nil
+        return persistProviderSettings(next)
+    }
     @discardableResult func updateProviderConfig(_ config: ExternalProviderConfig) -> Bool {
         var next = providerSettings; next.setConfig(config)
         return persistProviderSettings(next)

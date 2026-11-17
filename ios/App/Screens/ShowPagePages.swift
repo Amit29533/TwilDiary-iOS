@@ -676,81 +676,114 @@ struct CastCreditsPage: View {
     let year: Int?
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @State private var crewTab = false
-    @State private var characters: [AniCharacter] = []
-    @State private var cast: [CastPerson] = []
-    @State private var crew: [TitleCrewMember] = []
-    @State private var failure: String?
+    private enum Tab: String { case cast = "Cast", crew = "Crew", voices = "Voice cast" }
+    @State private var selection: Tab?
+    @State private var characters: [AniCharacter]?
+    @State private var credits: FullTitleCredits?
+    @State private var creditsFailure: String?
+    @State private var voiceFailure: String?
+    private var selected: Tab { selection ?? (anime && characters?.isEmpty != true ? .voices : .cast) }
+
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 4) {
-                    segment(anime ? "Voice cast" : "Cast", on: !crewTab) { crewTab = false }
-                    segment("Crew", on: crewTab) { crewTab = true }
+                    if anime { segment(.voices) }
+                    segment(.cast)
+                    segment(.crew)
                 }.padding(4).background(Color.primary.opacity(0.06), in: Capsule())
-                if crewTab { crewList } else if anime && !characters.isEmpty { characterList } else { castList }
-                if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                creditContent
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ShowPageTitle(title: anime ? "Cast and characters" : "Cast and crew", subtitle: title) }
             .task(id: route) { await load() }
     }
-    private func segment(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
+    private func segment(_ tab: Tab) -> some View {
+        let on = selected == tab
+        return Button { selection = tab } label: {
+            Text(tab.rawValue).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
                 .frame(maxWidth: .infinity).frame(height: 40)
                 .background { if on { Capsule().fill(theme.accent) } }
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
-    private var characterList: some View {
+
+    @ViewBuilder private var creditContent: some View {
+        if selected == .voices {
+            if let voiceFailure {
+                RetryNotice(message: voiceFailure) { Task { await loadCharacters() } }
+            } else if let characters {
+                if characters.isEmpty { Text("No voice cast listed yet.").font(.subheadline).foregroundStyle(.secondary) }
+                else { characterList(characters) }
+            } else {
+                DiaryLoadingPlaceholder(label: "Loading voice cast", layout: .list(rows: 5))
+            }
+        } else if let creditsFailure {
+            RetryNotice(message: creditsFailure) { Task { await loadCredits() } }
+        } else if let credits {
+            let people = selected == .crew ? credits.crew : credits.cast
+            if people.isEmpty {
+                Text(selected == .crew ? "No crew listed yet." : "No cast listed yet.").font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                peopleList(people)
+            }
+        } else {
+            DiaryLoadingPlaceholder(label: "Loading credits", layout: .list(rows: 5))
+        }
+    }
+
+    private func characterList(_ characters: [AniCharacter]) -> some View {
         LazyVStack(spacing: 10) {
             ForEach(characters) { character in
-                HStack(spacing: 12) {
-                    NavigationLink(value: CharacterRoute(id: character.id, sourceTitle: title)) {
-                        HStack(spacing: 12) {
-                            Artwork(path: character.image, title: character.name).frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                                if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
-                                if let actor = character.voiceActor {
-                                    Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                                    Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Color(themed: "#e6e1ee")).lineLimit(1)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        NavigationLink(value: CharacterRoute(id: character.id, sourceTitle: title)) {
+                            HStack(spacing: 12) {
+                                Artwork(path: character.image, title: character.name)
+                                    .frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                                    if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
+                                    if let actor = character.voiceActor {
+                                        Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                                        Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                                    }
                                 }
-                            }
-                            Spacer(minLength: 0)
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                    if let actor = character.voiceActor {
+                                Spacer(minLength: 0)
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                        if let actor = character.voiceActor {
+                            NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
+                                Artwork(path: actor.image, title: actor.name)
+                                    .frame(width: 64, height: 78).clipShape(RoundedRectangle(cornerRadius: 12))
+                            }.buttonStyle(.springPress).accessibilityLabel(actor.name)
+                        }
+                    }
+                    ForEach(character.additionalVoiceActors ?? [], id: \.id) { actor in
                         NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
-                            Artwork(path: actor.image, title: actor.name).frame(width: 64, height: 78).clipShape(RoundedRectangle(cornerRadius: 12))
-                        }.buttonStyle(.springPress).accessibilityLabel(actor.name)
+                            HStack(spacing: 10) {
+                                Artwork(path: actor.image, title: actor.name)
+                                    .frame(width: 34, height: 44).clipShape(RoundedRectangle(cornerRadius: 6))
+                                Text(actor.name).font(.subheadline.weight(.medium)).foregroundStyle(HomeStyle.primary)
+                                Spacer(minLength: 0)
+                                DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel("Voiced by " + actor.name)
                     }
                 }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }
         }
     }
-    private var castList: some View {
+    private func peopleList(_ people: [FullTitleCredits.Person]) -> some View {
         LazyVStack(spacing: 10) {
-            ForEach(cast) { person in
-                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.character)) {
-                    personRow(name: person.name, detail: person.character, image: CatalogTools.image(person.profilePath, size: "w185"))
+            ForEach(people) { person in
+                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.roles.first)) {
+                    personRow(name: person.name, roles: person.roles, image: CatalogTools.image(person.profilePath, size: "w185"))
                 }.buttonStyle(.plain)
             }
-            if cast.isEmpty && failure == nil { Text("No cast listed yet.").font(.subheadline).foregroundStyle(.secondary) }
         }
     }
-    private var crewList: some View {
-        LazyVStack(spacing: 10) {
-            ForEach(crew) { person in
-                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.job)) {
-                    personRow(name: person.name, detail: person.job, image: CatalogTools.image(person.profilePath, size: "w185"))
-                }.buttonStyle(.plain)
-            }
-            if crew.isEmpty && failure == nil { Text("No crew listed yet.").font(.subheadline).foregroundStyle(.secondary) }
-        }
-    }
-    private func personRow(name: String, detail: String, image: String?) -> some View {
+    private func personRow(name: String, roles: [String], image: String?) -> some View {
         HStack(spacing: 12) {
             if image == nil {
                 Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
@@ -760,8 +793,11 @@ struct CastCreditsPage: View {
                 Artwork(path: image, title: name).frame(width: 54, height: 54).clipShape(Circle())
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                Text(detail).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
+                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                if !roles.isEmpty {
+                    Text(roles.joined(separator: " · ")).font(.system(size: 13.5))
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
@@ -769,10 +805,30 @@ struct CastCreditsPage: View {
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07))).contentShape(Rectangle())
     }
     private func load() async {
-        failure = nil
-        if anime { characters = (try? await AniListClient.shared.characters(title: title, year: year, movie: route.kind == .movie, tmdbID: route.id)) ?? [] }
-        do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled && characters.isEmpty { failure = error.localizedDescription } }
-        crew = (try? await TitleExtrasCache.load(store: store, route: route).crew) ?? []
+        async let people: Void = loadCredits()
+        async let voices: Void = loadCharacters()
+        _ = await (people, voices)
+    }
+
+    private func loadCredits() async {
+        guard credits == nil else { return }
+        creditsFailure = nil
+        do {
+            let result = try await store.fullCredits(route)
+            try Task.checkCancellation()
+            credits = result
+        } catch { if !Task.isCancelled { creditsFailure = error.localizedDescription } }
+    }
+
+    private func loadCharacters() async {
+        guard anime, characters == nil else { return }
+        voiceFailure = nil
+        do {
+            let result = try await AniListClient.shared.characters(title: title, year: year, movie: route.kind == .movie,
+                                                                  tmdbID: route.id, full: true)
+            try Task.checkCancellation()
+            characters = result
+        } catch { if !Task.isCancelled { voiceFailure = error.localizedDescription } }
     }
 }
 

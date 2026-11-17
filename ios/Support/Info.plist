@@ -20,6 +20,8 @@
 	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
 	<key>TwilDiaryTMDBKey</key>
 	<string>$(TWILDIARY_TMDB_KEY)</string>
+	<key>TwilDiaryTVDBKey</key>
+	<string>$(TWILDIARY_TVDB_KEY)</string>
 	<key>TwilDiaryGeminiKey</key>
 	<string>$(TWILDIARY_GEMINI_KEY)</string>
 	<key>TwilDiaryGroqKey</key>

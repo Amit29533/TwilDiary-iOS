@@ -37,6 +37,7 @@ targets:
         TWILDIARY_MDBLIST_CLIENT_ID: 'Eag63uTbztrOAYB4kh0kganxsR4aqwm6MDz9tmdb'
         # TMDB key: never in git (public repo). Passed when building: TWILDIARY_TMDB_KEY=… (see CODEMAGIC.md).
         TWILDIARY_TMDB_KEY: ''
+        TWILDIARY_TVDB_KEY: ''
         # Gemini key for search by description: never in git either (TWILDIARY_GEMINI_KEY=… when building).
         TWILDIARY_GEMINI_KEY: ''
         # Groq keys (the AI backup), the same way: TWILDIARY_GROQ_KEY=… when building, commas between several.

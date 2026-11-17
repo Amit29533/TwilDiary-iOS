@@ -17,6 +17,7 @@ struct AniCharacter: Codable, Hashable, Sendable, Identifiable {
     /// MAIN, SUPPORTING or BACKGROUND.
     let role: String?
     let voiceActor: AniPerson?
+    var additionalVoiceActors: [AniPerson]? = nil
     var roleName: String { role == "MAIN" ? "Main" : role == "SUPPORTING" ? "Supporting" : "Background" }
 }
 /// An anime related to another on AniList: how ("SEQUEL", "SIDE_STORY"…) and which.
@@ -309,9 +310,10 @@ actor AniListClient {
 
     /// The anime's characters, main roles first, each with their Japanese voice actor. Empty when
     /// AniList has no anime of that name released within a year of `year` (better none than wrong).
-    func characters(title: String, year: Int?, movie: Bool, tmdbID: Int? = nil) async throws -> [AniCharacter] {
+    func characters(title: String, year: Int?, movie: Bool, tmdbID: Int? = nil, full: Bool = false) async throws -> [AniCharacter] {
         let key = "\(title.lowercased())|\(year ?? 0)|\(movie)"
-        if let saved = characterLists[key] {
+        let cacheKey = full ? key + "|full" : key
+        if let saved = characterLists[cacheKey] {
             if let id = mediaIDs[key], let tmdbID, tmdbID > 0, mediaKinds[key] == (movie ? .movie : .tv) {
                 tmdbTitles[id] = CatalogRoute(kind: movie ? .movie : .tv, id: tmdbID)
             }
@@ -329,19 +331,51 @@ actor AniListClient {
         }
         // A film matches AniList's MOVIE format; a show anything else.
         guard let match = candidates.first(where: { ($0.format == "MOVIE") == movie }) ?? candidates.first else {
-            characterLists[key] = []; return []
+            characterLists[cacheKey] = []; return []
         }
         struct Characters: Decodable { let Media: MediaResult; struct MediaResult: Decodable { let characters: Connection } }
-        struct Connection: Decodable { let edges: [Edge] }
-        struct Edge: Decodable { let role: String?; let node: Node; let voiceActors: [Staff] }
-        let page: Characters = try await query("""
-            query($id: Int) { Media(id: $id) { characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) { edges { role node { id name { full native } image { large } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
-            """, ["id": match.id])
-        let list = page.Media.characters.edges.map { edge in
-            AniCharacter(id: edge.node.id, name: edge.node.name.full ?? "Unknown", native: edge.node.name.native, image: edge.node.image?.large,
-                         role: edge.role, voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) })
+        struct Connection: Decodable {
+            let edges: [Edge]
+            let pageInfo: PageInfo
+            struct PageInfo: Decodable { let hasNextPage: Bool }
         }
-        characterLists[key] = list
+        struct Edge: Decodable { let role: String?; let node: Node; let voiceActors: [Staff] }
+        var list: [AniCharacter] = []
+        var seenCharacters = Set<Int>()
+        var pageNumber = 1
+        while true {
+            try Task.checkCancellation()
+            let page: Characters = try await query("""
+                query($id: Int, $page: Int, $size: Int) {
+                  Media(id: $id) {
+                    characters(sort: [ROLE, RELEVANCE, ID], page: $page, perPage: $size) {
+                      pageInfo { hasNextPage }
+                      edges {
+                        role
+                        node { id name { full native } image { large } }
+                        voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } }
+                      }
+                    }
+                  }
+                }
+                """, ["id": match.id, "page": pageNumber, "size": full ? 50 : 25])
+            let connection = page.Media.characters
+            let countBefore = list.count
+            for edge in connection.edges where seenCharacters.insert(edge.node.id).inserted {
+                var seenVoices = Set<Int>()
+                let voices = edge.voiceActors.filter { seenVoices.insert($0.id).inserted }.map {
+                    AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large)
+                }
+                list.append(AniCharacter(id: edge.node.id, name: edge.node.name.full ?? "Unknown", native: edge.node.name.native,
+                                         image: edge.node.image?.large, role: edge.role, voiceActor: voices.first,
+                                         additionalVoiceActors: full ? Array(voices.dropFirst()) : nil))
+            }
+            guard full, connection.pageInfo.hasNextPage else { break }
+            guard list.count > countBefore else { throw APIError.message("AniList returned a repeated credits page. Please try again.") }
+            pageNumber += 1
+        }
+        try Task.checkCancellation()
+        characterLists[cacheKey] = list
         mediaIDs[key] = match.id
         if match.format == "MOVIE" { mediaKinds[key] = .movie }
         else if ["TV", "TV_SHORT"].contains(match.format ?? "") { mediaKinds[key] = .tv }
@@ -647,19 +681,33 @@ actor AniListClient {
     /// Pull to refresh asks AniList again.
     func forgetStats() { userStats = [:]; userCharacters = [:] }
 
-    func searchPeople(_ search: String) async throws -> [SearchPerson] {
+    func searchPeople(_ search: String, page: Int) async throws -> SearchPeoplePage {
         struct Reply: Decodable {
             let characters: CharacterPage
             let performers: PerformerPage
-            struct CharacterPage: Decodable { let characters: [Node] }
-            struct PerformerPage: Decodable { let staff: [Performer] }
+            struct CharacterPage: Decodable { let characters: [Node]; let pageInfo: PageInfo }
+            struct PerformerPage: Decodable { let staff: [Performer]; let pageInfo: PageInfo }
+            struct PageInfo: Decodable { let hasNextPage: Bool }
             struct Performer: Decodable { let id: Int; let name: Name; let image: Image?; let primaryOccupations: [String]? }
         }
         // AniList permits only one collection per Page, so each collection has
         // its own aliased page within the same request.
-        let reply: Reply = try await query("query($search: String) { characters: Page(perPage: 12) { characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } } } performers: Page(perPage: 12) { staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations } } }", ["search": search])
-        return reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
+        let reply: Reply = try await query("""
+            query($search: String, $page: Int) {
+              characters: Page(page: $page, perPage: 12) {
+                pageInfo { hasNextPage }
+                characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } }
+              }
+              performers: Page(page: $page, perPage: 12) {
+                pageInfo { hasNextPage }
+                staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations }
+              }
+            }
+            """, ["search": search, "page": page])
+        let items = reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
             + reply.performers.staff.filter { $0.primaryOccupations?.contains(where: { $0.localizedCaseInsensitiveContains("voice") }) == true }.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "voice") } }
+        let hasMore = reply.characters.pageInfo.hasNextPage || reply.performers.pageInfo.hasNextPage
+        return SearchPeoplePage(items: items, page: page, totalPages: hasMore ? page + 1 : page)
     }
 
     private var avatarCache: (date: Date, values: [ProfileAvatarChoice])?

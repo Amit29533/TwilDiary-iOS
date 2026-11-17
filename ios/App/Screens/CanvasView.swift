@@ -286,7 +286,18 @@ struct CanvasMosaic: View {
 
 /// A 2 × 2 poster collage with the list's name and owner.
 struct CanvasListCard: View {
-    let list: CanvasList
+    let title: String
+    let posters: [String]
+    var owner: String? = nil
+
+    init(list: CanvasList) {
+        self.init(title: list.name, posters: list.posters, owner: list.user)
+    }
+
+    init(title: String, posters: [String], owner: String? = nil) {
+        self.title = title; self.posters = posters; self.owner = owner
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Owner's layout: three posters fanned left to right, the first on top and each next one
@@ -299,7 +310,7 @@ struct CanvasListCard: View {
                         let step = max(0, (proxy.size.width - width) / 2)
                         ZStack(alignment: .topLeading) {
                             ForEach([2, 1, 0], id: \.self) { index in
-                                Artwork(path: index < list.posters.count ? CatalogTools.image(list.posters[index], size: "w185") : nil, title: list.name)
+                                Artwork(path: index < posters.count ? CatalogTools.image(posters[index], size: "w185") : nil, title: title)
                                     .frame(width: width, height: height)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.black.opacity(0.6), lineWidth: 1.5))
@@ -310,9 +321,11 @@ struct CanvasListCard: View {
                 }
                 .padding([.horizontal, .top], 10)
             VStack(alignment: .leading, spacing: 4) {
-                Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Color(themed: "#f3f0f7"))
+                Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(Color(themed: "#f3f0f7"))
                     .lineLimit(2, reservesSpace: true).truncationMode(.tail).multilineTextAlignment(.leading)
-                Text("by " + list.user).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                if let owner {
+                    Text("by " + owner).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                }
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         }.cardSurface(20)
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))

@@ -42,3 +42,7 @@ not in the repository (it is public): add it to Codemagic as a secure environmen
 `TWILDIARY_TMDB_KEY`, and `ios/scripts/ci.sh build-device` passes it into the build. Locally it lives
 in the ignored `.local/keys.env`. Without it the app uses your own TMDB key from Settings, or the
 server's.
+
+TheTVDB follows the same build setting pattern with `TWILDIARY_TVDB_KEY`.
+The device build reads this from the secure build environment or from the ignored local
+`.local/keys.env`. A key saved under Connections → TheTVDB takes priority over the bundled key.

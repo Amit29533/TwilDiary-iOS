@@ -107,6 +107,10 @@ export interface DiscoveryQuery {
   status?: 'returning' | 'ended' | 'canceled' | 'production' | undefined;
   /** Search Lab: original language (ISO 639-1). */
   language?: string | undefined;
+  /** Browsing by production country (ISO 3166-1 alpha-2). */
+  country?: string | undefined;
+  /** Search presets with provider filters not exposed by Search Lab. */
+  searchTheme?: 'miniseries' | 'hidden-gems' | undefined;
 }
 export interface DiscoveryItem extends SearchMatch {
   backdropPath: string | null;

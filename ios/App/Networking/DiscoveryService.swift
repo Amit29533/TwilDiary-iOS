@@ -39,7 +39,14 @@ extension DiscoveryServing {
                 return try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
             }
             if let picks { return try await store.read(CatalogTools.apiPath("/api/discovery", query: picks)) }
-            return try await store.read(key)
+            let reply: CatalogPage = try await store.read(key)
+            if let country = query["country"], reply.originCountry != country {
+                throw APIError.message("Connect TMDB in Profile to browse by production country.")
+            }
+            if let theme = query["searchTheme"], reply.searchTheme != theme {
+                throw APIError.message("Connect TMDB in Profile to browse this theme.")
+            }
+            return reply
         }
         guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
         return reconcileLibrary(result)

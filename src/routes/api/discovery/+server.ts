@@ -136,5 +136,9 @@ export const GET: RequestHandler = (event) =>
         )?.id
       }));
     }
-    return result;
+    return {
+      ...result,
+      ...(input.country ? { originCountry: input.country } : {}),
+      ...(input.searchTheme ? { searchTheme: input.searchTheme } : {})
+    };
   });

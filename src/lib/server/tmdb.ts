@@ -80,6 +80,37 @@ const int = (value: unknown, min: number, max: number) => {
 const text = (value: unknown, max: number) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
 const path = (value: unknown) => (typeof value === 'string' && tmdbImage(value) ? value : null);
+function creditPeople(
+  rows: unknown[],
+  role: 'character' | 'job',
+  group: 'roles' | 'jobs'
+) {
+  const people = new Map<
+    number,
+    { id: number; name: string; profilePath: string | null; roles: Set<string> }
+  >();
+  for (const value of rows) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const row = value as RecordValue;
+    const id = row.id as number;
+    const name = text(row.name, 200);
+    if (!Number.isSafeInteger(id) || id < 1 || id > 9999999999 || !name) continue;
+    const person = people.get(id) ?? { id, name, profilePath: null, roles: new Set<string>() };
+    person.profilePath ??= path(row.profile_path);
+    const roles = [text(row[role], 200)];
+    const grouped = row[group];
+    if (Array.isArray(grouped)) {
+      for (const item of grouped)
+        if (item && typeof item === 'object' && !Array.isArray(item))
+          roles.push(text((item as RecordValue)[role], 200));
+    }
+    const namedRoles = roles.filter(Boolean);
+    if (role === 'job' && !namedRoles.length) namedRoles.push(text(row.department, 200));
+    for (const label of namedRoles) if (label) person.roles.add(label);
+    people.set(id, person);
+  }
+  return [...people.values()].map((person) => ({ ...person, roles: [...person.roles] }));
+}
 const date = (value: unknown) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(value + 'T00:00:00Z');
@@ -116,7 +147,11 @@ export function createTmdb(
   transport: typeof fetch = fetch,
   options: { maxResponseBytes?: number } = {}
 ) {
-  async function request(endpoint: string, params: Record<string, string> = {}) {
+  async function request(
+    endpoint: string,
+    params: Record<string, string> = {},
+    maxBytes = 2_000_000
+  ) {
     if (!token?.trim())
       throw new ApiError(
         503,
@@ -158,7 +193,7 @@ export function createTmdb(
           const { done, value } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > Math.min(2_000_000, options.maxResponseBytes ?? 2_000_000)) {
+          if (size > Math.min(maxBytes, options.maxResponseBytes ?? maxBytes)) {
             await reader.cancel();
             throw upstream();
           }
@@ -385,6 +420,23 @@ export function createTmdb(
         })
         .slice(0, 24);
     },
+    async fullCredits(mediaType: 'movie' | 'tv', id: number) {
+      providerInput(mediaType, id);
+      const data = mediaType === 'tv'
+        ? await request(`tv/${id}`, { append_to_response: 'aggregate_credits' }, 8_000_000)
+        : await request(`movie/${id}/credits`, {}, 8_000_000);
+      const credits = mediaType === 'tv' ? record(data.aggregate_credits) : data;
+      if (!Array.isArray(credits.cast) || !Array.isArray(credits.crew)) throw upstream();
+      const creators = Array.isArray(data.created_by)
+        ? data.created_by.flatMap((person) =>
+            person && typeof person === 'object' ? [{ ...person, job: 'Creator' }] : []
+          )
+        : [];
+      return {
+        cast: creditPeople(credits.cast, 'character', 'roles'),
+        crew: creditPeople([...creators, ...credits.crew], 'job', 'jobs')
+      };
+    },
     async discover(input: DiscoveryQuery, seedId?: number): Promise<DiscoveryPage> {
       if (input.source === 'because') providerInput(input.type, seedId);
       const genre = discoveryGenres.find((g) => g.name === input.genre);
@@ -404,7 +456,9 @@ export function createTmdb(
         input.yearFrom ||
         input.yearTo ||
         input.status ||
-        input.language
+        input.language ||
+        input.country ||
+        input.searchTheme
       );
       const trending =
         input.source === 'tmdb' &&
@@ -455,12 +509,20 @@ export function createTmdb(
             input.status
           ];
         if (input.language) params.with_original_language = input.language;
+        if (input.country) params.with_origin_country = input.country;
+        if (input.searchTheme === 'miniseries') params.with_type = '2';
         if (input.network && input.type === 'tv') params.with_networks = String(input.network);
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
             input.year;
-        params['vote_count.gte'] = input.sort === 'rating' ? '200' : '20';
-        if (input.minimum) params['vote_average.gte'] = String(input.minimum);
+        if (input.searchTheme === 'hidden-gems') {
+          params['vote_count.gte'] = '50';
+          params['vote_count.lte'] = '500';
+          params['vote_average.gte'] = String(Math.max(input.minimum, 7));
+        } else {
+          params['vote_count.gte'] = input.sort === 'rating' ? '200' : '20';
+          if (input.minimum) params['vote_average.gte'] = String(input.minimum);
+        }
         const today = new Date().toISOString().slice(0, 10);
         const upper = input.type === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte';
         if (!params[upper] || params[upper] > today) params[upper] = today;
@@ -529,14 +591,24 @@ export function createTmdb(
           'invalid_input',
           'Enter 2–200 characters and choose a valid search page'
         );
+      const searchMatch = (value: unknown, kind?: 'movie' | 'tv'): SearchMatch | null => {
+        const found = match(value, kind);
+        const item = record(value);
+        if (!found) return null;
+        const language = item.original_language;
+        const genres = item.genre_ids;
+        return typeof language === 'string' && Array.isArray(genres)
+          ? { ...found, isAnime: language === 'ja' && genres.includes(16) }
+          : found;
+      };
       if (/^tt\d{7,10}$/i.test(query)) {
         const data = await request(`find/${query.toLowerCase()}`, { external_source: 'imdb_id' });
         const movies = Array.isArray(data.movie_results) ? data.movie_results : [];
         const shows = Array.isArray(data.tv_results) ? data.tv_results : [];
         return {
           items: [
-            ...(type !== 'tv' ? movies.map((v) => match(v, 'movie')) : []),
-            ...(type !== 'movie' ? shows.map((v) => match(v, 'tv')) : [])
+            ...(type !== 'tv' ? movies.map((v) => searchMatch(v, 'movie')) : []),
+            ...(type !== 'movie' ? shows.map((v) => searchMatch(v, 'tv')) : [])
           ].filter((v): v is SearchMatch => !!v),
           page: 1,
           totalPages: 1
@@ -550,7 +622,7 @@ export function createTmdb(
       if (!Array.isArray(data.results) || data.results.length > 100) throw upstream();
       return {
         items: data.results
-          .map((v) => match(v, type === 'all' ? undefined : (type as 'movie' | 'tv')))
+          .map((v) => searchMatch(v, type === 'all' ? undefined : (type as 'movie' | 'tv')))
           .filter((v): v is SearchMatch => !!v),
         page: int(data.page, 1, 500),
         totalPages: Math.min(int(data.total_pages, 0, 1000000), 500)

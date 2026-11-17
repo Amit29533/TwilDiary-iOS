@@ -7,8 +7,12 @@ public struct SearchLibraryTitle: Decodable, Identifiable, Sendable {
     public let category: String
     public let posterPath: String?
     public let localPoster: String?
+    public let matchedName: String?
     public var artwork: String? { localPoster ?? CatalogTools.image(posterPath) }
-    public init(_ title: MediaTitle) { id = title.id; name = title.name; year = title.year; category = title.category; posterPath = nil; localPoster = title.poster }
+    public init(_ title: MediaTitle, matchedName: String? = nil) {
+        id = title.id; name = title.name; year = title.year; category = title.category
+        posterPath = nil; localPoster = title.poster; self.matchedName = matchedName
+    }
 }
 
 public struct DiarySearchPage: Decodable, Sendable {

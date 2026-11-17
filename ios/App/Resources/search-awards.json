@@ -1,0 +1,893 @@
+[
+  {
+    "ceremony": "emmy",
+    "year": 2026,
+    "source": "https://www.televisionacademy.com/awards/nominees-winners/2026",
+    "categories": [
+      {
+        "title": "Outstanding Drama Series",
+        "kind": "tv",
+        "winners": [
+          "The Pitt"
+        ],
+        "nominees": [
+          "The Diplomat",
+          "The Gilded Age",
+          "A Knight of the Seven Kingdoms",
+          "Paradise",
+          "Pluribus",
+          "Slow Horses",
+          "Your Friends & Neighbors"
+        ]
+      },
+      {
+        "title": "Outstanding Comedy Series",
+        "kind": "tv",
+        "winners": [
+          "Widow’s Bay"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "The Bear",
+          "Hacks",
+          "Margo’s Got Money Troubles",
+          "Nobody Wants This",
+          "Only Murders In The Building",
+          "Shrinking"
+        ]
+      },
+      {
+        "title": "Outstanding Limited or Anthology Series",
+        "kind": "tv",
+        "winners": [
+          "DTF St. Louis"
+        ],
+        "nominees": [
+          "All Her Fault",
+          "The Beast in Me",
+          "Beef",
+          "Love Story: John F. Kennedy Jr. & Carolyn Bessette"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "bafta",
+    "year": 2026,
+    "source": "https://www.bafta.org/awards/television/?award-year=2026",
+    "categories": [
+      {
+        "title": "Drama Series",
+        "kind": "tv",
+        "winners": [
+          "Code of Silence"
+        ],
+        "nominees": [
+          "Blue Lights",
+          "This City Is Ours",
+          "A Thousand Blows"
+        ]
+      },
+      {
+        "title": "Limited Drama",
+        "kind": "tv",
+        "winners": [
+          "Adolescence"
+        ],
+        "nominees": [
+          "I Fought The Law",
+          "Trespasses",
+          "What It Feels Like for a Girl"
+        ]
+      },
+      {
+        "title": "Scripted Comedy",
+        "kind": "tv",
+        "winners": [
+          "Amandaland"
+        ],
+        "nominees": [
+          "Big Boys",
+          "How Are You? It's Alan (Partridge)",
+          "Things You Should Have Done"
+        ]
+      },
+      {
+        "title": "International",
+        "kind": "tv",
+        "winners": [
+          "The Studio"
+        ],
+        "nominees": [
+          "The Bear",
+          "The Diplomat",
+          "Pluribus",
+          "Severance",
+          "The White Lotus"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "actor",
+    "year": 2026,
+    "source": "https://www.actorawards.org/awards/nominees-and-recipients/32nd-annual-actor-awards",
+    "categories": [
+      {
+        "title": "Outstanding Performance by a Cast in a Motion Picture",
+        "kind": "movie",
+        "winners": [
+          "Sinners"
+        ],
+        "nominees": [
+          "Frankenstein",
+          "Hamnet",
+          "Marty Supreme",
+          "One Battle After Another"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by an Ensemble in a Drama Series",
+        "kind": "tv",
+        "winners": [
+          "The Pitt"
+        ],
+        "nominees": [
+          "The Diplomat",
+          "Landman",
+          "Severance",
+          "The White Lotus"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by an Ensemble in a Comedy Series",
+        "kind": "tv",
+        "winners": [
+          "The Studio"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "The Bear",
+          "Hacks",
+          "Only Murders in the Building"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by a Stunt Ensemble in a Motion Picture",
+        "kind": "movie",
+        "winners": [
+          "Mission: Impossible – The Final Reckoning"
+        ],
+        "nominees": [
+          "F1",
+          "Frankenstein",
+          "One Battle After Another",
+          "Sinners"
+        ]
+      },
+      {
+        "title": "Outstanding Action Performance by a Stunt Ensemble in a Television Series",
+        "kind": "tv",
+        "winners": [
+          "The Last of Us"
+        ],
+        "nominees": [
+          "Andor",
+          "Landman",
+          "Squid Game",
+          "Stranger Things"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "globe",
+    "year": 2026,
+    "source": "https://goldenglobes.com/nominations/2026/",
+    "categories": [
+      {
+        "title": "Best Motion Picture – Drama",
+        "kind": "movie",
+        "winners": [
+          "Hamnet"
+        ],
+        "nominees": [
+          "Frankenstein",
+          "It Was Just an Accident",
+          "Sentimental Value",
+          "Sinners",
+          "The Secret Agent"
+        ]
+      },
+      {
+        "title": "Best Motion Picture – Musical or Comedy",
+        "kind": "movie",
+        "winners": [
+          "One Battle After Another"
+        ],
+        "nominees": [
+          "Blue Moon",
+          "Bugonia",
+          "Marty Supreme",
+          "No Other Choice",
+          "Nouvelle Vague"
+        ]
+      },
+      {
+        "title": "Best Motion Picture – Animated",
+        "kind": "movie",
+        "winners": [
+          "KPop Demon Hunters"
+        ],
+        "nominees": [
+          "Arco",
+          "Demon Slayer: Kimetsu no Yaiba – Infinity Castle",
+          "Elio",
+          "Little Amélie or the Character of Rain",
+          "Zootopia 2"
+        ]
+      },
+      {
+        "title": "Best Motion Picture – Non-English Language",
+        "kind": "movie",
+        "winners": [
+          "The Secret Agent"
+        ],
+        "nominees": [
+          "It Was Just an Accident",
+          "No Other Choice",
+          "Sentimental Value",
+          "Sirāt",
+          "The Voice of Hind Rajab"
+        ]
+      },
+      {
+        "title": "Cinematic and Box Office Achievement",
+        "kind": "movie",
+        "winners": [
+          "Sinners"
+        ],
+        "nominees": [
+          "Avatar: Fire and Ash",
+          "F1",
+          "KPop Demon Hunters",
+          "Mission: Impossible - The Final Reckoning",
+          "Weapons",
+          "Wicked: For Good",
+          "Zootopia 2"
+        ]
+      },
+      {
+        "title": "Best Television Series – Drama",
+        "kind": "tv",
+        "winners": [
+          "The Pitt"
+        ],
+        "nominees": [
+          "The Diplomat",
+          "Pluribus",
+          "Severance",
+          "Slow Horses",
+          "The White Lotus"
+        ]
+      },
+      {
+        "title": "Best Television Series – Musical or Comedy",
+        "kind": "tv",
+        "winners": [
+          "The Studio"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "The Bear",
+          "Hacks",
+          "Nobody Wants This",
+          "Only Murders in the Building"
+        ]
+      },
+      {
+        "title": "Best Television Limited Series, Anthology Series, or Motion Picture Made for Television",
+        "kind": "tv",
+        "winners": [
+          "Adolescence"
+        ],
+        "nominees": [
+          "All Her Fault",
+          "Black Mirror",
+          "Dying for Sex",
+          "The Beast in Me",
+          "The Girlfriend"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "critics",
+    "year": 2026,
+    "source": "https://www.criticschoice.com/2026-cca-nominees/",
+    "categories": [
+      {
+        "title": "Best Picture",
+        "kind": "movie",
+        "winners": [
+          "One Battle After Another"
+        ],
+        "nominees": [
+          "Bugonia",
+          "Frankenstein",
+          "Hamnet",
+          "Jay Kelly",
+          "Marty Supreme",
+          "Sentimental Value",
+          "Sinners",
+          "Train Dreams",
+          "Wicked: For Good"
+        ]
+      },
+      {
+        "title": "Best Animated Feature",
+        "kind": "movie",
+        "winners": [
+          "KPop Demon Hunters"
+        ],
+        "nominees": [
+          "Arco",
+          "Elio",
+          "In Your Dreams",
+          "Little Amélie or the Character of Rain",
+          "Zootopia 2"
+        ]
+      },
+      {
+        "title": "Best Drama Series",
+        "kind": "tv",
+        "winners": [
+          "The Pitt"
+        ],
+        "nominees": [
+          "Alien: Earth",
+          "Andor",
+          "Paradise",
+          "Pluribus",
+          "Severance",
+          "Task",
+          "The Diplomat"
+        ]
+      },
+      {
+        "title": "Best Comedy Series",
+        "kind": "tv",
+        "winners": [
+          "The Studio"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "Elsbeth",
+          "Ghosts",
+          "Hacks",
+          "Nobody Wants This",
+          "Only Murders in the Building",
+          "The Righteous Gemstones"
+        ]
+      },
+      {
+        "title": "Best Limited Series",
+        "kind": "tv",
+        "winners": [
+          "Adolescence"
+        ],
+        "nominees": [
+          "All Her Fault",
+          "Chief of War",
+          "Death by Lightning",
+          "Devil in Disguise: John Wayne Gacy",
+          "Dope Thief",
+          "Dying for Sex",
+          "The Girlfriend"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "oscar",
+    "year": 2026,
+    "source": "https://www.oscars.org/oscars/ceremonies/2026",
+    "categories": [
+      {
+        "title": "Best Picture",
+        "kind": "movie",
+        "winners": [
+          "One Battle After Another"
+        ],
+        "nominees": [
+          "Bugonia",
+          "F1",
+          "Frankenstein",
+          "Hamnet",
+          "Marty Supreme",
+          "The Secret Agent",
+          "Sentimental Value",
+          "Sinners",
+          "Train Dreams"
+        ]
+      },
+      {
+        "title": "Animated Feature Film",
+        "kind": "movie",
+        "winners": [
+          "KPop Demon Hunters"
+        ],
+        "nominees": [
+          "Arco",
+          "Elio",
+          "Little Amélie or the Character of Rain",
+          "Zootopia 2"
+        ]
+      },
+      {
+        "title": "International Feature Film",
+        "kind": "movie",
+        "winners": [
+          "Sentimental Value"
+        ],
+        "nominees": [
+          "The Secret Agent",
+          "It Was Just an Accident",
+          "Sirāt",
+          "The Voice of Hind Rajab"
+        ]
+      },
+      {
+        "title": "Documentary Feature Film",
+        "kind": "movie",
+        "winners": [
+          "Mr. Nobody Against Putin"
+        ],
+        "nominees": [
+          "The Alabama Solution",
+          "Come See Me in the Good Light",
+          "Cutting Through Rocks",
+          "The Perfect Neighbor"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "emmy",
+    "year": 2025,
+    "source": "https://www.televisionacademy.com/awards/nominees-winners/2025",
+    "categories": [
+      {
+        "title": "Outstanding Drama Series",
+        "kind": "tv",
+        "winners": [
+          "The Pitt"
+        ],
+        "nominees": [
+          "Andor",
+          "The Diplomat",
+          "The Last Of Us",
+          "Paradise",
+          "Severance",
+          "Slow Horses",
+          "The White Lotus"
+        ]
+      },
+      {
+        "title": "Outstanding Comedy Series",
+        "kind": "tv",
+        "winners": [
+          "The Studio"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "The Bear",
+          "Hacks",
+          "Nobody Wants This",
+          "Only Murders In The Building",
+          "Shrinking",
+          "What We Do In The Shadows"
+        ]
+      },
+      {
+        "title": "Outstanding Limited or Anthology Series",
+        "kind": "tv",
+        "winners": [
+          "Adolescence"
+        ],
+        "nominees": [
+          "Black Mirror",
+          "Dying For Sex",
+          "Monsters: The Lyle And Erik Menendez Story",
+          "The Penguin"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "bafta",
+    "year": 2025,
+    "source": "https://www.bafta.org/awards/television/?award-year=2025",
+    "categories": [
+      {
+        "title": "Drama Series",
+        "kind": "tv",
+        "winners": [
+          "Blue Lights"
+        ],
+        "nominees": [
+          "Sherwood",
+          "Supacell",
+          "Wolf Hall: The Mirror and the Light"
+        ]
+      },
+      {
+        "title": "Limited Drama",
+        "kind": "tv",
+        "winners": [
+          "Mr Bates vs The Post Office"
+        ],
+        "nominees": [
+          "Baby Reindeer",
+          "Lost Boys and Fairies",
+          "One Day"
+        ]
+      },
+      {
+        "title": "Scripted Comedy",
+        "kind": "tv",
+        "winners": [
+          "Alma's Not Normal"
+        ],
+        "nominees": [
+          "Brassic",
+          "G'wed",
+          "Ludwig"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "actor",
+    "year": 2025,
+    "source": "https://www.actorawards.org/awards/nominees-and-recipients/31st-annual-screen-actors-guild-awards",
+    "categories": [
+      {
+        "title": "Outstanding Performance by a Cast in a Motion Picture",
+        "kind": "movie",
+        "winners": [
+          "Conclave"
+        ],
+        "nominees": [
+          "A Complete Unknown",
+          "Anora",
+          "Emilia Pérez",
+          "Wicked"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by an Ensemble in a Drama Series",
+        "kind": "tv",
+        "winners": [
+          "Shōgun"
+        ],
+        "nominees": [
+          "Bridgerton",
+          "The Day of the Jackal",
+          "The Diplomat",
+          "Slow Horses"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by an Ensemble in a Comedy Series",
+        "kind": "tv",
+        "winners": [
+          "Only Murders in the Building"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "The Bear",
+          "Hacks",
+          "Shrinking"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by a Stunt Ensemble in a Motion Picture",
+        "kind": "movie",
+        "winners": [
+          "The Fall Guy"
+        ],
+        "nominees": [
+          "Deadpool & Wolverine",
+          "Dune: Part Two",
+          "Gladiator II",
+          "Wicked"
+        ]
+      },
+      {
+        "title": "Outstanding Performance by a Stunt Ensemble in a Television Series",
+        "kind": "tv",
+        "winners": [
+          "Shōgun"
+        ],
+        "nominees": [
+          "The Boys",
+          "Fallout",
+          "House of the Dragon",
+          "The Penguin"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "globe",
+    "year": 2025,
+    "source": "https://goldenglobes.com/nominations/2025/",
+    "categories": [
+      {
+        "title": "Best Motion Picture – Drama",
+        "kind": "movie",
+        "winners": [
+          "The Brutalist"
+        ],
+        "nominees": [
+          "A Complete Unknown",
+          "Conclave",
+          "Dune: Part Two",
+          "Nickel Boys",
+          "September 5"
+        ]
+      },
+      {
+        "title": "Best Motion Picture – Musical or Comedy",
+        "kind": "movie",
+        "winners": [
+          "Emilia Pérez"
+        ],
+        "nominees": [
+          "A Real Pain",
+          "Anora",
+          "Challengers",
+          "The Substance",
+          "Wicked"
+        ]
+      },
+      {
+        "title": "Best Motion Picture – Animated",
+        "kind": "movie",
+        "winners": [
+          "Flow"
+        ],
+        "nominees": [
+          "Inside Out 2",
+          "Memoir of a Snail",
+          "Moana 2",
+          "The Wild Robot",
+          "Wallace & Gromit: Vengeance Most Fowl"
+        ]
+      },
+      {
+        "title": "Best Motion Picture – Non-English Language",
+        "kind": "movie",
+        "winners": [
+          "Emilia Pérez"
+        ],
+        "nominees": [
+          "All We Imagine as Light",
+          "I'm Still Here",
+          "The Girl With The Needle",
+          "The Seed of The Sacred Fig",
+          "Vermiglio"
+        ]
+      },
+      {
+        "title": "Cinematic and Box Office Achievement",
+        "kind": "movie",
+        "winners": [
+          "Wicked"
+        ],
+        "nominees": [
+          "Alien: Romulus",
+          "Beetlejuice Beetlejuice",
+          "Deadpool & Wolverine",
+          "Gladiator II",
+          "Inside Out 2",
+          "The Wild Robot",
+          "Twisters"
+        ]
+      },
+      {
+        "title": "Best Television Series – Drama",
+        "kind": "tv",
+        "winners": [
+          "Shōgun"
+        ],
+        "nominees": [
+          "The Diplomat",
+          "Mr. & Mrs. Smith",
+          "Slow Horses",
+          "Squid Game",
+          "The Day of the Jackal"
+        ]
+      },
+      {
+        "title": "Best Television Series – Musical or Comedy",
+        "kind": "tv",
+        "winners": [
+          "Hacks"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "The Bear",
+          "Nobody Wants This",
+          "Only Murders in the Building",
+          "The Gentlemen"
+        ]
+      },
+      {
+        "title": "Best Television Limited Series, Anthology Series, or Motion Picture Made for Television",
+        "kind": "tv",
+        "winners": [
+          "Baby Reindeer"
+        ],
+        "nominees": [
+          "Disclaimer",
+          "Monsters: The Lyle and Erik Menendez Story",
+          "Ripley",
+          "The Penguin",
+          "True Detective: Night Country"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "critics",
+    "year": 2025,
+    "source": "https://www.criticschoice.com/30th-annual-critics-choice-awards-list-of-nominees-and-winners-2025/",
+    "categories": [
+      {
+        "title": "Best Picture",
+        "kind": "movie",
+        "winners": [
+          "Anora"
+        ],
+        "nominees": [
+          "A Complete Unknown",
+          "The Brutalist",
+          "Conclave",
+          "Dune: Part Two",
+          "Emilia Pérez",
+          "Nickel Boys",
+          "Sing Sing",
+          "The Substance",
+          "Wicked"
+        ]
+      },
+      {
+        "title": "Best Animated Feature",
+        "kind": "movie",
+        "winners": [
+          "The Wild Robot"
+        ],
+        "nominees": [
+          "Flow",
+          "Inside Out 2",
+          "Memoir of a Snail",
+          "Wallace & Gromit: Vengeance Most Fowl"
+        ]
+      },
+      {
+        "title": "Best Drama Series",
+        "kind": "tv",
+        "winners": [
+          "Shōgun"
+        ],
+        "nominees": [
+          "The Day of the Jackal",
+          "The Diplomat",
+          "Evil",
+          "Industry",
+          "Interview with the Vampire",
+          "The Old Man",
+          "Slow Horses"
+        ]
+      },
+      {
+        "title": "Best Comedy Series",
+        "kind": "tv",
+        "winners": [
+          "Hacks"
+        ],
+        "nominees": [
+          "Abbott Elementary",
+          "English Teacher",
+          "Nobody Wants This",
+          "Only Murders in the Building",
+          "Somebody Somewhere",
+          "St. Denis Medical",
+          "What We Do in the Shadows"
+        ]
+      },
+      {
+        "title": "Best Limited Series",
+        "kind": "tv",
+        "winners": [
+          "Baby Reindeer"
+        ],
+        "nominees": [
+          "Disclaimer",
+          "Masters of the Air",
+          "Mr Bates vs the Post Office",
+          "The Penguin",
+          "Ripley",
+          "True Detective: Night Country",
+          "We Were the Lucky Ones"
+        ]
+      }
+    ]
+  },
+  {
+    "ceremony": "oscar",
+    "year": 2025,
+    "source": "https://www.oscars.org/oscars/ceremonies/2025",
+    "categories": [
+      {
+        "title": "Best Picture",
+        "kind": "movie",
+        "winners": [
+          "Anora"
+        ],
+        "nominees": [
+          "The Brutalist",
+          "A Complete Unknown",
+          "Conclave",
+          "Dune: Part Two",
+          "Emilia Pérez",
+          "I'm Still Here",
+          "Nickel Boys",
+          "The Substance",
+          "Wicked"
+        ]
+      },
+      {
+        "title": "Animated Feature Film",
+        "kind": "movie",
+        "winners": [
+          "Flow"
+        ],
+        "nominees": [
+          "Inside Out 2",
+          "Memoir of a Snail",
+          "Wallace & Gromit: Vengeance Most Fowl",
+          "The Wild Robot"
+        ]
+      },
+      {
+        "title": "International Feature Film",
+        "kind": "movie",
+        "winners": [
+          "I'm Still Here"
+        ],
+        "nominees": [
+          "The Girl with the Needle",
+          "Emilia Pérez",
+          "The Seed of the Sacred Fig",
+          "Flow"
+        ]
+      },
+      {
+        "title": "Documentary Feature Film",
+        "kind": "movie",
+        "winners": [
+          "No Other Land"
+        ],
+        "nominees": [
+          "Black Box Diaries",
+          "Porcelain War",
+          "Soundtrack to a Coup d'Etat",
+          "Sugarcane"
+        ]
+      }
+    ]
+  }
+]
