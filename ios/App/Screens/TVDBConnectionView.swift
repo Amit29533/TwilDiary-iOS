@@ -79,7 +79,7 @@ struct TVDBConnectionView: View {
                     }
                 }
             }.padding(15)
-        }.accessibilityIdentifier("tvdb-api-panel")
+        }
     }
 
     private func check(replacingWith replacement: String? = nil) async {

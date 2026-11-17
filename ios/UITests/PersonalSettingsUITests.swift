@@ -27,8 +27,11 @@ import XCTest
         tvdb.tap()
         XCTAssertTrue(app.navigationBars["TheTVDB"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["tvdb-check-connection"].exists)
-        app.buttons["tvdb-api-toggle"].tap()
-        XCTAssertTrue(app.secureTextFields["tvdb-api-key-field"].waitForExistence(timeout: 5))
+        let toggle = app.buttons["tvdb-api-toggle"]
+        XCTAssertTrue(toggle.isEnabled)
+        toggle.tap()
+        XCTAssertEqual(toggle.label, "Hide", app.debugDescription)
+        XCTAssertTrue(app.secureTextFields["tvdb-api-key-field"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertFalse(app.buttons["tvdb-api-save"].isEnabled)
     }
     func testProfileMenuOrderPersonalPageAvatarAndMilestones() {
