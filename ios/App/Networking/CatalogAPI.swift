@@ -27,14 +27,20 @@ extension DiaryStore {
         #endif
         // TMDB from the phone with your key; which results are already yours comes from the diary on the phone.
         if let token = TMDBDirect.token(self) {
-            let found = try await TMDBDirect.search(DiarySearchTools.normalize(query), page: page, token: token)
-            var library: [SearchLibraryTitle] = [], online: [CatalogItem] = []
-            for item in found.items {
-                if let saved = workspace.activeTitles.first(where: { $0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv) }) {
-                    if !library.contains(where: { $0.id == saved.id }) { library.append(SearchLibraryTitle(saved, matchedName: item.name)) }
-                } else { online.append(item) }
-            }
-            return DiarySearchPage(library: library, online: online, page: found.page, totalPages: found.totalPages)
+            do {
+                let found = try await SearchBrowseRead.retry {
+                    try await TMDBDirect.search(DiarySearchTools.normalize(query), page: page, token: token)
+                }
+                var library: [SearchLibraryTitle] = [], online: [CatalogItem] = []
+                let saved = workspace.activeTitles
+                var seen = Set<String>()
+                for item in found.items {
+                    if let title = saved.first(where: { $0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv) }) {
+                        if seen.insert(title.id).inserted { library.append(SearchLibraryTitle(title, matchedName: item.name)) }
+                    } else { online.append(item) }
+                }
+                return DiarySearchPage(library: library, online: online, page: found.page, totalPages: found.totalPages)
+            } catch let error where SearchBrowseRead.isTransportError(error) && ExtrasStorage.server { }
         }
         return try await read(CatalogTools.apiPath("/api/search", query: ["q": query, "scope": "online", "page": String(page)]))
     }

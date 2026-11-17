@@ -2,7 +2,7 @@ import Foundation
 import TwilDiaryCore
 
 enum SearchBrowseShelf: String, CaseIterable, Identifiable {
-    case tags, genres, themes, awards, studios, directors, actors, decades, franchises, worldCinema, internationalTV
+    case tags, genres, themes, awards, studios, directors, actors, decades, franchises, worldCinema, internationalTV, officialLists
     var id: Self { self }
 
     var title: String {
@@ -18,6 +18,7 @@ enum SearchBrowseShelf: String, CaseIterable, Identifiable {
         case .franchises: "Popular franchises"
         case .worldCinema: "World Cinema"
         case .internationalTV: "International TV"
+        case .officialLists: "Official Lists"
         }
     }
 }
@@ -25,6 +26,7 @@ enum SearchBrowseShelf: String, CaseIterable, Identifiable {
 struct SearchBrowseCategory: Hashable, Identifiable {
     enum Filter: Hashable {
         case genre(String)
+        case genreKeywords(String, [Int])
         case studio(Int)
         case decade(Int)
         case country(String, MediaKind)
@@ -47,6 +49,10 @@ struct SearchBrowseCategory: Hashable, Identifiable {
         filters.type = (types.contains(type) ? type : types.first ?? .movie).rawValue
         switch filter {
         case .genre(let name): filters.genre = name
+        case .genreKeywords(let name, let keywords):
+            filters.genre = name
+            filters.keywords = keywords
+            filters.matchAllKeywords = false
         case .studio(let id): filters.company = id
         case .decade(let year):
             filters.year = ""
@@ -75,7 +81,7 @@ struct SearchBrowseCategory: Hashable, Identifiable {
 
     var allowsGenreFilter: Bool {
         switch filter {
-        case .genre, .anime, .koreanDrama: false
+        case .genre, .genreKeywords, .anime, .koreanDrama: false
         default: true
         }
     }
@@ -97,7 +103,7 @@ struct SearchBrowseCategory: Hashable, Identifiable {
             matches = titles.filter { $0.genres.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
         case .decade(let year):
             matches = titles.filter { title in title.year.map { (year...year + 9).contains($0) } ?? false }
-        case .studio, .country, .tag, .anime, .koreanDrama, .miniseries, .hiddenGems:
+        case .studio, .country, .tag, .genreKeywords, .anime, .koreanDrama, .miniseries, .hiddenGems:
             return nil
         }
         return matches.lazy.compactMap(\.backdrop).first
@@ -107,6 +113,10 @@ struct SearchBrowseCategory: Hashable, Identifiable {
 enum SearchBrowseTheme: String, CaseIterable, Identifiable {
     case miniseries, sitcoms, anime, koreanDramas = "k-dramas", docuseries, trueCrime = "true-crime", hiddenGems = "hidden-gems"
     var id: Self { self }
+
+    var category: SearchBrowseCategory {
+        SearchBrowseCategory(title: style.title, symbol: style.icon, tint: style.start, filter: filter, types: types)
+    }
 
     var filter: SearchBrowseCategory.Filter {
         switch self {
@@ -207,12 +217,37 @@ enum SearchBrowseCatalog {
         studio("Sony Pictures Animation", 2251, types: [.movie, .tv]), studio("Illumination", 6704),
         studio("Legendary Pictures", 923, types: [.movie, .tv]), studio("Blumhouse Productions", 3172, types: [.movie, .tv]),
         studio("New Line Cinema", 12), studio("Focus Features", 10146), studio("Columbia Pictures", 5),
-        studio("Metro-Goldwyn-Mayer", 21, types: [.movie, .tv]), studio("20th Century Studios", 25),
-        studio("Searchlight Pictures", 127928), studio("BBC Studios", 80893, types: [.movie, .tv]),
+        studio("Metro-Goldwyn-Mayer", 21, types: [.movie, .tv]), studio("20th Century Studios", 127928),
+        studio("Searchlight Pictures", 127929), studio("20th Century Fox", 25),
+        studio("BBC Studios", 80893, types: [.movie, .tv]),
         studio("HBO", 3268, types: [.movie, .tv]), studio("Sony Pictures Television", 11073, types: [.tv]),
         studio("Warner Bros. Television", 1957, types: [.tv]), studio("Universal Television", 26727, types: [.tv]),
-        studio("Toei Animation", 5542, types: [.movie, .tv]), studio("ufotable", 280276, types: [.movie, .tv]),
-        studio("Toho", 882, types: [.movie, .tv]), studio("Yash Raj Films", 1569, types: [.movie, .tv])
+        studio("Toei Animation", 5542, types: [.movie, .tv]), studio("ufotable", 5887, types: [.movie, .tv]),
+        studio("Toho", 882, types: [.movie, .tv]), studio("Yash Raj Films", 1569, types: [.movie, .tv]),
+
+        studio("Lionsgate", 1632), studio("DreamWorks Pictures", 7),
+        studio("Miramax", 14, types: [.movie, .tv]), studio("TriStar Pictures", 559),
+        studio("United Artists", 60), studio("Amblin Entertainment", 56, types: [.movie, .tv]),
+        studio("NEON", 90733), studio("StudioCanal", 694, types: [.movie, .tv]),
+
+        studio("Walt Disney Animation Studios", 6125, types: [.movie, .tv]), studio("LAIKA", 11537),
+        studio("MAPPA", 21444, types: [.tv, .movie]), studio("Kyoto Animation", 5438, types: [.tv, .movie]),
+        studio("Madhouse", 3464, types: [.tv, .movie]), studio("BONES", 2849, types: [.tv, .movie]),
+        studio("Production I.G", 529, types: [.tv, .movie]), studio("A-1 Pictures", 13113, types: [.tv, .movie]),
+        studio("CloverWorks", 121589, types: [.tv, .movie]), studio("WIT STUDIO", 31058, types: [.tv, .movie]),
+        studio("TRIGGER", 50908, types: [.tv, .movie]), studio("Science SARU", 99494, types: [.tv, .movie]),
+
+        studio("20th Television", 236166, types: [.tv]), studio("CBS Studios", 1081, types: [.tv, .movie]),
+        studio("ABC Signature", 236613, types: [.tv]), studio("FX Productions", 15990, types: [.tv, .movie]),
+        studio("AMC Studios", 23242, types: [.tv, .movie]), studio("Amazon MGM Studios", 210099, types: [.tv, .movie]),
+        studio("Apple Studios", 194232, types: [.tv, .movie]),
+
+        studio("Studio Dragon", 86418, types: [.tv, .movie]), studio("CJ ENM", 128404, types: [.tv, .movie]),
+        studio("Showbox", 3491), studio("Lotte Entertainment", 7819),
+        studio("Dharma Productions", 19146), studio("Red Chillies Entertainment", 2343, types: [.movie, .tv]),
+        studio("Excel Entertainment", 2934, types: [.movie, .tv]), studio("T-Series", 3522, types: [.movie, .tv]),
+        studio("Maddock Films", 86699, types: [.movie, .tv]), studio("Lyca Productions", 35124),
+        studio("Sun Pictures", 7135)
     ]
 
     static let worldCinema: [SearchBrowseCategory] = countries([
@@ -262,6 +297,7 @@ struct SearchBrowseTag: Hashable, Identifiable {
     let name: String
     var keywordID: Int?
     var anilist = false
+    var displayName: String?
     var id: String { (anilist ? "anilist:" : "") + name.lowercased() }
     var emoji: String { name.caseInsensitiveCompare("neo-noir") == .orderedSame ? "🌃" : TagEmoji.symbol(for: name) }
 
@@ -550,174 +586,5 @@ struct SearchBrowsePerson: Hashable, Identifiable, Sendable {
             return Self(id: person.id, name: person.name, image: CatalogTools.image(person.profile_path, size: "w185"))
         }
         return Page(people: people, next: page < min(reply.total_pages, 500) ? page + 1 : nil)
-    }
-}
-
-struct SearchBrowseFranchise: Hashable, Identifiable {
-    struct Show: Hashable, Sendable {
-        let id: Int
-        let name: String
-        let year: Int
-        let poster: String
-
-        var item: CatalogItem { CatalogItem(id: id, mediaType: .tv, name: name, year: year, posterPath: poster) }
-    }
-
-    let id: Int
-    let title: String
-    var poster: String? = nil
-    var shows: [Show] = []
-
-    static let collections: [Self] = [
-        .init(id: 119, title: "The Lord of the Rings"),
-        .init(id: 535313, title: "Godzilla"),
-        .init(id: 173710, title: "Planet of the Apes"),
-        .init(id: 17255, title: "Resident Evil"),
-        .init(id: 1241, title: "Harry Potter"),
-        .init(id: 131292, title: "Iron Man"),
-        .init(id: 328, title: "Jurassic Park"),
-        .init(id: 263, title: "The Dark Knight"),
-        .init(id: 404609, title: "John Wick"),
-        .init(id: 9485, title: "The Fast and the Furious"),
-        .init(id: 121938, title: "The Hobbit"),
-        .init(id: 87359, title: "Mission: Impossible"),
-        .init(id: 645, title: "James Bond"),
-        .init(id: 84, title: "Indiana Jones"),
-        .init(id: 2344, title: "The Matrix"),
-        .init(id: 399, title: "Predator"),
-        .init(id: 528, title: "The Terminator"),
-        .init(id: 726871, title: "Dune"),
-        .init(id: 10194, title: "Toy Story"),
-        .init(id: 468222, title: "The Incredibles"),
-        .init(id: 2150, title: "Shrek"),
-        .init(id: 556, title: "Spider-Man"),
-        .init(id: 131295, title: "Captain America"),
-        .init(id: 295, title: "Pirates of the Caribbean"),
-        .init(id: 2602, title: "Scream"),
-        .init(id: 656, title: "Saw"),
-        .init(id: 304, title: "Ocean's"),
-        .init(id: 720879, title: "Sonic the Hedgehog"),
-        .init(id: 23456, title: "One Piece"),
-        .init(id: 10, title: "Star Wars"),
-        .init(id: 435259, title: "Fantastic Beasts"),
-        .init(id: 8091, title: "Alien"),
-        .init(id: 264, title: "Back to the Future"),
-        .init(id: 87096, title: "Avatar"),
-        .init(id: 87118, title: "Cars"),
-        .init(id: 86066, title: "Despicable Me"),
-        .init(id: 89137, title: "How to Train Your Dragon"),
-        .init(id: 77816, title: "Kung Fu Panda"),
-        .init(id: 284433, title: "Guardians of the Galaxy"),
-        .init(id: 86311, title: "Avengers"),
-        .init(id: 448150, title: "Deadpool"),
-        .init(id: 748, title: "X-Men"),
-        .init(id: 131635, title: "The Hunger Games"),
-        .init(id: 295130, title: "The Maze Runner"),
-        .init(id: 313086, title: "The Conjuring"),
-        .init(id: 521226, title: "A Quiet Place"),
-        .init(id: 8945, title: "Mad Max"),
-        .init(id: 1575, title: "Rocky"),
-        .init(id: 553717, title: "Creed"),
-        .init(id: 31562, title: "Bourne"),
-        .init(id: 422837, title: "Blade Runner"),
-        .init(id: 488924, title: "Paddington"),
-        .init(id: 70068, title: "Ip Man")
-    ]
-
-    static let television: [Self] = [
-        .init(id: -1399, title: "Game of Thrones", shows: [
-            .init(id: 1399, name: "Game of Thrones", year: 2011, poster: "/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg"),
-            .init(id: 94997, name: "House of the Dragon", year: 2022, poster: "/7V0Ebks0GgpKvQ7QbLAIdX5dos4.jpg"),
-            .init(id: 224372, name: "A Knight of the Seven Kingdoms", year: 2026, poster: "/k8yARbD9iYn2nRX2HvsopfKDN2r.jpg")
-        ]),
-        .init(id: -1402, title: "The Walking Dead", shows: [
-            .init(id: 1402, name: "The Walking Dead", year: 2010, poster: "/ng3cMtxYKt1OSQYqFlnKWnVsqNO.jpg"),
-            .init(id: 62286, name: "Fear the Walking Dead", year: 2015, poster: "/eKt4ELpQZUKGZCKIDobEbwHwk3I.jpg"),
-            .init(id: 194583, name: "The Walking Dead: Dead City", year: 2023, poster: "/wq3vuQzQgbS83zX3malAFWMsSwX.jpg")
-        ]),
-        .init(id: -253, title: "Star Trek", shows: [
-            .init(id: 253, name: "Star Trek", year: 1966, poster: "/9byecLwsbbkAqDxcKuuTI5kEzZ.jpg"),
-            .init(id: 655, name: "Star Trek: The Next Generation", year: 1987, poster: "/vkLzXddgUKH5VcpnYiRzpJFrZhz.jpg"),
-            .init(id: 1855, name: "Star Trek: Voyager", year: 1995, poster: "/gNS5tRSG3UlXodCxznKKOKweqxh.jpg"),
-            .init(id: 314, name: "Star Trek: Enterprise", year: 2001, poster: "/tsbBTABtNgu0ycsFpnIhiQ5woOM.jpg")
-        ]),
-        .init(id: -73586, title: "Yellowstone", shows: [
-            .init(id: 73586, name: "Yellowstone", year: 2018, poster: "/peNC0eyc3TQJa6x4TdKcBPNP4t0.jpg"),
-            .init(id: 118357, name: "1883", year: 2021, poster: "/waLbm384SQDwLTCn6ttPqQS5kfV.jpg"),
-            .init(id: 157744, name: "1923", year: 2022, poster: "/zgZRJZvZn5cpsWAB0zMUdad3iZd.jpg")
-        ]),
-        .init(id: -246, title: "Avatar: The Last Airbender", shows: [
-            .init(id: 246, name: "Avatar: The Last Airbender", year: 2005, poster: "/yaGt4GIutpbXHsv48tWceWg6s56.jpg"),
-            .init(id: 33880, name: "The Legend of Korra", year: 2012, poster: "/dZgYvSfuh1YHDrJuILlVQ5oA2hF.jpg")
-        ])
-    ]
-
-    static let featured = Array(collections.prefix(6)) + television.prefix(2) + collections.dropFirst(6).prefix(2)
-
-    private struct CacheKey: Hashable { let id: Int; let session: UUID }
-    private struct CachedCollection {
-        let id: UUID
-        let loadedAt: Date
-        let task: Task<TitleCollection, Error>
-    }
-    @MainActor private static var cache: [CacheKey: CachedCollection] = [:]
-
-    struct Page {
-        let collections: [SearchBrowseFranchise]
-        let next: Int?
-    }
-
-    @MainActor
-    static func find(_ query: String, page: Int, store: DiaryStore) async throws -> Page {
-        guard !store.isPreview, let token = TMDBDirect.token(store) else { return Page(collections: [], next: nil) }
-        let reply = try await SearchBrowseRead.retry {
-            try await TMDBDirect.object("search/collection", query: ["query": query, "page": String(page), "include_adult": "false"], token: token)
-        }
-        guard reply["page"] as? Int == page, let results = reply["results"] as? [[String: Any]] else {
-            throw APIError.message("TMDB returned an unexpected collection page.")
-        }
-        let collections = results.compactMap { item -> Self? in
-            guard item["adult"] as? Bool != true, let id = item["id"] as? Int, id > 0,
-                  let name = item["name"] as? String, !name.isEmpty else { return nil }
-            return Self(id: id, title: name, poster: item["poster_path"] as? String)
-        }
-        return Page(collections: collections, next: page < min(reply["total_pages"] as? Int ?? 0, 500) ? page + 1 : nil)
-    }
-
-    @MainActor
-    func load(store: DiaryStore) async throws -> TitleCollection {
-        if !shows.isEmpty {
-            return TitleCollection(id: id, name: title, overview: "", posterPath: nil, backdropPath: nil, parts: shows.map(\.item))
-        }
-        #if DEBUG
-        if store.isPreview {
-            let preview = PreviewCatalog.discovery(["type": "movie"])
-            return TitleCollection(id: id, name: title, overview: "", posterPath: nil, backdropPath: nil, parts: Array(preview.items.prefix(6)))
-        }
-        #endif
-        let key = CacheKey(id: id, session: store.discoveryRevision)
-        if let saved = Self.cache[key], Date.now.timeIntervalSince(saved.loadedAt) < 3_600 {
-            let collection = try await saved.task.value
-            try Task.checkCancellation()
-            return collection
-        }
-        Self.cache = Self.cache.filter { $0.key.session == key.session && Date.now.timeIntervalSince($0.value.loadedAt) < 3_600 }
-        let task = Task<TitleCollection, Error> {
-            if let token = TMDBDirect.token(store) {
-                return try await SearchBrowseRead.retry { try await TMDBDirect.collection(id, token: token) }
-            }
-            return try await store.read(CatalogTools.apiPath("/api/metadata/collection", query: ["id": String(id)]))
-        }
-        let entry = CachedCollection(id: UUID(), loadedAt: .now, task: task)
-        Self.cache[key] = entry
-        let collection: TitleCollection
-        do {
-            collection = try await task.value
-        } catch {
-            if Self.cache[key]?.id == entry.id { Self.cache[key] = nil }
-            throw error
-        }
-        try Task.checkCancellation()
-        return collection
     }
 }

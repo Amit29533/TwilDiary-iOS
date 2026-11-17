@@ -162,7 +162,10 @@ struct CatalogSearchView: View {
                 }
             }
             if universal && ready && (kind == .all || kind == .people) {
-                SearchPeopleView(query: scope.query, limit: kind == .people ? 40 : 6, onChoose: rememberQuery,
+                SearchPeopleView(query: scope.query, limit: kind == .people ? 40 : 6, onChoose: {
+                    rememberQuery()
+                    dismissKeyboard += 1
+                },
                                  onCount: { count in
                     if scope == searchScope { peopleMatch = (scope, count) }
                 }).id(scope)

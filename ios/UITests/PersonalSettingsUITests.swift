@@ -126,6 +126,7 @@ import XCTest
 
         awards.tap()
         XCTAssertTrue(app.navigationBars["Awards"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["search-award-ceremony-1"].exists)
         let emmys = app.buttons["search-award-ceremony-5"]
         XCTAssertTrue(emmys.waitForExistence(timeout: 5)); emmys.tap()
         XCTAssertTrue(app.navigationBars["Primetime Emmy Awards 2004"].waitForExistence(timeout: 5))
@@ -153,6 +154,11 @@ import XCTest
         app.buttons["Acting"].firstMatch.tap()
         XCTAssertTrue(app.buttons["search-award-nominee-5"].exists)
         XCTAssertFalse(winner.exists)
+        app.buttons["search-award-type-filter"].tap()
+        app.buttons["All"].firstMatch.tap()
+        XCTAssertTrue(winner.waitForExistence(timeout: 5)); winner.tap()
+        XCTAssertTrue(app.buttons["catalog-more"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Open title"].exists)
     }
 
     func testSearchLoadsLaterPagesAndKeepsAnimeFilmsInAnime() {
@@ -198,9 +204,29 @@ import XCTest
         XCTAssertTrue(app.buttons["search-tag-time travel"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let lab = app.buttons["search-browse-lab"]
-        for _ in 0..<8 { if lab.isHittable { break }; app.swipeUp() }
+        for _ in 0..<24 { if lab.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(lab.isHittable); lab.tap()
         XCTAssertTrue(app.navigationBars["Search Lab"].waitForExistence(timeout: 5))
+    }
+    func testSearchLabCanReachMatchesAfterAnEmptyFilteredPage() {
+        let app = launch(searchRegression: true)
+        app.tabBars.buttons["Search"].tap()
+        let lab = app.buttons["search-browse-lab"]
+        for _ in 0..<24 { if lab.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(lab.isHittable); lab.tap()
+        let keyword = app.textFields["search-lab-keyword"]
+        XCTAssertTrue(keyword.waitForExistence(timeout: 5))
+        keyword.tap(); keyword.typeText("Library filter sample\n")
+        let inLibrary = app.buttons["In library"]
+        for _ in 0..<12 { if inLibrary.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(inLibrary.isHittable); inLibrary.tap()
+        app.buttons["search-lab-show"].tap()
+        let more = app.buttons["search-lab-load-more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["search-lab-title-tv:990101"].exists)
+        more.tap()
+        XCTAssertTrue(app.buttons["search-lab-title-tv:990102"].waitForExistence(timeout: 5))
+        XCTAssertFalse(more.exists)
     }
     func testPopularFranchisesOpensTwilDiaryPosterGrid() {
         let app = launch(); app.tabBars.buttons["Search"].tap()
@@ -209,8 +235,8 @@ import XCTest
         XCTAssertTrue(all.isHittable)
         all.tap()
         XCTAssertTrue(app.navigationBars["Popular franchises"].waitForExistence(timeout: 5))
-        app.buttons["search-franchise-119"].tap()
-        XCTAssertTrue(app.navigationBars["The Lord of the Rings"].waitForExistence(timeout: 5))
+        app.buttons["search-tvdb-list-4"].tap()
+        XCTAssertTrue(app.navigationBars["Marvel Cinematic Universe"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["catalog-movie:900001"].waitForExistence(timeout: 5))
     }
     func testSearchThemesOpensFilteredBrowsePage() {

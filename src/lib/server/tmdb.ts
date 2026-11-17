@@ -471,6 +471,8 @@ export function createTmdb(
         params.sort_by =
           input.sort === 'rating'
             ? 'vote_average.desc'
+            : input.sort === 'votes'
+              ? 'vote_count.desc'
             : input.sort === 'newest'
               ? input.type === 'movie'
                 ? 'primary_release_date.desc'
@@ -582,11 +584,13 @@ export function createTmdb(
       const query = searchQuery(params.get('q') ?? '');
       const type = params.get('type') ?? 'all';
       const page = params.get('page') ?? '1';
+      const language = params.get('language');
       if (
         query.length < 2 ||
         query.length > 200 ||
         /[\u0000-\u001f\u007f]/.test(query) ||
         !['all', 'movie', 'tv'].includes(type) ||
+        (language !== null && !/^[a-z]{2,3}$/.test(language)) ||
         !/^\d+$/.test(page) ||
         +page < 1 ||
         +page > 500
@@ -597,14 +601,27 @@ export function createTmdb(
           'Enter 2–200 characters and choose a valid search page'
         );
       const searchMatch = (value: unknown, kind?: 'movie' | 'tv'): SearchMatch | null => {
-        const found = match(value, kind);
         const item = record(value);
+        if (item.adult === true || (language && item.original_language !== language)) return null;
+        const found = match(value, kind);
         if (!found) return null;
-        const language = item.original_language;
-        const genres = item.genre_ids;
-        return typeof language === 'string' && Array.isArray(genres)
-          ? { ...found, isAnime: language === 'ja' && genres.includes(16) }
-          : found;
+        const genreIds = item.genre_ids;
+        return {
+          ...found,
+          ...(Array.isArray(genreIds)
+            ? {
+                genres: discoveryGenres.filter((g) => genreIds.includes(g[found.mediaType])).map((g) => g.name),
+                ...(typeof item.original_language === 'string'
+                  ? { isAnime: item.original_language === 'ja' && genreIds.includes(16) }
+                  : {})
+              }
+            : {}),
+          rating:
+            typeof item.vote_average === 'number' && item.vote_average > 0 && item.vote_average <= 10
+              ? item.vote_average
+              : null,
+          votes: Number.isSafeInteger(item.vote_count) && Number(item.vote_count) >= 0 ? Number(item.vote_count) : 0
+        };
       };
       if (/^tt\d{7,10}$/i.test(query)) {
         const data = await request(`find/${query.toLowerCase()}`, { external_source: 'imdb_id' });

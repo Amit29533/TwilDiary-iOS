@@ -1,52 +1,101 @@
 import SwiftUI
 import TwilDiaryCore
 
-struct SearchTVDBFranchises: View {
+private enum SearchTVDBListCatalog {
+    static let franchises: [TVDBDirect.Franchise] = [
+        list(4, "Marvel Cinematic Universe", "movies/108/posters/108.jpg"),
+        list(17, "Star Wars Franchise", "movies/334/posters/334.jpg"),
+        list(7038, "Game of Thrones Franchise", "posters/121361-4.jpg"),
+        list(13, "Harry Potter Franchise", "movies/66/posters/5ecacb306a644.jpg"),
+        list(90, "The Lord of the Rings Franchise", "movies/107/posters/107.jpg"),
+        list(6010, "DC Extended Universe", "movies/746/posters/746.jpg"),
+        list(6652, "One Chicago", "posters/258541-6.jpg"),
+        list(79, "Breaking Bad Franchise", "posters/81189-10.jpg"),
+        list(3, "The Matrix Franchise", "movies/169/posters/5f274c00c85c1.jpg"),
+        list(23, "Star Trek: Original Timeline", "posters/77526-3.jpg"),
+        list(31, "Toy Story Franchise", "v4/movie/318/posters/62718ce691c56.jpg"),
+        list(7285, "Demon Slayer: Kimetsu no Yaiba Franchise", "v4/series/348545/posters/60908d475f49a.jpg")
+    ]
+    static let official: [TVDBDirect.Franchise] = [
+        list(7289, "TheTVDB’s Best Shows of 2020", "posters/83268-12.jpg"),
+        list(8507, "Pixar SparkShorts", "movies/21097/posters/21097.jpg"),
+        list(82, "Based on Jane Austen’s Pride & Prejudice", "posters/65e89fe13b2d3.jpg"),
+        list(7221, "Representations of Autism", "v4/series/372611/posters/67a13985b26e9.jpg")
+    ]
+
+    private static func list(_ id: Int, _ name: String, _ image: String) -> TVDBDirect.Franchise {
+        .init(id: id, name: name, image: "https://artworks.thetvdb.com/banners/" + image, score: nil, isOfficial: true)
+    }
+
+    static func isFranchise(_ list: TVDBDirect.Franchise) -> Bool {
+        franchises.contains { $0.id == list.id }
+            || list.name.localizedStandardContains("franchise")
+            || list.name.localizedStandardContains("universe")
+            || list.name.localizedStandardContains("Star Trek:")
+            || list.name == "Arrowverse"
+    }
+}
+
+struct SearchTVDBListShelf: View {
+    let shelf: SearchBrowseShelf
+
+    var body: some View {
+        let lists = shelf == .officialLists ? SearchTVDBListCatalog.official : SearchTVDBListCatalog.franchises
+        VStack(alignment: .leading, spacing: 8) {
+            SearchBrowseHeading(shelf: shelf)
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 10) {
+                    ForEach(lists) { list in
+                        SearchTVDBListLink(list: list)
+                            .containerRelativeFrame(.horizontal) { width, _ in min(210, width * 0.44) }
+                    }
+                }.padding(.horizontal, 14)
+            }.scrollIndicators(.hidden).padding(.horizontal, -14)
+        }
+    }
+}
+
+struct SearchTVDBListsPage: View {
+    let shelf: SearchBrowseShelf
+    @State private var text = ""
+
+    var body: some View {
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        EdgeToEdgeScroll(frosted: true) {
+            VStack(alignment: .leading, spacing: 12) {
+                if shelf == .franchises {
+                    SearchField(placeholder: "Find a franchise", text: $text, label: "Find a franchise")
+                }
+                SearchTVDBLists(shelf: shelf, query: query).id(query)
+            }.padding(14).padding(.bottom, 32)
+        }.scrollDismissesKeyboard(.interactively)
+            .diaryScreenBackground().navigationTitle(shelf.title).navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
+    }
+}
+
+private struct SearchTVDBLists: View {
+    let shelf: SearchBrowseShelf
     let query: String
     @Environment(DiaryStore.self) private var store
     @Environment(\.dynamicTypeSize) private var typeSize
-    private static let featured: [TVDBDirect.Franchise] = [
-        .init(id: 4, name: "Marvel Cinematic Universe", image: "https://artworks.thetvdb.com/banners/movies/108/posters/108.jpg",
-              score: nil, isOfficial: true),
-        .init(id: 7038, name: "Game of Thrones Franchise", image: "https://artworks.thetvdb.com/banners/posters/121361-4.jpg",
-              score: nil, isOfficial: true),
-        .init(id: 13, name: "Harry Potter Franchise", image: "https://artworks.thetvdb.com/banners/movies/66/posters/66.jpg",
-              score: nil, isOfficial: true)
-    ]
     @State private var lists: [TVDBDirect.Franchise] = []
     @State private var nextPage: Int? = 0
     @State private var visibleCount = 24
     @State private var loading = false
     @State private var failure: String?
 
-    private var matching: [TVDBDirect.Franchise] {
-        let featured = Self.featured.filter { query.isEmpty || $0.name.localizedStandardContains(query) }
-        return featured + lists
+    private var featured: [TVDBDirect.Franchise] {
+        let list = shelf == .officialLists ? SearchTVDBListCatalog.official : SearchTVDBListCatalog.franchises
+        return list.filter { query.isEmpty || $0.name.localizedStandardContains(query) }
     }
 
     var body: some View {
+        let matching = featured + lists
         VStack(alignment: .leading, spacing: 12) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12),
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
                                       count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
-                ForEach(matching.prefix(visibleCount)) { franchise in
-                    NavigationLink(value: SearchBrowseRoute.tvdbFranchise(franchise)) {
-                        ZStack(alignment: .bottomLeading) {
-                            if let image = franchise.image, !image.isEmpty {
-                                Artwork(path: image, title: franchise.name)
-                                LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
-                            } else {
-                                LinearGradient(colors: [HomeStyle.round, HomeStyle.card], startPoint: .topTrailing, endPoint: .bottomLeading)
-                                Image(systemName: "square.stack")
-                                    .font(.title2).foregroundStyle(HomeStyle.secondary)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(12)
-                                    .accessibilityHidden(true)
-                            }
-                            Text(franchise.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                                .lineLimit(3).padding(12)
-                        }.frame(minHeight: 116).frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 14)).contentShape(RoundedRectangle(cornerRadius: 14))
-                    }.buttonStyle(.springPress)
-                }
+                ForEach(matching.prefix(visibleCount)) { SearchTVDBListLink(list: $0) }
             }
             if loading {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Loading TheTVDB lists")
@@ -87,13 +136,99 @@ struct SearchTVDBFranchises: View {
         do {
             let result = try await TVDBDirect.franchises(page: page, query: query, key: key)
             try Task.checkCancellation()
-            let matchingFeatured = Self.featured.filter { query.isEmpty || $0.name.localizedStandardContains(query) }
-            var ids = Set((matchingFeatured + lists).map(\.id))
-            lists += result.franchises.filter { ids.insert($0.id).inserted }
+            var ids = Set((featured + lists).map(\.id))
+            var names = Set((featured + lists).map { Self.nameKey($0.name) })
+            lists += result.franchises.filter { list in
+                let isFranchise = SearchTVDBListCatalog.isFranchise(list)
+                return isFranchise == (shelf == .franchises)
+                    && ids.insert(list.id).inserted && names.insert(Self.nameKey(list.name)).inserted
+            }
             nextPage = result.hasNext ? page + 1 : nil
             if page > 0 { visibleCount += 24 }
         } catch is CancellationError { }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
+    }
+
+    private static func nameKey(_ name: String) -> String {
+        String(name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en"))
+            .filter { $0.isLetter || $0.isNumber })
+    }
+}
+
+private struct SearchTVDBListLink: View {
+    let list: TVDBDirect.Franchise
+    @Environment(DiaryStore.self) private var store
+    @State private var art: [String] = []
+    @State private var cover: String?
+    @State private var count: Int?
+    @State private var loadedPreview = false
+
+    var body: some View {
+        NavigationLink(value: SearchBrowseRoute.tvdbFranchise(list)) {
+            VStack(spacing: 6) {
+                let fallback = cover ?? TVDBDirect.artworkURL(list.image)
+                SearchListPosterStack(posters: art.isEmpty ? fallback.map { [$0] } ?? [] : art, title: list.name)
+                Text(list.name).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
+                    .multilineTextAlignment(.center).lineLimit(2, reservesSpace: true)
+                if let count {
+                    Text(count == 1 ? "1 title" : "\(count) titles").font(.caption).foregroundStyle(HomeStyle.secondary)
+                }
+            }.frame(maxWidth: .infinity).contentShape(Rectangle())
+        }.buttonStyle(.springPress).accessibilityIdentifier("search-tvdb-list-\(list.id)")
+            .task {
+                guard !loadedPreview, !store.isPreview, let key = TVDBDirect.key(store) else { return }
+                do {
+                    try await Task.sleep(for: .milliseconds(250))
+                    let contents = try await TVDBDirect.listContents(list, key: key)
+                    try Task.checkCancellation()
+                    cover = contents.artwork
+                    count = contents.entries.count
+                    var posters: [String] = []
+                    for entry in contents.entries.prefix(5) {
+                        try Task.checkCancellation()
+                        let title = try? await TVDBDirect.title(entry, key: key)
+                        try Task.checkCancellation()
+                        if let path = TVDBDirect.artworkURL(title?.image), !posters.contains(path) {
+                            posters.append(path)
+                            art = posters
+                        }
+                        if posters.count == 3 { break }
+                    }
+                    loadedPreview = true
+                } catch { /* The list remains tappable without its preview. */ }
+            }
+    }
+}
+
+private struct SearchListPosterStack: View {
+    let posters: [String]
+    let title: String
+
+    var body: some View {
+        Color.clear.aspectRatio(1, contentMode: .fit)
+            .overlay {
+                GeometryReader { proxy in
+                    let width = proxy.size.width * 0.48
+                    ZStack {
+                        if posters.indices.contains(1) {
+                            poster(posters[1], width: width * 0.89).rotationEffect(.degrees(-9))
+                                .offset(x: -width * 0.44, y: 4)
+                        }
+                        if posters.indices.contains(2) {
+                            poster(posters[2], width: width * 0.89).rotationEffect(.degrees(9))
+                                .offset(x: width * 0.44, y: 4)
+                        }
+                        poster(posters.first, width: width)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
+    }
+
+    private func poster(_ image: String?, width: CGFloat) -> some View {
+        Artwork(path: image, title: title)
+            .frame(width: width, height: width * 1.5)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -152,15 +287,17 @@ struct SearchTVDBFranchisePage: View {
 
     private func load() async {
         failure = nil
-        if store.isPreview { entries = []; return }
+        #if DEBUG
+        if store.isPreview { entries = [.init(providerID: 900001, kind: .movie)]; return }
+        #endif
         guard let key = TVDBDirect.key(store), !key.isEmpty else {
             failure = "Connect TheTVDB in Profile → Connections."
             return
         }
         do {
-            let result = try await TVDBDirect.entries(franchise, key: key)
+            let result = try await TVDBDirect.listContents(franchise, key: key)
             try Task.checkCancellation()
-            entries = result
+            entries = result.entries
         } catch is CancellationError { }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
@@ -176,7 +313,14 @@ private struct SearchTVDBTitleCard: View {
         Group {
             if let title {
                 if let id = title.tmdbID {
-                    NavigationLink(value: CatalogRoute(kind: entry.kind, id: id)) { card(title) }.buttonStyle(.springPress)
+                    let item = CatalogItem(id: id, mediaType: entry.kind, name: title.name)
+                    if let savedID = store.libraryIdentity(item) {
+                        NavigationLink(value: savedID) { card(title) }.buttonStyle(.springPress)
+                            .accessibilityIdentifier("catalog-\(item.key)")
+                    } else {
+                        NavigationLink(value: item.route) { card(title) }.buttonStyle(.springPress)
+                            .accessibilityIdentifier("catalog-\(item.key)")
+                    }
                 } else {
                     Link(destination: entry.webLink) { card(title) }.buttonStyle(.springPress)
                         .accessibilityHint("Opens TheTVDB")
@@ -209,6 +353,13 @@ private struct SearchTVDBTitleCard: View {
 
     private func load() async {
         failed = false
+        #if DEBUG
+        if store.isPreview, let item = PreviewCatalog.page(type: entry.kind.rawValue).items.first(where: { $0.id == entry.providerID }) {
+            title = .init(name: item.name, image: item.artwork, year: item.year.map { String($0) },
+                          remoteIds: [.init(id: String(item.id), sourceName: "TheMovieDB.com")])
+            return
+        }
+        #endif
         guard let key = TVDBDirect.key(store), !key.isEmpty else { failed = true; return }
         do {
             let result = try await TVDBDirect.title(entry, key: key)

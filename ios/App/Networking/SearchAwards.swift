@@ -7,10 +7,36 @@ struct SearchAwardCeremony: Codable, Hashable, Identifiable, Sendable {
 
     // Provider IDs let the landing page show the main ceremonies before any request.
     static let featured: [Self] = [
-        .init(id: 5, name: "Primetime Emmy Awards"), .init(id: 1, name: "Academy Awards"),
+        .init(id: 1, name: "Academy Awards"), .init(id: 5, name: "Primetime Emmy Awards"),
         .init(id: 11, name: "BAFTA Awards"), .init(id: 2, name: "Golden Globe Awards"),
         .init(id: 6, name: "Screen Actors Guild Awards"), .init(id: 4, name: "Critics’ Choice Awards")
     ]
+
+    var displayName: String { id == 1 ? "Oscars" : name }
+
+    // Representative winners from TheTVDB’s published ceremony records.
+    var artwork: String? {
+        let path: String
+        switch id {
+        case 1: path = "v4/movie/358595/posters/67fa85114b094.jpg"
+        case 2: path = "v4/movie/359371/posters/696fb409be011.jpg"
+        case 3: path = "v4/movie/372577/posters/697e2fc60be11.jpg"
+        case 4: path = "v4/movie/355416/posters/68a53e6836322.jpg"
+        case 5: path = "v4/series/454109/posters/69d1a63ba34e6.jpg"
+        case 6: path = "posters/63f8ff72c3bd5.jpg"
+        case 7: path = "v4/movie/358910/posters/66dd35eb7d8b1.jpg"
+        case 8: path = "v4/movie/149849/posters/6244993ab93f4.jpg"
+        case 9: path = "v4/movie/355416/posters/68a53e6836322.jpg"
+        case 10: path = "v4/series/75332/posters/6a96044b76dd1.jpg"
+        case 11: path = "v4/series/435022/posters/6826915db879e.jpg"
+        case 16: path = "v4/movie/363821/posters/6791ad0524fcc.jpg"
+        case 18: path = "posters/260092-3.jpg"
+        case 19: path = "v4/movie/363569/posters/67a64d5b603bc.jpg"
+        case 21: path = "v4/series/462187/posters/68dfd89f09318.jpg"
+        default: return nil
+        }
+        return "https://artworks.thetvdb.com/banners/" + path
+    }
 
     var style: (symbol: String, tint: String) {
         switch id {
@@ -123,6 +149,10 @@ struct SearchAwardNominee: Codable, Hashable, Identifiable, Sendable {
     }
 
     var workName: String? { Self.clean(movie?.name) ?? Self.clean(series?.name) ?? Self.clean(episode?.name) }
+    var hasKoreanWorkTitle: Bool {
+        guard let workTitle = Self.clean(movie?.name) ?? Self.clean(series?.name) else { return false }
+        return workTitle.unicodeScalars.contains { (0xAC00...0xD7A3).contains($0.value) }
+    }
     var creditedName: String? { Self.clean(character?.personName) ?? Self.clean(name) }
     var title: String { creditedName ?? workName ?? Self.clean(character?.name) ?? "Nominee" }
     var subtitle: String? {
@@ -145,9 +175,51 @@ struct SearchAwardNominee: Codable, Hashable, Identifiable, Sendable {
 struct SearchAwardResults: Codable, Sendable {
     let id: Int
     let nominees: [SearchAwardNominee]?
+
+    private struct DisplayIdentity: Hashable {
+        let year: String?
+        let work: SearchAwardNominee.WorkReference?
+        let episode: Int?
+        let person: Int?
+        let title: String
+        let subtitle: String
+        let note: String
+        let subcategory: String
+        let unknown: Int?
+
+        init(_ nominee: SearchAwardNominee) {
+            year = nominee.year
+            work = nominee.work
+            episode = nominee.episode?.id
+            person = nominee.character?.peopleId
+            title = Self.normalize(nominee.title)
+            subtitle = Self.normalize(nominee.subtitle)
+            note = Self.normalize(nominee.note)
+            subcategory = Self.normalize(nominee.subcategory)
+            unknown = nominee.work == nil && nominee.creditedName == nil && nominee.title == "Nominee" ? nominee.id : nil
+        }
+
+        private static func normalize(_ text: String?) -> String {
+            (text ?? "").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en"))
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }.joined(separator: " ")
+        }
+    }
+
     var rows: [SearchAwardNominee] {
         var seen = Set<Int>()
-        return (nominees ?? []).filter { seen.insert($0.id).inserted }
+        var positions: [DisplayIdentity: Int] = [:]
+        var unique: [SearchAwardNominee] = []
+        for nominee in nominees ?? [] where seen.insert(nominee.id).inserted {
+            let identity = DisplayIdentity(nominee)
+            if let index = positions[identity] {
+                if nominee.isWinner == true && unique[index].isWinner != true { unique[index] = nominee }
+            } else {
+                positions[identity] = unique.count
+                unique.append(nominee)
+            }
+        }
+        return unique
     }
 }
 
@@ -161,6 +233,18 @@ struct SearchAwardArchive: Codable, Sendable {
 }
 
 struct SearchAwardEditionIndex {
+    enum Edition: Hashable {
+        case year(Int)
+        case undated
+
+        var label: String {
+            switch self {
+            case let .year(year): String(year)
+            case .undated: "Undated"
+            }
+        }
+    }
+
     struct Section: Identifiable {
         let category: SearchAwardCategory
         let nominees: [SearchAwardNominee]
@@ -187,19 +271,23 @@ struct SearchAwardEditionIndex {
         }
     }
 
-    let years: [Int]
-    let sections: [Int: [Section]]
+    let editions: [Edition]
+    let sections: [Edition: [Section]]
 
     init(_ archive: SearchAwardArchive) {
-        var sections: [Int: [Section]] = [:]
+        var sections: [Edition: [Section]] = [:]
         for category in archive.categories {
             let byYear = Dictionary(grouping: archive.results[category.id]?.rows ?? [], by: \.ceremonyYear)
             for (year, nominees) in byYear {
-                guard let year else { continue }
-                sections[year, default: []].append(Section(category: category, nominees: nominees))
+                let edition = year.map(Edition.year) ?? .undated
+                sections[edition, default: []].append(Section(category: category, nominees: nominees))
             }
         }
-        self.years = sections.keys.sorted(by: >)
+        let years = sections.keys.compactMap { edition -> Int? in
+            if case let .year(year) = edition { return year }
+            return nil
+        }
+        self.editions = years.sorted(by: >).map(Edition.year) + (sections[.undated] == nil ? [] : [.undated])
         self.sections = sections
     }
 }

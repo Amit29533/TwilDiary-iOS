@@ -259,16 +259,21 @@ import TwilDiaryCore
     static func search(_ query: String, page: Int, token: String) async throws -> CatalogPage {
         if query.range(of: #"^tt\d{7,10}$"#, options: [.regularExpression, .caseInsensitive]) != nil {
             let data = try await object("find/\(query.lowercased())", query: ["external_source": "imdb_id"], token: token)
-            let movies = (data["movie_results"] as? [[String: Any]] ?? []).compactMap { catalogItem($0, kind: .movie) }
-            let shows = (data["tv_results"] as? [[String: Any]] ?? []).compactMap { catalogItem($0, kind: .tv) }
-            return CatalogPage(items: movies + shows, page: 1, totalPages: 1)
+            guard let movieRows = data["movie_results"] as? [[String: Any]],
+                  let showRows = data["tv_results"] as? [[String: Any]] else {
+                throw APIError.message("TMDB returned an incomplete IMDb lookup.")
+            }
+            let movies = movieRows.filter { $0["adult"] as? Bool != true }.compactMap { catalogItem($0, kind: .movie) }
+            let shows = showRows.filter { $0["adult"] as? Bool != true }.compactMap { catalogItem($0, kind: .tv) }
+            return CatalogPage(items: CatalogTools.merging(movies, shows), page: 1, totalPages: 1)
         }
         let data = try await object("search/multi", query: ["query": query, "page": String(page), "include_adult": "false", "language": "en-US"], token: token)
-        let items = (data["results"] as? [[String: Any]] ?? []).compactMap { item -> CatalogItem? in
+        let (rows, totalPages) = try catalogPageFields(data, requestedPage: page)
+        let items = rows.compactMap { item -> CatalogItem? in
             guard item["adult"] as? Bool != true, let type = item["media_type"] as? String, let kind = MediaKind(rawValue: type) else { return nil }
             return catalogItem(item, kind: kind)
         }
-        return CatalogPage(items: items, page: data["page"] as? Int ?? page, totalPages: min(data["total_pages"] as? Int ?? 0, 500),
+        return CatalogPage(items: CatalogTools.merging([], items), page: page, totalPages: totalPages,
                            totalResults: data["total_results"] as? Int)
     }
 
@@ -427,7 +432,12 @@ import TwilDiaryCore
             } else {
                 path = "discover/\(type)"
                 let dateField = kind == .movie ? "primary_release_date" : "first_air_date"
-                params["sort_by"] = sort == "rating" ? "vote_average.desc" : sort == "newest" ? dateField + ".desc" : "popularity.desc"
+                switch sort {
+                case "rating": params["sort_by"] = "vote_average.desc"
+                case "votes": params["sort_by"] = "vote_count.desc"
+                case "newest": params["sort_by"] = dateField + ".desc"
+                default: params["sort_by"] = "popularity.desc"
+                }
                 if let keyword { params["with_keywords"] = String(keyword) }
                 if let genreID, q["keyword"] != nil || keyword == nil { params["with_genres"] = String(genreID) }
                 if let company = q["company"], !company.isEmpty { params["with_companies"] = company }
@@ -468,9 +478,18 @@ import TwilDiaryCore
             }
         }
         let data = try await object(path, query: params, token: token)
-        let items = (data["results"] as? [[String: Any]] ?? []).filter { ($0["adult"] as? Bool) != true }.compactMap { catalogItem($0, kind: kind) }
-        return CatalogPage(items: trending || source == "because" ? filtered(items) : items, page: data["page"] as? Int ?? page,
-                           totalPages: min(data["total_pages"] as? Int ?? 0, 500), totalResults: data["total_results"] as? Int)
+        let (rows, totalPages) = try catalogPageFields(data, requestedPage: page)
+        let items = rows.filter { ($0["adult"] as? Bool) != true }.compactMap { catalogItem($0, kind: kind) }
+        return CatalogPage(items: trending || source == "because" ? filtered(items) : items, page: page,
+                           totalPages: totalPages, totalResults: data["total_results"] as? Int)
+    }
+
+    static func catalogPageFields(_ data: [String: Any], requestedPage: Int) throws -> ([[String: Any]], Int) {
+        guard let rows = data["results"] as? [[String: Any]], rows.count <= 100,
+              data["page"] as? Int == requestedPage, let totalPages = data["total_pages"] as? Int, totalPages >= 0 else {
+            throw APIError.message("TMDB returned an incomplete catalog page. Please retry.")
+        }
+        return (rows, min(totalPages, 500))
     }
 
     /// One TMDB v3 read. A v4 read access token goes in the Authorization header; a 32-character

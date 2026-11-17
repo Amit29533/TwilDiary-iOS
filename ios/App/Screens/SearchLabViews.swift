@@ -128,10 +128,12 @@ struct SearchLabView: View {
             }
             .task(id: filters) {
                 // "Show 48 titles": TMDB's count for these filters (not knowable once your library narrows it).
+                let selection = filters
+                matchCount = nil
+                guard selection.library == nil, selection.searchText.isEmpty, !SearchLabData.filtersTVRating(selection) else { return }
                 do { try await Task.sleep(for: .milliseconds(450)) } catch { return }
-                guard filters.library == nil, filters.searchText.isEmpty else { withAnimation { matchCount = nil }; return }
-                let page = try? await SearchLabData.page(filters, page: 1, store: store)
-                if !Task.isCancelled { withAnimation { matchCount = page?.totalResults } }
+                let page = try? await SearchLabData.page(selection, page: 1, store: store)
+                if !Task.isCancelled, filters == selection { withAnimation { matchCount = page?.totalResults } }
             }
             .task { await yourTags.load(store: store) }
     }
@@ -351,18 +353,22 @@ struct SearchLabResultsView: View {
     @State private var total: Int?
     @State private var loading = false
     @State private var failure: String?
+    @State private var requested: DiscoveryFilters?
+    @State private var generation = UUID()
     init(route: SearchLabResultsRoute) { _filters = State(initialValue: route.filters) }
     private var shown: [CatalogItem] {
+        guard requested == filters else { return [] }
         switch filters.library {
-        case "in": items.filter { CatalogTools.libraryIdentity($0, in: store.workspace) != nil }
-        case "not": items.filter { CatalogTools.libraryIdentity($0, in: store.workspace) == nil }
-        default: items
+        case "in": return items.filter { CatalogTools.libraryIdentity($0, in: store.workspace) != nil }
+        case "not": return items.filter { CatalogTools.libraryIdentity($0, in: store.workspace) == nil }
+        default: return items
         }
     }
+    private var hasMore: Bool { requested == filters && page > 0 && page < min(500, totalPages) }
     private var countText: String {
-        if loading && items.isEmpty { return "Loading…" }
+        if requested != filters || (loading && items.isEmpty) { return "Loading…" }
         if filters.library == nil, let total { return total.counted("title", "titles") }
-        return shown.count.counted("title", "titles") + (page < totalPages ? "+" : "")
+        return shown.count.counted("title", "titles") + (hasMore ? "+" : "")
     }
     var body: some View {
         let shown = shown
@@ -389,13 +395,29 @@ struct SearchLabResultsView: View {
                         Group {
                             if let id = CatalogTools.libraryIdentity(item, in: store.workspace) { NavigationLink(value: id) { CatalogPoster(item: item) } }
                             else { NavigationLink(value: item.route) { CatalogPoster(item: item) } }
-                        }.buttonStyle(.springPress).onAppear { if item.key == items.last?.key { Task { await load(more: true) } } }
+                        }.buttonStyle(.springPress).accessibilityIdentifier("search-lab-title-" + item.key)
                     }
                 }
-                if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2)) }
-                if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                if !loading && shown.isEmpty && failure == nil {
-                    Text("No titles match these filters. Remove one to widen the search.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                if requested != filters || (loading && items.isEmpty) {
+                    DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2))
+                } else if let failure {
+                    RetryNotice(message: failure) { Task { await load(more: page > 0) } }
+                } else if hasMore {
+                    if filters.library != nil || SearchLabData.filtersTVRating(filters) || shown.isEmpty {
+                        if shown.isEmpty {
+                            Text("No matches on the pages loaded so far.").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Button("Load more titles") { Task { await load(more: true) } }
+                            .font(.headline).frame(maxWidth: .infinity, minHeight: 44)
+                            .cardSurface(14).foregroundStyle(ThemeStore.accent).buttonStyle(.springPress)
+                            .disabled(loading).accessibilityIdentifier("search-lab-load-more")
+                        if loading { ProgressView().frame(maxWidth: .infinity).accessibilityLabel("Loading more titles") }
+                    } else {
+                        ScrollLoadTrigger(token: page, loading: loading) { Task { await load(more: true) } }
+                    }
+                } else if !loading && shown.isEmpty {
+                    Text("No titles match these filters. Remove one to widen the search.")
+                        .font(.subheadline).foregroundStyle(HomeStyle.secondary)
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationTitle("Search Lab").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
@@ -406,7 +428,9 @@ struct SearchLabResultsView: View {
                     }.accessibilityLabel("Edit filters").accessibilityIdentifier("search-lab-edit")
                 }
             }
-            .task(id: filters) { await load() }
+            .task(id: filters) {
+                if requested != filters || (page == 0 && failure == nil) { await load() }
+            }
     }
     /// Every filter that narrows the list, each removable on its own.
     private var chips: [(String, () -> Void)] {
@@ -414,17 +438,19 @@ struct SearchLabResultsView: View {
         if !filters.searchText.isEmpty { result.append(("\u{201C}" + filters.searchText + "\u{201D}", { filters.text = nil })) }
         if filters.type != "all" { result.append((filters.type == "movie" ? "Movies" : "Shows", { filters.type = "all" })) }
         for genre in filters.genres ?? [] { result.append((genre, { filters.genres = (filters.genres ?? []).filter { $0 != genre }; if filters.genres?.isEmpty == true { filters.genres = nil } })) }
-        for (index, id) in (filters.keywords ?? []).enumerated() {
-            let name = filters.keywordNames.flatMap { index < $0.count ? $0[index] : nil } ?? "tag"
-            result.append(("#" + name, { removeTag(id) }))
+        if filters.searchText.isEmpty {
+            for (index, id) in (filters.keywords ?? []).enumerated() {
+                let name = filters.keywordNames.flatMap { index < $0.count ? $0[index] : nil } ?? "tag"
+                result.append(("#" + name, { removeTag(id) }))
+            }
+            if let value = filters.certification { result.append((value, { filters.certification = nil })) }
+            if let value = filters.showStatus { result.append((value == "production" ? "In production" : value.capitalized, { filters.showStatus = nil })) }
         }
-        if let value = filters.certification { result.append((value, { filters.certification = nil })) }
         if filters.minimum != "0" { result.append((filters.minimum + "+", { filters.minimum = "0" })) }
         if filters.yearFrom != nil || filters.yearTo != nil {
             let label = filters.yearFrom == nil ? "Up to \(filters.yearTo ?? 0)" : "\(filters.yearFrom ?? 0)–\(filters.yearTo ?? SearchLabData.highestYear)"
             result.append((label, { filters.yearFrom = nil; filters.yearTo = nil }))
         }
-        if let value = filters.showStatus { result.append((value == "production" ? "In production" : value.capitalized, { filters.showStatus = nil })) }
         if let value = filters.language { result.append((Locale.current.localizedString(forLanguageCode: value) ?? value, { filters.language = nil })) }
         if let value = filters.library { result.append((value == "in" ? "In library" : "Not yet in library", { filters.library = nil })) }
         return result
@@ -443,14 +469,23 @@ struct SearchLabResultsView: View {
         }.buttonStyle(.plain).accessibilityLabel("Remove " + label)
     }
     private func load(more: Bool = false) async {
-        if more && (loading || page >= totalPages) { return }
-        if !more { items = []; page = 0; totalPages = 1; total = nil }
+        if more && (loading || !hasMore) { return }
+        let selection = filters
+        let request = UUID()
+        generation = request
+        if !more { requested = selection; items = []; page = 0; totalPages = 1; total = nil }
+        let number = page + 1
         loading = true; failure = nil
-        defer { loading = false }
+        defer { if generation == request { loading = false } }
         do {
-            let next = try await SearchLabData.page(filters, page: page + 1, store: store)
-            items = CatalogTools.merging(items, next.items); page = next.page; totalPages = next.totalPages
+            let next = try await SearchLabData.page(selection, page: number, store: store)
+            guard !Task.isCancelled, generation == request, selection == filters else { return }
+            guard next.page == number else { throw APIError.message("The catalog returned an unexpected page. Please retry.") }
+            items = SearchLabData.ordered(CatalogTools.merging(items, next.items), sort: selection.sort)
+            page = next.page; totalPages = next.totalPages
             if !more { total = next.totalResults }
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch {
+            if !Task.isCancelled, generation == request, selection == filters { failure = error.localizedDescription }
+        }
     }
 }

@@ -403,6 +403,7 @@ actor AniListClient {
     }
 
     private var browseTags: (at: Date, names: [String])?
+    private var browseTagImages: [String: String] = [:]
     private static let browseGenres: Set<String> = ["Mecha", "Slice of Life", "Mahou Shoujo", "Psychological"]
 
     func searchBrowseTags() async throws -> [String] {
@@ -423,12 +424,20 @@ actor AniListClient {
         let hasNext: Bool
     }
 
-    func browseTag(_ tag: String, page: Int, sort: String, minimum: Int?, period: Int?) async throws -> BrowseTagPage {
+    func browseTagArtwork(_ tag: String) async throws -> String? {
+        if let cached = browseTagImages[tag] { return cached }
+        let page = try await browseTag(tag, page: 1, sort: "POPULARITY_DESC", minimum: nil, period: nil, perPage: 5)
+        let image = page.items.lazy.compactMap(\.banner).first ?? page.items.lazy.compactMap(\.cover).first
+        browseTagImages[tag] = image
+        return image
+    }
+
+    func browseTag(_ tag: String, page: Int, sort: String, minimum: Int?, period: Int?, perPage: Int = 24) async throws -> BrowseTagPage {
         struct Reply: Decodable {
             struct Media: Decodable {
                 struct Title: Decodable { let english: String?; let romaji: String? }
                 let id: Int; let format: String?; let averageScore: Int?
-                let title: Title; let coverImage: Image?; let startDate: DateParts?
+                let title: Title; let coverImage: Image?; let startDate: DateParts?; let bannerImage: String?
             }
             struct Page: Decodable {
                 struct PageInfo: Decodable { let hasNextPage: Bool }
@@ -436,7 +445,7 @@ actor AniListClient {
             }
             let Page: Page
         }
-        var variables: [String: any Sendable] = ["page": page, "sort": [sort]]
+        var variables: [String: any Sendable] = ["page": page, "perPage": perPage, "sort": [sort]]
         variables[Self.browseGenres.contains(tag) ? "genre" : "tag"] = tag
         if let minimum { variables["minimum"] = minimum * 10 - 1 }
         if let period {
@@ -444,12 +453,12 @@ actor AniListClient {
             variables["to"] = (period + 10) * 10_000
         }
         let reply: Reply = try await query("""
-            query($tag: String, $genre: String, $page: Int, $sort: [MediaSort], $minimum: Int, $from: FuzzyDateInt, $to: FuzzyDateInt) {
-              Page(page: $page, perPage: 24) {
+            query($tag: String, $genre: String, $page: Int, $perPage: Int, $sort: [MediaSort], $minimum: Int, $from: FuzzyDateInt, $to: FuzzyDateInt) {
+              Page(page: $page, perPage: $perPage) {
                 pageInfo { hasNextPage }
                 media(type: ANIME, isAdult: false, tag: $tag, genre: $genre, sort: $sort, averageScore_greater: $minimum,
                       startDate_greater: $from, startDate_lesser: $to) {
-                  id format averageScore title { english romaji } coverImage { large } startDate { year }
+                  id format averageScore title { english romaji } coverImage { large } startDate { year } bannerImage
                 }
               }
             }
@@ -458,7 +467,8 @@ actor AniListClient {
             AniAppearance(id: item.id, title: AnimeTitleChoice.pick(english: item.title.english, romaji: item.title.romaji),
                           cover: item.coverImage?.large, year: item.startDate?.year, role: nil, voiceActor: nil,
                           format: item.format, alternateTitles: [item.title.english, item.title.romaji].compactMap { $0 },
-                          rating: item.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil })
+                          rating: item.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil },
+                          banner: item.bannerImage)
         }
         return BrowseTagPage(items: items, hasNext: reply.Page.pageInfo.hasNextPage)
     }

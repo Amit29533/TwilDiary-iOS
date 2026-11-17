@@ -7,6 +7,9 @@ export interface SearchMatch {
   overview: string;
   posterPath: string | null;
   isAnime?: boolean;
+  genres?: string[];
+  rating?: number | null;
+  votes?: number;
 }
 export interface SearchPage {
   items: SearchMatch[];

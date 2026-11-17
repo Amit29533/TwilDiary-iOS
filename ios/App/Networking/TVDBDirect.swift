@@ -5,6 +5,13 @@ import TwilDiaryCore
     private static let base = URL(string: "https://api4.thetvdb.com/v4")!
     private static var session: (key: String, token: String, loaded: Date)?
     private static var signingIn: (key: String, id: UUID, task: Task<String, Error>)?
+    private static var listDetailsCache: [Int: (date: Date, contents: ListContents)] = [:]
+    private static var listTitles: [ListEntry: (date: Date, title: ListTitle)] = [:]
+    private static let englishAwardTitles: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 256
+        return cache
+    }()
     static var builtIn: String? {
         guard let value = (Bundle.main.object(forInfoDictionaryKey: "TwilDiaryTVDBKey") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty, !value.hasPrefix("$(") else { return nil }
@@ -67,6 +74,20 @@ import TwilDiaryCore
             .flatMap { Int($0.id) }.flatMap { $0 > 0 ? $0 : nil }
     }
 
+    static func englishAwardTitle(_ item: ListEntry, key: String) async throws -> String? {
+        struct Translation: Decodable { let name: String? }
+        let cacheKey = item.id as NSString
+        if let cached = englishAwardTitles.object(forKey: cacheKey) {
+            return cached.length == 0 ? nil : cached as String
+        }
+        let token = try await browseToken(key: key)
+        let reply = try await send(request("\(item.path)/\(item.providerID)/translations/eng", token: token),
+                                   as: AwardReply<Translation?>.self)
+        let name = reply.data?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        englishAwardTitles.setObject(name as NSString, forKey: cacheKey)
+        return name.isEmpty ? nil : name
+    }
+
     private static func login(key: String) async throws -> String {
         struct Login: Decodable {
             struct Credentials: Decodable { let token: String }
@@ -104,6 +125,19 @@ import TwilDiaryCore
         var webLink: URL {
             URL(string: "https://www.thetvdb.com/dereferrer/\(kind == .tv ? "series" : "movie")/\(providerID)")!
         }
+    }
+
+    struct ListContents: Sendable {
+        let artwork: String?
+        let entries: [ListEntry]
+    }
+
+    static func artworkURL(_ path: String?) -> String? {
+        guard let value = path?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        let address = value.hasPrefix("/banners/") ? "https://artworks.thetvdb.com" + value : value
+        guard let url = URL(string: address), url.scheme == "https",
+              url.host == "artworks.thetvdb.com", url.path.hasPrefix("/banners/") else { return nil }
+        return url.absoluteString
     }
 
     struct ListTitle: Decodable, Sendable {
@@ -161,31 +195,45 @@ import TwilDiaryCore
         return ListPage(franchises: lists, hasNext: reply.links?.next != nil)
     }
 
-    static func entries(_ franchise: Franchise, key: String) async throws -> [ListEntry] {
+    static func listContents(_ franchise: Franchise, key: String) async throws -> ListContents {
         struct Reply: Decodable {
             struct Result: Decodable {
                 struct Entry: Decodable { let order: Int?; let seriesId: Int?; let movieId: Int? }
-                let entities: [Entry]
+                let id: Int
+                let image: String?
+                let entities: [Entry]?
             }
             let data: Result
         }
+        if let cached = listDetailsCache[franchise.id], Date.now.timeIntervalSince(cached.date) < 900 {
+            return cached.contents
+        }
         let token = try await browseToken(key: key)
         let reply = try await send(request("lists/\(franchise.id)/extended", token: token), as: Reply.self)
+        guard reply.data.id == franchise.id else { throw APIError.message("TheTVDB returned a different list.") }
         var seen = Set<String>()
-        return reply.data.entities.sorted { ($0.order ?? Int.max) < ($1.order ?? Int.max) }.compactMap {
+        let entries: [ListEntry] = (reply.data.entities ?? []).sorted { ($0.order ?? Int.max) < ($1.order ?? Int.max) }.compactMap {
             let entry: ListEntry
             if let series = $0.seriesId, series > 0 { entry = ListEntry(providerID: series, kind: .tv) }
             else if let movie = $0.movieId, movie > 0 { entry = ListEntry(providerID: movie, kind: .movie) }
             else { return nil }
             return seen.insert(entry.id).inserted ? entry : nil
         }
+        let contents = ListContents(artwork: artworkURL(reply.data.image), entries: entries)
+        if listDetailsCache.count >= 64 { listDetailsCache.removeAll(keepingCapacity: true) }
+        listDetailsCache[franchise.id] = (.now, contents)
+        return contents
     }
 
     static func title(_ item: ListEntry, key: String) async throws -> ListTitle {
         struct Reply: Decodable { let data: ListTitle }
+        if let cached = listTitles[item], Date.now.timeIntervalSince(cached.date) < 900 { return cached.title }
         let token = try await browseToken(key: key)
-        return try await send(request("\(item.path)/\(item.providerID)/extended", query: ["short": "true"],
-                                      token: token), as: Reply.self).data
+        let title = try await send(request("\(item.path)/\(item.providerID)/extended", query: ["short": "true"],
+                                           token: token), as: Reply.self).data
+        if listTitles.count >= 256 { listTitles.removeAll(keepingCapacity: true) }
+        listTitles[item] = (.now, title)
+        return title
     }
 
     private static func browseToken(key: String) async throws -> String {

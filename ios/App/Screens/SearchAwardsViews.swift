@@ -72,31 +72,9 @@ private struct AwardCeremonyLink: View {
 
     var body: some View {
         NavigationLink(value: SearchBrowseRoute.ceremony(ceremony)) {
-            AwardTile(ceremony: ceremony, title: ceremony.name)
+            let style = ceremony.style
+            SearchBrowseArtworkTile(title: ceremony.displayName, symbol: style.symbol, tint: style.tint, artwork: ceremony.artwork)
         }.buttonStyle(.springPress).accessibilityIdentifier("search-award-ceremony-\(ceremony.id)")
-    }
-}
-
-private struct AwardTile: View {
-    let ceremony: SearchAwardCeremony
-    let title: String
-    @ScaledMetric(relativeTo: .body) private var height: CGFloat = 100
-
-    var body: some View {
-        let style = ceremony.style
-        let tint = Color(webHex: style.tint)
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: style.symbol).font(.title2.weight(.semibold))
-                .foregroundStyle(tint).accessibilityHidden(true)
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
-        }.padding(12).frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
-            .background {
-                RoundedRectangle(cornerRadius: 14).fill(
-                    LinearGradient(colors: [tint.opacity(0.25), Color(webHex: "#171620")],
-                                   startPoint: .topTrailing, endPoint: .bottomLeading)
-                ).background(Color(webHex: "#171620"), in: RoundedRectangle(cornerRadius: 14))
-            }.contentShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -161,27 +139,42 @@ struct SearchAwardCeremonyPage: View {
     let ceremony: SearchAwardCeremony
     @Environment(DiaryStore.self) private var store
     @State private var loader = AwardArchiveLoader()
-    @State private var selectedYear: Int?
+    @State private var selectedEdition: SearchAwardEditionIndex.Edition?
     @State private var medium: MediaKind = .tv
     @State private var awardType: SearchAwardCategory.AwardType?
     @State private var categoryID: Int?
     @State private var winnersOnly = false
 
-    private var year: Int? {
-        guard let years = loader.editions?.years else { return nil }
-        if let selectedYear, years.contains(selectedYear) { return selectedYear }
-        return years.first
+    private var edition: SearchAwardEditionIndex.Edition? {
+        guard let editions = loader.editions?.editions else { return nil }
+        if let selectedEdition, editions.contains(selectedEdition) { return selectedEdition }
+        return editions.first
+    }
+
+    private var pageTitle: String {
+        if case let .year(year)? = edition { return "\(ceremony.displayName) \(year)" }
+        return ceremony.displayName
     }
 
     var body: some View {
         EdgeToEdgeScroll(frosted: true) {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if let editions = loader.editions {
-                    if let year {
-                        let groups = editions.sections[year] ?? []
-                        awardResults(groups, year: year, years: editions.years)
-                    } else if !loader.loading, loader.failure == nil {
-                        ContentUnavailableView("No editions found", systemImage: "calendar")
+                    if let edition, let groups = editions.sections[edition] {
+                        awardResults(groups, edition: edition, editions: editions.editions)
+                    } else if let archive = loader.archive, archive.incompleteCount == 0,
+                              !loader.loading, loader.failure == nil {
+                        ContentUnavailableView("Results unavailable", systemImage: "trophy",
+                                               description: Text("TheTVDB has no winners or nominees for this ceremony."))
+                        if !archive.categories.isEmpty {
+                            DisclosureGroup("Categories listed by TheTVDB") {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ForEach(archive.categories) { category in
+                                        Text(category.name).font(.subheadline)
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                            }.padding(12).cardSurface(14)
+                        }
                     }
                 }
                 if let failure = loader.failure {
@@ -196,13 +189,15 @@ struct SearchAwardCeremonyPage: View {
                 AwardsAttribution()
             }.padding(14).padding(.bottom, 32)
         }.diaryScreenBackground()
-            .navigationTitle(year.map { "\(ceremony.name) \($0)" } ?? ceremony.name)
+            .navigationTitle(pageTitle)
             .navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .task { if loader.archive == nil { await loader.load(ceremony, store: store) } }
             .refreshable { await loader.load(ceremony, store: store, refresh: true) }
     }
 
-    @ViewBuilder private func awardResults(_ groups: [SearchAwardEditionIndex.Section], year: Int, years: [Int]) -> some View {
+    @ViewBuilder private func awardResults(_ groups: [SearchAwardEditionIndex.Section],
+                                           edition: SearchAwardEditionIndex.Edition,
+                                           editions: [SearchAwardEditionIndex.Edition]) -> some View {
         let media = groups.reduce(into: Set<MediaKind>()) { $0.formUnion($1.media) }
         let mixed = !ceremony.televisionOnly && media.contains(.movie) && media.contains(.tv)
         let scoped = groups.compactMap { $0.matching(mixed ? medium : nil) }
@@ -212,7 +207,7 @@ struct SearchAwardCeremonyPage: View {
         let selectedCategory = categories.first { $0.id == categoryID }?.category
         let sections = categories.filter { selectedCategory == nil || $0.id == selectedCategory?.id }
 
-        filterBar(year: year, years: years, types: availableTypes, type: type,
+        filterBar(edition: edition, editions: editions, types: availableTypes, type: type,
                   categories: categories.map(\.category), selectedCategory: selectedCategory)
         if mixed {
             Picker("Movies or shows", selection: mediumSelection) {
@@ -258,21 +253,22 @@ struct SearchAwardCeremonyPage: View {
         })
     }
 
-    private func filterBar(year: Int, years: [Int], types: Set<SearchAwardCategory.AwardType>,
+    private func filterBar(edition: SearchAwardEditionIndex.Edition, editions: [SearchAwardEditionIndex.Edition],
+                           types: Set<SearchAwardCategory.AwardType>,
                            type: SearchAwardCategory.AwardType?, categories: [SearchAwardCategory],
                            selectedCategory: SearchAwardCategory?) -> some View {
         SearchBrowseFilterStrip {
             Menu {
-                Picker("Year", selection: Binding(get: { year }, set: { choice in
-                    guard choice != year else { return }
-                    selectedYear = choice
+                Picker("Year", selection: Binding(get: { edition }, set: { choice in
+                    guard choice != edition else { return }
+                    selectedEdition = choice
                     awardType = nil
                     categoryID = nil
                 })) {
-                    ForEach(years, id: \.self) { Text(String($0)).tag($0) }
+                    ForEach(editions, id: \.self) { Text($0.label).tag($0) }
                 }
             } label: {
-                AwardFilterPill(label: String(year), icon: "calendar")
+                AwardFilterPill(label: edition.label, icon: "calendar")
             }.accessibilityIdentifier("search-award-year-filter")
             Menu {
                 Picker("Type", selection: Binding(get: { type }, set: { choice in
@@ -343,26 +339,50 @@ private struct AwardFilterPill: View {
 
 private struct AwardNomineeRow: View {
     let nominee: SearchAwardNominee
+    @Environment(DiaryStore.self) private var store
+    @Environment(\.locale) private var locale
+    @State private var englishWorkTitle: String?
+
+    private var title: String {
+        nominee.creditedName == nil ? englishWorkTitle ?? nominee.title : nominee.title
+    }
+
+    private var subtitle: String? {
+        nominee.creditedName == nil ? nominee.subtitle : englishWorkTitle ?? nominee.subtitle
+    }
 
     var body: some View {
-        if nominee.work != nil || nominee.character?.peopleId != nil {
-            NavigationLink(value: SearchBrowseRoute.awardNominee(nominee)) { row }
-                .buttonStyle(.springPress).accessibilityIdentifier("search-award-nominee-\(nominee.id)")
-        } else {
-            row.accessibilityIdentifier("search-award-nominee-\(nominee.id)")
+        Group {
+            if nominee.work != nil || nominee.character?.peopleId != nil {
+                NavigationLink(value: SearchBrowseRoute.awardNominee(nominee)) { row }.buttonStyle(.springPress)
+            } else {
+                row
+            }
+        }.accessibilityIdentifier("search-award-nominee-\(nominee.id)")
+        .task(id: locale.identifier) {
+            guard locale.language.languageCode?.identifier == "en" else { englishWorkTitle = nil; return }
+            guard englishWorkTitle == nil, nominee.hasKoreanWorkTitle, let work = nominee.work,
+                  !store.isPreview, let key = TVDBDirect.key(store) else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+                let entry = TVDBDirect.ListEntry(providerID: work.id, kind: work.kind)
+                let name = try await TVDBDirect.englishAwardTitle(entry, key: key)
+                try Task.checkCancellation()
+                englishWorkTitle = name
+            } catch { /* The original title is available throughout. */ }
         }
     }
 
     private var row: some View {
         HStack(alignment: .center, spacing: 10) {
-            Artwork(path: nominee.image, title: nominee.title)
-                .frame(width: 42, height: 60).clipShape(RoundedRectangle(cornerRadius: 7))
+            Artwork(path: nominee.image, title: title)
+                .frame(width: 44, height: 66).clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 4) {
-                Text(nominee.title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
-                if let detail = nominee.subtitle {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
+                if let detail = subtitle {
                     Text(detail).font(.subheadline).foregroundStyle(HomeStyle.secondary)
                 }
-                if let note = nominee.note, note != nominee.subtitle {
+                if let note = nominee.note, note != subtitle {
                     Text(note).font(.caption).foregroundStyle(HomeStyle.secondary)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -388,33 +408,43 @@ struct SearchAwardNomineePage: View {
     }
 
     var body: some View {
+        Group {
+            if let savedID { TitleDetailView(id: savedID) }
+            else if let titleRoute { CatalogDetailView(route: titleRoute) }
+            else if let personID { PersonView(route: PersonRoute(id: personID)) }
+            else { resolving }
+        }.task { if loading { await load() } }
+    }
+
+    private var resolving: some View {
         EdgeToEdgeScroll(frosted: true) {
             VStack(alignment: .leading, spacing: 12) {
-                if let work = nominee.workName, work != nominee.title { Text(work).font(.headline) }
-                if let note = nominee.note { Text(note).foregroundStyle(HomeStyle.secondary) }
-                if let savedID {
-                    NavigationLink("Open in your library", value: savedID)
-                } else if let titleRoute {
-                    NavigationLink("Open title", value: titleRoute)
+                if loading {
+                    DiaryLoadingPlaceholder(label: "Opening \(nominee.title)")
+                } else {
+                    if let note = nominee.note { Text(note).foregroundStyle(HomeStyle.secondary) }
+                    if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                    if let entry { Link("View title on TheTVDB", destination: entry.webLink) }
+                    if let id = nominee.character?.peopleId, id > 0,
+                       let url = URL(string: "https://www.thetvdb.com/dereferrer/people/\(id)") {
+                        Link("View person on TheTVDB", destination: url)
+                    }
                 }
-                if let personID { NavigationLink("Open credited person", value: PersonRoute(id: personID)) }
-                if let entry { Link("View title on TheTVDB", destination: entry.webLink) }
-                if let id = nominee.character?.peopleId, id > 0,
-                   let url = URL(string: "https://www.thetvdb.com/dereferrer/people/\(id)") {
-                    Link("View person on TheTVDB", destination: url)
-                }
-                if loading { ProgressView().accessibilityLabel("Finding catalog details") }
-                if let failure { RetryNotice(message: failure) { Task { await load() } } }
             }.padding(14)
         }.diaryScreenBackground().navigationTitle(nominee.title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            .task { if loading { await load() } }
     }
 
     private func load() async {
         loading = true
         failure = nil
         defer { loading = false }
+        #if DEBUG
+        if store.isPreview, entry?.providerID == 75299 {
+            titleRoute = CatalogRoute(kind: .tv, id: 900002)
+            return
+        }
+        #endif
         guard !store.isPreview, let key = TVDBDirect.key(store) else { return }
         if let work = entry {
             do {
@@ -428,8 +458,9 @@ struct SearchAwardNomineePage: View {
                     if items.count == 1 { tmdbID = items.first?.id }
                 }
                 if let id = tmdbID {
-                    titleRoute = CatalogRoute(kind: work.kind, id: id)
                     savedID = store.libraryIdentity(CatalogItem(id: id, mediaType: work.kind, name: matched.name))
+                    titleRoute = CatalogRoute(kind: work.kind, id: id)
+                    return
                 }
             } catch {
                 if !Task.isCancelled { failure = error.localizedDescription }

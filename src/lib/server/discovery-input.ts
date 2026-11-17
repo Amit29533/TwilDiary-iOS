@@ -29,7 +29,8 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   if (
     !['tmdb', 'trakt', 'because'].includes(source) ||
     !['movie', 'tv'].includes(type) ||
-    !['popular', 'rating', 'newest', 'trending'].includes(sort) ||
+    !['popular', 'rating', 'newest', 'trending', 'votes'].includes(sort) ||
+    (sort === 'votes' && source !== 'tmdb') ||
     (network && (type !== 'tv' || source !== 'tmdb' || !id(network))) ||
     ((keyword || company) && source !== 'tmdb') ||
     (keyword && !id(keyword)) ||

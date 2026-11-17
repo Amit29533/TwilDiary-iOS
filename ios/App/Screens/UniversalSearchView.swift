@@ -18,12 +18,14 @@ struct SearchLandingView: View {
     let choose: (String) -> Void
     let clear: () -> Void
     @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @State private var shows: [CatalogItem] = []
     @State private var loadedRevision: UUID?
-    @State private var loading = false
+    @State private var loadingRevision: UUID?
     @State private var failure: String?
     @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var loading: Bool { loadingRevision == store.sessionRevision }
     /// Native: a chart row as in Apple Music: the rank, the poster, name and score, a separator under it.
     private func chartRow(index: Int, item: CatalogItem) -> some View {
         HStack(spacing: 14) {
@@ -72,7 +74,10 @@ struct SearchLandingView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Top 10 shows this week").font(.system(size: 22, weight: .bold)).tracking(-0.5)
                     ForEach(Array(shows.prefix(allTop ? 10 : 6).enumerated()), id: \.element.key) { index, item in
-                        NavigationLink(value: item.route) {
+                        Button {
+                            if let id = store.libraryIdentity(item) { router.openTitle(id, tab: .search) }
+                            else { router.paths[.search, default: NavigationPath()].append(item.route) }
+                        } label: {
                             if ThemeStore.current.native { chartRow(index: index, item: item) } else {
                             HStack(spacing: 14) {
                                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 60, height: 76)
@@ -117,14 +122,16 @@ struct SearchLandingView: View {
             }
     }
     private func load() async {
-        guard !loading else { return }; loading = true; failure = nil
         let revision = store.sessionRevision
-        defer { loading = false }
+        guard loadingRevision != revision else { return }
+        loadingRevision = revision
+        failure = nil
+        defer { if loadingRevision == revision { loadingRevision = nil } }
         do {
-            let service = LiveDiscoveryService(store: store)
+            let service = LiveDiscoveryService(store: store, recoverBrowseReads: true)
             let trendingShows = try await service.page(["source": "tmdb", "type": "tv", "sort": "trending", "page": "1", "limit": "10"])
             guard !Task.isCancelled, revision == store.sessionRevision else { return }
-            shows = Array(trendingShows.items.prefix(10))
+            shows = Array(CatalogTools.merging([], trendingShows.items).prefix(10))
             loadedRevision = revision
         } catch { if !Task.isCancelled && revision == store.sessionRevision { failure = error.localizedDescription } }
     }
@@ -258,7 +265,9 @@ struct SearchPeopleView: View {
         #endif
         if source == .anime { return try await AniListClient.shared.searchPeople(query, page: page) }
         if let token = TMDBDirect.token(store) {
-            return try await TMDBDirect.searchPeople(query, page: page, token: token)
+            do {
+                return try await SearchBrowseRead.retry { try await TMDBDirect.searchPeople(query, page: page, token: token) }
+            } catch let error where SearchBrowseRead.isTransportError(error) && ExtrasStorage.server { }
         }
         return try await store.read(CatalogTools.apiPath("/api/metadata/people", query: ["q": query, "page": String(page)]))
     }

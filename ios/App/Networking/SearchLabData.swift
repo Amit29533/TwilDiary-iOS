@@ -1,9 +1,7 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Search Lab's reads. With your TMDB key they go straight to TMDB from this iPhone, which is what
-/// makes TV age ratings, "All titles", "Most popular" and the keyword search work; without a key the
-/// diary server's discovery is the backup (movie age ratings only, one type at a time).
+/// Search Lab reads TMDB directly when available and uses the diary server as a fallback.
 @MainActor enum SearchLabData {
     static let tvRatings = ["TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA"]
     static let movieRatings = ["G", "PG", "PG-13", "R", "NC-17"]
@@ -14,6 +12,10 @@ import TwilDiaryCore
     /// TMDB has no TV genre for these; shows are found by TMDB's keyword of the same name (as the server does).
     static let tvGenreKeywords: [String: Int] = ["Romance": 9840]
 
+    static func filtersTVRating(_ filters: DiscoveryFilters) -> Bool {
+        filters.searchText.isEmpty && filters.certification.map { tvRatings.contains($0) } == true
+    }
+
     /// The media types a set of filters can match. "All titles" reads shows and movies together,
     /// unless a filter only one of them has (a show status, a TV or film age rating, a genre only
     /// one side has) narrows it.
@@ -21,8 +23,10 @@ import TwilDiaryCore
         if filters.type == "tv" { return [.tv] }
         if filters.type == "movie" { return [.movie] }
         var tv = true, movie = true
-        if filters.showStatus != nil { movie = false }
-        if let rating = filters.certification { if tvRatings.contains(rating) { movie = false } else { tv = false } }
+        if filters.searchText.isEmpty {
+            if filters.showStatus != nil { movie = false }
+            if let rating = filters.certification { if tvRatings.contains(rating) { movie = false } else { tv = false } }
+        }
         for name in filters.genres ?? [] {
             guard let genre = DiscoveryGenre.all.first(where: { $0.name == name }) else { continue }
             if genre.tv == nil && tvGenreKeywords[name] == nil { tv = false }
@@ -56,29 +60,109 @@ import TwilDiaryCore
     }
 
     private static func one(_ filters: DiscoveryFilters, kind: MediaKind, page: Int, store: DiaryStore) async throws -> CatalogPage {
-        if !store.isPreview, let token = TMDBDirect.token(store) { return try await TMDBDirect.lab(filters, kind: kind, page: page, token: token) }
+        let base = try await providerPage(filters, kind: kind, page: page, store: store)
+        guard base.page == page else { throw APIError.message("The catalog returned an unexpected page. Please retry.") }
+        let romanceKeyword = kind == .tv && !filters.searchText.isEmpty && filters.genres?.contains("Romance") == true
+            ? tvGenreKeywords["Romance"] : nil
+        let tvRating = kind == .tv && filtersTVRating(filters) ? filters.certification : nil
+        guard romanceKeyword != nil || tvRating != nil else { return base }
+        var matching: Set<Int> = []
+        for start in stride(from: 0, to: base.items.count, by: 4) {
+            try Task.checkCancellation()
+            let batch = base.items[start..<min(start + 4, base.items.count)]
+            try await withThrowingTaskGroup(of: Int?.self) { group in
+                for item in batch {
+                    group.addTask {
+                        if let tvRating {
+                            let rating = try await tvContentRating(item.id, store: store)
+                            return rating == tvRating ? item.id : nil
+                        }
+                        let extras = try await TitleExtrasCache.load(store: store, route: item.route)
+                        return extras.keywords.contains { $0.id == romanceKeyword } ? item.id : nil
+                    }
+                }
+                for try await id in group { if let id { matching.insert(id) } }
+            }
+        }
+        return CatalogPage(items: base.items.filter { matching.contains($0.id) }, page: base.page, totalPages: base.totalPages)
+    }
+
+    private static var tvContentRatings: [Int: (date: Date, value: String?)] = [:]
+
+    private static func tvContentRating(_ id: Int, store: DiaryStore) async throws -> String? {
+        if let cached = tvContentRatings[id], Date.now.timeIntervalSince(cached.date) < 86_400 { return cached.value }
+        guard !store.isPreview else { return nil }
+        guard let token = TMDBDirect.token(store) else {
+            let extras = try await TitleExtrasCache.load(store: store, route: CatalogRoute(kind: .tv, id: id))
+            return extras.certification
+        }
+        let reply = try await SearchBrowseRead.retry { try await TMDBDirect.object("tv/\(id)/content_ratings", query: [:], token: token) }
+        guard let ratings = reply["results"] as? [[String: Any]] else {
+            throw APIError.message("TMDB returned incomplete TV content ratings.")
+        }
+        let rating = ratings.first { $0["iso_3166_1"] as? String == "US" }?["rating"] as? String
+        if tvContentRatings.count >= 512 { tvContentRatings.removeAll(keepingCapacity: true) }
+        tvContentRatings[id] = (.now, rating)
+        return rating
+    }
+
+    private static func providerPage(_ filters: DiscoveryFilters, kind: MediaKind, page: Int, store: DiaryStore) async throws -> CatalogPage {
+        let media = kind.rawValue
+        if !store.isPreview, let token = TMDBDirect.token(store) {
+            do {
+                return try await SearchBrowseRead.retry { try await TMDBDirect.lab(filters, kind: kind, page: page, token: token) }
+            } catch let error where SearchBrowseRead.isTransportError(error) && ExtrasStorage.server { }
+        }
         let text = filters.searchText
         if !text.isEmpty {
-            let found = try await store.searchDiary(text, page: page)
-            return CatalogPage(items: found.online.filter { $0.mediaType == kind && matches($0, filters, kind: kind) }, page: found.page, totalPages: found.totalPages)
+            let found: CatalogPage
+            #if DEBUG
+            if store.isPreview {
+                if text == "Library filter sample", ProcessInfo.processInfo.arguments.contains("--ui-search-regression") {
+                    let items: [CatalogItem]
+                    if page == 1 {
+                        items = [CatalogItem(id: 990101, mediaType: kind, name: "Unsaved match")]
+                    } else if let saved = store.workspace.activeTitles.first {
+                        items = [CatalogItem(id: 990102, mediaType: kind, name: "Saved match from page two", inLibraryId: saved.id)]
+                    } else {
+                        items = []
+                    }
+                    return CatalogPage(items: items, page: page, totalPages: 2)
+                }
+                let fixture = PreviewCatalog.page(query: text, page: page, type: media)
+                return CatalogPage(items: fixture.items.filter { matches($0, filters, kind: kind) },
+                                   page: fixture.page, totalPages: fixture.totalPages)
+            }
+            #endif
+            var query = ["q": text, "page": String(page), "type": media]
+            if let language = filters.language { query["language"] = language }
+            found = try await store.read(CatalogTools.apiPath("/api/metadata/search", query: query))
+            return CatalogPage(items: found.items.filter { matches($0, filters, kind: kind) },
+                               page: found.page, totalPages: found.totalPages)
         }
         var server = filters
         server.type = kind == .movie ? "movie" : "tv"
-        if server.sort == "votes" { server.sort = "popular" }
-        return try await LiveDiscoveryService(store: store).page(server.query(section: .genres, page: page))
+        return try await LiveDiscoveryService(store: store, recoverBrowseReads: true).page(server.query(section: .genres, page: page))
+    }
+
+    static func ordered(_ items: [CatalogItem], sort: String) -> [CatalogItem] {
+        switch sort {
+        case "rating": items.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }
+        case "newest": items.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
+        case "votes": items.sorted { ($0.votes ?? 0) > ($1.votes ?? 0) }
+        default: items
+        }
     }
 
     private static func merge(_ shows: CatalogPage, _ movies: CatalogPage, sort: String) -> CatalogPage {
         let a = shows.items, b = movies.items
         var items: [CatalogItem] = []
-        switch sort {
-        case "rating": items = (a + b).sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }
-        case "newest": items = (a + b).sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case "votes": items = (a + b).sorted { ($0.votes ?? 0) > ($1.votes ?? 0) }
-        default: for index in 0..<max(a.count, b.count) { if index < a.count { items.append(a[index]) }; if index < b.count { items.append(b[index]) } }
+        for index in 0..<max(a.count, b.count) {
+            if index < a.count { items.append(a[index]) }
+            if index < b.count { items.append(b[index]) }
         }
         let totals = [shows.totalResults, movies.totalResults].compactMap { $0 }
-        return CatalogPage(items: items, page: max(shows.page, movies.page), totalPages: max(shows.totalPages, movies.totalPages),
+        return CatalogPage(items: ordered(items, sort: sort), page: max(shows.page, movies.page), totalPages: max(shows.totalPages, movies.totalPages),
                            totalResults: totals.count == 2 ? totals.reduce(0, +) : nil)
     }
 }
@@ -93,16 +177,17 @@ extension DiscoveryFilters {
 
 extension TMDBDirect {
     /// Search Lab straight from TMDB: discover with every filter (the same mapping as the server's
-    /// `discover` in src/lib/server/tmdb.ts, plus TV age ratings and "Most popular"), or, with a
+    /// `discover` in src/lib/server/tmdb.ts, plus "Most votes"), or, with a
     /// keyword, TMDB's title search narrowed by type, genre, rating, year and language.
     static func lab(_ filters: DiscoveryFilters, kind: MediaKind, page: Int, token: String) async throws -> CatalogPage {
         let type = kind == .movie ? "movie" : "tv"
         let text = filters.searchText
         if !text.isEmpty {
             let data = try await object("search/\(type)", query: ["query": text, "page": String(page), "include_adult": "false"], token: token)
-            let raw = (data["results"] as? [[String: Any]] ?? []).filter { filters.language == nil || $0["original_language"] as? String == filters.language }
+            let (rows, totalPages) = try catalogPageFields(data, requestedPage: page)
+            let raw = rows.filter { $0["adult"] as? Bool != true && (filters.language == nil || $0["original_language"] as? String == filters.language) }
             let items = raw.compactMap { catalogItem($0, kind: kind) }.filter { SearchLabData.matches($0, filters, kind: kind) }
-            return CatalogPage(items: items, page: data["page"] as? Int ?? page, totalPages: min(data["total_pages"] as? Int ?? page, 500))
+            return CatalogPage(items: items, page: page, totalPages: totalPages)
         }
         let dateField = kind == .movie ? "primary_release_date" : "first_air_date"
         var query = ["include_adult": "false", "page": String(page)]
@@ -121,7 +206,7 @@ extension TMDBDirect {
             if !standIns.isEmpty { keywords = ([keywords] + standIns).filter { !$0.isEmpty }.joined(separator: ",") }
         }
         if !keywords.isEmpty { query["with_keywords"] = keywords }
-        if let rating = filters.certification, (kind == .tv ? SearchLabData.tvRatings : SearchLabData.movieRatings).contains(rating) {
+        if kind == .movie, let rating = filters.certification, SearchLabData.movieRatings.contains(rating) {
             query["certification_country"] = "US"; query["certification"] = rating
         }
         let today = Date.now.formatted(.iso8601.year().month().day())
@@ -132,8 +217,9 @@ extension TMDBDirect {
         query["vote_count.gte"] = filters.sort == "rating" ? "200" : "20"
         if let minimum = Double(filters.minimum), minimum > 0 { query["vote_average.gte"] = filters.minimum }
         let data = try await object("discover/\(type)", query: query, token: token)
-        let items = (data["results"] as? [[String: Any]] ?? []).filter { ($0["adult"] as? Bool) != true }.compactMap { catalogItem($0, kind: kind) }
-        return CatalogPage(items: items, page: data["page"] as? Int ?? page, totalPages: min(data["total_pages"] as? Int ?? page, 500),
+        let (rows, totalPages) = try catalogPageFields(data, requestedPage: page)
+        let items = rows.filter { ($0["adult"] as? Bool) != true }.compactMap { catalogItem($0, kind: kind) }
+        return CatalogPage(items: items, page: page, totalPages: totalPages,
                            totalResults: data["total_results"] as? Int)
     }
 }

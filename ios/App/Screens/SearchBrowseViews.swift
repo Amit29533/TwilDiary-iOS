@@ -4,11 +4,11 @@ import TwilDiaryCore
 enum SearchBrowseRoute: Hashable {
     case shelf(SearchBrowseShelf)
     case titles(SearchBrowseCategory)
+    case topics(SearchBrowseTopic)
     case tags([SearchBrowseTag])
     case tag(SearchBrowseTag)
     case theme(SearchBrowseTheme)
     case people(SearchBrowseShelf, [SearchBrowsePerson])
-    case franchise(SearchBrowseFranchise)
     case tvdbFranchise(TVDBDirect.Franchise)
     case ceremony(SearchAwardCeremony)
     case awardNominee(SearchAwardNominee)
@@ -22,6 +22,16 @@ struct SearchBrowseShelves: View {
             SearchTagsShelf(shows: shows)
             shelf(.genres, categories: SearchBrowseCatalog.genres)
             SearchThemesShelf()
+            ForEach(SearchBrowseTopic.allCases) { SearchTopicShelf(topic: $0) }
+            SearchAwardsShelf()
+            SearchTVDBListShelf(shelf: .officialLists)
+            shelf(.studios, categories: SearchBrowseCatalog.studios)
+            SearchPeopleShelf(shelf: .directors)
+            SearchPeopleShelf(shelf: .actors)
+            shelf(.decades, categories: SearchBrowseCatalog.decades)
+            SearchTVDBListShelf(shelf: .franchises)
+            shelf(.worldCinema, categories: SearchBrowseCatalog.worldCinema)
+            shelf(.internationalTV, categories: SearchBrowseCatalog.internationalTV)
             NavigationLink(value: SearchLabRoute()) {
                 HStack {
                     Label("Search Lab", systemImage: "slider.horizontal.3").font(.headline)
@@ -31,14 +41,6 @@ struct SearchBrowseShelves: View {
                 }.foregroundStyle(HomeStyle.primary).padding(.horizontal, 14)
                     .frame(minHeight: 48).cardSurface(14).contentShape(Rectangle())
             }.buttonStyle(.springPress).accessibilityIdentifier("search-browse-lab")
-            SearchAwardsShelf()
-            shelf(.studios, categories: SearchBrowseCatalog.studios)
-            SearchPeopleShelf(shelf: .directors)
-            SearchPeopleShelf(shelf: .actors)
-            shelf(.decades, categories: SearchBrowseCatalog.decades)
-            SearchFranchisesShelf()
-            shelf(.worldCinema, categories: SearchBrowseCatalog.worldCinema)
-            shelf(.internationalTV, categories: SearchBrowseCatalog.internationalTV)
         }.accessibilityIdentifier("search-browse")
     }
 
@@ -96,26 +98,24 @@ struct SearchBrowseDestination: View {
         case .shelf(.awards):
             SearchAwardsPage()
         case .shelf(.franchises):
-            SearchFranchiseGrid()
+            SearchTVDBListsPage(shelf: .franchises)
+        case .shelf(.officialLists):
+            SearchTVDBListsPage(shelf: .officialLists)
         case .shelf(let shelf):
             SearchBrowseCategoryGrid(shelf: shelf, categories: categories(for: shelf))
         case .titles(let category):
             SearchBrowseTitlesPage(category: category, store: store)
+        case .topics(let topic):
+            SearchTopicGrid(topic: topic)
         case .tag(let tag):
             if tag.anilist { SearchAnimeTagTitlesPage(tag: tag) }
             else { SearchTagTitlesPage(tag: tag) }
         case .theme(let theme):
-            SearchBrowseTitlesPage(
-                category: SearchBrowseCategory(title: theme.style.title, symbol: theme.style.icon,
-                                               tint: theme.style.start, filter: theme.filter, types: theme.types),
-                store: store
-            )
+            SearchBrowseTitlesPage(category: theme.category, store: store)
         case .tags(let tags):
             SearchTagsPage(tags: tags)
         case .people(let shelf, let people):
             SearchPeopleGrid(shelf: shelf, people: people)
-        case .franchise(let franchise):
-            SearchFranchisePage(franchise: franchise)
         case .tvdbFranchise(let franchise):
             SearchTVDBFranchisePage(franchise: franchise)
         case .ceremony(let ceremony):
@@ -196,51 +196,28 @@ struct SearchBrowseFilterStrip<Content: View>: View {
     }
 }
 
-private struct SearchCategoryLink: View {
+struct SearchCategoryLink: View {
     let category: SearchBrowseCategory
+    var destination: SearchBrowseRoute?
+    var identifier: String?
     @Environment(DiaryStore.self) private var store
     @ScaledMetric(relativeTo: .body) private var height: CGFloat = 100
     @State private var studioLogo: String?
     @State private var preview: String?
 
     var body: some View {
-        NavigationLink(value: SearchBrowseRoute.titles(category)) {
+        NavigationLink(value: destination ?? .titles(category)) {
             if case .studio = category.filter {
                 TitleStudioPlate(name: category.title, logo: studioLogo)
                     .frame(height: height * 0.82)
             } else {
-                landscape
+                SearchBrowseArtworkTile(title: category.title, symbol: category.symbol, tint: category.tint,
+                                        artwork: category.artwork(in: store.workspace.activeTitles) ?? preview)
             }
         }.buttonStyle(.springPress)
             .accessibilityLabel(category.title)
-            .accessibilityIdentifier("search-category-" + category.title)
+            .accessibilityIdentifier(identifier ?? "search-category-" + category.title)
             .task { await loadArtwork() }
-    }
-
-    private var landscape: some View {
-        ZStack(alignment: .bottomLeading) {
-            let accent = Color(webHex: category.tint)
-            Color.clear
-                .overlay {
-                    if let path = category.artwork(in: store.workspace.activeTitles) ?? preview {
-                        Artwork(path: path, title: category.title, initialsOnly: false)
-                    } else {
-                        LinearGradient(colors: [accent.opacity(0.84), accent.opacity(0.24)], startPoint: .topTrailing, endPoint: .bottomLeading)
-                        Image(systemName: category.symbol)
-                            .font(.system(size: 43, weight: .light)).foregroundStyle(.white.opacity(0.24))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(12)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .overlay {
-                    LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
-                }
-            Text(category.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                .lineLimit(3).padding(12)
-        }.frame(height: height)
-            .frame(maxWidth: .infinity).background(.black)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .contentShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private func loadArtwork() async {
@@ -261,6 +238,41 @@ private struct SearchCategoryLink: View {
             } catch { /* Keep the readable category card when no art is available. */ }
         }
     }
+}
+
+struct SearchBrowseArtworkTile: View {
+    let title: String
+    let symbol: String
+    let tint: String
+    let artwork: String?
+    @ScaledMetric(relativeTo: .body) private var height: CGFloat = 100
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            let accent = Color(webHex: tint)
+            Color.clear
+                .overlay {
+                    if let artwork {
+                        Artwork(path: artwork, title: title, initialsOnly: false)
+                    } else {
+                        LinearGradient(colors: [accent.opacity(0.84), accent.opacity(0.24)], startPoint: .topTrailing, endPoint: .bottomLeading)
+                        Image(systemName: symbol)
+                            .font(.system(size: 43, weight: .light)).foregroundStyle(.white.opacity(0.24))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(12)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .overlay {
+                    LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
+                }
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                .lineLimit(3).padding(12)
+        }.frame(height: height)
+            .frame(maxWidth: .infinity).background(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+    }
+
 }
 
 private struct TitleStudioPlate: View {

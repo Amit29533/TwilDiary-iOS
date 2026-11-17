@@ -246,7 +246,7 @@ struct SearchAnimeTagTitlesPage: View {
                     }
                 }
             }.padding(14).padding(.bottom, 32)
-        }.diaryScreenBackground().navigationTitle(tag.name).navigationBarTitleDisplayMode(.inline)
+        }.diaryScreenBackground().navigationTitle(tag.displayName ?? tag.name).navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .task(id: filters) {
                 if requested != filters || page == 0 && failure == nil { await load(filters, page: 1) }
@@ -352,24 +352,10 @@ struct SearchThemesGrid: View {
 
 private struct SearchThemeCard: View {
     let theme: SearchBrowseTheme
-    @ScaledMetric(relativeTo: .headline) private var height: CGFloat = 92
 
     var body: some View {
-        let style = theme.style
-        NavigationLink(value: SearchBrowseRoute.theme(theme)) {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: style.icon).font(.title3.weight(.semibold))
-                    .accessibilityHidden(true)
-                Spacer(minLength: 0)
-                Text(style.title).font(.headline).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            }.foregroundStyle(.white).padding(12).frame(height: height)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    LinearGradient(colors: [Color(webHex: style.start), Color(webHex: style.end)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
-                }.clipShape(RoundedRectangle(cornerRadius: 14))
-                .contentShape(RoundedRectangle(cornerRadius: 14))
-        }.buttonStyle(.springPress).accessibilityIdentifier("search-theme-" + theme.rawValue)
+        SearchCategoryLink(category: theme.category, destination: .theme(theme),
+                           identifier: "search-theme-" + theme.rawValue)
     }
 }
 
@@ -419,17 +405,13 @@ struct SearchPeopleGrid: View {
     @State private var nextPage: Int? = 1
     @State private var loading = false
     @State private var failure: String?
-    @State private var useTrakt = false
-    @State private var traktPeople: [SearchBrowsePerson]?
-    @State private var traktRequest: UUID?
-    @State private var traktFailure: String?
     @State private var alphabetical = false
     @State private var text = ""
 
     private var matching: [SearchBrowsePerson] {
         var seen = Set<Int>()
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let source = useTrakt ? traktPeople ?? [] : people + online + SearchBrowsePerson.selections(for: shelf)
+        let source = people + online + SearchBrowsePerson.selections(for: shelf)
         let entries = source.filter {
             seen.insert($0.id).inserted && (query.isEmpty || $0.name.localizedStandardContains(query))
         }
@@ -442,28 +424,16 @@ struct SearchPeopleGrid: View {
                 SearchField(placeholder: "Filter by name", text: $text, label: "Filter by name")
                 SearchBrowseFilterStrip {
                     Menu {
-                        Picker("Source", selection: $useTrakt) {
-                            Text("Popular on TMDB").tag(false)
-                            Text("From Trakt’s trend charts").tag(true)
-                        }
-                    } label: {
-                        ExplorePill(label: useTrakt ? "Trakt charts" : "TMDB", icon: "person.2", tinted: useTrakt)
-                    }.accessibilityIdentifier("search-people-source")
-                    Menu {
                         Picker("Order", selection: $alphabetical) {
-                            Text(useTrakt ? "Chart order" : "Popular").tag(false)
+                            Text("Popular").tag(false)
                             Text("Name A–Z").tag(true)
                         }
                     } label: {
-                        ExplorePill(label: alphabetical ? "Name A–Z" : useTrakt ? "Chart order" : "Popular",
+                        ExplorePill(label: alphabetical ? "Name A–Z" : "Popular",
                                     icon: "arrow.up.arrow.down", tinted: alphabetical)
                     }
                 }
-                if useTrakt && (traktRequest != nil || traktPeople == nil && traktFailure == nil) {
-                    DiaryLoadingPlaceholder(label: "Loading current Trakt credits")
-                } else if useTrakt, let traktFailure {
-                    RetryNotice(message: traktFailure) { Task { await loadTrakt() } }
-                } else if matching.isEmpty {
+                if matching.isEmpty {
                     ContentUnavailableView("No matching names", systemImage: "person")
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
@@ -471,11 +441,11 @@ struct SearchPeopleGrid: View {
                         ForEach(matching) { SearchBrowsePersonLink(person: $0) }
                     }
                 }
-                if !useTrakt && loading {
+                if loading {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Loading more people")
-                } else if !useTrakt, let failure {
+                } else if let failure {
                     RetryNotice(message: failure) { Task { await loadMore() } }
-                } else if !useTrakt && nextPage != nil {
+                } else if nextPage != nil {
                     Button("Load more") { Task { await loadMore() } }
                         .font(.headline).frame(maxWidth: .infinity, minHeight: 44)
                         .cardSurface(14).foregroundStyle(ThemeStore.accent).buttonStyle(.springPress)
@@ -486,23 +456,6 @@ struct SearchPeopleGrid: View {
             .diaryScreenBackground().navigationTitle(shelf.title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .task { if nextPage == 1 && failure == nil { await loadMore(initial: true) } }
-            .task(id: useTrakt) {
-                if useTrakt && traktPeople == nil { await loadTrakt() }
-            }
-    }
-
-    private func loadTrakt() async {
-        let request = UUID()
-        traktRequest = request
-        traktFailure = nil
-        defer { if traktRequest == request { traktRequest = nil } }
-        do {
-            let result = try await SearchBrowseTrakt.people(for: shelf, store: store)
-            guard !Task.isCancelled, traktRequest == request else { return }
-            traktPeople = result
-        }
-        catch is CancellationError { }
-        catch { if !Task.isCancelled, traktRequest == request { traktFailure = error.localizedDescription } }
     }
 
     private func loadMore(initial: Bool = false) async {
@@ -548,193 +501,5 @@ private struct SearchBrowsePersonLink: View {
                     image = CatalogTools.image(reply["profile_path"] as? String, size: "w185")
                 }
             }
-    }
-}
-
-struct SearchFranchisesShelf: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SearchBrowseHeading(shelf: .franchises)
-            Text("Curated collections").font(.subheadline).foregroundStyle(HomeStyle.secondary)
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 10) {
-                    ForEach(SearchBrowseFranchise.featured) { franchise in
-                        SearchFranchiseLink(franchise: franchise)
-                            .containerRelativeFrame(.horizontal) { width, _ in min(215, width * 0.44) }
-                    }
-                }.padding(.horizontal, 14)
-            }.padding(.horizontal, -14).scrollIndicators(.hidden)
-        }
-    }
-}
-
-struct SearchFranchiseGrid: View {
-    private enum Kind: String, CaseIterable, Identifiable {
-        case all = "All franchises", movies = "Movies", shows = "TV"
-        var id: Self { self }
-    }
-
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @Environment(DiaryStore.self) private var store
-    @State private var useTVDB = false
-    @State private var kind = Kind.all
-    @State private var text = ""
-    @State private var completed: String?
-    @State private var online: [SearchBrowseFranchise] = []
-    @State private var nextPage: Int?
-    @State private var failure: String?
-    @State private var requestID: UUID?
-    private var query: String { String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(100)) }
-    private var remoteQuery: String { useTVDB || kind == .shows || query.count < 2 ? "" : query }
-    private var matching: [SearchBrowseFranchise] {
-        let films = kind == .shows ? [] : SearchBrowseFranchise.collections
-        let shows = kind == .movies ? [] : SearchBrowseFranchise.television
-        let entries = Array(films.prefix(4)) + shows + films.dropFirst(4)
-        let local = entries.filter {
-            query.isEmpty || $0.title.localizedStandardContains(query) || $0.shows.contains { $0.name.localizedStandardContains(query) }
-        }
-        guard !remoteQuery.isEmpty, completed == remoteQuery else { return local }
-        var seen = Set<Int>()
-        return (local + online).filter { seen.insert($0.id).inserted }
-    }
-
-    var body: some View {
-        EdgeToEdgeScroll(frosted: true) {
-            VStack(alignment: .leading, spacing: 12) {
-                SearchField(placeholder: "Find a franchise", text: $text, label: "Find a franchise")
-                SearchBrowseFilterStrip {
-                    Menu {
-                        Picker("Catalog", selection: $useTVDB) {
-                            Text("Featured and TMDB").tag(false)
-                            Text("TheTVDB lists").tag(true)
-                        }
-                    } label: {
-                        ExplorePill(label: useTVDB ? "TheTVDB" : "Featured and TMDB", icon: "square.stack", tinted: useTVDB)
-                    }.accessibilityIdentifier("search-franchise-catalog")
-                    if !useTVDB {
-                        Menu {
-                            Picker("Type", selection: $kind) {
-                                ForEach(Kind.allCases) { Text($0.rawValue).tag($0) }
-                            }
-                        } label: {
-                            ExplorePill(label: kind.rawValue, icon: "film", tinted: kind != .all)
-                        }.accessibilityIdentifier("search-franchise-type")
-                    }
-                }
-                if useTVDB { SearchTVDBFranchises(query: query).id(query) }
-                else { featuredResults }
-            }.padding(14).padding(.bottom, 32)
-        }.scrollDismissesKeyboard(.interactively)
-            .diaryScreenBackground().navigationTitle(SearchBrowseShelf.franchises.title).navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .task(id: remoteQuery) {
-                let requested = remoteQuery
-                guard !requested.isEmpty, requested != completed else { return }
-                do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-                await find(requested, page: 1)
-            }
-    }
-
-    private var featuredResults: some View {
-        Group {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12),
-                                      count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
-                ForEach(matching) { SearchFranchiseLink(franchise: $0) }
-            }
-            if !remoteQuery.isEmpty {
-                if completed != remoteQuery || requestID != nil {
-                    ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Finding collections")
-                } else if let failure {
-                    RetryNotice(message: failure) { Task { await find(remoteQuery, page: nextPage ?? 1) } }
-                } else if let nextPage {
-                    Button("Load more") { Task { await find(remoteQuery, page: nextPage) } }
-                        .font(.headline).frame(maxWidth: .infinity, minHeight: 44)
-                        .cardSurface(14).foregroundStyle(ThemeStore.accent).buttonStyle(.springPress)
-                } else if matching.isEmpty {
-                    ContentUnavailableView("No franchises found", systemImage: "film")
-                }
-            } else if !query.isEmpty && matching.isEmpty {
-                ContentUnavailableView("No franchises found", systemImage: "film")
-            }
-        }
-    }
-
-    private func find(_ requested: String, page: Int) async {
-        guard !requested.isEmpty, requested == remoteQuery,
-              page == 1 || requestID == nil && nextPage == page else { return }
-        let id = UUID()
-        requestID = id
-        failure = nil
-        if page == 1 { online = []; nextPage = nil; completed = nil }
-        defer { if id == requestID { requestID = nil } }
-        do {
-            let found = try await SearchBrowseFranchise.find(requested, page: page, store: store)
-            guard !Task.isCancelled, id == requestID, requested == remoteQuery else { return }
-            online += found.collections
-            nextPage = found.next
-            completed = requested
-        } catch {
-            guard !Task.isCancelled, id == requestID, requested == remoteQuery else { return }
-            failure = error.localizedDescription
-            completed = requested
-        }
-    }
-}
-
-private struct SearchFranchiseLink: View {
-    let franchise: SearchBrowseFranchise
-    @Environment(DiaryStore.self) private var store
-    @State private var posters: [String] = []
-
-    var body: some View {
-        NavigationLink(value: SearchBrowseRoute.franchise(franchise)) {
-            CanvasListCard(title: franchise.title, posters: cardPosters)
-        }.buttonStyle(.springPress)
-            .accessibilityIdentifier("search-franchise-\(franchise.id)")
-            .task {
-                guard franchise.shows.isEmpty, franchise.poster == nil, posters.isEmpty else { return }
-                do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-                guard let collection = try? await franchise.load(store: store), !Task.isCancelled else { return }
-                posters = Array(collection.parts.compactMap(\.posterPath).prefix(3))
-            }
-    }
-
-    private var cardPosters: [String] {
-        if !franchise.shows.isEmpty { return Array(franchise.shows.map(\.poster).prefix(3)) }
-        if let poster = franchise.poster { return [poster] }
-        return posters
-    }
-}
-
-struct SearchFranchisePage: View {
-    let franchise: SearchBrowseFranchise
-    @Environment(DiaryStore.self) private var store
-    @State private var collection: TitleCollection?
-    @State private var failure: String?
-
-    var body: some View {
-        EdgeToEdgeScroll(frosted: true) {
-            Group {
-                if let collection {
-                    if collection.parts.isEmpty {
-                        ContentUnavailableView("No titles in this collection", systemImage: "film")
-                    } else {
-                        CatalogGrid(items: collection.parts, showsLayoutToggle: false, forceGrid: true)
-                    }
-                } else if let failure {
-                    RetryNotice(message: failure) { Task { await load() } }
-                } else {
-                    DiaryLoadingPlaceholder(label: "Loading collection", layout: .posterGrid(columns: 3, rows: 2))
-                }
-            }.padding(14).padding(.bottom, 32)
-        }.diaryScreenBackground().navigationTitle(franchise.title).navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .task { if collection == nil { await load() } }
-    }
-
-    private func load() async {
-        failure = nil
-        do { collection = try await franchise.load(store: store) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }

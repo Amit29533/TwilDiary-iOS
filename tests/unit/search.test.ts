@@ -124,6 +124,37 @@ test('online search forwards later pages and classifies anime films and series b
   );
 });
 
+test('typed metadata search supplies scores and genres for Search Lab and keeps language and adult filters across pages', async () => {
+  let calls = 0;
+  const metadata = createTmdb('test', async (input) => {
+    calls++;
+    const url = new URL(String(input));
+    assert.equal(url.pathname, '/3/search/tv');
+    assert.equal(url.searchParams.get('page'), '2');
+    assert.equal(url.searchParams.get('include_adult'), 'false');
+    return response({
+      page: 2,
+      total_pages: 4,
+      results: [
+        { id: 1, name: 'Anime', original_language: 'ja', genre_ids: [16, 18], vote_average: 8.6, vote_count: 153 },
+        { id: 2, name: 'Different language', original_language: 'en', genre_ids: [18] },
+        { id: 3, name: 'Adult result', original_language: 'ja', adult: true, genre_ids: [16] }
+      ]
+    });
+  });
+  const result = await metadata.search(new URLSearchParams({ q: 'test', type: 'tv', language: 'ja', page: '2' }));
+  assert.equal(result.page, 2);
+  assert.equal(result.totalPages, 4);
+  assert.deepEqual(result.items.map(({ id, genres, rating, votes, isAnime }) => ({ id, genres, rating, votes, isAnime })), [
+    { id: 1, genres: ['Animation', 'Drama'], rating: 8.6, votes: 153, isAnime: true }
+  ]);
+  await assert.rejects(
+    () => metadata.search(new URLSearchParams({ q: 'test', language: 'en-US' })),
+    (error: unknown) => error instanceof ApiError && error.status === 400
+  );
+  assert.equal(calls, 1);
+});
+
 test('unified search validates input before upstream calls and remains private/owner guarded', async (t) => {
   const f = d1Fixture();
   t.after(f.close);
