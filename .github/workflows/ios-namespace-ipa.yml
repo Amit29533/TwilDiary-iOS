@@ -17,6 +17,8 @@ concurrency:
 
 permissions:
   contents: read
+env:
+  APP_SOURCE_SHA: 804fd2723f6f8f6a2aa6687ed79a97af3e7fe5f3
 
 jobs:
   ipa:
@@ -30,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.APP_SOURCE_SHA }}
           persist-credentials: false
       - name: Choose Xcode 26.6 (the version the other CI builds use)
         run: |
@@ -42,6 +45,8 @@ jobs:
           [ -n "$dev" ] || dev="$(xcode-select -p)"
           echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
           mkdir -p ios/.artifacts/logs
+          test "$(git rev-parse HEAD)" = "$APP_SOURCE_SHA"
+          git rev-parse HEAD > ios/.artifacts/source-commit.txt
           { sw_vers; DEVELOPER_DIR="$dev" xcodebuild -version; DEVELOPER_DIR="$dev" swift --version; } | tee ios/.artifacts/toolchain.txt
       - name: Cache Swift packages
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -51,18 +56,6 @@ jobs:
       - name: Generate Xcode project
         run: bash ios/scripts/xcodegen.sh
       - name: Compile unsigned physical iPhone application (warnings are errors)
-        env:
-          # Optional repository secrets; without them the app asks for its own keys.
-          TWILDIARY_TMDB_KEY: ${{ secrets.TWILDIARY_TMDB_KEY }}
-          # Up to four Gemini keys, taken in turn by the app (empty ones are skipped).
-          TWILDIARY_GEMINI_KEY: ${{ secrets.TWILDIARY_GEMINI_KEY }},${{ secrets.TWILDIARY_GEMINI_KEY_2 }},${{ secrets.TWILDIARY_GEMINI_KEY_3 }},${{ secrets.TWILDIARY_GEMINI_KEY_4 }}
-          # Up to four Groq keys (the AI backup), the same way.
-          TWILDIARY_GROQ_KEY: ${{ secrets.TWILDIARY_GROQ_KEY }},${{ secrets.TWILDIARY_GROQ_KEY_2 }},${{ secrets.TWILDIARY_GROQ_KEY_3 }},${{ secrets.TWILDIARY_GROQ_KEY_4 }}
-          # Up to four Requesty keys, the same way.
-          TWILDIARY_REQUESTY_KEY: ${{ secrets.TWILDIARY_REQUESTY_KEY }},${{ secrets.TWILDIARY_REQUESTY_KEY_2 }},${{ secrets.TWILDIARY_REQUESTY_KEY_3 }},${{ secrets.TWILDIARY_REQUESTY_KEY_4 }}
-          # Cloudflare Access service token for your server (optional).
-          TWILDIARY_CF_ACCESS_CLIENT_ID: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_ID }}
-          TWILDIARY_CF_ACCESS_CLIENT_SECRET: ${{ secrets.TWILDIARY_CF_ACCESS_CLIENT_SECRET }}
         run: bash ios/scripts/ci.sh build-device
       - name: Package unsigned IPA
         run: bash ios/scripts/ci.sh package
@@ -74,6 +67,7 @@ jobs:
             ios/.artifacts/TwilDiary-unsigned.ipa
             ios/.artifacts/TwilDiary-unsigned.ipa.sha256
             ios/.artifacts/toolchain.txt
+            ios/.artifacts/source-commit.txt
           if-no-files-found: error
           retention-days: 7
       - name: Upload build logs
@@ -94,6 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.APP_SOURCE_SHA }}
           persist-credentials: false
       - name: Test core calculations and catalog contracts
         run: |
