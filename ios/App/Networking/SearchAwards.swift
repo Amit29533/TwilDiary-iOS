@@ -14,6 +14,15 @@ struct SearchAwardCeremony: Codable, Hashable, Identifiable, Sendable {
 
     var displayName: String { id == 1 ? "Oscars" : name }
 
+    /// Ceremonies found to have no winners or nominees recorded: left out of the lists from then on.
+    private static let emptyKey = "searchAwards.empty"
+    static var withoutRecords: Set<Int> { Set(UserDefaults.standard.array(forKey: emptyKey) as? [Int] ?? []) }
+    static func noteRecords(_ id: Int, found: Bool) {
+        var empty = withoutRecords
+        if found { empty.remove(id) } else { empty.insert(id) }
+        UserDefaults.standard.set(Array(empty), forKey: emptyKey)
+    }
+
     /// A recent winner's poster (TMDB) for the ceremony's tile, and what it won.
     var winner: (poster: String, caption: String)? {
         switch id {

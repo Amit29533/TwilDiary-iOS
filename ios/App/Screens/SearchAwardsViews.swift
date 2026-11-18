@@ -9,7 +9,7 @@ struct SearchAwardsShelf: View {
             // One row of posters, as the other shelves.
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(SearchAwardCeremony.featured) { AwardCeremonyLink(ceremony: $0).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
+                    ForEach(SearchAwardCeremony.featured.filter { !SearchAwardCeremony.withoutRecords.contains($0.id) }) { AwardCeremonyLink(ceremony: $0).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
         }
@@ -25,8 +25,9 @@ struct SearchAwardsPage: View {
     var body: some View {
         ExploreBrowsePage(title: "Awards", symbol: "trophy") {
             VStack(alignment: .leading, spacing: 14) {
+                // A ceremony with no winners or nominees recorded isn't listed.
                 SearchAwardGrid {
-                    ForEach(ceremonies) { AwardCeremonyLink(ceremony: $0) }
+                    ForEach(ceremonies.filter { !SearchAwardCeremony.withoutRecords.contains($0.id) }) { AwardCeremonyLink(ceremony: $0) }
                 }
                 if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
@@ -213,13 +214,8 @@ private struct AwardEditionPage: View {
                         awardResults(groups, edition: edition, editions: editions.editions)
                     } else if let archive = loader.archive, archive.incompleteCount == 0,
                               !loader.loading, loader.failure == nil {
-                        if !archive.categories.isEmpty {
-                            Text("Award categories").font(.headline)
-                        }
-                        Text("Winner and nominee details are unavailable.").font(.subheadline).foregroundStyle(.secondary)
-                        ForEach(archive.categories) { category in
-                            Text(category.name).padding(12).frame(maxWidth: .infinity, alignment: .leading).cardSurface(12)
-                        }
+                        // No records at all: nothing to list (and the ceremony leaves the Awards lists).
+                        ContentUnavailableView("No records", systemImage: "trophy", description: Text("No winners or nominees are recorded for this ceremony."))
                     }
                 }
                 if let failure = loader.failure {
@@ -237,6 +233,11 @@ private struct AwardEditionPage: View {
             }.padding(14).padding(.bottom, 32)
         }
             .task { if loader.archive == nil { await loader.load(ceremony, store: store, tmdbFile: tmdbFile) } }
+            .onChange(of: loader.loading) { _, loading in
+                // Fully read: remember whether it has any records, for the Awards lists.
+                guard !loading, loader.failure == nil, let archive = loader.archive, archive.incompleteCount == 0 else { return }
+                SearchAwardCeremony.noteRecords(ceremony.id, found: !(loader.editions?.sections.isEmpty ?? true))
+            }
             .onChange(of: loader.failure) { _, error in
                 if error != nil && loader.archive == nil { fallback?() }
             }
