@@ -19,6 +19,11 @@ extension AnimeNavigationServing {
     func rememberAnimeRoute(_ id: Int, route: CatalogRoute) async {}
 }
 extension DiaryStore: AnimeNavigationServing {
+    /// The search without the search page's early people (its `onPeople` argument broke this
+    /// conformance in f91eaa8: a defaulted argument doesn't meet a protocol's requirement).
+    func searchDiary(_ query: String, page: Int) async throws -> DiarySearchPage {
+        try await searchDiary(query, page: page, onPeople: nil)
+    }
     /// A remembered bridge, else Wikidata's AniList-to-TMDB link (also for later seasons).
     func knownAnimeRoute(_ id: Int, format: String?) async -> CatalogRoute? {
         if let saved = await AniListClient.shared.tmdbTitle(id) { return saved }
