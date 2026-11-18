@@ -687,4 +687,29 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(library.plays.map { "\($0.title.tmdbId ?? 0)|s\($0.season ?? -1)e\($0.episode ?? -1)" }, ["98123|s1e2"])
         XCTAssertEqual(library.skipped, 0)
     }
+
+    // MARK: Trash
+
+    /// A trashed title Simkl still lists, in any way, goes off Simkl again on the next check
+    /// (Akame ga Kill! stayed on Plan to watch until Force Match, 2026-11-19); one it doesn't list,
+    /// or lists as the other kind, is left alone.
+    func testTheCheckFindsTrashedTitlesSimklStillLists() throws {
+        func title(_ id: String, _ category: String, tmdb: Int) throws -> MediaTitle {
+            try JSONDecoder().decode(MediaTitle.self, from: Data(#"{"id":"\#(id)","name":"\#(id)","category":"\#(category)","year":2014,"tmdbId":\#(tmdb),"overview":"","genres":[],"status":"planned","favorite":false,"notes":""}"#.utf8))
+        }
+        let planned = try title("akame", "anime", tmdb: 61223)
+        let rated = try title("rated-film", "movie", tmdb: 500)
+        let watched = try title("watched-show", "show", tmdb: 600)
+        let dropped = try title("dropped-show", "show", tmdb: 700)
+        let otherKind = try title("film-700", "movie", tmdb: 700)
+        func ref(_ kind: TraktTitleRef.Kind, _ tmdb: Int) -> TraktTitleRef { TraktTitleRef(kind: kind, traktId: nil, tmdbId: tmdb, name: "x") }
+        let library = TraktLibrary(plays: [TraktPlay(historyId: 1, title: ref(.show, 600), season: 1, episode: 1, watchedAt: nil)],
+                                   ratings: [TraktRating(title: ref(.movie, 500), rating: 7, ratedAt: nil)],
+                                   watchlist: [TraktListed(title: ref(.show, 61223), listedAt: nil)],
+                                   dropped: [TraktListed(title: ref(.show, 700), listedAt: nil)])
+        let found = SimklMirror.trashedOnSimkl(library, trashed: [planned, rated, watched, otherKind])
+        XCTAssertEqual(found.map(\.id), ["akame", "rated-film", "watched-show"])
+        XCTAssertEqual(SimklMirror.trashedOnSimkl(library, trashed: [dropped]).map(\.id), ["dropped-show"], "listed as Dropped")
+        XCTAssertTrue(SimklMirror.trashedOnSimkl(TraktLibrary(), trashed: [planned]).isEmpty, "not on Simkl: nothing to send")
+    }
 }
