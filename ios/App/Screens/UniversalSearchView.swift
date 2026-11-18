@@ -14,20 +14,19 @@ struct UniversalSearchView: View {
 }
 
 struct SearchLandingView: View {
+    let kind: CatalogSearchView.Kind
     let recent: [String]
     let choose: (String) -> Void
     let clear: () -> Void
     @Environment(DiaryStore.self) private var store
-    @State private var items: [CatalogItem] = []
+    @Environment(AppRouter.self) private var router
     @State private var shows: [CatalogItem] = []
-    @State private var anime: [AniAppearance] = []
-    /// The session the lists were loaded for: coming back to Search keeps them instead of
-    /// clearing and downloading them again.
     @State private var loadedRevision: UUID?
-    @State private var loading = false
+    @State private var loadingRevision: UUID?
     @State private var failure: String?
     @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var loading: Bool { loadingRevision == store.sessionRevision }
     /// Native: a chart row as in Apple Music: the rank, the poster, name and score, a separator under it.
     private func chartRow(index: Int, item: CatalogItem) -> some View {
         HStack(spacing: 14) {
@@ -35,13 +34,13 @@ struct SearchLandingView: View {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 48, height: 72)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.name).font(.system(size: 17)).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
+                Text(item.name).font(.body).foregroundStyle(.primary).lineLimit(2)
                 HStack(spacing: 8) {
                     if let score = item.rating, score > 0 {
                         HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                             .font(.system(size: 14)).foregroundStyle(.secondary)
                     }
-                    if CatalogTools.libraryIdentity(item, in: store.workspace) != nil {
+                    if store.libraryIdentity(item) != nil {
                         Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
                     }
                 }
@@ -57,7 +56,7 @@ struct SearchLandingView: View {
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("RECENT").font(.system(size: 13, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
+                        Text("Recent searches").font(.headline).foregroundStyle(.primary)
                         Spacer()
                         Button("Clear", action: clear).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("search-clear-recents")
                     }
@@ -74,9 +73,19 @@ struct SearchLandingView: View {
             }
             if !shows.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Top 10 shows this week").font(.system(size: 22, weight: .bold)).tracking(-0.5)
-                    ForEach(Array(shows.prefix(allTop ? 10 : 6).enumerated()), id: \.element.key) { index, item in
-                        NavigationLink(value: item.route) {
+                    let chartTitle = kind == .movies ? "Trending movies this week" : "Trending shows this week"
+                    if allTop {
+                        ExploreBrowseHeader(title: chartTitle, symbol: "chart.line.uptrend.xyaxis",
+                                            artwork: ExploreBrowseHeader.artwork(in: shows))
+                            .padding(.horizontal, -14)
+                    } else {
+                        Text(chartTitle).font(.title2.bold())
+                    }
+                    ForEach(Array(shows.prefix(allTop ? 10 : 3).enumerated()), id: \.element.key) { index, item in
+                        Button {
+                            if let id = store.libraryIdentity(item) { router.openTitle(id, tab: .search) }
+                            else { router.paths[.search, default: NavigationPath()].append(item.route) }
+                        } label: {
                             if ThemeStore.current.native { chartRow(index: index, item: item) } else {
                             HStack(spacing: 14) {
                                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 60, height: 76)
@@ -88,7 +97,7 @@ struct SearchLandingView: View {
                                             HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                                                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#ffc83d"))
                                         }
-                                        if CatalogTools.libraryIdentity(item, in: store.workspace) != nil {
+                                        if store.libraryIdentity(item) != nil {
                                             Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
                                                 .padding(.horizontal, 8).frame(height: 22).background(theme.accent.opacity(0.16), in: Capsule())
                                         }
@@ -102,7 +111,7 @@ struct SearchLandingView: View {
                             }
                         }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
                     }
-                    if !allTop && shows.count > 6 {
+                    if !allTop && shows.count > 3 {
                         Button { allTop = true } label: {
                             Text("See all \(min(10, shows.count))").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
                                 .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.08)))
@@ -110,83 +119,28 @@ struct SearchLandingView: View {
                     }
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
-            if loading && items.isEmpty && shows.isEmpty { DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .list(rows: 6)) }
-            if !items.isEmpty { Text("Trending movies").font(.system(size: 22, weight: .bold)).tracking(-0.5) }
+            if loading && shows.isEmpty { DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .list(rows: 3)) }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(Array(items.enumerated()), id: \.element.key) { index, item in
-                        NavigationLink(value: item.route) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 124, height: 176).clipShape(RoundedRectangle(cornerRadius: 14))
-                                    // TMDB's score (or the diary's for a title in your library), as on the anime row below.
-                                    .overlay(alignment: .bottomLeading) {
-                                        if let score = item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), score > 0 {
-                                            RatingBadge(score: score, source: "TMDB").padding(5)
-                                        }
-                                    }
-                                Text("No. \(index + 1) today").font(.system(size: 14)).foregroundStyle(.secondary)
-                            }.frame(width: 124, alignment: .leading)
-                        }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-" + item.key)
-                    }
-                }
-            }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending")
-            if !anime.isEmpty {
-                Text("Trending anime").font(.system(size: 22, weight: .bold)).tracking(-0.5)
-                ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(anime) { item in
-                            AnimeAppearanceButton(appearance: item) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Artwork(path: item.cover, title: item.title).frame(width: 124, height: 186)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .overlay(alignment: .bottomLeading) { if let score = item.rating, score > 0 { RatingBadge(score: score, source: "AniList").padding(5) } }
-                                    ProfileCardCaption(title: item.title)
-                                }.frame(width: 124, alignment: .leading)
-                            }.buttonStyle(.springPress).shelfTransition().accessibilityIdentifier("trending-anime-\(item.id)")
-                        }
-                    }
-                }.scrollIndicators(.hidden).accessibilityIdentifier("search-trending-anime")
-            }
-            Text("Search your library, online titles, cast, characters and voice actors.").font(.footnote).foregroundStyle(.secondary)
-        }.smoothChange(of: [items.isEmpty, shows.isEmpty, anime.isEmpty])
+            SearchBrowseShelves(shows: shows, kind: kind)
+        }.smoothChange(of: shows.isEmpty)
             .task(id: store.sessionRevision) {
-                guard loadedRevision != store.sessionRevision || (shows.isEmpty && items.isEmpty) else { return }
-                items = []; shows = []
+                guard [.all, .movies, .shows].contains(kind), loadedRevision != store.sessionRevision else { return }
+                shows = []
                 await load()
-                if failure == nil, !shows.isEmpty || !items.isEmpty { loadedRevision = store.sessionRevision }
             }
-            .task { await loadAnime() }
-    }
-    /// Best effort: AniList being down only hides its rows.
-    private func loadAnime() async {
-        #if DEBUG
-        if store.isPreview { return }
-        #endif
-        guard anime.isEmpty, let found = try? await AniListClient.shared.trendingAnime(), !Task.isCancelled else { return }
-        anime = found
-        // Each one's TMDB title worked out ahead of a tap (owner's report: still 3–4 s): one Wikidata
-        // request for the row, then the same look-up a tap makes, for any still unknown, remembered.
-        await WikidataAnime.shared.routes(found.map { WikidataAnime.Anime(id: $0.id, format: $0.format) })
-        for item in found {
-            guard !Task.isCancelled else { return }
-            if await AniListClient.shared.tmdbTitle(item.id) != nil { continue }
-            guard let result = try? await store.animeNavigation.title(item, service: store) else { continue }
-            if case .catalog(let route)? = result.destination { await AniListClient.shared.rememberTitle(item.id, route: route) }
-        }
     }
     private func load() async {
-        guard !loading else { return }; loading = true; failure = nil
         let revision = store.sessionRevision
-        defer { loading = false }
+        guard loadingRevision != revision else { return }
+        loadingRevision = revision
+        failure = nil
+        defer { if loadingRevision == revision { loadingRevision = nil } }
         do {
-            let service = LiveDiscoveryService(store: store)
-            let trendingShows = try await service.page(["source": "tmdb", "type": "tv", "sort": "trending", "page": "1", "limit": "10"])
+            let service = LiveDiscoveryService(store: store, recoverBrowseReads: true)
+            let trendingShows = try await service.page(["source": "tmdb", "type": kind == .movies ? "movie" : "tv", "sort": "trending", "page": "1", "limit": "10"])
             guard !Task.isCancelled, revision == store.sessionRevision else { return }
-            shows = Array(trendingShows.items.prefix(10))
-            let movies = try await service.page(["source": "tmdb", "type": "movie", "sort": "trending", "page": "1", "limit": "10"])
-            guard !Task.isCancelled, revision == store.sessionRevision else { return }
-            items = movies.items
+            shows = Array(CatalogTools.merging([], trendingShows.items).prefix(10))
+            loadedRevision = revision
         } catch { if !Task.isCancelled && revision == store.sessionRevision { failure = error.localizedDescription } }
     }
 }
@@ -200,31 +154,43 @@ struct SearchPerson: Decodable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey { case id, name, image }
 }
 
+struct SearchPeoplePage: Decodable, Sendable {
+    let items: [SearchPerson]
+    let page: Int
+    let totalPages: Int
+}
+
 struct SearchPeopleView: View {
     let query: String
-    var kind: String? = nil
     var limit = 40
+    var mixed: [SearchPerson]? = nil
+    var usePreview = false
     let onChoose: () -> Void
-    /// How many people matched, for Search's People chip.
     var onCount: (Int) -> Void = { _ in }
     @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    private enum Source: String, CaseIterable, Sendable { case cast = "TMDB cast", anime = "AniList people" }
     @State private var results: [SearchPerson] = []
-    @State private var loading = false
-    @State private var failure: String?
+    @State private var nextPage: [Source: Int] = [.cast: 1, .anime: 1]
+    @State private var loading: Set<Source> = []
+    @State private var failures: [Source: String] = [:]
+    @State private var started = false
     @State private var shown = 0
+    private var displayed: [SearchPerson] {
+        var seen = Set<String>()
+        return ((usePreview ? mixed ?? [] : []) + results).filter { seen.insert($0.key).inserted }
+    }
     var body: some View {
-        // Design: PEOPLE, then a card per person: a round photo, the name and what they are.
-        VStack(alignment: .leading, spacing: 10) {
-            if !visible.isEmpty {
-                Text(kind == "cast" ? "CAST" : kind == "character" ? "CHARACTERS" : kind == "voice" ? "VOICE ACTORS" : "PEOPLE")
-                    .font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 10)
-            }
-            ForEach(Array(visible.prefix(limit + shown)), id: \.key) { person in
+        let people = displayed
+        LazyVStack(alignment: .leading, spacing: 10) {
+            Text("People").font(.headline).foregroundStyle(.primary)
+                .padding(.top, 10).accessibilityAddTraits(.isHeader)
+            ForEach(people.prefix(limit + shown), id: \.key) { person in
                 Button { onChoose(); open(person) } label: {
                     HStack(spacing: 14) {
                         Artwork(path: person.image, title: person.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(person.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                            Text(person.name).font(.headline).foregroundStyle(HomeStyle.primary).lineLimit(2)
                             Text(person.kind == "cast" ? "Cast" : person.kind == "character" ? "Character" : "Voice actor")
                                 .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
@@ -232,13 +198,41 @@ struct SearchPeopleView: View {
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityIdentifier("search-person-" + person.key)
             }
-            if visible.count > limit + shown { Button("More people") { shown += 12 }.font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 44) }
-            if let failure, visible.isEmpty == false { Text(failure).font(.caption).foregroundStyle(.secondary) }
-        }.task(id: query + (kind ?? "all") + String(describing: store.sessionRevision)) { await load() }
-            .onChange(of: visible.count) { _, count in onCount(count) }
+            if !started || !loading.isEmpty {
+                if people.isEmpty { DiaryLoadingPlaceholder(label: "Searching people", layout: .list(rows: 3)) }
+                else { ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Searching people") }
+            }
+            ForEach(Source.allCases, id: \.self) { source in
+                if let failure = failures[source] {
+                    RetryNotice(message: failure) { Task { await load(source) } }
+                }
+            }
+            if started, loading.isEmpty {
+                if people.count > limit + shown || nextPage.keys.contains(where: { failures[$0] == nil }) {
+                    Button("More people") {
+                        if people.count > limit + shown { shown += 20 }
+                        else {
+                            shown += 20
+                            Task { await loadPages() }
+                        }
+                    }.font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 44)
+                        .accessibilityIdentifier("search-people-more")
+                } else if people.isEmpty && failures.isEmpty {
+                    Text("No people match “\(query)”.").font(.subheadline).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("search-people-empty")
+                }
+            }
+        }.task {
+            guard !started else { return }
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            await load(.anime, retry: false)
+            if !Task.isCancelled { started = true }
+        }.task(id: usePreview) {
+            guard !usePreview, nextPage[.cast] == 1 else { return }
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            await load(.cast, retry: false)
+        }.onChange(of: people.count, initial: true) { _, count in onCount(count) }
     }
-    private var visible: [SearchPerson] { results.filter { kind == nil || $0.kind == kind } }
-    @Environment(AppRouter.self) private var router
     private func open(_ person: SearchPerson) {
         switch person.kind {
         case "character": router.paths[.search, default: NavigationPath()].append(CharacterRoute(id: person.id))
@@ -246,41 +240,72 @@ struct SearchPeopleView: View {
         default: router.paths[.search, default: NavigationPath()].append(PersonRoute(id: person.id))
         }
     }
-    private func load() async {
-        let requested = query, revision = store.sessionRevision
-        results = []; failure = nil; loading = true
+    private func loadPages() async {
+        async let cast: Void = load(.cast, retry: false)
+        async let anime: Void = load(.anime, retry: false)
+        _ = await (cast, anime)
+    }
+
+    private func load(_ source: Source, retry: Bool = true) async {
+        guard let page = nextPage[source], !loading.contains(source),
+              retry || failures[source] == nil else { return }
+        let revision = store.sessionRevision
+        loading.insert(source)
+        failures[source] = nil
+        defer { loading.remove(source) }
         do {
-            try await Task.sleep(for: .milliseconds(350))
-            #if DEBUG
-            if store.isPreview {
-                results = [SearchPerson(id: 525, name: "Reference Actor", image: nil), SearchPerson(id: 2, name: "Fern", image: nil, kind: "character"), SearchPerson(id: 12, name: "Kana Ichinose", image: nil, kind: "voice")].filter { $0.name.localizedCaseInsensitiveContains(requested) }
-                loading = false; return
+            let reply = try await fetch(source, page: page)
+            guard !Task.isCancelled, revision == store.sessionRevision else { return }
+            guard reply.page == page else { throw APIError.message("Search returned an unexpected page.") }
+            var ids = Set(results.map(\.key))
+            results += reply.items.filter { ids.insert($0.key).inserted }
+            nextPage[source] = page < min(500, reply.totalPages) ? page + 1 : nil
+        } catch {
+            if !Task.isCancelled, revision == store.sessionRevision {
+                failures[source] = "\(source.rawValue) could not be loaded. \(error.localizedDescription)"
             }
-            #endif
-            struct Reply: Decodable { let items: [SearchPerson] }
-            if kind == nil || kind == "cast" { do {
-                let items: [SearchPerson]
-                if let token = TMDBDirect.token(store) { items = try await TMDBDirect.searchPeople(requested, token: token) }
-                else { items = (try await store.read(CatalogTools.apiPath("/api/metadata/people", query: ["q": requested])) as Reply).items }
-                guard !Task.isCancelled, requested == query, revision == store.sessionRevision else { return }
-                results = items
-            } catch { if !Task.isCancelled { failure = "TMDB people could not be loaded. Try again." } } }
-            if kind != "cast" {
-                let anime = try await AniListClient.shared.searchPeople(requested)
-                guard !Task.isCancelled, requested == query, revision == store.sessionRevision else { return }
-                results += anime
+        }
+    }
+
+    private func fetch(_ source: Source, page: Int) async throws -> SearchPeoplePage {
+        #if DEBUG
+        if store.isPreview {
+            if source == .cast, query == "Reference", ProcessInfo.processInfo.arguments.contains("--ui-search-regression") {
+                let person = page == 1 ? SearchPerson(id: 525, name: "Reference Actor", image: nil)
+                                      : SearchPerson(id: 526, name: "Second Reference Actor", image: nil)
+                return SearchPeoplePage(items: [person], page: page, totalPages: 2)
             }
-        } catch { if !Task.isCancelled && requested == query && revision == store.sessionRevision { failure = "Some people could not be loaded. Try again." } }
-        if !Task.isCancelled && requested == query && revision == store.sessionRevision { loading = false }
+            let cast = [SearchPerson(id: 525, name: "Reference Actor", image: nil)]
+            let anime = [SearchPerson(id: 2, name: "Fern", image: nil, kind: "character"),
+                         SearchPerson(id: 12, name: "Kana Ichinose", image: nil, kind: "voice")]
+            let items = (source == .cast ? cast : anime).filter { $0.name.localizedCaseInsensitiveContains(query) }
+            return SearchPeoplePage(items: items, page: 1, totalPages: 1)
+        }
+        #endif
+        if source == .anime { return try await AniListClient.shared.searchPeople(query, page: page) }
+        if let token = TMDBDirect.token(store) {
+            do {
+                return try await SearchBrowseRead.retry { try await TMDBDirect.searchPeople(query, page: page, token: token) }
+            } catch let error where SearchBrowseRead.isTransportError(error) && ExtrasStorage.server { }
+        }
+        return try await store.read(CatalogTools.apiPath("/api/metadata/people", query: ["q": query, "page": String(page)]))
     }
 }
 
 struct SearchJellyfinView: View {
     let query: String
+    let kind: CatalogSearchView.Kind
     @Environment(DiaryStore.self) private var store
     private var shelf: JellyfinShelf { .shared }
     var body: some View {
-        let items = JellyfinShelf.matched(shelf.entries, diary: store.activeTitles).filter { $0.name.localizedCaseInsensitiveContains(query) }
+        let titles = store.activeTitles
+        let saved = Dictionary(titles.map { ($0.id, $0.category) }, uniquingKeysWith: { first, _ in first })
+        let items = JellyfinShelf.matched(shelf.entries, diary: titles).filter { entry in
+            guard entry.name.localizedCaseInsensitiveContains(query) else { return false }
+            let anime = entry.diaryID.flatMap { saved[$0]?.hasPrefix("anime") }
+                ?? (entry.genres?.contains { $0.caseInsensitiveCompare("anime") == .orderedSame } == true)
+            return kind.includes(entry.movie ? .movie : .tv, anime: anime)
+        }
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("On Jellyfin").font(.headline)

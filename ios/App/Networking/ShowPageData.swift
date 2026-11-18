@@ -4,7 +4,8 @@ import TwilDiaryCore
 /// The "view all" pages a show page opens.
 enum ShowPageRoute: Hashable {
     case episodes(titleID: String, season: Int)
-    case cast(CatalogRoute, title: String, anime: Bool, year: Int?)
+    case cast(CatalogRoute, title: String, anime: Bool, year: Int?, originalLanguage: String? = nil)
+    case titleAwards(CatalogRoute, title: String, imdbID: String?)
     case lists(CatalogRoute, title: String)
     /// Related collections: the movie's TMDb collection, then TMDb's catalogue for each genre.
     case collections(CatalogRoute, title: String, anime: Bool)

@@ -152,15 +152,28 @@ import TwilDiaryCore
     }
 
     /// Gemini's picks for the description, best first, each checked on TMDB.
-    static func search(_ description: String, store: DiaryStore) async throws -> [Match] {
+    static func search(_ description: String, store: DiaryStore, update: ([Match]) -> Void) async throws -> [Match] {
         guard let key else { throw APIError.message("Add a Gemini or Groq key (Profile → APIs) to search by description.") }
         let suggestions = try await suggest(description, key: key)
         guard let token = TMDBDirect.token(store) else { throw APIError.message("Finding the titles needs TMDB, which isn’t set up.") }
         var matches: [Match] = [], seen = Set<String>()
-        for suggestion in suggestions {
-            guard !Task.isCancelled else { break }
-            guard let item = await find(suggestion, token: token), seen.insert(item.key).inserted else { continue }
-            matches.append(Match(item: item, why: suggestion.why))
+        for start in stride(from: 0, to: suggestions.count, by: 3) {
+            try Task.checkCancellation()
+            let batch = suggestions[start..<min(start + 3, suggestions.count)]
+            let resolved = await withTaskGroup(of: (Int, Match?).self) { group in
+                for (index, suggestion) in batch.enumerated() {
+                    group.addTask {
+                        let item = await find(suggestion, token: token)
+                        return (index, item.map { Match(item: $0, why: suggestion.why) })
+                    }
+                }
+                var rows: [(Int, Match)] = []
+                for await (index, match) in group { if let match { rows.append((index, match)) } }
+                return rows.sorted { $0.0 < $1.0 }.map { $0.1 }
+            }
+            try Task.checkCancellation()
+            matches += resolved.filter { seen.insert($0.item.key).inserted }
+            update(matches)
         }
         return matches
     }
@@ -174,9 +187,15 @@ import TwilDiaryCore
         queries.append(["query": suggestion.title])
         for query in queries {
             guard let found = try? await TMDBDirect.object(path, query: query, token: token),
-                  let first = (found["results"] as? [[String: Any]])?.first,
-                  let item = TMDBDirect.catalogItem(first, kind: tv ? .tv : .movie) else { continue }
-            return item
+                  let rows = found["results"] as? [[String: Any]] else { continue }
+            let verified = rows.compactMap { row -> CatalogItem? in
+                let names = ["name", "title", "original_name", "original_title"].compactMap { row[$0] as? String }
+                guard names.contains(where: { $0.localizedCaseInsensitiveCompare(suggestion.title) == .orderedSame }),
+                      let item = TMDBDirect.catalogItem(row, kind: tv ? .tv : .movie),
+                      suggestion.year == nil || item.year == suggestion.year else { return nil }
+                return item
+            }
+            if verified.count == 1 { return verified[0] }
         }
         return nil
     }
@@ -495,19 +514,22 @@ import TwilDiaryCore
 
 /// Search with the AI pill on: Gemini's matches above the usual results, each with why it fits.
 struct SemanticSearchSection: View {
-    /// The description you sent (Search pressed); empty until then.
     let query: String
-    /// What's in the field now: sent at once when AI is turned on with text already there.
-    var typed = ""
+    let kind: CatalogSearchView.Kind
     @Environment(DiaryStore.self) private var store
     @State private var matches: [SemanticSearch.Match] = []
     @State private var loading = false
     @State private var failure: String?
     @State private var addingKey = false
     @State private var hasKey = SemanticSearch.key != nil
-    /// Sent when AI was turned on with text already typed.
-    @State private var asked = ""
-    private var description: String { query.isEmpty ? asked : query }
+    private var visible: [SemanticSearch.Match] {
+        matches.filter { match in
+            if let id = store.libraryIdentity(match.item), let title = store.title(id) {
+                return kind.includes(match.item.mediaType, anime: title.category.hasPrefix("anime"))
+            }
+            return kind.includes(match.item.mediaType, anime: match.item.isAnime == true)
+        }
+    }
     /// The last few descriptions' matches, for this app session: opening a title and coming back
     /// (or the list rebuilding the section) shows the same matches instead of asking again.
     @MainActor private static var answered: [String: [SemanticSearch.Match]] = [:]
@@ -539,15 +561,15 @@ struct SemanticSearchSection: View {
                 CineThinking(label: "Finding titles that match").padding(.vertical, 8)
             } else if let failure {
                 Text(failure).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            } else if description.isEmpty {
+            } else if query.isEmpty {
                 Text("Describe it, then press Search.").font(.system(size: 14)).foregroundStyle(.secondary)
-            } else if matches.isEmpty && !loading {
-                Text("Nothing matched that description. Try adding a detail.").font(.system(size: 14)).foregroundStyle(.secondary)
+            } else if visible.isEmpty && !loading {
+                Text(matches.isEmpty ? "Nothing matched that description. Try adding a detail." : "No AI matches in \(kind.rawValue).")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
-            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in row(match).cineReveal(order: index) }
+            ForEach(Array(visible.enumerated()), id: \.element.id) { index, match in row(match).cineReveal(order: index) }
         }
-        .onAppear { if query.isEmpty, asked.isEmpty { asked = typed } }
-        .task(id: description + (hasKey ? "|key" : "")) { await run(description) }
+        .task(id: query + (hasKey ? "|key" : "")) { await run(query) }
         .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         .accessibilityElement(children: .contain).accessibilityIdentifier("semantic-results")
     }
@@ -584,13 +606,14 @@ struct SemanticSearchSection: View {
 
     /// One request per description you send (never while typing).
     private func run(_ text: String) async {
+        matches = []; failure = nil; loading = false
         guard hasKey, !store.isPreview, !text.isEmpty else { return }
         // Already answered (back from a title, or the section rebuilt): show those, no new request.
         if let known = Self.answered[text] { matches = known; failure = nil; loading = false; return }
         loading = true; failure = nil
         defer { if !Task.isCancelled { loading = false } }
         do {
-            let found = try await SemanticSearch.search(text, store: store)
+            let found = try await SemanticSearch.search(text, store: store) { partial in matches = partial }
             guard !Task.isCancelled else { return }
             Self.remember(found, for: text)
             withAnimation(.smooth) { matches = found }

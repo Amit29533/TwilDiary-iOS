@@ -84,13 +84,19 @@ struct HomeView: View {
                     if !seeds.isEmpty { HomeRecommendedShelf(seeds: seeds) }
                     // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                     let favourites = FavouritesStore.shared.items
-                    if !favourites.isEmpty {
+                    let favouriteShows = store.favouriteShows
+                    if !favourites.isEmpty || !favouriteShows.isEmpty {
                         VStack(alignment: .leading, spacing: 16) {
                             HomeSectionHeader(title: "Favourites", icon: "heart.fill") {
                                 NavigationLink(value: AppDestination.favourites) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
                             }
                             ScrollView(.horizontal) {
                                 LazyHStack(alignment: .top, spacing: 12) {
+                                    ForEach(favouriteShows.prefix(6)) { show in
+                                        NavigationLink(value: show.id) {
+                                            LibraryPosterCard(title: show).frame(width: 100)
+                                        }.buttonStyle(.plain)
+                                    }
                                     ForEach(favourites.prefix(12)) { item in FavouriteLink(item: item, homeCard: true).shelfTransition() }
                                 }.scrollTargetLayout()
                             }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()

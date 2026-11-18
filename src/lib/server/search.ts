@@ -38,7 +38,7 @@ export async function searchDiary(
     )
   ]);
   const identities = await searchIdentities(db, remote.value?.items ?? []);
-  const library = [...local.items];
+  const library: DiarySearchPage['library'] = [...local.items];
   const seen = new Set(library.map((title) => title.id));
   const online: DiarySearchPage['online'] = [];
   for (const item of remote.value?.items ?? []) {
@@ -49,7 +49,7 @@ export async function searchDiary(
     );
     if (existing && !existing.title.deletedAt) {
       if (!seen.has(existing.title.id)) {
-        library.push(existing.title);
+        library.push({ ...existing.title, matchedName: item.name });
         seen.add(existing.title.id);
       }
     } else online.push({ ...item, ...(existing ? { trashId: existing.title.id } : {}) });

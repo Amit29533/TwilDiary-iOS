@@ -12,7 +12,10 @@ test('Title extras return companies, networks, tags, status and an age rating fr
       url.pathname === '/3/tv/123876'
         ? {
             id: 123876,
+            external_ids: { imdb_id: 'tt1234567' },
             status: 'Ended',
+            episode_run_time: [],
+            last_episode_to_air: { runtime: 56 },
             created_by: [{ id: 7, name: 'Shinichi Fukuda', profile_path: null }],
             credits: {
               crew: [
@@ -22,6 +25,7 @@ test('Title extras return companies, networks, tags, status and an age rating fr
               ]
             },
             origin_country: ['JP'],
+            original_language: 'ja',
             production_companies: [
               { id: 10342, name: 'CloverWorks', logo_path: '/clover.png', origin_country: 'JP' },
               { id: 2, name: '', logo_path: null },
@@ -39,21 +43,22 @@ test('Title extras return companies, networks, tags, status and an age rating fr
             },
             content_ratings: {
               results: [
-                { iso_3166_1: 'JP', rating: 'R15+' },
-                { iso_3166_1: 'US', rating: 'TV-14' }
+                { iso_3166_1: 'JP', rating: 'R15+', descriptors: ['Separate regional advisory'] },
+                { iso_3166_1: 'US', rating: 'TV-14', descriptors: ['Violence', '', 1] }
               ]
             }
           }
         : {
             id: 77,
             status: 'Released',
+            runtime: 119,
             production_companies: [],
             keywords: { keywords: [{ id: 5, name: 'friendship' }] },
             release_dates: {
               results: [
                 {
                   iso_3166_1: 'GB',
-                  release_dates: [{ certification: '' }, { certification: '12A' }]
+                  release_dates: [{ certification: '', descriptors: ['Unrated cut'] }, { certification: '12A', descriptors: ['Strong language'] }]
                 }
               ]
             }
@@ -61,10 +66,15 @@ test('Title extras return companies, networks, tags, status and an age rating fr
     );
   });
   const show = await browseExtras(new URLSearchParams('type=tv&id=123876'), client);
-  assert.equal(seen[0]!.searchParams.get('append_to_response'), 'keywords,content_ratings,credits');
+  assert.equal(seen[0]!.searchParams.get('append_to_response'), 'keywords,content_ratings,credits,external_ids');
   assert.deepEqual(show, {
+    imdbId: 'tt1234567',
+    originalLanguage: 'ja',
+    runtimeMinutes: null,
+    latestEpisodeMinutes: 56,
     status: 'Ended',
     certification: 'TV-14',
+    contentAdvisories: ['Violence'],
     studios: [
       { id: 10342, name: 'CloverWorks', logoPath: '/clover.png', kind: 'studio', country: 'JP' }
     ],
@@ -80,6 +90,8 @@ test('Title extras return companies, networks, tags, status and an age rating fr
   const movie = await browseExtras(new URLSearchParams('type=movie&id=77'), client);
   assert.equal(seen[1]!.searchParams.get('append_to_response'), 'keywords,release_dates,credits');
   assert.equal(movie.certification, '12A');
+  assert.deepEqual(movie.contentAdvisories, ['Strong language']);
+  assert.equal(movie.runtimeMinutes, 119);
   assert.deepEqual(movie.keywords, [{ id: 5, name: 'friendship' }]);
   await assert.rejects(browseExtras(new URLSearchParams('type=person&id=1'), client));
 });
@@ -123,6 +135,7 @@ test('Movie extras name their TMDb collection and genres; shows have no collecti
   });
   const show = await client.extras('tv', 1399);
   assert.equal(show.collection, null);
+  assert.deepEqual(show.contentAdvisories, []);
   assert.deepEqual(show.genres, [{ id: 18, name: 'Drama' }]);
 });
 

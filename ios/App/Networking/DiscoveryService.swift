@@ -20,7 +20,11 @@ extension DiscoveryServing {
 
 @MainActor final class LiveDiscoveryService: DiscoveryServing {
     private let store: DiaryStore
-    init(store: DiaryStore) { self.store = store }
+    private let recoverBrowseReads: Bool
+    init(store: DiaryStore, recoverBrowseReads: Bool = false) {
+        self.store = store
+        self.recoverBrowseReads = recoverBrowseReads
+    }
     var recommendationScope: UUID? { store.discoveryRevision }
     var recommendationOwner: String? { store.discoveryCache.account }
     func page(_ query: [String: String]) async throws -> CatalogPage { try await page(query, refresh: false) }
@@ -28,18 +32,42 @@ extension DiscoveryServing {
         guard !store.needsSignIn else { store.discoveryCache.reset(); throw APIError.signIn }
         let revision = store.discoveryRevision
         let key = CatalogTools.apiPath("/api/discovery", query: query)
-        let result = try await store.discoveryCache.page(key, scope: revision, personal: query["source"] == "trakt", refresh: refresh) { [store] in
+        let result = try await store.discoveryCache.page(key, scope: revision, personal: query["source"] == "trakt", refresh: refresh) { [store, recoverBrowseReads] in
             #if DEBUG
             if store.isPreview { return PreviewCatalog.discovery(query) }
             #endif
             // Trakt picks are read on the phone. With your TMDB key everything else is too; without
             // one the server adds posters and details.
             let picks = await Self.phonePicks(query, store: store)
+            var usedServerFallback = false
             if let token = TMDBDirect.token(store), query["source"] != "trakt" || picks != nil {
-                return try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
+                if !recoverBrowseReads {
+                    return try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
+                }
+                do {
+                    return try await SearchBrowseRead.retry {
+                        try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
+                    }
+                } catch let error where SearchBrowseRead.isTransportError(error) {
+                    guard ExtrasStorage.server else { throw APIError.message("Couldn’t connect to TMDB.") }
+                    usedServerFallback = true
+                }
             }
             if let picks { return try await store.read(CatalogTools.apiPath("/api/discovery", query: picks)) }
-            return try await store.read(key)
+            do {
+                let reply: CatalogPage = try await store.read(key)
+                if let country = query["country"], reply.originCountry != country {
+                    throw APIError.message("Connect TMDB in Profile to browse by production country.")
+                }
+                if let theme = query["searchTheme"], reply.searchTheme != theme {
+                    throw APIError.message("Connect TMDB in Profile to browse this theme.")
+                }
+                return reply
+            } catch {
+                try Task.checkCancellation()
+                if usedServerFallback { throw APIError.message("Couldn’t connect to TMDB.") }
+                throw error
+            }
         }
         guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
         return reconcileLibrary(result)

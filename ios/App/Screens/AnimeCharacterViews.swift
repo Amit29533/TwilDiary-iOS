@@ -7,13 +7,14 @@ struct CharacterRoute: Hashable {
     var sourceTitle: String? = nil
 }
 
-/// Anime pages: the characters first (AniList), each with their Japanese voice actor under them;
+/// Anime pages: the characters first (AniList), each with an original-language voice credit when available;
 /// the voice-actor Cast row from TMDB follows as before.
 struct AnimeCharactersRow: View {
     let title: String
     let year: Int?
     let movie: Bool
     var tmdbID: Int? = nil
+    var originalLanguage: String? = nil
     /// The show page's "See all" (its Cast and characters page).
     var seeAll: ShowPageRoute? = nil
     @Environment(DiaryStore.self) private var store
@@ -39,7 +40,7 @@ struct AnimeCharactersRow: View {
             } else if failed {
                 Button("Characters didn’t load · Retry") { Task { await load() } }.font(.system(size: 13)).foregroundStyle(.secondary)
             }
-        }.task(id: title) { await load() }
+        }.task(id: "\(tmdbID ?? 0)|\(title)|\(year ?? 0)|\(movie)|\(originalLanguage ?? "")") { await load() }
     }
     private func card(_ character: AniCharacter) -> some View {
         // Design: 111 x 148 (radius 18); "Main" 11 pt bold #cdbbff on a dark 22 pt pill, 8 pt in.
@@ -67,7 +68,11 @@ struct AnimeCharactersRow: View {
         #if DEBUG
         if store.isPreview { characters = AniListPreview.characters; return }
         #endif
-        do { characters = try await AniListClient.shared.characters(title: title, year: year, movie: movie, tmdbID: tmdbID) }
+        do {
+            let result = try await AniListClient.shared.characters(title: title, year: year, movie: movie, tmdbID: tmdbID, originalLanguage: originalLanguage)
+            try Task.checkCancellation()
+            characters = result
+        }
         catch { if !Task.isCancelled { failed = true } }
     }
 }
@@ -148,12 +153,12 @@ struct CharacterView: View {
                 ForEach(actors, id: \.id) { actor in
                     NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
                         if typeSize.isAccessibilitySize {
-                            ProfileMediaRow(image: actor.image, name: actor.name, detail: "Japanese")
+                            ProfileMediaRow(image: actor.image, name: actor.name, detail: actor.language)
                         } else {
                             VStack(alignment: .leading, spacing: 8) {
                                 Artwork(path: actor.image, title: actor.name).frame(width: 96, height: 136).clipShape(RoundedRectangle(cornerRadius: 12))
                                 ProfileCardCaption(title: actor.name)
-                                Text("Japanese").font(.caption).foregroundStyle(.secondary)
+                                if let language = actor.language { Text(language).font(.caption).foregroundStyle(.secondary) }
                             }.frame(width: 96, alignment: .leading).accessibilityElement(children: .combine)
                         }
                     }.buttonStyle(.springPress).accessibilityIdentifier("voice-actor-\(actor.id)")
@@ -209,7 +214,8 @@ struct CharacterView: View {
 /// you've hearted, as posters. "Favourites" titles the page; the tabs are its first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("favouritesTab") private var tab = Favourite.Kind.character
+    @AppStorage("favouritesTab") private var selectedTab = Favourite.Kind.character.rawValue
+    private var tab: Favourite.Kind { Favourite.Kind(rawValue: selectedTab) ?? .character }
     @AppStorage("favouritesCastGrid") private var castGrid = true
     @AppStorage("favouritesCharactersGrid") private var charactersGrid = true
     @AppStorage("favouritesVoiceGrid") private var voiceGrid = true
@@ -228,53 +234,57 @@ struct FavouritesView: View {
         }
         EdgeToEdgeScroll(frosted: true) {
             tabs.padding(.horizontal, 16).padding(.top, 4)
-            Group {
-                switch tab {
-                case .cast: MostWatchedCast(kind: .cast)
-                case .character: AniListMostWatched(kind: .characters)
-                case .voice: MostWatchedCast(kind: .voice)
-                }
-            }.id(tab).padding(.horizontal, 16).padding(.top, 14)
-            HStack(spacing: 10) {
-                Image(systemName: "heart.fill").font(.system(size: 20)).foregroundStyle(HomeStyle.chipText).accessibilityHidden(true)
-                Text("Hearted").font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("favourites-hearted-heading")
-                if !all.isEmpty {
-                    Text(all.count.formatted()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
-                        .frame(minWidth: 26).padding(.horizontal, 4).frame(height: 26).background(HomeStyle.chip, in: Capsule())
-                }
-                Spacer(minLength: 4)
-                layoutSwitch
-            }.padding(.horizontal, 16).padding(.top, 26)
-            if !all.isEmpty {
-                HStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-                        TextField("Search hearted", text: $query).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .accessibilityIdentifier("favourites-search")
-                    }.padding(.horizontal, 16).frame(height: 46).background(HomeStyle.card, in: Capsule())
-                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
-                    Menu {
-                        Picker("Order", selection: $sort) {
-                            Text("Recently hearted").tag("recent"); Text("Oldest first").tag("oldest"); Text("A–Z").tag("name")
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.up.arrow.down").font(.system(size: 13, weight: .bold))
-                            Text(sort == "name" ? "A–Z" : sort == "oldest" ? "Oldest" : "Recent").lineLimit(1)
-                            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
-                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).fixedSize()
-                            .padding(.horizontal, 14).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
-                    }.accessibilityLabel("Order").accessibilityIdentifier("favourites-sort")
-                }.padding(.horizontal, 16).padding(.top, 12)
-            }
-            if items.isEmpty {
-                DiaryEmptyState(title: all.isEmpty ? "No favourite " + tab.label.lowercased() + " yet" : "No hearted " + tab.label.lowercased() + " match", description: all.isEmpty ? emptyHint : "Try another name.")
-                    .padding(.horizontal, 16).padding(.top, 12)
+            if selectedTab == "shows" {
+                FavouriteShowsSection(shows: store.favouriteShows)
             } else {
-                LazyVGrid(columns: grid.wrappedValue ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], spacing: grid.wrappedValue ? 18 : 12) {
-                    ForEach(items) { item in FavouriteLink(item: item, poster: grid.wrappedValue, row: !grid.wrappedValue, hearts: true) }
-                }.padding(.horizontal, 16).padding(.top, 12)
+                Group {
+                    switch tab {
+                    case .cast: MostWatchedCast(kind: .cast)
+                    case .character: AniListMostWatched(kind: .characters)
+                    case .voice: MostWatchedCast(kind: .voice)
+                    }
+                }.id(tab).padding(.horizontal, 16).padding(.top, 14)
+                HStack(spacing: 10) {
+                    Image(systemName: "heart.fill").font(.system(size: 20)).foregroundStyle(HomeStyle.chipText).accessibilityHidden(true)
+                    Text("Hearted").font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("favourites-hearted-heading")
+                    if !all.isEmpty {
+                        Text(all.count.formatted()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
+                            .frame(minWidth: 26).padding(.horizontal, 4).frame(height: 26).background(HomeStyle.chip, in: Capsule())
+                    }
+                    Spacer(minLength: 4)
+                    layoutSwitch
+                }.padding(.horizontal, 16).padding(.top, 26)
+                if !all.isEmpty {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                            TextField("Search hearted", text: $query).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
+                                .accessibilityIdentifier("favourites-search")
+                        }.padding(.horizontal, 16).frame(height: 46).background(HomeStyle.card, in: Capsule())
+                            .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
+                        Menu {
+                            Picker("Order", selection: $sort) {
+                                Text("Recently hearted").tag("recent"); Text("Oldest first").tag("oldest"); Text("A–Z").tag("name")
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.arrow.down").font(.system(size: 13, weight: .bold))
+                                Text(sort == "name" ? "A–Z" : sort == "oldest" ? "Oldest" : "Recent").lineLimit(1)
+                                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
+                            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).fixedSize()
+                                .padding(.horizontal, 14).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
+                        }.accessibilityLabel("Order").accessibilityIdentifier("favourites-sort")
+                    }.padding(.horizontal, 16).padding(.top, 12)
+                }
+                if items.isEmpty {
+                    DiaryEmptyState(title: all.isEmpty ? "No favourite " + tab.label.lowercased() + " yet" : "No hearted " + tab.label.lowercased() + " match", description: all.isEmpty ? emptyHint : "Try another name.")
+                        .padding(.horizontal, 16).padding(.top, 12)
+                } else {
+                    LazyVGrid(columns: grid.wrappedValue ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())], spacing: grid.wrappedValue ? 18 : 12) {
+                        ForEach(items) { item in FavouriteLink(item: item, poster: grid.wrappedValue, row: !grid.wrappedValue, hearts: true) }
+                    }.padding(.horizontal, 16).padding(.top, 12)
+                }
             }
         }.contentMargins(.bottom, 100, for: .scrollContent).diaryScreenBackground().navigationTitle("Favourites").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .tint(Color(themed: "#e6e2ec"))
@@ -295,18 +305,18 @@ struct FavouritesView: View {
     }
     /// Cast · Characters · Voice actors in one dark track; the chosen one is a sliding lilac pill.
     private var tabs: some View {
-        let kinds = Favourite.Kind.allCases
-        let index = CGFloat(kinds.firstIndex(of: tab) ?? 0)
+        let kinds = ["shows"] + Favourite.Kind.allCases.map(\.rawValue)
+        let index = CGFloat(kinds.firstIndex(of: selectedTab) ?? 0)
         return HStack(spacing: 4) {
             ForEach(kinds, id: \.self) { kind in
-                let on = tab == kind
+                let on = selectedTab == kind
                 // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
-                Button { tab = kind } label: {
-                    Text(kind.label).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                Button { selectedTab = kind } label: {
+                    Text(Favourite.Kind(rawValue: kind)?.label ?? "Title").font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .animation(.snappy(duration: 0.28), value: on)
                         .frame(maxWidth: .infinity).frame(height: 40).contentShape(Capsule())
-                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind.rawValue)
+                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind)
             }
         }.background(alignment: .leading) {
             // One pill that moves between the tabs, so it's never missing mid-switch.
@@ -334,6 +344,35 @@ struct FavouritesView: View {
             .frame(minHeight: 44)
     }
 }
+
+private struct FavouriteShowsSection: View {
+    let shows: [MediaTitle]
+    @State private var query = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Favourite shows").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            if shows.isEmpty {
+                ContentUnavailableView("No favourite shows yet", systemImage: "heart",
+                                       description: Text("Open a show in your library and choose Favourite."))
+            } else {
+                TextField("Search favourite shows", text: $query)
+                    .textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                let matches = shows.filter { needle.isEmpty || $0.name.localizedStandardContains(needle) }
+                    .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                if matches.isEmpty { ContentUnavailableView.search(text: query) }
+                LazyVStack(spacing: 10) {
+                    ForEach(matches) { show in
+                        NavigationLink(value: show.id) { LibraryTitleRow(title: show) }
+                            .buttonStyle(.plain).accessibilityIdentifier("favourite-show-" + show.id)
+                    }
+                }
+            }
+        }.padding(16)
+    }
+}
+
 
 /// One favourite, opening their cast, character or voice actor page: a poster on the Favourites
 /// page, a round portrait in Home's compact row.

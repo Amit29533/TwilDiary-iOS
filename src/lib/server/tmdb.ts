@@ -38,9 +38,14 @@ export interface TitleCompany {
   country: string | null;
 }
 export interface TitleExtras {
+  imdbId: string | null;
+  originalLanguage: string | null;
+  runtimeMinutes: number | null;
+  latestEpisodeMinutes: number | null;
   /** TMDb's own words: "Returning Series", "Ended", "Canceled", "Released"… */
   status: string | null;
   certification: string | null;
+  contentAdvisories: string[];
   studios: TitleCompany[];
   networks: TitleCompany[];
   keywords: { id: number; name: string }[];
@@ -77,9 +82,51 @@ const int = (value: unknown, min: number, max: number) => {
     throw upstream();
   return value as number;
 };
+const minutes = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 1440 ? value : null;
+function titleRuntime(data: RecordValue, type: 'movie' | 'tv') {
+  if (type === 'movie') return minutes(data.runtime);
+  if (!Array.isArray(data.episode_run_time)) return null;
+  for (const candidate of data.episode_run_time) {
+    const value = minutes(candidate);
+    if (value !== null) return value;
+  }
+  return null;
+}
 const text = (value: unknown, max: number) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
 const path = (value: unknown) => (typeof value === 'string' && tmdbImage(value) ? value : null);
+function creditPeople(
+  rows: unknown[],
+  role: 'character' | 'job',
+  group: 'roles' | 'jobs'
+) {
+  const people = new Map<
+    number,
+    { id: number; name: string; profilePath: string | null; roles: Set<string> }
+  >();
+  for (const value of rows) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const row = value as RecordValue;
+    const id = row.id as number;
+    const name = text(row.name, 200);
+    if (!Number.isSafeInteger(id) || id < 1 || id > 9999999999 || !name) continue;
+    const person = people.get(id) ?? { id, name, profilePath: null, roles: new Set<string>() };
+    person.profilePath ??= path(row.profile_path);
+    const roles = [text(row[role], 200)];
+    const grouped = row[group];
+    if (Array.isArray(grouped)) {
+      for (const item of grouped)
+        if (item && typeof item === 'object' && !Array.isArray(item))
+          roles.push(text((item as RecordValue)[role], 200));
+    }
+    const namedRoles = roles.filter(Boolean);
+    if (role === 'job' && !namedRoles.length) namedRoles.push(text(row.department, 200));
+    for (const label of namedRoles) if (label) person.roles.add(label);
+    people.set(id, person);
+  }
+  return [...people.values()].map((person) => ({ ...person, roles: [...person.roles] }));
+}
 const date = (value: unknown) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(value + 'T00:00:00Z');
@@ -116,7 +163,11 @@ export function createTmdb(
   transport: typeof fetch = fetch,
   options: { maxResponseBytes?: number } = {}
 ) {
-  async function request(endpoint: string, params: Record<string, string> = {}) {
+  async function request(
+    endpoint: string,
+    params: Record<string, string> = {},
+    maxBytes = 2_000_000
+  ) {
     if (!token?.trim())
       throw new ApiError(
         503,
@@ -158,7 +209,7 @@ export function createTmdb(
           const { done, value } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > Math.min(2_000_000, options.maxResponseBytes ?? 2_000_000)) {
+          if (size > Math.min(maxBytes, options.maxResponseBytes ?? maxBytes)) {
             await reader.cancel();
             throw upstream();
           }
@@ -385,6 +436,23 @@ export function createTmdb(
         })
         .slice(0, 24);
     },
+    async fullCredits(mediaType: 'movie' | 'tv', id: number) {
+      providerInput(mediaType, id);
+      const data = mediaType === 'tv'
+        ? await request(`tv/${id}`, { append_to_response: 'aggregate_credits' }, 8_000_000)
+        : await request(`movie/${id}/credits`, {}, 8_000_000);
+      const credits = mediaType === 'tv' ? record(data.aggregate_credits) : data;
+      if (!Array.isArray(credits.cast) || !Array.isArray(credits.crew)) throw upstream();
+      const creators = Array.isArray(data.created_by)
+        ? data.created_by.flatMap((person) =>
+            person && typeof person === 'object' ? [{ ...person, job: 'Creator' }] : []
+          )
+        : [];
+      return {
+        cast: creditPeople(credits.cast, 'character', 'roles'),
+        crew: creditPeople([...creators, ...credits.crew], 'job', 'jobs')
+      };
+    },
     async discover(input: DiscoveryQuery, seedId?: number): Promise<DiscoveryPage> {
       if (input.source === 'because') providerInput(input.type, seedId);
       const genre = discoveryGenres.find((g) => g.name === input.genre);
@@ -404,7 +472,9 @@ export function createTmdb(
         input.yearFrom ||
         input.yearTo ||
         input.status ||
-        input.language
+        input.language ||
+        input.country ||
+        input.searchTheme
       );
       const trending =
         input.source === 'tmdb' &&
@@ -417,6 +487,8 @@ export function createTmdb(
         params.sort_by =
           input.sort === 'rating'
             ? 'vote_average.desc'
+            : input.sort === 'votes'
+              ? 'vote_count.desc'
             : input.sort === 'newest'
               ? input.type === 'movie'
                 ? 'primary_release_date.desc'
@@ -455,12 +527,25 @@ export function createTmdb(
             input.status
           ];
         if (input.language) params.with_original_language = input.language;
+        if (input.country) params.with_origin_country = input.country;
+        if (input.searchTheme === 'miniseries') params.with_type = '2';
         if (input.network && input.type === 'tv') params.with_networks = String(input.network);
         if (input.year)
           params[input.type === 'movie' ? 'primary_release_year' : 'first_air_date_year'] =
             input.year;
-        params['vote_count.gte'] = input.sort === 'rating' ? '200' : '20';
-        if (input.minimum) params['vote_average.gte'] = String(input.minimum);
+        const browsing = Boolean(
+          keyword || input.keywords?.length || input.company || input.network ||
+          input.country || input.searchTheme
+        );
+        if (input.searchTheme === 'hidden-gems') {
+          params['vote_count.gte'] = '50';
+          params['vote_count.lte'] = '500';
+          params['vote_average.gte'] = String(Math.max(input.minimum, 7));
+        } else {
+          const voteFloor = browsing ? { rating: '50', default: '0' } : { rating: '200', default: '20' };
+          params['vote_count.gte'] = input.sort === 'rating' ? voteFloor.rating : voteFloor.default;
+          if (input.minimum) params['vote_average.gte'] = String(input.minimum);
+        }
         const today = new Date().toISOString().slice(0, 10);
         const upper = input.type === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte';
         if (!params[upper] || params[upper] > today) params[upper] = today;
@@ -515,11 +600,13 @@ export function createTmdb(
       const query = searchQuery(params.get('q') ?? '');
       const type = params.get('type') ?? 'all';
       const page = params.get('page') ?? '1';
+      const language = params.get('language');
       if (
         query.length < 2 ||
         query.length > 200 ||
         /[\u0000-\u001f\u007f]/.test(query) ||
         !['all', 'movie', 'tv'].includes(type) ||
+        (language !== null && !/^[a-z]{2,3}$/.test(language)) ||
         !/^\d+$/.test(page) ||
         +page < 1 ||
         +page > 500
@@ -529,14 +616,37 @@ export function createTmdb(
           'invalid_input',
           'Enter 2–200 characters and choose a valid search page'
         );
+      const searchMatch = (value: unknown, kind?: 'movie' | 'tv'): SearchMatch | null => {
+        const item = record(value);
+        if (item.adult === true || (language && item.original_language !== language)) return null;
+        const found = match(value, kind);
+        if (!found) return null;
+        const genreIds = item.genre_ids;
+        return {
+          ...found,
+          ...(Array.isArray(genreIds)
+            ? {
+                genres: discoveryGenres.filter((g) => genreIds.includes(g[found.mediaType])).map((g) => g.name),
+                ...(typeof item.original_language === 'string'
+                  ? { isAnime: item.original_language === 'ja' && genreIds.includes(16) }
+                  : {})
+              }
+            : {}),
+          rating:
+            typeof item.vote_average === 'number' && item.vote_average > 0 && item.vote_average <= 10
+              ? item.vote_average
+              : null,
+          votes: Number.isSafeInteger(item.vote_count) && Number(item.vote_count) >= 0 ? Number(item.vote_count) : 0
+        };
+      };
       if (/^tt\d{7,10}$/i.test(query)) {
         const data = await request(`find/${query.toLowerCase()}`, { external_source: 'imdb_id' });
         const movies = Array.isArray(data.movie_results) ? data.movie_results : [];
         const shows = Array.isArray(data.tv_results) ? data.tv_results : [];
         return {
           items: [
-            ...(type !== 'tv' ? movies.map((v) => match(v, 'movie')) : []),
-            ...(type !== 'movie' ? shows.map((v) => match(v, 'tv')) : [])
+            ...(type !== 'tv' ? movies.map((v) => searchMatch(v, 'movie')) : []),
+            ...(type !== 'movie' ? shows.map((v) => searchMatch(v, 'tv')) : [])
           ].filter((v): v is SearchMatch => !!v),
           page: 1,
           totalPages: 1
@@ -550,7 +660,7 @@ export function createTmdb(
       if (!Array.isArray(data.results) || data.results.length > 100) throw upstream();
       return {
         items: data.results
-          .map((v) => match(v, type === 'all' ? undefined : (type as 'movie' | 'tv')))
+          .map((v) => searchMatch(v, type === 'all' ? undefined : (type as 'movie' | 'tv')))
           .filter((v): v is SearchMatch => !!v),
         page: int(data.page, 1, 500),
         totalPages: Math.min(int(data.total_pages, 0, 1000000), 500)
@@ -589,12 +699,6 @@ export function createTmdb(
             .filter(Boolean)
             .slice(0, 40)
         : [];
-      const runtime =
-        mediaType === 'movie'
-          ? data.runtime
-          : Array.isArray(data.episode_run_time)
-            ? data.episode_run_time[0]
-            : null;
       const imdbId =
         data.external_ids && typeof data.external_ids === 'object'
           ? (data.external_ids as RecordValue).imdb_id
@@ -611,10 +715,7 @@ export function createTmdb(
         seasons,
         genres,
         backdropPath: path(data.backdrop_path),
-        runtimeMinutes:
-          Number.isInteger(runtime) && (runtime as number) > 0 && (runtime as number) <= 1440
-            ? (runtime as number)
-            : null,
+        runtimeMinutes: titleRuntime(data, mediaType),
         communityScore:
           typeof data.vote_average === 'number' && data.vote_average > 0 && data.vote_average <= 10
             ? data.vote_average
@@ -631,7 +732,7 @@ export function createTmdb(
       providerInput(mediaType, id);
       const data = await request(`${mediaType}/${id}`, {
         append_to_response:
-          mediaType === 'tv' ? 'keywords,content_ratings,credits' : 'keywords,release_dates,credits'
+          mediaType === 'tv' ? 'keywords,content_ratings,credits,external_ids' : 'keywords,release_dates,credits'
       });
       if (data.id !== id) throw upstream();
       const list = (value: unknown, max: number) =>
@@ -664,26 +765,21 @@ export function createTmdb(
       );
       // An age rating from the US first, then the title's own country, then any.
       const origin = Array.isArray(data.origin_country) ? String(data.origin_country[0] ?? '') : '';
-      const ratings: { country: string; rating: string }[] =
-        mediaType === 'tv'
-          ? list(record(data.content_ratings ?? {}).results, 200).map((v) => ({
-              country: text((v as RecordValue).iso_3166_1, 4),
-              rating: text((v as RecordValue).rating, 20)
-            }))
-          : list(record(data.release_dates ?? {}).results, 200).map((v) => ({
-              country: text((v as RecordValue).iso_3166_1, 4),
-              rating:
-                list((v as RecordValue).release_dates, 30)
-                  .map((r) => text((r as RecordValue).certification, 20))
-                  .find(Boolean) ?? ''
-            }));
-      const rated = ratings.filter((r) => r.rating);
-      const certification =
-        (
-          rated.find((r) => r.country === 'US') ??
-          rated.find((r) => r.country === origin) ??
-          rated[0]
-        )?.rating ?? null;
+      const tv = mediaType === 'tv';
+      const entries = record((tv ? data.content_ratings : data.release_dates) ?? {}).results;
+      const ratings = list(entries, 200).flatMap((entry: RecordValue) => {
+        const row = tv
+          ? entry
+          : list(entry.release_dates, 30).find((release) => text(release.certification, 20));
+        if (!row) return [];
+        const rating = text(row[tv ? 'rating' : 'certification'], 20);
+        const advisories = Array.isArray(row.descriptors)
+          ? row.descriptors.map((value: unknown) => text(value, 200)).filter(Boolean)
+          : [];
+        return rating ? [{ country: text(entry.iso_3166_1, 4), rating, advisories }] : [];
+      });
+      const rated = ratings.find((r) => r.country === 'US') ??
+        ratings.find((r) => r.country === origin) ?? ratings[0];
       const status = text(data.status, 40) || null;
       // Most important jobs first; one entry per person, at their most important job.
       const jobs = [
@@ -742,7 +838,14 @@ export function createTmdb(
               backdropPath: path(owner.backdrop_path)
             }
           : null;
-      return { status, certification, studios, networks, keywords, crew, genres, collection };
+      return {
+        status, certification: rated?.rating ?? null, studios, networks, keywords, crew, genres, collection,
+        imdbId: text(tv ? (data.external_ids as RecordValue | null)?.imdb_id : data.imdb_id, 24) || null,
+        contentAdvisories: rated?.advisories ?? [],
+        originalLanguage: text(data.original_language, 10) || null,
+        runtimeMinutes: titleRuntime(data, mediaType),
+        latestEpisodeMinutes: minutes((data.last_episode_to_air as RecordValue | null)?.runtime)
+      };
     },
     /** A TMDb collection (a film series) with its films in release order. */
     async collection(id: number): Promise<TitleCollection> {
@@ -815,6 +918,7 @@ export function createTmdb(
           overview: text(e.overview, 20000),
           airedOn: date(e.air_date),
           stillPath: path(e.still_path),
+          runtimeMinutes: minutes(e.runtime),
           communityScore:
             typeof e.vote_average === 'number' &&
             e.vote_average > 0 &&

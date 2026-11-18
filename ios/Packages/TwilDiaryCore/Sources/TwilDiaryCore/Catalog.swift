@@ -38,28 +38,38 @@ public struct CatalogItem: Decodable, Hashable, Sendable {
     public let job: String?
     public let popularity: Double?
     public let episodeCount: Int?
+    public let isAnime: Bool?
     public var key: String { "\(mediaType.rawValue):\(id)" }
     public var route: CatalogRoute { CatalogRoute(kind: mediaType, id: id) }
     public var displayKey: String { inLibraryId ?? key }
     public var artwork: String? { poster ?? CatalogTools.image(posterPath) }
-    public init(id: Int, mediaType: MediaKind, name: String, year: Int? = nil, overview: String = "", posterPath: String? = nil, backdropPath: String? = nil, rating: Double? = nil, votes: Int? = nil, genres: [String] = [], inLibraryId: String? = nil, poster: String? = nil, backdrop: String? = nil, character: String? = nil, job: String? = nil, popularity: Double? = nil, episodeCount: Int? = nil) {
+    public init(id: Int, mediaType: MediaKind, name: String, year: Int? = nil, overview: String = "", posterPath: String? = nil, backdropPath: String? = nil, rating: Double? = nil, votes: Int? = nil, genres: [String] = [], inLibraryId: String? = nil, poster: String? = nil, backdrop: String? = nil, character: String? = nil, job: String? = nil, popularity: Double? = nil, episodeCount: Int? = nil, isAnime: Bool? = nil) {
         self.id = id; self.mediaType = mediaType; self.name = name; self.year = year; self.overview = overview
         self.posterPath = posterPath; self.backdropPath = backdropPath; self.rating = rating; self.votes = votes
         self.genres = genres; self.inLibraryId = inLibraryId; self.poster = poster; self.backdrop = backdrop
         self.character = character; self.job = job; self.popularity = popularity; self.episodeCount = episodeCount
+        self.isAnime = isAnime
     }
 }
 
 public struct CatalogPage: Decodable, Sendable {
+    public var incomplete: Bool? = nil
     public let items: [CatalogItem]
     public let page: Int
     public let totalPages: Int
     /// Every match TMDb counts ("48 titles"), when the reply says.
     public let totalResults: Int?
-    public init(items: [CatalogItem], page: Int, totalPages: Int, totalResults: Int? = nil) { self.items = items; self.page = page; self.totalPages = totalPages; self.totalResults = totalResults }
+    public let originCountry: String?
+    public let searchTheme: String?
+    public init(items: [CatalogItem], page: Int, totalPages: Int, totalResults: Int? = nil, originCountry: String? = nil,
+                searchTheme: String? = nil) {
+        self.items = items; self.page = page; self.totalPages = totalPages; self.totalResults = totalResults; self.originCountry = originCountry
+        self.searchTheme = searchTheme
+    }
 }
 
 public struct CatalogDetails: Decodable, Sendable {
+    public let imdbId: String?
     public let id: Int
     public let mediaType: MediaKind
     public let name: String
@@ -91,6 +101,29 @@ public struct CastPerson: Decodable, Identifiable, Sendable {
     public let profilePath: String?
 }
 public struct CastResponse: Decodable, Sendable { public let cast: [CastPerson]; public let stale: Bool }
+public struct FullTitleCredits: Decodable, Sendable {
+    public struct Person: Decodable, Identifiable, Sendable {
+        public let id: Int
+        public let name: String
+        public let profilePath: String?
+        public let roles: [String]
+
+        public init(id: Int, name: String, profilePath: String?, roles: [String]) {
+            self.id = id
+            self.name = name
+            self.profilePath = profilePath
+            self.roles = roles
+        }
+    }
+
+    public let cast: [Person]
+    public let crew: [Person]
+
+    public init(cast: [Person], crew: [Person]) {
+        self.cast = cast
+        self.crew = crew
+    }
+}
 public struct RelatedResponse: Decodable, Sendable {
     public let items: [CatalogItem]; public let stale: Bool
     public init(items: [CatalogItem], stale: Bool) { self.items = items; self.stale = stale }

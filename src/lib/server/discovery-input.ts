@@ -22,12 +22,15 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
   const yearTo = params.get('yearTo') ?? '';
   const status = params.get('status') ?? '';
   const language = params.get('language') ?? '';
+  const country = params.get('country') ?? '';
+  const searchTheme = params.get('searchTheme') ?? '';
   const year4 = (value: string) => /^\d{4}$/.test(value) && +value >= 1880 && +value <= 2200;
   const id = (value: string) => /^\d{1,10}$/.test(value) && +value > 0;
   if (
     !['tmdb', 'trakt', 'because'].includes(source) ||
     !['movie', 'tv'].includes(type) ||
-    !['popular', 'rating', 'newest', 'trending'].includes(sort) ||
+    !['popular', 'rating', 'newest', 'trending', 'votes'].includes(sort) ||
+    (sort === 'votes' && source !== 'tmdb') ||
     (network && (type !== 'tv' || source !== 'tmdb' || !id(network))) ||
     ((keyword || company) && source !== 'tmdb') ||
     (keyword && !id(keyword)) ||
@@ -44,6 +47,10 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
     (status &&
       (type !== 'tv' || !['returning', 'ended', 'canceled', 'production'].includes(status))) ||
     (language && !/^[a-z]{2}$/.test(language)) ||
+    (country && (!/^[A-Z]{2}$/.test(country) || source !== 'tmdb')) ||
+    (searchTheme &&
+      (source !== 'tmdb' ||
+        (searchTheme !== 'hidden-gems' && (searchTheme !== 'miniseries' || type !== 'tv')))) ||
     ((keywords.length ||
       genres.length ||
       certification ||
@@ -79,6 +86,8 @@ export function discoveryInput(params: URLSearchParams): DiscoveryQuery {
     ...(yearFrom ? { yearFrom: +yearFrom } : {}),
     ...(yearTo ? { yearTo: +yearTo } : {}),
     ...(status ? { status } : {}),
-    ...(language ? { language } : {})
+    ...(language ? { language } : {}),
+    ...(country ? { country } : {}),
+    ...(searchTheme ? { searchTheme } : {})
   } as DiscoveryQuery;
 }

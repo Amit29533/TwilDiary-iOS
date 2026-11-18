@@ -99,7 +99,7 @@ enum AppTab: String, CaseIterable, Hashable {
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, appearance, trakt, tmdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -347,6 +347,7 @@ struct RootView: View {
                 }
                 .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.catalog($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: SearchBrowseRoute.self) { SearchBrowseDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
@@ -378,6 +379,7 @@ struct RootView: View {
                     case .appearance: AppearanceView()
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()
+                    case .tvdb: TVDBConnectionView()
                     case .anilist: AniListSettingsView()
                     case .cloudflare: CloudflareUsageView()
                     case .apis: APIsView()

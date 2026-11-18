@@ -6,6 +6,10 @@ export interface SearchMatch {
   year: number | null;
   overview: string;
   posterPath: string | null;
+  isAnime?: boolean;
+  genres?: string[];
+  rating?: number | null;
+  votes?: number;
 }
 export interface SearchPage {
   items: SearchMatch[];

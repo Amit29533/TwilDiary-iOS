@@ -52,6 +52,23 @@ private final class ControlledProviderSecrets: ProviderSecretStoring, @unchecked
     #expect(throws: ProviderSettingsPersistenceError.self) { try store.load() }
 }
 
+@Test func tvdbKeyUsesProviderStorageAndCanBeCleared() throws {
+    let suiteName = "twildiary.secure-test.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = UserDefaultsProviderSettingsStore(defaults: defaults, key: "settings", secrets: ControlledProviderSecrets())
+    var settings = ProviderConnectionSettings(customTmdbToken: "synthetic-tmdb", customTvdbKey: "  synthetic-tvdb  ")
+    try store.save(settings)
+    #expect(try store.load().customTvdbKey == "synthetic-tvdb")
+    let raw = String(decoding: defaults.data(forKey: "settings") ?? Data(), as: UTF8.self)
+    #expect(!raw.contains("synthetic-tvdb"))
+    settings.customTvdbKey = nil
+    try store.save(settings)
+    let loaded = try store.load()
+    #expect(loaded.customTvdbKey == nil)
+    #expect(loaded.customTmdbToken == "synthetic-tmdb")
+}
+
 @Test func providerSecretsMigrateAndExplicitClearsCannotResurrectLegacyTokens() throws {
     let suiteName = "twildiary.secure-test.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))

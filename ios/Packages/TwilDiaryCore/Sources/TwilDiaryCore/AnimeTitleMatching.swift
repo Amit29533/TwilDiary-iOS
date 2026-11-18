@@ -6,6 +6,12 @@ public enum AnimeTitleDestination: Hashable, Sendable {
 
 /// AniList media IDs are never TMDB IDs. Only unique title/year/type matches may open directly.
 public enum AnimeTitleMatching {
+    /// A catalog title may match an English, romanized, native, or alternative AniList name.
+    public static func matchesAlias(_ title: String, aliases: [String]) -> Bool {
+        let needle = key(title)
+        return !needle.isEmpty && aliases.contains { key($0) == needle }
+    }
+
     public static func saved(_ titles: [MediaTitle], names: [String], year: Int?, kind: MediaKind?) -> [MediaTitle] {
         let keys = Set(names.map(key).filter { !$0.isEmpty })
         return titles.filter {

@@ -636,7 +636,10 @@ import UIKit
         let more = app.buttons["explore-more-rated-shows"]
         if !more.isHittable { app.swipeUp() }
         XCTAssertTrue(more.isHittable); more.tap()
-        XCTAssertTrue(app.staticTexts["Highest rated shows"].waitForExistence(timeout: 5)); capture("Explore rated shows")
+        let heading = app.staticTexts["explore-browse-title"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        XCTAssertEqual(heading.label, "Highest rated shows")
+        capture("Explore rated shows")
         let minimum = app.buttons["explore-minimum"]
         XCTAssertTrue(minimum.waitForExistence(timeout: 5))
         // The pills scroll sideways (order first); bring Rating into view.

@@ -87,6 +87,8 @@ struct ConnectionsView: View {
                     SettingsGroup(label: "Keys", info: "Keys are kept encrypted on this iPhone, and TwilDiary reads each service with them directly.") {
                         row(BrandLogo(service: .tmdb, size: 38), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
                         divider
+                        row(BrandLogo(service: .tvdb, size: 38), "TheTVDB", "Awards, nominees and winners", value: nil, destination: .tvdb, id: "settings-tvdb")
+                        divider
                         NavigationLink(value: AppDestination.apis) {
                             if ThemeStore.current.native {
                                 rowLabel(SettingsTile(symbol: "key.fill"), "All keys", "", value: nil)

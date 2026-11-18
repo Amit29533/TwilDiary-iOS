@@ -73,7 +73,7 @@ extension DiaryStore {
         let byNumber = Dictionary(page.items.map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
         return workspace.episodes.filter { $0.titleId == title.id && $0.season == number }.compactMap { episode in
             byNumber[episode.number].map { RevealedEpisode(id: episode.id, number: episode.number, name: $0.name, overview: $0.overview,
-                                                           stillPath: $0.stillPath, communityScore: $0.communityScore) }
+                                                           stillPath: $0.stillPath, communityScore: $0.communityScore, runtimeMinutes: $0.runtimeMinutes) }
         }
     }
 }
@@ -85,11 +85,14 @@ struct RevealedEpisode: Decodable, Identifiable, Sendable {
     let overview: String?
     let stillPath: String?
     let communityScore: Double?
+    let runtimeMinutes: Int?
     init(_ episode: Episode) {
+        runtimeMinutes = episode.runtimeMinutes
         id = episode.id; number = episode.number; name = episode.name; overview = episode.overview
         stillPath = episode.still; communityScore = episode.communityScore
     }
-    init(id: String, number: Int, name: String?, overview: String?, stillPath: String?, communityScore: Double?) {
+    init(id: String, number: Int, name: String?, overview: String?, stillPath: String?, communityScore: Double?, runtimeMinutes: Int? = nil) {
+        self.runtimeMinutes = runtimeMinutes
         self.id = id; self.number = number; self.name = name; self.overview = overview
         self.stillPath = stillPath; self.communityScore = communityScore
     }

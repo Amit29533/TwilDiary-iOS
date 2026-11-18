@@ -41,6 +41,19 @@ import Testing
     #expect(flat.range.upperBound - flat.range.lowerBound >= 2 && flat.range.upperBound <= 10)
 }
 
+@Test func episodeRatingScrubSnapsToRealEpisodesAndBreaksAcrossGaps() throws {
+    let summary = try #require(EpisodeRatingSummary([
+        .init(episode: 6, score: 8), .init(episode: 1, score: 7),
+        .init(episode: 2, score: 9), .init(episode: 2, score: 5), .init(episode: 4, score: 0)
+    ]))
+    #expect(summary.runs.map { $0.points.map(\.episode) } == [[1, 2], [6]])
+    #expect(summary.nearest(to: 0)?.episode == 1)
+    #expect(summary.nearest(to: 2)?.score == 9)
+    #expect(summary.nearest(to: 4)?.episode == 2)
+    #expect(summary.nearest(to: 5)?.episode == 6)
+    #expect(summary.nearest(to: 20)?.episode == 6)
+}
+
 @Test func episodeWindowShowsOneBeforeTheNextAndTwoAfter() {
     // 24 episodes, 12 watched: 1–11 fold, 12–15 show, 16–24 fold (the design's layout).
     let middle = EpisodeWindow(count: 24, focus: 12)

@@ -84,6 +84,7 @@ struct EpisodeCardRow: View {
     let artwork: String?
     let hidden: Bool
     let state: EpisodeRowState
+    let runtime: Int?
     let score: Double?
     let canToggle: Bool
     let onOpen: () -> Void
@@ -103,14 +104,15 @@ struct EpisodeCardRow: View {
                         // The number isn't a spoiler: hidden rows keep it ("9. A story for later").
                         Text(name.hasPrefix("Episode ") ? name : "\(number). \(name)")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
-                        HStack(spacing: 6) {
+                        InlineFlowLayout(spacing: 6, rowSpacing: 3) {
                             EpisodeChip(text: state.text, accent: state == .next)
                             if let score, score > 0 { ScoreChip(score: score) }
+                            if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
                         }
                     }
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityValue(name)
+            }.buttonStyle(.plain).accessibilityLabel("Episode \(number) details").accessibilityValue([name, runtime.map { "\($0) minutes" }].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityIdentifier("title-episode-\(number)")
             if showsTick {
             Button(action: onToggle) { EpisodeTick(watched: watched, next: state == .next) }.buttonStyle(.plain)
@@ -174,27 +176,12 @@ struct EpisodeGridCard: View {
                     }
                 }
             Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
-            // When it aired (or that you watched it), then its length and rating, on one line;
-            // a narrow card drops the date rather than squeezing it under the chips.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
-                    Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                    chips
-                }
-                HStack(spacing: 6) { chips }
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 7)
+            InlineFlowLayout(spacing: 6, rowSpacing: 3) {
+                if let score, score > 0 { ScoreChip(score: score) }
+                if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
+            }.padding(.top, runtime != nil || (score ?? 0) > 0 ? 6 : 0)
+            Text(subtitle).font(.caption).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
         }.frame(width: fills ? nil : 232, alignment: .leading).frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
-    }
-    @ViewBuilder private var chips: some View {
-        if let runtime {
-            Text("\(runtime) min").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                .padding(.horizontal, 10).frame(height: 24).background(Color(themed: "#1e1e26"), in: Capsule()).fixedSize()
-        }
-        if let score, score > 0 {
-            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                .padding(.horizontal, 10).frame(height: 24).background(Color(themed: "#1e1e26"), in: Capsule()).fixedSize()
-        }
     }
     private var subtitle: String {
         if case .watched = state { return state.text }
@@ -211,7 +198,8 @@ struct ShowPageDestination: View {
     var body: some View {
         switch route {
         case .episodes(let id, let season): EpisodesPage(titleID: id, initialSeason: season)
-        case .cast(let catalog, let title, let anime, let year): CastCreditsPage(route: catalog, title: title, anime: anime, year: year)
+        case .cast(let catalog, let title, let anime, let year, let language): CastCreditsPage(route: catalog, title: title, anime: anime, year: year, originalLanguage: language)
+        case .titleAwards(let route, let title, let imdbID): TitleAwardsPage(route: route, title: title, imdbID: imdbID).id(route)
         case .lists(let catalog, let title): InListsPage(route: catalog, title: title)
         case .collections(let route, let title, let anime): RelatedCollectionsPage(route: route, title: title, anime: anime)
         case .tmdbCollection(let id, let name): TMDbCollectionPage(id: id, name: name)
@@ -335,7 +323,10 @@ struct EpisodesPage: View {
                     .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
             }
         }
-        .task(id: season) { if !hideSpoilers { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
+        .task(id: season) {
+            if hideSpoilers { await details.loadMissingRuntimes(title, season: season, store: store) }
+            else { await details.load(season) { try await store.revealedSeason(title, number: season) } }
+        }
         .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             if let episode = selected ?? sheetEpisode { sheet(title, episode: episode, episodes: episodes, watched: watched) }
         }
@@ -354,7 +345,7 @@ struct EpisodesPage: View {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
                 ForEach(episodes) { episode in
                     EpisodeGridCard(number: episode.number, name: name(episode, watched: watched), artwork: artwork(episode, title: title), hidden: hidden(episode, watched: watched),
-                                    state: state(episode, watched: watched, dates: dates, next: next), airedOn: episode.airedOn, runtime: title.runtimeMinutes,
+                                    state: state(episode, watched: watched, dates: dates, next: next), airedOn: episode.airedOn, runtime: details.runtime(episode),
                                     score: score(episode), onOpen: { open(episode, title: title, watched: watched) }, onToggle: { toggle(episode, title: title, watched: watched) },
                                     fills: true)
                 }
@@ -363,7 +354,7 @@ struct EpisodesPage: View {
             LazyVStack(spacing: 10) {
                 ForEach(episodes) { episode in
                     EpisodeCardRow(number: episode.number, name: name(episode, watched: watched), artwork: artwork(episode, title: title), hidden: hidden(episode, watched: watched),
-                                   state: state(episode, watched: watched, dates: dates, next: next), score: score(episode),
+                                   state: state(episode, watched: watched, dates: dates, next: next), runtime: details.runtime(episode), score: score(episode),
                                    canToggle: !store.writesBlocked && (watched.contains(episode.id) || aired(episode)),
                                    onOpen: { open(episode, title: title, watched: watched) }, onToggle: { toggle(episode, title: title, watched: watched) })
                 }
@@ -402,7 +393,7 @@ struct EpisodesPage: View {
         EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
                                 page: { item in
                                     .init(name: name(item, watched: watched), summary: summary(item), artwork: artwork(item, title: title),
-                                          hidden: hidden(item, watched: watched), tmdbScore: score(item), traktScore: nil, watched: watched.contains(item.id))
+                                          hidden: hidden(item, watched: watched), runtime: details.runtime(item), tmdbScore: score(item), traktScore: nil, watched: watched.contains(item.id))
                                 },
                                 onToggleWatched: { toggle($0, title: title, watched: watched) },
                                 onNeighbour: { neighbour(of: episode, forward: $0, episodes: episodes, title: title) },
@@ -496,6 +487,7 @@ struct RelatedTitlesPage: View {
             let object: [String: Any] = [
                 "id": "preview-\(route.id)-s\(season)e\(episode.number)", "titleId": "preview-\(route.id)", "season": season, "number": episode.number,
                 "name": episode.name, "overview": episode.overview, "airedOn": episode.airedOn as Any? ?? NSNull(),
+                "runtimeMinutes": episode.runtimeMinutes as Any? ?? NSNull(),
                 "still": artwork(episode) as Any? ?? NSNull(), "hidden": false, "communityScore": episode.communityScore as Any? ?? NSNull()
             ]
             return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(Episode.self, from: $0) }
@@ -592,7 +584,7 @@ struct PreviewEpisodesPage: View {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
                 ForEach(episodes) { episode in
                     EpisodeGridCard(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode), state: state(episode),
-                                    airedOn: episode.airedOn, runtime: details?.runtimeMinutes, score: episode.communityScore,
+                                    airedOn: episode.airedOn, runtime: episode.runtimeMinutes, score: episode.communityScore,
                                     onOpen: { open(episode) }, onToggle: {}, showsTick: false, fills: true)
                 }
             }
@@ -600,7 +592,7 @@ struct PreviewEpisodesPage: View {
             LazyVStack(spacing: 10) {
                 ForEach(episodes) { episode in
                     EpisodeCardRow(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode), state: state(episode),
-                                   score: episode.communityScore, canToggle: false, onOpen: { open(episode) }, onToggle: {}, showsTick: false)
+                                   runtime: episode.runtimeMinutes, score: episode.communityScore, canToggle: false, onOpen: { open(episode) }, onToggle: {}, showsTick: false)
                 }
             }
         }
@@ -674,83 +666,117 @@ struct CastCreditsPage: View {
     let title: String
     let anime: Bool
     let year: Int?
+    var originalLanguage: String? = nil
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @State private var crewTab = false
-    @State private var characters: [AniCharacter] = []
-    @State private var cast: [CastPerson] = []
-    @State private var crew: [TitleCrewMember] = []
-    @State private var failure: String?
+    private enum Tab: String { case cast = "Cast", crew = "Crew", voices = "Voice cast" }
+    @State private var selection: Tab?
+    @State private var characters: [AniCharacter]?
+    @State private var credits: FullTitleCredits?
+    @State private var creditsFailure: String?
+    @State private var voiceFailure: String?
+    private var selected: Tab { selection ?? (anime && characters?.isEmpty != true ? .voices : .cast) }
+
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 4) {
-                    segment(anime ? "Voice cast" : "Cast", on: !crewTab) { crewTab = false }
-                    segment("Crew", on: crewTab) { crewTab = true }
+                    if anime && characters?.isEmpty != true { segment(.voices) }
+                    segment(.cast)
+                    segment(.crew)
                 }.padding(4).background(Color.primary.opacity(0.06), in: Capsule())
-                if crewTab { crewList } else if anime && !characters.isEmpty { characterList } else { castList }
-                if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                creditContent
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ShowPageTitle(title: anime ? "Cast and characters" : "Cast and crew", subtitle: title) }
             .task(id: route) { await load() }
     }
-    private func segment(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
+    private func segment(_ tab: Tab) -> some View {
+        let on = selected == tab
+        return Button { selection = tab } label: {
+            Text(tab.rawValue).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
                 .frame(maxWidth: .infinity).frame(height: 40)
                 .background { if on { Capsule().fill(theme.accent) } }
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
-    private var characterList: some View {
+
+    @ViewBuilder private var creditContent: some View {
+        if selected == .voices {
+            if let voiceFailure {
+                RetryNotice(message: voiceFailure) { Task { await loadCharacters() } }
+            } else if let characters {
+                if characters.isEmpty { Text("No voice cast listed yet.").font(.subheadline).foregroundStyle(.secondary) }
+                else { characterList(characters) }
+            } else {
+                DiaryLoadingPlaceholder(label: "Loading voice cast", layout: .list(rows: 5))
+            }
+        } else if let creditsFailure {
+            RetryNotice(message: creditsFailure) { Task { await loadCredits() } }
+        } else if let credits {
+            let people = selected == .crew ? credits.crew : credits.cast
+            if people.isEmpty {
+                Text(selected == .crew ? "No crew listed yet." : "No cast listed yet.").font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                peopleList(people)
+            }
+        } else {
+            DiaryLoadingPlaceholder(label: "Loading credits", layout: .list(rows: 5))
+        }
+    }
+
+    private func characterList(_ characters: [AniCharacter]) -> some View {
         LazyVStack(spacing: 10) {
             ForEach(characters) { character in
-                HStack(spacing: 12) {
-                    NavigationLink(value: CharacterRoute(id: character.id, sourceTitle: title)) {
-                        HStack(spacing: 12) {
-                            Artwork(path: character.image, title: character.name).frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                                if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
-                                if let actor = character.voiceActor {
-                                    Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                                    Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Color(themed: "#e6e1ee")).lineLimit(1)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        NavigationLink(value: CharacterRoute(id: character.id, sourceTitle: title)) {
+                            HStack(spacing: 12) {
+                                Artwork(path: character.image, title: character.name)
+                                    .frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                                    if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
+                                    if let actor = character.voiceActor {
+                                        Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                                        Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                                    }
                                 }
-                            }
-                            Spacer(minLength: 0)
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                    if let actor = character.voiceActor {
+                                Spacer(minLength: 0)
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                        if let actor = character.voiceActor {
+                            NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
+                                Artwork(path: actor.image, title: actor.name)
+                                    .frame(width: 64, height: 78).clipShape(RoundedRectangle(cornerRadius: 12))
+                            }.buttonStyle(.springPress).accessibilityLabel(actor.name)
+                        }
+                    }
+                    ForEach(character.additionalVoiceActors ?? [], id: \.id) { actor in
                         NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
-                            Artwork(path: actor.image, title: actor.name).frame(width: 64, height: 78).clipShape(RoundedRectangle(cornerRadius: 12))
-                        }.buttonStyle(.springPress).accessibilityLabel(actor.name)
+                            HStack(spacing: 10) {
+                                Artwork(path: actor.image, title: actor.name)
+                                    .frame(width: 34, height: 44).clipShape(RoundedRectangle(cornerRadius: 6))
+                                Text(actor.name).font(.subheadline.weight(.medium)).foregroundStyle(HomeStyle.primary)
+                                Spacer(minLength: 0)
+                                DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel("Voiced by " + actor.name)
                     }
                 }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }
         }
     }
-    private var castList: some View {
+    private func peopleList(_ people: [FullTitleCredits.Person]) -> some View {
         LazyVStack(spacing: 10) {
-            ForEach(cast) { person in
-                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.character)) {
-                    personRow(name: person.name, detail: person.character, image: CatalogTools.image(person.profilePath, size: "w185"))
+            ForEach(people) { person in
+                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.roles.first)) {
+                    personRow(name: person.name, roles: person.roles, image: CatalogTools.image(person.profilePath, size: "w185"))
                 }.buttonStyle(.plain)
             }
-            if cast.isEmpty && failure == nil { Text("No cast listed yet.").font(.subheadline).foregroundStyle(.secondary) }
         }
     }
-    private var crewList: some View {
-        LazyVStack(spacing: 10) {
-            ForEach(crew) { person in
-                NavigationLink(value: PersonRoute(id: person.id, sourceTitle: title, sourceRole: person.job)) {
-                    personRow(name: person.name, detail: person.job, image: CatalogTools.image(person.profilePath, size: "w185"))
-                }.buttonStyle(.plain)
-            }
-            if crew.isEmpty && failure == nil { Text("No crew listed yet.").font(.subheadline).foregroundStyle(.secondary) }
-        }
-    }
-    private func personRow(name: String, detail: String, image: String?) -> some View {
+    private func personRow(name: String, roles: [String], image: String?) -> some View {
         HStack(spacing: 12) {
             if image == nil {
                 Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
@@ -760,8 +786,11 @@ struct CastCreditsPage: View {
                 Artwork(path: image, title: name).frame(width: 54, height: 54).clipShape(Circle())
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                Text(detail).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
+                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                if !roles.isEmpty {
+                    Text(roles.joined(separator: " · ")).font(.system(size: 13.5))
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
@@ -769,10 +798,30 @@ struct CastCreditsPage: View {
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07))).contentShape(Rectangle())
     }
     private func load() async {
-        failure = nil
-        if anime { characters = (try? await AniListClient.shared.characters(title: title, year: year, movie: route.kind == .movie, tmdbID: route.id)) ?? [] }
-        do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled && characters.isEmpty { failure = error.localizedDescription } }
-        crew = (try? await TitleExtrasCache.load(store: store, route: route).crew) ?? []
+        async let people: Void = loadCredits()
+        async let voices: Void = loadCharacters()
+        _ = await (people, voices)
+    }
+
+    private func loadCredits() async {
+        guard credits == nil else { return }
+        creditsFailure = nil
+        do {
+            let result = try await store.fullCredits(route)
+            try Task.checkCancellation()
+            credits = result
+        } catch { if !Task.isCancelled { creditsFailure = error.localizedDescription } }
+    }
+
+    private func loadCharacters() async {
+        guard anime, characters == nil else { return }
+        voiceFailure = nil
+        do {
+            let result = try await AniListClient.shared.characters(title: title, year: year, movie: route.kind == .movie,
+                                                                  tmdbID: route.id, full: true, originalLanguage: originalLanguage)
+            try Task.checkCancellation()
+            characters = result
+        } catch { if !Task.isCancelled { voiceFailure = error.localizedDescription } }
     }
 }
 

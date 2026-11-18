@@ -4,21 +4,16 @@ import TwilDiaryCore
 struct ExploreView: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
-        VStack(spacing: 0) {
-            // "Explore" sits in the frosted top bar; the page scrolls underneath it.
-            EdgeToEdgeScroll(frosted: true) {
-                VStack(alignment: .leading, spacing: 22) {
-                    ExploreContent(store: store)
-                }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
-            }
-        }.diaryScreenBackground().navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
+        ExploreBrowsePage(title: "Explore", symbol: "safari") {
+            ExploreContent(store: store)
+                .padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 100)
+        }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
     }
 }
 
 /// An Explore filter pill: a dark outlined capsule, lilac-tinted for the order and any filter that's set.
-private struct ExplorePill: View {
+struct ExplorePill: View {
     let label: String
     var icon: String? = nil
     var tinted = false
@@ -56,6 +51,7 @@ private struct ExploreContent: View {
                 ExploreHeading(section: .daily)
                 if let title = DiscoveryTools.dailyPick(store.workspace, day: DiaryDate.day(store.now)) {
                     NavigationLink(value: title.id) { DailyDiscoveryCard(title: title).zoomSource(ZoomID.title(title.id)) }.buttonStyle(.springPress).accessibilityIdentifier("explore-daily-pick")
+                        .preference(key: BrowseCoverPreference.self, value: title.backdrop ?? title.poster)
                 } else {
                     VStack(spacing: 10) { Text("No unwatched titles in your library."); Button("Open library") { openLibrary() } }
                         .font(.system(size: 14)).diaryPanel().frame(maxWidth: .infinity, minHeight: 150)
@@ -136,6 +132,7 @@ private struct DiscoveryTrack: View {
                     }
                 }
             }.scrollIndicators(.hidden).padding(.bottom, 10)
+                .preference(key: BrowseCoverPreference.self, value: ExploreBrowseHeader.artwork(in: items))
         }
     }
 }
@@ -182,27 +179,19 @@ struct ExploreSectionView: View {
     @State private var service: LiveDiscoveryService
     init(route: ExploreSectionRoute, store: DiaryStore) { self.route = route; self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
-        VStack(spacing: 0) {
-            EdgeToEdgeScroll(frosted: true) {
-                VStack(alignment: .leading, spacing: 16) {
-
-                    DiscoveryBrowser(section: route.section, service: service, store: store, initialFilters: route.filters)
-                }.padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 100)
-            }
-        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        DiscoveryBrowser(section: route.section, service: service, store: store, initialFilters: route.filters)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
     }
 }
 
 private extension DiscoverySection {
-    /// The header's name for the list once its big heading has scrolled away, when the full one won't fit.
-    var shortLabel: String {
+    var browseSymbol: String {
         switch self {
-        case .ratedShows, .ratedMovies: "Highest rated"
-        case .popularShows, .popularMovies: "Popular"
-        case .recommended: "Recommended"
-        case .daily: "Today's pick"
-        case .genres: "Search Lab"
+        case .ratedShows, .ratedMovies: "star.fill"
+        case .popularShows, .popularMovies: "chart.line.uptrend.xyaxis"
+        case .recommended: "sparkles"
+        case .daily: "sun.max"
+        case .genres: "film.stack"
         }
     }
     /// The same list for the other type ("Highest rated shows" and "Highest rated movies").
@@ -219,9 +208,6 @@ private extension DiscoverySection {
 
 private struct DiscoveryBrowser: View {
     @State private var section: DiscoverySection
-    /// The big heading has scrolled under the top bar: the bar then names the list.
-    @State private var headingHidden = false
-    @State private var headerState = CompactHeaderState()
     let service: any DiscoveryServing
     let store: DiaryStore
     var promptForGenre: Bool
@@ -244,28 +230,16 @@ private struct DiscoveryBrowser: View {
     }
     private var busy: Bool { section == .recommended ? recommendations.loading : results.loading }
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Text(filters.label ?? section.label).font(.system(size: promptForGenre ? 22 : 30, weight: .bold)).tracking(-0.6)
-                    .foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.8)
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
-                        let progress = ScrollLinkedBarTitle.progress(headingBottom: bottom)
-                        headerState.update(progress)
-                        if (progress >= 0.5) != headingHidden { headingHidden = progress >= 0.5 }
-                    }
-                Spacer(minLength: 0)
-                if promptForGenre { SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters), identifier: "explore-more-genres") }
-            }
-            if promptForGenre { genreToolbar }
-            // Always visible, as on Canvas: the filters are a row of pills, not a hidden panel.
-            if !promptForGenre { filterForm }
-            content.smoothChange(of: displayed.isEmpty)
-        }
-        .navigationTitle(headingHidden ? (filters.label ?? section.label) : "Explore")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                ScrollLinkedBarTitle(resting: "Explore", scrolled: filters.label ?? section.label, state: headerState)
-            }
+        let title = filters.label ?? section.label
+        let tag = filters.keyword != nil
+        let symbol = filters.network != nil ? "tv" : filters.company != nil ? "building.2" : section.browseSymbol
+        let subtitle = tag ? "Tag" : filters.network != nil ? "Network" : filters.company != nil ? "Production company" : nil
+        ExploreBrowsePage(title: title, symbol: symbol, emoji: tag ? TagEmoji.symbol(for: title) : nil,
+                          subtitle: subtitle, artwork: ExploreBrowseHeader.artwork(in: displayed)) {
+            VStack(alignment: .leading, spacing: 16) {
+                if promptForGenre { genreToolbar } else { filterForm }
+                content.smoothChange(of: displayed.isEmpty)
+            }.padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 100)
         }
         .task(id: filters) {
             if shownFilters != filters { localLimit = 40; shownFilters = filters }
@@ -330,7 +304,7 @@ private struct DiscoveryBrowser: View {
         guard let next = section.swapped else { return }
         var value = DiscoveryFilters(section: next)
         value.minimum = filters.minimum; value.year = filters.year; value.sort = filters.sort
-        section = next; filters = value
+        results.clear(); section = next; filters = value
     }
     private static let years = Array((1950...Calendar.current.component(.year, from: .now)).reversed())
     private var sortLabel: String {

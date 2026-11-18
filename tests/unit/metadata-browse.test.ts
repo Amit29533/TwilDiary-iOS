@@ -22,14 +22,19 @@ const metadata = createTmdb('fixture-token', async (input) => {
               name: 'Spoiler title',
               overview: 'Spoiler synopsis',
               still_path: '/still.jpg',
+              runtime: 49,
               air_date: '2026-01-01'
-            }
+            },
+            { id: 91, episode_number: 2, season_number: 1, runtime: 61 },
+            { id: 92, episode_number: 3, season_number: 1, runtime: 0 }
           ]
         }
       : {
           id: 42,
           name: 'Online show',
           title: 'Online movie',
+          episode_run_time: [0, 55],
+          runtime: 119,
           seasons: [{ season_number: 1, name: 'Season 1', episode_count: 1 }]
         }
   );
@@ -47,6 +52,8 @@ test('online details do not import or mutate diary data; movie and show identiti
   assert.deepEqual(show.libraryTitle, { id: 'existing', trashed: false });
   const movie = await browseMetadata(f.db, new URLSearchParams('type=movie&id=42'), metadata);
   assert.equal(movie.libraryTitle, null);
+  assert.equal(show.details.runtimeMinutes, 55);
+  assert.equal(movie.details.runtimeMinutes, 119);
   assert.deepEqual(f.sqlite.prepare('SELECT * FROM titles').all(), before);
   assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM watch_events').get()!.n, 0);
   await trashTitle(f.db, 'existing', 1);
@@ -68,10 +75,13 @@ test('episode browsing redacts spoilers until explicitly revealed and rejects in
     overview: '',
     airedOn: '2026-01-01',
     stillPath: null,
+    runtimeMinutes: 49,
     communityScore: null
   });
+  assert.deepEqual(hidden.items.map((item) => item.runtimeMinutes), [49, 61, null]);
   params.set('reveal', '1');
   const visible = await browseSeason(params, metadata);
+  assert.equal(visible.items[0]!.runtimeMinutes, 49);
   assert.equal(visible.items[0]!.name, 'Spoiler title');
   assert.equal(visible.items[0]!.overview, 'Spoiler synopsis');
   assert.equal(visible.items[0]!.stillPath, '/still.jpg');

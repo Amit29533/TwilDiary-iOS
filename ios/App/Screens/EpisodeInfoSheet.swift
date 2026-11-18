@@ -13,6 +13,7 @@ struct EpisodeInfoSheet: View {
         var summary: String
         var artwork: String?
         var hidden: Bool
+        var runtime: Int? = nil
         var tmdbScore: Double?
         var traktScore: Double?
         var watched: Bool
@@ -162,7 +163,7 @@ struct EpisodeInfoSheet: View {
                 HStack(spacing: 6) { BrandLogo(service: .tmdb, size: 22); Text(tmdbScore.formatted(.number.precision(.fractionLength(1)))) }
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
             }
-            let rest = [title.runtimeMinutes.map { "\($0) min" }, item.airedOn.map { String($0.prefix(4)) }].compactMap { $0 }
+            let rest = [(p.runtime ?? item.runtimeMinutes).map { "\($0) min" }, item.airedOn.map { String($0.prefix(4)) }].compactMap { $0 }
             ForEach(Array(rest.enumerated()), id: \.offset) { index, part in
                 if index > 0 || (traktScore ?? tmdbScore) != nil { Text("·").font(.system(size: 14)).foregroundStyle(Color(themed: "#5a5a66")) }
                 Text(part).font(.system(size: 14)).foregroundStyle(HomeStyle.dateChipText)

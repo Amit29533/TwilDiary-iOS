@@ -7,8 +7,15 @@ public struct SearchLibraryTitle: Decodable, Identifiable, Sendable {
     public let category: String
     public let posterPath: String?
     public let localPoster: String?
+    public fileprivate(set) var matchedName: String?
     public var artwork: String? { localPoster ?? CatalogTools.image(posterPath) }
-    public init(_ title: MediaTitle) { id = title.id; name = title.name; year = title.year; category = title.category; posterPath = nil; localPoster = title.poster }
+    public init(_ title: MediaTitle) {
+        self.init(title, matchedName: nil)
+    }
+    public init(_ title: MediaTitle, matchedName: String?) {
+        id = title.id; name = title.name; year = title.year; category = title.category
+        posterPath = nil; localPoster = title.poster; self.matchedName = matchedName
+    }
 }
 
 public struct DiarySearchPage: Decodable, Sendable {
@@ -34,11 +41,20 @@ public enum DiarySearchTools {
     }
     public static func matches(_ workspace: Workspace, query: String) -> [SearchLibraryTitle] {
         guard ready(query) else { return [] }
-        let needle = query.lowercased()
-        return workspace.activeTitles.filter { $0.name.precomposedStringWithCompatibilityMapping.lowercased().contains(needle) }.map(SearchLibraryTitle.init)
+        let needle = query.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        return workspace.activeTitles.filter { $0.name.precomposedStringWithCompatibilityMapping.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current).contains(needle) }.map(SearchLibraryTitle.init)
     }
     public static func merging(_ local: [SearchLibraryTitle], _ identified: [SearchLibraryTitle]) -> [SearchLibraryTitle] {
-        var seen = Set<String>()
-        return (local + identified).filter { seen.insert($0.id).inserted }
+        var positions: [String: Int] = [:]
+        var rows: [SearchLibraryTitle] = []
+        for row in local + identified {
+            if let index = positions[row.id] {
+                if let alias = row.matchedName, alias != rows[index].name { rows[index].matchedName = alias }
+            } else {
+                positions[row.id] = rows.count
+                rows.append(row)
+            }
+        }
+        return rows
     }
 }

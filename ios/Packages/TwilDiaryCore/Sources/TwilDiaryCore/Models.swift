@@ -65,6 +65,7 @@ public struct Episode: Codable, Identifiable, Hashable, Sendable {
     public let still: String?
     public let hidden: Bool?
     public let communityScore: Double?
+    public var runtimeMinutes: Int? = nil
     public var skipped: Bool?
     /// An episode known only by its number (an import from another app).
     public static func numbered(id: String, titleId: String, season: Int, number: Int) -> Episode {

@@ -53,6 +53,7 @@ import TwilDiaryCore
     @ObservationIgnored private var cachedActive: (titles: [MediaTitle], events: [WatchEvent])?
     @ObservationIgnored private var cachedNewestFirst: [WatchEvent]?
     var activeTitles: [MediaTitle] { active.titles }
+    var favouriteShows: [MediaTitle] { activeTitles.filter { $0.favorite && $0.isSeries } }
     var activeEvents: [WatchEvent] { active.events }
     var activeEventsNewestFirst: [WatchEvent] {
         // Read the diary's revision so a screen showing these is redrawn when the diary changes.
@@ -693,6 +694,12 @@ import TwilDiaryCore
         guard persistProviderSettings(next) else { return false }
         invalidateDiscovery()
         return true
+    }
+    @discardableResult func updateCustomTvdbKey(_ key: String?) -> Bool {
+        var next = providerSettings
+        let trimmed = key?.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.customTvdbKey = trimmed?.isEmpty == false ? trimmed : nil
+        return persistProviderSettings(next)
     }
     @discardableResult func updateProviderConfig(_ config: ExternalProviderConfig) -> Bool {
         var next = providerSettings; next.setConfig(config)

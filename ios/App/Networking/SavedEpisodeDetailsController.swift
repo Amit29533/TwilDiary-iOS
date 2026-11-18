@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TwilDiaryCore
 
 /// Reveals each saved season independently. A slow season must not block a newly selected one.
 @MainActor @Observable final class SavedEpisodeDetailsController {
@@ -13,12 +14,29 @@ import Observation
     private var generation = UUID()
     private(set) var episodes: [String: RevealedEpisode] = [:]
 
+    // Older diary snapshots have episode numbers but no runtimes. A redacted season
+    // response supplies those facts even when the user keeps spoilers hidden.
+    private var seasonMinutes: [Int: [Int: Int]] = [:]
+    func runtime(_ episode: Episode) -> Int? {
+        episodes[episode.id]?.runtimeMinutes ?? seasonMinutes[episode.season]?[episode.number] ?? episode.runtimeMinutes
+    }
+    func loadMissingRuntimes(_ title: MediaTitle, season: Int, store: DiaryStore) async {
+        guard let tmdb = title.tmdbId, title.isSeries, seasonMinutes[season] == nil,
+              store.episodesForSeason(title.id, season: season).contains(where: { $0.runtimeMinutes == nil }) else { return }
+        let session = generation
+        guard let page = try? await store.catalogEpisodes(CatalogRoute(kind: .tv, id: tmdb), season: season, reveal: false),
+              !Task.isCancelled, session == generation else { return }
+        var minutes: [Int: Int] = [:]
+        for item in page.items { minutes[item.number] = item.runtimeMinutes }
+        seasonMinutes[season] = minutes
+    }
+
     func isLoading(_ season: Int) -> Bool { reads[season] != nil }
     func error(for season: Int) -> String? { errors[season] }
     func reset() {
         generation = UUID()
         for read in reads.values { read.task.cancel() }
-        reads = [:]; loaded = []; errors = [:]; episodes = [:]
+        reads = [:]; loaded = []; errors = [:]; episodes = [:]; seasonMinutes = [:]
     }
     func load(_ season: Int, fetch: @escaping @MainActor () async throws -> [RevealedEpisode]) async {
         guard !Task.isCancelled, !loaded.contains(season) else { return }

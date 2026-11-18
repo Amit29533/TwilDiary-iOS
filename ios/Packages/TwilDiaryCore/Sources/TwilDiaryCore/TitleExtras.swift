@@ -61,8 +61,13 @@ public struct TitleCollection: Decodable, Sendable {
 }
 
 public struct TitleExtras: Codable, Hashable, Sendable {
+    public let runtimeMinutes: Int?
+    public let latestEpisodeMinutes: Int?
     public let status: String?
     public let certification: String?
+    public let originalLanguage: String?
+    public let imdbId: String?
+    public let contentAdvisories: [String]
     public let studios: [TitleCompany]
     public let networks: [TitleCompany]
     public let keywords: [TitleKeyword]
@@ -70,14 +75,23 @@ public struct TitleExtras: Codable, Hashable, Sendable {
     /// TMDb's genres with their ids, for Related collections.
     public let genres: [TitleKeyword]
     public let collection: TitleCollectionRef?
-    public init(status: String?, certification: String?, studios: [TitleCompany], networks: [TitleCompany], keywords: [TitleKeyword], crew: [TitleCrewMember] = [], genres: [TitleKeyword] = [], collection: TitleCollectionRef? = nil) {
+    public init(status: String?, certification: String?, studios: [TitleCompany], networks: [TitleCompany], keywords: [TitleKeyword], crew: [TitleCrewMember] = [], genres: [TitleKeyword] = [], collection: TitleCollectionRef? = nil, runtimeMinutes: Int? = nil, latestEpisodeMinutes: Int? = nil, contentAdvisories: [String] = [], originalLanguage: String? = nil, imdbId: String? = nil) {
+        self.imdbId = imdbId
+        self.originalLanguage = originalLanguage
+        self.contentAdvisories = contentAdvisories
+        self.runtimeMinutes = runtimeMinutes; self.latestEpisodeMinutes = latestEpisodeMinutes
         self.status = status; self.certification = certification; self.studios = studios
         self.networks = networks; self.keywords = keywords; self.crew = crew
         self.genres = genres; self.collection = collection
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        runtimeMinutes = try c.decodeIfPresent(Int.self, forKey: .runtimeMinutes)
+        latestEpisodeMinutes = try c.decodeIfPresent(Int.self, forKey: .latestEpisodeMinutes)
         status = try c.decodeIfPresent(String.self, forKey: .status)
+        originalLanguage = try c.decodeIfPresent(String.self, forKey: .originalLanguage)
+        imdbId = try c.decodeIfPresent(String.self, forKey: .imdbId)
+        contentAdvisories = try c.decodeIfPresent([String].self, forKey: .contentAdvisories) ?? []
         certification = try c.decodeIfPresent(String.self, forKey: .certification)
         studios = try c.decodeIfPresent([TitleCompany].self, forKey: .studios) ?? []
         networks = try c.decodeIfPresent([TitleCompany].self, forKey: .networks) ?? []
@@ -131,10 +145,42 @@ public struct EpisodeRatingSummary: Equatable, Sendable {
     public let average: Double
     public let best: EpisodeRatingPoint
     public let lowest: EpisodeRatingPoint
+    public struct Run: Equatable, Sendable {
+        public let start: Int
+        public fileprivate(set) var points: [EpisodeRatingPoint]
+    }
+    public let runs: [Run]
+
+    /// Snap a scrub in an unrated gap to its closest known episode, earlier on a tie.
+    public func nearest(to episode: Int) -> EpisodeRatingPoint? {
+        var low = 0, high = points.count
+        while low < high {
+            let mid = low + (high - low) / 2
+            if points[mid].episode < episode { low = mid + 1 } else { high = mid }
+        }
+        if low == 0 { return points.first }
+        if low == points.count { return points.last }
+        let left = points[low - 1], right = points[low]
+        return episode - left.episode <= right.episode - episode ? left : right
+    }
     public init?(_ raw: [EpisodeRatingPoint]) {
-        let points = raw.filter { $0.score.isFinite && $0.score > 0 && $0.score <= 10 }.sorted { $0.episode < $1.episode }
+        var seen: Set<Int> = []
+        let points = raw.filter {
+            $0.episode > 0 && $0.score.isFinite && $0.score > 0 && $0.score <= 10 && seen.insert($0.episode).inserted
+        }.sorted { $0.episode < $1.episode }
         guard let first = points.first else { return nil }
         self.points = points
+        var runs: [Run] = []
+        var previous = -1
+        for point in points {
+            if point.episode - 1 == previous {
+                runs[runs.count - 1].points.append(point)
+            } else {
+                runs.append(Run(start: point.episode, points: [point]))
+            }
+            previous = point.episode
+        }
+        self.runs = runs
         average = points.reduce(0) { $0 + $1.score } / Double(points.count)
         best = points.reduce(first) { $1.score > $0.score ? $1 : $0 }
         lowest = points.reduce(first) { $1.score < $0.score ? $1 : $0 }

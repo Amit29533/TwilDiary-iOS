@@ -59,3 +59,11 @@ import Testing
     #expect(PersonIdentityMatching.sameName("Yoko Hikasa", "Youko Hikasa"))
     #expect(!PersonIdentityMatching.sameName("", ""))
 }
+
+@Test func characterCreditsRecognizeLocalizedNamesWithoutMatchingPartialTitles() {
+    #expect(AnimeTitleMatching.matchesAlias("외모지상주의", aliases: ["Lookism", "외모지상주의"]))
+    #expect(AnimeTitleMatching.matchesAlias("Link Click", aliases: ["时光代理人", "LINK CLICK"]))
+    #expect(AnimeTitleMatching.matchesAlias("Re:ZERO", aliases: ["Re Zero"]))
+    #expect(!AnimeTitleMatching.matchesAlias("Link Click", aliases: ["Link Click II"]))
+    #expect(!AnimeTitleMatching.matchesAlias("—", aliases: [""]))
+}

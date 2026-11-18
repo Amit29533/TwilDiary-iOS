@@ -142,7 +142,9 @@ public struct CatalogEpisodeFact: Codable, Hashable, Sendable {
     public let airedOn: String?
     public let stillPath: String?
     public let communityScore: Double?
-    public init(season: Int, number: Int, name: String, overview: String, airedOn: String?, stillPath: String?, communityScore: Double?) {
+    public let runtimeMinutes: Int?
+    public init(season: Int, number: Int, name: String, overview: String, airedOn: String?, stillPath: String?, communityScore: Double?, runtimeMinutes: Int? = nil) {
+        self.runtimeMinutes = runtimeMinutes
         self.season = season; self.number = number; self.name = name; self.overview = overview
         self.airedOn = airedOn; self.stillPath = stillPath; self.communityScore = communityScore
     }
@@ -171,7 +173,7 @@ public extension TraktDiary {
                 let episode = Episode(id: id, titleId: title.id, season: fact.season, number: fact.number,
                                       name: seen ? fact.name : "", overview: seen ? fact.overview : "", airedOn: fact.airedOn,
                                       still: seen ? CatalogTools.image(fact.stillPath) : nil, hidden: !seen,
-                                      communityScore: fact.communityScore, skipped: index[slot].flatMap { diary.episodes[$0].skipped })
+                                      communityScore: fact.communityScore, runtimeMinutes: fact.runtimeMinutes, skipped: index[slot].flatMap { diary.episodes[$0].skipped })
                 if let position = index[slot] {
                     // Keep what the diary already shows when TMDB has less (a renamed or missing episode).
                     let current = diary.episodes[position]
@@ -180,7 +182,7 @@ public extension TraktDiary {
                                                         overview: episode.overview.isEmpty ? current.overview : episode.overview,
                                                         airedOn: episode.airedOn ?? current.airedOn, still: episode.still ?? current.still,
                                                         hidden: episode.hidden, communityScore: episode.communityScore ?? current.communityScore,
-                                                        skipped: current.skipped)
+                                                        runtimeMinutes: episode.runtimeMinutes ?? current.runtimeMinutes, skipped: current.skipped)
                 } else {
                     index[slot] = result.episodes.count
                     result.episodes.append(episode)

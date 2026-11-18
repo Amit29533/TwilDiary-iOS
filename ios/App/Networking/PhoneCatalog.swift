@@ -57,7 +57,7 @@ import TwilDiaryCore
                 Task { @MainActor () -> [CatalogEpisodeFact]? in
                     guard let page = try? await TMDBDirect.season(id, number: number, reveal: true, token: token) else { return nil }
                     return page.items.map { CatalogEpisodeFact(season: number, number: $0.number, name: $0.name, overview: $0.overview,
-                                                               airedOn: $0.airedOn, stillPath: $0.stillPath, communityScore: $0.communityScore) }
+                                                               airedOn: $0.airedOn, stillPath: $0.stillPath, communityScore: $0.communityScore, runtimeMinutes: $0.runtimeMinutes) }
                 }
             }
             for read in reads { if let facts = await read.value { list += facts } else { complete = false } }

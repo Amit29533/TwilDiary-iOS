@@ -31,6 +31,13 @@ struct TitleHero<Ratings: View>: View {
     @State private var synopsisWidth: CGFloat = 0
     @State private var synopsisParts = SynopsisTextLayout.Parts(leading: "", continuation: "")
     private var synopsisText: String { summary.isEmpty ? "Add your own thoughts in Notes." : summary }
+    private var runtimeText: String? {
+        if let minutes = [runtime, extras?.runtimeMinutes].compactMap({ $0 }).first(where: { $0 > 0 }) {
+            return series ? "\(minutes) min/ep" : DiaryDate.duration(minutes)
+        }
+        if series, let latest = extras?.latestEpisodeMinutes, latest > 0 { return "Latest ep \(latest) min" }
+        return nil
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // The cover art's visible strip, down to 18 pt into the panel where the poster starts
@@ -56,7 +63,7 @@ struct TitleHero<Ratings: View>: View {
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
-                    Text([year.map(String.init) ?? "—", category, runtime.map { series ? "\($0) min per ep" : "\($0) min" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).padding(.top, 6)
+                    Text([year.map(String.init) ?? "—", category, runtimeText].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                     TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime")).padding(.top, 6)
                     if !ratingsBelow { ratings.padding(.top, 14) }
                 }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)

@@ -39,6 +39,18 @@ test('native people search keeps provider IDs and safe artwork, excludes adult a
   assert.equal(result.totalPages, 2);
 });
 
+test('people search passes the requested next page and keeps the provider pagination', async () => {
+  const client = createTmdb('test-token', async (input) => {
+    const url = new URL(String(input));
+    assert.equal(url.searchParams.get('page'), '2');
+    return Response.json({ page: 2, total_pages: 3, results: [{ id: 42, name: 'Next person' }] });
+  });
+  const result = await client.searchPeople(new URLSearchParams('q=Example&page=2'));
+  assert.equal(result.page, 2);
+  assert.equal(result.totalPages, 3);
+  assert.equal(result.items[0]?.id, 42);
+});
+
 test('people search rejects invalid input before network access and fails malformed provider replies', async () => {
   let requests = 0;
   const client = createTmdb('test-token', async () => {

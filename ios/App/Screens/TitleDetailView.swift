@@ -73,23 +73,29 @@ struct TitleDetailView: View {
                                 if title.isSeries { SeasonCardsSection(title: title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if title.isSeries, let tmdbId = title.tmdbId {
-                                    RatingTrendCard(show: tmdbId, season: season, tmdb: tmdbEpisodePoints, current: card?.next?.number)
+                                    RatingTrendCard(show: tmdbId, season: season, tmdb: tmdbEpisodePoints,
+                                                    current: card?.season?.number == season ? card?.next?.number : nil, imdbID: extras?.imdbId) { number in
+                                        guard let episode = episodes.first(where: { $0.number == number }), !isHidden(episode) else { return nil }
+                                        return episodeName(episode)
+                                    }.id("\(tmdbId):\(season)")
                                 }
                                 // Anime characters come from AniList and need no TMDB link; the cast row follows.
-                                if title.category.hasPrefix("anime") {
-                                    AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries, tmdbID: title.tmdbId,
-                                                       seeAll: title.tmdbId.map { .cast(CatalogRoute(kind: title.isSeries ? .tv : .movie, id: $0), title: title.name, anime: true, year: title.year) })
+                                let animated = title.category.hasPrefix("anime") || title.genres.contains("Animation") || extras?.genres.contains(where: { $0.id == 16 }) == true
+                                if animated {
+                                    AnimeCharactersRow(title: title.name, year: title.year, movie: !title.isSeries, tmdbID: title.tmdbId, originalLanguage: extras?.originalLanguage,
+                                                       seeAll: title.tmdbId.map { .cast(CatalogRoute(kind: title.isSeries ? .tv : .movie, id: $0), title: title.name, anime: true, year: title.year, originalLanguage: extras?.originalLanguage) })
                                 }
                                 if let tmdbId = title.tmdbId {
                                     let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId)
                                     // Anime: Related (AniList) above More like this; characters are shown above already.
-                                    CastAndRelated(route: route, sourceTitle: title.name,
+                                    CastAndRelated(route: route, sourceTitle: title.name, awardsIMDbID: extras?.imdbId,
                                                    relatedAnime: title.category.hasPrefix("anime") ? (title.year, !title.isSeries) : nil,
-                                                   seeAll: .cast(route, title: title.name, anime: title.category.hasPrefix("anime"), year: title.year))
+                                                   seeAll: .cast(route, title: title.name, anime: animated, year: title.year, originalLanguage: extras?.originalLanguage))
                                     if let extras { CompaniesSection(route: route, title: title.name, extras: extras, animated: title.category.hasPrefix("anime") || title.genres.contains("Animation")) }
                                     InListsSection(route: route, title: title.name)
                                     RelatedCollectionsSection(route: route, title: title.name, anime: title.category.hasPrefix("anime"), genres: title.genres)
                                 }
+                                ParentalGuideSection(extras: extras)
                             }.padding(.horizontal, 16).padding(.bottom, 32)
                                 // The height only matters while the page scrolls itself to notes or files. Tracking it
                                 // always rebuilt the whole page each time a lazy episode row first
@@ -145,7 +151,8 @@ struct TitleDetailView: View {
                                     didFocusEpisodes = true
                                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) { proxy.scrollTo("episodes", anchor: .top) }
                                 }
-                                if !hideSpoilers { await revealSeason(title) }
+                                if hideSpoilers { await episodeDetails.loadMissingRuntimes(title, season: season, store: store) }
+                                else { await revealSeason(title) }
                             }
                             .task(id: cardRevision(title)) { await loadCard(title) }
                         )
@@ -426,7 +433,7 @@ struct TitleDetailView: View {
                 episodeArtwork(episode).frame(width: 100, height: 66).clipShape(RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 3) { Text("UP NEXT").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.accent); Text("\(episode.number) · \(episodeName(episode))").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(3).multilineTextAlignment(.leading) }
                 Spacer(minLength: 0)
-            }.overlay(alignment: .topTrailing) { if let runtime = title.runtimeMinutes { Text("\(runtime) min").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) } }
+            }.overlay(alignment: .topTrailing) { if let runtime = episodeDetails.runtime(episode) { Text("\(runtime) min").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) } }
                 .padding(.vertical, 16).padding(.horizontal, 10).frame(minHeight: 98).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
     }
@@ -471,7 +478,7 @@ struct TitleDetailView: View {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(shown) { episode in
                             EpisodeGridCard(number: episode.number, name: episodeName(episode), artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode),
-                                            state: rowState(episode, watched: seen, dates: dates, nextID: nextID), airedOn: episode.airedOn, runtime: title.runtimeMinutes,
+                                            state: rowState(episode, watched: seen, dates: dates, nextID: nextID), airedOn: episode.airedOn, runtime: episodeDetails.runtime(episode),
                                             score: episodeScore(episode), onOpen: { toggleEpisode(title, episode: episode) }, onToggle: { toggleWatched(title, episode: episode) })
                                 .frame(width: 260)
                         }
@@ -481,7 +488,7 @@ struct TitleDetailView: View {
                 VStack(spacing: 9) {
                     ForEach(shown) { episode in
                         EpisodeCardRow(number: episode.number, name: episodeName(episode), artwork: episodeArtworkPath(episode, title: title), hidden: isHidden(episode),
-                                       state: rowState(episode, watched: seen, dates: dates, nextID: nextID), score: episodeScore(episode),
+                                       state: rowState(episode, watched: seen, dates: dates, nextID: nextID), runtime: episodeDetails.runtime(episode), score: episodeScore(episode),
                                        canToggle: !store.writesBlocked && (seen.contains(episode.id) || hasAired(episode)),
                                        onOpen: { toggleEpisode(title, episode: episode) }, onToggle: { toggleWatched(title, episode: episode) })
                     }
@@ -572,7 +579,7 @@ struct TitleDetailView: View {
         EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
                          page: { item in
                              .init(name: episodeName(item), summary: episodeSummary(item), artwork: episodeArtworkPath(item, title: title),
-                                   hidden: isHidden(item), tmdbScore: episodeScore(item),
+                                   hidden: isHidden(item), runtime: episodeDetails.runtime(item), tmdbScore: episodeScore(item),
                                    traktScore: title.tmdbId.flatMap { TraktTitleReads.cachedRatings(show: $0, season: season)[item.number] },
                                    watched: watched.contains(item.id))
                          },

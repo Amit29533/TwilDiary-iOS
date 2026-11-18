@@ -8,7 +8,9 @@ public struct CatalogEpisode: Decodable, Identifiable, Sendable {
     public let airedOn: String?
     public let stillPath: String?
     public let communityScore: Double?
-    public init(number: Int, name: String, overview: String, airedOn: String?, stillPath: String?, communityScore: Double?) {
+    public let runtimeMinutes: Int?
+    public init(number: Int, name: String, overview: String, airedOn: String?, stillPath: String?, communityScore: Double?, runtimeMinutes: Int? = nil) {
+        self.runtimeMinutes = runtimeMinutes
         self.number = number; self.name = name; self.overview = overview; self.airedOn = airedOn; self.stillPath = stillPath; self.communityScore = communityScore
     }
 }

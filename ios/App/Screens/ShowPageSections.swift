@@ -31,6 +31,36 @@ extension ShowSectionHeading where Value == String {
     init(title: String, count: Int? = nil) { self.title = title; self.count = count; self.value = nil }
 }
 
+struct ParentalGuideSection: View {
+    let extras: TitleExtras?
+
+    var body: some View {
+        if let extras, let rating = extras.certification, !rating.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ShowSectionHeading(title: "Parental Guide")
+                    .accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: 10) {
+                    Label {
+                        Text(rating).font(.headline)
+                    } icon: {
+                        Image(systemName: "shield").foregroundStyle(ChipTint.rating(rating))
+                    }
+                    .accessibilityLabel("Age rating: " + rating)
+                    if !extras.contentAdvisories.isEmpty {
+                        Text(extras.contentAdvisories.joined(separator: " · "))
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+            }
+            .accessibilityIdentifier("title-parental-guide")
+        }
+    }
+}
+
 /// "See all ›" as text, as the Characters and Cast headings show it.
 struct SeeAllLink<Value: Hashable>: View {
     let value: Value
@@ -376,51 +406,51 @@ extension String {
 
 // MARK: Rating trend
 
-/// Each episode's average rating across the season, from Trakt and TMDB (whichever have
-/// ratings), with the season average and the best and lowest episode.
+/// Inspect one season's publicly rated episodes, one provider at a time.
 struct RatingTrendCard: View {
     let show: Int
     let season: Int
     let tmdb: [EpisodeRatingPoint]
     let current: Int?
+    let imdbID: String?
+    let episodeName: (Int) -> String?
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var trakt: [EpisodeRatingPoint] = []
+    @State private var imdb: [EpisodeRatingPoint] = []
     @State private var source = "Trakt"
-    private struct Source { let name: String; let logo: BrandLogo.Service; let points: [EpisodeRatingPoint] }
-    private var sources: [Source] {
-        [Source(name: "Trakt", logo: .trakt, points: trakt), Source(name: "TMDB", logo: .tmdb, points: tmdb)].filter { EpisodeRatingSummary($0.points) != nil }
+
+    fileprivate struct Source {
+        let name: String
+        let logo: BrandLogo.Service
+        let summary: EpisodeRatingSummary
+        init?(_ name: String, _ logo: BrandLogo.Service, _ points: [EpisodeRatingPoint]) {
+            guard let summary = EpisodeRatingSummary(points), summary.points.count >= 2 else { return nil }
+            self.name = name
+            self.logo = logo
+            self.summary = summary
+        }
     }
     var body: some View {
-        let sources = sources
+        let sources = [Source("Trakt", .trakt, trakt), Source("IMDb", .imdb, imdb), Source("TMDB", .tmdb, tmdb)].compactMap { $0 }
         let chosen = sources.first { $0.name == source } ?? sources.first
         Group {
-            if let chosen, let summary = EpisodeRatingSummary(chosen.points), summary.points.count >= 2 {
+            if let chosen {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 8) {
-                        Text("Rating trend").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
-                            .lineLimit(1).truncationMode(.tail).layoutPriority(1)
-                        Spacer(minLength: 8)
-                        // Whose ratings: the service's own logo; with both, tap one to switch.
-                        ForEach(sources, id: \.name) { item in
-                            let on = item.name == chosen.name
-                            Button { source = item.name } label: {
-                                BrandLogo(service: item.logo, size: 22)
-                                    .opacity(on ? 1 : 0.45)
-                                    .frame(width: 44, height: 40)
-                                    .background(on ? theme.accent.opacity(0.22) : Color.primary.opacity(0.05), in: Capsule())
-                                    .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1))
-                            }.buttonStyle(.plain).disabled(sources.count < 2)
-                                .accessibilityLabel(item.name).accessibilityAddTraits(on ? .isSelected : [])
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            heading.fixedSize()
+                            Spacer(minLength: 8)
+                            picker(sources, chosen: chosen)
                         }
+                        VStack(alignment: .leading, spacing: 8) { heading; picker(sources, chosen: chosen) }
                     }
-                    chart(summary).frame(height: 170)
+                    EpisodeRatingPlot(chosen: chosen, sources: sources, season: season, current: current,
+                                      episodeName: episodeName, onInspect: { if source != chosen.name { source = chosen.name } })
                     HStack(spacing: 10) {
-                        if summary.best.score == summary.lowest.score {
-                            // One score throughout: no "Best: Episode 1 / Lowest: Episode 1".
-                            stat("Average", summary.average, "the same for every episode")
-                        } else {
-                            stat("Average", summary.average, "all episodes")
+                        let summary = chosen.summary
+                        stat("Average", summary.average, "\(summary.points.count) rated episodes")
+                        if summary.best.score != summary.lowest.score {
                             stat("Best", summary.best.score, "Episode \(summary.best.episode)")
                             stat("Lowest", summary.lowest.score, "Episode \(summary.lowest.episode)")
                         }
@@ -429,33 +459,36 @@ struct RatingTrendCard: View {
                     .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.outline(0.08)))
                     .accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-trend")
             } else {
-                // A real view keeps the task alive; on an empty Group it never ran.
                 Color.clear.frame(height: 0).accessibilityHidden(true)
             }
-        }.task(id: "\(show):\(season)") {
-            trakt = []
-            if let points = try? await TraktTitleReads.episodeRatings(store: store, show: show, season: season) { trakt = points }
+        }
+        .task(id: "\(show):\(season)") {
+            let points = try? await TraktTitleReads.episodeRatings(store: store, show: show, season: season)
+            if !Task.isCancelled { trakt = points ?? [] }
+        }
+        .task(id: imdbID) {
+            imdb = []
+            guard let imdbID, !store.isPreview else { return }
+            let points = try? await IMDbEpisodeRatings.shared.points(showID: imdbID, season: season)
+            if !Task.isCancelled { imdb = points ?? [] }
         }
     }
-    private func chart(_ summary: EpisodeRatingSummary) -> some View {
-        let last = summary.points.last?.episode ?? 1
-        let ticks = Array(Set([1, max(1, last / 4), max(1, last / 2), max(1, last * 3 / 4), last])).sorted()
-        return Chart {
-            ForEach(summary.points, id: \.episode) { point in
-                LineMark(x: .value("Episode", point.episode), y: .value("Rating", point.score))
-                    .interpolationMethod(.catmullRom).lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .foregroundStyle(LinearGradient(colors: [Color(themed: "#4fd1c5"), Color(themed: "#43c66b"), Color(themed: "#f5c518")], startPoint: .leading, endPoint: .trailing))
-            }
-            RuleMark(y: .value("Average", summary.average)).lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4])).foregroundStyle(theme.accent.opacity(0.8))
-            if let current, let point = summary.points.first(where: { $0.episode == current }) {
-                PointMark(x: .value("Episode", point.episode), y: .value("Rating", point.score)).symbolSize(90).foregroundStyle(theme.accent)
+    private var heading: some View {
+        Text("Rating trend").font(.title3.bold()).foregroundStyle(HomeStyle.ink)
+    }
+    private func picker(_ sources: [Source], chosen: Source) -> some View {
+        HStack(spacing: 6) {
+            ForEach(sources, id: \.name) { item in
+                let on = item.name == chosen.name
+                Button { source = item.name } label: {
+                    BrandLogo(service: item.logo, size: 22)
+                        .opacity(on ? 1 : 0.55).frame(width: 44, height: 44)
+                        .background(on ? theme.accent.opacity(0.22) : Color.primary.opacity(0.05), in: Capsule())
+                        .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1))
+                }.buttonStyle(.plain).disabled(sources.count < 2)
+                    .accessibilityLabel(item.name).accessibilityAddTraits(on ? .isSelected : [])
             }
         }
-        .chartYScale(domain: summary.range)
-        .chartXScale(domain: (summary.points.first?.episode ?? 1)...max(last, (summary.points.first?.episode ?? 1) + 1))
-        .chartXAxis { AxisMarks(values: ticks) { value in AxisValueLabel { Text("E\(value.as(Int.self) ?? 0)").font(.system(size: 11)).foregroundStyle(value.as(Int.self) == current ? theme.accent : .secondary) } } }
-        .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { _ in AxisGridLine().foregroundStyle(Color.primary.opacity(0.07)); AxisValueLabel().foregroundStyle(.secondary) } }
-        .accessibilityLabel("Episode ratings from episode \(summary.points.first?.episode ?? 1) to \(last)")
     }
     private func stat(_ label: String, _ value: Double, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -465,6 +498,94 @@ struct RatingTrendCard: View {
         }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
             .accessibilityElement(children: .combine)
+    }
+}
+
+private struct EpisodeRatingPlot: View {
+    let chosen: RatingTrendCard.Source
+    let sources: [RatingTrendCard.Source]
+    let season: Int
+    let current: Int?
+    let episodeName: (Int) -> String?
+    let onInspect: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var location: Int?
+
+    private var points: [EpisodeRatingPoint] { chosen.summary.points }
+    private func label(for episode: Int) -> String {
+        let prefix = "S\(season) · E\(episode)"
+        guard let name = episodeName(episode), !name.isEmpty, name != "Episode \(episode)" else { return prefix }
+        return prefix + " · " + name
+    }
+    private func scores(for episode: Int) -> String {
+        sources.compactMap { source -> String? in
+            guard let point = source.summary.points.first(where: { $0.episode == episode }) else { return nil }
+            return source.name + " " + point.score.formatted(.number.precision(.fractionLength(1)))
+        }.joined(separator: "   ·   ")
+    }
+    var body: some View {
+        let selected = location.flatMap { chosen.summary.nearest(to: $0) }
+        let first = points[0].episode
+        let last = points[points.count - 1].episode
+        let ticks = Array(Set((0...4).map { first + (last - first) * $0 / 4 })).sorted()
+        VStack(alignment: .leading, spacing: 5) {
+            Text(selected.map { label(for: $0.episode) } ?? "Season \(season)")
+                .font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            Text(selected.map { scores(for: $0.episode) } ?? "Tap or slide to see episode ratings")
+                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            Chart {
+                ForEach(chosen.summary.runs, id: \.start) { run in
+                    ForEach(run.points, id: \.episode) { point in
+                        LineMark(x: .value("Episode", point.episode), y: .value("Rating", point.score),
+                                 series: .value("Run", run.start))
+                            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                            .foregroundStyle(theme.accent)
+                        if run.points.count == 1 {
+                            PointMark(x: .value("Episode", point.episode), y: .value("Rating", point.score))
+                                .symbolSize(24).foregroundStyle(theme.accent)
+                        }
+                    }
+                }
+                RuleMark(y: .value("Average", chosen.summary.average)).lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                if let selected {
+                    RuleMark(x: .value("Selected episode", selected.episode)).foregroundStyle(theme.accent.opacity(0.55))
+                }
+                if let marker = selected ?? points.first(where: { $0.episode == current }) {
+                    PointMark(x: .value("Episode", marker.episode), y: .value("Rating", marker.score))
+                        .symbolSize(80).foregroundStyle(theme.accent)
+                }
+            }
+            .chartLegend(.hidden)
+            .chartYScale(domain: chosen.summary.range)
+            .chartXScale(domain: first...last)
+            .chartXAxis { AxisMarks(values: ticks) { value in AxisValueLabel { Text("E\(value.as(Int.self) ?? 0)").font(.caption2) } } }
+            .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) }
+            .chartXSelection(value: $location)
+            .chartGesture { proxy in
+                SpatialTapGesture().onEnded { tap in
+                    onInspect()
+                    proxy.selectXValue(at: tap.location.x)
+                }.simultaneously(with: DragGesture(minimumDistance: 8).onChanged { drag in
+                    guard abs(drag.translation.width) >= abs(drag.translation.height) else { return }
+                    onInspect()
+                    proxy.selectXValue(at: drag.location.x)
+                })
+            }
+            .frame(height: 170)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(chosen.name) episode ratings")
+            .accessibilityValue(selected.map { label(for: $0.episode) + ", " + scores(for: $0.episode) } ?? "Season \(season)")
+            .accessibilityAdjustableAction { direction in
+                let index = selected.flatMap { points.firstIndex(of: $0) }
+                switch direction {
+                case .increment: location = points[min((index ?? -1) + 1, points.count - 1)].episode
+                case .decrement: location = points[max((index ?? points.count) - 1, 0)].episode
+                @unknown default: return
+                }
+                onInspect()
+            }
+        }
     }
 }
 

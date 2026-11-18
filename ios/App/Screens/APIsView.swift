@@ -44,6 +44,7 @@ struct APIsView: View {
                 } else if let model, model.loaded {
                     if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
+                    tvdbKey
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out.")
                     service(.cloudflare, "Cloudflare", keys: model.keys.filter { $0.service == "cloudflare" })
                     let signIn = model.keys.filter { $0.service == "mdblist" }
@@ -187,9 +188,25 @@ struct APIsView: View {
                     status(TMDBDirect.token(store) != nil, TMDBDirect.token(store) != nil ? "Ready" : "Missing")
                 }.padding(15)
             }
+            tvdbKey
             aiSection(.gemini)
             aiSection(.groq)
             aiSection(.requesty)
+        }
+    }
+    private var tvdbKey: some View {
+        section(.tvdb, "TheTVDB", icon: "film") {
+            NavigationLink(value: AppDestination.tvdb) {
+                HStack(spacing: 8) {
+                    Text(store.providerSettings.customTvdbKey == nil ? "TwilDiary’s built-in key" : "Your own key")
+                        .font(.subheadline).foregroundStyle(HomeStyle.primary)
+                    Spacer(minLength: 0)
+                    let configured = store.isPreview || TVDBDirect.key(store) != nil
+                    status(configured, configured ? "Ready" : "Missing")
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(HomeStyle.secondary)
+                        .accessibilityHidden(true)
+                }.padding(15).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("all-keys-tvdb")
         }
     }
     /// Gemini: AI search and CineMind.

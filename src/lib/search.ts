@@ -8,7 +8,7 @@ export interface SearchTitle {
   category: string;
 }
 export interface DiarySearchPage {
-  library: TitleSummary[];
+  library: (TitleSummary & { matchedName?: string })[];
   online: (SearchMatch & { trashId?: string })[];
   nextCursor: string | null;
   page: number;

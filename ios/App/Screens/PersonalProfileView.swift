@@ -543,12 +543,12 @@ struct PersonalProfileView: View {
         }
     }
     private var collectionTiles: some View {
-        let favourites = FavouritesStore.shared.items.count
+        let favourites = FavouritesStore.shared.items.count + store.favouriteShows.count
         let planned = store.activeTitles.filter { $0.status == "planned" }.count
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             Button { router.library("planned") } label: { collection("bookmark", "Watchlist", (trakt?.watchlist ?? planned).counted("title", "titles")) }.buttonStyle(.plain)
             Button { router.library("all") } label: { collection("archivebox", "Collection", (trakt?.collected ?? 0).counted("title", "titles")) }.buttonStyle(.plain)
-            NavigationLink(value: AppDestination.favourites) { collection("heart", "Favourites", favourites.counted("title", "titles")) }.buttonStyle(.plain)
+            NavigationLink(value: AppDestination.favourites) { collection("heart", "Favourites", favourites.counted("item", "items")) }.buttonStyle(.plain)
             NavigationLink(value: AppDestination.canvas) { collection("list.bullet", "Lists", (trakt?.lists ?? 0).counted("list", "lists")) }.buttonStyle(.plain)
         }
     }

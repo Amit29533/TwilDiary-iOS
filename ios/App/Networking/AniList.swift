@@ -8,6 +8,7 @@ struct AniPerson: Codable, Hashable, Sendable {
     let id: Int
     let name: String
     let image: String?
+    var language: String? = nil
 }
 struct AniCharacter: Codable, Hashable, Sendable, Identifiable {
     let id: Int
@@ -17,6 +18,7 @@ struct AniCharacter: Codable, Hashable, Sendable, Identifiable {
     /// MAIN, SUPPORTING or BACKGROUND.
     let role: String?
     let voiceActor: AniPerson?
+    var additionalVoiceActors: [AniPerson]? = nil
     var roleName: String { role == "MAIN" ? "Main" : role == "SUPPORTING" ? "Supporting" : "Background" }
 }
 /// An anime related to another on AniList: how ("SEQUEL", "SIDE_STORY"…) and which.
@@ -233,7 +235,7 @@ actor AniListClient {
     /// Name lookups, misses included (nil), so a voice actor AniList lacks isn't asked again.
     private var staffByName: [String: AniPerson?] = [:]
     private var mediaIDs: [String: Int] = [:]
-    private var mediaKinds: [String: MediaKind] = [:]
+    private var originalLanguages: [Int: String] = [:]
     /// AniList anime → its TMDB title, however it was found (Wikidata, a search, a tap), kept on this
     /// iPhone so opening that anime again doesn't look it up again.
     private var tmdbTitles: [Int: CatalogRoute] = AniListClient.loadTitles() {
@@ -307,45 +309,100 @@ actor AniListClient {
         return found
     }
 
-    /// The anime's characters, main roles first, each with their Japanese voice actor. Empty when
-    /// AniList has no anime of that name released within a year of `year` (better none than wrong).
-    func characters(title: String, year: Int?, movie: Bool, tmdbID: Int? = nil) async throws -> [AniCharacter] {
-        let key = "\(title.lowercased())|\(year ?? 0)|\(movie)"
-        if let saved = characterLists[key] {
-            if let id = mediaIDs[key], let tmdbID, tmdbID > 0, mediaKinds[key] == (movie ? .movie : .tv) {
-                tmdbTitles[id] = CatalogRoute(kind: movie ? .movie : .tv, id: tmdbID)
-            }
-            return saved
+    private static func voiceLanguage(original: String?, country: String?) -> String? {
+        if let code = original?.lowercased(), !code.isEmpty, code != "und", code != "xx" {
+            if ["zh", "cn", "yue", "cmn"].contains(code) { return "Chinese" }
+            return Locale(identifier: "en").localizedString(forLanguageCode: code)
         }
+        switch country {
+        case "CN", "TW", "HK": return "Chinese"
+        case "KR": return "Korean"
+        case "JP": return "Japanese"
+        default: return nil
+        }
+    }
+
+    /// Require a unique name and format match. Prefer the release year, tolerating a
+    /// one-year regional release difference only when no exact-year candidate exists.
+    func characters(title: String, year: Int?, movie: Bool, tmdbID: Int? = nil, full: Bool = false, originalLanguage: String? = nil) async throws -> [AniCharacter] {
+        let key = "\(title.lowercased())|\(year ?? 0)|\(movie)"
+        let cacheKey = "\(key)|\(tmdbID ?? 0)|\(originalLanguage ?? "")|\(full)"
+        if let saved = characterLists[cacheKey] { return saved }
+
         struct Found: Decodable { let Page: PageResult; struct PageResult: Decodable { let media: [Media] } }
-        struct Media: Decodable { let id: Int; let format: String?; let startDate: DateParts? }
+        struct Media: Decodable {
+            struct Title: Decodable { let english: String?; let romaji: String?; let native: String? }
+            let id: Int; let format: String?; let startDate: DateParts?; let countryOfOrigin: String?
+            let title: Title; let synonyms: [String?]?
+        }
         let found: Found = try await query("""
-            query($search: String) { Page(perPage: 6) { media(search: $search, type: ANIME, sort: SEARCH_MATCH) { id format startDate { year } } } }
+            query($search: String) { Page(perPage: 15) { media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+              id format startDate { year } countryOfOrigin title { english romaji native } synonyms
+            } } }
             """, ["search": title])
         let candidates = found.Page.media.filter { media in
-            guard let year else { return true }
-            guard let started = media.startDate?.year else { return false }
-            return abs(started - year) <= 1
+            let formats = movie ? ["MOVIE"] : ["TV", "TV_SHORT", "ONA", "OVA", "SPECIAL"]
+            guard formats.contains(media.format ?? "") else { return false }
+            if let year {
+                guard let release = media.startDate?.year, abs(release - year) <= 1 else { return false }
+            }
+            let aliases = [media.title.english, media.title.romaji, media.title.native] + (media.synonyms ?? [])
+            return AnimeTitleMatching.matchesAlias(title, aliases: aliases.compactMap { $0 })
         }
-        // A film matches AniList's MOVIE format; a show anything else.
-        guard let match = candidates.first(where: { ($0.format == "MOVIE") == movie }) ?? candidates.first else {
-            characterLists[key] = []; return []
+        let exact = candidates.filter { year != nil && $0.startDate?.year == year }
+        let matches = exact.isEmpty ? candidates : exact
+        guard matches.count == 1, let match = matches.first else {
+            characterLists[cacheKey] = []; return []
         }
+        if let originalLanguage, originalLanguages[match.id] != originalLanguage {
+            originalLanguages[match.id] = originalLanguage
+            // Profiles opened before the title may have used AniList's country fallback.
+            details = details.filter { !$0.value.appearances.contains(where: { $0.id == match.id }) }
+        }
+        let language = Self.voiceLanguage(original: originalLanguage ?? originalLanguages[match.id], country: match.countryOfOrigin)
         struct Characters: Decodable { let Media: MediaResult; struct MediaResult: Decodable { let characters: Connection } }
-        struct Connection: Decodable { let edges: [Edge] }
-        struct Edge: Decodable { let role: String?; let node: Node; let voiceActors: [Staff] }
-        let page: Characters = try await query("""
-            query($id: Int) { Media(id: $id) { characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) { edges { role node { id name { full native } image { large } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
-            """, ["id": match.id])
-        let list = page.Media.characters.edges.map { edge in
-            AniCharacter(id: edge.node.id, name: edge.node.name.full ?? "Unknown", native: edge.node.name.native, image: edge.node.image?.large,
-                         role: edge.role, voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) })
+        struct Connection: Decodable {
+            let edges: [Edge]
+            let pageInfo: PageInfo
+            struct PageInfo: Decodable { let hasNextPage: Bool }
         }
-        characterLists[key] = list
+        struct Edge: Decodable { let role: String?; let node: Node; let voiceActors: [Staff] }
+        var list: [AniCharacter] = []
+        var seenCharacters = Set<Int>()
+        var pageNumber = 1
+        while true {
+            try Task.checkCancellation()
+            let page: Characters = try await query("""
+                query($id: Int, $page: Int, $size: Int) {
+                  Media(id: $id) {
+                    characters(sort: [ROLE, RELEVANCE, ID], page: $page, perPage: $size) {
+                      pageInfo { hasNextPage }
+                      edges {
+                        role
+                        node { id name { full native } image { large } }
+                        voiceActors(sort: [RELEVANCE, ID]) { id name { full } image { large } languageV2 }
+                      }
+                    }
+                  }
+                }
+                """, ["id": match.id, "page": pageNumber, "size": full ? 50 : 25])
+            let connection = page.Media.characters
+            let countBefore = list.count
+            for edge in connection.edges where seenCharacters.insert(edge.node.id).inserted {
+                var seenVoices = Set<Int>()
+                let voices = edge.voiceActors.filter { $0.speaks(language) && seenVoices.insert($0.id).inserted }.map(\.person)
+                list.append(AniCharacter(id: edge.node.id, name: edge.node.name.full ?? "Unknown", native: edge.node.name.native,
+                                         image: edge.node.image?.large, role: edge.role, voiceActor: voices.first,
+                                         additionalVoiceActors: full ? Array(voices.dropFirst()) : nil))
+            }
+            guard full, connection.pageInfo.hasNextPage else { break }
+            guard list.count > countBefore else { throw APIError.message("AniList returned a repeated credits page. Please try again.") }
+            pageNumber += 1
+        }
+        try Task.checkCancellation()
+        characterLists[cacheKey] = list
         mediaIDs[key] = match.id
-        if match.format == "MOVIE" { mediaKinds[key] = .movie }
-        else if ["TV", "TV_SHORT"].contains(match.format ?? "") { mediaKinds[key] = .tv }
-        if let tmdbID, tmdbID > 0, mediaKinds[key] == (movie ? .movie : .tv) {
+        if let tmdbID, tmdbID > 0 {
             tmdbTitles[match.id] = CatalogRoute(kind: movie ? .movie : .tv, id: tmdbID)
         }
         return list
@@ -366,6 +423,82 @@ actor AniListClient {
         }
         trending = (Date(), items)
         return items
+    }
+
+    private var browseTags: (at: Date, names: [String])?
+    private var browseTagImages: [String: String] = [:]
+    /// Canonical AniList genre names used by Search tiles, artwork, and result queries.
+    static let browseGenres = [
+        "Action", "Adventure", "Fantasy", "Romance", "Comedy", "Sports", "Horror",
+        "Sci-Fi", "Slice of Life", "Drama", "Mystery", "Thriller", "Supernatural",
+        "Psychological", "Music", "Mecha", "Mahou Shoujo"
+    ]
+
+    func searchBrowseTags() async throws -> [String] {
+        if let browseTags, Date.now.timeIntervalSince(browseTags.at) < 86_400 { return browseTags.names }
+        struct Reply: Decodable {
+            struct Tag: Decodable { let name: String; let isAdult: Bool?; let isGeneralSpoiler: Bool? }
+            let MediaTagCollection: [Tag]
+        }
+        let reply: Reply = try await query("query { MediaTagCollection { name isAdult isGeneralSpoiler } }", [:])
+        let tags = reply.MediaTagCollection.filter { $0.isAdult != true && $0.isGeneralSpoiler != true }.map(\.name)
+        let names = Set(Self.browseGenres).union(tags).sorted()
+        browseTags = (.now, names)
+        return names
+    }
+
+    struct BrowseTagPage: Sendable {
+        let items: [AniAppearance]
+        let hasNext: Bool
+    }
+
+    func browseTagArtwork(_ tag: String) async throws -> String? {
+        if let cached = browseTagImages[tag] { return cached }
+        let page = try await browseTag(tag, page: 1, sort: "POPULARITY_DESC", minimum: nil, period: nil, perPage: 5)
+        let image = page.items.lazy.compactMap(\.banner).first ?? page.items.lazy.compactMap(\.cover).first
+        browseTagImages[tag] = image
+        return image
+    }
+
+    func browseTag(_ tag: String, page: Int, sort: String, minimum: Int?, period: Int?, perPage: Int = 24) async throws -> BrowseTagPage {
+        struct Reply: Decodable {
+            struct Media: Decodable {
+                struct Title: Decodable { let english: String?; let romaji: String? }
+                let id: Int; let format: String?; let averageScore: Int?
+                let title: Title; let coverImage: Image?; let startDate: DateParts?; let bannerImage: String?
+            }
+            struct Page: Decodable {
+                struct PageInfo: Decodable { let hasNextPage: Bool }
+                let pageInfo: PageInfo; let media: [Media]
+            }
+            let Page: Page
+        }
+        var variables: [String: any Sendable] = ["page": page, "perPage": perPage, "sort": [sort]]
+        variables[Self.browseGenres.contains(tag) ? "genre" : "tag"] = tag
+        if let minimum { variables["minimum"] = minimum * 10 - 1 }
+        if let period {
+            variables["from"] = period * 10_000
+            variables["to"] = (period + 10) * 10_000
+        }
+        let reply: Reply = try await query("""
+            query($tag: String, $genre: String, $page: Int, $perPage: Int, $sort: [MediaSort], $minimum: Int, $from: FuzzyDateInt, $to: FuzzyDateInt) {
+              Page(page: $page, perPage: $perPage) {
+                pageInfo { hasNextPage }
+                media(type: ANIME, isAdult: false, tag: $tag, genre: $genre, sort: $sort, averageScore_greater: $minimum,
+                      startDate_greater: $from, startDate_lesser: $to) {
+                  id format averageScore title { english romaji } coverImage { large } startDate { year } bannerImage
+                }
+              }
+            }
+            """, variables)
+        let items = reply.Page.media.map { item in
+            AniAppearance(id: item.id, title: AnimeTitleChoice.pick(english: item.title.english, romaji: item.title.romaji),
+                          cover: item.coverImage?.large, year: item.startDate?.year, role: nil, voiceActor: nil,
+                          format: item.format, alternateTitles: [item.title.english, item.title.romaji].compactMap { $0 },
+                          rating: item.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil },
+                          banner: item.bannerImage)
+        }
+        return BrowseTagPage(items: items, hasNext: reply.Page.pageInfo.hasNextPage)
     }
 
     /// Every anime episode airing between two times (AniList's airing schedule, public, no sign-in),
@@ -474,10 +607,10 @@ actor AniListClient {
         }
         struct Connection: Decodable { let edges: [Edge] }
         struct Edge: Decodable { let characterRole: String?; let node: MediaNode; let voiceActors: [Staff] }
-        struct MediaNode: Decodable { let id: Int; let format: String?; let title: Title; let coverImage: Image?; let bannerImage: String?; let startDate: DateParts?; let averageScore: Int? }
+        struct MediaNode: Decodable { let id: Int; let format: String?; let countryOfOrigin: String?; let title: Title; let coverImage: Image?; let bannerImage: String?; let startDate: DateParts?; let averageScore: Int? }
         struct Title: Decodable { let romaji: String?; let english: String? }
         let result: Result = try await query("""
-            query($id: Int) { Character(id: $id) { id name { full native alternative } image { large } description(asHtml: false) gender age dateOfBirth { year month day } bloodType favourites media(sort: [POPULARITY_DESC], type: ANIME, perPage: 12) { edges { characterRole node { id format averageScore title { romaji english } coverImage { large extraLarge } bannerImage startDate { year } } voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } } } } } }
+            query($id: Int) { Character(id: $id) { id name { full native alternative } image { large } description(asHtml: false) gender age dateOfBirth { year month day } bloodType favourites media(sort: [POPULARITY_DESC], type: ANIME, perPage: 12) { edges { characterRole node { id format countryOfOrigin averageScore title { romaji english } coverImage { large extraLarge } bannerImage startDate { year } } voiceActors(sort: [RELEVANCE, ID]) { id name { full } image { large } languageV2 } } } } }
             """, ["id": id])
         let node = result.Character
         let detail = AniCharacterDetail(
@@ -487,7 +620,7 @@ actor AniListClient {
             appearances: node.media.edges.map { edge in
                 AniAppearance(id: edge.node.id, title: AnimeTitleChoice.pick(english: edge.node.title.english, romaji: edge.node.title.romaji), cover: edge.node.coverImage?.large,
                               year: edge.node.startDate?.year, role: edge.characterRole,
-                              voiceActor: edge.voiceActors.first.map { AniPerson(id: $0.id, name: $0.name.full ?? "Unknown", image: $0.image?.large) },
+                              voiceActor: edge.voiceActors.first { $0.speaks(Self.voiceLanguage(original: originalLanguages[edge.node.id], country: edge.node.countryOfOrigin)) }?.person,
                               format: edge.node.format, alternateTitles: [edge.node.title.english, edge.node.title.romaji].compactMap { $0 }, rating: edge.node.averageScore.flatMap { (1...100).contains($0) ? Double($0) / 10 : nil },
                               banner: edge.node.bannerImage ?? edge.node.coverImage?.extraLarge)
             })
@@ -647,19 +780,33 @@ actor AniListClient {
     /// Pull to refresh asks AniList again.
     func forgetStats() { userStats = [:]; userCharacters = [:] }
 
-    func searchPeople(_ search: String) async throws -> [SearchPerson] {
+    func searchPeople(_ search: String, page: Int) async throws -> SearchPeoplePage {
         struct Reply: Decodable {
             let characters: CharacterPage
             let performers: PerformerPage
-            struct CharacterPage: Decodable { let characters: [Node] }
-            struct PerformerPage: Decodable { let staff: [Performer] }
+            struct CharacterPage: Decodable { let characters: [Node]; let pageInfo: PageInfo }
+            struct PerformerPage: Decodable { let staff: [Performer]; let pageInfo: PageInfo }
+            struct PageInfo: Decodable { let hasNextPage: Bool }
             struct Performer: Decodable { let id: Int; let name: Name; let image: Image?; let primaryOccupations: [String]? }
         }
         // AniList permits only one collection per Page, so each collection has
         // its own aliased page within the same request.
-        let reply: Reply = try await query("query($search: String) { characters: Page(perPage: 12) { characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } } } performers: Page(perPage: 12) { staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations } } }", ["search": search])
-        return reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
+        let reply: Reply = try await query("""
+            query($search: String, $page: Int) {
+              characters: Page(page: $page, perPage: 12) {
+                pageInfo { hasNextPage }
+                characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } }
+              }
+              performers: Page(page: $page, perPage: 12) {
+                pageInfo { hasNextPage }
+                staff(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } primaryOccupations }
+              }
+            }
+            """, ["search": search, "page": page])
+        let items = reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
             + reply.performers.staff.filter { $0.primaryOccupations?.contains(where: { $0.localizedCaseInsensitiveContains("voice") }) == true }.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "voice") } }
+        let hasMore = reply.characters.pageInfo.hasNextPage || reply.performers.pageInfo.hasNextPage
+        return SearchPeoplePage(items: items, page: page, totalPages: hasMore ? page + 1 : page)
     }
 
     private var avatarCache: (date: Date, values: [ProfileAvatarChoice])?
@@ -679,7 +826,14 @@ actor AniListClient {
     fileprivate struct Name: Decodable { let full: String?; let native: String?; let alternative: [String]? }
     fileprivate struct Image: Decodable { let large: String?; var extraLarge: String? = nil }
     fileprivate struct Node: Decodable { let id: Int; let name: Name; let image: Image? }
-    fileprivate struct Staff: Decodable { let id: Int; let name: Name; let image: Image? }
+    fileprivate struct Staff: Decodable {
+        let id: Int; let name: Name; let image: Image?; let languageV2: String?
+        func speaks(_ language: String?) -> Bool {
+            guard let language, let languageV2 else { return false }
+            return language.caseInsensitiveCompare(languageV2) == .orderedSame
+        }
+        var person: AniPerson { AniPerson(id: id, name: name.full ?? "Unknown", image: image?.large, language: languageV2) }
+    }
     fileprivate struct DateParts: Decodable {
         let year: Int?; let month: Int?; let day: Int?
         var text: String? { ProfileDate.partial(year: year, month: month, day: day) }

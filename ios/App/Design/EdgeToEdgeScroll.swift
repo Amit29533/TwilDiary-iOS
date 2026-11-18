@@ -26,6 +26,8 @@ struct FeatheredHeaderBackdrop: View {
 struct EdgeToEdgeScroll<Content: View>: View {
     /// Keep the top bar frosted even at the top (for pages with a title or switcher in the bar).
     var frosted = false
+    /// A decorative image may start behind the system bars at the top of the scroll view.
+    var artworkUnderBar = false
     /// Set once the page has scrolled past its first `scrolledPast.distance` points (Canvas puts
     /// the chosen tab's name in the top bar once its big tab words are under it).
     var scrolledPast: (distance: CGFloat, value: Binding<Bool>)? = nil
@@ -38,9 +40,9 @@ struct EdgeToEdgeScroll<Content: View>: View {
             // view's reported inset: the pull-to-refresh spinner adds to that inset the moment the
             // refresh starts (the haptic), which read as "scrolled" for a frame and flashed the dark
             // header band over the top of the page.
-            let top = geometry.safeAreaInsets.top
+            let top = artworkUnderBar ? 0 : geometry.safeAreaInsets.top
             ScrollView { content }
-                .contentMargins(.top, geometry.safeAreaInsets.top, for: .scrollContent)
+                .contentMargins(.top, top, for: .scrollContent)
                 .contentMargins(.bottom, geometry.safeAreaInsets.bottom, for: .scrollContent)
                 .ignoresSafeArea(.container, edges: .vertical)
                 .scrollEdgeEffectHidden(true, for: .top)

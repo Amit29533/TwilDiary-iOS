@@ -4,13 +4,17 @@ import TwilDiaryCore
 
 struct CatalogGrid: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
     @AppStorage("catalogGrid") private var grid = true
     let items: [CatalogItem]
     var showsLayoutToggle = true
+    var forceGrid = false
+    private var useGrid: Bool { forceGrid || grid }
+    private var columns: Int { useGrid ? (forceGrid && typeSize.isAccessibilitySize ? 2 : 3) : 1 }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if showsLayoutToggle { HStack { Spacer(); CollectionLayoutToggle(grid: $grid, collection: "catalog") } }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: grid ? 3 : 1), alignment: .leading, spacing: grid ? 20 : 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), alignment: .leading, spacing: useGrid ? 20 : 10) {
                 ForEach(items, id: \.displayKey) { item in
                     Group {
                         if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { card(item).zoomSource(ZoomID.title(saved)) } }
@@ -21,7 +25,7 @@ struct CatalogGrid: View {
         }
     }
     @ViewBuilder private func card(_ item: CatalogItem) -> some View {
-        if grid { CatalogPoster(item: item) }
+        if useGrid { CatalogPoster(item: item, profileTypography: forceGrid && typeSize.isAccessibilitySize) }
         else {
             HStack(spacing: 12) {
                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 68, height: 102).clipShape(RoundedRectangle(cornerRadius: 10))
@@ -65,6 +69,8 @@ struct CatalogPoster: View {
 
 struct CatalogSearchView: View {
     var universal = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .subheadline) private var addControlHeight: CGFloat = 44
     @State private var libraryExpanded = false
     @State private var onlineExpanded = false
     @AppStorage("recentSearches.v1") private var recentJSON = "[]"
@@ -84,32 +90,58 @@ struct CatalogSearchView: View {
     @State private var results: [CatalogItem] = []
     @State private var loading = false
     @State private var failure: String?
+    @State private var failedPage: Int?
     @State private var dismissKeyboard = 0
     @AppStorage("searchGrid") private var grid = false
     @State private var page = 1
     @State private var totalPages = 0
     @State private var libraryLimit = 20
     @State private var generation = UUID()
-    @State private var completedQuery: String?
+    private struct SearchScope: Hashable { let query: String; let session: UUID }
+    @State private var activeScope: SearchScope?
+    @State private var completedScope: SearchScope?
     @State private var pageTask: Task<Void, Never>?
     /// Search's kind chips (design): All, Movies, Shows, Anime, People.
-    enum Kind: String, CaseIterable { case all = "All", movies = "Movies", shows = "Shows", anime = "Anime", people = "People" }
+    enum Kind: String, CaseIterable {
+        case all = "All", movies = "Movies", shows = "Shows", anime = "Anime", people = "People"
+
+        static func title(_ type: MediaKind, anime: Bool) -> Self {
+            if anime { return .anime }
+            return type == .movie ? .movies : .shows
+        }
+
+        func includes(_ type: MediaKind, anime: Bool) -> Bool {
+            self == .all || self == Self.title(type, anime: anime)
+        }
+    }
     @State private var kind = Kind.all
-    @State private var peopleCount = 0
+    @State private var mixedPeople: [SearchPerson]?
+    @State private var peopleMatch: (scope: SearchScope, count: Int)?
     @State private var adding = Set<String>()
+    @State private var addFailures: [String: String] = [:]
     var body: some View {
+        let scope = searchScope
+        let ranked = universal && ready ? allResults : []
+        let counts = Dictionary(grouping: ranked, by: \.kind).mapValues { $0.count }
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
                 SearchField(placeholder: universal ? "Movies, shows, anime, people" : "Title or IMDb ID…", text: $query, label: "Search library and online", autoFocus: !universal, focusRevision: universal ? router.searchFocusRevision : 0, dismissRevision: dismissKeyboard,
-                            ai: universal ? $aiSearch : nil, onSearch: { if aiSearch { aiQuery = normalized } })
+                            ai: universal ? $aiSearch : nil, onSearch: {
+                                if aiSearch && ready { aiQuery = normalized }
+                            })
+                if universal {
+                    NavigationLink(value: SearchLabRoute()) {
+                        Image(systemName: "slider.horizontal.3").frame(minWidth: 28, minHeight: 32)
+                    }.buttonStyle(.glass).buttonBorderShape(.circle).accessibilityLabel("Advanced filters")
+                }
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }
             }
-            if universal { kindChips }
+            if universal { kindChips(counts: counts, total: ranked.count) }
             if !ready {
-                if universal { SearchLandingView(recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }) }
+                if universal { SearchLandingView(kind: kind, recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }).id(kind) }
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
-            if universal && ready { universalResults }
+            if universal && ready { universalResults(ranked) }
             if ready && !universal {
                 // In your library (only when something matches).
                 if !localMatches.isEmpty {
@@ -137,34 +169,44 @@ struct CatalogSearchView: View {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
             }
-            if universal && ready && (kind == .all || kind == .people) {
-                SearchPeopleView(query: normalized, kind: nil, limit: kind == .people ? 40 : 6, onChoose: rememberQuery, onCount: { peopleCount = $0 })
+            if universal && ready && !isIMDbLookup && (kind == .all || kind == .people) {
+                SearchPeopleView(query: scope.query, limit: kind == .people ? 40 : 6,
+                                 mixed: kind == .all && activeScope == scope ? mixedPeople : nil,
+                                 usePreview: kind == .all && !store.isPreview && TMDBDirect.token(store) != nil
+                                     && !(activeScope == scope && mixedPeople == nil && (failure != nil || completedScope == scope)),
+                                 onChoose: {
+                    rememberQuery()
+                    dismissKeyboard += 1
+                },
+                                 onCount: { count in
+                    if scope == searchScope { peopleMatch = (scope, count) }
+                }).id(scope).id(kind == .people)
             }
-            if universal && ready && kind != .people { SearchJellyfinView(query: normalized) }
+            if universal && ready && kind != .people { SearchJellyfinView(query: normalized, kind: kind) }
             // Watch history: when a library title matches (its watches are the ones to find).
-            if universal && ready && !localMatches.isEmpty {
+            if universal && ready && kind != .people && localMatches.contains(where: { includesCategory($0.category) }) {
                 NavigationLink(value: HistoryRoute(query: normalized)) {
                     Label("Watch history matches", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }.simultaneousGesture(TapGesture().onEnded { rememberQuery() }).foregroundStyle(.primary).accessibilityIdentifier("search-history-matches")
             }
         }.padding(.horizontal, 14).padding(.bottom, 12)
-            .task(id: normalized) { if completedQuery != normalized || failure != nil { await search(number: 1, reset: true) } }
-            // AI turned on again starts from what's typed now, not the last description sent.
-            .onChange(of: aiSearch) { _, on in if on { aiQuery = "" } }
+            .task(id: kind == .people ? nil : Optional(scope)) { if kind != .people && completedScope != scope { await search(number: 1, reset: true) } }
+            .onChange(of: aiSearch) { _, on in aiQuery = on && ready ? normalized : "" }
+            .onChange(of: normalized) { _, value in if value != aiQuery { aiQuery = "" } }
             .onDisappear { pageTask?.cancel(); generation = UUID(); loading = false }
     }
     // MARK: Universal results (owner's design): kind chips, SHOWS & MOVIES as cards, PEOPLE
 
-    @ViewBuilder private var kindChips: some View {
-        if ThemeStore.current.native {
+    @ViewBuilder private func kindChips(counts: [Kind: Int], total: Int) -> some View {
+        if ThemeStore.current.native && !typeSize.isAccessibilitySize {
             NativeSegmentedControl(segments: Kind.allCases.map { item in
-                NativeSegment(value: item, title: item.rawValue + (ready ? count(item).map { " \($0)" } ?? "" : ""), id: "search-kind-" + item.rawValue.lowercased())
+                NativeSegment(value: item, title: item.rawValue + (ready ? count(item, counts: counts, total: total).map { " \($0)" } ?? "" : ""), id: "search-kind-" + item.rawValue.lowercased())
             }, selection: $kind)
         } else {
-            classicKindChips
+            classicKindChips(counts: counts, total: total)
         }
     }
-    private var classicKindChips: some View {
+    private func classicKindChips(counts: [Kind: Int], total: Int) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(Kind.allCases, id: \.self) { item in
@@ -172,11 +214,12 @@ struct CatalogSearchView: View {
                     Button { kind = item } label: {
                         HStack(spacing: 6) {
                             Text(item.rawValue)
-                            if ready, let count = count(item) {
+                            if ready, let count = count(item, counts: counts, total: total) {
                                 Text(count.formatted()).foregroundStyle(on ? ThemeStore.current.chipInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit()
                             }
-                        }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.chipInk : HomeStyle.primary)
-                            .padding(.horizontal, 15).frame(height: 40)
+                        }.font(typeSize.isAccessibilitySize ? .subheadline.weight(.semibold) : .system(size: 15, weight: .semibold))
+                            .foregroundStyle(on ? ThemeStore.current.chipInk : HomeStyle.primary)
+                            .padding(.horizontal, 15).padding(.vertical, typeSize.isAccessibilitySize ? 8 : 0).frame(minHeight: 40)
                             .background(on ? HomeStyle.chipText : HomeStyle.round, in: Capsule())
                             .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                             .contentShape(Capsule())
@@ -194,92 +237,146 @@ struct CatalogSearchView: View {
         let kind: Kind
         let libraryID: String?
         let route: CatalogRoute?
+        var alias: String? = nil
     }
     private static func key(_ route: CatalogRoute) -> String { route.kind.rawValue + ":" + String(route.id) }
     private var allResults: [Result] {
-        let library = localMatches.map { title in
+        let local = localMatches
+        let library = local.map { title in
             Result(id: "library:" + title.id, name: title.name, poster: title.artwork,
                    detail: [title.category == "movie" ? "Movie" : title.category == "anime-movie" ? "Anime · Movie" : title.category == "anime" ? "Anime · Series" : "Show",
                             title.year.map(String.init)].compactMap { $0 }.joined(separator: " · "),
-                   kind: title.category.hasPrefix("anime") ? .anime : title.category == "movie" ? .movies : .shows, libraryID: title.id, route: nil)
+                   kind: title.category.hasPrefix("anime") ? .anime : title.category == "movie" ? .movies : .shows, libraryID: title.id, route: nil, alias: title.matchedName.flatMap { $0.localizedCaseInsensitiveCompare(title.name) == .orderedSame ? nil : $0 })
         }
-        let saved = Set(localMatches.map(\.id))
+        let saved = Set(local.map(\.id))
+        let jellyfin = Set(JellyfinShelf.shared.entries.compactMap { entry in
+            entry.tmdb.map { CatalogRoute(kind: entry.movie ? .movie : .tv, id: $0) }
+        })
         let online = visibleOnline.compactMap { item -> Result? in
-            let owned = CatalogTools.libraryIdentity(item, in: store.workspace)
+            let owned = store.libraryIdentity(item)
             if let owned, saved.contains(owned) { return nil }
-            let anime = (item.genres ?? []).contains { $0 == "Animation" || $0 == "16" } && item.mediaType == .tv
+            let anime = item.isAnime == true
+            let type = item.mediaType == .tv ? "Series" : "Movie"
             return Result(id: "online:" + item.key, name: item.name, poster: item.artwork,
-                          detail: [anime ? "Anime · Series" : item.mediaType == .tv ? "Show" : "Movie", item.year.map(String.init)].compactMap { $0 }.joined(separator: " · "),
-                          kind: anime ? .anime : item.mediaType == .tv ? .shows : .movies, libraryID: owned, route: item.route)
+                          detail: [anime ? "Anime · " + type : item.mediaType == .tv ? "Show" : "Movie", item.year.map(String.init), jellyfin.contains(item.route) ? "On Jellyfin" : nil].compactMap { $0 }.joined(separator: " · "),
+                          kind: Kind.title(item.mediaType, anime: anime), libraryID: owned, route: item.route)
         }
-        return library + online
+        let needle = normalized.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        var exact: [Result] = [], prefix: [Result] = [], other: [Result] = []
+        for row in library + online {
+            let names = [row.name, row.alias].compactMap { $0?.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current) }
+            if names.contains(needle) { exact.append(row) }
+            else if names.contains(where: { $0.hasPrefix(needle) }) { prefix.append(row) }
+            else { other.append(row) }
+        }
+        return exact + prefix + other
     }
-    private func count(_ item: Kind) -> Int? {
-        switch item {
-        case .all: allResults.count + peopleCount
+    private func count(_ item: Kind, counts: [Kind: Int], total: Int) -> Int? {
+        let peopleCount = peopleMatch.flatMap { $0.scope == searchScope ? $0.count : nil }
+        return switch item {
+        case .all: total + (peopleCount ?? 0)
         case .people: peopleCount
-        default: allResults.filter { $0.kind == item }.count
+        default: counts[item, default: 0]
         }
     }
-    @ViewBuilder private var universalResults: some View {
-        let shown = allResults.filter { kind == .all || $0.kind == kind }
+    @ViewBuilder private func universalResults(_ ranked: [Result]) -> some View {
+        let shown = ranked.filter { kind == .all || $0.kind == kind }
         // AI on: Gemini's matches for the description first, then the usual results.
-        if aiSearch && kind != .people { SemanticSearchSection(query: aiQuery, typed: normalized) }
+        if aiSearch && kind != .people { SemanticSearchSection(query: aiQuery, kind: kind) }
         if kind != .people {
             if !shown.isEmpty || loading || failure != nil {
-                Text("SHOWS & MOVIES").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary).padding(.top, 6)
+                Text("Shows & movies").font(.headline).foregroundStyle(.primary).padding(.top, 6)
             }
             if loading && shown.isEmpty { DiaryLoadingPlaceholder(label: "Searching online", layout: .list(rows: 5)) }
-            if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
-            ForEach(shown.prefix(onlineExpanded ? 100 : 8)) { result in resultCard(result) }
-            if shown.count > 8 && !onlineExpanded {
-                Button { onlineExpanded = true; libraryExpanded = true } label: {
-                    Text("Show all \(shown.count)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+            if let failure, activeScope == searchScope {
+                if let failedPage { RetryNotice(message: failure) { requestPage(failedPage) } }
+                else { Text(failure).font(.subheadline).foregroundStyle(.secondary) }
+            }
+            LazyVStack(alignment: .leading, spacing: 12) {
+                ForEach(onlineExpanded && activeScope == searchScope ? shown : Array(shown.prefix(8))) { result in resultCard(result) }
+            }
+            if !loading && failure == nil && (hasMore || (!onlineExpanded && shown.count > 8)) {
+                Button {
+                    if onlineExpanded || shown.count <= 8 { requestPage(page + 1) }
+                    onlineExpanded = true
+                } label: {
+                    Text(onlineExpanded || shown.count <= 8 ? "Load more titles" : hasMore ? "Show more titles" : "Show all \(shown.count)")
+                        .font(.headline).foregroundStyle(HomeStyle.chipText)
                         .frame(maxWidth: .infinity, minHeight: 50).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                 }.buttonStyle(.springPress).accessibilityIdentifier("search-show-all")
             }
-            if !loading && shown.isEmpty && failure == nil && completedQuery == normalized {
+            if loading && !shown.isEmpty { ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Searching online") }
+            if !loading && shown.isEmpty && failure == nil && completedScope == searchScope && !hasMore {
                 Text("No \(kind == .all ? "titles" : kind.rawValue.lowercased()) match “\(normalized)”.").font(.system(size: 14)).foregroundStyle(.secondary)
             }
         }
     }
     /// The design's result card: poster, name, "Anime · Series", then In library or + Add.
     private func resultCard(_ result: Result) -> some View {
-        Button {
-            if let id = result.libraryID { chooseLibrary(id) } else if let route = result.route { chooseCatalog(route) }
-        } label: {
-            HStack(spacing: 16) {
-                Artwork(path: result.poster, title: result.name, initialsOnly: false).frame(width: 78, height: 117).clipShape(RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(result.name).font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(2).truncationMode(.tail)
-                    Text(result.detail).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                    Group {
-                        if result.libraryID != nil {
-                            Text("In library").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                                .padding(.horizontal, 16).frame(height: 38).background(HomeStyle.chip, in: Capsule())
-                        } else if let route = result.route {
-                            let busy = adding.contains(Self.key(route))
-                            Button { Task { await add(route) } } label: {
-                                HStack(spacing: 5) {
-                                    if busy { ProgressView().controlSize(.small).tint(ThemeStore.current.accentInk) } else { Image(systemName: "plus").font(.system(size: 13, weight: .bold)) }
-                                    Text("Add")
-                                }.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                                    .padding(.horizontal, 16).frame(height: 38)
-                                    .background(HomeStyle.chip, in: Capsule())
-                            }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
-                                .accessibilityLabel("Add " + result.name).accessibilityIdentifier("search-add-" + Self.key(route))
-                        }
-                    }.padding(.top, 4)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier(result.libraryID.map { "search-library-" + $0 } ?? "search-" + (result.route.map(Self.key) ?? result.id))
+        let addRoute = result.libraryID == nil ? result.route : nil
+        let posterWidth: CGFloat = 78
+        let spacing: CGFloat = 16
+        return VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .bottomLeading) {
+                Button {
+                    if let id = result.libraryID { chooseLibrary(id) } else if let route = result.route { chooseCatalog(route) }
+                } label: {
+                    HStack(spacing: spacing) {
+                        Artwork(path: result.poster, title: result.name, initialsOnly: false)
+                            .frame(width: posterWidth, height: 117).clipShape(RoundedRectangle(cornerRadius: 12))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(result.name).font(.headline).foregroundStyle(HomeStyle.primary)
+                                .lineLimit(typeSize.isAccessibilitySize ? nil : 2).fixedSize(horizontal: false, vertical: true)
+                            Text(result.detail).font(.subheadline).foregroundStyle(HomeStyle.secondary)
+                            if let alias = result.alias { Text("Also known as " + alias).font(.caption).foregroundStyle(.secondary) }
+                            if let libraryID = result.libraryID {
+                                Text(store.title(libraryID).map { $0.status == "completed" ? "Watched" : $0.status == "planned" ? "Planned" : "In library" } ?? "In library").font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
+                                    .padding(.horizontal, 16).padding(.vertical, 8).background(HomeStyle.chip, in: Capsule())
+                            } else if addRoute != nil {
+                                Color.clear.frame(height: addControlHeight).accessibilityHidden(true)
+                            }
+                        }.frame(maxWidth: .infinity, minHeight: 117, alignment: addRoute == nil ? .leading : .bottomLeading)
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityIdentifier(result.libraryID.map { "search-library-" + $0 } ?? "search-" + (result.route.map(Self.key) ?? result.id))
+                if let route = addRoute { addButton(route, title: result.name).padding(.leading, posterWidth + spacing) }
+            }
+            if let route = addRoute, let message = addFailures[Self.key(route)] {
+                Text(message).font(.footnote).foregroundStyle(.secondary)
+            }
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
+    }
+
+    private func addButton(_ route: CatalogRoute, title: String) -> some View {
+        let key = Self.key(route)
+        let busy = adding.contains(key)
+        let retry = addFailures[key] != nil
+        return Button { Task { await add(route) } } label: {
+            Label(retry ? "Retry add" : "Add", systemImage: "plus").lineLimit(1)
+                .font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
+                .opacity(busy ? 0 : 1)
+                .overlay { if busy { ProgressView().controlSize(.small) } }
+                .padding(.horizontal, 16).frame(height: addControlHeight)
+                .background(HomeStyle.chip, in: Capsule())
+        }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
+            .accessibilityLabel((retry ? "Retry adding " : "Add ") + title)
+            .accessibilityIdentifier("search-add-" + key)
     }
     /// + Add: the title joins your library as Planned (its full details are read first).
     private func add(_ route: CatalogRoute) async {
         rememberQuery()
-        adding.insert(Self.key(route)); defer { adding.remove(Self.key(route)) }
-        guard let browse = try? await store.browse(route) else { failure = "This title couldn’t be added. Try again."; return }
-        _ = await store.importTitle(browse.details, category: browse.details.suggestedCategory)
+        let key = Self.key(route)
+        guard adding.insert(key).inserted else { return }
+        defer { adding.remove(key) }
+        addFailures[key] = nil
+        do {
+            let browse = try await store.browse(route)
+            if await store.importTitle(browse.details, category: browse.details.suggestedCategory) == nil {
+                addFailures[key] = store.error ?? "This title couldn’t be added."
+            }
+        } catch {
+            addFailures[key] = error.localizedDescription
+        }
     }
 
     private func onlineRow(_ item: CatalogItem) -> some View {
@@ -304,11 +401,17 @@ struct CatalogSearchView: View {
         }
     }
     private var normalized: String { DiarySearchTools.normalize(query) }
+    private var searchScope: SearchScope { SearchScope(query: normalized, session: store.sessionRevision) }
     private var ready: Bool { DiarySearchTools.ready(normalized) }
-    private var localMatches: [SearchLibraryTitle] {
-        DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), identified)
+    private var isIMDbLookup: Bool { normalized.range(of: #"^tt[0-9]{7,10}$"#, options: .regularExpression) != nil }
+    private var hasMore: Bool { activeScope == searchScope && completedScope == searchScope && page < min(500, totalPages) }
+    private func includesCategory(_ category: String) -> Bool {
+        kind.includes(category == "movie" || category == "anime-movie" ? .movie : .tv, anime: category.hasPrefix("anime"))
     }
-    private var visibleOnline: [CatalogItem] { results }
+    private var localMatches: [SearchLibraryTitle] {
+        DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), activeScope == searchScope ? identified : [])
+    }
+    private var visibleOnline: [CatalogItem] { activeScope == searchScope ? results : [] }
     /// The universal search starts with a few of each; "More" expands in place.
     private var libraryShown: Int { universal && !libraryExpanded ? 4 : libraryLimit }
     private var onlineShown: Int { universal && !onlineExpanded ? 4 : 100 }
@@ -347,23 +450,37 @@ struct CatalogSearchView: View {
     }
     private func requestPage(_ number: Int) { pageTask?.cancel(); pageTask = Task { await search(number: number) } }
     private func search(number: Int, reset: Bool = false) async {
+        let scope = searchScope
         let request = UUID(); generation = request
-        if reset { completedQuery = nil; results = []; identified = []; page = 1; totalPages = 0; libraryLimit = 20; libraryExpanded = false; onlineExpanded = false }
+        if reset {
+            pageTask?.cancel()
+            mixedPeople = nil
+            activeScope = scope; completedScope = nil; results = []; identified = []
+            page = 1; totalPages = 0; libraryLimit = 20; libraryExpanded = false; onlineExpanded = false
+        }
         failure = nil
+        failedPage = nil
         guard ready else { loading = false; return }
         let value = normalized; loading = true
         defer { if generation == request { loading = false } }
         do {
             if reset { try await Task.sleep(for: .milliseconds(300)) }
-            let response = try await store.searchDiary(value, page: number)
-            guard !Task.isCancelled, request == generation, normalized == value else { return }
+            let response = try await store.searchDiary(value, page: number) { people in
+                if !Task.isCancelled, request == generation, scope == searchScope { mixedPeople = people }
+            }
+            guard !Task.isCancelled, request == generation, scope == searchScope else { return }
+            if !response.onlineError.isEmpty { throw APIError.message(response.onlineError) }
             guard response.page == number else { throw APIError.message("Search returned an unexpected page. Please retry.") }
-            completedQuery = value
+            completedScope = scope
             identified = DiarySearchTools.merging(identified, response.library)
-            results = response.online; page = response.page; totalPages = response.totalPages
-            failure = response.onlineError.isEmpty ? nil : response.onlineError
+            results = universal && number > 1 ? CatalogTools.merging(results, response.online) : response.online
+            page = response.page; totalPages = response.totalPages
         } catch is CancellationError { }
-        catch { if !Task.isCancelled, request == generation { failure = error.localizedDescription } }
+        catch {
+            if !Task.isCancelled, request == generation, scope == searchScope {
+                failure = error.localizedDescription; failedPage = number
+            }
+        }
     }
 }
 
@@ -390,6 +507,7 @@ struct CatalogDetailView: View {
                 VStack(alignment: .leading, spacing: 32) {
                     if let details {
                         let anime = details.details.suggestedCategory.hasPrefix("anime")
+                        let animated = anime || details.details.genres.contains("Animation") || extras?.genres.contains(where: { $0.id == 16 }) == true
                         VStack(alignment: .leading, spacing: 22) {
                             TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), backdrop: CatalogTools.image(details.details.backdropPath, size: "w780"), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top), onNameScrolled: { headerState.update($0) }) {
                                 RatingBoxes(scores: criticScores, tmdbFallback: details.details.communityScore)
@@ -413,13 +531,16 @@ struct CatalogDetailView: View {
                             }
                         }
                         if let extras, !extras.keywords.isEmpty { TitleTagsSection(keywords: extras.keywords, kind: route.kind) }
-                        if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, store: store) }
-                        CastAndRelated(route: route, sourceTitle: details.details.name,
-                                       anime: anime ? (details.details.year, route.kind == .movie) : nil,
-                                       seeAll: .cast(route, title: details.details.name, anime: anime, year: details.details.year))
+                        if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, imdbID: details.details.imdbId ?? extras?.imdbId, store: store) }
+                        CastAndRelated(route: route, sourceTitle: details.details.name, awardsIMDbID: details.details.imdbId ?? extras?.imdbId,
+                                       characters: animated ? (details.details.year, route.kind == .movie) : nil,
+                                       originalLanguage: extras?.originalLanguage,
+                                       relatedAnime: anime ? (details.details.year, route.kind == .movie) : nil,
+                                       seeAll: .cast(route, title: details.details.name, anime: animated, year: details.details.year, originalLanguage: extras?.originalLanguage))
                         if let extras { CompaniesSection(route: route, title: details.details.name, extras: extras, animated: anime || details.details.genres.contains("Animation")) }
                         InListsSection(route: route, title: details.details.name)
                         RelatedCollectionsSection(route: route, title: details.details.name, anime: anime, genres: details.details.genres)
+                        ParentalGuideSection(extras: extras)
                     } else if loading { DiaryLoadingPlaceholder(height: 320, label: "Loading title").padding(16) }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 }.padding(.horizontal, 16).padding(.bottom, 32)
@@ -529,6 +650,7 @@ struct CatalogDetailView: View {
 
 private struct CatalogSeasonPreview: View {
     let route: CatalogRoute
+    let imdbID: String?
     let details: CatalogDetails
     @Environment(AppRouter.self) private var router
     @AppStorage("hideSpoilers") private var hideSpoilers = true
@@ -541,8 +663,8 @@ private struct CatalogSeasonPreview: View {
     @State private var selectedEpisode: Int?
     @State private var swipeForward = true
     @State private var sheetEpisode: Int?
-    init(route: CatalogRoute, details: CatalogDetails, store: DiaryStore) {
-        self.route = route; self.details = details
+    init(route: CatalogRoute, details: CatalogDetails, imdbID: String?, store: DiaryStore) {
+        self.route = route; self.details = details; self.imdbID = imdbID
         _selected = State(initialValue: details.seasons?.first(where: { $0.number > 0 })?.number ?? details.seasons?.first?.number ?? 1)
         _controller = State(initialValue: CatalogEpisodeController { season, reveal in try await store.catalogEpisodes(route, season: season, reveal: reveal) })
     }
@@ -596,7 +718,7 @@ private struct CatalogSeasonPreview: View {
                         LazyHStack(alignment: .top, spacing: 12) {
                             ForEach(shown) { episode in
                                 EpisodeGridCard(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode),
-                                                state: state(episode), airedOn: episode.airedOn, runtime: details.runtimeMinutes,
+                                                state: state(episode), airedOn: episode.airedOn, runtime: episode.runtimeMinutes,
                                                 score: episode.communityScore, onOpen: { open(episode) }, onToggle: {}, showsTick: false)
                                     .accessibilityIdentifier("catalog-episode-\(episode.number)")
                             }
@@ -606,7 +728,7 @@ private struct CatalogSeasonPreview: View {
                     VStack(spacing: 9) {
                         ForEach(shown) { episode in
                             EpisodeCardRow(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode),
-                                           state: state(episode), score: episode.communityScore, canToggle: false,
+                                           state: state(episode), runtime: episode.runtimeMinutes, score: episode.communityScore, canToggle: false,
                                            onOpen: { open(episode) }, onToggle: {}, showsTick: false)
                                 .accessibilityIdentifier("catalog-episode-\(episode.number)")
                         }
@@ -622,8 +744,14 @@ private struct CatalogSeasonPreview: View {
                     }.buttonStyle(.springPress).accessibilityIdentifier("catalog-all-episodes")
                 }
             }
-            let points = controller.items.compactMap { episode in episode.communityScore.map { EpisodeRatingPoint(episode: episode.number, score: $0) } }
-            if route.kind == .tv { RatingTrendCard(show: route.id, season: selected, tmdb: points, current: nil) }
+            let seasonItems = controller.season == selected ? controller.items : []
+            let points = seasonItems.compactMap { episode in episode.communityScore.map { EpisodeRatingPoint(episode: episode.number, score: $0) } }
+            if route.kind == .tv {
+                RatingTrendCard(show: route.id, season: selected, tmdb: points, current: nil, imdbID: imdbID) { number in
+                    guard let episode = seasonItems.first(where: { $0.number == number }), !hidden(episode) else { return nil }
+                    return episode.name
+                }.id("\(route.id):\(selected)")
+            }
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
             .onChange(of: selected) { _, _ in showAll = false; revealed = []; selectedEpisode = nil }
             .sheet(isPresented: Binding(get: { selectedEpisode != nil }, set: { if !$0 { selectedEpisode = nil } })) {
@@ -694,21 +822,24 @@ private struct CatalogSeasonPreview: View {
 struct CastAndRelated: View {
     let route: CatalogRoute
     var sourceTitle: String? = nil
+    var awardsIMDbID: String? = nil
     /// Anime show their characters (AniList) above the cast.
-    var anime: (year: Int?, movie: Bool)? = nil
-    /// Anime show Related (AniList) above More like this; the preview page's `anime` does too.
+    var characters: (year: Int?, movie: Bool)? = nil
+    var originalLanguage: String? = nil
+    /// Anime show Related (AniList) above More like this.
     var relatedAnime: (year: Int?, movie: Bool)? = nil
     /// The show page's "See all" (its Cast and crew page).
     var seeAll: ShowPageRoute? = nil
     @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
+    @State private var awardHistoryRoute: CatalogRoute?
     @State private var cast: [CastPerson] = []
     @State private var related: [CatalogItem] = []
     @State private var failure: String?
     var body: some View {
         // Design: sections 42 pt apart, 22 pt headings, 111 pt tiles (radius 18) 12 pt apart.
         VStack(alignment: .leading, spacing: 42) {
-            if let anime, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: anime.year, movie: anime.movie, tmdbID: route.id, seeAll: seeAll) }
+            if let characters, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: characters.year, movie: characters.movie, tmdbID: route.id, originalLanguage: originalLanguage, seeAll: seeAll) }
             if !cast.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -735,8 +866,11 @@ struct CastAndRelated: View {
                 }.scrollIndicators(.hidden).scrollClipDisabled()
               }
             }
+            if awardHistoryRoute == route, let sourceTitle {
+                TitleAwardsSection(route: route, title: sourceTitle, imdbID: awardsIMDbID)
+            }
             // Anime: its sequels, side stories and the like (AniList), just above More like this.
-            if let info = relatedAnime ?? anime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: info.year, movie: info.movie) }
+            if let info = relatedAnime, let sourceTitle { AnimeRelatedRow(title: sourceTitle, year: info.year, movie: info.movie) }
             if !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -752,7 +886,20 @@ struct CastAndRelated: View {
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
-        }.task(id: route) { await load() }
+        }
+        .task(id: route) { await load() }
+        .task(id: "\(route.kind.rawValue):\(route.id):\(awardsIMDbID ?? "")") {
+            guard sourceTitle != nil, awardHistoryRoute != route else { return }
+            let history = TitleAwardHistory.shared
+            let local = try? await history.titleRecords(route)
+            guard !Task.isCancelled else { return }
+            if local?.isEmpty == false {
+                awardHistoryRoute = route
+            } else if !store.isPreview {
+                let credits = try? await history.peopleRecords(route, imdbID: awardsIMDbID)
+                if !Task.isCancelled, credits?.isEmpty == false { awardHistoryRoute = route }
+            }
+        }
     }
     @ViewBuilder private func relatedLink(_ item: CatalogItem) -> some View {
         if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {
