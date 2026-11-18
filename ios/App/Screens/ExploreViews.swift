@@ -101,6 +101,8 @@ private struct DailyDiscoveryHero: View {
                     Image(systemName: "chevron.right").font(.caption.bold())
                 }
                 .font(.subheadline.weight(.semibold))
+                // The theme's accent (blue by default), as the app's other links.
+                .foregroundStyle(ThemeStore.accent)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
