@@ -54,6 +54,8 @@ jobs:
         env:
           # Optional repository secrets; without them the app asks for its own keys.
           TWILDIARY_TMDB_KEY: ${{ secrets.TWILDIARY_TMDB_KEY }}
+          # TheTVDB key (Awards, franchises); local builds read it from .local/keys.env instead.
+          TWILDIARY_TVDB_KEY: ${{ secrets.TWILDIARY_TVDB_KEY }}
           # Up to four Gemini keys, taken in turn by the app (empty ones are skipped).
           TWILDIARY_GEMINI_KEY: ${{ secrets.TWILDIARY_GEMINI_KEY }},${{ secrets.TWILDIARY_GEMINI_KEY_2 }},${{ secrets.TWILDIARY_GEMINI_KEY_3 }},${{ secrets.TWILDIARY_GEMINI_KEY_4 }}
           # Up to four Groq keys (the AI backup), the same way.

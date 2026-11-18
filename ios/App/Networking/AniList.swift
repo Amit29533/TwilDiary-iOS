@@ -226,6 +226,8 @@ struct AnimeAiring: Sendable, Hashable {
 }
 
 actor AniListClient {
+    /// The most pages of a full cast read (50 characters each), a page every two seconds.
+    static let maxCharacterPages = 40
     static let shared = AniListClient()
     private var characterLists: [String: [AniCharacter]] = [:]
     private var details: [Int: AniCharacterDetail] = [:]
@@ -397,6 +399,11 @@ actor AniListClient {
             }
             guard full, connection.pageInfo.hasNextPage else { break }
             guard list.count > countBefore else { throw APIError.message("AniList returned a repeated credits page. Please try again.") }
+            // AniList allows 30 requests a minute for now: a page every two seconds, as the AniList
+            // sync paces itself, and no more than 40 pages (2,000 characters). A huge cast read
+            // page after page at once ran into the limit and failed whole (2026-11-19).
+            guard pageNumber < Self.maxCharacterPages else { break }
+            try await Task.sleep(for: .seconds(2.1))
             pageNumber += 1
         }
         try Task.checkCancellation()
