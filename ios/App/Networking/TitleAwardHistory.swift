@@ -10,9 +10,75 @@ struct TitleAwardRecord: Codable, Hashable, Sendable {
     var recipient: String? = nil
 }
 
+/// One name for each ceremony and category, whichever source a record came from: the bundled
+/// archive says "BAFTA Film Awards" and "Best Adapted Screenplay", Wikidata "British Academy Film
+/// Awards" (or nothing) and "Academy Award for Best Writing, Adapted Screenplay", so the same award
+/// was listed twice (Oppenheimer, 2026-11-19).
+enum AwardNames {
+    private static let ceremonies: [String: String] = [
+        "academy award": "Academy Awards", "academy awards": "Academy Awards", "oscars": "Academy Awards",
+        "primetime emmy award": "Emmy Awards", "primetime emmy awards": "Emmy Awards", "emmy awards": "Emmy Awards",
+        "golden globe award": "Golden Globes", "golden globe awards": "Golden Globes", "golden globes": "Golden Globes",
+        "british academy film awards": "BAFTA Film Awards", "british academy film award": "BAFTA Film Awards",
+        "bafta film awards": "BAFTA Film Awards", "bafta awards": "BAFTA Film Awards",
+        "critics' choice awards": "Critics Choice Awards", "critics choice awards": "Critics Choice Awards",
+        "critics' choice movie awards": "Critics Choice Awards", "broadcast film critics association award": "Critics Choice Awards",
+        "broadcast film critics association awards": "Critics Choice Awards",
+        "screen actors guild award": "Actor Awards", "screen actors guild awards": "Actor Awards", "actor awards": "Actor Awards"
+    ]
+    /// Categories that carry their ceremony's name ("BAFTA Award for Best Direction").
+    private static let prefixes: [(String, String)] = [
+        ("Academy Award for ", "Academy Awards"), ("Golden Globe Award for ", "Golden Globes"),
+        ("Primetime Emmy Award for ", "Emmy Awards"), ("BAFTA Award for ", "BAFTA Film Awards"),
+        ("Critics' Choice Movie Award for ", "Critics Choice Awards"), ("Critics' Choice Television Award for ", "Critics Choice Awards"),
+        ("Broadcast Film Critics Association Award for ", "Critics Choice Awards"), ("Screen Actors Guild Award for ", "Actor Awards")
+    ]
+    private static let categories: [String: String] = [
+        "best writing, adapted screenplay": "Best Adapted Screenplay", "best writing, original screenplay": "Best Original Screenplay",
+        "best direction": "Best Director", "best actor in a leading role": "Best Actor", "best actress in a leading role": "Best Actress",
+        "best actor in a supporting role": "Best Supporting Actor", "best actress in a supporting role": "Best Supporting Actress"
+    ]
+    static func normalized(_ record: TitleAwardRecord) -> TitleAwardRecord {
+        var ceremony = ceremonies[record.ceremony.lowercased()] ?? record.ceremony
+        var category = record.category.replacingOccurrences(of: " - ", with: " \u{2013} ").replacingOccurrences(of: " \u{2014} ", with: " \u{2013} ")
+        if let (prefix, named) = prefixes.first(where: { category.hasPrefix($0.0) }) {
+            category = String(category.dropFirst(prefix.count))
+            category = category.prefix(1).uppercased() + category.dropFirst()
+            // The award's own name says the ceremony when its family is missing ("Other awards").
+            if ceremony == "Other awards" { ceremony = named }
+        }
+        category = categories[category.lowercased()] ?? category
+        return TitleAwardRecord(year: record.year, ceremony: ceremony, category: category, won: record.won, recipient: record.recipient)
+    }
+    /// The bundled archive's records and Wikidata's credits as one list. For a film, a credit dated
+    /// a year away from the only edition of that ceremony the archive has takes the archive's year:
+    /// Wikidata dates some Golden Globes by the film's year (2023) and others by the ceremony's (2024).
+    static func merge(archive: [TitleAwardRecord], people: [TitleAwardRecord], movie: Bool) -> [TitleAwardRecord] {
+        let titles = archive.map(normalized)
+        var years: [String: Set<Int>] = [:]
+        for row in titles { if let year = row.year { years[row.ceremony, default: []].insert(year) } }
+        let credits = people.map(normalized).map { row -> TitleAwardRecord in
+            guard movie, let year = row.year, let known = years[row.ceremony], !known.contains(year) else { return row }
+            let near = known.filter { abs($0 - year) == 1 }
+            guard near.count == 1, let snapped = near.first else { return row }
+            return TitleAwardRecord(year: snapped, ceremony: row.ceremony, category: row.category, won: row.won, recipient: row.recipient)
+        }.map { row -> TitleAwardRecord in
+            // The archive's fuller name for the same award ("Best Original Score – Motion Picture"
+            // for Wikidata's "Best Original Score"), when that edition has exactly one.
+            let fuller = Set(titles.filter { $0.ceremony == row.ceremony && $0.year == row.year && $0.category.hasPrefix(row.category + " \u{2013} ") }.map(\.category))
+            guard fuller.count == 1, let name = fuller.first else { return row }
+            return TitleAwardRecord(year: row.year, ceremony: row.ceremony, category: name, won: row.won, recipient: row.recipient)
+        }
+        return titles + credits
+    }
+}
+
 actor TitleAwardHistory {
     static let shared = TitleAwardHistory()
     private var cachedPeople: [String: (Date, [TitleAwardRecord])] = [:]
+    private static var folder: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("TitleAwardCredits", isDirectory: true)
+    }
 
     /// A single primary-key read from the bundled archive, also available offline.
     func titleRecords(_ route: CatalogRoute) throws -> [TitleAwardRecord] {
@@ -56,6 +122,14 @@ actor TitleAwardHistory {
         }
         let key = "\(property):\(value)"
         if let (at, saved) = cachedPeople[key], Date.now.timeIntervalSince(at) < 86_400 { return saved }
+        // Kept on the phone a week (none found too), so a title page doesn't ask Wikidata every time.
+        let file = Self.folder?.appendingPathComponent(key.replacingOccurrences(of: ":", with: "-") + ".json")
+        if let file, let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+           let date = values.contentModificationDate, Date.now.timeIntervalSince(date) < 604_800,
+           let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode([TitleAwardRecord].self, from: data) {
+            cachedPeople[key] = (date, saved)
+            return saved
+        }
         let query = """
         SELECT ?awardLabel ?whoLabel ?date ?familyLabel ?won WHERE {
           { SELECT (SAMPLE(?candidate) AS ?work) WHERE { ?candidate wdt:\(property) "\(value)" } HAVING(COUNT(DISTINCT ?candidate) = 1) }
@@ -65,7 +139,7 @@ actor TitleAwardHistory {
           FILTER NOT EXISTS { ?s wikibase:rank wikibase:DeprecatedRank }
           OPTIONAL { ?s pq:P585 ?date }
           OPTIONAL { ?award wdt:P361 ?family }
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". }
         }
         """
         var parts = URLComponents(string: "https://query.wikidata.org/sparql")
@@ -73,7 +147,7 @@ actor TitleAwardHistory {
         guard let url = parts?.url else { throw APIError.message("The credits request is unavailable.") }
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.setValue("application/sparql-results+json", forHTTPHeaderField: "Accept")
-        request.setValue("TwilDiary/1.0 (iOS; https://github.com/Amit29533/TwilDiary-iOS)", forHTTPHeaderField: "User-Agent")
+        request.setValue("TwilDiary/1.0 (iOS app)", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw APIError.message("Individual award credits couldn’t be loaded.")
@@ -93,22 +167,17 @@ actor TitleAwardHistory {
             guard let category = label("awardLabel"), let person = label("whoLabel"),
                   let flag = row["won"]?.value, let won = Bool(flag) else { return nil }
             let year = row["date"].flatMap { Int($0.value.prefix(4)) }
-            var family = label("familyLabel")
-            var categoryName = category
-            // Some Wikidata categories name the ceremony explicitly but omit the family relation.
-            let prefixes = [("Academy Award for ", "Academy Awards"),
-                            ("Golden Globe Award for ", "Golden Globes"),
-                            ("Primetime Emmy Award for ", "Primetime Emmy Awards")]
-            if let (prefix, ceremony) = prefixes.first(where: { category.hasPrefix($0.0) }) {
-                categoryName = String(category.dropFirst(prefix.count))
-                family = ceremony
-            }
-            return .init(year: year, ceremony: family ?? "Other awards", category: categoryName,
-                         won: won, recipient: person)
+            // The ceremony from the award's family, else its own name (AwardNames).
+            return AwardNames.normalized(.init(year: year, ceremony: label("familyLabel") ?? "Other awards", category: category,
+                                               won: won, recipient: person))
         }
         try Task.checkCancellation()
         if cachedPeople.count >= 200 { cachedPeople.removeAll(keepingCapacity: true) }
         cachedPeople[key] = (.now, rows)
+        if let folder = Self.folder, let file, let data = try? JSONEncoder().encode(rows) {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
         return rows
     }
 }

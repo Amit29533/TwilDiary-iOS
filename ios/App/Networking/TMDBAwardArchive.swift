@@ -70,6 +70,23 @@ enum TMDBAwardArchive {
         let name: String?
         let profile_path: String?
         let poster_path: String?
+        /// A person's films (titles and release days only), to name the one an award was for.
+        let movie_credits: Credits?
+        struct Credits: Codable {
+            let cast: [Film]?
+            let crew: [Film]?
+        }
+        struct Film: Codable {
+            let title: String?
+            let release_date: String?
+        }
+        /// The archive lists a person award by the person only ("Cillian Murphy", not for which
+        /// film): their one film released that year, if there's exactly one.
+        func onlyFilm(released year: Int) -> String? {
+            let films = (movie_credits?.cast ?? []) + (movie_credits?.crew ?? [])
+            let titles = Set(films.filter { $0.release_date?.prefix(4) == String(year).prefix(4) }.compactMap(\.title).filter { !$0.isEmpty })
+            return titles.count == 1 ? titles.first : nil
+        }
     }
 
     private static let cache: NSCache<NSString, NSData> = {
@@ -84,14 +101,17 @@ enum TMDBAwardArchive {
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("TMDBAwardLabels", isDirectory: true)
         let suffix = language.filter { $0.isLetter || $0.isNumber || $0 == "-" }
-        let file = folder?.appendingPathComponent("\(subject.kind.rawValue)-\(subject.id)-\(suffix).json")
+        // "-2": people are kept with their films since the person-award fix.
+        let file = folder?.appendingPathComponent("\(subject.kind.rawValue)-\(subject.id)-\(suffix)-2.json")
         if let file, let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
            let date = values.contentModificationDate, Date.now.timeIntervalSince(date) < 604_800,
            let saved = try? Data(contentsOf: file), let label = try? JSONDecoder().decode(LabelData.self, from: saved) {
             cache.setObject(saved as NSData, forKey: key, cost: saved.count)
             return label
         }
-        let data = try await TMDBDirect.data(subject.path, query: ["language": language], token: token)
+        var query = ["language": language]
+        if subject.kind == .person { query["append_to_response"] = "movie_credits" }
+        let data = try await TMDBDirect.data(subject.path, query: query, token: token)
         let label = try JSONDecoder().decode(LabelData.self, from: data)
         if let compact = try? JSONEncoder().encode(label) {
             cache.setObject(compact as NSData, forKey: key, cost: compact.count)

@@ -71,4 +71,19 @@ import TwilDiaryCore
         let hint = SemanticSearch.retryHint(groq, response)
         XCTAssertEqual(hint.after, 12); XCTAssertTrue(hint.daily)
     }
+
+    /// The suggestion is found by its name without punctuation or a subtitle, a year either side.
+    func testFindsTheSuggestedTitleDespiteSubtitlesPunctuationAndAYearOff() {
+        func row(_ id: Int, _ name: String, _ date: String) -> [String: Any] { ["id": id, "name": name, "first_air_date": date] }
+        let frieren = SemanticSearch.Suggestion(title: "Frieren", year: 2023, type: "tv", why: "")
+        XCTAssertEqual(SemanticSearch.pick([row(209867, "Frieren: Beyond Journey's End", "2023-09-29")], for: frieren, tv: true)?.id, 209867)
+        let late = SemanticSearch.Suggestion(title: "Spy x Family", year: 2021, type: "tv", why: "")
+        XCTAssertEqual(SemanticSearch.pick([row(120089, "SPY×FAMILY", "2022-04-09")], for: late, tv: true)?.id, 120089, "a year off, another way of writing it")
+        let exact = SemanticSearch.Suggestion(title: "Shogun", year: 2024, type: "tv", why: "")
+        let rows = [row(1, "Shōgun", "1980-09-15"), row(126308, "Shōgun", "2024-02-27")]
+        XCTAssertEqual(SemanticSearch.pick(rows, for: exact, tv: true)?.id, 126308, "the year decides between remakes")
+        let wrong = SemanticSearch.Suggestion(title: "Dark", year: 2017, type: "tv", why: "")
+        XCTAssertNil(SemanticSearch.pick([row(5, "Dark Matter", "2015-06-12")], for: wrong, tv: true), "two years off")
+        XCTAssertNil(SemanticSearch.pick([row(6, "The Darkness", "2017-01-01")], for: wrong, tv: true), "another name")
+    }
 }

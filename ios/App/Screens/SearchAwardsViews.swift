@@ -290,11 +290,17 @@ private struct AwardEditionPage: View {
                         Text(name).font(.subheadline.weight(.semibold))
                             .foregroundStyle(HomeStyle.secondary).accessibilityAddTraits(.isHeader)
                     }
-                    AwardRecipientGroup(nominees: group.nominees)
+                    AwardRecipientGroup(nominees: group.nominees, filmYear: filmYear(section.category, edition))
                         .id(edition)
                 }
             }
         }
+    }
+
+    /// The release year of the films a film award's edition honours (the year before it).
+    private func filmYear(_ category: SearchAwardCategory, _ edition: SearchAwardEditionIndex.Edition) -> Int? {
+        guard case .year(let year) = edition else { return nil }
+        return ceremony.id == 1 || ceremony.id == 11 || category.media == [.movie] ? year - 1 : nil
     }
 
     private var mediumSelection: Binding<MediaKind?> {
@@ -381,13 +387,14 @@ private struct AwardFilterPill: View {
 
 private struct AwardRecipientGroup: View {
     let nominees: [SearchAwardNominee]
+    var filmYear: Int? = nil
     @State private var expanded = false
 
     var body: some View {
         let winners = nominees.filter { $0.isWinner == true }
         let others = nominees.filter { $0.isWinner != true }
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(winners) { AwardNomineeRow(nominee: $0).id($0) }
+            ForEach(winners) { AwardNomineeRow(nominee: $0, filmYear: filmYear).id($0) }
             if !winners.isEmpty && !others.isEmpty {
                 Button {
                     expanded.toggle()
@@ -400,7 +407,7 @@ private struct AwardRecipientGroup: View {
                 }.accessibilityIdentifier("search-award-expand-\(winners[0].id)")
             }
             if winners.isEmpty || expanded {
-                ForEach(others) { AwardNomineeRow(nominee: $0).id($0) }
+                ForEach(others) { AwardNomineeRow(nominee: $0, filmYear: filmYear).id($0) }
             }
         }.cardSurface(14)
     }
@@ -408,6 +415,7 @@ private struct AwardRecipientGroup: View {
 
 private struct AwardNomineeRow: View {
     let nominee: SearchAwardNominee
+    var filmYear: Int? = nil
     @Environment(DiaryStore.self) private var store
     @Environment(\.locale) private var locale
     @State private var englishWorkTitle: String?
@@ -423,7 +431,10 @@ private struct AwardNomineeRow: View {
     }
 
     private var subtitle: String? {
-        nominee.creditedName == nil ? nominee.subtitle : englishWorkTitle ?? nominee.subtitle
+        if nominee.tmdb?.kind == .person {
+            return filmYear.flatMap { tmdbLabel?.onlyFilm(released: $0) }.map { "for " + $0 }
+        }
+        return nominee.creditedName == nil ? nominee.subtitle : englishWorkTitle ?? nominee.subtitle
     }
 
     var body: some View {

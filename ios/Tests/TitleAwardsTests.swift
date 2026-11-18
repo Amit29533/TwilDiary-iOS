@@ -27,4 +27,39 @@ import TwilDiaryCore
         XCTAssertEqual(Set(TitleAwardsPage.sortedRecords([work, nomination, second, first, earlier])),
                        Set([first, second, earlier]))
     }
+
+    /// Oppenheimer (2026-11-19): the archive's "BAFTA Film Awards" and Wikidata's "British Academy
+    /// Film Awards" (or no family at all) are one ceremony; "Best Writing, Adapted Screenplay" is
+    /// "Best Adapted Screenplay"; a Golden Globe Wikidata dates 2023 belongs to the archive's 2024.
+    func testArchiveAndWikidataNameTheSameAwardTheSameWay() {
+        let archive = [
+            TitleAwardRecord(year: 2024, ceremony: "BAFTA Film Awards", category: "Best Cinematography", won: true),
+            TitleAwardRecord(year: 2024, ceremony: "Academy Awards", category: "Best Adapted Screenplay", won: false),
+            TitleAwardRecord(year: 2024, ceremony: "Golden Globes", category: "Best Original Score - Motion Picture", won: true)
+        ]
+        let people = [
+            TitleAwardRecord(year: 2024, ceremony: "Other awards", category: "BAFTA Award for Best Cinematography", won: true, recipient: "Hoyte van Hoytema"),
+            TitleAwardRecord(year: 2024, ceremony: "British Academy Film Awards", category: "BAFTA Award for Best Direction", won: true, recipient: "Christopher Nolan"),
+            TitleAwardRecord(year: 2024, ceremony: "Other awards", category: "Academy Award for Best Writing, Adapted Screenplay", won: false, recipient: "Christopher Nolan"),
+            TitleAwardRecord(year: 2023, ceremony: "Golden Globes", category: "Golden Globe Award for Best Original Score", won: true, recipient: "Ludwig Göransson")
+        ]
+        let merged = AwardNames.merge(archive: archive, people: people, movie: true)
+        let credits = Array(merged.suffix(4))
+        XCTAssertEqual(credits[0].ceremony, "BAFTA Film Awards")
+        XCTAssertEqual(credits[0].category, "Best Cinematography")
+        XCTAssertEqual(credits[1].ceremony, "BAFTA Film Awards")
+        XCTAssertEqual(credits[1].category, "Best Director")
+        XCTAssertEqual(credits[2].ceremony, "Academy Awards")
+        XCTAssertEqual(credits[2].category, "Best Adapted Screenplay")
+        XCTAssertEqual(credits[3].year, 2024, "the archive's edition")
+        XCTAssertEqual(credits[3].category, "Best Original Score \u{2013} Motion Picture", "the archive's fuller name for it")
+        XCTAssertFalse(TitleAwardsPage.sortedRecords(merged).contains { $0.recipient == nil && $0.category.hasPrefix("Best Original Score") })
+        XCTAssertEqual(merged[2].category, "Best Original Score \u{2013} Motion Picture", "one kind of dash")
+        // Named credits stand in for the archive's own row of the same award.
+        let shown = TitleAwardsPage.sortedRecords(merged)
+        XCTAssertFalse(shown.contains { $0.recipient == nil && $0.category == "Best Cinematography" })
+        XCTAssertFalse(shown.contains { $0.recipient == nil && $0.category == "Best Adapted Screenplay" })
+        // A show keeps Wikidata's year: its seasons are honoured year after year.
+        XCTAssertEqual(AwardNames.merge(archive: archive, people: [people[3]], movie: false).last?.year, 2023)
+    }
 }

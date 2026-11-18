@@ -124,14 +124,15 @@ struct TitleAwardsPage: View {
         do { local = try await TitleAwardHistory.shared.titleRecords(route) }
         catch { failures.append("Title awards couldn’t be loaded.") }
         guard !Task.isCancelled else { return }
-        if records.isEmpty { records = Self.sortedRecords(local) }
+        let movie = route.kind == .movie
+        if records.isEmpty { records = Self.sortedRecords(AwardNames.merge(archive: local, people: [], movie: movie)) }
         var people: [TitleAwardRecord] = []
         if !store.isPreview {
             do { people = try await TitleAwardHistory.shared.peopleRecords(route, imdbID: imdbID) }
             catch { failures.append("Individual award credits couldn’t be loaded.") }
         }
         guard !Task.isCancelled else { return }
-        records = Self.sortedRecords(local + people)
+        records = Self.sortedRecords(AwardNames.merge(archive: local, people: people, movie: movie))
         issue = failures.isEmpty ? nil : failures.joined(separator: " ")
         loading = false
     }

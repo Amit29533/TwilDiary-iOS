@@ -188,16 +188,42 @@ import TwilDiaryCore
         for query in queries {
             guard let found = try? await TMDBDirect.object(path, query: query, token: token),
                   let rows = found["results"] as? [[String: Any]] else { continue }
-            let verified = rows.compactMap { row -> CatalogItem? in
-                let names = ["name", "title", "original_name", "original_title"].compactMap { row[$0] as? String }
-                guard names.contains(where: { $0.localizedCaseInsensitiveCompare(suggestion.title) == .orderedSame }),
-                      let item = TMDBDirect.catalogItem(row, kind: tv ? .tv : .movie),
-                      suggestion.year == nil || item.year == suggestion.year else { return nil }
-                return item
-            }
-            if verified.count == 1 { return verified[0] }
+            if let item = pick(rows, for: suggestion, tv: tv) { return item }
         }
         return nil
+    }
+
+    /// TMDB's result that is the suggested title: the same name, ignoring case, accents and
+    /// punctuation, or the name with a subtitle ("Frieren" → "Frieren: Beyond Journey's End"),
+    /// from the suggested year or one either side (a show from late December, a film's festival
+    /// year). The closest name, then the closest year, wins; a tie goes to TMDB's first.
+    /// Exact matches only found too few ("Frieren" and a year off were dropped).
+    static func pick(_ rows: [[String: Any]], for suggestion: Suggestion, tv: Bool) -> CatalogItem? {
+        let wanted = comparable(suggestion.title)
+        guard !wanted.isEmpty else { return nil }
+        var best: (item: CatalogItem, score: Int)?
+        for row in rows {
+            let names = ["name", "title", "original_name", "original_title"].compactMap { row[$0] as? String }.map(comparable)
+            let nameScore = names.contains(wanted) ? 2 : names.contains(where: { $0.hasPrefix(wanted + " ") || wanted.hasPrefix($0 + " ") && $0.count >= 4 }) ? 1 : 0
+            guard nameScore > 0, let item = TMDBDirect.catalogItem(row, kind: tv ? .tv : .movie) else { continue }
+            let yearScore: Int
+            switch (suggestion.year, item.year) {
+            case (nil, _): yearScore = 1
+            case let (wantedYear?, year?) where year == wantedYear: yearScore = 2
+            case let (wantedYear?, year?) where abs(year - wantedYear) == 1: yearScore = 1
+            default: continue
+            }
+            let score = nameScore * 10 + yearScore
+            if score > (best?.score ?? 0) { best = (item, score) }
+        }
+        return best?.item
+    }
+    /// A name for comparing: lower case, no accents, "&" as "and", "×" as "x", punctuation as spaces.
+    static func comparable(_ name: String) -> String {
+        let folded = name.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US"))
+            .replacingOccurrences(of: "&", with: " and ").replacingOccurrences(of: "\u{00D7}", with: " x ")
+        let spaced = String(folded.map { $0.isLetter || $0.isNumber ? $0 : " " })
+        return spaced.split(separator: " ").joined(separator: " ")
     }
 
     /// Asks Gemini for up to ten titles, as JSON (the reply is held to a schema).
