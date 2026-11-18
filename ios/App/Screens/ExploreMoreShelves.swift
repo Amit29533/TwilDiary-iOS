@@ -2,56 +2,266 @@ import SwiftUI
 import TwilDiaryCore
 
 // Explore's extra rows: one-tap AI prompts, CineMind's movie and show picks, Because you loved,
-// Trending from your Planned, this season's anime and Coming soon. None show in the UI-test fixture.
+// Trending from your Planned, this season's anime and Coming soon. Their data lives in
+// `ExploreFeeds`, read once a day (or once a session), so leaving Explore and coming back shows
+// the same rows straight away instead of loading them again. None show in the UI-test fixture.
+
+// MARK: Data
+
+/// What Explore's extra rows show, kept for the session (CineMind's picks also on the phone for
+/// the day), so the page doesn't reload, reshuffle or jump when you come back to it.
+@MainActor @Observable final class ExploreFeeds {
+    static let shared = ExploreFeeds()
+
+    struct Feed<Item> {
+        var items: [Item] = []
+        var loading = false
+        /// The day (or session) it was read for; nil: not read yet.
+        var loadedFor: String?
+        var failure: String?
+    }
+    struct Upcoming: Identifiable, Hashable, Sendable {
+        let item: CatalogItem
+        let day: String
+        let season: Int?
+        var id: String { item.key }
+    }
+
+    var cineMovies = Feed<CatalogItem>()
+    var cineShows = Feed<CatalogItem>()
+    var loved = Feed<CatalogItem>()
+    var lovedSeed: MediaTitle?
+    var trending = Feed<CatalogItem>()
+    var seasonal = Feed<SeasonalAnime>()
+    var comingMovies = Feed<Upcoming>()
+    var comingShows = Feed<Upcoming>()
+
+    private func day(_ store: DiaryStore) -> String { DiaryDate.day(store.now) }
+
+    // MARK: CineMind
+
+    private struct SavedPicks: Codable { let day: String; let picks: [Pick] }
+    private struct Pick: Codable {
+        let tmdb: Int; let movie: Bool; let name: String; let year: Int?; let poster: String?
+        var item: CatalogItem { CatalogItem(id: tmdb, mediaType: movie ? .movie : .tv, name: name, year: year, poster: poster) }
+    }
+    private func storageKey(_ movies: Bool) -> String { "cinemind.picks.v2." + (movies ? "movies" : "shows") }
+
+    /// CineMind's picks for your taste: up to 25 of the titles you finished or are watching, best
+    /// rated first (names, years and your ratings), and the names of titles of that kind already in
+    /// your library so it suggests something new. Once a day, kept on the phone; `force` asks again.
+    func loadCineMind(movies: Bool, store: DiaryStore, force: Bool = false) async {
+        let today = day(store)
+        var feed = movies ? cineMovies : cineShows
+        if !force {
+            if feed.loadedFor == today || feed.loading { return }
+            if let data = UserDefaults.standard.data(forKey: storageKey(movies)),
+               let saved = try? JSONDecoder().decode(SavedPicks.self, from: data) {
+                feed.items = saved.picks.map(\.item)
+                if saved.day == today { feed.loadedFor = today; set(movies, feed); return }
+            }
+        }
+        guard SemanticSearch.key != nil else { feed.loadedFor = today; set(movies, feed); return }
+        let titles = store.workspace.activeTitles
+        let taste = titles.filter { ["completed", "watching", "paused"].contains($0.status) }
+            .sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(25)
+            .map { title in [title.name + (title.year.map { " (\($0))" } ?? ""), title.score.map { "\(Int($0.rounded()))/10" }].compactMap { $0 }.joined(separator: " · ") }
+        guard taste.count >= 3 else { feed.loadedFor = today; set(movies, feed); return }
+        let have = titles.filter { $0.isSeries != movies }.prefix(200).map(\.name)
+        feed.loading = true; feed.failure = nil; set(movies, feed)
+        do {
+            let found = try await SemanticSearch.recommendations(movies: movies, taste: Array(taste), exclude: Array(have), store: store)
+            let picks = found.map { Pick(tmdb: $0.item.id, movie: $0.item.mediaType == .movie, name: $0.item.name, year: $0.item.year, poster: $0.item.artwork) }
+            feed.items = picks.map(\.item)
+            UserDefaults.standard.set(try? JSONEncoder().encode(SavedPicks(day: today, picks: picks)), forKey: storageKey(movies))
+        } catch {
+            if feed.items.isEmpty { feed.failure = error.localizedDescription }
+        }
+        feed.loading = false; feed.loadedFor = today
+        set(movies, feed)
+    }
+    private func set(_ movies: Bool, _ feed: Feed<CatalogItem>) { if movies { cineMovies = feed } else { cineShows = feed } }
+
+    // MARK: Because you loved
+
+    /// TMDB's recommendations for one of your best-rated finished titles, a different one each day.
+    func loadLoved(store: DiaryStore) async {
+        let today = day(store)
+        guard loved.loadedFor != today, !loved.loading else { return }
+        loved.loading = true
+        defer { loved.loading = false; loved.loadedFor = today }
+        let best = store.workspace.activeTitles.filter { $0.status == "completed" && $0.tmdbId != nil && ($0.score ?? 0) >= 7 }
+            .sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(10)
+        guard !best.isEmpty else { return }
+        let start = (Int(today.filter(\.isNumber)) ?? 0) % best.count
+        let order = Array(best.dropFirst(start)) + Array(best.prefix(start))
+        for candidate in order.prefix(3) {
+            guard let tmdb = candidate.tmdbId,
+                  let related = try? await store.related(CatalogRoute(kind: candidate.isSeries ? .tv : .movie, id: tmdb)) else { continue }
+            let found = related.items.filter { store.libraryIdentity($0) == nil }
+            if found.count >= 3 { lovedSeed = candidate; loved.items = found; return }
+        }
+    }
+
+    // MARK: Trending from your Planned
+
+    func loadTrending(store: DiaryStore) async {
+        let today = day(store)
+        guard trending.loadedFor != today, !trending.loading, let token = TMDBDirect.token(store) else { return }
+        let planned = store.workspace.activeTitles.filter { $0.status == "planned" && $0.tmdbId != nil }
+        guard !planned.isEmpty else { trending.loadedFor = today; return }
+        trending.loading = true
+        defer { trending.loading = false; trending.loadedFor = today }
+        var ranks: [String: Int] = [:]
+        for page in 1...3 {
+            guard let data = try? await TMDBDirect.object("trending/all/week", query: ["page": String(page), "language": "en-US"], token: token),
+                  let results = data["results"] as? [[String: Any]] else { break }
+            for (offset, row) in results.enumerated() {
+                guard let id = row["id"] as? Int, let type = row["media_type"] as? String, type == "movie" || type == "tv" else { continue }
+                let key = type + ":" + String(id)
+                if ranks[key] == nil { ranks[key] = (page - 1) * 20 + offset + 1 }
+            }
+        }
+        trending.items = planned.compactMap { title -> (CatalogItem, Int)? in
+            guard let tmdb = title.tmdbId, let rank = ranks[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] else { return nil }
+            return (CatalogItem(id: tmdb, mediaType: title.isSeries ? .tv : .movie, name: title.name, year: title.year, rating: title.communityScore,
+                                inLibraryId: title.id, poster: title.poster, backdrop: title.backdrop), rank)
+        }.sorted { $0.1 < $1.1 }.map(\.0)
+    }
+
+    // MARK: This season's anime
+
+    func loadSeasonal(store: DiaryStore) async {
+        let (season, year) = SeasonalAnime.Season.of(store.now)
+        let key = "\(season.rawValue)\(year)"
+        guard seasonal.loadedFor != key, !seasonal.loading else { return }
+        seasonal.loading = true
+        defer { seasonal.loading = false }
+        do { seasonal.items = try await AniListClient.shared.seasonal(season, year: year); seasonal.loadedFor = key }
+        catch { seasonal.failure = "This season's anime couldn't be loaded." }
+    }
+
+    // MARK: Coming soon
+
+    /// Upcoming movies in your region (TMDB), and season premieres, new shows and returning ones,
+    /// from Trakt's premieres calendar (the most followed first), each with its TMDB poster.
+    func loadComing(store: DiaryStore) async {
+        let today = day(store)
+        guard comingMovies.loadedFor != today, !comingMovies.loading else { return }
+        guard let token = TMDBDirect.token(store) else {
+            comingMovies.failure = "Coming soon needs TMDB, which isn’t set up."; comingShows.failure = comingMovies.failure
+            comingMovies.loadedFor = today; comingShows.loadedFor = today; return
+        }
+        comingMovies.loading = true; comingShows.loading = true
+        let region = (UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US").uppercased()
+        let calendar = Calendar(identifier: .gregorian)
+        func dayString(_ offset: Int) -> String { DiaryDate.day(calendar.date(byAdding: .day, value: offset, to: store.now) ?? store.now) }
+        let movieData = try? await TMDBDirect.object("discover/movie", query: [
+            "primary_release_date.gte": dayString(1), "primary_release_date.lte": dayString(90), "region": region,
+            "with_release_type": "2|3", "sort_by": "popularity.desc", "language": "en-US", "include_adult": "false"], token: token)
+        comingMovies.items = ((movieData?["results"] as? [[String: Any]]) ?? []).compactMap { row in
+            guard let item = TMDBDirect.catalogItem(row, kind: .movie), let date = row["release_date"] as? String, date.count >= 10 else { return nil }
+            return Upcoming(item: item, day: String(date.prefix(10)), season: nil)
+        }.sorted { $0.day < $1.day }
+        comingMovies.loading = false; comingMovies.loadedFor = today
+        if comingMovies.items.isEmpty { comingMovies.failure = "No upcoming movies could be loaded." }
+
+        let premieres = await Self.traktPremieres(from: dayString(0), days: 45)
+        let found = await withTaskGroup(of: Upcoming?.self) { group in
+            for premiere in premieres.prefix(24) {
+                group.addTask { await Self.poster(for: premiere, token: token) }
+            }
+            var rows: [Upcoming] = []
+            for await row in group { if let row { rows.append(row) } }
+            return rows
+        }
+        comingShows.items = found.sorted { $0.day < $1.day }
+        comingShows.loading = false; comingShows.loadedFor = today
+        if comingShows.items.isEmpty { comingShows.failure = "No upcoming shows could be loaded." }
+    }
+
+    struct Premiere: Sendable { let tmdb: Int; let day: String; let season: Int; let votes: Int }
+    /// Trakt's season premieres (a new show's first season, or a returning one's next) in the
+    /// coming days, most followed first. Trakt's public calendar needs only TwilDiary's app ID.
+    private static func traktPremieres(from start: String, days: Int) async -> [Premiere] {
+        guard let clientID = ProviderAppIDs.id(for: .trakt),
+              let url = URL(string: "https://api.trakt.tv/calendars/all/shows/premieres/\(start)/\(days)?extended=full") else { return [] }
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.setValue("2", forHTTPHeaderField: "trakt-api-version")
+        request.setValue(clientID, forHTTPHeaderField: "trakt-api-key")
+        guard let (data, response) = try? await URLSession.shared.data(for: request), (response as? HTTPURLResponse)?.statusCode == 200,
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        var seen = Set<Int>()
+        return rows.compactMap { row -> Premiere? in
+            guard let show = row["show"] as? [String: Any], let ids = show["ids"] as? [String: Any], let tmdb = ids["tmdb"] as? Int, tmdb > 0,
+                  let aired = row["first_aired"] as? String, let episode = row["episode"] as? [String: Any],
+                  let season = episode["season"] as? Int, season > 0, seen.insert(tmdb).inserted else { return nil }
+            let date = ISO8601DateFormatter.flexible(aired).map { DiaryDate.day($0) } ?? String(aired.prefix(10))
+            return Premiere(tmdb: tmdb, day: date, season: season, votes: show["votes"] as? Int ?? 0)
+        }.sorted { $0.votes > $1.votes }
+    }
+    private static func poster(for premiere: Premiere, token: String) async -> Upcoming? {
+        guard let details = try? await TMDBDirect.object("tv/\(premiere.tmdb)", query: ["language": "en-US"], token: token),
+              let item = TMDBDirect.catalogItem(details, kind: .tv) else { return nil }
+        return Upcoming(item: item, day: premiere.day, season: premiere.season)
+    }
+}
+
+private extension ISO8601DateFormatter {
+    /// Trakt's times, with or without fractions of a second.
+    static func flexible(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
+    }
+}
 
 // MARK: Shared pieces
 
-/// A row heading: the name, an optional line under it, and anything on the right.
-private struct ExploreRowHeading<Trailing: View>: View {
-    let title: String
-    var subtitle: String? = nil
-    @ViewBuilder var trailing: () -> Trailing
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let subtitle { Text(subtitle).font(.subheadline).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
-            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
-            Spacer(minLength: 0)
-            trailing()
-        }
-    }
-}
-private extension ExploreRowHeading where Trailing == EmptyView {
-    init(title: String, subtitle: String? = nil) { self.title = title; self.subtitle = subtitle; self.trailing = { EmptyView() } }
-}
-
-/// A poster with its name and one or two lines under it, a third of the row wide.
-private struct ExploreTile<Badge: View>: View {
+/// The app's standard poster tile (as `CatalogPoster`): the poster, its name and one line under it.
+struct StandardPoster: View {
     let artwork: String?
     let name: String
-    var detail: String? = nil
-    var note: String? = nil
-    @ViewBuilder var badge: () -> Badge
+    let subtitle: String
+    var score: Double? = nil
+    var subtitleTint: Color = .secondary
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Artwork(path: artwork, title: name, initialsOnly: false).aspectRatio(2 / 3, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(alignment: .topTrailing) { badge() }
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
-            if let detail { Text(detail).font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1) }
-            if let note { Text(note).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(3).multilineTextAlignment(.leading) }
-        }
-    }
-}
-private extension ExploreTile where Badge == EmptyView {
-    init(artwork: String?, name: String, detail: String? = nil, note: String? = nil) {
-        self.artwork = artwork; self.name = name; self.detail = detail; self.note = note; self.badge = { EmptyView() }
+        VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: artwork, title: name, initialsOnly: false)
+                .posterAspect()
+                .overlay(alignment: .bottomLeading) {
+                    if let score, score > 0 {
+                        HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
+                            .font(.system(size: 12)).foregroundStyle(Color(themed: "#e7ca90"))
+                            .padding(.horizontal, 5).padding(.vertical, 3).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6)).padding(6)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+            Text(subtitle).font(.system(size: 12)).foregroundStyle(subtitleTint).lineLimit(1).frame(height: 18).padding(.top, 4)
+        }.accessibilityElement(children: .combine)
     }
 }
 
-/// A horizontal row of tiles, three to a screen.
-private struct ExploreRow<Item: Identifiable, Tile: View>: View {
+/// A row heading as Explore's own: the name and the round chevron to see all.
+private struct FeedHeading<Value: Hashable>: View {
+    let title: String
+    let value: Value?
+    let identifier: String
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
+            if let value { SectionMoreLink(label: "See all " + title, value: value, identifier: identifier) }
+        }
+    }
+}
+
+/// A horizontal row of standard posters, three to a screen (as Explore's other rows).
+private struct FeedTrack<Item: Identifiable, Tile: View>: View {
     let items: [Item]
     @ViewBuilder let tile: (Item) -> Tile
     var body: some View {
@@ -59,25 +269,90 @@ private struct ExploreRow<Item: Identifiable, Tile: View>: View {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items) { item in tile(item).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
             }
-        }.scrollIndicators(.hidden).padding(.bottom, 4)
+        }.scrollIndicators(.hidden).padding(.bottom, 10)
     }
+}
+
+/// A placeholder the height of a row, so the page doesn't jump while a row loads.
+private struct FeedPlaceholder: View {
+    var body: some View { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf) }
 }
 
 /// Opens a TMDB title: its library page when it's in your diary.
-private struct CatalogLink<Label: View>: View {
+private struct CatalogTile: View {
     let item: CatalogItem
-    @ViewBuilder let label: () -> Label
+    var subtitle: String? = nil
     @Environment(DiaryStore.self) private var store
     var body: some View {
-        if let id = store.libraryIdentity(item) { NavigationLink(value: id) { label() }.buttonStyle(.springPress) }
-        else { NavigationLink(value: item.route) { label() }.buttonStyle(.springPress) }
+        Group {
+            if let id = item.inLibraryId ?? store.libraryIdentity(item) { NavigationLink(value: id) { label } }
+            else { NavigationLink(value: item.route) { label } }
+        }.buttonStyle(.springPress).accessibilityIdentifier("explore-feed-" + item.key)
+    }
+    @ViewBuilder private var label: some View {
+        if let subtitle { StandardPoster(artwork: item.artwork, name: item.name, subtitle: subtitle, score: item.rating) }
+        else { CatalogPoster(item: item) }
     }
 }
 
-private extension CatalogItem {
-    var kindLabel: String {
-        if isAnime == true || genres?.contains("Animation") == true { return mediaType == .movie ? "Anime movie" : "Anime" }
-        return mediaType == .movie ? "Movie" : "Show"
+private struct Keyed: Identifiable { let item: CatalogItem; var id: String { item.key } }
+
+// MARK: Routes and the see-all page
+
+/// A see-all page for one of Explore's extra rows.
+struct ExploreFeedRoute: Hashable {
+    enum Kind: String, Hashable { case cineMovies, cineShows, trending, seasonal, comingMovies, comingShows }
+    let kind: Kind
+}
+
+struct ExploreFeedPage: View {
+    let route: ExploreFeedRoute
+    @Environment(DiaryStore.self) private var store
+    private var feeds: ExploreFeeds { .shared }
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
+
+    private var title: String {
+        switch route.kind {
+        case .cineMovies: "Movies recommended by CineMind"
+        case .cineShows: "Shows recommended by CineMind"
+        case .trending: "Trending from your Planned"
+        case .seasonal: "This season's anime"
+        case .comingMovies: "Coming soon · Movies"
+        case .comingShows: "Coming soon · Shows"
+        }
+    }
+    private var symbol: String {
+        switch route.kind {
+        case .cineMovies, .cineShows: "sparkles"
+        case .trending: "chart.line.uptrend.xyaxis"
+        case .seasonal: "sparkles.tv"
+        case .comingMovies, .comingShows: "calendar"
+        }
+    }
+
+    var body: some View {
+        ExploreBrowsePage(title: title, symbol: symbol, artwork: artwork) {
+            LazyVGrid(columns: columns, spacing: 18) {
+                switch route.kind {
+                case .cineMovies: ForEach(feeds.cineMovies.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
+                case .cineShows: ForEach(feeds.cineShows.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
+                case .trending: ForEach(feeds.trending.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
+                case .seasonal: ForEach(feeds.seasonal.items) { SeasonalTile(anime: $0, now: store.now) }
+                case .comingMovies: ForEach(feeds.comingMovies.items) { ComingTile(entry: $0) }
+                case .comingShows: ForEach(feeds.comingShows.items) { ComingTile(entry: $0) }
+                }
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
+        }
+    }
+    private var artwork: String? {
+        switch route.kind {
+        case .cineMovies: ExploreBrowseHeader.artwork(in: feeds.cineMovies.items)
+        case .cineShows: ExploreBrowseHeader.artwork(in: feeds.cineShows.items)
+        case .trending: ExploreBrowseHeader.artwork(in: feeds.trending.items)
+        case .seasonal: feeds.seasonal.items.first?.cover
+        case .comingMovies: ExploreBrowseHeader.artwork(in: feeds.comingMovies.items.map(\.item))
+        case .comingShows: ExploreBrowseHeader.artwork(in: feeds.comingShows.items.map(\.item))
+        }
     }
 }
 
@@ -96,8 +371,8 @@ struct ExploreAIArea: View {
         if !store.isPreview {
             VStack(alignment: .leading, spacing: 22) {
                 ExploreAIPrompts()
-                CineMindPicksRow(movies: true)
-                CineMindPicksRow(movies: false)
+                CineMindRow(movies: true)
+                CineMindRow(movies: false)
             }
         }
     }
@@ -117,7 +392,7 @@ private struct ExploreAIPrompts: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ExploreRowHeading(title: "Ask CineMind", subtitle: "One tap, AI picks")
+            Text("Ask CineMind").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(Self.prompts, id: \.label) { prompt in
@@ -147,39 +422,18 @@ struct ExploreAIPromptPage: View {
     }
 }
 
-/// CineMind's picks of movies (or shows) for your taste: worked out once a day from up to 25 of
-/// the titles you finished or are watching, best rated first (names, years and your ratings
-/// only), kept on this iPhone; Refresh asks again.
-private struct CineMindPicksRow: View {
+private struct CineMindRow: View {
     let movies: Bool
     @Environment(DiaryStore.self) private var store
-    @State private var picks: [Pick] = []
-    @State private var loading = false
-    @State private var failure: String?
-
-    struct Pick: Codable, Hashable, Identifiable {
-        let tmdb: Int
-        let movie: Bool
-        let name: String
-        let year: Int?
-        let poster: String?
-        let why: String
-        var id: String { (movie ? "movie:" : "tv:") + String(tmdb) }
-        var item: CatalogItem { CatalogItem(id: tmdb, mediaType: movie ? .movie : .tv, name: name, year: year, poster: poster) }
-    }
-    private struct Saved: Codable { let day: String; let picks: [Pick] }
-    private var storageKey: String { "cinemind.picks." + (movies ? "movies" : "shows") }
+    private var feeds: ExploreFeeds { .shared }
 
     var body: some View {
-        let shown = picks.filter { store.libraryIdentity($0.item) == nil }
+        let feed = movies ? feeds.cineMovies : feeds.cineShows
+        let shown = feed.items.filter { store.libraryIdentity($0) == nil }
+        let title = movies ? "Movies recommended by CineMind" : "Shows recommended by CineMind"
         VStack(alignment: .leading, spacing: 10) {
-            ExploreRowHeading(title: movies ? "Movies for you" : "Shows for you", subtitle: "Recommended by CineMind") {
-                if SemanticSearch.key != nil {
-                    Button { Task { await load(force: true) } } label: {
-                        Image(systemName: "arrow.clockwise").font(.system(size: 15, weight: .semibold)).frame(width: 44, height: 44)
-                    }.disabled(loading).accessibilityLabel("Ask CineMind again")
-                }
-            }
+            FeedHeading(title: title, value: shown.isEmpty ? nil : ExploreFeedRoute(kind: movies ? .cineMovies : .cineShows),
+                        identifier: "explore-more-cinemind-" + (movies ? "movies" : "shows"))
             if SemanticSearch.key == nil {
                 NavigationLink(value: AppDestination.apis) {
                     HStack(spacing: 10) {
@@ -190,49 +444,17 @@ private struct CineMindPicksRow: View {
                     }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
                 }.buttonStyle(.springPress)
             } else if !shown.isEmpty {
-                ExploreRow(items: shown) { pick in
-                    CatalogLink(item: pick.item) { ExploreTile(artwork: pick.poster, name: pick.name, detail: pick.year.map(String.init), note: pick.why) }
-                        .accessibilityIdentifier("explore-cinemind-" + pick.id)
-                }
-            } else if loading {
-                DiaryLoadingPlaceholder(label: "CineMind is picking", layout: .posterShelf)
-            } else if let failure {
-                Text(failure).font(.system(size: 13)).foregroundStyle(.secondary)
+                FeedTrack(items: shown.map(Keyed.init)) { CatalogTile(item: $0.item) }
+            } else if feed.loading || feed.loadedFor == nil {
+                FeedPlaceholder()
             } else {
-                Text("Rate or finish a few titles and CineMind will pick more for you.").font(.system(size: 13)).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Text(feed.failure ?? "CineMind has no new picks right now.").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Ask again") { Task { await feeds.loadCineMind(movies: movies, store: store, force: true) } }.font(.system(size: 13)).frame(minHeight: 44)
+                }
             }
-        }.task(id: store.sessionRevision) { await load(force: false) }
-    }
-
-    private var taste: [String] {
-        let rows = store.workspace.activeTitles.filter { ["completed", "watching", "paused"].contains($0.status) }
-            .sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(25)
-        return rows.map { title in
-            [title.name + (title.year.map { " (\($0))" } ?? ""), title.score.map { "\(Int($0.rounded()))/10" }].compactMap { $0 }.joined(separator: " · ")
-        }
-    }
-
-    private func load(force: Bool) async {
-        let today = DiaryDate.day(store.now)
-        if !force, picks.isEmpty, let data = UserDefaults.standard.data(forKey: storageKey),
-           let saved = try? JSONDecoder().decode(Saved.self, from: data) {
-            picks = saved.picks
-            if saved.day == today { return }
-        }
-        guard !loading, SemanticSearch.key != nil, taste.count >= 3 else { return }
-        loading = true; failure = nil
-        defer { loading = false }
-        do {
-            let found = try await SemanticSearch.recommendations(movies: movies, taste: taste, store: store)
-            guard !Task.isCancelled else { return }
-            let fresh = found.map { Pick(tmdb: $0.item.id, movie: $0.item.mediaType == .movie, name: $0.item.name, year: $0.item.year, poster: $0.item.artwork, why: $0.why) }
-            if !fresh.isEmpty {
-                picks = fresh
-                UserDefaults.standard.set(try? JSONEncoder().encode(Saved(day: today, picks: fresh)), forKey: storageKey)
-            }
-        } catch {
-            if !Task.isCancelled, picks.isEmpty { failure = error.localizedDescription }
-        }
+        }.task(id: DiaryDate.day(store.now)) { await feeds.loadCineMind(movies: movies, store: store) }
     }
 }
 
@@ -254,193 +476,148 @@ struct ExploreMoreShelves: View {
     }
 }
 
-/// TMDB's recommendations for one of your best-rated finished titles, a different one each day
-/// (Home's Recommended follows what you watched last).
 private struct BecauseYouLovedRow: View {
     @Environment(DiaryStore.self) private var store
-    @State private var seed: MediaTitle?
-    @State private var items: [CatalogItem] = []
-
+    private var feeds: ExploreFeeds { .shared }
     var body: some View {
         Group {
-            if let seed, !items.isEmpty {
+            if let seed = feeds.lovedSeed, let tmdb = seed.tmdbId, !feeds.loved.items.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    ExploreRowHeading(title: "Because you loved", subtitle: seed.name)
-                    ExploreRow(items: items.map(Identified.init)) { entry in
-                        CatalogLink(item: entry.item) {
-                            ExploreTile(artwork: entry.item.artwork, name: entry.item.name,
-                                        detail: [entry.item.year.map(String.init), entry.item.kindLabel].compactMap { $0 }.joined(separator: " · "))
-                        }
-                    }
+                    FeedHeading(title: "Because you loved " + seed.name,
+                                value: ShowPageRoute.related(CatalogRoute(kind: seed.isSeries ? .tv : .movie, id: tmdb), title: seed.name),
+                                identifier: "explore-more-loved")
+                    FeedTrack(items: feeds.loved.items.prefix(15).map(Keyed.init)) { CatalogTile(item: $0.item) }
                 }
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
-        }.task(id: DiaryDate.day(store.now)) { await load() }
-    }
-
-    private func load() async {
-        let loved = store.workspace.activeTitles.filter { $0.status == "completed" && $0.tmdbId != nil && ($0.score ?? 0) >= 7 }
-            .sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(10)
-        guard !loved.isEmpty else { return }
-        let start = (Int(DiaryDate.day(store.now).filter(\.isNumber)) ?? 0) % loved.count
-        let order = Array(loved[(loved.startIndex + start)...]) + Array(loved[..<(loved.startIndex + start)])
-        for candidate in order.prefix(3) {
-            guard let tmdb = candidate.tmdbId,
-                  let related = try? await store.related(CatalogRoute(kind: candidate.isSeries ? .tv : .movie, id: tmdb)) else { continue }
-            let found = related.items.filter { store.libraryIdentity($0) == nil }
-            if found.count >= 3 { seed = candidate; items = Array(found.prefix(15)); return }
-        }
+        }.task(id: DiaryDate.day(store.now)) { await feeds.loadLoved(store: store) }
     }
 }
 
-private struct Identified: Identifiable {
-    let item: CatalogItem
-    var id: String { item.key }
-}
-
-/// Titles on your Planned list that are among TMDB's trending this week, by their rank.
 private struct TrendingPlannedRow: View {
     @Environment(DiaryStore.self) private var store
-    @State private var rows: [Row] = []
-
-    struct Row: Identifiable { let title: MediaTitle; let rank: Int; var id: String { title.id } }
-
+    private var feeds: ExploreFeeds { .shared }
     var body: some View {
         Group {
-            if !rows.isEmpty {
+            if !feeds.trending.items.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    ExploreRowHeading(title: "Trending from your Planned", subtitle: "Popular this week")
-                    ExploreRow(items: rows) { row in
-                        NavigationLink(value: row.title.id) {
-                            ExploreTile(artwork: row.title.poster, name: row.title.name, detail: "#\(row.rank) trending")
-                        }.buttonStyle(.springPress)
-                    }
+                    FeedHeading(title: "Trending from your Planned", value: ExploreFeedRoute(kind: .trending), identifier: "explore-more-trending")
+                    FeedTrack(items: feeds.trending.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
                 }
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
-        }.task(id: store.sessionRevision) { await load() }
-    }
-
-    private func load() async {
-        let planned = store.workspace.activeTitles.filter { $0.status == "planned" && $0.tmdbId != nil }
-        guard !planned.isEmpty, let token = TMDBDirect.token(store) else { rows = []; return }
-        var ranks: [String: Int] = [:]
-        for page in 1...3 {
-            guard let data = try? await TMDBDirect.object("trending/all/week", query: ["page": String(page), "language": "en-US"], token: token),
-                  let results = data["results"] as? [[String: Any]] else { break }
-            for (offset, row) in results.enumerated() {
-                guard let id = row["id"] as? Int, let type = row["media_type"] as? String, type == "movie" || type == "tv" else { continue }
-                let key = type + ":" + String(id)
-                if ranks[key] == nil { ranks[key] = (page - 1) * 20 + offset + 1 }
-            }
-        }
-        guard !Task.isCancelled else { return }
-        rows = planned.compactMap { title in
-            guard let tmdb = title.tmdbId, let rank = ranks[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] else { return nil }
-            return Row(title: title, rank: rank)
-        }.sorted { $0.rank < $1.rank }
+        }.task(id: DiaryDate.day(store.now)) { await feeds.loadTrending(store: store) }
     }
 }
 
-/// This season's most popular anime on AniList, each with a countdown to its next episode.
+/// An anime of the season: its poster, and when the next episode airs.
+private struct SeasonalTile: View {
+    let anime: SeasonalAnime
+    let now: Date
+    var body: some View {
+        AnimeAppearanceButton(appearance: anime.appearance) {
+            StandardPoster(artwork: anime.cover, name: anime.name,
+                           subtitle: SeasonalAnime.countdown(episode: anime.nextEpisode, at: anime.nextAiring, now: now) ?? anime.episodes.map { "\($0) episodes" } ?? "Anime",
+                           score: anime.score, subtitleTint: anime.nextAiring == nil ? .secondary : HomeStyle.chipText)
+        }.buttonStyle(.springPress).accessibilityIdentifier("explore-seasonal-\(anime.id)")
+    }
+}
+
 private struct SeasonalAnimeRow: View {
     @Environment(DiaryStore.self) private var store
-    @State private var items: [SeasonalAnime] = []
-    @State private var failed = false
-
+    private var feeds: ExploreFeeds { .shared }
     var body: some View {
-        let (season, year) = SeasonalAnime.Season.of(store.now)
-        VStack(alignment: .leading, spacing: 10) {
-            if !items.isEmpty {
-                ExploreRowHeading(title: "This season's anime", subtitle: "\(season.name) \(year) · AniList")
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    ExploreRow(items: items) { anime in
-                        AnimeAppearanceButton(appearance: anime.appearance) {
-                            ExploreTile(artwork: anime.cover, name: anime.name,
-                                        detail: SeasonalAnime.countdown(episode: anime.nextEpisode, at: anime.nextAiring, now: context.date)
-                                            ?? anime.episodes.map { "\($0) episodes" },
-                                        note: anime.score.map { "★ " + $0.formatted(.number.precision(.fractionLength(1))) })
-                        }.buttonStyle(.springPress).accessibilityIdentifier("explore-seasonal-\(anime.id)")
+        Group {
+            if !feeds.seasonal.items.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    FeedHeading(title: "This season's anime", value: ExploreFeedRoute(kind: .seasonal), identifier: "explore-more-seasonal")
+                    // The countdowns move once a minute.
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        FeedTrack(items: Array(feeds.seasonal.items.prefix(15))) { SeasonalTile(anime: $0, now: context.date) }
                     }
                 }
-            } else if failed {
-                Color.clear.frame(height: 0).accessibilityHidden(true)
-            }
-        }.task(id: "\(season.rawValue)\(year)") {
-            guard items.isEmpty else { return }
-            do { items = try await AniListClient.shared.seasonal(season, year: year) } catch { failed = true }
-        }
+            } else if feeds.seasonal.loading || feeds.seasonal.loadedFor == nil, feeds.seasonal.failure == nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    FeedHeading(title: "This season's anime", value: nil as ExploreFeedRoute?, identifier: "explore-more-seasonal")
+                    FeedPlaceholder()
+                }
+            } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
+        }.task(id: DiaryDate.day(store.now)) { await feeds.loadSeasonal(store: store) }
     }
 }
 
-/// Upcoming movies and new or returning shows (TMDB), each with "Remind me": it adds the title to
-/// Planned and turns release alerts on, so the app tells you when it's out (a movie when it can
-/// be streamed or bought, a show on its premiere).
-private struct ComingSoonRow: View {
+/// An upcoming title with its day, and the bell to be reminded.
+private struct ComingTile: View {
+    let entry: ExploreFeeds.Upcoming
     @Environment(DiaryStore.self) private var store
-    @State private var movies = true
-    @State private var films: [Upcoming] = []
-    @State private var shows: [Upcoming] = []
-    @State private var adding: Set<String> = []
-    @State private var failure: String?
-
-    struct Upcoming: Identifiable, Hashable {
-        let item: CatalogItem
-        let day: String
-        let season: Int?
-        var id: String { item.key }
-    }
+    @State private var adding = false
 
     var body: some View {
-        let shown = movies ? films : shows
-        VStack(alignment: .leading, spacing: 10) {
-            ExploreRowHeading(title: "Coming soon", subtitle: movies ? "Movies on the way" : "New and returning shows") {
-                Picker("Coming soon", selection: $movies) {
-                    Text("Movies").tag(true)
-                    Text("Shows").tag(false)
-                }.pickerStyle(.segmented).frame(width: 160)
-            }
-            if !shown.isEmpty {
-                ExploreRow(items: shown) { entry in
-                    // The bell sits over the poster, outside the link, so it doesn't open the page.
-                    ZStack(alignment: .topTrailing) {
-                        CatalogLink(item: entry.item) {
-                            ExploreTile(artwork: entry.item.artwork, name: entry.item.name,
-                                        detail: Self.when(entry.day) + (entry.season.map { $0 > 1 ? " · Season \($0)" : " · New" } ?? ""))
-                        }.accessibilityIdentifier("explore-coming-" + entry.id)
-                        remindButton(entry, saved: store.libraryIdentity(entry.item) != nil)
-                    }
-                }
-            } else if let failure {
-                Text(failure).font(.system(size: 13)).foregroundStyle(.secondary)
-            } else {
-                DiaryLoadingPlaceholder(label: "Loading what's coming", layout: .posterShelf)
-            }
-        }.task(id: DiaryDate.day(store.now)) { await load() }
-    }
-
-    private func remindButton(_ entry: Upcoming, saved: Bool) -> some View {
-        Button { Task { await remind(entry) } } label: {
+        let saved = store.libraryIdentity(entry.item)
+        ZStack(alignment: .topTrailing) {
             Group {
-                if adding.contains(entry.id) { ProgressView().controlSize(.small) }
-                else { Image(systemName: saved ? "bell.fill" : "bell").font(.system(size: 14, weight: .semibold)) }
-            }.foregroundStyle(.white).frame(width: 34, height: 34).background(.black.opacity(0.6), in: Circle())
-                .padding(6).frame(minWidth: 44, minHeight: 44)
-        }.buttonStyle(.plain).disabled(saved || adding.contains(entry.id))
-            .accessibilityLabel(saved ? "Reminder on: in your Planned list" : "Remind me when " + entry.item.name + " is out")
+                if let saved { NavigationLink(value: saved) { poster } } else { NavigationLink(value: entry.item.route) { poster } }
+            }.buttonStyle(.springPress).accessibilityIdentifier("explore-coming-" + entry.id)
+            // Over the poster, outside the link, so it doesn't open the page.
+            Button { Task { await remind() } } label: {
+                Group {
+                    if adding { ProgressView().controlSize(.small) }
+                    else { Image(systemName: saved != nil ? "bell.fill" : "bell").font(.system(size: 13, weight: .semibold)) }
+                }.foregroundStyle(.white).frame(width: 30, height: 30).background(.black.opacity(0.6), in: Circle())
+                    .padding(5).frame(minWidth: 44, minHeight: 44)
+            }.buttonStyle(.plain).disabled(saved != nil || adding)
+                .accessibilityLabel(saved != nil ? "Reminder on: in your Planned list" : "Remind me when " + entry.item.name + " is out")
+        }
     }
-
-    private func remind(_ entry: Upcoming) async {
-        guard adding.insert(entry.id).inserted else { return }
-        defer { adding.remove(entry.id) }
+    private var poster: some View {
+        StandardPoster(artwork: entry.item.artwork, name: entry.item.name,
+                       subtitle: ComingSoonRow.when(entry.day, now: store.now) + (entry.season.map { $0 > 1 ? " · Season \($0)" : " · New" } ?? ""),
+                       subtitleTint: HomeStyle.chipText)
+    }
+    /// Adds it to Planned and turns release alerts on: the app then tells you when it's out (a
+    /// movie when it can be streamed or bought, a show on its premiere).
+    private func remind() async {
+        guard !adding else { return }
+        adding = true
+        defer { adding = false }
         guard let browse = try? await store.browse(entry.item.route),
               await store.importTitle(browse.details, category: browse.details.suggestedCategory) != nil else { return }
         if ReleaseAlerts.enabled { await ReleaseAlerts.refresh(store: store) }
         else { await ReleaseAlerts.setEnabled(true, store: store) }
     }
+}
+
+private struct ComingSoonRow: View {
+    @Environment(DiaryStore.self) private var store
+    @State private var movies = true
+    private var feeds: ExploreFeeds { .shared }
+
+    var body: some View {
+        let feed = movies ? feeds.comingMovies : feeds.comingShows
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Text("Coming soon").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Picker("Coming soon", selection: $movies) {
+                    Text("Movies").tag(true)
+                    Text("Shows").tag(false)
+                }.pickerStyle(.segmented).frame(width: 150)
+                if !feed.items.isEmpty {
+                    SectionMoreLink(label: "See all coming soon", value: ExploreFeedRoute(kind: movies ? .comingMovies : .comingShows), identifier: "explore-more-coming")
+                }
+            }
+            if !feed.items.isEmpty {
+                FeedTrack(items: Array(feed.items.prefix(15))) { ComingTile(entry: $0) }
+            } else if feed.loading || feed.loadedFor == nil {
+                FeedPlaceholder()
+            } else {
+                Text(feed.failure ?? "Nothing coming up.").font(.system(size: 13)).foregroundStyle(.secondary).frame(minHeight: 44)
+            }
+        }.task(id: DiaryDate.day(store.now)) { await feeds.loadComing(store: store) }
+    }
 
     /// "Today", "Tomorrow", "In 5 days", else "12 Dec".
-    static func when(_ day: String) -> String {
-        let today = DiaryDate.day(.now)
-        guard let gap = ReleaseAlerts.days(from: today, to: day) else { return day }
+    static func when(_ day: String, now: Date) -> String {
+        guard let gap = ReleaseAlerts.days(from: DiaryDate.day(now), to: day) else { return day }
         switch gap {
         case ..<1: return "Today"
         case 1: return "Tomorrow"
@@ -450,45 +627,5 @@ private struct ComingSoonRow: View {
             guard parts.count == 3, let date = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return day }
             return date.formatted(.dateTime.day().month(.abbreviated))
         }
-    }
-
-    /// The show's next episode, when it's a premiere (a season's first episode).
-    private static func premiere(_ item: CatalogItem, token: String) async -> Upcoming? {
-        guard let details = try? await TMDBDirect.object("tv/\(item.id)", query: ["language": "en-US"], token: token),
-              let next = details["next_episode_to_air"] as? [String: Any], next["episode_number"] as? Int == 1,
-              let date = next["air_date"] as? String, date.count >= 10 else { return nil }
-        return Upcoming(item: item, day: String(date.prefix(10)), season: next["season_number"] as? Int)
-    }
-
-    private func load() async {
-        guard films.isEmpty || shows.isEmpty else { return }
-        guard let token = TMDBDirect.token(store) else { failure = "Coming soon needs TMDB, which isn’t set up."; return }
-        let region = (UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US").uppercased()
-        let calendar = Calendar(identifier: .gregorian)
-        func day(_ offset: Int) -> String { DiaryDate.day(calendar.date(byAdding: .day, value: offset, to: .now) ?? .now) }
-        let movieData = try? await TMDBDirect.object("discover/movie", query: [
-            "primary_release_date.gte": day(1), "primary_release_date.lte": day(90), "region": region,
-            "with_release_type": "2|3", "sort_by": "popularity.desc", "language": "en-US", "include_adult": "false"], token: token)
-        let showData = try? await TMDBDirect.object("discover/tv", query: [
-            "air_date.gte": day(1), "air_date.lte": day(30), "sort_by": "popularity.desc", "language": "en-US",
-            "include_adult": "false", "vote_count.gte": "10"], token: token)
-        guard !Task.isCancelled else { return }
-        films = ((movieData?["results"] as? [[String: Any]]) ?? []).compactMap { row in
-            guard let item = TMDBDirect.catalogItem(row, kind: .movie), let date = row["release_date"] as? String, date.count >= 10 else { return nil }
-            return Upcoming(item: item, day: String(date.prefix(10)), season: nil)
-        }.sorted { $0.day < $1.day }
-        // A show's next episode is a premiere (a new season's first episode, or the series' first).
-        let candidates = ((showData?["results"] as? [[String: Any]]) ?? []).compactMap { TMDBDirect.catalogItem($0, kind: .tv) }.prefix(20)
-        let found = await withTaskGroup(of: Upcoming?.self) { group in
-            for item in candidates {
-                group.addTask { await Self.premiere(item, token: token) }
-            }
-            var rows: [Upcoming] = []
-            for await row in group { if let row { rows.append(row) } }
-            return rows
-        }
-        guard !Task.isCancelled else { return }
-        shows = found.sorted { $0.day < $1.day }
-        if films.isEmpty && shows.isEmpty { failure = "Nothing coming up could be loaded." }
     }
 }

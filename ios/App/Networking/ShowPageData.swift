@@ -103,6 +103,12 @@ enum ShowPageRoute: Hashable {
         return points
     }
 
+    /// Keeps a season's Trakt ratings read elsewhere (the series rating chart), for episode sheets.
+    static func remember(show: Int, season: Int, points: [EpisodeRatingPoint]) {
+        if seasonRatings.count >= 60 { seasonRatings.removeAll() }
+        seasonRatings["\(show):\(season)"] = (.now, points)
+    }
+
     /// Trakt's episode ratings already read for a season (number → rating), without asking again.
     static func cachedRatings(show: Int, season: Int) -> [Int: Double] {
         Dictionary((seasonRatings["\(show):\(season)"]?.value ?? []).map { ($0.episode, $0.score) }, uniquingKeysWith: { first, _ in first })

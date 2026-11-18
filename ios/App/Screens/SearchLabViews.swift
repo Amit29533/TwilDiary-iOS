@@ -18,7 +18,7 @@ struct SearchLabView: View {
     private static let languages: [(String, String)] = [("ja", "Japanese"), ("en", "English"), ("ko", "Korean"), ("hi", "Hindi"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French")]
     private static let decades: [(String, Int?, Int?)] = [("Any", nil, nil), ("2020s", 2020, nil), ("2010s", 2010, 2019), ("2000s", 2000, 2009), ("1990s", 1990, 1999), ("Older", nil, 1989)]
     var body: some View {
-        ExploreBrowsePage(title: "Search Lab", symbol: "flask") {
+        ExploreBrowsePage(title: "Search Lab", symbol: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 22) {
                 keywordField
                 section("Type") {
@@ -352,6 +352,9 @@ struct SearchLabResultsView: View {
     @State private var total: Int?
     @State private var loading = false
     @State private var retryPage: Int?
+    /// Pages in a row that added nothing (an age rating or library filter matching few titles):
+    /// after four, loading waits for a tap instead of running on.
+    @State private var emptyStreak = 0
     @State private var failure: String?
     @State private var requested: DiscoveryFilters?
     @State private var generation = UUID()
@@ -404,11 +407,13 @@ struct SearchLabResultsView: View {
                 } else if let failure {
                     RetryNotice(message: failure) { Task { await load(more: page > 0, retry: retryPage) } }
                 } else if hasMore {
-                    if filters.library != nil || SearchLabData.filtersTVRating(filters) || shown.isEmpty {
+                    // Loads on as you scroll, also when a filter keeps only a few titles a page (an age
+                    // rating is checked title by title), until pages stop adding anything.
+                    if emptyStreak >= 4 {
                         if shown.isEmpty {
                             Text("No matches on the pages loaded so far.").font(.subheadline).foregroundStyle(.secondary)
                         }
-                        Button("Load more titles") { Task { await load(more: true) } }
+                        Button("Load more titles") { emptyStreak = 0; Task { await load(more: true) } }
                             .font(.headline).frame(maxWidth: .infinity, minHeight: 44)
                             .cardSurface(14).foregroundStyle(ThemeStore.accent).buttonStyle(.springPress)
                             .disabled(loading).accessibilityIdentifier("search-lab-load-more")
@@ -474,7 +479,8 @@ struct SearchLabResultsView: View {
         let selection = filters
         let request = UUID()
         generation = request
-        if !more && retry == nil { retryPage = nil; requested = selection; items = []; page = 0; totalPages = 1; total = nil }
+        if !more && retry == nil { retryPage = nil; requested = selection; items = []; page = 0; totalPages = 1; total = nil; emptyStreak = 0 }
+        let before = shown.count
         let number = retry ?? (page + 1)
         loading = true; failure = nil
         defer { if generation == request { loading = false } }
@@ -484,6 +490,7 @@ struct SearchLabResultsView: View {
             guard next.page == number else { throw APIError.message("The catalog returned an unexpected page. Please retry.") }
             items = SearchLabData.ordered(CatalogTools.merging(items, next.items), sort: selection.sort)
             page = next.page; totalPages = next.totalPages
+            emptyStreak = shown.count > before ? 0 : emptyStreak + 1
             if number == 1 { total = next.incomplete == true ? nil : next.totalResults }
             retryPage = next.incomplete == true ? number : nil
             if retryPage != nil { failure = "Some results couldn’t be checked. Retry this page." }

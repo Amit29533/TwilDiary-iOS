@@ -756,15 +756,8 @@ private struct CatalogSeasonPreview: View {
                     }.buttonStyle(.springPress).accessibilityIdentifier("catalog-all-episodes")
                 }
             }
-            let seasonItems = controller.season == selected ? controller.items : []
-            let points = seasonItems.compactMap { episode in episode.communityScore.map { EpisodeRatingPoint(episode: episode.number, score: $0) } }
             if route.kind == .tv {
-                RatingTrendCard(show: route.id, season: selected, tmdb: points, current: nil, imdbID: imdbID,
-                                tmdbDays: Dictionary(seasonItems.map { ($0.number, $0.airedOn ?? "") }, uniquingKeysWith: { first, _ in first }),
-                                anime: details.suggestedCategory.hasPrefix("anime")) { number in
-                    guard let episode = seasonItems.first(where: { $0.number == number }), !hidden(episode) else { return nil }
-                    return episode.name
-                }.id("\(route.id):\(selected)")
+                SeriesRatingCard(show: route.id, imdbID: imdbID).id(route.id)
             }
         }.task(id: selected) { await controller.load(selected, reveal: !hideSpoilers) }
             .onChange(of: selected) { _, _ in showAll = false; revealed = []; selectedEpisode = nil }

@@ -6,9 +6,12 @@ struct SearchAwardsShelf: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: .awards)
-            SearchAwardGrid {
-                ForEach(SearchAwardCeremony.featured) { AwardCeremonyLink(ceremony: $0) }
-            }
+            // One row of posters, as the other shelves.
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(SearchAwardCeremony.featured) { AwardCeremonyLink(ceremony: $0).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
+                }
+            }.scrollIndicators(.hidden).scrollClipDisabled()
         }
     }
 }
@@ -60,7 +63,7 @@ private struct SearchAwardGrid<Content: View>: View {
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                  count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
+                                  count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 18) {
             content
         }
     }
@@ -71,13 +74,19 @@ private struct AwardCeremonyLink: View {
 
     var body: some View {
         NavigationLink(value: SearchBrowseRoute.ceremony(ceremony)) {
-            VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: ceremony.symbol).font(.title2).foregroundStyle(Color(themed: "#e7ca90"))
-                    .accessibilityHidden(true)
-                Text(ceremony.displayName).font(.headline).foregroundStyle(HomeStyle.primary)
-                    .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
-            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).cardSurface(16)
-                .accessibilityElement(children: .combine)
+            if let winner = ceremony.winner {
+                // A recent winner's poster, the standard poster size.
+                StandardPoster(artwork: CatalogTools.image(winner.poster, size: "w500"), name: ceremony.displayName, subtitle: winner.caption)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack {
+                        LinearGradient(colors: [Color(themed: "#3a2f1c"), HomeStyle.card], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        Image(systemName: ceremony.symbol).font(.system(size: 34, weight: .semibold)).foregroundStyle(Color(themed: "#e7ca90"))
+                    }.posterAspect().clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
+                    Text(ceremony.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+                    Text("Awards ceremony").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
+                }.accessibilityElement(children: .combine)
+            }
         }.buttonStyle(.springPress).accessibilityIdentifier("search-award-ceremony-\(ceremony.id)")
     }
 }
@@ -158,8 +167,8 @@ struct SearchAwardCeremonyPage: View {
     var body: some View {
         let canUseTMDB = ceremony.tmdbArchiveFile != nil && TMDBDirect.token(store) != nil && !store.isPreview
         let selected = canUseTMDB && (useTMDB ?? true)
+        // TMDB's awards archive where there is one, TheTVDB's when it can't be read.
         AwardEditionPage(ceremony: ceremony, tmdbFile: selected ? ceremony.tmdbArchiveFile : nil,
-                         changeSource: canUseTMDB ? { useTMDB = !selected } : nil,
                          fallback: selected && useTMDB == nil && TVDBDirect.key(store) != nil ? { useTMDB = false } : nil)
             .id(selected)
     }
@@ -168,14 +177,11 @@ struct SearchAwardCeremonyPage: View {
 private struct AwardEditionPage: View {
     let ceremony: SearchAwardCeremony
     let tmdbFile: String?
-    let changeSource: (() -> Void)?
-
     let fallback: (() -> Void)?
 
-    init(ceremony: SearchAwardCeremony, tmdbFile: String?, changeSource: (() -> Void)?, fallback: (() -> Void)?) {
+    init(ceremony: SearchAwardCeremony, tmdbFile: String?, fallback: (() -> Void)?) {
         self.ceremony = ceremony
         self.tmdbFile = tmdbFile
-        self.changeSource = changeSource
         self.fallback = fallback
     }
 
@@ -202,18 +208,7 @@ private struct AwardEditionPage: View {
     var body: some View {
         ExploreBrowsePage(title: ceremony.displayName, symbol: ceremony.symbol, subtitle: "Awards ceremony") {
             LazyVStack(alignment: .leading, spacing: 14) {
-                if let changeSource {
-                    Menu {
-                        Button(tmdbFile == nil ? "Use TMDB-derived archive" : "Use TheTVDB archive", action: changeSource)
-                    } label: {
-                        Label(tmdbFile == nil ? "TheTVDB archive" : "TMDB-derived archive", systemImage: "chevron.up.chevron.down")
-                            .font(.subheadline).frame(minHeight: 44)
-                    }
-                }
                 if let editions = loader.editions {
-                    if let latest = editions.editions.first, case .year(let year) = latest {
-                        Text("Latest available edition · " + String(year)).font(.footnote).foregroundStyle(.secondary)
-                    }
                     if let edition, let groups = editions.sections[edition] {
                         awardResults(groups, edition: edition, editions: editions.editions)
                     } else if let archive = loader.archive, archive.incompleteCount == 0,
@@ -388,28 +383,15 @@ private struct AwardFilterPill: View {
 private struct AwardRecipientGroup: View {
     let nominees: [SearchAwardNominee]
     var filmYear: Int? = nil
-    @State private var expanded = false
 
     var body: some View {
-        let winners = nominees.filter { $0.isWinner == true }
-        let others = nominees.filter { $0.isWinner != true }
-        LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(winners) { AwardNomineeRow(nominee: $0, filmYear: filmYear).id($0) }
-            if !winners.isEmpty && !others.isEmpty {
-                Button {
-                    expanded.toggle()
-                } label: {
-                    HStack {
-                        Text(expanded ? "Hide other nominees" : "Show other nominees (\(others.count))")
-                        Spacer()
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                    }.font(.subheadline).padding(.horizontal, 12).frame(minHeight: 44)
-                }.accessibilityIdentifier("search-award-expand-\(winners[0].id)")
+        // The winner first, then the nominees: one row of standard posters.
+        let ordered = nominees.filter { $0.isWinner == true } + nominees.filter { $0.isWinner != true }
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(ordered) { AwardNomineeRow(nominee: $0, filmYear: filmYear).id($0).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
             }
-            if winners.isEmpty || expanded {
-                ForEach(others) { AwardNomineeRow(nominee: $0, filmYear: filmYear).id($0) }
-            }
-        }.cardSurface(14)
+        }.scrollIndicators(.hidden).scrollClipDisabled()
     }
 }
 
@@ -479,23 +461,25 @@ private struct AwardNomineeRow: View {
         }
     }
 
+    /// The standard poster: the picture (a trophy on the winner's), the name, and the film or
+    /// "Winner" / "Nominee" under it.
     private var row: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Artwork(path: CatalogTools.image(tmdbLabel?.profile_path ?? tmdbLabel?.poster_path, size: "w185") ?? nominee.image, title: title)
-                .frame(width: 44, height: 66).clipShape(RoundedRectangle(cornerRadius: 7))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
-                if nominee.isWinner == true {
-                    Label("Winner", systemImage: "trophy.fill").font(.caption.bold()).foregroundStyle(Color(themed: "#e7ca90"))
+        let winner = nominee.isWinner == true
+        return VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: CatalogTools.image(tmdbLabel?.profile_path ?? tmdbLabel?.poster_path, size: "w342") ?? nominee.image, title: title, initialsOnly: false)
+                .posterAspect()
+                .overlay(alignment: .topLeading) {
+                    if winner {
+                        Image(systemName: "trophy.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(themed: "#e7ca90"))
+                            .frame(width: 26, height: 26).background(.black.opacity(0.75), in: Circle()).padding(6)
+                    }
                 }
-                if let detail = subtitle {
-                    Text(detail).font(.subheadline).foregroundStyle(HomeStyle.secondary)
-                }
-                if let note = nominee.note, note != subtitle {
-                    Text(note).font(.caption).foregroundStyle(HomeStyle.secondary)
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(10).frame(minHeight: 44).contentShape(Rectangle())
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+            Text(subtitle ?? nominee.note ?? (winner ? "Winner" : "Nominee"))
+                .font(.system(size: 12, weight: winner ? .semibold : .regular)).foregroundStyle(winner ? Color(themed: "#e7ca90") : .secondary)
+                .lineLimit(1).frame(height: 18).padding(.top, 4)
+        }.contentShape(Rectangle()).accessibilityElement(children: .combine).accessibilityLabel(title + (winner ? ", winner" : ", nominee"))
     }
 }
 

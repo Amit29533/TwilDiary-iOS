@@ -10,6 +10,12 @@ actor IMDbEpisodeRatings {
     }
     private var cache: [String: Entry] = [:]
 
+    /// Every season's rated episodes (season 0, specials, included).
+    func seasons(showID: String) async throws -> [Int: [EpisodeRatingPoint]] {
+        _ = try await points(showID: showID, season: 1)
+        return cache[showID]?.seasons ?? [:]
+    }
+
     func points(showID: String, season: Int) async throws -> [EpisodeRatingPoint] {
         guard showID.range(of: #"^tt[0-9]{7,10}$"#, options: .regularExpression) != nil else { return [] }
         if let entry = cache[showID], Date.now.timeIntervalSince(entry.fetched) < 86_400 {
@@ -43,7 +49,7 @@ actor IMDbEpisodeRatings {
             result[season] = episodes.compactMap { key, value -> EpisodeRatingPoint? in
                 guard let episode = Int(key), episode > 0, let score = value.r,
                       score > 0, score <= 10, (value.v ?? 0) >= EpisodeRatingAgreement.imdbVotes else { return nil }
-                return EpisodeRatingPoint(episode: episode, score: score)
+                return EpisodeRatingPoint(episode: episode, score: score, votes: value.v)
             }.sorted { $0.episode < $1.episode }
         }
         return result

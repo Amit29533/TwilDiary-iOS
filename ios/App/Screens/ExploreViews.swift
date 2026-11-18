@@ -34,14 +34,6 @@ struct ExplorePill: View {
     }
 }
 
-/// Search Lab shortcut on expanded Explore results.
-struct ExploreLabButton: View {
-    var body: some View {
-        NavigationLink(value: SearchLabRoute()) {
-            Image(systemName: "flask").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-        }.accessibilityLabel("Search Lab").accessibilityIdentifier("explore-search-lab")
-    }
-}
 
 private struct ExploreContent: View {
     let store: DiaryStore
@@ -64,7 +56,8 @@ private struct ExploreContent: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 72)
             }
-            VStack(alignment: .leading, spacing: 22) {
+            // Lazy: rows further down build (and load) as they come on screen.
+            LazyVStack(alignment: .leading, spacing: 22) {
                 // AI prompts and CineMind's picks, then Trakt's, then the rest of the new rows.
                 ExploreAIArea()
                 RecommendedDiscoveryView(service: service, section: false)
@@ -242,7 +235,6 @@ struct ExploreSectionView: View {
     init(route: ExploreSectionRoute, store: DiaryStore) { self.route = route; self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         DiscoveryBrowser(section: route.section, service: service, store: store, initialFilters: route.filters)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
     }
 }
 

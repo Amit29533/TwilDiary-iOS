@@ -73,13 +73,8 @@ struct TitleDetailView: View {
                                 if title.isSeries { SeasonCardsSection(title: title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if title.isSeries, let tmdbId = title.tmdbId {
-                                    RatingTrendCard(show: tmdbId, season: season, tmdb: tmdbEpisodePoints,
-                                                    current: card?.season?.number == season ? card?.next?.number : nil, imdbID: extras?.imdbId,
-                                                    tmdbDays: Dictionary(episodes.map { ($0.number, $0.airedOn ?? "") }, uniquingKeysWith: { first, _ in first }),
-                                                    anime: title.category.hasPrefix("anime")) { number in
-                                        guard let episode = episodes.first(where: { $0.number == number }), !isHidden(episode) else { return nil }
-                                        return episodeName(episode)
-                                    }.id("\(tmdbId):\(season)")
+                                    // Every episode of the show in one chart (not just this season).
+                                    SeriesRatingCard(show: tmdbId, imdbID: extras?.imdbId, titleID: title.id).id(tmdbId)
                                 }
                                 // Anime characters come from AniList and need no TMDB link; the cast row follows.
                                 let animated = title.category.hasPrefix("anime") || title.genres.contains("Animation") || extras?.genres.contains(where: { $0.id == 16 }) == true
@@ -324,11 +319,6 @@ struct TitleDetailView: View {
             return value > 10 ? value / 10 : value
         }
         return title.communityScore.flatMap { $0 > 0 ? $0 : nil } ?? fetchedCommunity
-    }
-    private var tmdbEpisodePoints: [EpisodeRatingPoint] {
-        episodes.compactMap { episode in
-            (episodeDetails.episodes[episode.id]?.communityScore ?? episode.communityScore).map { EpisodeRatingPoint(episode: episode.number, score: $0) }
-        }
     }
     private func progressPanel(_ title: MediaTitle) -> some View {
         VStack(alignment: .leading, spacing: 0) {

@@ -229,19 +229,20 @@ import TwilDiaryCore
     /// CineMind's picks for Explore: up to ten movies (or shows) someone with this taste hasn't
     /// seen, each checked on TMDB, best first. `taste` is a few lines of what they watched and how
     /// they rated it ("Frieren (2023) · 9/10"); nothing else from the diary is sent.
-    static func recommendations(movies: Bool, taste: [String], store: DiaryStore) async throws -> [Match] {
+    static func recommendations(movies: Bool, taste: [String], exclude: [String] = [], store: DiaryStore) async throws -> [Match] {
         guard let key else { throw APIError.message("Add a Gemini or Groq key (Profile → APIs) for CineMind's picks.") }
         guard let token = TMDBDirect.token(store) else { throw APIError.message("CineMind's picks need TMDB, which isn’t set up.") }
         let kind = movies ? "movie" : "tv"
         let instruction = """
         You are CineMind, a film and TV expert. From the titles this person watched and how they \
-        rated them, recommend up to 10 real \(movies ? "movies" : "TV shows (anime series count as shows)") \
-        they have not watched and are likely to love, best first. Never repeat a title from their \
-        list. Use each title's original English name as TMDB lists it, and its first release year. \
+        rated them, recommend up to 15 real \(movies ? "movies" : "TV shows (anime series count as shows)") \
+        they have not watched and are likely to love, best first. Never suggest a title from their \
+        list or from the titles they already have. Use each title's original English name as TMDB lists it, and its first release year. \
         type is "\(kind)". why is one short sentence (at most 15 words) saying what in their taste \
         it matches. Never invent a title; fewer good picks beat more weak ones.
         """
-        let text = "What I watched (my rating out of 10 where I gave one):\n" + taste.joined(separator: "\n")
+        var text = "What I watched (my rating out of 10 where I gave one):\n" + taste.joined(separator: "\n")
+        if !exclude.isEmpty { text += "\n\nAlready have (never suggest): " + exclude.joined(separator: "; ") }
         let suggestions = try decode(try await generate(body(text, instruction: instruction), key: key))
             .filter { $0.type.lowercased() == kind }
         var matches: [Match] = [], seen = Set<String>()

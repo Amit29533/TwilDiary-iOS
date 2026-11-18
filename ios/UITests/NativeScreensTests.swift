@@ -1218,7 +1218,9 @@ import UIKit
         XCTAssertFalse(app.navigationBars.buttons.firstMatch.exists)
         XCTAssertFalse(app.buttons["explore-search-lab"].exists)
         daily.tap()
-        XCTAssertTrue(app.buttons["explore-search-lab"].waitForExistence(timeout: 5))
+        // Search Lab lives on the Search page now, not on Explore's pages.
+        XCTAssertTrue(app.staticTexts["explore-browse-title"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["explore-search-lab"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(daily.waitForExistence(timeout: 5))
         app.tabBars.buttons["Home"].tap()

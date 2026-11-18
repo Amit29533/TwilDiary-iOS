@@ -151,10 +151,10 @@ import XCTest
         XCTAssertTrue(app.staticTexts["Outstanding Drama Series"].waitForExistence(timeout: 5))
         let winner = app.buttons["search-award-nominee-1"]
         let nominee = app.buttons["search-award-nominee-2"]
+        // The winner first, the nominees beside it in the same row of posters.
         XCTAssertTrue(winner.exists)
-        XCTAssertFalse(nominee.exists)
-        app.buttons["search-award-expand-1"].tap()
         XCTAssertTrue(nominee.exists)
+        XCTAssertLessThan(winner.frame.minX, nominee.frame.minX)
         filters.tap()
         app.buttons["Winners only"].firstMatch.tap()
         XCTAssertTrue(winner.exists)
@@ -225,7 +225,7 @@ import XCTest
         XCTAssertTrue(lab.isHittable); lab.tap()
         XCTAssertTrue(app.navigationBars["Search Lab"].waitForExistence(timeout: 5))
     }
-    func testSearchLabCanReachMatchesAfterAnEmptyFilteredPage() {
+    func testSearchLabLoadsOnPastAnEmptyFilteredPage() {
         let app = launch(searchRegression: true)
         app.tabBars.buttons["Search"].tap()
         let lab = app.buttons["search-browse-lab"]
@@ -238,12 +238,10 @@ import XCTest
         for _ in 0..<12 { if inLibrary.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(inLibrary.isHittable); inLibrary.tap()
         app.buttons["search-lab-show"].tap()
-        let more = app.buttons["search-lab-load-more"]
-        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        // An empty filtered page loads the next one by itself (no button to tap).
+        XCTAssertTrue(app.buttons["search-lab-title-tv:990102"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["search-lab-title-tv:990101"].exists)
-        more.tap()
-        XCTAssertTrue(app.buttons["search-lab-title-tv:990102"].waitForExistence(timeout: 5))
-        XCTAssertFalse(more.exists)
+        XCTAssertFalse(app.buttons["search-lab-load-more"].exists)
     }
     func testPopularFranchisesOpensTwilDiaryPosterGrid() {
         let app = launch(); app.tabBars.buttons["Search"].tap()

@@ -19,6 +19,20 @@ enum EpisodeRowState: Equatable {
         case .notAired: return "Not aired yet"
         }
     }
+    /// The same, shorter, for a narrow row: "11 Jul", "Today", "Up next", "Unwatched".
+    var shortText: String {
+        switch self {
+        case .watched(let date):
+            guard let date else { return "Watched" }
+            let calendar = DiaryDate.calendar()
+            if calendar.isDateInToday(date) { return "Today" }
+            if calendar.isDateInYesterday(date) { return "Yesterday" }
+            return date.formatted(.dateTime.day().month(.abbreviated))
+        case .next: return "Up next"
+        case .notWatched: return "Unwatched"
+        case .notAired: return "Not aired"
+        }
+    }
 }
 
 /// The newest watch of each episode of a title, for "Watched today".
@@ -104,10 +118,15 @@ struct EpisodeCardRow: View {
                         // The number isn't a spoiler: hidden rows keep it ("9. A story for later").
                         Text(name.hasPrefix("Episode ") ? name : "\(number). \(name)")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
-                        InlineFlowLayout(spacing: 6, rowSpacing: 3) {
-                            EpisodeChip(text: state.text, accent: state == .next)
-                            if let score, score > 0 { ScoreChip(score: score) }
-                            if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
+                        // State, score and length on one line: the state shortens before anything wraps.
+                        ViewThatFits(in: .horizontal) {
+                            facts(state.text)
+                            facts(state.shortText)
+                            InlineFlowLayout(spacing: 6, rowSpacing: 3) {
+                                EpisodeChip(text: state.shortText, accent: state == .next)
+                                if let score, score > 0 { ScoreChip(score: score) }
+                                if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
+                            }
                         }
                     }
                     Spacer(minLength: 0)
@@ -122,6 +141,13 @@ struct EpisodeCardRow: View {
         }.padding(.leading, 9).padding(.trailing, 6).padding(.vertical, 8)
             .background(state == .next ? Color(themed: "#17142a") : HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(state == .next ? Color(themed: "#34294f") : HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+    }
+    private func facts(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            EpisodeChip(text: text, accent: state == .next)
+            if let score, score > 0 { ScoreChip(score: score) }
+            if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize() }
+        }
     }
 }
 
@@ -176,11 +202,22 @@ struct EpisodeGridCard: View {
                     }
                 }
             Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
-            InlineFlowLayout(spacing: 6, rowSpacing: 3) {
-                if let score, score > 0 { ScoreChip(score: score) }
-                if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
-            }.padding(.top, runtime != nil || (score ?? 0) > 0 ? 6 : 0)
-            Text(subtitle).font(.caption).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
+            // Score, length and when it was watched on one line when they fit.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    if let score, score > 0 { ScoreChip(score: score) }
+                    if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize() }
+                    if runtime != nil || (score ?? 0) > 0 { Text("·").font(.caption).foregroundStyle(HomeStyle.secondary) }
+                    Text(subtitle).font(.caption).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
+                }.padding(.top, 6)
+                VStack(alignment: .leading, spacing: 0) {
+                    InlineFlowLayout(spacing: 6, rowSpacing: 3) {
+                        if let score, score > 0 { ScoreChip(score: score) }
+                        if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
+                    }.padding(.top, runtime != nil || (score ?? 0) > 0 ? 6 : 0)
+                    Text(subtitle).font(.caption).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
+                }
+            }
         }.frame(width: fills ? nil : 232, alignment: .leading).frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
     }
     private var subtitle: String {

@@ -217,21 +217,26 @@ struct SearchCategoryLink: View {
     @State private var preview: String?
 
     var body: some View {
-        let tileArt = category.artwork(in: store.workspace.activeTitles) ?? preview
+        // The remembered picture straight away, so coming back to Search doesn't flash empty tiles.
+        let remembered = Self.artworkCache[category.filter]?.url
+        let tileArt = category.artwork(in: store.workspace.activeTitles) ?? preview ?? (isStudio ? nil : remembered)
+        let logo = studioLogo ?? (isStudio ? remembered : nil)
         NavigationLink(value: destination ?? .titles(category)) {
             if case .studio = category.filter {
-                TitleStudioPlate(name: category.title, logo: studioLogo)
+                TitleStudioPlate(name: category.title, logo: logo)
                     .frame(height: height * 0.82)
             } else {
                 SearchBrowseArtworkTile(title: category.title, symbol: category.symbol, tint: category.tint,
                                         artwork: tileArt)
             }
         }.buttonStyle(.springPress)
-            .preference(key: BrowseCoverPreference.self, value: tileArt ?? studioLogo)
+            .preference(key: BrowseCoverPreference.self, value: tileArt ?? logo)
             .accessibilityLabel(category.title)
             .accessibilityIdentifier(identifier ?? "search-category-" + category.title)
             .task { await loadArtwork() }
     }
+
+    private var isStudio: Bool { if case .studio = category.filter { true } else { false } }
 
     private func loadArtwork() async {
         guard !store.isPreview else { return }

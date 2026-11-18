@@ -217,7 +217,9 @@ struct APIsView: View {
     /// answers when Gemini can't.
     private func aiSection(_ service: SemanticSearch.Service) -> some View {
         let keys = aiKeys[service] ?? []
-        let set = !keys.isEmpty || (service == .gemini && SemanticSearch.keys.first != nil)
+        // Built-in keys count too (Groq and Requesty answer with them when you've added none).
+        let builtIn = switch service { case .gemini: SemanticSearch.keys; case .groq: SemanticSearch.groqRequestKeys; case .requesty: SemanticSearch.requestyRequestKeys }
+        let set = !keys.isEmpty || !builtIn.isEmpty
         return section(nil, service.name, icon: service == .gemini ? "sparkles" : service == .groq ? "bolt.fill" : "arrow.triangle.branch") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {

@@ -14,6 +14,19 @@ struct SearchAwardCeremony: Codable, Hashable, Identifiable, Sendable {
 
     var displayName: String { id == 1 ? "Oscars" : name }
 
+    /// A recent winner's poster (TMDB) for the ceremony's tile, and what it won.
+    var winner: (poster: String, caption: String)? {
+        switch id {
+        case 1: ("/lbBWwxBht4JFP5PsuJ5onpMqugW.jpg", "Best Picture · One Battle After Another")
+        case 5: ("/2c6ofLTa5CRfeQjVA1bWiYBdxQN.jpg", "Comedy Series · The Studio")
+        case 11: ("/vbeyOZm2bvBXcbgPD3v6o94epPX.jpg", "British Film · Hamnet")
+        case 2: ("/kvFSpESyBZMjaeOJDx7RS3P1jey.jpg", "Drama Series · The Pitt")
+        case 6: ("/fWPgbnt2LSqkQ6cdQc0SZN9CpLm.jpg", "Cast · Sinners")
+        case 4: ("/zT7Lhw3BhJbMkRqm9Zlx2YGMsY0.jpg", "Animated · KPop Demon Hunters")
+        default: nil
+        }
+    }
+
     var tmdbArchiveFile: String? {
         switch id {
         case 1: "1-oscar"

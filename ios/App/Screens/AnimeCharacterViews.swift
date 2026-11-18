@@ -222,6 +222,7 @@ struct FavouritesView: View {
     /// recent, oldest or name.
     @AppStorage("favouritesSort") private var sort = "recent"
     @State private var query = ""
+    @Namespace private var tabPill
     private var favourites: FavouritesStore { .shared }
     var body: some View {
         let all = favourites.items(tab)
@@ -304,27 +305,27 @@ struct FavouritesView: View {
         }
     }
     /// Cast · Characters · Voice actors in one dark track; the chosen one is a sliding lilac pill.
+    /// The tabs at their own widths (a long name like "Voice actors" gets the room it needs), the
+    /// space left shared between them; one pill slides to the selected one.
     private var tabs: some View {
         let kinds = ["shows"] + Favourite.Kind.allCases.map(\.rawValue)
-        let index = CGFloat(kinds.firstIndex(of: selectedTab) ?? 0)
-        return HStack(spacing: 4) {
-            ForEach(kinds, id: \.self) { kind in
+        return HStack(spacing: 0) {
+            ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
+                if index > 0 { Spacer(minLength: 2) }
                 let on = selectedTab == kind
                 // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
-                Button { selectedTab = kind } label: {
+                Button { withAnimation(.snappy(duration: 0.28)) { selectedTab = kind } } label: {
                     Text(Favourite.Kind(rawValue: kind)?.label ?? "Title").font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
-                        .animation(.snappy(duration: 0.28), value: on)
-                        .frame(maxWidth: .infinity).frame(height: 40).contentShape(Capsule())
-                }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind)
-            }
-        }.background(alignment: .leading) {
-            // One pill that moves between the tabs, so it's never missing mid-switch.
-            GeometryReader { proxy in
-                let width = (proxy.size.width - 4 * CGFloat(kinds.count - 1)) / CGFloat(kinds.count)
-                Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom))
-                    .frame(width: width, height: 40).offset(x: (width + 4) * index)
-                    .animation(.snappy(duration: 0.28), value: index)
+                        .padding(.horizontal, 12).frame(height: 40)
+                        .background {
+                            if on {
+                                Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom))
+                                    .matchedGeometryEffect(id: "favourites-pill", in: tabPill)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).layoutPriority(1).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind)
             }
         }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
     }

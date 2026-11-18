@@ -26,6 +26,11 @@ struct SearchLandingView: View {
     @State private var failure: String?
     @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    init(kind: CatalogSearchView.Kind, recent: [String], choose: @escaping (String) -> Void, clear: @escaping () -> Void) {
+        self.kind = kind; self.recent = recent; self.choose = choose; self.clear = clear
+        // The chart shown last, at once (it's checked against this session when the page appears).
+        _shows = State(initialValue: Self.trending[kind == .movies ? "movie" : "tv"]?.items ?? [])
+    }
     private var loading: Bool { loadingRevision == store.sessionRevision }
     /// Native: a chart row as in Apple Music: the rank, the poster, name and score, a separator under it.
     private func chartRow(index: Int, item: CatalogItem) -> some View {
@@ -126,10 +131,17 @@ struct SearchLandingView: View {
         }.smoothChange(of: shows.isEmpty)
             .task(id: store.sessionRevision) {
                 guard [.all, .movies, .shows].contains(kind), loadedRevision != store.sessionRevision else { return }
+                // This session's chart, kept: switching tabs or clearing a search doesn't load it again.
+                if let kept = Self.trending[trendingType], kept.revision == store.sessionRevision, Date.now.timeIntervalSince(kept.at) < 1_800 {
+                    shows = kept.items; loadedRevision = kept.revision; return
+                }
                 shows = []
                 await load()
             }
     }
+    /// Trending this week, per chart ("movie" or "tv"), for this session.
+    private static var trending: [String: (revision: UUID, items: [CatalogItem], at: Date)] = [:]
+    private var trendingType: String { kind == .movies ? "movie" : "tv" }
     private func load() async {
         let revision = store.sessionRevision
         guard loadingRevision != revision else { return }
@@ -142,6 +154,7 @@ struct SearchLandingView: View {
             guard !Task.isCancelled, revision == store.sessionRevision else { return }
             shows = Array(CatalogTools.merging([], trendingShows.items).prefix(10))
             loadedRevision = revision
+            Self.trending[trendingType] = (revision, shows, .now)
         } catch { if !Task.isCancelled && revision == store.sessionRevision { failure = error.localizedDescription } }
     }
 }

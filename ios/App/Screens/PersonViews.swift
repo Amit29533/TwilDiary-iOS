@@ -351,52 +351,30 @@ struct PersonFilmographyView: View {
     @State private var failure: String?
     @State private var filters: PersonFilmographyFilters
     @State private var shown = 40
-    /// The big heading has scrolled under the bar: the bar shows it (as Explore does).
-    @State private var headingHidden = false
-    @State private var headerState = CompactHeaderState()
     init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
-        VStack(spacing: 0) {
-            EdgeToEdgeScroll {
-                VStack(alignment: .leading, spacing: 16) {
-
-                    HStack(alignment: .center, spacing: 8) {
-                        Text(person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label)
-                            .font(.system(size: 22, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("person-filmography-heading")
-                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
-                                let progress = ScrollLinkedBarTitle.progress(headingBottom: bottom)
-                                headerState.update(progress)
-                                if (progress >= 0.5) != headingHidden { headingHidden = progress >= 0.5 }
-                            }
-                        Spacer(minLength: 0)
-                        CollectionLayoutToggle(grid: $grid, collection: "catalog")
+        let items = person.map { filters.applying(person: $0, workspace: store.workspace, section: route.section) } ?? []
+        // Explore's layout: a picture from the titles at the top, the heading, then the grid.
+        ExploreBrowsePage(title: heading, symbol: "person.crop.rectangle.stack", artwork: ExploreBrowseHeader.artwork(in: items),
+                          titleIdentifier: "person-filmography-heading", accessory: AnyView(CollectionLayoutToggle(grid: $grid, collection: "catalog"))) {
+            VStack(alignment: .leading, spacing: 16) {
+                if person != nil {
+                    if let error = filters.error { Text(error).font(.system(size: 13)).foregroundStyle(.secondary) }
+                    else {
+                        Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
+                        if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
+                        else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
+                        if shown < items.count { ScrollLoadTrigger(token: shown, loading: false) { shown += 40 } }
                     }
-                    if let person {
-                        if let error = filters.error { Text(error).font(.system(size: 13)).foregroundStyle(.secondary) }
-                        else {
-                            let items = filters.applying(person: person, workspace: store.workspace, section: route.section)
-                            Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
-                            if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
-                            else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
-                            if shown < items.count { ScrollLoadTrigger(token: shown, loading: false) { shown += 40 } }
-                        }
-                    } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                    else { DiaryLoadingPlaceholder(label: "Loading filmography", layout: .posterGrid(columns: 3, rows: 2)).padding(14) }
-                }.padding(.horizontal, 14).padding(.bottom, 100)
-            }.scrollDismissesKeyboard(.interactively)
-        }.diaryScreenBackground().navigationTitle(barTitle).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ScrollLinkedBarTitle(resting: person?.name ?? "", scrolled: heading, state: headerState)
-                }
-            }
-
-            .task(id: route) { await load() }.onChange(of: filters) { _, _ in shown = 40 }
+                } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                else { DiaryLoadingPlaceholder(label: "Loading filmography", layout: .posterGrid(columns: 3, rows: 2)).padding(14) }
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .task(id: route) { await load() }.onChange(of: filters) { _, _ in shown = 40 }
     }
     /// "Shriya Saran’s Known for".
     private var heading: String { person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label }
-    private var barTitle: String { headingHidden ? heading : (person?.name ?? route.section.label) }
     private func load() async {
         failure = nil
         do { let result = try await store.person(route.person); guard !Task.isCancelled else { return }; person = result.person }

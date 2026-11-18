@@ -154,7 +154,9 @@ public struct EpisodeRatingPoint: Hashable, Sendable {
     public let score: Double
     /// The day the source says it aired ("2023-09-29"), where it gives one (Trakt does).
     public let airedOn: String?
-    public init(episode: Int, score: Double, airedOn: String? = nil) { self.episode = episode; self.score = score; self.airedOn = airedOn }
+    /// How many people rated it, where the source says.
+    public let votes: Int?
+    public init(episode: Int, score: Double, airedOn: String? = nil, votes: Int? = nil) { self.episode = episode; self.score = score; self.airedOn = airedOn; self.votes = votes }
 }
 
 /// Whether another source numbers a season's episodes as TMDB does. Some anime are split into
