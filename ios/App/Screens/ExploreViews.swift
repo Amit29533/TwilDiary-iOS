@@ -4,11 +4,14 @@ import TwilDiaryCore
 struct ExploreView: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
-        ExploreBrowsePage(title: "Explore", symbol: "safari") {
+        EdgeToEdgeScroll(artworkUnderBar: true) {
             ExploreContent(store: store)
-                .padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 100)
+                .padding(.bottom, 100)
         }
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { ExploreLabButton() } }
+        .diaryScreenBackground()
+        .navigationTitle("Explore")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -31,8 +34,7 @@ struct ExplorePill: View {
     }
 }
 
-/// Search Lab's way in: a flask in a Liquid Glass circle (a toolbar button, like Back), top right
-/// on every Explore page.
+/// Search Lab shortcut on expanded Explore results.
 struct ExploreLabButton: View {
     var body: some View {
         NavigationLink(value: SearchLabRoute()) {
@@ -47,18 +49,26 @@ private struct ExploreContent: View {
     init(store: DiaryStore) { self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            VStack(spacing: 10) {
-                ExploreHeading(section: .daily)
-                if let title = DiscoveryTools.dailyPick(store.workspace, day: DiaryDate.day(store.now)) {
-                    NavigationLink(value: title.id) { DailyDiscoveryCard(title: title).zoomSource(ZoomID.title(title.id)) }.buttonStyle(.springPress).accessibilityIdentifier("explore-daily-pick")
-                        .preference(key: BrowseCoverPreference.self, value: title.backdrop ?? title.poster)
-                } else {
-                    VStack(spacing: 10) { Text("No unwatched titles in your library."); Button("Open library") { openLibrary() } }
-                        .font(.system(size: 14)).diaryPanel().frame(maxWidth: .infinity, minHeight: 150)
+            if let title = DiscoveryTools.dailyPick(store.workspace, day: DiaryDate.day(store.now)) {
+                DailyDiscoveryHero(title: title)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ExploreHeading(section: .daily)
+                    VStack(spacing: 10) {
+                        Text("No unwatched titles in your library.")
+                        Button("Open library") { openLibrary() }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 120)
+                    .diaryPanel()
                 }
+                .padding(.horizontal, 14)
+                .padding(.top, 72)
             }
-            RecommendedDiscoveryView(service: service, section: false)
-            ForEach(DiscoverySection.shelves) { section in DiscoveryShelfView(section: section, service: service) }
+            VStack(alignment: .leading, spacing: 22) {
+                RecommendedDiscoveryView(service: service, section: false)
+                ForEach(DiscoverySection.shelves) { section in DiscoveryShelfView(section: section, service: service) }
+            }
+            .padding(.horizontal, 14)
         }
     }
     @Environment(AppRouter.self) private var router
@@ -78,27 +88,76 @@ private struct ExploreHeading: View {
     }
 }
 
-/// The day's pick as a large artwork card, like Home's Continue watching: full-bleed backdrop,
-/// the title large over a soft scrim, and its year, type and score underneath.
-private struct DailyDiscoveryCard: View {
+private struct DailyDiscoveryHero: View {
     let title: MediaTitle
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var facts: String {
+        [title.year.map(String.init), title.isSeries ? "Show" : "Movie"]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Artwork(path: title.backdrop ?? title.poster, title: title.name)
-            LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0), .init(color: .black.opacity(0.2), location: 0.45), .init(color: .black.opacity(0.88), location: 1)], startPoint: .top, endPoint: .bottom)
-            HStack(alignment: .bottom, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink(value: ExploreSectionRoute(section: .daily)) {
+                HStack(spacing: 6) {
+                    Text(DiscoverySection.daily.label)
+                    Image(systemName: "chevron.right").font(.caption.bold())
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("View more " + DiscoverySection.daily.label)
+            .accessibilityIdentifier("explore-more-daily")
+
+            NavigationLink(value: title.id) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(title.name).font(.system(size: 26, weight: .bold)).tracking(-0.6).foregroundStyle(.white).lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.85)
+                    Text(title.name)
+                        .font(.largeTitle.bold())
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 6) {
-                        Text((title.year.map(String.init) ?? "Year unknown") + " · " + (title.isSeries ? "Show" : "Movie")).lineLimit(1)
+                        Text(facts)
                         if let score = title.communityScore, score > 0 {
                             Text("·")
-                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 12)).foregroundStyle(Color(themed: "#f5c451")); Text(String(format: "%.1f", score)) }
+                            Image(systemName: "star.fill").foregroundStyle(.yellow)
+                                .accessibilityLabel("Rating")
+                            Text(String(format: "%.1f", score))
                         }
-                    }.font(.system(size: 15, weight: .medium)).foregroundStyle(Color(themed: "#d8d3e0"))
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(.horizontal, 20).padding(.bottom, 18)
-        }.environment(\.colorScheme, .dark).aspectRatio(1.89, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.outline(0.12))).contentShape(Rectangle())
+                    }
+                    .font(.subheadline.weight(.medium))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("explore-daily-pick")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 18)
+        .padding(.top, 70)
+        .padding(.bottom, 36)
+        .frame(maxWidth: .infinity, minHeight: verticalSizeClass == .compact ? 240 : 340, alignment: .bottomLeading)
+        .background {
+            NavigationLink(value: title.id) {
+                Artwork(path: title.backdrop ?? title.poster, initialsOnly: false)
+                    .overlay {
+                        LinearGradient(stops: [
+                            .init(color: .black.opacity(0.35), location: 0),
+                            .init(color: .clear, location: 0.28),
+                            .init(color: .black.opacity(0.70), location: 0.65),
+                            .init(color: .black.opacity(0.94), location: 1)
+                        ], startPoint: .top, endPoint: .bottom)
+                    }
+                    .mask(LinearGradient(stops: [.init(color: .white, location: 0.92),
+                                                 .init(color: .clear, location: 1)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .contentShape(Rectangle())
+                    .zoomSource(ZoomID.title(title.id))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHidden(true)
+        }
     }
 }
 

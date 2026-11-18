@@ -1213,26 +1213,23 @@ import UIKit
         let app = launch(); app.tabBars.buttons["Home"].tap()
         let explore = app.buttons["explore-shortcut"]
         for _ in 0..<4 { if explore.isHittable { break }; app.swipeUp() }
-        explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["explore-done"].exists)
+        let daily = app.buttons["explore-more-daily"]
+        explore.tap(); XCTAssertTrue(daily.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars.buttons.firstMatch.exists)
+        XCTAssertFalse(app.buttons["explore-search-lab"].exists)
+        daily.tap()
+        XCTAssertTrue(app.buttons["explore-search-lab"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
-        explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
+        XCTAssertTrue(daily.waitForExistence(timeout: 5))
         app.tabBars.buttons["Home"].tap()
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["Explore"])], timeout: 5)
-        explore.tap(); XCTAssertTrue(app.navigationBars["Explore"].waitForExistence(timeout: 5))
-        let back = app.navigationBars["Explore"].buttons.firstMatch
-        XCTAssertTrue(back.isHittable)
-        let initialBackFrame = back.frame
+        XCTAssertTrue(explore.waitForExistence(timeout: 5))
+        explore.tap(); XCTAssertTrue(daily.waitForExistence(timeout: 5))
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.3))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.3)),
                    withVelocity: .slow, thenHoldForDuration: 0.7)
-        XCTAssertTrue(back.isHittable)
-        XCTAssertEqual(back.frame.minX, initialBackFrame.minX, accuracy: 1)
-        XCTAssertEqual(back.frame.minY, initialBackFrame.minY, accuracy: 1)
+        XCTAssertTrue(daily.isHittable)
         XCTAssertTrue(app.tabBars.buttons["Home"].isHittable)
-        completeContentBack(app, beside: app.staticTexts["Recommendation of the day"], from: 0.12, velocity: .slow)
-        wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.navigationBars["Explore"])], timeout: 5)
+        completeContentBack(app, beside: daily, from: 0.12, velocity: .slow)
         XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5))
         capture("Native Explore returned Home")
     }

@@ -350,6 +350,7 @@ import XCTest
         }
         capture(tab: "home", name: "lab", pages: 4) { app in
             openExplore(app)
+            app.buttons["explore-more-daily"].tap()
             app.buttons["explore-search-lab"].firstMatch.tap(); Thread.sleep(forTimeInterval: 2)
             for label in ["Animation", "TV-14", "7+", "2020s", "Returning", "Japanese", "Not yet"] {
                 let chip = app.buttons[label].firstMatch
@@ -361,6 +362,7 @@ import XCTest
         }
         capture(tab: "home", name: "labresults", pages: 2) { app in
             openExplore(app)
+            app.buttons["explore-more-daily"].tap()
             app.buttons["explore-search-lab"].firstMatch.tap(); Thread.sleep(forTimeInterval: 2)
             for label in ["Animation", "7+"] {
                 let chip = app.buttons[label].firstMatch
