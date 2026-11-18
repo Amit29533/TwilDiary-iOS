@@ -29,3 +29,17 @@ import TwilDiaryTestSupport
     #expect(DiarySearchTools.merging(local, partial.library).count == local.count + 1)
     #expect(!partial.onlineError.isEmpty)
 }
+
+/// "Did you mean…": a letter or two off, a swapped pair, accents and case ignored; nothing for an
+/// exact match or a name too far off.
+@Test func spellingSuggestionFindsTheClosestKnownName() {
+    let names = ["Breaking Bad", "Naruto", "Jujutsu Kaisen", "Frieren: Beyond Journey's End", "Frieren", "Pokémon", "Dark"]
+    #expect(SpellingSuggestion.best(for: "breking bad", in: names) == "Breaking Bad")
+    #expect(SpellingSuggestion.best(for: "narto", in: names) == "Naruto")
+    #expect(SpellingSuggestion.best(for: "jujutsu kaisn", in: names) == "Jujutsu Kaisen")
+    #expect(SpellingSuggestion.best(for: "frerein", in: names) == "Frieren")
+    #expect(SpellingSuggestion.best(for: "pokemno", in: names) == "Pokémon", "a swapped pair is one edit")
+    #expect(SpellingSuggestion.best(for: "Breaking Bad", in: names) == nil, "already right")
+    #expect(SpellingSuggestion.best(for: "succession", in: names) == nil, "nothing close")
+    #expect(SpellingSuggestion.best(for: "dk", in: names) == nil, "too short to guess")
+}

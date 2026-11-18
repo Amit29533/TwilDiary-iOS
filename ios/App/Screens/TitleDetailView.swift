@@ -190,6 +190,9 @@ struct TitleDetailView: View {
             .onChange(of: hideSpoilers) { _, hidden in if !hidden { Task { await revealSeason(title) } } }
             .onChange(of: store.sessionRevision) { _, _ in episodeDetails.reset(); revealedEpisodeIDs = []; selectedEpisode = nil }
             .task(id: title.id) {
+                if !store.isPreview {
+                    RecentlyViewed.record(RecentlyViewedTitle(name: title.name, poster: title.poster, libraryID: title.id, movie: !title.isSeries, tmdb: title.tmdbId))
+                }
                 guard let tmdbId = title.tmdbId else { criticScores = []; extras = nil; return }
                 let route = CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdbId)
                 extras = TitleExtrasCache.cached(route)

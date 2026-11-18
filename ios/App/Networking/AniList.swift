@@ -784,7 +784,15 @@ actor AniListClient {
         struct Reply: Decodable {
             let characters: CharacterPage
             let performers: PerformerPage
-            struct CharacterPage: Decodable { let characters: [Node]; let pageInfo: PageInfo }
+            struct CharacterPage: Decodable { let characters: [Character]; let pageInfo: PageInfo }
+            /// A character with the anime it's best known from (its most popular).
+            struct Character: Decodable {
+                let id: Int; let name: Name; let image: Image?; let media: Media?
+                struct Media: Decodable { let nodes: [Title] }
+                struct Title: Decodable { let title: Titles }
+                struct Titles: Decodable { let english: String?; let romaji: String? }
+                var from: String? { media?.nodes.first.flatMap { $0.title.english ?? $0.title.romaji } }
+            }
             struct PerformerPage: Decodable { let staff: [Performer]; let pageInfo: PageInfo }
             struct PageInfo: Decodable { let hasNextPage: Bool }
             struct Performer: Decodable { let id: Int; let name: Name; let image: Image?; let primaryOccupations: [String]? }
@@ -795,7 +803,7 @@ actor AniListClient {
             query($search: String, $page: Int) {
               characters: Page(page: $page, perPage: 12) {
                 pageInfo { hasNextPage }
-                characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } }
+                characters(search: $search, sort: SEARCH_MATCH) { id name { full } image { large } media(perPage: 1, sort: POPULARITY_DESC) { nodes { title { english romaji } } } }
               }
               performers: Page(page: $page, perPage: 12) {
                 pageInfo { hasNextPage }
@@ -803,7 +811,7 @@ actor AniListClient {
               }
             }
             """, ["search": search, "page": page])
-        let items = reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character") } }
+        let items = reply.characters.characters.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "character", detail: node.from) } }
             + reply.performers.staff.filter { $0.primaryOccupations?.contains(where: { $0.localizedCaseInsensitiveContains("voice") }) == true }.compactMap { node in node.name.full.map { SearchPerson(id: node.id, name: $0, image: node.image?.large, kind: "voice") } }
         let hasMore = reply.characters.pageInfo.hasNextPage || reply.performers.pageInfo.hasNextPage
         return SearchPeoplePage(items: items, page: page, totalPages: hasMore ? page + 1 : page)

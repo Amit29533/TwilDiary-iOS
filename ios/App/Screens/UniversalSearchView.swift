@@ -53,6 +53,7 @@ struct SearchLandingView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            RecentlyViewedShelf()
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -150,6 +151,8 @@ struct SearchPerson: Decodable, Identifiable, Sendable {
     let name: String
     let image: String?
     var kind = "cast"
+    /// What they're known from (a character's anime).
+    var detail: String? = nil
     var key: String { kind + ":" + String(id) }
     enum CodingKeys: String, CodingKey { case id, name, image }
 }
@@ -191,7 +194,7 @@ struct SearchPeopleView: View {
                         Artwork(path: person.image, title: person.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
                         VStack(alignment: .leading, spacing: 3) {
                             Text(person.name).font(.headline).foregroundStyle(HomeStyle.primary).lineLimit(2)
-                            Text(person.kind == "cast" ? "Cast" : person.kind == "character" ? "Character" : "Voice actor")
+                            Text([person.kind == "cast" ? "Cast" : person.kind == "character" ? "Character" : "Voice actor", person.detail].compactMap { $0 }.joined(separator: " · "))
                                 .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 4); Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))

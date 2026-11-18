@@ -141,7 +141,15 @@ struct CatalogSearchView: View {
                 if universal { SearchLandingView(kind: kind, recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }).id(kind) }
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
+            // Nothing found: the closest spelling ("breking bad" → Breaking Bad).
+            if universal && ready && !isIMDbLookup && kind != .people && completedScope == scope && failure == nil && !loading && ranked.isEmpty {
+                DidYouMeanView(query: scope.query) { query = $0 }
+            }
             if universal && ready { universalResults(ranked) }
+            // Studios and franchises named like the search, under the titles.
+            if universal && ready && !isIMDbLookup && kind != .people {
+                SearchStudiosAndFranchises(query: scope.query, kind: kind, onChoose: { rememberQuery(); dismissKeyboard += 1 })
+            }
             if ready && !universal {
                 // In your library (only when something matches).
                 if !localMatches.isEmpty {
@@ -643,6 +651,10 @@ struct CatalogDetailView: View {
                 if store.title(saved.id) != nil { accepted(saved.id); return }
             }
             details = response
+            if !store.isPreview {
+                RecentlyViewed.record(RecentlyViewedTitle(name: response.details.name, poster: CatalogTools.image(response.details.posterPath),
+                                                          libraryID: nil, movie: route.kind == .movie, tmdb: route.id))
+            }
         } catch is CancellationError { }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
