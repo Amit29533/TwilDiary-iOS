@@ -17,10 +17,18 @@ import os
             try? await Task.sleep(for: .milliseconds(300))
             guard writer.withLock({ $0 == ticket }) else { return }
             do {
+                // Written beside the file first, outside the lock; only the swap into place happens
+                // under it (a save from the main thread no longer waits for a disk write here).
                 let data = try JSONEncoder().encode(value)
-                try writer.withLock { revision in
-                    guard revision == ticket else { return }
-                    try write(data, to: url, protected: protected, excludeFolderFromBackup: excludeFolderFromBackup)
+                let staged = try stage(data, for: url, protected: protected)
+                do {
+                    try writer.withLock { revision in
+                        guard revision == ticket else { try? FileManager.default.removeItem(at: staged); return }
+                        try commit(staged, to: url, excludeFolderFromBackup: excludeFolderFromBackup)
+                    }
+                } catch {
+                    try? FileManager.default.removeItem(at: staged)
+                    throw error
                 }
             } catch {
                 // The copy on screen stays; the next save writes it again.
@@ -40,6 +48,25 @@ import os
         let writer = OSAllocatedUnfairLock(initialState: 0)
         writers[url] = writer
         return writer
+    }
+    /// The new contents in a hidden file beside the target, ready to be swapped in.
+    private nonisolated static func stage(_ data: Data, for url: URL, protected: Bool) throws -> URL {
+        let folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let staged = folder.appending(path: "." + url.lastPathComponent + "." + UUID().uuidString + ".tmp")
+        try data.write(to: staged, options: protected ? [.completeFileProtection] : [])
+        return staged
+    }
+    /// The staged file takes the target's place in one step.
+    private nonisolated static func commit(_ staged: URL, to url: URL, excludeFolderFromBackup: Bool) throws {
+        if FileManager.default.fileExists(atPath: url.path) { _ = try FileManager.default.replaceItemAt(url, withItemAt: staged) }
+        else { try FileManager.default.moveItem(at: staged, to: url) }
+        if excludeFolderFromBackup {
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var target = url.deletingLastPathComponent()
+            try target.setResourceValues(values)
+        }
     }
     private nonisolated static func write(_ data: Data, to url: URL, protected: Bool = false, excludeFolderFromBackup: Bool = false) throws {
         let folder = url.deletingLastPathComponent()

@@ -38,8 +38,7 @@ import TwilDiaryCore
     }
 
     static func awardCatalog(key: String) async throws -> [SearchAwardCeremony] {
-        let token = try await browseToken(key: key)
-        let reply = try await send(request("awards", token: token), as: AwardReply<[SearchAwardCeremony]>.self)
+        let reply = try await authorized("awards", key: key, as: AwardReply<[SearchAwardCeremony]>.self)
         var ids = Set<Int>()
         let catalog = reply.data.filter { $0.id > 0 && !$0.name.isEmpty && ids.insert($0.id).inserted }
         guard !catalog.isEmpty else { throw APIError.message("TheTVDB returned an empty Awards catalog.") }
@@ -51,25 +50,21 @@ import TwilDiaryCore
             let id: Int
             let categories: [SearchAwardCategory]?
         }
-        let token = try await browseToken(key: key)
-        let reply = try await send(request("awards/\(id)/extended", token: token), as: AwardReply<Ceremony>.self)
+        let reply = try await authorized("awards/\(id)/extended", key: key, as: AwardReply<Ceremony>.self)
         guard reply.data.id == id else { throw APIError.message("TheTVDB returned a different award.") }
         var ids = Set<Int>()
         return (reply.data.categories ?? []).filter { $0.id > 0 && !$0.name.isEmpty && ids.insert($0.id).inserted }
     }
 
     static func awardResults(_ id: Int, key: String) async throws -> SearchAwardResults {
-        let token = try await browseToken(key: key)
-        let reply = try await send(request("awards/categories/\(id)/extended", token: token),
-                                   as: AwardReply<SearchAwardResults>.self)
+        let reply = try await authorized("awards/categories/\(id)/extended", key: key, as: AwardReply<SearchAwardResults>.self)
         guard reply.data.id == id else { throw APIError.message("TheTVDB returned a different category.") }
         return reply.data
     }
 
     static func awardPersonTMDB(_ id: Int, key: String) async throws -> Int? {
         struct Person: Decodable { let remoteIds: [ListTitle.Remote]? }
-        let token = try await browseToken(key: key)
-        let reply = try await send(request("people/\(id)/extended", token: token), as: AwardReply<Person>.self)
+        let reply = try await authorized("people/\(id)/extended", key: key, as: AwardReply<Person>.self)
         return reply.data.remoteIds?.first { $0.sourceName == "TheMovieDB.com" }
             .flatMap { Int($0.id) }.flatMap { $0 > 0 ? $0 : nil }
     }
@@ -80,9 +75,7 @@ import TwilDiaryCore
         if let cached = englishAwardTitles.object(forKey: cacheKey) {
             return cached.length == 0 ? nil : cached as String
         }
-        let token = try await browseToken(key: key)
-        let reply = try await send(request("\(item.path)/\(item.providerID)/translations/eng", token: token),
-                                   as: AwardReply<Translation?>.self)
+        let reply = try await authorized("\(item.path)/\(item.providerID)/translations/eng", key: key, as: AwardReply<Translation?>.self)
         let name = reply.data?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         englishAwardTitles.setObject(name as NSString, forKey: cacheKey)
         return name.isEmpty ? nil : name
@@ -165,7 +158,6 @@ import TwilDiaryCore
     }
 
     static func franchises(page: Int, query: String, key: String) async throws -> ListPage {
-        let token = try await browseToken(key: key)
         if query.count >= 2 {
             struct Search: Decodable {
                 struct Result: Decodable {
@@ -176,9 +168,9 @@ import TwilDiaryCore
                 let data: [Result]?
                 let links: ListLinks?
             }
-            let reply = try await send(request("search", query: [
+            let reply = try await authorized("search", query: [
                 "type": "list", "query": query, "limit": "24", "page": String(page)
-            ], token: token), as: Search.self)
+            ], key: key, as: Search.self)
             let lists = (reply.data ?? []).compactMap { hit -> Franchise? in
                 guard let id = Int(hit.tvdb_id), id > 0, !hit.name.isEmpty else { return nil }
                 return Franchise(id: id, name: hit.name, image: hit.image_url, score: nil, isOfficial: nil)
@@ -189,7 +181,7 @@ import TwilDiaryCore
             let data: [Franchise]
             let links: ListLinks?
         }
-        let reply = try await send(request("lists", query: ["page": String(page)], token: token), as: Reply.self)
+        let reply = try await authorized("lists", query: ["page": String(page)], key: key, as: Reply.self)
         let lists = reply.data.filter { $0.isOfficial == true && $0.id > 0 && !$0.name.isEmpty }
             .sorted { ($0.score ?? 0) > ($1.score ?? 0) }
         return ListPage(franchises: lists, hasNext: reply.links?.next != nil)
@@ -208,8 +200,7 @@ import TwilDiaryCore
         if let cached = listDetailsCache[franchise.id], Date.now.timeIntervalSince(cached.date) < 900 {
             return cached.contents
         }
-        let token = try await browseToken(key: key)
-        let reply = try await send(request("lists/\(franchise.id)/extended", token: token), as: Reply.self)
+        let reply = try await authorized("lists/\(franchise.id)/extended", key: key, as: Reply.self)
         guard reply.data.id == franchise.id else { throw APIError.message("TheTVDB returned a different list.") }
         var seen = Set<String>()
         let entries: [ListEntry] = (reply.data.entities ?? []).sorted { ($0.order ?? Int.max) < ($1.order ?? Int.max) }.compactMap {
@@ -228,9 +219,7 @@ import TwilDiaryCore
     static func title(_ item: ListEntry, key: String) async throws -> ListTitle {
         struct Reply: Decodable { let data: ListTitle }
         if let cached = listTitles[item], Date.now.timeIntervalSince(cached.date) < 900 { return cached.title }
-        let token = try await browseToken(key: key)
-        let title = try await send(request("\(item.path)/\(item.providerID)/extended", query: ["short": "true"],
-                                           token: token), as: Reply.self).data
+        let title = try await authorized("\(item.path)/\(item.providerID)/extended", query: ["short": "true"], key: key, as: Reply.self).data
         if listTitles.count >= 256 { listTitles.removeAll(keepingCapacity: true) }
         listTitles[item] = (.now, title)
         return title
@@ -251,6 +240,22 @@ import TwilDiaryCore
         return token
     }
 
+    /// TheTVDB refused the sign-in (401/403).
+    private struct Rejected: LocalizedError {
+        var errorDescription: String? { "TheTVDB didn’t accept these credentials. Check the API key." }
+    }
+    /// A read with the kept sign-in. One TheTVDB rejects (expired or revoked) is dropped and the
+    /// read tried once more with a fresh sign-in; before, every read failed until the hour was up.
+    private static func authorized<T: Decodable>(_ path: String, query: [String: String] = [:], key: String, as type: T.Type) async throws -> T {
+        let token = try await browseToken(key: key)
+        do { return try await send(request(path, query: query, token: token), as: type) }
+        catch is Rejected {
+            if session?.token == token { session = nil }
+            let fresh = try await browseToken(key: key)
+            return try await send(request(path, query: query, token: fresh), as: type)
+        }
+    }
+
     private static func request(_ path: String, query: [String: String] = [:], token: String) -> URLRequest {
         var url = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { url.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) } }
@@ -267,7 +272,7 @@ import TwilDiaryCore
         }
         switch status {
         case 200..<300: break
-        case 401, 403: throw APIError.message("TheTVDB didn’t accept these credentials. Check the API key.")
+        case 401, 403: throw Rejected()
         case 429: throw APIError.message("TheTVDB is busy. Try checking the connection again shortly.")
         default: throw APIError.message("TheTVDB is unavailable right now (\(status)).")
         }
