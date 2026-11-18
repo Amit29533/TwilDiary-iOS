@@ -846,6 +846,34 @@ actor AniListClient {
         let year: Int?; let month: Int?; let day: Int?
         var text: String? { ProfileDate.partial(year: year, month: month, day: day) }
     }
+    /// This season's most popular anime (TV, short and web series), with when each next episode airs.
+    func seasonal(_ season: SeasonalAnime.Season, year: Int) async throws -> [SeasonalAnime] {
+        struct Reply: Decodable { struct Page: Decodable { let media: [Media] }; let Page: Page }
+        struct Media: Decodable {
+            let id: Int; let title: Titles; let coverImage: Cover?; let format: String?; let averageScore: Int?
+            let startDate: DateParts?; let episodes: Int?; let nextAiringEpisode: Next?
+            struct Titles: Decodable { let english: String?; let romaji: String? }
+            struct Cover: Decodable { let large: String? }
+            struct Next: Decodable { let airingAt: Int; let episode: Int }
+        }
+        let reply: Reply = try await query("""
+            query($season: MediaSeason, $year: Int) {
+              Page(perPage: 24) {
+                media(season: $season, seasonYear: $year, type: ANIME, isAdult: false, sort: POPULARITY_DESC, format_in: [TV, TV_SHORT, ONA]) {
+                  id title { english romaji } coverImage { large } format averageScore startDate { year } episodes
+                  nextAiringEpisode { airingAt episode }
+                }
+              }
+            }
+            """, ["season": season.rawValue, "year": year])
+        return reply.Page.media.compactMap { media in
+            guard let name = media.title.english ?? media.title.romaji else { return nil }
+            return SeasonalAnime(id: media.id, name: name, cover: media.coverImage?.large, format: media.format,
+                                 year: media.startDate?.year ?? year, score: media.averageScore.map { Double($0) / 10 },
+                                 episodes: media.episodes, nextEpisode: media.nextAiringEpisode?.episode,
+                                 nextAiring: media.nextAiringEpisode.map { Date(timeIntervalSince1970: TimeInterval($0.airingAt)) })
+        }
+    }
     /// AniList's GraphQL reply: the answer under `data`.
     private struct Envelope<D: Decodable>: Decodable { let data: D? }
     private func query<T: Decodable>(_ text: String, _ variables: [String: any Sendable]) async throws -> T {
@@ -904,3 +932,36 @@ enum AniListPreview {
     }
 }
 #endif
+
+/// One anime of the season (AniList), for Explore's "This season's anime".
+struct SeasonalAnime: Hashable, Sendable, Identifiable {
+    enum Season: String, Sendable {
+        case winter = "WINTER", spring = "SPRING", summer = "SUMMER", fall = "FALL"
+        var name: String { String(rawValue.prefix(1)) + rawValue.dropFirst().lowercased() }
+        /// AniList's seasons by month: winter January to March, and so on.
+        static func of(_ date: Date, calendar: Calendar = .current) -> (season: Season, year: Int) {
+            let parts = calendar.dateComponents([.month, .year], from: date)
+            let month = parts.month ?? 1, year = parts.year ?? 2026
+            return (month <= 3 ? .winter : month <= 6 ? .spring : month <= 9 ? .summer : .fall, year)
+        }
+    }
+    let id: Int
+    let name: String
+    let cover: String?
+    let format: String?
+    let year: Int?
+    let score: Double?
+    let episodes: Int?
+    let nextEpisode: Int?
+    let nextAiring: Date?
+    /// "Ep 8 in 2d 4h", "Ep 8 in 35m", "Ep 8 airing now"; nil when nothing is scheduled.
+    static func countdown(episode: Int?, at date: Date?, now: Date) -> String? {
+        guard let episode, let date else { return nil }
+        let minutes = Int(date.timeIntervalSince(now) / 60)
+        if minutes <= 0 { return "Ep \(episode) airing now" }
+        let days = minutes / 1440, hours = (minutes % 1440) / 60, rest = minutes % 60
+        let left = days > 0 ? "\(days)d \(hours)h" : hours > 0 ? "\(hours)h \(rest)m" : "\(rest)m"
+        return "Ep \(episode) in " + left
+    }
+    var appearance: AniAppearance { AniAppearance(id: id, title: name, cover: cover, year: year, role: nil, voiceActor: nil, format: format) }
+}

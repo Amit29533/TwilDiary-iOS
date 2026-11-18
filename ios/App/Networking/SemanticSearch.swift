@@ -226,6 +226,41 @@ import TwilDiaryCore
         return spaced.split(separator: " ").joined(separator: " ")
     }
 
+    /// CineMind's picks for Explore: up to ten movies (or shows) someone with this taste hasn't
+    /// seen, each checked on TMDB, best first. `taste` is a few lines of what they watched and how
+    /// they rated it ("Frieren (2023) · 9/10"); nothing else from the diary is sent.
+    static func recommendations(movies: Bool, taste: [String], store: DiaryStore) async throws -> [Match] {
+        guard let key else { throw APIError.message("Add a Gemini or Groq key (Profile → APIs) for CineMind's picks.") }
+        guard let token = TMDBDirect.token(store) else { throw APIError.message("CineMind's picks need TMDB, which isn’t set up.") }
+        let kind = movies ? "movie" : "tv"
+        let instruction = """
+        You are CineMind, a film and TV expert. From the titles this person watched and how they \
+        rated them, recommend up to 10 real \(movies ? "movies" : "TV shows (anime series count as shows)") \
+        they have not watched and are likely to love, best first. Never repeat a title from their \
+        list. Use each title's original English name as TMDB lists it, and its first release year. \
+        type is "\(kind)". why is one short sentence (at most 15 words) saying what in their taste \
+        it matches. Never invent a title; fewer good picks beat more weak ones.
+        """
+        let text = "What I watched (my rating out of 10 where I gave one):\n" + taste.joined(separator: "\n")
+        let suggestions = try decode(try await generate(body(text, instruction: instruction), key: key))
+            .filter { $0.type.lowercased() == kind }
+        var matches: [Match] = [], seen = Set<String>()
+        for start in stride(from: 0, to: suggestions.count, by: 3) {
+            try Task.checkCancellation()
+            let batch = suggestions[start..<min(start + 3, suggestions.count)]
+            let resolved = await withTaskGroup(of: (Int, Match?).self) { group in
+                for (index, suggestion) in batch.enumerated() {
+                    group.addTask { (index, await find(suggestion, token: token).map { Match(item: $0, why: suggestion.why) }) }
+                }
+                var rows: [(Int, Match)] = []
+                for await (index, match) in group { if let match { rows.append((index, match)) } }
+                return rows.sorted { $0.0 < $1.0 }.map { $0.1 }
+            }
+            matches += resolved.filter { seen.insert($0.item.key).inserted }
+        }
+        return matches
+    }
+
     /// Asks Gemini for up to ten titles, as JSON (the reply is held to a schema).
     static func suggest(_ description: String, key: String) async throws -> [Suggestion] {
         try decode(try await generate(body(description), key: key))
@@ -489,8 +524,8 @@ import TwilDiaryCore
         return parts.compactMap { $0["text"] as? String }.joined()
     }
 
-    static func body(_ description: String) -> [String: Any] {
-        let instruction = """
+    static func body(_ description: String, instruction custom: String? = nil) -> [String: Any] {
+        let instruction = custom ?? """
         You are a film and TV expert helping someone find something to watch. They describe a movie, \
         show or anime: its plot, characters, theme, mood, or a half-remembered scene. Reply with up to \
         10 real, existing titles that best match the description, best match first. Use each title's \

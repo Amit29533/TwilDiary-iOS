@@ -360,6 +360,7 @@ struct RootView: View {
                 }
                 .navigationDestination(for: OnThisDayRoute.self) { _ in OnThisDayView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: SearchLabRoute.self) { _ in SearchLabView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: ExploreAIPromptRoute.self) { ExploreAIPromptPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: SearchLabResultsRoute.self) { SearchLabResultsView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: MilestonesRoute.self) { _ in MilestonesView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonPhotosRoute.self) { PersonPhotosPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }

@@ -166,9 +166,9 @@ struct SearchStudiosAndFranchises: View {
         do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
         let wanted = SpellingSuggestion.comparable(query)
         func matches(_ name: String) -> Bool { (" " + SpellingSuggestion.comparable(name) + " ").contains(" " + wanted) }
-        async let companyRows = try? TMDBDirect.object("search/company", query: ["query": query, "page": "1"], token: token)
-        async let collectionRows = try? TMDBDirect.object("search/collection", query: ["query": query, "page": "1", "language": "en-US"], token: token)
-        let (companies, collections) = await (companyRows, collectionRows)
+        let companies = try? await TMDBDirect.object("search/company", query: ["query": query, "page": "1"], token: token)
+        guard !Task.isCancelled else { return }
+        let collections = try? await TMDBDirect.object("search/collection", query: ["query": query, "page": "1", "language": "en-US"], token: token)
         guard !Task.isCancelled else { return }
         studios = Array(((companies?["results"] as? [[String: Any]]) ?? []).compactMap { row -> TitleCompany? in
             guard let id = row["id"] as? Int, id > 0, let name = row["name"] as? String, !name.isEmpty, matches(name) else { return nil }

@@ -65,7 +65,10 @@ private struct ExploreContent: View {
                 .padding(.top, 72)
             }
             VStack(alignment: .leading, spacing: 22) {
+                // AI prompts and CineMind's picks, then Trakt's, then the rest of the new rows.
+                ExploreAIArea()
                 RecommendedDiscoveryView(service: service, section: false)
+                ExploreMoreShelves()
                 ForEach(DiscoverySection.shelves) { section in DiscoveryShelfView(section: section, service: service) }
             }
             .padding(.horizontal, 14)
