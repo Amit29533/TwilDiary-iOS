@@ -164,6 +164,9 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         readCounts[.simkl, default: 0] += 1
         save(library, .simkl)
         simklWaiting = read.waiting
+        // A trashed title Simkl still lists goes off Simkl again, without Force Match; Simkl is
+        // read again after, so the comparison shows it gone.
+        if SimklMirror.shared.sweepTrash(library, trashed: PhoneTrash.shared.titles, store: store) > 0 { refreshSoon(.simkl, store: store, after: 45) }
         guard let analysed = await analyse(.simkl, store: store) else { return }
         guard session == generation else { return }
         // Each missing watch says where it was placed on Simkl (or that it wasn't).

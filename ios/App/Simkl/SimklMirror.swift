@@ -45,6 +45,8 @@ struct SimklJob: Codable, Equatable, Identifiable, Sendable {
     var tvdbEpisodeTried: Bool?
     /// A removal of the whole title (Force Match taking off what the diary doesn't have).
     var wholeTitle: Bool?
+    /// Sent by the check because a trashed title was still on Simkl (`sweepTrash`).
+    var swept: Bool?
 
     var titleKey: String { (movie ? "movie:" : "show:") + String(tmdb) }
     var itemKey: String { titleKey + (season.map { ":\($0):\(number ?? 0)" } ?? "") }
@@ -551,6 +553,49 @@ struct SimklQueue: Codable, Equatable, Sendable {
         guard placed.rule != SimklPlacement.currentRule, let season = job.season, let number = job.number, let map = AnimeMapStore.shared.map,
               let mapped = map.anilist(tmdb: job.tmdb, season: season, episode: number), let entry = map.simkl(anilist: mapped.id) else { return true }
         return placed.entry == entry && placed.number == mapped.episode
+    }
+
+    // MARK: Trash on Simkl
+
+    /// How often the check has sent each trashed title off Simkl ("show:61223": 2).
+    @ObservationIgnored private var trashSweeps = SimklStorage.load([String: Int].self, "trash-sweep.json") ?? [:]
+    /// Trashed titles Simkl still lists (Plan to watch, Dropped, watches or a rating) go off Simkl
+    /// again: Trash takes a title off when it's moved, yet Akame ga Kill! stayed on Plan to watch
+    /// until Force Match (owner, 2026-11-19). Simkl answers every removal "deleted", taken or not,
+    /// so only the next read shows whether it went: three sends, then it's listed as Not kept.
+    @discardableResult func sweepTrash(_ library: TraktLibrary, trashed: [MediaTitle], store: DiaryStore) -> Int {
+        guard !store.isPreview, SimklAccount.shared.canSend else { return 0 }
+        self.store = store
+        var jobs: [SimklJob] = []
+        for title in Self.trashedOnSimkl(library, trashed: trashed) {
+            guard let tmdb = title.tmdbId else { continue }
+            var job = SimklJob(kind: .unwatch, tmdb: tmdb, movie: !title.isSeries, anime: Self.isAnime(title), name: title.name, year: title.year)
+            job.wholeTitle = true; job.swept = true
+            jobs.append(job)
+        }
+        // A title off Simkl starts again from nothing if it's ever trashed again.
+        let listed = Set(jobs.map(\.titleKey))
+        trashSweeps = trashSweeps.filter { listed.contains($0.key) }
+        var queued = 0
+        for job in jobs where !queue.jobs.contains(where: { $0.titleKey == job.titleKey && $0.wholeTitle == true }) {
+            let tries = trashSweeps[job.titleKey, default: 0]
+            if tries >= 3 {
+                if tries == 3 { finish([job], reason: "Moved to Trash, but Simkl still lists it after three removals. Remove it on simkl.com, or use Force Match.") }
+                trashSweeps[job.titleKey] = 4
+                continue
+            }
+            trashSweeps[job.titleKey] = tries + 1
+            queue.add(job); queued += 1
+        }
+        SimklStorage.save(trashSweeps, "trash-sweep.json")
+        if queued > 0 { save(); Task { await resume() } }
+        return queued
+    }
+    /// The trashed titles Simkl lists in any way, by TMDB id.
+    nonisolated static func trashedOnSimkl(_ library: TraktLibrary, trashed: [MediaTitle]) -> [MediaTitle] {
+        let refs = library.watchlist.map(\.title) + library.dropped.map(\.title) + library.ratings.map(\.title) + library.plays.map(\.title)
+        let onSimkl = Set(refs.compactMap(\.diaryKey))
+        return trashed.filter { title in title.tmdbId.map { onSimkl.contains((title.isSeries ? "tv:" : "movie:") + String($0)) } ?? false }
     }
 
     // MARK: Make Simkl match: three tries
