@@ -61,10 +61,25 @@ public struct TitleCollection: Decodable, Sendable {
 }
 
 public struct TitleExtras: Codable, Hashable, Sendable {
+    /// Whether TMDB's value is an age rating at all: "NR", "Unrated" or "Exempt" say there is none,
+    /// so the next country with a real one is used (src/lib/server/tmdb.ts keeps the same list).
+    public static func isAgeRating(_ value: String) -> Bool {
+        let rating = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return !rating.isEmpty && !["NR", "N/R", "NOT RATED", "UNRATED", "UR", "-", "NONE", "TBA", "TBC", "PENDING", "EXEMPT", "E"].contains(rating)
+    }
+    /// The age rating as shown: with its country when it isn't the US ("15 · South Korea").
+    public func ratingLabel(locale: Locale = .current) -> String? {
+        guard let certification, !certification.isEmpty else { return nil }
+        guard let country = certificationCountry, !country.isEmpty, country != "US" else { return certification }
+        return certification + " · " + (locale.localizedString(forRegionCode: country) ?? country)
+    }
+
     public let runtimeMinutes: Int?
     public let latestEpisodeMinutes: Int?
     public let status: String?
     public let certification: String?
+    /// The country the age rating is from ("KR"); nil from older copies.
+    public let certificationCountry: String?
     public let originalLanguage: String?
     public let imdbId: String?
     public let contentAdvisories: [String]
@@ -75,8 +90,9 @@ public struct TitleExtras: Codable, Hashable, Sendable {
     /// TMDb's genres with their ids, for Related collections.
     public let genres: [TitleKeyword]
     public let collection: TitleCollectionRef?
-    public init(status: String?, certification: String?, studios: [TitleCompany], networks: [TitleCompany], keywords: [TitleKeyword], crew: [TitleCrewMember] = [], genres: [TitleKeyword] = [], collection: TitleCollectionRef? = nil, runtimeMinutes: Int? = nil, latestEpisodeMinutes: Int? = nil, contentAdvisories: [String] = [], originalLanguage: String? = nil, imdbId: String? = nil) {
+    public init(status: String?, certification: String?, studios: [TitleCompany], networks: [TitleCompany], keywords: [TitleKeyword], crew: [TitleCrewMember] = [], genres: [TitleKeyword] = [], collection: TitleCollectionRef? = nil, runtimeMinutes: Int? = nil, latestEpisodeMinutes: Int? = nil, contentAdvisories: [String] = [], originalLanguage: String? = nil, imdbId: String? = nil, certificationCountry: String? = nil) {
         self.imdbId = imdbId
+        self.certificationCountry = certificationCountry
         self.originalLanguage = originalLanguage
         self.contentAdvisories = contentAdvisories
         self.runtimeMinutes = runtimeMinutes; self.latestEpisodeMinutes = latestEpisodeMinutes
@@ -93,6 +109,7 @@ public struct TitleExtras: Codable, Hashable, Sendable {
         imdbId = try c.decodeIfPresent(String.self, forKey: .imdbId)
         contentAdvisories = try c.decodeIfPresent([String].self, forKey: .contentAdvisories) ?? []
         certification = try c.decodeIfPresent(String.self, forKey: .certification)
+        certificationCountry = try c.decodeIfPresent(String.self, forKey: .certificationCountry)
         studios = try c.decodeIfPresent([TitleCompany].self, forKey: .studios) ?? []
         networks = try c.decodeIfPresent([TitleCompany].self, forKey: .networks) ?? []
         keywords = try c.decodeIfPresent([TitleKeyword].self, forKey: .keywords) ?? []
@@ -135,7 +152,48 @@ public enum RatingTone: Equatable, Sendable {
 public struct EpisodeRatingPoint: Hashable, Sendable {
     public let episode: Int
     public let score: Double
-    public init(episode: Int, score: Double) { self.episode = episode; self.score = score }
+    /// The day the source says it aired ("2023-09-29"), where it gives one (Trakt does).
+    public let airedOn: String?
+    public init(episode: Int, score: Double, airedOn: String? = nil) { self.episode = episode; self.score = score; self.airedOn = airedOn }
+}
+
+/// Whether another source numbers a season's episodes as TMDB does. Some anime are split into
+/// seasons differently (TMDB's Bleach season 2 is Thousand-Year Blood War; TVDB's, which Trakt
+/// follows, is the 2004 show's second season), so the same "episode 5" can be another episode.
+public enum EpisodeRatingAgreement {
+    /// Fewest votes for a score to count: one person's 10 isn't a season's best episode.
+    public static let traktVotes = 5
+    public static let imdbVotes = 10
+
+    /// By air day: at least four in five of the episodes both sources date aired within two days
+    /// of each other (time zones move a day). Nil when fewer than two can be compared.
+    public static func datesAgree(_ points: [EpisodeRatingPoint], tmdb: [Int: String]) -> Bool? {
+        let pairs = points.compactMap { point -> (Date, Date)? in
+            guard let theirs = point.airedOn.flatMap(day), let ours = tmdb[point.episode].flatMap(day) else { return nil }
+            return (theirs, ours)
+        }
+        guard pairs.count >= 2 else { return nil }
+        let close = pairs.filter { abs($0.0.timeIntervalSince($0.1)) <= 2 * 86_400 }.count
+        return close * 5 >= pairs.count * 4
+    }
+    /// By numbers alone (IMDb gives no days): no episode past the end of TMDB's season and, for
+    /// anime, reaching close to the last episode TMDB says has aired (ratings lag a little).
+    public static func numbersFit(_ points: [EpisodeRatingPoint], tmdb: [Int: String], anime: Bool, today: String) -> Bool {
+        guard !tmdb.isEmpty, let last = points.map(\.episode).max() else { return true }
+        guard last <= tmdb.keys.max() ?? last else { return false }
+        guard anime else { return true }
+        let aired = tmdb.filter { $0.value.prefix(10) <= today.prefix(10) && !$0.value.isEmpty }.keys.max() ?? 0
+        return last >= aired - 3
+    }
+    private static func day(_ text: String) -> Date? {
+        let value = String(text.prefix(10))
+        guard value.count == 10 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
 }
 
 /// Average, best and lowest episode for the rating trend. Scores outside 0–10 are ignored;

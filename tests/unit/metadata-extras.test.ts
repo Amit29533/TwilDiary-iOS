@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTmdb } from '../../src/lib/server/tmdb.ts';
+import { createTmdb, isAgeRating } from '../../src/lib/server/tmdb.ts';
 import { browseExtras } from '../../src/lib/server/metadata-browse.ts';
 
 test('Title extras return companies, networks, tags, status and an age rating from one request', async () => {
@@ -58,7 +58,7 @@ test('Title extras return companies, networks, tags, status and an age rating fr
               results: [
                 {
                   iso_3166_1: 'GB',
-                  release_dates: [{ certification: '', descriptors: ['Unrated cut'] }, { certification: '12A', descriptors: ['Strong language'] }]
+                  release_dates: [{ certification: '', descriptors: ['Unrated cut'] }, { certification: 'NR', descriptors: ['Not rated'] }, { certification: '12A', descriptors: ['Strong language'] }]
                 }
               ]
             }
@@ -74,6 +74,7 @@ test('Title extras return companies, networks, tags, status and an age rating fr
     latestEpisodeMinutes: 56,
     status: 'Ended',
     certification: 'TV-14',
+    certificationCountry: 'US',
     contentAdvisories: ['Violence'],
     studios: [
       { id: 10342, name: 'CloverWorks', logoPath: '/clover.png', kind: 'studio', country: 'JP' }
@@ -90,6 +91,7 @@ test('Title extras return companies, networks, tags, status and an age rating fr
   const movie = await browseExtras(new URLSearchParams('type=movie&id=77'), client);
   assert.equal(seen[1]!.searchParams.get('append_to_response'), 'keywords,release_dates,credits');
   assert.equal(movie.certification, '12A');
+  assert.equal(movie.certificationCountry, 'GB');
   assert.deepEqual(movie.contentAdvisories, ['Strong language']);
   assert.equal(movie.runtimeMinutes, 119);
   assert.deepEqual(movie.keywords, [{ id: 5, name: 'friendship' }]);
@@ -171,4 +173,25 @@ test('A TMDb collection lists its films oldest first and rejects bad ids', async
     ]
   );
   await assert.rejects(() => client.collection(0));
+});
+
+test('"NR" or "Unrated" is no age rating: the next country with a real one is used, with that country', async () => {
+  const client = createTmdb('fixture-token', async () =>
+    Response.json({
+      id: 5,
+      origin_country: ['KR'],
+      content_ratings: {
+        results: [
+          { iso_3166_1: 'US', rating: 'NR', descriptors: [] },
+          { iso_3166_1: 'BR', rating: 'Unrated', descriptors: [] },
+          { iso_3166_1: 'KR', rating: '15', descriptors: [] }
+        ]
+      }
+    })
+  );
+  const show = await client.extras('tv', 5);
+  assert.equal(show.certification, '15');
+  assert.equal(show.certificationCountry, 'KR');
+  assert.equal(isAgeRating(' nr '), false);
+  assert.equal(isAgeRating('TV-MA'), true);
 });

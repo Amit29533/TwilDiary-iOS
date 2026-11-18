@@ -42,7 +42,7 @@ actor IMDbEpisodeRatings {
             guard let season = Int(key), season >= 0 else { continue }
             result[season] = episodes.compactMap { key, value -> EpisodeRatingPoint? in
                 guard let episode = Int(key), episode > 0, let score = value.r,
-                      score > 0, score <= 10, (value.v ?? 0) > 0 else { return nil }
+                      score > 0, score <= 10, (value.v ?? 0) >= EpisodeRatingAgreement.imdbVotes else { return nil }
                 return EpisodeRatingPoint(episode: episode, score: score)
             }.sorted { $0.episode < $1.episode }
         }

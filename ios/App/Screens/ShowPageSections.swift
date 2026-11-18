@@ -35,17 +35,17 @@ struct ParentalGuideSection: View {
     let extras: TitleExtras?
 
     var body: some View {
-        if let extras, let rating = extras.certification, !rating.isEmpty {
+        if let extras, let rating = extras.certification, TitleExtras.isAgeRating(rating), let label = extras.ratingLabel() {
             VStack(alignment: .leading, spacing: 10) {
                 ShowSectionHeading(title: "Parental Guide")
                     .accessibilityAddTraits(.isHeader)
                 VStack(alignment: .leading, spacing: 10) {
                     Label {
-                        Text(rating).font(.headline)
+                        Text(label).font(.headline)
                     } icon: {
                         Image(systemName: "shield").foregroundStyle(ChipTint.rating(rating))
                     }
-                    .accessibilityLabel("Age rating: " + rating)
+                    .accessibilityLabel("Age rating: " + label)
                     if !extras.contentAdvisories.isEmpty {
                         Text(extras.contentAdvisories.joined(separator: " · "))
                             .font(.subheadline).foregroundStyle(.secondary)
@@ -111,10 +111,10 @@ enum ChipTint {
     }
     static func rating(_ value: String) -> Color {
         let rating = value.uppercased()
-        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6"].contains(rating) { return tint("#6ee7a8") }
-        if ["PG", "TV-PG", "12", "12A", "PG-12", "7", "10"].contains(rating) { return tint("#ffd166") }
-        if ["PG-13", "TV-14", "13", "14", "15", "16", "M", "R15+"].contains(rating) { return tint("#ffa94d") }
-        if ["R", "NC-17", "TV-MA", "18", "R18+", "MA15+", "X"].contains(rating) { return tint("#ff6b6b") }
+        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6", "L", "AL", "TP"].contains(rating) { return tint("#6ee7a8") }
+        if ["PG", "TV-PG", "12", "12A", "PG-12", "PG12", "7", "7+", "10", "12+", "PG12+"].contains(rating) { return tint("#ffd166") }
+        if ["PG-13", "TV-14", "13", "13+", "14", "14+", "15", "15+", "16", "16+", "M", "R15", "R15+", "R-15", "R16"].contains(rating) { return tint("#ffa94d") }
+        if ["R", "NC-17", "TV-MA", "18", "18+", "19", "R18", "R18+", "R-18", "R21", "MA15+", "X"].contains(rating) { return tint("#ff6b6b") }
         return tint("#c0bccc")
     }
     static func status(_ raw: String?) -> Color {
@@ -413,12 +413,17 @@ struct RatingTrendCard: View {
     let tmdb: [EpisodeRatingPoint]
     let current: Int?
     let imdbID: String?
+    /// TMDB's episodes of the season with their air day ("" when unknown): Trakt's and IMDb's
+    /// numbers are checked against them, and a source numbering the season differently is left out.
+    var tmdbDays: [Int: String] = [:]
+    var anime = false
     let episodeName: (Int) -> String?
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var trakt: [EpisodeRatingPoint] = []
     @State private var imdb: [EpisodeRatingPoint] = []
-    @State private var source = "Trakt"
+    /// The source you picked, kept from season to season and title to title.
+    @AppStorage("ratingTrend.source") private var source = "Trakt"
 
     fileprivate struct Source {
         let name: String
@@ -432,7 +437,7 @@ struct RatingTrendCard: View {
         }
     }
     var body: some View {
-        let sources = [Source("Trakt", .trakt, trakt), Source("IMDb", .imdb, imdb), Source("TMDB", .tmdb, tmdb)].compactMap { $0 }
+        let sources = [Source("Trakt", .trakt, traktShown), Source("IMDb", .imdb, imdbShown), Source("TMDB", .tmdb, tmdb)].compactMap { $0 }
         let chosen = sources.first { $0.name == source } ?? sources.first
         Group {
             if let chosen {
@@ -473,6 +478,20 @@ struct RatingTrendCard: View {
             if !Task.isCancelled { imdb = points ?? [] }
         }
     }
+    /// Trakt's points when its season is TMDB's: by air days, else by numbers.
+    private var traktShown: [EpisodeRatingPoint] {
+        let fits = EpisodeRatingAgreement.datesAgree(trakt, tmdb: tmdbDays)
+            ?? EpisodeRatingAgreement.numbersFit(trakt, tmdb: tmdbDays, anime: anime, today: Self.today)
+        return fits ? trakt : []
+    }
+    /// IMDb's points when its season fits TMDB's (it gives no days). For anime, also only when
+    /// Trakt's days showed the season is numbered alike, if Trakt could tell.
+    private var imdbShown: [EpisodeRatingPoint] {
+        guard EpisodeRatingAgreement.numbersFit(imdb, tmdb: tmdbDays, anime: anime, today: Self.today) else { return [] }
+        if anime, EpisodeRatingAgreement.datesAgree(trakt, tmdb: tmdbDays) == false { return [] }
+        return imdb
+    }
+    private static var today: String { Date.now.formatted(.iso8601.year().month().day()) }
     private var heading: some View {
         Text("Rating trend").font(.title3.bold()).foregroundStyle(HomeStyle.ink)
     }

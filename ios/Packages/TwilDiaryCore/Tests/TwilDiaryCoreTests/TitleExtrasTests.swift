@@ -156,3 +156,35 @@ import Testing
     let widths = rows.map { $0.reduce(0) { $0 + $1.name.count + 6 } }
     #expect((widths.max() ?? 0) - (widths.min() ?? 0) <= 24)
 }
+
+/// Bleach: TMDB's season 2 is Thousand-Year Blood War (2022), Trakt's is the 2004 show's second
+/// season, so their "episode 5" are different episodes; days within two of each other agree.
+@Test func episodeRatingsFromASourceNumberingTheSeasonDifferentlyAreLeftOut() {
+    let tmdb = [1: "2022-10-11", 2: "2022-10-18", 3: "2022-10-25", 4: "2022-11-01"]
+    let other = [1: "2005-01-11", 2: "2005-01-18", 3: "2005-01-25"].map { EpisodeRatingPoint(episode: $0.key, score: 8, airedOn: $0.value + "T15:00:00.000Z") }
+    #expect(EpisodeRatingAgreement.datesAgree(other, tmdb: tmdb) == false)
+    let same = [1: "2022-10-10", 2: "2022-10-18", 3: "2022-10-26"].map { EpisodeRatingPoint(episode: $0.key, score: 8, airedOn: $0.value + "T15:00:00.000Z") }
+    #expect(EpisodeRatingAgreement.datesAgree(same, tmdb: tmdb) == true, "a day either side (time zones) still agrees")
+    #expect(EpisodeRatingAgreement.datesAgree([EpisodeRatingPoint(episode: 1, score: 8)], tmdb: tmdb) == nil, "nothing to compare")
+
+    // By numbers (IMDb): nothing past TMDB's last episode; anime reach near the last one aired.
+    let twenty = (1...20).map { EpisodeRatingPoint(episode: $0, score: 8) }
+    let forty = Dictionary(uniqueKeysWithValues: (1...40).map { ($0, "2022-10-01") })
+    #expect(EpisodeRatingAgreement.numbersFit(twenty, tmdb: tmdb, anime: false, today: "2026-11-19") == false, "20 episodes in a 4-episode season")
+    #expect(EpisodeRatingAgreement.numbersFit(twenty, tmdb: forty, anime: true, today: "2026-11-19") == false, "stops 20 short of what aired")
+    #expect(EpisodeRatingAgreement.numbersFit(twenty, tmdb: forty, anime: false, today: "2026-11-19") == true)
+    #expect(EpisodeRatingAgreement.numbersFit(twenty, tmdb: [:], anime: true, today: "2026-11-19") == true, "TMDB's season not read yet")
+}
+
+/// "NR" is no age rating; a rating from another country than the US says which.
+@Test func ageRatingsSkipNotRatedAndNameTheirCountry() {
+    #expect(!TitleExtras.isAgeRating("NR") && !TitleExtras.isAgeRating(" unrated ") && !TitleExtras.isAgeRating(""))
+    #expect(TitleExtras.isAgeRating("TV-MA") && TitleExtras.isAgeRating("15"))
+    let english = Locale(identifier: "en_US")
+    let korean = TitleExtras(status: nil, certification: "15", studios: [], networks: [], keywords: [], certificationCountry: "KR")
+    #expect(korean.ratingLabel(locale: english) == "15 · South Korea")
+    let american = TitleExtras(status: nil, certification: "TV-14", studios: [], networks: [], keywords: [], certificationCountry: "US")
+    #expect(american.ratingLabel(locale: english) == "TV-14")
+    let older = TitleExtras(status: nil, certification: "PG", studios: [], networks: [], keywords: [])
+    #expect(older.ratingLabel(locale: english) == "PG", "a copy saved before the country was kept")
+}

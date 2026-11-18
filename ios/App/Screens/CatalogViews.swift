@@ -747,7 +747,9 @@ private struct CatalogSeasonPreview: View {
             let seasonItems = controller.season == selected ? controller.items : []
             let points = seasonItems.compactMap { episode in episode.communityScore.map { EpisodeRatingPoint(episode: episode.number, score: $0) } }
             if route.kind == .tv {
-                RatingTrendCard(show: route.id, season: selected, tmdb: points, current: nil, imdbID: imdbID) { number in
+                RatingTrendCard(show: route.id, season: selected, tmdb: points, current: nil, imdbID: imdbID,
+                                tmdbDays: Dictionary(seasonItems.map { ($0.number, $0.airedOn ?? "") }, uniquingKeysWith: { first, _ in first }),
+                                anime: details.suggestedCategory.hasPrefix("anime")) { number in
                     guard let episode = seasonItems.first(where: { $0.number == number }), !hidden(episode) else { return nil }
                     return episode.name
                 }.id("\(route.id):\(selected)")

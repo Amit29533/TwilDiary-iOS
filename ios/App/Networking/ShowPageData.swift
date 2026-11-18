@@ -84,7 +84,8 @@ enum ShowPageRoute: Hashable {
         return id
     }
 
-    /// Trakt's average rating for each episode of a season (episodes nobody rated are left out).
+    /// Trakt's average rating for each episode of a season, with the day it aired (episodes fewer
+    /// than `EpisodeRatingAgreement.traktVotes` people rated are left out).
     static func episodeRatings(store: DiaryStore, show: Int, season: Int) async throws -> [EpisodeRatingPoint] {
         let key = "\(show):\(season)"
         if let entry = seasonRatings[key], Date.now.timeIntervalSince(entry.at) < 21_600 { return entry.value }
@@ -94,8 +95,8 @@ enum ShowPageRoute: Hashable {
         let episodes = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
         let points = episodes.compactMap { item -> EpisodeRatingPoint? in
             guard let number = item["number"] as? Int, let rating = (item["rating"] as? NSNumber)?.doubleValue,
-                  ((item["votes"] as? Int) ?? 0) > 0 else { return nil }
-            return EpisodeRatingPoint(episode: number, score: rating)
+                  ((item["votes"] as? Int) ?? 0) >= EpisodeRatingAgreement.traktVotes else { return nil }
+            return EpisodeRatingPoint(episode: number, score: rating, airedOn: item["first_aired"] as? String)
         }
         if seasonRatings.count >= 60 { seasonRatings.removeAll() }
         seasonRatings[key] = (.now, points)

@@ -37,6 +37,14 @@ export interface TitleCompany {
   kind: 'studio' | 'network';
   country: string | null;
 }
+/** "NR", "Unrated" or "Exempt" say a country has no age rating; the next country's is used
+ * (ios TitleExtras.isAgeRating keeps the same list). */
+const NOT_RATED = new Set(['NR', 'N/R', 'NOT RATED', 'UNRATED', 'UR', '-', 'NONE', 'TBA', 'TBC', 'PENDING', 'EXEMPT', 'E']);
+export function isAgeRating(value: string): boolean {
+  const rating = value.trim().toUpperCase();
+  return rating !== '' && !NOT_RATED.has(rating);
+}
+
 export interface TitleExtras {
   imdbId: string | null;
   originalLanguage: string | null;
@@ -45,6 +53,8 @@ export interface TitleExtras {
   /** TMDb's own words: "Returning Series", "Ended", "Canceled", "Released"… */
   status: string | null;
   certification: string | null;
+  /** The country the age rating is from ("KR"); the app shows it when it isn't the US. */
+  certificationCountry: string | null;
   contentAdvisories: string[];
   studios: TitleCompany[];
   networks: TitleCompany[];
@@ -770,9 +780,10 @@ export function createTmdb(
       const ratings = list(entries, 200).flatMap((entry: RecordValue) => {
         const row = tv
           ? entry
-          : list(entry.release_dates, 30).find((release) => text(release.certification, 20));
+          : list(entry.release_dates, 30).find((release) => isAgeRating(text(release.certification, 20)));
         if (!row) return [];
         const rating = text(row[tv ? 'rating' : 'certification'], 20);
+        if (!isAgeRating(rating)) return [];
         const advisories = Array.isArray(row.descriptors)
           ? row.descriptors.map((value: unknown) => text(value, 200)).filter(Boolean)
           : [];
@@ -839,7 +850,8 @@ export function createTmdb(
             }
           : null;
       return {
-        status, certification: rated?.rating ?? null, studios, networks, keywords, crew, genres, collection,
+        status, certification: rated?.rating ?? null, certificationCountry: rated?.country || null,
+        studios, networks, keywords, crew, genres, collection,
         imdbId: text(tv ? (data.external_ids as RecordValue | null)?.imdb_id : data.imdb_id, 24) || null,
         contentAdvisories: rated?.advisories ?? [],
         originalLanguage: text(data.original_language, 10) || null,

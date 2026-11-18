@@ -82,11 +82,9 @@ import TwilDiaryCore
         let origin = (data["origin_country"] as? [String])?.first ?? ""
         let entries = list((data[tv ? "content_ratings" : "release_dates"] as? [String: Any])?["results"], 200)
         let ratings = entries.compactMap { entry -> (country: String, rating: String, advisories: [String])? in
-            let record = tv ? entry : list(entry["release_dates"], 30).first {
-                !(($0["certification"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-            }
+            let record = tv ? entry : list(entry["release_dates"], 30).first { TitleExtras.isAgeRating($0["certification"] as? String ?? "") }
             guard let record, let rating = (record[tv ? "rating" : "certification"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !rating.isEmpty else { return nil }
+                  TitleExtras.isAgeRating(rating) else { return nil }
             let advisories = (record["descriptors"] as? [Any] ?? []).compactMap {
                 ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             }.filter { !$0.isEmpty }
@@ -116,7 +114,8 @@ import TwilDiaryCore
                             crew: Array(crew), genres: genres, collection: collection, runtimeMinutes: titleRuntime(data, tv: tv),
                             latestEpisodeMinutes: minutes((data["last_episode_to_air"] as? [String: Any])?["runtime"]),
                             contentAdvisories: rated?.advisories ?? [], originalLanguage: data["original_language"] as? String,
-                            imdbId: (tv ? (data["external_ids"] as? [String: Any])?["imdb_id"] : data["imdb_id"]) as? String), community)
+                            imdbId: (tv ? (data["external_ids"] as? [String: Any])?["imdb_id"] : data["imdb_id"]) as? String,
+                            certificationCountry: rated.flatMap { $0.country.isEmpty ? nil : $0.country }), community)
     }
     /// TMDB's community score for a title (the page's community circle when the diary has none).
     static func community(_ route: CatalogRoute, token: String) async -> Double? { try? await extras(route, token: token).community }
