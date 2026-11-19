@@ -14,7 +14,7 @@ struct HomeRecommendedShelf: View {
         Group {
             if !items.isEmpty, let seed {
                 VStack(alignment: .leading, spacing: 16) {
-                    HomeSectionHeader(title: "Recommended", icon: "sparkle", subtitle: "Because you watched " + seed.name) {
+                    HomeSectionHeader(title: "Recommended", icon: "cinemind", subtitle: "Because you watched " + seed.name) {
                         // All of the recommendations for that title (its More like this page), not Explore.
                         NavigationLink(value: ShowPageRoute.related(CatalogRoute(kind: seed.isSeries ? .tv : .movie, id: seed.tmdbId ?? 0), title: seed.name)) { HomeRoundIcon() }.buttonStyle(.plain)
                             .accessibilityLabel("More recommendations").accessibilityIdentifier("home-recommended-more")

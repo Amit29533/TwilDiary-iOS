@@ -38,7 +38,9 @@ struct HomeSectionHeader<Trailing: View>: View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    if let icon { Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.accent).frame(width: 20, height: 20).accessibilityHidden(true) }
+                    // "cinemind": CineMind's animated glass orb (Recommended), else an SF Symbol.
+                    if icon == "cinemind" { CineMindOrb(size: 24) }
+                    else if let icon { Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.accent).frame(width: 20, height: 20).accessibilityHidden(true) }
                     Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 }
                 if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
