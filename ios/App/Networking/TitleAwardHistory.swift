@@ -76,6 +76,8 @@ enum AwardNames {
 actor TitleAwardHistory {
     static let shared = TitleAwardHistory()
     private var cachedPeople: [String: (Date, [TitleAwardRecord])] = [:]
+    /// Requests on their way: a second ask for the same title waits for the first.
+    private var inFlight: [String: Task<[TitleAwardRecord], Error>] = [:]
     private static var folder: URL? {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("TitleAwardCredits", isDirectory: true)
     }
@@ -130,6 +132,22 @@ actor TitleAwardHistory {
             cachedPeople[key] = (date, saved)
             return saved
         }
+        if let running = inFlight[key] { return try await running.value }
+        // Not tied to the screen that asked: leaving the page doesn't throw away a 15-second answer.
+        let request = Task { try await Self.fetchPeople(property: property, value: value) }
+        inFlight[key] = request
+        defer { inFlight[key] = nil }
+        let rows = try await request.value
+        if cachedPeople.count >= 200 { cachedPeople.removeAll(keepingCapacity: true) }
+        cachedPeople[key] = (.now, rows)
+        if let folder = Self.folder, let file, let data = try? JSONEncoder().encode(rows) {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
+        return rows
+    }
+
+    private static func fetchPeople(property: String, value: String) async throws -> [TitleAwardRecord] {
         let query = """
         SELECT ?awardLabel ?whoLabel ?date ?familyLabel ?won WHERE {
           { SELECT (SAMPLE(?candidate) AS ?work) WHERE { ?candidate wdt:\(property) "\(value)" } HAVING(COUNT(DISTINCT ?candidate) = 1) }
@@ -177,13 +195,6 @@ actor TitleAwardHistory {
             // The ceremony from the award's family, else its own name (AwardNames).
             return AwardNames.normalized(.init(year: year, ceremony: label("familyLabel") ?? "Other awards", category: category,
                                                won: won, recipient: person))
-        }
-        try Task.checkCancellation()
-        if cachedPeople.count >= 200 { cachedPeople.removeAll(keepingCapacity: true) }
-        cachedPeople[key] = (.now, rows)
-        if let folder = Self.folder, let file, let data = try? JSONEncoder().encode(rows) {
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try? data.write(to: file, options: .atomic)
         }
         return rows
     }

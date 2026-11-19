@@ -52,11 +52,14 @@ struct TitleAwardsSection: View {
                 }.buttonStyle(.plain)
             }
         }
-        .task(id: route) {
+        .task(id: [String(describing: route), imdbID ?? ""]) {
+            let movie = route.kind == .movie
             let local = (try? await TitleAwardHistory.shared.titleRecords(route)) ?? []
+            guard !Task.isCancelled else { return }
+            if !local.isEmpty && rows.isEmpty { rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: [], movie: movie)) }
             let people = store.isPreview ? [] : ((try? await TitleAwardHistory.shared.peopleRecords(route, imdbID: imdbID)) ?? [])
             guard !Task.isCancelled else { return }
-            rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: people, movie: route.kind == .movie))
+            rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: people, movie: movie))
         }
     }
 }

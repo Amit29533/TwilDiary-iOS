@@ -909,6 +909,7 @@ struct CastAndRelated: View {
             guard !Task.isCancelled else { return }
             if local?.isEmpty == false {
                 awardHistoryRoute = route
+                if !store.isPreview { _ = try? await history.peopleRecords(route, imdbID: awardsIMDbID) }
             } else if !store.isPreview {
                 let credits = try? await history.peopleRecords(route, imdbID: awardsIMDbID)
                 if !Task.isCancelled, credits?.isEmpty == false { awardHistoryRoute = route }
