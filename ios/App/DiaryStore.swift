@@ -174,6 +174,8 @@ import TwilDiaryCore
     private var undoAction: (() async throws -> Void)? { didSet { undoTitles = nil } }
     /// Titles an Undo changes, so it refreshes just those; nil means a complete diary read.
     private var undoTitles: Set<String>?
+    /// The notice has something to take back (a watch just logged).
+    var canUndo: Bool { undoAction != nil }
     /// A server sign-in kept from when the diary lived on the server (moved to the phone at launch).
     private let sessionStorage: any SessionStoring
     private let outboxStore: any SyncOutboxStoring
@@ -1184,7 +1186,11 @@ import TwilDiaryCore
     /// watch logged by mistake is taken off with "Undo last watch" or from the title's history,
     /// which reach every service.
     func offerServiceUndo(_ title: MediaTitle, at when: String) {
-        undoAction = nil
+        // Undo takes off exactly the plays just logged, the way "Undo last watch" (the − button)
+        // takes one off: on the diary's service and on every service kept in sync.
+        let titleID = title.id
+        undoAction = { [weak self] in try await self?.serviceUndoPlays(titleID: titleID, at: when) }
+        undoTitles = [titleID]
         undoLabel = "Watch marked"
     }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {

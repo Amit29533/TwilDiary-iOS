@@ -173,6 +173,24 @@ extension DiaryStore {
     /// history at its time when its turn comes, right after the add itself (Cinopsys's way, with
     /// no read first). WeTrakr removes the play at its time; MDBList keeps one watch per
     /// episode or movie, so that watch is removed.
+    /// The plays of one title logged at `when` (within a second: a refreshed copy writes the time its
+    /// own way). Other titles logged in the same second are left alone.
+    func undoablePlays(titleID: String, at when: String) -> [WatchEvent] {
+        let time = DiaryDate.parse(when)
+        return workspace.activeEvents.filter { event in
+            guard event.titleId == titleID else { return false }
+            if event.watchedAt == when { return true }
+            guard let time, let at = DiaryDate.parse(event.watchedAt) else { return false }
+            return abs(at.timeIntervalSince(time)) < 1
+        }
+    }
+    /// Undo for a watch just logged: those plays go the way any removal goes (serviceRemoveWatches),
+    /// so the services kept in sync lose them too and a play not sent yet is found once it is.
+    func serviceUndoPlays(titleID: String, at when: String) async throws {
+        let found = undoablePlays(titleID: titleID, at: when)
+        guard !found.isEmpty else { throw APIError.message("That watch isn’t in your diary any more.") }
+        try await serviceRemoveWatches(found)
+    }
     func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
         guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
         let ids = events.compactMap(servicePlayID)

@@ -29,6 +29,11 @@ struct UndoToast: View {
             DiaryIcon(name: "check", size: 15).foregroundStyle(Color(themed: "#79d8bc"))
             Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5f5f7"))
                 .lineLimit(1).layoutPriority(1)
+            if store.canUndo {
+                Button { Task { await store.undo() } } label: {
+                    Text("Undo").font(.system(size: 12, weight: .bold)).foregroundStyle(ThemeStore.accent).frame(minWidth: 44, minHeight: 44)
+                }.disabled(store.busy || store.writesBlocked).accessibilityIdentifier("undo-action")
+            }
             Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 13).frame(width: 36, height: 44) }
                 .foregroundStyle(Color(themed: "#c5c0cf")).accessibilityLabel("Dismiss notice")
         // No spacer, so the row hugs its content: a small pill, not a bar across the screen.
