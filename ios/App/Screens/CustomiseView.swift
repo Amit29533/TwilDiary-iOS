@@ -15,6 +15,9 @@ struct CustomiseView: View {
     @AppStorage(PosterSize.ratingKey) private var showsRating = true
     @AppStorage(PosterSize.captionKey) private var showsCaption = true
     @State private var confirmReset = false
+    /// The title bar's feathered backdrop, as on every other settings page (EdgeToEdgeScroll):
+    /// without it the rows scrolled under "Customise" and the back button.
+    @State private var header = CompactHeaderState()
 
     var body: some View {
         let home = HomeSection.layout(homeText), explore = ExploreRow.layout(exploreText), tabs = TabLayout.layout(tabText)
@@ -76,6 +79,17 @@ struct CustomiseView: View {
         }
         .environment(\.editMode, .constant(.active))
         .scrollContentBackground(.hidden)
+        .scrollEdgeEffectHidden(true, for: .top)
+        .onScrollGeometryChange(for: CGFloat.self, of: { value in
+            (min(1, max(0, (value.contentOffset.y + value.contentInsets.top) / 48)) * 32).rounded() / 32
+        }) { _, progress in header.update(progress) }
+        .overlay(alignment: .top) {
+            GeometryReader { geometry in
+                FeatheredHeaderBackdrop(state: header, height: geometry.safeAreaInsets.top, always: false)
+                    .offset(y: -geometry.safeAreaInsets.top)
+            }.allowsHitTesting(false)
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
         .diaryScreenBackground().diaryPageNavigation("Customise")
         .confirmationDialog("Back to the original layout?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Reset Home, Explore, tabs and posters", role: .destructive) {
