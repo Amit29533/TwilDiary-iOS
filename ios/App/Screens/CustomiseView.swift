@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct CustomiseRoute: Hashable {}
 
@@ -28,7 +29,7 @@ struct CustomiseView: View {
                     }
                 }
                 .onMove { from, to in var next = home; next.order.move(fromOffsets: from, toOffset: to); homeText = next.text }
-            } header: { Text("Home") }
+            } header: { sectionHeader("Home") }.listRowBackground(rowBackground)
 
             Section {
                 ForEach(explore.order, id: \.self) { id in
@@ -38,7 +39,7 @@ struct CustomiseView: View {
                     }
                 }
                 .onMove { from, to in var next = explore; next.order.move(fromOffsets: from, toOffset: to); exploreText = next.text }
-            } header: { Text("Explore") }
+            } header: { sectionHeader("Explore") }.listRowBackground(rowBackground)
 
             Section {
                 Picker(selection: $launchTab) {
@@ -56,7 +57,7 @@ struct CustomiseView: View {
                     }
                 }
                 .onMove { from, to in var next = tabs; next.order.move(fromOffsets: from, toOffset: to); tabText = next.text }
-            } header: { Text("Tab bar") }
+            } header: { sectionHeader("Tab bar") }.listRowBackground(rowBackground)
 
             Section {
                 Picker("Poster size", selection: $posterSize) {
@@ -66,12 +67,12 @@ struct CustomiseView: View {
                     .accessibilityIdentifier("customise-poster-rating")
                 Toggle(isOn: $showsCaption) { label("Name under posters", symbol: "textformat", hidden: !showsCaption) }
                     .accessibilityIdentifier("customise-poster-caption")
-            } header: { Text("Posters") }
+            } header: { sectionHeader("Posters") }.listRowBackground(rowBackground)
 
             Section {
                 Button("Back to the original layout", role: .destructive) { confirmReset = true }
                     .accessibilityIdentifier("customise-reset")
-            }
+            }.listRowBackground(rowBackground)
         }
         .environment(\.editMode, .constant(.active))
         .scrollContentBackground(.hidden)
@@ -85,6 +86,13 @@ struct CustomiseView: View {
         }
     }
 
+    /// The settings cards' colour (the theme's card; Native's grouped surface).
+    private var rowBackground: Color { ThemeStore.current.native ? Color(uiColor: .secondarySystemBackground) : HomeStyle.card }
+    /// The settings pages' group label (SettingsGroup): uppercase, 13 pt, secondary.
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text.uppercased()).font(.system(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
+            .foregroundStyle(HomeStyle.secondary).textCase(nil).accessibilityAddTraits(.isHeader)
+    }
     private func label(_ title: String, symbol: String, hidden: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(hidden ? .secondary : .primary).frame(width: 24)
