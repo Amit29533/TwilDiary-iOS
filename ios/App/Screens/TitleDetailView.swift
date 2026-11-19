@@ -21,6 +21,7 @@ struct TitleDetailView: View {
     @FocusState private var notesFocused: Bool
     @State private var showOverview = false
     @State private var showNotes = false
+    @State private var showAddToList = false
     /// A star burst from Mark watched each time a new watch is confirmed.
     @State private var markSparks = 0
     /// A perfect 10 deserves its own little burst.
@@ -131,6 +132,8 @@ struct TitleDetailView: View {
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
                                         // Move to Trash does what Remove from watch history did (every watch off
                                         // the service), then takes the title out; there's no separate item.
+                                        Button("Add to list", systemImage: "text.badge.plus") { showAddToList = true }
+                                            .disabled(title.tmdbId == nil).accessibilityIdentifier("title-menu-add-to-list")
                                         Button("Notes", systemImage: "note.text") { showNotes = true }.accessibilityIdentifier("title-menu-notes")
                                         Button("File locations", systemImage: "folder") { showLocation = true }.accessibilityIdentifier("title-menu-files")
                                         Divider()
@@ -177,6 +180,7 @@ struct TitleDetailView: View {
                 }.presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showNotes) { notesSheet(title) }
+            .sheet(isPresented: $showAddToList) { if title.tmdbId != nil { AddToListSheet(item: DiscoveryTools.item(title)) } }
             .sheet(isPresented: $showLocation) { locationsSheet(title) }
             .cineMind(isPresented: $showCineMind, title: title)
             .sheet(isPresented: $showInformation) {

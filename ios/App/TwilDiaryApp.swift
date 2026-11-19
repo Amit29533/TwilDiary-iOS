@@ -367,6 +367,8 @@ struct RootView: View {
                 .navigationDestination(for: PersonPhotosRoute.self) { PersonPhotosPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: ShowPageRoute.self) { ShowPageDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: CanvasListRoute.self) { CanvasListView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: YourListsRoute.self) { _ in YourListsView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: YourListRoute.self) { YourListPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {
                     case .profile: PersonalProfileView()

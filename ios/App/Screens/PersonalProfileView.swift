@@ -549,7 +549,8 @@ struct PersonalProfileView: View {
             Button { router.library("planned") } label: { collection("bookmark", "Watchlist", (trakt?.watchlist ?? planned).counted("title", "titles")) }.buttonStyle(.plain)
             Button { router.library("all") } label: { collection("archivebox", "Collection", (trakt?.collected ?? 0).counted("title", "titles")) }.buttonStyle(.plain)
             NavigationLink(value: AppDestination.favourites) { collection("heart", "Favourites", favourites.counted("item", "items")) }.buttonStyle(.plain)
-            NavigationLink(value: AppDestination.canvas) { collection("list.bullet", "Lists", (trakt?.lists ?? 0).counted("list", "lists")) }.buttonStyle(.plain)
+            NavigationLink(value: YourListsRoute()) { collection("list.bullet", "Lists", (trakt?.lists ?? 0).counted("list", "lists")) }.buttonStyle(.plain)
+                .accessibilityIdentifier("profile-your-lists")
         }
     }
     private func collection(_ icon: String, _ title: String, _ detail: String) -> some View {

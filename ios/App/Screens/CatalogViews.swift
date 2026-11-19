@@ -498,6 +498,7 @@ struct CatalogDetailView: View {
     @State private var loading = false
     @State private var showOverview = false
     @State private var showInformation = false
+    @State private var showAddToList = false
     @State private var showCineMind = false
     @State private var showFiles = false
     @State private var headerState = CompactHeaderState()
@@ -572,6 +573,7 @@ struct CatalogDetailView: View {
                             Button(saved?.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") {
                                 Task { await libraryAction(["queued": saved?.queued != true]) }
                             }.disabled(!canEdit).accessibilityIdentifier("catalog-queue")
+                            Button("Add to list", systemImage: "text.badge.plus") { showAddToList = true }.accessibilityIdentifier("catalog-add-to-list")
                             Button("File location", systemImage: "folder") { showFiles = true }.accessibilityIdentifier("catalog-files")
                             TitleShareItem(name: details?.details.name ?? "Title", kind: route.kind, id: route.id)
                         } label: { TitleMoreButtonLabel() }
@@ -597,6 +599,9 @@ struct CatalogDetailView: View {
                     }.presentationDetents([.medium]).presentationDragIndicator(.visible)
                 }
                 .cineMind(isPresented: $showCineMind, title: savedTitle ?? details.map { TraktDiary.catalogTitle($0.details) })
+                .sheet(isPresented: $showAddToList) {
+                    if let details { AddToListSheet(item: CatalogItem(id: route.id, mediaType: route.kind, name: details.details.name, year: details.details.year, posterPath: details.details.posterPath)) }
+                }
                 .sheet(isPresented: $showInformation) {
                     CommunityInformationSheet(name: details?.details.name ?? "Title", artwork: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") ?? CatalogTools.image($0.details.posterPath) }, identity: CommunityIdentity(kind: route.kind, id: route.id))
                 }

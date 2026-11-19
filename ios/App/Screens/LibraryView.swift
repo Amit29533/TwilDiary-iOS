@@ -47,6 +47,8 @@ struct LibraryView: View {
     @State private var selecting = false
     @State private var selected = Set<String>()
     @State private var review: CollectionReview?
+    @State private var addingToList: ListTarget?
+    private struct ListTarget: Identifiable { let item: CatalogItem; var id: String { item.key } }
     @State private var jellyfin = JellyfinShelf.shared
     var body: some View {
         VStack(spacing: 0) {
@@ -65,6 +67,7 @@ struct LibraryView: View {
             // Opens at half height; pulling it up by its top brings the whole board.
             .sheet(isPresented: $showFilters) { filterSheet.presentationDetents([.medium, .large]).presentationContentInteraction(.resizes).presentationDragIndicator(.visible) }
             .sheet(item: $review) { value in CollectionReviewView(review: value) { selecting = false; selected = [] } }
+            .sheet(item: $addingToList) { target in AddToListSheet(item: target.item) }
     }
 
     // MARK: Header, chips and sort row
@@ -329,6 +332,7 @@ struct LibraryView: View {
                     Button("Select", systemImage: "checkmark.circle") { selecting = true; selected = [title.id] }
                     Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { review = CollectionReview(titles: [title], change: .favorite(!title.favorite)) }
                     Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { review = CollectionReview(titles: [title], change: .queue(title.queued != true)) }
+                    if title.tmdbId != nil { Button("Add to list", systemImage: "list.bullet.rectangle") { addingToList = ListTarget(item: DiscoveryTools.item(title)) } }
                     Button("Move to Trash", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .trash) }
                 }
         }
