@@ -200,7 +200,7 @@ import TwilDiaryCore
                   let season = episode["season"] as? Int, season > 0, seen.insert(tmdb).inserted else { return nil }
             let date = ISO8601DateFormatter.flexible(aired).map { DiaryDate.day($0) } ?? String(aired.prefix(10))
             let item = CatalogItem(id: tmdb, mediaType: .tv, name: name, year: show["year"] as? Int, overview: show["overview"] as? String ?? "",
-                                   rating: (show["rating"] as? NSNumber)?.doubleValue.flatMap { $0 > 0 ? $0 : nil },
+                                   rating: (show["rating"] as? NSNumber).map(.doubleValue).flatMap { $0 > 0 ? $0 : nil },
                                    poster: image(show, "poster"), backdrop: image(show, "fanart"))
             return (Upcoming(item: item, day: date, season: season), show["votes"] as? Int ?? 0)
         }
