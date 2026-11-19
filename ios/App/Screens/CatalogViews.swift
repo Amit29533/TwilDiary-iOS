@@ -439,7 +439,7 @@ struct CatalogSearchView: View {
         }.padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).foregroundStyle(.primary)
     }
     private func chooseLibrary(_ id: String) {
-        rememberQuery()
+        // Not kept as a recent search: the title shows in Recently viewed (once, not twice).
         dismissKeyboard += 1
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         Task {
@@ -450,7 +450,7 @@ struct CatalogSearchView: View {
         }
     }
     private func chooseCatalog(_ route: CatalogRoute) {
-        rememberQuery()
+        // Not kept as a recent search: the title shows in Recently viewed (once, not twice).
         dismissKeyboard += 1
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         if let onCatalogChoose { onCatalogChoose(route) }
