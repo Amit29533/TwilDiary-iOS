@@ -544,7 +544,7 @@ struct ExternalProviderConnectionView: View {
             Toggle(isOn: $enabled) {
                 VStack(alignment: .leading, spacing: ThemeStore.current.native ? 1 : 2) {
                     Text("Send my edits to \(displayName)").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
-                    Text("Sent as you make them.").font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary)
+                    Text("Sent as you make them, with what reaches your diary's service from other apps (Infuse).").font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.toggleStyle(SettingsToggleStyle()).settingsRowFrame()
                 .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }

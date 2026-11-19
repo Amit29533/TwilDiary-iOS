@@ -296,13 +296,20 @@ enum PendingMerge {
             // You edited while this read was on its way: it predates the edit, so the screen keeps
             // your edit and Trakt is read again in a moment (with the edit on it).
             if edits != editsAtStart { refreshSoon(store: store, after: 2); return }
+            // The copy before this read (your own edits are in it): what's new since came from elsewhere.
+            let before = self.library
             self.library = library
             // Every list was read (one Trakt wouldn't give keeps its old copy, which isn't fresh).
             if unavailable.allSatisfy({ $0 == .notes }) { readCount += 1 }
             save(library)
             ServiceIDs.shared.learn(from: library)
             // The diary on screen first; the comparison follows.
-            if store.diaryFromTrakt { store.applyDiarySource() }
+            if store.diaryFromTrakt {
+                store.applyDiarySource()
+                // Watches, ratings, Planned and Dropped that reached Trakt from another app (Infuse)
+                // go on to your other services, as your edits do ("Send my edits").
+                store.passOn(OutsideChanges.find(old: before, new: library))
+            }
             // Compared with the diary (when Trakt mirrors another service's diary): worked out in
             // the background, since it reads the whole library.
             let analysis = await analysis(library, store: store)

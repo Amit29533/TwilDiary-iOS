@@ -136,11 +136,16 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             guard session == generation else { return }
             if edits != editsAtStart { refreshSoon(tracker, store: store, after: 2); return }
             library = ServiceIDs.shared.filledIn(library)
+            let before = libraries[tracker]
             libraries[tracker] = library
             readCounts[tracker, default: 0] += 1
             save(library, tracker)
             ServiceIDs.shared.learn(from: library)
-            if store.diaryFromTracker == tracker { store.applyDiarySource() }
+            if store.diaryFromTracker == tracker {
+                store.applyDiarySource()
+                // What reached it from another app goes on to your other services ("Send my edits").
+                store.passOn(OutsideChanges.find(old: before, new: library))
+            }
             guard let analysed = await analyse(tracker, store: store) else { return }
             guard session == generation else { return }
             reports[tracker] = .init(seconds: Date.now.timeIntervalSince(started), requests: requests, fetched: fetched, unavailable: [],
