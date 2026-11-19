@@ -797,6 +797,7 @@ struct ProgressCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(DiaryStore.self) private var store
     @State private var loadedCard: WatchCard?
+    @AppStorage("hideSpoilers") private var hideSpoilers = true
     /// The card shown. A show's card read before its episodes are (an empty "E0 of 0", which
     /// happens for a moment each time Home appears or refreshes) never replaces real progress:
     /// the last real one stays until real numbers come back, so the buttons don't jump.
@@ -939,72 +940,53 @@ struct ProgressCard: View {
         let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
         return [season, "E\(card.progress.watched) of \(card.progress.total)"].compactMap { $0 }.joined(separator: " · ")
     }
-    /// Poster on the left; title, progress and the − / + controls stacked beside it.
+    /// Glance's card: the poster, then the same four lines on every card: the title; what's next
+    /// and how much is left; the episode; the count, the bar and the round button. Poster and card
+    /// are one size whatever the title's length (owner's request, 2026-11-19).
     @ViewBuilder private var glanceContent: some View {
         if grid { gridContent } else {
-            // Every card's poster is the same 2:3 size; a longer title grows the text column, not the poster.
-            // The poster sits centred, so a two-line name's extra height is split above and below it.
             HStack(alignment: .top, spacing: 14) {
-                Color.clear.frame(width: 66, height: 99)
-                VStack(alignment: .leading, spacing: 4) {
-                    // The name gets two lines; the episode line sits centred just above the bar.
-                    Button { openTitle() } label: {
-                        Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(HomeStyle.ink)
-                            .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading)
-                    }.buttonStyle(.plain).padding(.trailing, 34).padding(.top, 6).accessibilityIdentifier("progress-title-" + title.id)
-                    if let glanceTime { timePill(glanceTime).padding(.top, 4) }
-                    Spacer(minLength: 8)
-                    HStack(alignment: .center, spacing: 14) {
-                        barWithLine(color: Color(themed: "#c5c0cf"))
-                        nextButton
-                    }
-                }.frame(maxWidth: .infinity, minHeight: 105, alignment: .topLeading)
-                    .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
-            }.background(alignment: .leading) {
                 Button { openTitle() } label: {
-                    Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 66, height: 99).clipShape(RoundedRectangle(cornerRadius: 9))
-                }.buttonStyle(.plain).frame(maxHeight: .infinity, alignment: .center)
+                    Artwork(path: title.poster, title: title.name, initialsOnly: false)
+                        .frame(width: Self.posterWidth, height: Self.posterHeight).clipShape(RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 0) {
+                    titleButton(size: 16).padding(.trailing, 30)
+                    nextLine(primary: HomeStyle.ink, secondary: HomeStyle.secondary).padding(.top, 3)
+                    detailLine.padding(.top, 1)
+                    Spacer(minLength: 4)
+                    glanceRow(accent: theme.accent, track: Color.primary.opacity(0.14))
+                }.frame(maxWidth: .infinity, alignment: .topLeading).frame(height: Self.posterHeight)
+                    .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }.padding(12)
         }
     }
+    private static let posterWidth: CGFloat = 76, posterHeight: CGFloat = 114
+    /// Grid: the poster on top, then the title, what's next, and the count, bar and button.
     private var gridContent: some View {
-        VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                Button { openTitle() } label: { Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(height: 154).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
-                VStack(alignment: .leading, spacing: 3) {
-                    // One line each, ending in … when long, so every card in a row is the same height.
-                    Button { openTitle() } label: { Text(title.name).font(.system(size: 17, weight: .semibold)).tracking(-0.425).foregroundStyle(HomeStyle.ink).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading) }
-                        .buttonStyle(.plain).padding(.trailing, 34).padding(.top, 4).accessibilityIdentifier("progress-title-" + title.id)
-                    if let glanceTime { timePill(glanceTime) } else { Color.clear.frame(height: 22) }
-                    Spacer(minLength: 0)
-                }.frame(maxWidth: .infinity, alignment: .topLeading)
-                    .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                barWithLine(color: Color(themed: "#c5c0cf"))
-                HStack { Spacer(minLength: 0); nextButton }
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            Button { openTitle() } label: {
+                Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(height: 154).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 8))
+            }.buttonStyle(.plain)
+            // One line each, ending in … when long, so every card in a row is the same height.
+            titleButton(size: 16, lines: 1).padding(.trailing, 30).padding(.top, 8)
+                .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -4) }
+            nextLine(primary: HomeStyle.ink, secondary: HomeStyle.secondary).padding(.top, 3)
+            glanceRow(accent: theme.accent, track: Color.primary.opacity(0.14)).padding(.top, 8)
         }.padding(10)
     }
-    /// The backdrop fills the card and fades to black on the right, where the text sits,
-    /// so the artwork's subject stays visible on the left.
+    /// The backdrop fills the card and fades to black on the right; the lines sit over it, light.
     private var heroContent: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: 0)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(heroLabel).font(.system(size: 12, weight: .bold)).tracking(1.8)
-                    // Native: white on the artwork (the accent blue was lost on warm pictures).
-                    .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
-                    .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 10)
-                Button { openTitle() } label: {
-                    Text(title.name).font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(.white)
-                        .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.6), radius: 6, y: 2)
-                }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
-                if let glanceTime { timePill(glanceTime, onArtwork: true).padding(.top, 2) }
-                HStack(alignment: .center, spacing: 14) { barWithLine(color: Color(themed: "#e6e2ef"), shadow: true); nextButton }.padding(.top, 8)
-            }
-        }.padding(16).frame(height: 178)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(heroLabel).font(.system(size: 12, weight: .bold)).tracking(1.8)
+                // Native: white on the artwork (the accent blue was lost on warm pictures).
+                .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
+                .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            titleButton(size: 24, onArtwork: true).padding(.trailing, 8)
+            nextLine(primary: .white, secondary: Color.white.opacity(0.8)).shadow(color: .black.opacity(0.5), radius: 4).padding(.top, 4)
+            glanceRow(accent: ThemeStore.current.native ? .white : HomeStyle.chipText, track: Color.white.opacity(0.25), onArtwork: true).padding(.top, 10)
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
             // On the artwork: light text in light mode too (Native).
             .environment(\.colorScheme, .dark)
@@ -1066,66 +1048,103 @@ struct ProgressCard: View {
         } label: { DiaryIcon(name: "ellipsis", size: 19).frame(width: 44, height: 44) }
             .disabled(cardBusy || store.needsMutationRefresh).foregroundStyle(Color(themed: "#c5c0cf")).accessibilityLabel("More options for " + title.name).accessibilityIdentifier("progress-menu-" + title.id)
     }
-    // MARK: Glance (owner's design): "S1 · E1 of 12 · 4h 24m left", a bar with its percent, "+ E2".
+    // MARK: Glance lines (owner's request, 2026-11-19): "S1 E2 · 11 left (12h 39m)", "Episode 2 · 58m",
+    // then "1/12", the bar and the round button.
 
-    /// "S1 · E12 of 28 · 43%" centred just above a plain bar (the owner's fix: the line used to sit
-    /// under the title and the percent beside the bar, which crowded the card).
-    private func barWithLine(color: Color, shadow: Bool = false) -> some View {
-        VStack(spacing: 6) {
-            Text(progressLine).font(.system(size: 12, weight: .semibold)).foregroundStyle(color).monospacedDigit()
-                .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .center)
-                .modifier(TextShadow(on: shadow))
-            GeometryReader { proxy in
-                Capsule().fill(Color.primary.opacity(0.14))
-                    .overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: max(fraction > 0 ? 6 : 0, proxy.size.width * fraction)) }
-            }.frame(height: 5)
-        }.accessibilityElement(children: .ignore).accessibilityLabel(progressLine + ", \(Int((fraction * 100).rounded())) percent watched")
-            .accessibilityIdentifier("watch-progress-" + title.id)
+    private func titleButton(size: CGFloat, lines: Int = 2, onArtwork: Bool = false) -> some View {
+        Button { openTitle() } label: {
+            Text(title.name).font(.system(size: size, weight: onArtwork ? .bold : .semibold)).tracking(onArtwork ? -0.5 : -0.3)
+                .foregroundStyle(onArtwork ? Color.white : HomeStyle.ink)
+                .lineLimit(lines).truncationMode(.tail).multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .shadow(color: onArtwork ? .black.opacity(0.6) : .clear, radius: 6, y: 2)
+        }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
     }
-    /// "S1 · E12 of 28 · 43%"; movies: "Movie · 1h 54m".
-    private var progressLine: String {
-        guard title.isSeries else { return (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · ") }
-        guard let card else { return title.categoryName }
+    /// What's next in bold, then what's left: "S1 E2 · 11 left (12h 39m)", "Season 1 done", "Movie · 1h 54m".
+    private func nextLine(primary: Color, secondary: Color) -> some View {
+        let parts = nextParts
+        return Text("\(Text(parts.lead).fontWeight(.semibold).foregroundStyle(primary))\(Text(parts.rest.map { " · " + $0 } ?? "").foregroundStyle(secondary))")
+            .font(.system(size: 13)).monospacedDigit().lineLimit(1)
+    }
+    private var nextParts: (lead: String, rest: String?) {
+        guard title.isSeries else {
+            let watched = (card?.progress.watched ?? 0) > 0
+            return (watched ? "Watched" : "Movie", watched ? nil : title.runtimeMinutes.flatMap { $0 > 0 ? DiaryDate.duration($0) : nil })
+        }
+        guard let card else { return (title.categoryName, nil) }
         let season = card.season.map { $0.number == 0 ? "Specials" : "S\($0.number)" }
-        let percent = fraction > 0 ? "\(Int((fraction * 100).rounded()))%" : nil
-        return [season, "E\(card.progress.watched) of \(card.progress.total)", percent].compactMap { $0 }.joined(separator: " · ")
+        if let next = card.next {
+            let left = max(0, card.progress.total - card.progress.watched)
+            let time = remaining.flatMap { $0 > 0 ? DiaryDate.duration($0) : nil }
+            let rest = left > 0 ? "\(left) left" + (time.map { " (\($0))" } ?? "") : time.map { $0 + " left" }
+            return ([season, "E\(next.number)"].compactMap { $0 }.joined(separator: " "), rest)
+        }
+        if card.progress.total > 0, card.progress.watched >= card.progress.total {
+            return (card.season.map { $0.number == 0 ? "Specials done" : "Season \($0.number) done" } ?? "All watched", nil)
+        }
+        return (season ?? title.categoryName, nil)
     }
-    /// The time left as a small pill with a clock: lilac on the cards, a dark wash over artwork.
-    private func timePill(_ text: String, onArtwork: Bool = false) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
-            Text(text).lineLimit(1)
-        }.font(.system(size: 12, weight: .semibold)).monospacedDigit()
-            .foregroundStyle(onArtwork ? Color(themed: "#ece8f6") : HomeStyle.chipText)
-            .padding(.horizontal, 8).frame(height: 22)
-            .background(onArtwork ? AnyShapeStyle(Color.black.opacity(0.45)) : AnyShapeStyle(HomeStyle.chip), in: Capsule())
-            .fixedSize()
+    /// The next episode: its name when spoilers aren't hidden, else "Episode 2 · 58m". A movie: its year and genre.
+    private var detailLine: some View {
+        Text(detailText).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
     }
-    /// "6h 24m left" under the title ("24m" before the first episode); nil when unknown.
-    private var glanceTime: String? {
-        guard title.isSeries, let card else { return nil }
-        return remaining.flatMap { $0 > 0 ? DiaryDate.duration($0) + (card.progress.watched > 0 ? " left" : "") : nil }
+    private var detailText: String {
+        guard title.isSeries else {
+            let line = [title.year.map(String.init), title.genres.first].compactMap { $0 }.joined(separator: " · ")
+            return line.isEmpty ? " " : line
+        }
+        guard let card else { return " " }
+        guard let next = card.next else {
+            return card.progress.total > 0 && card.progress.watched >= card.progress.total ? "All aired episodes watched" : " "
+        }
+        let episode = store.episodesForSeason(title.id, season: card.season?.number ?? 1).first { $0.id == next.id }
+        let name = episode?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !hideSpoilers, !name.isEmpty, name != "Episode \(next.number)" { return name }
+        let runtime = (episode?.runtimeMinutes ?? title.runtimeMinutes).flatMap { $0 > 0 ? DiaryDate.duration($0) : nil }
+        return (["Episode \(next.number)"] + [runtime].compactMap { $0 }).joined(separator: " · ")
     }
-    /// "+ E2", "▶ Start" before the first episode, "Log watch" for movies: the bright lavender gradient.
-    private var nextButton: some View {
-        let starting = title.isSeries && card.map { $0.progress.watched == 0 } == true
+    /// "1/12" in the accent, the bar, and the round button.
+    private func glanceRow(accent: Color, track: Color, onArtwork: Bool = false) -> some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Text(countText).font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(accent)
+                    .lineLimit(1).fixedSize().modifier(TextShadow(on: onArtwork))
+                GeometryReader { proxy in
+                    Capsule().fill(track)
+                        .overlay(alignment: .leading) { Capsule().fill(.tint).frame(width: max(fraction > 0 ? 6 : 0, proxy.size.width * fraction)) }
+                }.frame(height: 5)
+            }.accessibilityElement(children: .ignore).accessibilityLabel(progressSpoken)
+                .accessibilityIdentifier("watch-progress-" + title.id)
+            roundButton
+        }.frame(height: 36)
+    }
+    private var countText: String {
+        guard let card else { return "–" }
+        if !title.isSeries { return card.progress.watched > 0 ? "1/1" : "0/1" }
+        let total = card.progress.total >= GlanceCardText.cappedTotal ? "\(GlanceCardText.cappedTotal)+" : String(card.progress.total)
+        return "\(card.progress.watched)/\(total)"
+    }
+    private var progressSpoken: String {
+        guard let card, title.isSeries else { return fraction > 0 ? "Watched" : "Not watched" }
+        let season = card.season.map { $0.number == 0 ? "Specials" : "Season \($0.number)" }
+        return [season, "\(card.progress.watched) of \(card.progress.total) watched"].compactMap { $0 }.joined(separator: ", ")
+    }
+    /// + marks the next episode, ▶ starts a show, ✓ (dimmed) when there's nothing left to mark.
+    private var roundButton: some View {
+        let starting = title.isSeries && card.map { $0.progress.watched == 0 && $0.next != nil } == true
+        let symbol = !markable ? "checkmark" : starting ? "play.fill" : title.isSeries ? "plus" : "checkmark"
         let label: String = {
             guard title.isSeries else { return fraction > 0 ? "Watched" : "Log watch" }
-            if starting { return "Start" }
-            return card?.next.map { "E\($0.number)" } ?? "Done"
+            guard let next = card?.next else { return "Nothing left to mark" }
+            return (starting ? "Start" : "Mark") + " episode \(next.number)"
         }()
         return Button { Task { await markWatch() } } label: {
-            HStack(spacing: 6) {
-                actionIcon(.mark, symbol: starting ? "play.fill" : title.isSeries ? "plus" : "checkmark", size: starting ? 11 : 14).fontWeight(.bold)
-                Text(label).font(.system(size: 15, weight: .bold)).lineLimit(1)
-            }.foregroundStyle(WatchStyle.ink)
-                .padding(.horizontal, 16).frame(height: 40)
-                .background { Capsule().fill(WatchStyle.fill) }
-                .fixedSize()
-                // A 40 pt pill, with the 44 pt tap target the platform asks for.
-                .frame(minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.springPress).disabled(!markable).opacity(markable ? 1 : 0.5).starBurst(trigger: sparks)
-            .accessibilityLabel((title.isSeries ? (starting ? "Start " : "Mark ") + label : label) + ", " + title.name)
+            actionIcon(.mark, symbol: symbol, size: starting ? 12 : 15).fontWeight(.bold)
+                .foregroundStyle(WatchStyle.ink).frame(width: 36, height: 36)
+                .background { Circle().fill(WatchStyle.fill) }
+                .contentShape(Rectangle().inset(by: -4))
+        }.buttonStyle(.springPress).disabled(!markable).opacity(markable ? 1 : 0.45).starBurst(trigger: sparks)
+            .accessibilityLabel(label + ", " + title.name)
             .accessibilityIdentifier("progress-next-" + title.id)
     }
 
