@@ -210,9 +210,9 @@ struct AniListSettingsView: View {
             // ranks from the signed-in account (its name is the profile, filled in at sign-in).
             VStack(alignment: .leading, spacing: 16) {
                 SettingsServiceHeader(logo: .anilist, title: "AniList",
-                                      subtitle: account.username.map { "@" + $0 } ?? (user.isEmpty ? "Your anime list and characters" : "@" + user),
+                                      subtitle: account.username.map { "@" + $0 } ?? (user.isEmpty ? "" : "@" + user),
                                       badge: account.signedIn ? ("Connected", .good) : ("Not signed in", .missing)) {
-                    SettingsKeeps(items: ["Progress", "Status", "Score", "Dates", "Rewatches", "Notes"])
+                    EmptyView()
                 }
                 AniListSyncSection()
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)

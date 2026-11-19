@@ -17,7 +17,6 @@ struct MainTrackerView: View {
                 HStack(spacing: 8) {
                     Text("Where your diary lives").font(.subheadline).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
-                    SettingsInfoButton(text: "The service you pick holds your diary. What it can’t keep (tags, notes, file locations, favourite people) stays on this iPhone and in your backups.")
                 }
                 VStack(spacing: 0) {
                     ForEach(Array(MainTracker.offered.enumerated()), id: \.element) { index, option in
@@ -27,11 +26,6 @@ struct MainTrackerView: View {
                             .accessibilityAddTraits(option == tracker ? .isSelected : [])
                     }
                 }.diaryPanel(padding: 0, radius: 18)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Kept in Cloudflare with \(tracker.name)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    Text(tracker.keptInCloudflare.joined(separator: " · ").capitalizedFirst)
-                        .font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("main-tracker-cloudflare")
-                }.frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 14, radius: 16)
                 if tracker != .trakt, !store.providerSettings.config(for: tracker.provider).isAuthenticated {
                     NavigationLink(value: tracker == .wetrakr ? AppDestination.wetrakr : AppDestination.mdblist) {
                         Label("Connect \(tracker.name) first", systemImage: "link").frame(maxWidth: .infinity)
@@ -102,9 +96,6 @@ extension MainTracker {
     }
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
-}
 
 /// Reads the chosen tracker directly and compares it with the diary. Changes nothing.
 struct TrackerPreviewPanel: View {
@@ -158,21 +149,21 @@ struct TrackerPreviewPanel: View {
             if canMatch {
                 SettingsRow(title: "Source of truth", subtitle: forceSource == .diary ? "Your diary wins" : "\(tracker.name) wins") { sourceMenu }
                 SettingsDivider()
-                SettingsRow(title: "Force Match", subtitle: "Make one side exactly like the other") {
+                SettingsRow(title: "Force Match") {
                     Button(others.writing == tracker ? "Matching…" : readingForForce ? "Reading…" : "Run") { startForceMatch() }
                         .buttonStyle(SettingsPillButtonStyle()).disabled(running || others.writing != nil || readingForForce)
                         .accessibilityIdentifier(tracker.rawValue + "-force-match")
                 }
                 SettingsDivider()
             }
-            SettingsRow(title: "Compare with your diary", subtitle: running ? "Reading \(tracker.name)…" : "Check what's different") {
+            SettingsRow(title: "Compare with your diary", subtitle: running ? "Reading \(tracker.name)…" : nil) {
                 Button(running ? "Reading…" : "Check") {
                     Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
                 }.buttonStyle(SettingsPillButtonStyle()).disabled(running || trakt.writing || others.writing != nil).accessibilityIdentifier(id + "-check")
             }
             if tracker != .trakt, let log = SyncReport.text(tracker.provider) {
                 SettingsDivider()
-                SettingsRow(title: "Last sync report", subtitle: "What was sent and what came back") {
+                SettingsRow(title: "Last sync report") {
                     Button(copiedReport ? "Copied" : "Copy") { UIPasteboard.general.string = log; copiedReport = true }
                         .buttonStyle(SettingsPillButtonStyle(outlined: true)).accessibilityIdentifier(id + "-report")
                 }
@@ -253,11 +244,8 @@ struct TrackerPreviewPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsLabel(text: "Direct from \(tracker.name)") {
                 SettingsBadge(text: "Preview", tone: .configured)
-                SettingsInfoButton(text: intro)
             }
             VStack(alignment: .leading, spacing: 12) {
-                Text("Compare your \(tracker.name) library with your diary.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let report { reportView(report) }
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
@@ -395,7 +383,7 @@ struct TrackerPreviewPanel: View {
             }.frame(height: ThemeStore.current.native ? 52 : nil)
             Group {
                 if ThemeStore.current.native {
-                    SettingsActionRow(title: "Force Match", subtitle: "Make one side exactly like the other",
+                    SettingsActionRow(title: "Force Match",
                                       button: others.writing == tracker ? "Matching…" : readingForForce ? "Reading…" : "Run",
                                       busy: others.writing == tracker || readingForForce, disabled: running || others.writing != nil,
                                       identifier: tracker.rawValue + "-force-match") { startForceMatch() }
@@ -443,15 +431,6 @@ struct TrackerPreviewPanel: View {
         }
         return text + "\n\nThis can’t be undone."
     }
-    private var intro: String {
-        switch tracker {
-        case .trakt: "Reads your Trakt history, ratings, watchlist, favourites and dropped shows straight from Trakt and compares them with your diary. Nothing is changed."
-        case .mdblist: "Reads your MDBList watched items, ratings, dropped shows and watchlist and compares them with your diary. Items it can’t read are counted, not guessed. Nothing changes until you send."
-        case .wetrakr: "Reads your WeTrakr plays (rewatches included), ratings, watchlist, favourites and dropped titles, then only its journal of what changed, and compares them with your diary. Nothing changes until you send."
-        case .simkl: "Reads your Simkl history, ratings and lists, and checks each diary episode where Simkl keeps it. What can't be matched is counted, not guessed. Nothing changes until you send."
-        }
-    }
-
     @ViewBuilder private func reportView(_ report: TraktDirectStore.Report) -> some View {
         let library = library ?? TraktLibrary()
         let compared = report.comparison

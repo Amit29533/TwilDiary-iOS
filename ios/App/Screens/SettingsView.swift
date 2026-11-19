@@ -347,7 +347,7 @@ struct TMDBConnectionView: View {
             // Design (board 9): the service card with its two buttons, then one note.
             VStack(alignment: .leading, spacing: 14) {
                 let custom = store.providerSettings.customTmdbToken != nil
-                SettingsServiceHeader(logo: .tmdb, title: "TMDB", subtitle: "Posters, details and episodes",
+                SettingsServiceHeader(logo: .tmdb, title: "TMDB", subtitle: "",
                                       badge: verified ? ("Connected", .good) : checking ? ("Checking…", .plain) : ("Not connected", .missing)) {
                     HStack(spacing: 10) {
                         Button(checking ? "Checking…" : "Check connection") { Task { await check() } }
@@ -360,12 +360,6 @@ struct TMDBConnectionView: View {
                     }
                     if let error { Text(error).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
                     if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(themed: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
-                }
-                HStack(spacing: 4) {
-                    SettingsFootnote(text: custom ? "Your own token is used first." : "Uses your server’s key.")
-                    SettingsInfoButton(text: custom
-                        ? "Your own Read Access Token is stored encrypted on this iPhone and used first; your server’s key is the backup."
-                        : "TMDB is read straight from this iPhone with your server’s key. You can also set your own TMDB Read Access Token here.").padding(.vertical, -10)
                 }
                 if editingApi {
                     SettingsGroup(label: "Your own token") {
@@ -480,25 +474,6 @@ struct ExternalProviderConnectionView: View {
         }
     }
 
-    private var subtitleText: String {
-        switch provider {
-        case .mdblist: "Public ratings, watch history and watchlist."
-        case .wetrakr: "Watch history with rewatches, ratings and lists."
-        case .simkl: "Watch history, ratings and lists."
-        case .trakt: "Watch history, ratings and watchlist."
-        case .cloudflare: "Hosted diary sync."
-        }
-    }
-
-    private var includedDomainsText: String {
-        switch provider {
-        case .mdblist: "Watch history · Ratings · Watchlist · Dropped shows"
-        case .wetrakr: "Watch history · Ratings · Watchlist · Favourites · Dropped"
-        case .simkl: "Watch history · Ratings · Plan to watch · Watching · Completed · On hold · Dropped"
-        case .trakt, .cloudflare: "Watch history · Ratings · Watchlist"
-        }
-    }
-
     private var currentConfig: ExternalProviderConfig {
         store.providerSettings.config(for: provider)
     }
@@ -519,7 +494,7 @@ struct ExternalProviderConnectionView: View {
                         // Native: one Options list, as Trakt's page: Send my edits, the actions, Account limits.
                         TrackerPreviewPanel(tracker: tracker, leadingOptions: AnyView(sendEditsRows), trailingOptions: tracker == .trakt ? nil : AnyView(
                             NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
-                                SettingsRow(title: "Account limits", subtitle: "Daily requests and what your plan allows") { SettingsChevron() }
+                                SettingsRow(title: "Account limits") { SettingsChevron() }
                             }.buttonStyle(.plain).accessibilityIdentifier("\(tracker.rawValue)-account-limits")))
                     } else {
                         TrackerPreviewPanel(tracker: tracker)
@@ -527,7 +502,7 @@ struct ExternalProviderConnectionView: View {
                 }
                 if currentConfig.isAuthenticated, let tracker, tracker != .trakt, !native {
                     NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
-                        SettingsRow(title: "Account limits", subtitle: "Daily requests and what your plan allows") { SettingsChevron() }
+                        SettingsRow(title: "Account limits") { SettingsChevron() }
                             .modifier(SettingsCard())
                     }.buttonStyle(.plain).accessibilityIdentifier("\(tracker.rawValue)-account-limits")
                 }
@@ -558,7 +533,6 @@ struct ExternalProviderConnectionView: View {
             Toggle(isOn: $enabled) {
                 VStack(alignment: .leading, spacing: ThemeStore.current.native ? 1 : 2) {
                     Text("Send my edits to \(displayName)").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
-                    Text("Sent as you make them, with what reaches your diary's service from other apps (Infuse).").font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.toggleStyle(SettingsToggleStyle()).settingsRowFrame()
                 .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
@@ -725,8 +699,6 @@ struct ExternalProviderConnectionView: View {
                     // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
                     // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
                     let appId = appClientId ?? ProfileText.line(signInAppID)
-                    Text("Sign in on \(displayName) and come straight back.")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     Button {
                         if let appId { startSignIn(appId) } else {
                             errorMessage = "First, paste your \(displayName) app ID below (one-time setup)."
@@ -890,9 +862,8 @@ struct ExternalProviderConnectionView: View {
     private var headerCard: some View {
         let badge = currentConfig.statusBadge
         let tone: SettingsTone = badge == "Connected" ? .good : badge == "Configured" ? .configured : .plain
-        return SettingsServiceHeader(logo: brand, title: displayName, subtitle: currentConfig.username.map { "@" + $0 } ?? subtitleText,
+        return SettingsServiceHeader(logo: brand, title: displayName, subtitle: currentConfig.username.map { "@" + $0 } ?? "",
                                      badge: (badge, tone)) {
-            SettingsKeeps(items: includedDomainsText.components(separatedBy: " · "))
             if let lastSync = currentConfig.lastSyncedAt, let date = DiaryDate.parse(lastSync) {
                 Text("Last sent \(date.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
             }

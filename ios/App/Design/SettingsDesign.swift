@@ -324,7 +324,7 @@ struct SettingsServiceHeader<Extra: View>: View {
                     .background(Color(themed: "#1a1a21"), in: RoundedRectangle(cornerRadius: 15))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    if !subtitle.isEmpty { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if let badge { SettingsBadge(text: badge.text, tone: badge.tone).padding(.top, 2) }
             }
@@ -333,23 +333,6 @@ struct SettingsServiceHeader<Extra: View>: View {
     }
 }
 extension SettingsServiceHeader where Extra == EmptyView {
-}
-
-/// "KEEPS" over the kinds of data a service holds, as small chips.
-struct SettingsKeeps: View {
-    let items: [String]
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("KEEPS").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.secondary)
-            InlineFlowLayout(spacing: 8, rowSpacing: 8) {
-                ForEach(items, id: \.self) { item in
-                    Text(item).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                        .padding(.horizontal, 11).frame(height: 30).pillSurface(border: nil)
-                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-                }
-            }
-        }
-    }
 }
 
 /// A group label with something beside it ("DIRECT FROM MDBLIST  Preview  ⓘ").

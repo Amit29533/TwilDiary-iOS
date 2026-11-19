@@ -32,7 +32,7 @@ struct ConnectionsView: View {
             // Design (board 3): WHERE YOUR DIARY LIVES, YOUR DIARY and KEYS, each a card of rows.
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 12) {
-                    SettingsGroup(label: "Where your diary lives", info: "The Main one holds your diary. Your edits go to it, and to the others you’re signed in to.") {
+                    SettingsGroup(label: "Where your diary lives") {
                         ForEach(Array(MainTracker.offered.enumerated()), id: \.element) { index, tracker in
                             if index > 0 { divider }
                             trackerRow(tracker)
@@ -44,13 +44,13 @@ struct ConnectionsView: View {
                         SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
                     }
                 }
-                SettingsGroup(label: "Also kept in sync", info: "Your edits are copied to these too. They can’t hold your diary.") {
+                SettingsGroup(label: "Also kept in sync") {
                     ForEach(Array(MainTracker.alsoSynced.enumerated()), id: \.element) { index, tracker in
                         if index > 0 { divider }
                         trackerRow(tracker)
                     }
                 }
-                SettingsGroup(label: "Anime sync", info: "Your anime activity is copied to these as you log it: each season’s progress, status and score.") {
+                SettingsGroup(label: "Anime sync") {
                     aniListRow
                 }
                 SettingsGroup(label: "Your server") {
@@ -64,11 +64,7 @@ struct ConnectionsView: View {
                     } else {
                     HStack(spacing: 14) {
                         SettingsTile(symbol: "server.rack")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Your server").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                            Text(server ? "Backups and extras, no sign-in" : "Off · nothing goes to your server")
-                                .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
-                        }
+                        Text("Your server").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 4)
                         Toggle("", isOn: $server).labelsHidden().tint(theme.accent)
                     }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("connections-server")
@@ -76,18 +72,18 @@ struct ConnectionsView: View {
                     // The browsing preview shows them too (its UI tests open them).
                     if server || store.isPreview {
                         divider
-                        row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "Copies of your diary kept on your server",
+                        row(SettingsTile(symbol: "externaldrive.badge.timemachine"), "Backups", "",
                             value: nil, destination: .backups, id: "connections-backups")
                         divider
-                        row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare usage", "Today's use against the free plan",
+                        row(BrandLogo(service: .cloudflare, size: 38), "Cloudflare usage", "",
                             value: nil, destination: .cloudflare, id: "settings-cloudflare")
                     }
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    SettingsGroup(label: "Keys", info: "Keys are kept encrypted on this iPhone, and TwilDiary reads each service with them directly.") {
-                        row(BrandLogo(service: .tmdb, size: 38), "TMDB", "Posters, details, seasons and episodes", value: nil, destination: .tmdb, id: "settings-tmdb")
+                    SettingsGroup(label: "Keys") {
+                        row(BrandLogo(service: .tmdb, size: 38), "TMDB", "", value: nil, destination: .tmdb, id: "settings-tmdb")
                         divider
-                        row(BrandLogo(service: .tvdb, size: 38), "TheTVDB", "Awards, nominees and winners", value: nil, destination: .tvdb, id: "settings-tvdb")
+                        row(BrandLogo(service: .tvdb, size: 38), "TheTVDB", "", value: nil, destination: .tvdb, id: "settings-tvdb")
                         divider
                         NavigationLink(value: AppDestination.apis) {
                             if ThemeStore.current.native {
@@ -362,7 +358,7 @@ struct ConnectionsView: View {
                 leading
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                    if !subtitle.isEmpty { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
                 }
                 Spacer(minLength: 4)
                 if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }

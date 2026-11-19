@@ -18,7 +18,7 @@ struct AniListSyncSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !account.signedIn {
-                SettingsGroup(label: "Account", info: "Copies your anime activity to AniList as you log it: each season’s progress, status, score, dates, rewatches and your note. Your diary keeps every watch; AniList keeps no watch history.") {
+                SettingsGroup(label: "Account") {
                     SettingsRow(title: "Not signed in") {
                         Button(working ? "Opening…" : "Sign in") { Task { await signIn() } }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1)
                             .disabled(working).accessibilityIdentifier("anilist-sync-sign-in")
@@ -41,7 +41,7 @@ struct AniListSyncSection: View {
                 }
             }
             if !sync.notKept.isEmpty {
-                SettingsGroup(label: "Not kept on AniList", info: "AniList couldn’t take these, or TwilDiary couldn’t tell where they go. Everything else carries on.") {
+                SettingsGroup(label: "Not kept on AniList") {
                     ForEach(Array(sync.notKept.prefix(30).enumerated()), id: \.element.id) { index, item in
                         if index > 0 { SettingsDivider() }
                         VStack(alignment: .leading, spacing: 2) {
@@ -79,10 +79,8 @@ struct AniListSyncSection: View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsLabel(text: "Direct from AniList") {
                 SettingsBadge(text: "Preview", tone: .configured)
-                SettingsInfoButton(text: "Reads your AniList list and compares each season’s progress, status and score with your diary. Changes nothing until you send.")
             }
             VStack(alignment: .leading, spacing: 12) {
-                Text("Compare your AniList list with your diary.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
                 if let progress = sync.lookupProgress, progress.total > 0 {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Looking up your anime on AniList: \(progress.done.formatted()) of \(progress.total.formatted())…")
@@ -175,13 +173,13 @@ struct AniListSyncSection: View {
                     .disabled(comparison == nil || sync.sending || sync.checking || (account.aniListWins ? bringing == 0 : (comparison?.matches ?? true) || !account.canSend))
             }.accessibilityIdentifier("anilist-sync-force")
             SettingsDivider()
-            SettingsRow(title: "Compare with your diary", subtitle: "Check what’s different") {
+            SettingsRow(title: "Compare with your diary") {
                 Button(sync.checking ? "Reading…" : "Check") { Task { await sync.check(store: store) } }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1)
                     .disabled(sync.checking)
             }.accessibilityIdentifier("anilist-sync-compare")
             SettingsDivider()
             NavigationLink { AniListLimitsView() } label: {
-                SettingsRow(title: "Account limits", subtitle: "Requests a minute and your list") { SettingsChevron() }
+                SettingsRow(title: "Account limits") { SettingsChevron() }
             }.buttonStyle(.plain).accessibilityIdentifier("anilist-account-limits")
             SettingsDivider()
             Toggle(isOn: $account.sendNotes) { SettingsRowTitle("Send my notes", "") }

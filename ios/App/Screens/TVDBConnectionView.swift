@@ -21,7 +21,7 @@ struct TVDBConnectionView: View {
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
-                SettingsServiceHeader(logo: .tvdb, title: "TheTVDB", subtitle: "Awards, nominees and winners",
+                SettingsServiceHeader(logo: .tvdb, title: "TheTVDB", subtitle: "",
                                       badge: checking ? ("Checking…", .plain) : verified ? ("Connected", .good) : ("Not connected", .missing)) {
                     let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
                     layout {
@@ -45,8 +45,6 @@ struct TVDBConnectionView: View {
                 }
                 HStack(spacing: 4) {
                     SettingsFootnote(text: keySource)
-                    SettingsInfoButton(text: "TwilDiary reads TheTVDB directly. A key you enter here takes priority over the built-in key.")
-                        .padding(.vertical, -10)
                 }
                 if editing { keyEditor }
                 Link("TheTVDB", destination: URL(string: "https://www.thetvdb.com/")!)

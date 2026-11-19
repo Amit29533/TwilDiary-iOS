@@ -29,9 +29,9 @@ struct SimklSettingsView: View {
             VStack(alignment: .leading, spacing: ThemeStore.current.native ? 16 : 20) {
                 if ThemeStore.current.native {
                     // Native: the same header and Account list as the other services' pages.
-                    SettingsServiceHeader(logo: .simkl, title: "Simkl", subtitle: account.signedIn ? (account.username.map { "@" + $0 } ?? "Signed in") : "Your activity, copied to Simkl",
+                    SettingsServiceHeader(logo: .simkl, title: "Simkl", subtitle: account.signedIn ? (account.username.map { "@" + $0 } ?? "Signed in") : "",
                                           badge: account.signedIn ? ("Connected", .good) : nil) {
-                        SettingsKeeps(items: ["Watch history", "Ratings", "Plan to watch", "Watching", "Completed", "On hold", "Dropped"])
+                        EmptyView()
                     }
                     if !account.signedIn {
                         SettingsGroup(label: "Account") {
@@ -48,8 +48,6 @@ struct SimklSettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(account.signedIn ? (account.username.map { "@" + $0 } ?? "Signed in") : "Simkl")
                                 .font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                            Text(account.signedIn ? "Connected on this iPhone" : "Sign in to copy your activity to Simkl")
-                                .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
                         }
                         Spacer(minLength: 4)
                         if !account.signedIn {
@@ -67,13 +65,11 @@ struct SimklSettingsView: View {
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Also save my activity to Simkl").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                                Text("Works when you use another service").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
                             }
                             Spacer(minLength: 4)
                             Toggle("", isOn: $account.saving).labelsHidden().tint(theme.accent).accessibilityIdentifier("simkl-saving")
                         }.padding(.horizontal, 15).frame(minHeight: 64)
                     }
-                    SettingsFootnote(text: "Watches, removals, ratings and Planned, Watching, Completed, On hold and Dropped are copied as you make them, from now on. Your diary stays where it is; Simkl gets a copy.")
                     }
                     if ThemeStore.current.native, !mirror.queue.jobs.isEmpty || mirror.lastProblem != nil {
                         // Native: one row with the small button, and the bar under it.
@@ -107,7 +103,7 @@ struct SimklSettingsView: View {
                             Toggle(isOn: $account.saving) { SettingsRowTitle("Also save my activity to Simkl", "") }
                                 .settingsRowFrame().accessibilityIdentifier("simkl-saving")), trailingOptions: AnyView(
                             NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
-                                SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
+                                SettingsRow(title: "Account limits") { SettingsChevron() }
                             }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")))
                     } else {
                         TrackerPreviewPanel(tracker: .simkl)
@@ -117,13 +113,13 @@ struct SimklSettingsView: View {
                     }
                     if !ThemeStore.current.native {
                         NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
-                            SettingsRow(title: "Account limits", subtitle: "Daily requests and your plan") { SettingsChevron() }
+                            SettingsRow(title: "Account limits") { SettingsChevron() }
                                 .modifier(SettingsCard())
                         }.buttonStyle(.plain).accessibilityIdentifier("simkl-account-limits")
                     }
                 }
                 if !mirror.notKept.isEmpty {
-                    SettingsGroup(label: "Not kept on Simkl", info: "Simkl couldn’t find these, even by air date. They aren’t sent again; the rest of your activity carries on.") {
+                    SettingsGroup(label: "Not kept on Simkl") {
                         ForEach(Array(mirror.notKept.prefix(30).enumerated()), id: \.element.id) { index, item in
                             if index > 0 { SettingsDivider() }
                             VStack(alignment: .leading, spacing: 2) {
@@ -148,7 +144,7 @@ struct SimklSettingsView: View {
                     }
                 }
                 if !mirror.filedDifferently.isEmpty {
-                    SettingsGroup(label: "Check on Simkl", info: "Simkl took these, but filed them as the other kind (a show sent as a movie, or the reverse), so it may have taken another title.") {
+                    SettingsGroup(label: "Check on Simkl") {
                         ForEach(Array(mirror.filedDifferently.prefix(20).enumerated()), id: \.element.id) { index, item in
                             if index > 0 { SettingsDivider() }
                             VStack(alignment: .leading, spacing: 2) {

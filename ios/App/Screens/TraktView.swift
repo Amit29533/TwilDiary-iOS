@@ -14,11 +14,12 @@ import TwilDiaryCore
         let saved = store.providerSettings.trakt
         let connected = store.traktSignedInOnPhone
         let synced = DiaryDate.parse(saved.lastSyncedAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
-        SettingsServiceHeader(logo: .trakt, title: "Trakt", subtitle: synced ?? (connected ? "Connected" : "Your watches, together"),
+        SettingsServiceHeader(logo: .trakt, title: "Trakt", subtitle: synced ?? (connected ? "Connected" : ""),
                               badge: connected ? (saved.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
-            Text(connected ? (store.traktHoldsDiary ? "Trakt holds your diary. Your edits go straight to Trakt." : "Signed in on this iPhone.")
-                 : "Sign in to Trakt in Profile → Connections.")
-                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+            if !connected {
+                Text("Sign in to Trakt in Profile → Connections.")
+                    .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
         if connected {
             if ThemeStore.current.native && !store.traktHoldsDiary {
@@ -27,7 +28,6 @@ import TwilDiaryCore
                 TrackerPreviewPanel(tracker: .trakt)
                 SettingsGroup(label: "Options") { traktOptions }
             }
-            SettingsFootnote(text: "Sign out of Trakt in Profile → Connections.")
         }
     }
     @ViewBuilder private var traktOptions: some View {
@@ -36,29 +36,28 @@ import TwilDiaryCore
                     // Back on: send whatever waited.
                     if on && !traktDirect.pending.isEmpty { Task { await traktDirect.check(store: store) } }
                 })) {
-                    optionLabel("Instant sync", traktDirect.instantSync ? "Send edits as you make them" : "Edits wait for the next sync")
+                    optionLabel("Instant sync")
                 }.settingsRowFrame().accessibilityIdentifier("trakt-instant-sync")
                 SettingsDivider()
-                SettingsRow(title: "Pending requests", subtitle: "Waiting to be sent") {
+                SettingsRow(title: "Pending requests") {
                     SettingsBadge(text: traktDirect.pending.isEmpty ? "None" : traktDirect.pending.count.formatted(), tone: traktDirect.pending.isEmpty ? .good : .missing)
                 }.accessibilityElement(children: .combine).accessibilityIdentifier("trakt-pending-requests")
                 SettingsDivider()
-                SettingsRow(title: "Force sync", subtitle: "Re-check everything") {
+                SettingsRow(title: "Force sync") {
                     Button(traktDirect.running ? "Running…" : "Run") { Task { await traktDirect.forceCheck(store: store) } }
                         .buttonStyle(SettingsPillButtonStyle()).disabled(traktDirect.running || traktDirect.writing)
                         .accessibilityIdentifier("trakt-force-sync")
                 }
                 SettingsDivider()
                 NavigationLink { ServiceLimitsView(tracker: .trakt) } label: {
-                    SettingsRow(title: "Account limits", subtitle: "What your plan allows and what you use") { SettingsChevron() }
+                    SettingsRow(title: "Account limits") { SettingsChevron() }
                 }.buttonStyle(.plain).accessibilityIdentifier("trakt-account-limits")
     }
     private var traktDirect: TraktDirectStore { .shared }
-    private func optionLabel(_ title: String, _ subtitle: String) -> some View {
+    private func optionLabel(_ title: String) -> some View {
         let native = ThemeStore.current.native
         return VStack(alignment: .leading, spacing: native ? 1 : 2) {
             Text(title).font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
-            Text(subtitle).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
