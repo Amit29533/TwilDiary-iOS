@@ -79,25 +79,9 @@ private struct AwardCeremonyLink: View {
 
     var body: some View {
         NavigationLink(value: SearchBrowseRoute.ceremony(ceremony)) {
-            if let logo = ceremony.logo, let image = Self.image(logo.file) {
+            if let art = AwardLogoArt(ceremony: ceremony) {
                 // The ceremony's own logo on its own background colour: the Search page's small rectangle.
-                ZStack {
-                    Color(webHex: logo.background)
-                    if let caption = logo.caption {
-                        // A trophy beside the name in gold, as the Oscars logo is laid out.
-                        LinearGradient(colors: [.white.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        HStack(spacing: 10) {
-                            Image(uiImage: image).resizable().scaledToFit().padding(.vertical, 10)
-                            Text(caption).font(.system(size: 13, weight: .semibold, design: .serif)).tracking(1.2)
-                                .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f3d9a0"), Color(webHex: "#c79a4a")], startPoint: .top, endPoint: .bottom))
-                                // Each word on its own line, never split: smaller type before a word breaks.
-                                .lineSpacing(1).lineLimit(caption.split(separator: "\n").count)
-                                .minimumScaleFactor(0.4).allowsTightening(true).layoutPriority(1)
-                        }.padding(.horizontal, 12)
-                    } else {
-                        Image(uiImage: image).resizable().scaledToFit()
-                    }
-                }.frame(height: height).frame(maxWidth: .infinity)
+                art.frame(height: height).frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 14)).contentShape(RoundedRectangle(cornerRadius: 14))
                     // A hairline edge, so dark logos (the Oscars) don't melt into a black page.
                     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
@@ -110,7 +94,7 @@ private struct AwardCeremonyLink: View {
 
     /// The bundled logos, read once.
     private static var images: [String: UIImage] = [:]
-    private static func image(_ file: String) -> UIImage? {
+    static func image(_ file: String) -> UIImage? {
         if let kept = images[file] { return kept }
         let parts = file.split(separator: ".", maxSplits: 1).map(String.init)
         guard parts.count == 2, let path = Bundle.main.path(forResource: parts[0], ofType: parts[1]), let image = UIImage(contentsOfFile: path) else { return nil }
@@ -234,7 +218,8 @@ private struct AwardEditionPage: View {
     }
 
     var body: some View {
-        ExploreBrowsePage(title: ceremony.displayName, symbol: ceremony.symbol, subtitle: "Awards ceremony") {
+        ExploreBrowsePage(title: ceremony.displayName, symbol: ceremony.symbol, subtitle: "Awards ceremony",
+                          banner: AwardLogoArt(ceremony: ceremony, large: true).map { AnyView($0) }) {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if let editions = loader.editions {
                     if let edition, let groups = editions.sections[edition] {
@@ -594,5 +579,39 @@ struct SearchAwardNomineePage: View {
             }
         }
 
+    }
+}
+
+/// A ceremony's logo on its own background colour (or, for a caption, a trophy beside the name
+/// in gold): the Search tile, and the top of the ceremony's page (`large`).
+struct AwardLogoArt: View {
+    let file: UIImage
+    let background: String
+    let caption: String?
+    let large: Bool
+
+    init?(ceremony: SearchAwardCeremony, large: Bool = false) {
+        guard let logo = ceremony.logo, let image = AwardCeremonyLink.image(logo.file) else { return nil }
+        file = image; background = logo.background; caption = logo.caption; self.large = large
+    }
+
+    var body: some View {
+        ZStack {
+            Color(webHex: background)
+            if let caption {
+                LinearGradient(colors: [.white.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                HStack(spacing: large ? 18 : 10) {
+                    Image(uiImage: file).resizable().scaledToFit().padding(.vertical, large ? 28 : 10)
+                    Text(caption).font(.system(size: large ? 24 : 13, weight: .semibold, design: .serif)).tracking(large ? 2 : 1.2)
+                        .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f3d9a0"), Color(webHex: "#c79a4a")], startPoint: .top, endPoint: .bottom))
+                        // Each word on its own line, never split: smaller type before a word breaks.
+                        .lineSpacing(1).lineLimit(caption.split(separator: "\n").count)
+                        .minimumScaleFactor(0.4).allowsTightening(true).layoutPriority(1)
+                }.padding(.horizontal, large ? 28 : 12)
+            } else {
+                // On the page's top: the logo whole, a little in from the edges and clear of the back button.
+                Image(uiImage: file).resizable().scaledToFit().padding(.top, large ? 44 : 0).padding(.horizontal, large ? 12 : 0)
+            }
+        }
     }
 }

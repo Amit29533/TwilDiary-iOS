@@ -172,6 +172,8 @@ struct HomePoster<Badge: View>: View {
     let name: String
     let subtitle: String
     var initialsOnly = false
+    /// The title's score, on the top corner (the bottom one is the row's own badge).
+    var score: Double? = nil
     @ViewBuilder var badge: Badge
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -179,6 +181,7 @@ struct HomePoster<Badge: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
+                .overlay(alignment: .topLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
             // Two lines kept for every name, so each card in a row is the same height (a row
             // sized by one card no longer lets a taller one hang into the next section).
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
@@ -188,8 +191,8 @@ struct HomePoster<Badge: View>: View {
     }
 }
 extension HomePoster where Badge == EmptyView {
-    init(artwork: String?, name: String, subtitle: String, initialsOnly: Bool = false) {
-        self.artwork = artwork; self.name = name; self.subtitle = subtitle; self.initialsOnly = initialsOnly; self.badge = EmptyView()
+    init(artwork: String?, name: String, subtitle: String, initialsOnly: Bool = false, score: Double? = nil) {
+        self.artwork = artwork; self.name = name; self.subtitle = subtitle; self.initialsOnly = initialsOnly; self.score = score; self.badge = EmptyView()
     }
 }
 

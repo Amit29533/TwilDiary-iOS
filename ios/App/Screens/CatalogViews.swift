@@ -45,17 +45,13 @@ struct CatalogPoster: View {
     var profileTypography = false
     @Environment(DiaryStore.self) private var store
     var body: some View {
+        let score = PosterScores.score(for: item, store: store)
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false)
                 .posterAspect()
-                .overlay(alignment: .bottomLeading) {
-                    if let score = item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), score > 0 {
-                        HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
-                            .font(.system(size: 12)).foregroundStyle(Color(themed: "#e7ca90"))
-                            .padding(.horizontal, 5).padding(.vertical, 3).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6)).padding(6)
-                    }
-                }
+                .overlay(alignment: .bottomLeading) { if let score { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .wantsPosterScore(item, known: score, store: store)
             if profileTypography {
                 ProfileCardCaption(title: item.name).padding(.top, 8)
                 if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
@@ -917,8 +913,12 @@ struct CastAndRelated: View {
     }
     /// Design: a 111 x 167 poster (radius 18), the name in 14 pt semibold and the year under it.
     private func relatedPoster(_ item: CatalogItem) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 111, height: 167).clipShape(RoundedRectangle(cornerRadius: 18))
+        let score = PosterScores.score(for: item, store: store)
+        return VStack(alignment: .leading, spacing: 0) {
+            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 111, height: 167)
+                .overlay(alignment: .bottomLeading) { if let score { PosterScoreBadge(score: score) } }
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .wantsPosterScore(item, known: score, store: store)
             Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
             Text(item.year.map(String.init) ?? "").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
         }.frame(width: 111, alignment: .leading).accessibilityElement(children: .combine)

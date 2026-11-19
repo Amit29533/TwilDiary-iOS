@@ -159,38 +159,47 @@ private struct ExploreContent: View {
 /// while Explore is on screen.
 private struct ExploreHeroCarousel: View {
     let titles: [MediaTitle]
-    @State private var index = 0
+    /// The title on screen: swiped to by hand (paging), or moved on every five seconds.
+    @State private var selected: String?
     /// On screen: shown (not under another page) and not scrolled away.
     @State private var shown = false
     @State private var scrolledInto = true
 
     var body: some View {
-        let current = titles[index % titles.count]
-        ZStack(alignment: .bottomTrailing) {
-            DailyDiscoveryHero(title: current)
-                .id(current.id)
-                .transition(.opacity)
+        let current = titles.firstIndex { $0.id == selected } ?? 0
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(titles) { title in
+                    DailyDiscoveryHero(title: title).containerRelativeFrame(.horizontal).id(title.id)
+                }
+            }.scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: $selected)
+        .overlay(alignment: .bottomTrailing) {
             if titles.count > 1 {
                 HStack(spacing: 5) {
                     ForEach(titles.indices, id: \.self) { position in
-                        Capsule().fill(.white.opacity(position == index % titles.count ? 0.95 : 0.35))
-                            .frame(width: position == index % titles.count ? 14 : 5, height: 5)
+                        Capsule().fill(.white.opacity(position == current ? 0.95 : 0.35))
+                            .frame(width: position == current ? 14 : 5, height: 5)
                     }
                 }
+                .animation(.snappy(duration: 0.25), value: current)
                 .padding(.trailing, 18).padding(.bottom, 16)
                 .accessibilityHidden(true)
             }
         }
-        .onAppear { shown = true }
+        .onAppear { shown = true; if selected == nil { selected = titles.first?.id } }
         .onDisappear { shown = false }
         .onScrollVisibilityChange(threshold: 0.25) { scrolledInto = $0 }
-        .task(id: shown && scrolledInto) {
+        // Five seconds on each title; a swipe by hand starts the five seconds again.
+        .task(id: "\(shown && scrolledInto)|\(selected ?? "")") {
             guard shown, scrolledInto, titles.count > 1 else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
-                guard !Task.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.7)) { index = (index + 1) % titles.count }
-            }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            let next = titles[(current + 1) % titles.count].id
+            withAnimation(.smooth(duration: 0.6)) { selected = next }
         }
     }
 }

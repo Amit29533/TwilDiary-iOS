@@ -70,7 +70,8 @@ struct HomeView: View {
                                     ForEach(overview.planned.prefix(12)) { title in
                                         NavigationLink(value: title.id) {
                                             HomePoster(artwork: title.poster, name: title.name,
-                                                       subtitle: title.isSeries ? title.categoryName : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "))
+                                                       subtitle: title.isSeries ? title.categoryName : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
+                                                       score: title.communityScore)
                                                 .zoomSource(ZoomID.title(title.id))
                                         }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id).shelfTransition()
                                     }

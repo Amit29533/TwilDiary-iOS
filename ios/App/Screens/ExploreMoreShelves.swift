@@ -315,7 +315,10 @@ private struct CatalogTile: View {
         }.buttonStyle(.springPress).accessibilityIdentifier("explore-feed-" + item.key)
     }
     @ViewBuilder private var label: some View {
-        if let subtitle { StandardPoster(artwork: item.artwork, name: item.name, subtitle: subtitle, score: item.rating) }
+        if let subtitle {
+            let score = PosterScores.score(for: item, store: store)
+            StandardPoster(artwork: item.artwork, name: item.name, subtitle: subtitle, score: score).wantsPosterScore(item, known: score, store: store)
+        }
         else { CatalogPoster(item: item) }
     }
 }
