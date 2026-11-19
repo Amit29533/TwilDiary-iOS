@@ -147,30 +147,39 @@ import TwilDiaryCore
     /// from Trakt's premieres calendar (the most followed first), each with its TMDB poster.
     func loadComing(store: DiaryStore) async {
         let today = day(store)
-        guard comingMovies.loadedFor != today, !comingMovies.loading else { return }
+        let moviesDone = comingMovies.loadedFor == today && !comingMovies.items.isEmpty
+        let showsDone = comingShows.loadedFor == today && !comingShows.items.isEmpty
+        guard !(moviesDone && showsDone), !comingMovies.loading, !comingShows.loading else { return }
         guard let token = TMDBDirect.token(store) else {
             comingMovies.failure = "Coming soon needs TMDB, which isn’t set up."; comingShows.failure = comingMovies.failure
             comingMovies.loadedFor = today; comingShows.loadedFor = today; return
         }
-        comingMovies.loading = true; comingShows.loading = true
+        // Only the side that isn't loaded yet (a failed one is asked again on the next visit).
+        if !moviesDone { comingMovies.loading = true; comingMovies.failure = nil }
+        if !showsDone { comingShows.loading = true; comingShows.failure = nil }
         let region = (UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US").uppercased()
         let calendar = Calendar(identifier: .gregorian)
         func dayString(_ offset: Int) -> String { DiaryDate.day(calendar.date(byAdding: .day, value: offset, to: store.now) ?? store.now) }
-        let movieData = try? await TMDBDirect.object("discover/movie", query: [
-            "primary_release_date.gte": dayString(1), "primary_release_date.lte": dayString(90), "region": region,
-            "with_release_type": "2|3", "sort_by": "popularity.desc", "language": "en-US", "include_adult": "false"], token: token)
-        comingMovies.items = ((movieData?["results"] as? [[String: Any]]) ?? []).compactMap { row in
-            guard let item = TMDBDirect.catalogItem(row, kind: .movie), let date = row["release_date"] as? String, date.count >= 10 else { return nil }
-            return Upcoming(item: item, day: String(date.prefix(10)), season: nil)
-        }.sorted { $0.day < $1.day }
-        comingMovies.loading = false; comingMovies.loadedFor = today
-        if comingMovies.items.isEmpty { comingMovies.failure = "No upcoming movies could be loaded." }
+        if !moviesDone {
+            let movieData = try? await TMDBDirect.object("discover/movie", query: [
+                "primary_release_date.gte": dayString(1), "primary_release_date.lte": dayString(90), "region": region,
+                "with_release_type": "2|3", "sort_by": "popularity.desc", "language": "en-US", "include_adult": "false"], token: token)
+            let movies = ((movieData?["results"] as? [[String: Any]]) ?? []).compactMap { row -> Upcoming? in
+                guard let item = TMDBDirect.catalogItem(row, kind: .movie), let date = row["release_date"] as? String, date.count >= 10 else { return nil }
+                return Upcoming(item: item, day: String(date.prefix(10)), season: nil)
+            }.sorted { $0.day < $1.day }
+            if !movies.isEmpty { comingMovies.items = movies }
+            comingMovies.loading = false; comingMovies.loadedFor = today
+            if comingMovies.items.isEmpty { comingMovies.failure = "No upcoming movies could be loaded." }
+        }
 
-        // One request to Trakt, posters included (no lookup per show, which failed on flaky links).
-        let found = await Self.traktPremieres(from: dayString(0), days: 33)
-        comingShows.items = found.sorted { $0.day < $1.day }
-        comingShows.loading = false; comingShows.loadedFor = today
-        if comingShows.items.isEmpty { comingShows.failure = "No upcoming shows could be loaded." }
+        if !showsDone {
+            // One request to Trakt, posters included (no lookup per show, which failed on flaky links).
+            let found = await Self.traktPremieres(from: dayString(0), days: 33)
+            if !found.isEmpty { comingShows.items = found.sorted { $0.day < $1.day } }
+            comingShows.loading = false; comingShows.loadedFor = today
+            if comingShows.items.isEmpty { comingShows.failure = "No upcoming shows could be loaded." }
+        }
     }
 
     /// Trakt's season premieres (a new show's first season, or a returning one's next) in the
@@ -590,7 +599,7 @@ private struct ComingTile: View {
     }
     private var poster: some View {
         StandardPoster(artwork: entry.item.artwork, name: entry.item.name,
-                       subtitle: ComingSoonRow.when(entry.day, now: store.now) + (entry.season.map { $0 > 1 ? " · Season \($0)" : " · New" } ?? ""),
+                       subtitle: ComingSoonRow.when(entry.day, now: store.now) + (entry.season.map { $0 > 1 ? " · S\($0)" : " · New" } ?? ""),
                        subtitleTint: HomeStyle.chipText)
     }
     /// Adds it to Planned and turns release alerts on: the app then tells you when it's out (a
@@ -631,7 +640,13 @@ private struct ComingSoonRow: View {
             } else if feed.loading || feed.loadedFor == nil {
                 FeedPlaceholder()
             } else {
-                Text(feed.failure ?? "Nothing coming up.").font(.system(size: 13)).foregroundStyle(.secondary).frame(minHeight: 44)
+                HStack(spacing: 10) {
+                    Text(feed.failure ?? "Nothing coming up.").font(.system(size: 13)).foregroundStyle(.secondary)
+                    if feed.failure != nil {
+                        Button("Try again") { Task { await feeds.loadComing(store: store) } }
+                            .font(.system(size: 13, weight: .semibold)).accessibilityIdentifier("explore-coming-retry")
+                    }
+                }.frame(minHeight: 44)
             }
         }.task(id: DiaryDate.day(store.now)) { await feeds.loadComing(store: store) }
     }

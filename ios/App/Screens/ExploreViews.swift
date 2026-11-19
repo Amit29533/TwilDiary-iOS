@@ -99,7 +99,7 @@ private struct ExploreContent: View {
     init(store: DiaryStore) { self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            let picks = Self.heroPicks(store.workspace, day: DiaryDate.day(store.now))
+            let picks = Self.heroPicks(store, day: DiaryDate.day(store.now))
             if !picks.isEmpty {
                 ExploreHeroCarousel(titles: picks)
             } else {
@@ -132,14 +132,25 @@ private struct ExploreContent: View {
     @Environment(AppRouter.self) private var router
     private func openLibrary() { router.library("all") }
 
-    /// The top poster's titles: today's pick first, then up to seven more unwatched planned titles
-    /// with a picture, in an order that changes each day.
+    /// The top poster's titles, worked out once per day and diary change (not on every redraw).
+    private static var keptPicks: (key: String, picks: [MediaTitle])?
+    static func heroPicks(_ store: DiaryStore, day: String) -> [MediaTitle] {
+        let key = day + "|" + store.homeWorkspaceRevision.uuidString
+        if let keptPicks, keptPicks.key == key { return keptPicks.picks }
+        let picks = heroPicks(store.workspace, day: day)
+        keptPicks = (key, picks)
+        return picks
+    }
+    /// Today's pick first (as `DiscoveryTools.dailyPick`), then up to seven more unwatched planned
+    /// titles with a picture, in an order that changes each day. One pass over your history.
     static func heroPicks(_ workspace: Workspace, day: String) -> [MediaTitle] {
-        guard let first = DiscoveryTools.dailyPick(workspace, day: day) else { return [] }
+        let unwatched = DiscoveryTools.unwatched(workspace)
+        guard !unwatched.isEmpty else { return [] }
+        let dayHash = day.utf16.reduce(Int32(0)) { ($0 &* 31) &+ Int32($1) }
+        let first = unwatched[Int(UInt32(bitPattern: dayHash)) % unwatched.count]
         func hash(_ text: String) -> UInt64 { text.utf8.reduce(14_695_981_039_346_656_037) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 } }
-        let others = DiscoveryTools.unwatched(workspace)
-            .filter { $0.id != first.id && ($0.backdrop ?? $0.poster) != nil }
-            .sorted { hash($0.id + day) < hash($1.id + day) }
+        let others = unwatched.filter { $0.id != first.id && ($0.backdrop ?? $0.poster) != nil }
+            .map { ($0, hash($0.id + day)) }.sorted { $0.1 < $1.1 }.map { $0.0 }
         return [first] + others.prefix(7)
     }
 }
@@ -149,7 +160,9 @@ private struct ExploreContent: View {
 private struct ExploreHeroCarousel: View {
     let titles: [MediaTitle]
     @State private var index = 0
-    @State private var visible = false
+    /// On screen: shown (not under another page) and not scrolled away.
+    @State private var shown = false
+    @State private var scrolledInto = true
 
     var body: some View {
         let current = titles[index % titles.count]
@@ -168,10 +181,11 @@ private struct ExploreHeroCarousel: View {
                 .accessibilityHidden(true)
             }
         }
-        .onAppear { visible = true }
-        .onDisappear { visible = false }
-        .task(id: visible) {
-            guard visible, titles.count > 1 else { return }
+        .onAppear { shown = true }
+        .onDisappear { shown = false }
+        .onScrollVisibilityChange(threshold: 0.25) { scrolledInto = $0 }
+        .task(id: shown && scrolledInto) {
+            guard shown, scrolledInto, titles.count > 1 else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled else { return }
@@ -197,6 +211,8 @@ private struct ExploreHeading: View {
 private struct DailyDiscoveryHero: View {
     let title: MediaTitle
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// One height for every title (bigger with larger text), so the page doesn't move as it changes.
+    @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 340
 
     private var facts: String {
         [title.year.map(String.init), title.isSeries ? "Show" : "Movie"]
@@ -210,7 +226,7 @@ private struct DailyDiscoveryHero: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title.name)
                         .font(.largeTitle.bold())
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2).minimumScaleFactor(0.6)
                     HStack(spacing: 6) {
                         Text(facts)
                         if let score = title.communityScore, score > 0 {
@@ -232,7 +248,8 @@ private struct DailyDiscoveryHero: View {
         .padding(.horizontal, 18)
         .padding(.top, 70)
         .padding(.bottom, 36)
-        .frame(maxWidth: .infinity, minHeight: verticalSizeClass == .compact ? 240 : 340, alignment: .bottomLeading)
+        .frame(maxWidth: .infinity, alignment: .bottomLeading)
+        .frame(height: verticalSizeClass == .compact ? 240 : min(height, 520), alignment: .bottomLeading)
         .background {
             NavigationLink(value: title.id) {
                 Artwork(path: title.backdrop ?? title.poster, initialsOnly: false)

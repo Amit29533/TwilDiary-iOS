@@ -14,6 +14,8 @@ struct SeriesRatingCard: View {
     var titleID: String? = nil
     @Environment(DiaryStore.self) private var store
     @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.colorScheme) private var colorScheme
     @State private var ratings: SeriesRatings?
     /// The touched episode, in an observable box so only the header and the marker redraw while a
     /// finger slides along the chart.
@@ -59,7 +61,8 @@ struct SeriesRatingCard: View {
             // Same size whichever episode is touched, so nothing below jumps while tracing.
             scores(ratings, episode: episode)
                 .transaction { $0.animation = nil }
-            SeriesRatingLine(points: points, seasons: ratings.episodes, selection: selection).equatable()
+            SeriesRatingLine(points: points, seasons: ratings.episodes, selection: selection,
+                             look: String(describing: theme) + "-" + String(describing: colorScheme)).equatable()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Episode ratings")
                 .accessibilityValue(chartValue(points))
@@ -173,10 +176,12 @@ private struct SeriesRatingLine: View, Equatable {
     let points: [SeriesRatingCard.Point]
     let seasons: [SeriesRatings.Episode]
     let selection: SeriesRatingSelection
+    /// The theme and light or dark: the line redraws in the new colours when either changes.
+    let look: String
     private struct SeasonStart: Identifiable { let index: Int; let season: Int; var id: Int { index } }
 
     nonisolated static func == (a: SeriesRatingLine, b: SeriesRatingLine) -> Bool {
-        a.points == b.points && a.seasons.count == b.seasons.count
+        a.points == b.points && a.seasons.count == b.seasons.count && a.look == b.look
     }
 
     var body: some View {

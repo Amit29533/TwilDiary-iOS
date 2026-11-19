@@ -105,7 +105,9 @@ struct SeriesRatings: Sendable {
         }.filter { !$0.scores.isEmpty }
         guard episodes.count >= 2 || !show.isEmpty else { return nil }
         let result = SeriesRatings(episodes: episodes, show: show)
-        kept[tmdb] = (.now, result)
+        // Kept for six hours only when TMDB's episodes came through: after a failed read (a flaky
+        // link) the next visit asks again instead of leaving the chart away for hours.
+        if !base.isEmpty { kept[tmdb] = (.now, result) }
         return result
     }
 
