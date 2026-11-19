@@ -12,6 +12,45 @@ struct ExploreView: View {
         .navigationTitle("Explore")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
+        .background(EdgeSwipeBack().frame(width: 0, height: 0))
+    }
+}
+
+/// Explore hides its navigation bar (its artwork runs under the status bar), and UIKit then
+/// refuses the swipe from the screen's left edge that goes back; a swipe across the page only
+/// worked where no row scrolls sideways, which on Explore is almost nowhere. While Explore is
+/// on screen this lets the edge swipe go back to Home again, and gives UIKit its own handling
+/// back as soon as another page covers it.
+private struct EdgeSwipeBack: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {}
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        private weak var navigation: UINavigationController?
+        private weak var original: UIGestureRecognizerDelegate?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard let navigation = navigationController ?? owner(), let pop = navigation.interactivePopGestureRecognizer else { return }
+            self.navigation = navigation
+            if pop.delegate !== self { original = pop.delegate; pop.delegate = self }
+            pop.isEnabled = true
+        }
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            if let pop = navigation?.interactivePopGestureRecognizer, pop.delegate === self { pop.delegate = original }
+        }
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            (navigation?.viewControllers.count ?? 0) > 1 && navigation?.transitionCoordinator == nil
+        }
+        private func owner() -> UINavigationController? {
+            var responder: UIResponder? = view
+            while let current = responder {
+                if let controller = current as? UIViewController, let navigation = controller.navigationController { return navigation }
+                responder = current.next
+            }
+            return nil
+        }
     }
 }
 

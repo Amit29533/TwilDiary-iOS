@@ -1209,6 +1209,18 @@ import UIKit
             }
         }
     }
+    /// Explore hides its bar, which used to switch off the edge swipe: from the left edge, even
+    /// over a row that scrolls sideways, it goes back Home.
+    func testExploreGoesBackHomeWithTheEdgeSwipe() {
+        let app = launch(); app.tabBars.buttons["Home"].tap()
+        let explore = app.buttons["explore-shortcut"]
+        for _ in 0..<4 { if explore.isHittable { break }; app.swipeUp() }
+        let daily = app.buttons["explore-more-daily"]
+        explore.tap(); XCTAssertTrue(daily.waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.0, dy: 0.7))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.7)))
+        XCTAssertTrue(app.staticTexts["Continue watching"].waitForExistence(timeout: 5), "back on Home")
+    }
     func testNativeExploreReturnsByBackActiveHomeTabAndFullContentSwipe() {
         let app = launch(); app.tabBars.buttons["Home"].tap()
         let explore = app.buttons["explore-shortcut"]
