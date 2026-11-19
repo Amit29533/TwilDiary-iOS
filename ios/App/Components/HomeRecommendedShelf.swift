@@ -48,7 +48,9 @@ struct HomeRecommendedShelf: View {
         }.wantsPosterScore(item, known: score, store: store)
     }
     private func kindName(_ item: CatalogItem) -> String {
-        if item.genres?.contains("Animation") == true { return item.mediaType == .movie ? "Anime movie" : "Anime" }
+        // TMDB's own mark (Japanese and animated); a title read without it falls back to the genre.
+        let anime = item.isAnime ?? (item.genres?.contains("Animation") == true)
+        if anime { return item.mediaType == .movie ? "Anime movie" : "Anime" }
         return item.mediaType == .movie ? "Movie" : "Show"
     }
     private func load() async {

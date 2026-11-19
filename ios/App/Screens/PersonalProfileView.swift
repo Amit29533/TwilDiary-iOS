@@ -543,7 +543,7 @@ struct PersonalProfileView: View {
         }
     }
     private var collectionTiles: some View {
-        let favourites = FavouritesStore.shared.items.count + store.favouriteShows.count
+        let favourites = FavouritesStore.shared.items.count + store.favouriteTitles.count
         let planned = store.activeTitles.filter { $0.status == "planned" }.count
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             Button { router.library("planned") } label: { collection("bookmark", "Watchlist", (trakt?.watchlist ?? planned).counted("title", "titles")) }.buttonStyle(.plain)

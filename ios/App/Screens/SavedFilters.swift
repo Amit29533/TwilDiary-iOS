@@ -70,6 +70,7 @@ struct HomeSavedShelves: View {
     @State private var newName = ""
     /// Each shelf's titles, worked out in the background when the diary or the shelves change.
     @State private var found: [String: [MediaTitle]] = [:]
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
 
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
@@ -105,7 +106,7 @@ struct HomeSavedShelves: View {
                     .accessibilityLabel("Open in Library").accessibilityIdentifier("saved-shelf-open-" + filter.id)
             }
             if titles.isEmpty && found[filter.id] == nil {
-                Color.clear.frame(height: 190)
+                Color.clear.frame(height: posterSize.homeWidth * 1.5 + 62)
             } else if titles.isEmpty {
                 Text("Nothing matches this shelf right now.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
                     .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -116,7 +117,7 @@ struct HomeSavedShelves: View {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(titles.prefix(12)) { title in
                             NavigationLink(value: title.id) {
-                                HomePoster(artwork: title.poster, name: title.name, subtitle: subtitle(title))
+                                HomePoster(artwork: title.poster, name: title.name, subtitle: subtitle(title), score: title.communityScore)
                             }.buttonStyle(.springPress).accessibilityIdentifier("saved-shelf-title-" + title.id).shelfTransition()
                         }
                     }.scrollTargetLayout()

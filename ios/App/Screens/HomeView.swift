@@ -94,7 +94,7 @@ struct HomeView: View {
                                 ForEach(overview.planned.prefix(12)) { title in
                                     NavigationLink(value: title.id) {
                                         HomePoster(artwork: title.poster, name: title.name,
-                                                   subtitle: title.isSeries ? title.categoryName : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
+                                                   subtitle: title.isSeries ? title.categoryName : ([title.category == "anime-movie" ? "Anime movie" : "Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
                                                    score: title.communityScore)
                                             .zoomSource(ZoomID.title(title.id))
                                     }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id).shelfTransition()
@@ -112,7 +112,7 @@ struct HomeView: View {
         case .favourites:
                 // Recently hearted cast and characters together, right under Up next; › opens them by kind.
                 let favourites = FavouritesStore.shared.items
-                let favouriteShows = store.favouriteShows
+                let favouriteShows = store.favouriteTitles
                 if !favourites.isEmpty || !favouriteShows.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
                         HomeSectionHeader(title: "Favourites", icon: "heart.fill") {
@@ -124,7 +124,8 @@ struct HomeView: View {
                                     // Home's standard poster, the size of the characters and people beside it.
                                     NavigationLink(value: show.id) {
                                         HomePoster(artwork: show.poster, name: show.name,
-                                                   subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
+                                                   subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "),
+                                                   score: show.communityScore)
                                     }.buttonStyle(.plain).accessibilityIdentifier("home-favourite-show-" + show.id)
                                 }
                                 ForEach(favourites.prefix(12)) { item in FavouriteLink(item: item, homeCard: true).shelfTransition() }
