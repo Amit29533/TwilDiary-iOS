@@ -196,8 +196,17 @@ struct SimklQueue: Codable, Equatable, Sendable {
             // Another play of it is still in the diary: Simkl keeps it watched.
             guard let watch = DetachedWatch(eventID: eventId), !watch.othersRemain else { return [] }
             let title = resolvedTitle(titleId, store: store)
-            return [SimklJob(kind: .unwatch, tmdb: watch.tmdbId, movie: watch.movie, anime: title.map(Self.isAnime) ?? false, name: title?.name ?? "TMDB \(watch.tmdbId)",
-                             year: title?.year, season: watch.season, number: watch.number, watchedAt: watch.watchedAt)]
+            let anime = title.map(Self.isAnime) ?? false, name = title?.name ?? "TMDB \(watch.tmdbId)"
+            var jobs = [SimklJob(kind: .unwatch, tmdb: watch.tmdbId, movie: watch.movie, anime: anime, name: name,
+                                 year: title?.year, season: watch.season, number: watch.number, watchedAt: watch.watchedAt)]
+            // Nothing of the show watched any more: back under Plan to watch (Simkl kept it under
+            // Watching with no episodes, test account 2026-11-19), unless you dropped or paused it.
+            if watch.titleEmpty == true, !watch.movie, !["dropped", "paused", "on_hold"].contains(title?.status ?? "") {
+                var list = SimklJob(kind: .list, tmdb: watch.tmdbId, movie: false, anime: anime, name: name, year: title?.year)
+                list.list = "plantowatch"
+                jobs.append(list)
+            }
+            return jobs
         case .patchTitle(let titleId, _, let status, let score, let clearScore, _, _, _, _):
             guard let title = resolvedTitle(titleId, store: store), let tmdb = title.tmdbId else { return [] }
             let base = SimklJob(kind: .rate, tmdb: tmdb, movie: !title.isSeries, anime: Self.isAnime(title), name: title.name, year: title.year)

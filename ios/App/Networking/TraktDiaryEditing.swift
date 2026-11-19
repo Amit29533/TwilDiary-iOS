@@ -219,8 +219,10 @@ extension DiaryStore {
             let episode = event.episodeId.flatMap { id in workspace.episodes.first { $0.id == id } }
             if title.isSeries && episode == nil { continue }
             let others = workspace.activeEvents.contains { $0.titleId == event.titleId && $0.episodeId == event.episodeId && !going.contains($0.id) }
+            // A show with nothing watched left once these go (an Undo of its first episode, say).
+            let empty = title.isSeries && !workspace.activeEvents.contains { $0.titleId == event.titleId && !going.contains($0.id) }
             let watch = DetachedWatch(tmdbId: tmdb, movie: !title.isSeries, season: episode?.season, number: episode?.number,
-                                      watchedAt: event.watchedAt, othersRemain: others)
+                                      watchedAt: event.watchedAt, othersRemain: others, titleEmpty: empty ? true : nil)
             mirror(.revokeWatch(eventId: watch.eventID, titleId: title.id, expectedVersion: 1, revokedAt: when))
         }
     }

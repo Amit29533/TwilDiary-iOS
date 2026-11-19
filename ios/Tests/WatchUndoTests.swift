@@ -87,6 +87,22 @@ import TwilDiaryCore
         }
     }
 
+    func testAShowLeftWithNothingWatchedGoesBackToPlanToWatchOnSimkl() async throws {
+        let store = makeStore()
+        let empty = DetachedWatch(tmdbId: 97546, movie: false, season: 1, number: 1, watchedAt: "2027-01-15T08:00:00.000Z", othersRemain: false, titleEmpty: true)
+        let jobs = SimklMirror.jobs(for: .revokeWatch(eventId: empty.eventID, titleId: "tv:97546", expectedVersion: 1, revokedAt: "2027-01-15T08:00:05.000Z"), store: store)
+        XCTAssertEqual(jobs.map(\.kind), [.unwatch, .list], "the episode off, then the show back on Plan to watch")
+        XCTAssertEqual(jobs.last?.list, "plantowatch")
+        // Other episodes still watched, or a movie: only the removal.
+        let more = DetachedWatch(tmdbId: 97546, movie: false, season: 1, number: 2, watchedAt: "2027-01-15T08:00:00.000Z", othersRemain: false)
+        XCTAssertEqual(SimklMirror.jobs(for: .revokeWatch(eventId: more.eventID, titleId: "tv:97546", expectedVersion: 1, revokedAt: "x"), store: store).map(\.kind), [.unwatch])
+        let film = DetachedWatch(tmdbId: 346648, movie: true, season: nil, number: nil, watchedAt: "2027-01-15T08:00:00.000Z", othersRemain: false, titleEmpty: true)
+        XCTAssertEqual(SimklMirror.jobs(for: .revokeWatch(eventId: film.eventID, titleId: "movie:346648", expectedVersion: 1, revokedAt: "x"), store: store).map(\.kind), [.unwatch])
+        // A removal queued before this change (no flag) still reads.
+        let old = DetachedWatch(eventID: "detached:" + Data(#"{"movie":false,"number":1,"othersRemain":false,"season":1,"tmdbId":5,"watchedAt":"2027-01-15T08:00:00.000Z"}"#.utf8).base64EncodedString())
+        XCTAssertNotNil(old); XCTAssertNil(old?.titleEmpty)
+    }
+
     func testPlaysAreMatchedWithinASecondOfTheirTime() async throws {
         let store = makeStore()
         await store.startOnThisPhone()

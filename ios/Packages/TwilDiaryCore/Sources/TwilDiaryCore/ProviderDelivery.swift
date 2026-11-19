@@ -25,9 +25,12 @@ public struct DetachedWatch: Codable, Equatable, Sendable {
     /// The diary still has another play of this movie or episode: MDBList, which keeps one
     /// watch for all of them, are then left as they are.
     public let othersRemain: Bool
-    public init(tmdbId: Int, movie: Bool, season: Int?, number: Int?, watchedAt: String?, othersRemain: Bool) {
+    /// A show left with no watches at all once this one goes: Simkl then files it back under Plan
+    /// to watch (it kept it under Watching with nothing watched). Absent in removals queued before.
+    public let titleEmpty: Bool?
+    public init(tmdbId: Int, movie: Bool, season: Int?, number: Int?, watchedAt: String?, othersRemain: Bool, titleEmpty: Bool? = nil) {
         self.tmdbId = tmdbId; self.movie = movie; self.season = season; self.number = number
-        self.watchedAt = watchedAt; self.othersRemain = othersRemain
+        self.watchedAt = watchedAt; self.othersRemain = othersRemain; self.titleEmpty = titleEmpty
     }
     static let prefix = "detached:"
     /// The event id a `.revokeWatch` carries for this watch.
