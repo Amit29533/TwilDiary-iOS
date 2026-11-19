@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
+    @AppStorage(TabLayout.key) private var tabText = ""
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -82,7 +83,7 @@ struct SettingsView: View {
                             tile("rectangle.portrait.and.arrow.forward", .orange)
                             SettingsRowTitle("Opens on", "The screen TwilDiary starts on")
                             Spacer(minLength: 0)
-                            Menu { Picker("Opens on", selection: $launchTab) { ForEach(TabLayout.visible, id: \.self) { Text($0.label).tag($0) } } }
+                            Menu { Picker("Opens on", selection: $launchTab) { ForEach(TabLayout.layout(tabText).visible.compactMap(AppTab.init(rawValue:)), id: \.self) { Text($0.label).tag($0) } } }
                                 label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
                         }.settingsRowFrame()
                         divider
@@ -100,7 +101,7 @@ struct SettingsView: View {
                         divider
                         Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress and notes", disclosure: true) }
                         divider
-                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "Letterboxd, IMDb, MAL and more", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
+                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "From a TwilDiary backup (.json)", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
                         divider
                         NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync and backups", disclosure: true) }.accessibilityIdentifier("settings-backups")
                         divider
@@ -211,7 +212,9 @@ struct SettingsView: View {
     /// Trakt's state in a word for its row; the full sync controls live on the Trakt page.
     /// "Trakt · 2 connected": the main tracker and how many services are signed in.
     private var connectionsSummary: String {
-        let count = [store.traktSignedInOnPhone, store.providerSettings.mdblist.isAuthenticated].filter { $0 }.count
+        let settings = store.providerSettings
+        let count = [store.traktSignedInOnPhone, settings.mdblist.isAuthenticated, settings.wetrakr.isAuthenticated,
+                     settings.simkl.isAuthenticated, AniListSyncAccount.shared.signedIn].filter { $0 }.count
         return count > 0 ? "\(count) on" : "Off"
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
@@ -295,7 +298,14 @@ struct SettingsView: View {
         let snapshot = store.workspace
         Task {
             do {
-                let data = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
+                var data = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
+                // No server: tags, Queue, notes and the other extras live on the phone; without them
+                // an exported file restored a diary with none.
+                if store.phoneOnly, let phone = ServerBackups.phoneExtras(),
+                   var root = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    root["phone"] = phone
+                    data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+                }
                 exportDocument = DiaryJSONDocument(data: data); showExport = true
             } catch { store.error = error.localizedDescription }
         }
@@ -603,7 +613,7 @@ struct ExternalProviderConnectionView: View {
         let signedIn = isTrakt ? store.traktSignedInOnPhone : currentConfig.isAuthenticated
         let appId = appClientId ?? ProfileText.line(signInAppID)
         let needsSetup = appClientId == nil
-        let developer = isTrakt ? "https://trakt.tv/oauth/applications" : provider == .wetrakr ? "https://api.wetrakr.com/" : "https://mdblist.com/developer/"
+        let developer = isTrakt ? "https://trakt.tv/oauth/applications" : provider == .wetrakr ? "https://api.wetrakr.com/" : provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/"
         let setupInfo: String? = !needsSetup ? nil : isTrakt
             ? "On trakt.tv/oauth/applications, open your app and add \(ProviderWebSignIn.redirect(for: .trakt)) as a redirect URI, then paste its client ID here."
             : provider == .mdblist
@@ -761,7 +771,7 @@ struct ExternalProviderConnectionView: View {
                                 .focused($appIDFocused)
                                 .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
-                            Link(destination: URL(string: provider == .wetrakr ? "https://api.wetrakr.com/" : "https://mdblist.com/developer/")!) {
+                            Link(destination: URL(string: provider == .wetrakr ? "https://api.wetrakr.com/" : provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/")!) {
                                 SettingsLinkLabel(text: "Open \(displayName)’s developer page")
                             }
                         }

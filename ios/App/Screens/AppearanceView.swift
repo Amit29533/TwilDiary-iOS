@@ -13,7 +13,7 @@ struct AppearanceView: View {
                 SettingsIntro(eyebrow: "Make it yours", text: "A different mood. The same diary.")
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ForEach(DiaryTheme.allCases) { item in
-                        Button { theme = item } label: { ThemeCard(item: item, selected: item == theme) }
+                        Button { if item != theme { Haptics.play(.selection) }; theme = item } label: { ThemeCard(item: item, selected: item == theme) }
                             .buttonStyle(.springPress)
                             .accessibilityLabel(item.name + ": " + item.detail)
                             .accessibilityIdentifier("theme-" + item.rawValue)
