@@ -36,15 +36,9 @@ struct SearchAwardCeremony: Codable, Hashable, Identifiable, Sendable {
         case 16: ("award-canadian-screen.jpg", "#ffffff", nil)
         case 18: ("award-nta.jpg", "#ffffff", nil)
         case 19: ("award-cesar.jpg", "#ffffff", nil)
-        case 4: ("award-critics-choice.png", "#0d1726", "CRITICS'
-CHOICE
-AWARDS")
-        case 21: ("award-baeksang.png", "#14110c", "BAEKSANG
-ARTS
-AWARDS")
-        case 9: ("award-dga.png", "#121212", "DIRECTORS
-GUILD OF
-AMERICA")
+        case 4: ("award-critics-choice.png", "#0d1726", "CRITICS'\nCHOICE\nAWARDS")
+        case 21: ("award-baeksang.png", "#14110c", "BAEKSANG\nARTS\nAWARDS")
+        case 9: ("award-dga.png", "#121212", "DIRECTORS\nGUILD OF\nAMERICA")
         default: nil
         }
     }
