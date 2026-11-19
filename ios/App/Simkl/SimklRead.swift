@@ -58,10 +58,14 @@ enum SimklLibrary {
     }
 
     /// From the placements ("tmdb:season:number" for an episode, "movie:tmdb" for a film,
-    /// "show:tmdb" for an anime series' own entry) and the diary.
-    static func mapping(placements: [String: SimklPlacement], diary: Workspace, map: AnimeMap? = nil) -> Mapping {
+    /// "show:tmdb" for an anime series' own entry) and the diary. `trashed`: titles in the phone's
+    /// Trash, known too, so an anime Simkl still lists after it was trashed is read (and swept off):
+    /// Akame ga Kill! stayed on Plan to watch and the comparison said it matched, because an anime
+    /// entry was read only for titles in the diary (test account, 2026-11-19).
+    static func mapping(placements: [String: SimklPlacement], diary: Workspace, map: AnimeMap? = nil, trashed: [MediaTitle] = []) -> Mapping {
         var mapping = Mapping()
-        for title in diary.activeTitles {
+        let known = diary.activeTitles + trashed
+        for title in known {
             guard let tmdb = title.tmdbId else { continue }
             if title.isSeries { mapping.diaryShows[tmdb] = title.name } else { mapping.diaryMovies[tmdb] = title.name }
             if title.isSeries, title.category != "anime" { mapping.plainShows.insert(tmdb) }
@@ -89,7 +93,7 @@ enum SimklLibrary {
         // request, no daily allowance): ViVid Strike!, Planned and listed by Simkl with no TMDB id,
         // read as missing until the sync got round to placing it (owner's account, 2026-11-15).
         if let map {
-            for title in diary.activeTitles {
+            for title in known {
                 guard let tmdb = title.tmdbId else { continue }
                 if title.isSeries {
                     if let entry = map.simkl(tmdb: tmdb, film: false), mapping.shows[entry] == nil, mapping.films[entry] == nil { mapping.shows[entry] = tmdb }

@@ -498,7 +498,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
         // and the other apps you connect (each check spent about 50, owner's recording).
         let room = ProviderQuota.daily(host: SimklAPI.quotaHost).map { max(0, ($0.limit - $0.used - 150) / 4) } ?? budget
         requests += await placeAhead(diary, api: api, budget: min(budget, room))
-        let mapping = SimklLibrary.mapping(placements: placements, diary: diary, map: AnimeMapStore.shared.map)
+        let mapping = SimklLibrary.mapping(placements: placements, diary: diary, map: AnimeMapStore.shared.map, trashed: PhoneTrash.shared.titles)
         var read = TraktLibrary(activities: TraktActivities(all: root["all"] as? String, stamps: stamps))
         for kind in ["movies", "shows", "anime"] {
             if let data = SimklStorage.load(Data.self, Self.libraryFile(kind)) { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }

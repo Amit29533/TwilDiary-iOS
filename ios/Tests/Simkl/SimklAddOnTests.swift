@@ -666,6 +666,22 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(after.watchlist.first?.title.name, "ViVid Strike!")
     }
 
+    /// Akame ga Kill! moved to Trash while Simkl still lists it on Plan to watch (test account,
+    /// 2026-11-19): read, so the comparison shows it and the trash sweep takes it off.
+    func testATrashedAnimeSimklStillListsIsRead() throws {
+        let workspace = try diary(titles: [], episodes: [], watched: [])
+        let trashed = try diary(titles: [("ak", "Akame ga Kill!", "anime", 61223)], episodes: [], watched: []).titles
+        let row = Data(#"{"anime":[{"status":"plantowatch","anime_type":"tv","total_episodes_count":24,"show":{"title":"Akame ga Kill!","year":2014,"ids":{"simkl":46890,"tmdb":"61223"}}}]}"#.utf8)
+        var before = TraktLibrary()
+        SimklLibrary.apply("anime", row, mapping: SimklLibrary.mapping(placements: [:], diary: workspace), into: &before)
+        XCTAssertTrue(before.watchlist.isEmpty, "out of the diary, it wasn't read")
+        var after = TraktLibrary()
+        SimklLibrary.apply("anime", row, mapping: SimklLibrary.mapping(placements: [:], diary: workspace, trashed: trashed), into: &after)
+        XCTAssertEqual(after.watchlist.map(\.title.tmdbId), [61223])
+        XCTAssertEqual(SimklMirror.trashedOnSimkl(after, trashed: trashed).map(\.tmdbId), [61223])
+        XCTAssertFalse(TraktComparison.compare(after, with: workspace, tracker: .simkl).matches, "the comparison shows it")
+    }
+
     /// ViVid Strike! (owner's account, 2026-11-15): Planned, on Simkl's Plan to watch with no TMDB
     /// id, and not placed yet. The anime map links it at read time.
     func testTheAnimeMapLinksAPlannedTitleBeforeItsPlaced() throws {
