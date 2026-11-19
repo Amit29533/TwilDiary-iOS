@@ -117,6 +117,9 @@ struct AniListMostWatched: View {
     /// The last ranking per tab and AniList user: switching tabs shows it at once instead of
     /// clearing to "Nothing to rank" and reloading (the flash between tabs).
     @MainActor private static var saved: [String: [RankedRow]] = [:]
+    /// A ranking being read: leaving the tab doesn't cancel it (it used to, so Characters never
+    /// finished and showed its placeholder on every visit); coming back waits for the same read.
+    @MainActor private static var reading: [String: Task<[RankedRow], Error>] = [:]
     private static func key(_ kind: Kind, _ user: String) -> String { (kind == .voiceActors ? "voice:" : "character:") + user.lowercased() }
     init(kind: Kind) {
         self.kind = kind
@@ -168,15 +171,21 @@ struct AniListMostWatched: View {
         loading = true; failure = nil
         let requestedUser = user
         defer { if requestedUser == user { loading = false } }
-        do {
-            // `try` can't sit inside a ?: in Swift, so the two sources are a plain if/else.
+        let voices = kind == .voiceActors
+        let read = Self.reading[key] ?? Task { @MainActor in
+            defer { Self.reading[key] = nil }
             let result: [RankedRow]
-            if kind == .voiceActors { result = try await AniListClient.shared.topVoiceActors(user: requestedUser).map(Self.voiceRow) }
+            if voices { result = try await AniListClient.shared.topVoiceActors(user: requestedUser).map(Self.voiceRow) }
             else { result = try await AniListClient.shared.topCharacters(user: requestedUser).map(Self.characterRow) }
-            try Task.checkCancellation()
-            guard requestedUser == user else { return }
-            rows = result
             Self.saved[key] = result
+            return result
+        }
+        Self.reading[key] = read
+        do {
+            // Waiting here is cancelled with the tab; the read itself goes on and is kept.
+            let result = try await read.value
+            guard !Task.isCancelled, requestedUser == user else { return }
+            rows = result
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     private static func voiceRow(_ stat: AniVoiceActorStat) -> RankedRow {

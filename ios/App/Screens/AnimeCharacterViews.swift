@@ -214,7 +214,10 @@ struct CharacterView: View {
 /// you've hearted, as posters. "Favourites" titles the page; the tabs are its first row.
 struct FavouritesView: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("favouritesTab") private var selectedTab = Favourite.Kind.character.rawValue
+    /// The tab whose page shows, and the pill: the pill moves on the tap itself, the page follows
+    /// on the next frame, so the slide starts before the page is rebuilt (it used to wait for it).
+    @State private var selectedTab = UserDefaults.standard.string(forKey: "favouritesTab") ?? Favourite.Kind.character.rawValue
+    @State private var pillTab = UserDefaults.standard.string(forKey: "favouritesTab") ?? Favourite.Kind.character.rawValue
     private var tab: Favourite.Kind { Favourite.Kind(rawValue: selectedTab) ?? .character }
     @AppStorage("favouritesCastGrid") private var castGrid = true
     @AppStorage("favouritesCharactersGrid") private var charactersGrid = true
@@ -312,9 +315,9 @@ struct FavouritesView: View {
         return HStack(spacing: 0) {
             ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
                 if index > 0 { Spacer(minLength: 2) }
-                let on = selectedTab == kind
+                let on = pillTab == kind
                 // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
-                Button { selectedTab = kind } label: {
+                Button { choose(kind) } label: {
                     Text(Favourite.Kind(rawValue: kind)?.label ?? "Title").font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .padding(.horizontal, 12).frame(height: 40)
@@ -328,8 +331,18 @@ struct FavouritesView: View {
                 }.buttonStyle(.plain).layoutPriority(1).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind)
             }
         }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
-            // Only the pill slides; the page below swaps at once (animating it made switching lag).
-            .animation(.snappy(duration: 0.25), value: selectedTab)
+    }
+    private func choose(_ kind: String) {
+        guard kind != pillTab else { return }
+        withAnimation(.snappy(duration: 0.25)) { pillTab = kind }
+        // The page a moment later, once the pill's first frame is on screen.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(10))
+            guard pillTab == kind else { return }
+            var instant = Transaction(); instant.disablesAnimations = true
+            withTransaction(instant) { selectedTab = kind }
+            UserDefaults.standard.set(kind, forKey: "favouritesTab")
+        }
     }
     /// Grid · list as two icons in one small track.
     private var layoutSwitch: some View {
