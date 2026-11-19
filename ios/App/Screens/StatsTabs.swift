@@ -50,6 +50,17 @@ struct StatsJourneyCard: View {
     let insights: StatsInsights
     let coverage: StatsOverview.Coverage
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(DiaryStore.self) private var store
+    /// The picture behind the card: the backdrop of what you watched last, else of what you've
+    /// watched most.
+    private var backdrop: String? {
+        let events = store.workspace.activeEvents
+        func art(_ id: String?) -> String? { id.flatMap { store.title($0) }.flatMap { $0.backdrop ?? $0.poster } }
+        let last = events.max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) }
+        if let picture = art(last?.titleId) { return picture }
+        let most = Dictionary(grouping: events, by: \.titleId).max { $0.value.count < $1.value.count }?.key
+        return art(most)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? StatsHero.ink.opacity(0.85) : theme.accent.opacity(0.9))
@@ -96,8 +107,15 @@ struct StatsJourneyCard: View {
                     // Native: a plain card, as the Battery page's (owner's reference for Statistics).
                     if ThemeStore.current.native { Color(uiColor: .secondarySystemBackground) } else {
                         Color(themed: "#2a1f45")
-                        RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
-                        LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+                        if let backdrop {
+                            // Your last show's picture, dimmed so the numbers stay readable.
+                            Artwork(path: backdrop, title: "", initialsOnly: false).accessibilityHidden(true)
+                            LinearGradient(colors: [.black.opacity(0.45), .black.opacity(0.62), .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
+                            RadialGradient(colors: [theme.accent.opacity(0.28), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
+                        } else {
+                            RadialGradient(colors: [theme.accent.opacity(0.45), .clear], center: .topLeading, startRadius: 0, endRadius: 320)
+                            LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+                        }
                     }
                 }
             }.clipShape(RoundedRectangle(cornerRadius: 26)).overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(HomeStyle.outline(0.14)))
