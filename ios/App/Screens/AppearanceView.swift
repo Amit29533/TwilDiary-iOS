@@ -33,15 +33,11 @@ struct AppearanceView: View {
                 SettingsGroup(label: "Feel") {
                     HStack(spacing: ThemeStore.current.native ? 12 : 14) {
                         SettingsTile(symbol: "iphone.radiowaves.left.and.right")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Haptics").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
-                                .foregroundStyle(HomeStyle.primary).lineLimit(1)
-                            Text(haptics ? "Little taps as you mark, add, switch and scrub" : "Off · no taps anywhere in the app")
-                                .font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
-                        }
+                        Text("Haptics").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                            .foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 4)
                         Toggle("", isOn: $haptics).labelsHidden().tint(ThemeStore.current.native ? Color(uiColor: .systemGreen) : theme.accent)
-                    }.padding(.horizontal, 15).frame(minHeight: 64)
+                    }.padding(.horizontal, 15).frame(minHeight: ThemeStore.current.native ? 52 : 56)
                         .accessibilityElement(children: .combine).accessibilityIdentifier("settings-haptics")
                         // Turning them on answers with one, so you feel what you chose.
                         .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }

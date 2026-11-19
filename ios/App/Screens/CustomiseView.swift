@@ -28,7 +28,7 @@ struct CustomiseView: View {
                     }
                 }
                 .onMove { from, to in var next = home; next.order.move(fromOffsets: from, toOffset: to); homeText = next.text }
-            } header: { Text("Home") } footer: { Text("Drag to reorder; tap the eye to hide or show. Explore & Canvas can move but not go: it's the way into them.") }
+            } header: { Text("Home") }
 
             Section {
                 ForEach(explore.order, id: \.self) { id in
@@ -38,7 +38,7 @@ struct CustomiseView: View {
                     }
                 }
                 .onMove { from, to in var next = explore; next.order.move(fromOffsets: from, toOffset: to); exploreText = next.text }
-            } header: { Text("Explore") } footer: { Text("The rows of Explore, top to bottom.") }
+            } header: { Text("Explore") }
 
             Section {
                 Picker(selection: $launchTab) {
@@ -56,7 +56,7 @@ struct CustomiseView: View {
                     }
                 }
                 .onMove { from, to in var next = tabs; next.order.move(fromOffsets: from, toOffset: to); tabText = next.text }
-            } header: { Text("Tab bar") } footer: { Text("Drag to reorder the tabs. Glance can be hidden; Home, Library, Search and Profile stay, since other pages open them.") }
+            } header: { Text("Tab bar") }
 
             Section {
                 Picker("Poster size", selection: $posterSize) {
@@ -66,9 +66,7 @@ struct CustomiseView: View {
                     .accessibilityIdentifier("customise-poster-rating")
                 Toggle(isOn: $showsCaption) { label("Name under posters", symbol: "textformat", hidden: !showsCaption) }
                     .accessibilityIdentifier("customise-poster-caption")
-            } header: { Text("Posters") } footer: {
-                Text("\(posterSize.title): \(posterSize.columns) posters across grids and rows.")
-            }
+            } header: { Text("Posters") }
 
             Section {
                 Button("Back to the original layout", role: .destructive) { confirmReset = true }
