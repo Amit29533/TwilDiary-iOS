@@ -715,7 +715,8 @@ struct CastCreditsPage: View {
     private var selected: Tab { selection ?? (anime && characters?.isEmpty != true ? .voices : .cast) }
 
     var body: some View {
-        EdgeToEdgeScroll {
+        ExploreBrowsePage(title: anime ? "Cast and characters" : "Cast and crew", symbol: "person.2", subtitle: title, artwork: backdrop,
+                          titleIdentifier: "cast-credits-title") {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 4) {
                     if anime && characters?.isEmpty != true { segment(.voices) }
@@ -723,10 +724,14 @@ struct CastCreditsPage: View {
                     segment(.crew)
                 }.padding(4).background(Color.primary.opacity(0.06), in: Capsule())
                 creditContent
-            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
-        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ShowPageTitle(title: anime ? "Cast and characters" : "Cast and crew", subtitle: title) }
+            }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 40)
+        }
             .task(id: route) { await load() }
+    }
+    /// The title's backdrop when it's in your diary, else the first character's picture.
+    private var backdrop: String? {
+        store.activeTitles.first { $0.tmdbId == route.id && $0.isSeries == (route.kind != .movie) }?.backdrop
+            ?? characters?.lazy.compactMap(\.image).first
     }
     private func segment(_ tab: Tab) -> some View {
         let on = selected == tab

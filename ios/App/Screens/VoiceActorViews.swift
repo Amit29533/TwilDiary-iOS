@@ -27,13 +27,10 @@ struct VoiceActorCharactersView: View {
     @State private var shown = 30
     private var usesGrid: Bool { grid && !typeSize.isAccessibilitySize }
     var body: some View {
-        EdgeToEdgeScroll {
+        ExploreBrowsePage(title: route.name, symbol: "theatermasks", subtitle: roles.map { $0.count.counted("character", "characters") } ?? "Characters",
+                          artwork: roles?.lazy.compactMap(\.character.image).first,
+                          accessory: typeSize.isAccessibilitySize ? nil : AnyView(CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters"))) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(roles.map { $0.count.counted("character", "characters") } ?? "Characters").font(.subheadline).foregroundStyle(.secondary)
-                    Spacer(minLength: 4)
-                    if !typeSize.isAccessibilitySize { CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters") }
-                }
                 if let roles {
                     LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())],
                               alignment: .leading, spacing: 16) {
@@ -42,8 +39,8 @@ struct VoiceActorCharactersView: View {
                     if roles.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
                 } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 else { DiaryLoadingPlaceholder(label: "Loading characters", layout: .posterGrid(columns: 3, rows: 2)) }
-            }.padding(.horizontal, 14).padding(.bottom, 40).smoothChange(of: roles == nil)
-        }.diaryScreenBackground().navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+            }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 40).smoothChange(of: roles == nil)
+        }
             .task(id: route) { if roles == nil { await load() } }
     }
     private func load() async {

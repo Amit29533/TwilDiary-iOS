@@ -166,44 +166,45 @@ import TwilDiaryCore
         comingMovies.loading = false; comingMovies.loadedFor = today
         if comingMovies.items.isEmpty { comingMovies.failure = "No upcoming movies could be loaded." }
 
-        let premieres = await Self.traktPremieres(from: dayString(0), days: 45)
-        let found = await withTaskGroup(of: Upcoming?.self) { group in
-            for premiere in premieres.prefix(24) {
-                group.addTask { await Self.poster(for: premiere, token: token) }
-            }
-            var rows: [Upcoming] = []
-            for await row in group { if let row { rows.append(row) } }
-            return rows
-        }
+        // One request to Trakt, posters included (no lookup per show, which failed on flaky links).
+        let found = await Self.traktPremieres(from: dayString(0), days: 33)
         comingShows.items = found.sorted { $0.day < $1.day }
         comingShows.loading = false; comingShows.loadedFor = today
         if comingShows.items.isEmpty { comingShows.failure = "No upcoming shows could be loaded." }
     }
 
-    struct Premiere: Sendable { let tmdb: Int; let day: String; let season: Int; let votes: Int }
     /// Trakt's season premieres (a new show's first season, or a returning one's next) in the
-    /// coming days, most followed first. Trakt's public calendar needs only TwilDiary's app ID.
-    private static func traktPremieres(from start: String, days: Int) async -> [Premiere] {
+    /// coming days, the most followed first, with Trakt's own posters. Trakt's public calendar
+    /// needs only TwilDiary's app ID.
+    private static func traktPremieres(from start: String, days: Int) async -> [Upcoming] {
         guard let clientID = ProviderAppIDs.id(for: .trakt),
-              let url = URL(string: "https://api.trakt.tv/calendars/all/shows/premieres/\(start)/\(days)?extended=full") else { return [] }
-        var request = URLRequest(url: url, timeoutInterval: 15)
+              let url = URL(string: "https://api.trakt.tv/calendars/all/shows/premieres/\(start)/\(days)?extended=full,images") else { return [] }
+        var request = URLRequest(url: url, timeoutInterval: 20)
         request.setValue("2", forHTTPHeaderField: "trakt-api-version")
         request.setValue(clientID, forHTTPHeaderField: "trakt-api-key")
-        guard let (data, response) = try? await URLSession.shared.data(for: request), (response as? HTTPURLResponse)?.statusCode == 200,
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var reply: (Data, URLResponse)?
+        for attempt in 0..<2 where reply == nil {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(1)) }
+            reply = try? await URLSession.shared.data(for: request)
+        }
+        guard let (data, response) = reply, (response as? HTTPURLResponse)?.statusCode == 200,
               let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        func image(_ show: [String: Any], _ kind: String) -> String? {
+            ((show["images"] as? [String: Any])?[kind] as? [String])?.first.map { $0.hasPrefix("http") ? $0 : "https://" + $0 }
+        }
         var seen = Set<Int>()
-        return rows.compactMap { row -> Premiere? in
+        let found = rows.compactMap { row -> (Upcoming, Int)? in
             guard let show = row["show"] as? [String: Any], let ids = show["ids"] as? [String: Any], let tmdb = ids["tmdb"] as? Int, tmdb > 0,
-                  let aired = row["first_aired"] as? String, let episode = row["episode"] as? [String: Any],
+                  let name = show["title"] as? String, let aired = row["first_aired"] as? String, let episode = row["episode"] as? [String: Any],
                   let season = episode["season"] as? Int, season > 0, seen.insert(tmdb).inserted else { return nil }
             let date = ISO8601DateFormatter.flexible(aired).map { DiaryDate.day($0) } ?? String(aired.prefix(10))
-            return Premiere(tmdb: tmdb, day: date, season: season, votes: show["votes"] as? Int ?? 0)
-        }.sorted { $0.votes > $1.votes }
-    }
-    private static func poster(for premiere: Premiere, token: String) async -> Upcoming? {
-        guard let details = try? await TMDBDirect.object("tv/\(premiere.tmdb)", query: ["language": "en-US"], token: token),
-              let item = TMDBDirect.catalogItem(details, kind: .tv) else { return nil }
-        return Upcoming(item: item, day: premiere.day, season: premiere.season)
+            let item = CatalogItem(id: tmdb, mediaType: .tv, name: name, year: show["year"] as? Int, overview: show["overview"] as? String ?? "",
+                                   rating: (show["rating"] as? NSNumber)?.doubleValue.flatMap { $0 > 0 ? $0 : nil },
+                                   poster: image(show, "poster"), backdrop: image(show, "fanart"))
+            return (Upcoming(item: item, day: date, season: season), show["votes"] as? Int ?? 0)
+        }
+        return found.sorted { $0.1 > $1.1 }.prefix(24).map { $0.0 }
     }
 }
 
@@ -265,13 +266,14 @@ private struct FeedHeading<Value: Hashable>: View {
     }
 }
 
-/// The AI mark: sparkles in CineMind's colours that shimmer.
+/// The AI mark: sparkles in CineMind's colours that turn once every few seconds.
 struct AISparkle: View {
     var size: CGFloat = 18
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Image(systemName: "sparkles").font(.system(size: size, weight: .semibold))
             .foregroundStyle(LinearGradient(colors: [Color(themed: "#7fb2ff"), Color(themed: "#c58cff"), Color(themed: "#ffd36e")], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+            .symbolEffect(.rotate, options: .repeat(.periodic(delay: 3.5)), isActive: !reduceMotion)
             .accessibilityLabel("Picked by AI")
     }
 }

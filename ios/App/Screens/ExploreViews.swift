@@ -99,8 +99,9 @@ private struct ExploreContent: View {
     init(store: DiaryStore) { self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            if let title = DiscoveryTools.dailyPick(store.workspace, day: DiaryDate.day(store.now)) {
-                DailyDiscoveryHero(title: title)
+            let picks = Self.heroPicks(store.workspace, day: DiaryDate.day(store.now))
+            if !picks.isEmpty {
+                ExploreHeroCarousel(titles: picks)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     ExploreHeading(section: .daily)
@@ -130,6 +131,54 @@ private struct ExploreContent: View {
     }
     @Environment(AppRouter.self) private var router
     private func openLibrary() { router.library("all") }
+
+    /// The top poster's titles: today's pick first, then up to seven more unwatched planned titles
+    /// with a picture, in an order that changes each day.
+    static func heroPicks(_ workspace: Workspace, day: String) -> [MediaTitle] {
+        guard let first = DiscoveryTools.dailyPick(workspace, day: day) else { return [] }
+        func hash(_ text: String) -> UInt64 { text.utf8.reduce(14_695_981_039_346_656_037) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 } }
+        let others = DiscoveryTools.unwatched(workspace)
+            .filter { $0.id != first.id && ($0.backdrop ?? $0.poster) != nil }
+            .sorted { hash($0.id + day) < hash($1.id + day) }
+        return [first] + others.prefix(7)
+    }
+}
+
+/// Explore's top poster: one of your planned titles, changing to the next every five seconds
+/// while Explore is on screen.
+private struct ExploreHeroCarousel: View {
+    let titles: [MediaTitle]
+    @State private var index = 0
+    @State private var visible = false
+
+    var body: some View {
+        let current = titles[index % titles.count]
+        ZStack(alignment: .bottomTrailing) {
+            DailyDiscoveryHero(title: current)
+                .id(current.id)
+                .transition(.opacity)
+            if titles.count > 1 {
+                HStack(spacing: 5) {
+                    ForEach(titles.indices, id: \.self) { position in
+                        Capsule().fill(.white.opacity(position == index % titles.count ? 0.95 : 0.35))
+                            .frame(width: position == index % titles.count ? 14 : 5, height: 5)
+                    }
+                }
+                .padding(.trailing, 18).padding(.bottom, 16)
+                .accessibilityHidden(true)
+            }
+        }
+        .onAppear { visible = true }
+        .onDisappear { visible = false }
+        .task(id: visible) {
+            guard visible, titles.count > 1 else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.7)) { index = (index + 1) % titles.count }
+            }
+        }
+    }
 }
 
 private struct ExploreHeading: View {

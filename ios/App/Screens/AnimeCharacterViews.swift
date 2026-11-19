@@ -236,7 +236,7 @@ struct FavouritesView: View {
         EdgeToEdgeScroll(frosted: true) {
             tabs.padding(.horizontal, 16).padding(.top, 4)
             if selectedTab == "shows" {
-                FavouriteShowsSection(shows: store.favouriteShows)
+                FavouriteTitlesSection(titles: store.favouriteTitles)
             } else {
                 Group {
                     switch tab {
@@ -348,29 +348,47 @@ struct FavouritesView: View {
     }
 }
 
-/// Your favourite shows: one row of posters, as Home's.
-private struct FavouriteShowsSection: View {
-    let shows: [MediaTitle]
+/// Your favourite titles in three rows of posters, as Home's: shows, movies and anime.
+private struct FavouriteTitlesSection: View {
+    let titles: [MediaTitle]
 
     var body: some View {
+        let sorted = titles.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        VStack(alignment: .leading, spacing: 26) {
+            row("Favourite Shows", id: "shows", empty: "No favourite shows yet", sorted.filter { $0.category == "show" })
+            row("Favourite Movies", id: "movies", empty: "No favourite movies yet", sorted.filter { $0.category == "movie" })
+            row("Favourite Animes", id: "animes", empty: "No favourite anime yet", sorted.filter { $0.category.hasPrefix("anime") })
+        }.padding(.vertical, 16)
+    }
+
+    private func row(_ heading: String, id: String, empty: String, _ items: [MediaTitle]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Favourite shows").font(.title2.bold()).accessibilityAddTraits(.isHeader).padding(.horizontal, 16)
-            if shows.isEmpty {
-                ContentUnavailableView("No favourite shows yet", systemImage: "heart",
-                                       description: Text("Open a show in your library and choose Favourite."))
+            HStack(spacing: 8) {
+                Text(heading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                if !items.isEmpty {
+                    Text(items.count.formatted()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
+                        .frame(minWidth: 24).padding(.horizontal, 4).frame(height: 24).background(HomeStyle.chip, in: Capsule())
+                }
+            }.padding(.horizontal, 16).accessibilityIdentifier("favourite-titles-" + id)
+            if items.isEmpty {
+                Label(empty + ". Open one in your library and choose Favourite.", systemImage: "heart")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 16)
             } else {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(shows.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { show in
-                            NavigationLink(value: show.id) {
-                                HomePoster(artwork: show.poster, name: show.name,
-                                           subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
-                            }.buttonStyle(.springPress).accessibilityIdentifier("favourite-show-" + show.id)
+                        ForEach(items) { title in
+                            NavigationLink(value: title.id) {
+                                HomePoster(artwork: title.poster, name: title.name,
+                                           subtitle: [title.year.map(String.init), title.category == "anime-movie" ? "Movie" : nil].compactMap { $0 }.joined(separator: " · "))
+                            }.buttonStyle(.springPress).accessibilityIdentifier("favourite-show-" + title.id)
                         }
                     }.padding(.horizontal, 16)
                 }.scrollIndicators(.hidden)
             }
-        }.padding(.vertical, 16)
+        }
     }
 }
 

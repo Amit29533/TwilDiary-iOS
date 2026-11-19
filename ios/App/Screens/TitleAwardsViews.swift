@@ -25,23 +25,26 @@ struct TitleAwardsSection: View {
                     Label("View award history", systemImage: "trophy").font(.subheadline).foregroundStyle(.secondary)
                 }.buttonStyle(.plain)
             } else {
+                // One card: a row per ceremony, its wins and other nominations as small counters.
                 NavigationLink(value: destination) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        ForEach(rows.prefix(5), id: \.ceremony) { row in
-                            HStack(spacing: 10) {
-                                Text(row.ceremony).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                                if row.wins > 0 {
-                                    Label("\(row.wins)", systemImage: "trophy.fill").labelStyle(AwardCountStyle(tint: Color(themed: "#e7ca90")))
-                                }
-                                if row.nominations > 0 {
-                                    Label("\(row.nominations)", systemImage: "medal").labelStyle(AwardCountStyle(tint: .secondary))
-                                }
-                                Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(rows.prefix(5).enumerated()), id: \.element.ceremony) { index, row in
+                            if index > 0 { Divider().padding(.leading, 14) }
+                            HStack(spacing: 8) {
+                                Text(row.ceremony).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                    .lineLimit(1).truncationMode(.tail)
+                                Spacer(minLength: 8)
+                                if row.wins > 0 { counter("trophy.fill", row.wins, tint: Color(themed: "#e7ca90")) }
+                                if row.nominations > 0 { counter("medal", row.nominations, tint: .secondary) }
                             }
+                            .padding(.horizontal, 14).frame(minHeight: 44)
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel("\(row.ceremony): \(row.wins) won, \(row.nominations) more nominations")
                         }
-                    }.contentShape(Rectangle())
+                    }
+                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                    .contentShape(Rectangle())
                 }.buttonStyle(.plain)
             }
         }
@@ -52,6 +55,14 @@ struct TitleAwardsSection: View {
             rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: people, movie: route.kind == .movie))
         }
     }
+}
+
+/// A small counter: the icon and the number in a soft capsule.
+private func counter(_ symbol: String, _ count: Int, tint: Color) -> some View {
+    HStack(spacing: 4) {
+        Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
+        Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
+    }.padding(.horizontal, 8).frame(height: 24).background(tint.opacity(0.14), in: Capsule())
 }
 
 /// A count beside its icon: "🏆 2", "🎖 3".

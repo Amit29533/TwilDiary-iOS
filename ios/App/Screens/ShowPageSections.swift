@@ -95,15 +95,15 @@ struct ParentalGuideSection: View {
         let color = Color(themed: style.color)
         return HStack(spacing: 10) {
             Image(systemName: style.symbol).font(.system(size: 14, weight: .medium)).foregroundStyle(color).frame(width: 20)
-            Text(style.name).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.85)
+            Text(style.name).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 ForEach(0..<5, id: \.self) { index in
-                    Capsule().fill(index < category.bars ? color : color.opacity(0.16)).frame(width: 20, height: 6)
+                    Capsule().fill(index < category.bars ? color : color.opacity(0.16)).frame(width: 14, height: 6)
                 }
             }
             Text(category.levelName).font(.system(size: 13, weight: .medium)).foregroundStyle(category.level == 0 ? HomeStyle.secondary : color)
-                .lineLimit(1).frame(width: 64, alignment: .trailing)
+                .lineLimit(1).frame(width: 60, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore).accessibilityLabel(style.name + ": " + category.levelName)
     }

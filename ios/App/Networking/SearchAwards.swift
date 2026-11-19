@@ -23,14 +23,28 @@ struct SearchAwardCeremony: Codable, Hashable, Identifiable, Sendable {
         UserDefaults.standard.set(Array(empty), forKey: emptyKey)
     }
 
-    /// The ceremony's logo, bundled with the app, and the colour behind it.
-    var logo: (file: String, background: String)? {
+    /// The ceremony's picture, bundled with the app: a logo on its own colour, or (with a caption)
+    /// a trophy beside the ceremony's name on a dark card, as the Oscars logo is laid out.
+    var logo: (file: String, background: String, caption: String?)? {
         switch id {
-        case 1: ("award-oscars", "#000000")
-        case 5: ("award-emmys", "#e0e1dc")
-        case 11: ("award-bafta", "#ffffff")
-        case 2: ("award-golden-globes", "#fefefe")
-        case 6: ("award-actor-awards", "#071113")
+        case 1: ("award-oscars.jpg", "#000000", nil)
+        case 5: ("award-emmys.jpg", "#e0e1dc", nil)
+        case 11: ("award-bafta.jpg", "#ffffff", nil)
+        case 2: ("award-golden-globes.jpg", "#fefefe", nil)
+        case 6: ("award-actor-awards.jpg", "#071113", nil)
+        case 10: ("award-daytime-emmys.jpg", "#ffffff", nil)
+        case 16: ("award-canadian-screen.jpg", "#ffffff", nil)
+        case 18: ("award-nta.jpg", "#ffffff", nil)
+        case 19: ("award-cesar.jpg", "#ffffff", nil)
+        case 4: ("award-critics-choice.png", "#0d1726", "CRITICS'
+CHOICE
+AWARDS")
+        case 21: ("award-baeksang.png", "#14110c", "BAEKSANG
+ARTS
+AWARDS")
+        case 9: ("award-dga.png", "#121212", "DIRECTORS
+GUILD OF
+AMERICA")
         default: nil
         }
     }

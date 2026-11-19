@@ -82,7 +82,18 @@ private struct AwardCeremonyLink: View {
                 // The ceremony's own logo on its own background colour: the Search page's small rectangle.
                 ZStack {
                     Color(webHex: logo.background)
-                    Image(uiImage: image).resizable().scaledToFit()
+                    if let caption = logo.caption {
+                        // A trophy beside the name in gold, as the Oscars logo is laid out.
+                        LinearGradient(colors: [.white.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        HStack(spacing: 10) {
+                            Image(uiImage: image).resizable().scaledToFit().padding(.vertical, 10)
+                            Text(caption).font(.system(size: 13, weight: .semibold, design: .serif)).tracking(1.2)
+                                .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f3d9a0"), Color(webHex: "#c79a4a")], startPoint: .top, endPoint: .bottom))
+                                .lineSpacing(1).minimumScaleFactor(0.7)
+                        }.padding(.horizontal, 12)
+                    } else {
+                        Image(uiImage: image).resizable().scaledToFit()
+                    }
                 }.frame(height: height).frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 14)).contentShape(RoundedRectangle(cornerRadius: 14))
                     .accessibilityElement().accessibilityLabel(ceremony.displayName)
@@ -96,7 +107,8 @@ private struct AwardCeremonyLink: View {
     private static var images: [String: UIImage] = [:]
     private static func image(_ file: String) -> UIImage? {
         if let kept = images[file] { return kept }
-        guard let path = Bundle.main.path(forResource: file, ofType: "jpg"), let image = UIImage(contentsOfFile: path) else { return nil }
+        let parts = file.split(separator: ".", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let path = Bundle.main.path(forResource: parts[0], ofType: parts[1]), let image = UIImage(contentsOfFile: path) else { return nil }
         images[file] = image
         return image
     }

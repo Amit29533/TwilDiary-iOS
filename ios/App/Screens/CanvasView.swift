@@ -393,9 +393,9 @@ struct CanvasListView: View {
     @Environment(DiaryStore.self) private var store
     @State private var loader: CanvasListItemsLoader?
     var body: some View {
-        EdgeToEdgeScroll {
+        ExploreBrowsePage(title: route.name, symbol: "list.bullet.rectangle", subtitle: "by " + route.user,
+                          artwork: ExploreBrowseHeader.artwork(in: loader?.items ?? [])) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("by " + route.user).font(.system(size: 14)).foregroundStyle(.secondary)
                 if let loader {
                     if !loader.items.isEmpty { CatalogGrid(items: loader.items, showsLayoutToggle: false) }
                     if loader.loading && loader.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
@@ -404,9 +404,9 @@ struct CanvasListView: View {
                         ScrollLoadTrigger(token: loader.items.count, loading: loader.loading) { Task { await loader.load(more: true) } }
                     }
                 }
-            }.padding(.horizontal, 14).padding(.bottom, 100)
+            }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
                 .smoothChange(of: loader?.items.isEmpty ?? true)
-        }.diaryScreenBackground().navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        }
             .task {
                 // Kept for a while across visits, so going back and forth shows the list at once.
                 if loader == nil { loader = CanvasListItemsLoader.shared(store: store, id: route.id) }

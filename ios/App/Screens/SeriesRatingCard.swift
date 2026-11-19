@@ -2,8 +2,8 @@ import Charts
 import SwiftUI
 import TwilDiaryCore
 
-/// The title page's rating chart: every episode of the show in one line, coloured by its score,
-/// with Overall, IMDb, TMDB and Trakt to choose from. At rest the header shows the episode count
+/// The title page's rating chart: every episode of the show in one line, coloured by its overall
+/// score (IMDb, TMDB and Trakt together). At rest the header shows the episode count
 /// and each source's score for the show; touch or slide along the line and it shows that episode,
 /// each source's score and votes for it. Episode names stay hidden for unwatched episodes while
 /// spoilers are hidden.
@@ -14,14 +14,25 @@ struct SeriesRatingCard: View {
     var titleID: String? = nil
     @Environment(DiaryStore.self) private var store
     @AppStorage("hideSpoilers") private var hideSpoilers = true
-    @AppStorage("seriesRatings.source") private var sourceName = "Overall"
     @State private var ratings: SeriesRatings?
-    @State private var selected: Int?
+    /// The touched episode, in an observable box so only the header and the marker redraw while a
+    /// finger slides along the chart.
+    @State private var selection = SeriesRatingSelection()
+    private var selected: Int? {
+        get { selection.index }
+        nonmutating set { selection.index = newValue }
+    }
+    /// Your watched episodes of this title as "season:number", worked out once when the card loads
+    /// (not on every finger movement along the chart).
+    @State private var watched: Set<String> = []
 
-    private var source: SeriesRatings.Source? { SeriesRatings.Source(rawValue: sourceName) }
-    /// One episode on the line: it and its score in the chosen source.
-    private struct Point: Identifiable { let episode: SeriesRatings.Episode; let value: Double; var id: Int { episode.index } }
-    private struct SeasonStart: Identifiable { let index: Int; let season: Int; var id: Int { index } }
+    /// One episode on the line: it and its overall score.
+    struct Point: Identifiable, Equatable {
+        let episode: SeriesRatings.Episode
+        let value: Double
+        var id: Int { episode.index }
+        static func == (a: Point, b: Point) -> Bool { a.episode.index == b.episode.index && a.value == b.value }
+    }
 
     var body: some View {
         Group {
@@ -29,33 +40,50 @@ struct SeriesRatingCard: View {
                 card(ratings)
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
         }
-        .task(id: show) { ratings = await SeriesRatingsLoader.load(tmdb: show, imdbID: imdbID, store: store) }
+        .task(id: show) {
+            watched = titleID.map(watchedPlaces) ?? []
+            ratings = await SeriesRatingsLoader.load(tmdb: show, imdbID: imdbID, store: store)
+        }
     }
 
     private func card(_ ratings: SeriesRatings) -> some View {
-        let available = ratings.sources
-        let chosen = source.flatMap { available.contains($0) ? $0 : nil }
-        let points = ratings.episodes.compactMap { episode in episode.score(chosen).map { Point(episode: episode, value: $0) } }
+        let points = ratings.episodes.compactMap { episode in episode.overall.map { Point(episode: episode, value: $0) } }
         let episode = selected.flatMap { index in ratings.episodes.first { $0.index == index } }
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 8) {
             Button { selected = nil } label: {
                 Text(episode.map(heading) ?? "\(ratings.episodes.count) episodes")
-                    .font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
                     .lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).accessibilityHint(episode == nil ? "" : "Back to the whole show")
             scores(ratings, episode: episode)
-            if available.count > 1 {
-                NativeSegmentedControl(segments: [NativeSegment(value: "Overall", title: "Overall", id: "series-rating-overall")]
-                    + available.map { NativeSegment(value: $0.rawValue, title: $0.rawValue, id: "series-rating-" + $0.rawValue.lowercased()) },
-                                       selection: Binding(get: { chosen?.rawValue ?? "Overall" }, set: { sourceName = $0 }))
-            }
-            chart(points, seasons: ratings.episodes)
+            SeriesRatingLine(points: points, seasons: ratings.episodes, selection: selection).equatable()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Episode ratings")
+                .accessibilityValue(chartValue(points))
+                .accessibilityAdjustableAction { direction in
+                    let indexes = points.map { $0.episode.index }
+                    guard !indexes.isEmpty else { return }
+                    let current = selected.flatMap { indexes.firstIndex(of: $0) }
+                    switch direction {
+                    case .increment: selected = indexes[min((current ?? -1) + 1, indexes.count - 1)]
+                    case .decrement: selected = indexes[max((current ?? indexes.count) - 1, 0)]
+                    @unknown default: return
+                    }
+                }
             extremes(points)
         }
-        .padding(14)
+        .padding(12)
         .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
         .accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-trend")
+    }
+
+    private func chartValue(_ points: [Point]) -> String {
+        if let index = selected, let point = points.first(where: { $0.episode.index == index }) {
+            return "Season \(point.episode.season) episode \(point.episode.number), \(point.value.formatted(.number.precision(.fractionLength(1))))"
+        }
+        let average = points.isEmpty ? 0 : points.map(\.value).reduce(0, +) / Double(points.count)
+        return "Average \(average.formatted(.number.precision(.fractionLength(1))))"
     }
 
     // MARK: Header
@@ -67,8 +95,8 @@ struct SeriesRatingCard: View {
     }
     private func nameVisible(_ episode: SeriesRatings.Episode) -> Bool {
         guard hideSpoilers else { return true }
-        guard let titleID else { return false }
-        return watchedPlaces(titleID).contains("\(episode.season):\(episode.number)")
+        guard titleID != nil else { return false }
+        return watched.contains("\(episode.season):\(episode.number)")
     }
     private func watchedPlaces(_ titleID: String) -> Set<String> {
         let watched = Set(store.workspace.activeEvents.filter { $0.titleId == titleID }.compactMap(\.episodeId))
@@ -112,16 +140,48 @@ struct SeriesRatingCard: View {
         }.monospacedDigit()
     }
 
-    // MARK: Chart
+    // MARK: Best and lowest
 
-    private func chart(_ points: [Point], seasons: [SeriesRatings.Episode]) -> some View {
+    private func extremes(_ points: [Point]) -> some View {
+        let best = points.max { $0.value < $1.value }, lowest = points.min { $0.value < $1.value }
+        return HStack(spacing: 8) {
+            if let best { extreme("Highest", best) }
+            if let lowest, lowest.episode.index != best?.episode.index { extreme("Lowest", lowest) }
+        }
+    }
+    private func extreme(_ label: String, _ point: Point) -> some View {
+        Button { selected = point.episode.index } label: {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label).font(.caption2).foregroundStyle(.secondary)
+                    Text(heading(point.episode)).font(.caption.weight(.semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Text(point.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 14, weight: .bold)).foregroundStyle(RatingCircles.color(point.value)).monospacedDigit()
+            }.padding(.horizontal, 9).padding(.vertical, 6).frame(maxWidth: .infinity).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11)).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+}
+
+/// The chart's line, drawn once: it only redraws when the scores change, not while a finger slides
+/// along it (the marker on top does that), which keeps tracing smooth on long shows.
+private struct SeriesRatingLine: View, Equatable {
+    let points: [SeriesRatingCard.Point]
+    let seasons: [SeriesRatings.Episode]
+    let selection: SeriesRatingSelection
+    private struct SeasonStart: Identifiable { let index: Int; let season: Int; var id: Int { index } }
+
+    nonisolated static func == (a: SeriesRatingLine, b: SeriesRatingLine) -> Bool {
+        a.points == b.points && a.seasons.count == b.seasons.count
+    }
+
+    var body: some View {
         let values = points.map { $0.value }
         let average = values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
         let low = values.min() ?? 0, high = values.max() ?? 10
         let starts = seasonStarts(seasons)
         let step = max(1, Int((Double(starts.count) / 8).rounded(.up)))
         let first = seasons.first?.index ?? 1, last = seasons.last?.index ?? 2
-        let marker = selected.flatMap { index in points.first { $0.episode.index == index } }
         return Chart {
             ForEach(points) { point in
                 AreaMark(x: .value("Episode", point.episode.index), y: .value("Rating", point.value))
@@ -141,10 +201,6 @@ struct SeriesRatingCard: View {
             ForEach(starts) { start in
                 RuleMark(x: .value("Season", start.index)).lineStyle(StrokeStyle(lineWidth: 0.5, dash: [2, 3])).foregroundStyle(.secondary.opacity(0.35))
             }
-            if let marker {
-                RuleMark(x: .value("Selected", marker.episode.index)).foregroundStyle(.white.opacity(0.5))
-                PointMark(x: .value("Episode", marker.episode.index), y: .value("Rating", marker.value)).symbolSize(70).foregroundStyle(RatingCircles.color(marker.value))
-            }
         }
         .chartYScale(domain: 0...10)
         .chartXScale(domain: first...last)
@@ -154,9 +210,9 @@ struct SeriesRatingCard: View {
                 AxisValueLabel { if let index = value.as(Int.self), let season = starts.first(where: { $0.index == index })?.season { Text("S\(season)").font(.caption2) } }
             }
         }
-        .chartXSelection(value: Binding(get: { selected }, set: { picked in
-            guard let picked else { return }
-            selected = nearest(picked, in: points.map { $0.episode.index })
+        .chartXSelection(value: Binding(get: { selection.index }, set: { picked in
+            guard let picked, let index = nearest(picked, in: points.map { $0.episode.index }), index != selection.index else { return }
+            selection.index = index
         }))
         .chartGesture { proxy in
             SpatialTapGesture().onEnded { proxy.selectXValue(at: $0.location.x) }
@@ -165,19 +221,8 @@ struct SeriesRatingCard: View {
                     proxy.selectXValue(at: drag.location.x)
                 })
         }
-        .frame(height: 150)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Episode ratings")
-        .accessibilityValue(marker.map { "Season \($0.episode.season) episode \($0.episode.number), \($0.value.formatted(.number.precision(.fractionLength(1))))" } ?? "Average \(average.formatted(.number.precision(.fractionLength(1))))")
-        .accessibilityAdjustableAction { direction in
-            let indexes = points.map { $0.episode.index }
-            let current = selected.flatMap { indexes.firstIndex(of: $0) }
-            switch direction {
-            case .increment: selected = indexes[min((current ?? -1) + 1, indexes.count - 1)]
-            case .decrement: selected = indexes[max((current ?? indexes.count) - 1, 0)]
-            @unknown default: return
-            }
-        }
+        .chartOverlay { proxy in SeriesRatingMarker(proxy: proxy, points: points, selection: selection) }
+        .frame(height: 128)
     }
 
     /// The line's colour by score, low at the bottom: purple, red, orange, yellow, green, then blue
@@ -196,26 +241,30 @@ struct SeriesRatingCard: View {
     private func nearest(_ value: Int, in indexes: [Int]) -> Int? {
         indexes.min { abs($0 - value) < abs($1 - value) }
     }
+}
 
-    // MARK: Best and lowest
+/// The touched episode's marker: a line down the chart and a dot on the line.
+private struct SeriesRatingMarker: View {
+    let proxy: ChartProxy
+    let points: [SeriesRatingCard.Point]
+    let selection: SeriesRatingSelection
 
-    private func extremes(_ points: [Point]) -> some View {
-        let best = points.max { $0.value < $1.value }, lowest = points.min { $0.value < $1.value }
-        return VStack(spacing: 6) {
-            if let best { extreme("Highest rated", best) }
-            if let lowest, lowest.episode.index != best?.episode.index { extreme("Lowest rated", lowest) }
-        }
+    var body: some View {
+        GeometryReader { geometry in
+            if let plot = proxy.plotFrame, let index = selection.index, let point = points.first(where: { $0.episode.index == index }),
+               let x = proxy.position(forX: point.episode.index), let y = proxy.position(forY: point.value) {
+                let frame = geometry[plot]
+                Rectangle().fill(Color.white.opacity(0.5)).frame(width: 1, height: frame.height)
+                    .position(x: frame.minX + x, y: frame.midY)
+                Circle().fill(RatingCircles.color(point.value)).frame(width: 10, height: 10)
+                    .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
+                    .position(x: frame.minX + x, y: frame.minY + y)
+            }
+        }.allowsHitTesting(false)
     }
-    private func extreme(_ label: String, _ point: Point) -> some View {
-        Button { selected = point.episode.index } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.caption2).foregroundStyle(.secondary)
-                    Text(heading(point.episode)).font(.footnote.weight(.semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                Text(point.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 15, weight: .bold)).foregroundStyle(RatingCircles.color(point.value)).monospacedDigit()
-            }.padding(.horizontal, 10).padding(.vertical, 7).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11)).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-    }
+}
+
+/// The rating chart's touched episode.
+@MainActor @Observable final class SeriesRatingSelection {
+    var index: Int?
 }

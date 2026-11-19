@@ -54,6 +54,8 @@ import TwilDiaryCore
     @ObservationIgnored private var cachedNewestFirst: [WatchEvent]?
     var activeTitles: [MediaTitle] { active.titles }
     var favouriteShows: [MediaTitle] { activeTitles.filter { $0.favorite && $0.isSeries } }
+    /// Every favourite title: shows, movies and anime.
+    var favouriteTitles: [MediaTitle] { activeTitles.filter(\.favorite) }
     var activeEvents: [WatchEvent] { active.events }
     var activeEventsNewestFirst: [WatchEvent] {
         // Read the diary's revision so a screen showing these is redrawn when the diary changes.
