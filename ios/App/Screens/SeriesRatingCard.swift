@@ -53,9 +53,12 @@ struct SeriesRatingCard: View {
             Button { selected = nil } label: {
                 Text(episode.map(heading) ?? "\(ratings.episodes.count) episodes")
                     .font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                    .lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
+                    .contentTransition(.identity)
             }.buttonStyle(.plain).accessibilityHint(episode == nil ? "" : "Back to the whole show")
+            // Same size whichever episode is touched, so nothing below jumps while tracing.
             scores(ratings, episode: episode)
+                .transaction { $0.animation = nil }
             SeriesRatingLine(points: points, seasons: ratings.episodes, selection: selection).equatable()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Episode ratings")
@@ -106,38 +109,39 @@ struct SeriesRatingCard: View {
     /// The overall score and each source's, for the show or for the episode being touched.
     private func scores(_ ratings: SeriesRatings, episode: SeriesRatings.Episode?) -> some View {
         let overall: SeriesRatings.Score? = episode.flatMap { item in item.overall.map { SeriesRatings.Score(value: $0, votes: item.votes) } } ?? ratings.overallShow
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { scoreItems(ratings, episode: episode, overall: overall) }
-            ScrollView(.horizontal) { HStack(spacing: 12) { scoreItems(ratings, episode: episode, overall: overall) } }.scrollIndicators(.hidden)
-        }
+        return HStack(spacing: 12) { scoreItems(ratings, episode: episode, overall: overall) }
+            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
     }
     @ViewBuilder private func scoreItems(_ ratings: SeriesRatings, episode: SeriesRatings.Episode?, overall: SeriesRatings.Score?) -> some View {
         if let overall {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 ZStack {
                     Circle().stroke(RatingCircles.color(overall.value).opacity(0.2), lineWidth: 3)
                     Circle().trim(from: 0, to: overall.value / 10).stroke(RatingCircles.color(overall.value), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                }.frame(width: 24, height: 24)
+                }.frame(width: 22, height: 22)
                 score(overall)
             }.accessibilityElement(children: .combine).accessibilityLabel("Overall " + overall.value.formatted(.number.precision(.fractionLength(1))))
         }
-        ForEach(SeriesRatings.Source.allCases, id: \.self) { source in
-            if let value = episode.map({ $0.scores[source] }) ?? ratings.show[source] {
-                HStack(spacing: 8) {
-                    BrandLogo(service: source == .imdb ? .imdb : source == .tmdb ? .tmdb : .trakt, size: 24)
-                    score(value)
-                }.accessibilityElement(children: .combine).accessibilityLabel(source.rawValue + " " + value.value.formatted(.number.precision(.fractionLength(1))))
-            }
+        // One place per source the show has, kept while an episode lacks it (a dash), so the row
+        // never reflows under the finger.
+        ForEach(SeriesRatings.Source.allCases.filter { ratings.show[$0] != nil }, id: \.self) { source in
+            let value = episode == nil ? ratings.show[source] : episode?.scores[source]
+            HStack(spacing: 7) {
+                BrandLogo(service: source == .imdb ? .imdb : source == .tmdb ? .tmdb : .trakt, size: 22)
+                score(value)
+            }.accessibilityElement(children: .combine)
+                .accessibilityLabel(source.rawValue + " " + (value.map { $0.value.formatted(.number.precision(.fractionLength(1))) } ?? "no rating"))
         }
     }
-    private func score(_ score: SeriesRatings.Score) -> some View {
+    private func score(_ score: SeriesRatings.Score?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(score.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 16, weight: .bold)).foregroundStyle(RatingCircles.color(score.value))
-            if score.votes > 0 {
-                Text(score.votes.formatted(.number.notation(.compactName))).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }.monospacedDigit()
+            Text(score.map { $0.value.formatted(.number.precision(.fractionLength(1))) } ?? "–")
+                .font(.system(size: 16, weight: .bold)).foregroundStyle(score.map { RatingCircles.color($0.value) } ?? .secondary)
+            // Always two lines (blank when there are no votes), so the chart below stays put.
+            Text(score.flatMap { $0.votes > 0 ? $0.votes.formatted(.number.notation(.compactName)) : nil } ?? " ")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }.monospacedDigit().frame(minWidth: 34, alignment: .leading).contentTransition(.identity)
     }
 
     // MARK: Best and lowest

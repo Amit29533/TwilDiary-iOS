@@ -266,14 +266,14 @@ private struct FeedHeading<Value: Hashable>: View {
     }
 }
 
-/// The AI mark: sparkles in CineMind's colours that turn once every few seconds.
+/// The AI mark: a brain in CineMind's colours that gives a little wiggle every few seconds.
 struct AISparkle: View {
     var size: CGFloat = 18
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Image(systemName: "sparkles").font(.system(size: size, weight: .semibold))
+        Image(systemName: "brain").font(.system(size: size, weight: .semibold))
             .foregroundStyle(LinearGradient(colors: [Color(themed: "#7fb2ff"), Color(themed: "#c58cff"), Color(themed: "#ffd36e")], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .symbolEffect(.rotate, options: .repeat(.periodic(delay: 3.5)), isActive: !reduceMotion)
+            .symbolEffect(.wiggle.byLayer, options: .repeat(.periodic(delay: 3)), isActive: !reduceMotion)
             .accessibilityLabel("Picked by AI")
     }
 }
