@@ -204,8 +204,12 @@ private struct SeriesRatingLine: View, Equatable {
             RuleMark(y: .value("Average", average))
                 .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
                 .foregroundStyle(RatingCircles.color(average).opacity(0.85))
-                .annotation(position: .trailing, alignment: .center, spacing: 4) {
-                    Text(average.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 11, weight: .semibold)).foregroundStyle(RatingCircles.color(average))
+                // Inside the chart, over the line's right end (beside it, it ran off the card).
+                .annotation(position: .top, alignment: .trailing, spacing: 3) {
+                    Text("avg " + average.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(RatingCircles.color(average))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(HomeStyle.card.opacity(0.85), in: Capsule())
                 }
             ForEach(starts) { start in
                 RuleMark(x: .value("Season", start.index)).lineStyle(StrokeStyle(lineWidth: 0.5, dash: [2, 3])).foregroundStyle(.secondary.opacity(0.35))
