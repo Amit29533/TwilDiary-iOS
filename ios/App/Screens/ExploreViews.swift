@@ -116,7 +116,7 @@ private struct ExploreContent: View {
                 .padding(.top, 72)
             }
             // Lazy: rows further down build (and load) as they come on screen. Your order and
-            // choice of rows (Settings → Customise); by default popular first, then CineMind,
+            // choice of rows (Settings → Customise); by default Ask CineMind, popular, CineMind's picks,
             // Trakt's, the newer rows and the highest rated.
             LazyVStack(alignment: .leading, spacing: 22) {
                 ForEach(ExploreRow.layout(exploreLayout).visible.compactMap(ExploreRow.init(rawValue:))) { row in

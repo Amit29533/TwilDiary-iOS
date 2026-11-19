@@ -64,7 +64,8 @@ enum HomeSection: String, CaseIterable, Identifiable {
 
 /// Explore's rows, top to bottom by default.
 enum ExploreRow: String, CaseIterable, Identifiable {
-    case popularMovies, popularShows, askCineMind, cineMovies, cineShows, recommended, loved, trending, seasonal, coming, ratedShows, ratedMovies
+    // Ask CineMind first: right under the cover, above Popular movies (owner).
+    case askCineMind, popularMovies, popularShows, cineMovies, cineShows, recommended, loved, trending, seasonal, coming, ratedShows, ratedMovies
     var id: String { rawValue }
     static let key = "customise.explore"
     var title: String {
