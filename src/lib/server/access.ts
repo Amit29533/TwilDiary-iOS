@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
+import { createRemoteJWKSet, decodeJwt, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
 import type { ServerBindings } from './api.ts';
 
 export type AuthMethod =
@@ -55,15 +55,17 @@ export function createAccessVerifier(config: AccessConfiguration, getKey?: JWTVe
         issuer,
         audience: config.audience,
         algorithms: ['RS256'],
-        requiredClaims: ['exp', 'iat', 'sub']
+        // No `sub` required here: a service-token assertion from Access has none at all (checked
+        // live on 2026-11-19), and a person's sign-in is held to a nonempty one below.
+        requiredClaims: ['exp', 'iat']
       });
       if (payload.type !== 'app') throw new Error('Wrong token type');
       // The TwilDiary app's service token (owner's choice: no extra sign-in for backups and
       // extras). Access only signs a service-token assertion for this application's audience
       // when the application's own policy admits that token, so it stands for the owner. Such an
-      // assertion carries the token's common name and an empty subject, never an email.
+      // assertion carries the token's common name and no subject (or an empty one), never an email.
       const commonName = typeof payload.common_name === 'string' ? payload.common_name.trim() : '';
-      if (commonName && payload.sub === '' && payload.email === undefined) {
+      if (commonName && (payload.sub === undefined || payload.sub === '') && payload.email === undefined) {
         return { subject: 'service-token:' + commonName, email: config.ownerEmail, method: 'service_token' };
       }
       if (
@@ -75,7 +77,33 @@ export function createAccessVerifier(config: AccessConfiguration, getKey?: JWTVe
         throw new Error('Wrong owner');
       }
       return { subject: payload.sub, email: payload.email, method: 'cloudflare_access' };
-    } catch {
+    } catch (error) {
+      // Why it failed, without the token, emails or ids: the error's code and claim, and the
+      // assertion's shape (read unverified, booleans only).
+      let shape: Record<string, unknown> = {};
+      try {
+        const claims = decodeJwt(assertion);
+        const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+        shape = {
+          type: typeof claims.type === 'string' ? claims.type : typeof claims.type,
+          issuerMatches: claims.iss === issuer,
+          audienceMatches: audiences.includes(config.audience),
+          subjectEmpty: claims.sub === '',
+          hasEmail: typeof claims.email === 'string',
+          ownerEmail: typeof claims.email === 'string' && claims.email.toLowerCase() === config.ownerEmail.toLowerCase(),
+          hasCommonName: typeof claims.common_name === 'string' && claims.common_name.trim() !== '',
+          expired: typeof claims.exp === 'number' && claims.exp * 1000 < Date.now()
+        };
+      } catch {
+        shape = { decodable: false };
+      }
+      const failure = error as { code?: unknown; claim?: unknown; message?: unknown };
+      console.warn('access-verify-failed', JSON.stringify({
+        code: typeof failure?.code === 'string' ? failure.code : null,
+        claim: typeof failure?.claim === 'string' ? failure.claim : null,
+        reason: typeof failure?.message === 'string' && ['Wrong token type', 'Wrong owner'].includes(failure.message) ? failure.message : null,
+        ...shape
+      }));
       throw new AccessFailure(403, 'Access could not be verified');
     }
   };

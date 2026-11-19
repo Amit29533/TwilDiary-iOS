@@ -58,15 +58,22 @@ test('wrong owner, audience, issuer and token type are rejected', async () => {
     );
   }
 });
-const serviceToken = async (claims: Record<string, unknown>, subject = '', audience = config.audience) =>
-  new SignJWT({ type: 'app', ...claims })
-    .setProtectedHeader({ alg: 'RS256' })
-    .setSubject(subject)
-    .setIssuer(config.issuer)
-    .setAudience(audience)
-    .setIssuedAt()
-    .setExpirationTime('5m')
-    .sign(privateKey);
+const serviceToken = async (claims: Record<string, unknown>, subject: string | null = '', audience = config.audience) => {
+  const token = new SignJWT({ type: 'app', ...claims }).setProtectedHeader({ alg: 'RS256' });
+  if (subject !== null) token.setSubject(subject);
+  return token.setIssuer(config.issuer).setAudience(audience).setIssuedAt().setExpirationTime('5m').sign(privateKey);
+};
+test("the app's service token assertion without any subject (as Access sends it) stands for the owner", async () => {
+  const owner = await verify(request(await serviceToken({ common_name: 'app-client.access' }, null)));
+  assert.equal(owner.method, 'service_token');
+  assert.equal(owner.subject, 'service-token:app-client.access');
+});
+test('a person\'s assertion without a subject is still rejected', async () => {
+  const assertion = await new SignJWT({ type: 'app', email: config.ownerEmail })
+    .setProtectedHeader({ alg: 'RS256' }).setIssuer(config.issuer).setAudience(config.audience)
+    .setIssuedAt().setExpirationTime('5m').sign(privateKey);
+  await assert.rejects(() => verify(request(assertion)), (e: unknown) => e instanceof AccessFailure && e.status === 403);
+});
 test("the app's service token assertion stands for the owner", async () => {
   const owner = await verify(request(await serviceToken({ common_name: 'app-client.access' })));
   assert.equal(owner.email, config.ownerEmail);
