@@ -1211,6 +1211,18 @@ import UIKit
     }
     /// Explore hides its bar, which used to switch off the edge swipe: from the left edge, even
     /// over a row that scrolls sideways, it goes back Home.
+    /// Canvas has no back button (its tabs sit there), yet the edge swipe still goes back Home.
+    func testCanvasHasNoBackButtonAndTheEdgeSwipeGoesBack() {
+        let app = launch(); app.tabBars.buttons["Home"].tap()
+        let canvas = app.buttons["canvas-shortcut"]
+        for _ in 0..<4 { if canvas.isHittable { break }; app.swipeUp() }
+        canvas.tap()
+        XCTAssertTrue(app.buttons["canvas-tab-shows"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars.buttons["Back"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.0, dy: 0.6))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.6)))
+        XCTAssertTrue(canvas.waitForExistence(timeout: 5), "back on Home")
+    }
     func testExploreGoesBackHomeWithTheEdgeSwipe() {
         let app = launch(); app.tabBars.buttons["Home"].tap()
         let explore = app.buttons["explore-shortcut"]

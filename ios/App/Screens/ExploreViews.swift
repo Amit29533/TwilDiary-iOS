@@ -16,32 +16,51 @@ struct ExploreView: View {
     }
 }
 
-/// Explore hides its navigation bar (its artwork runs under the status bar), and UIKit then
-/// refuses the swipe from the screen's left edge that goes back; a swipe across the page only
-/// worked where no row scrolls sideways, which on Explore is almost nowhere. While Explore is
-/// on screen this lets the edge swipe go back to Home again, and gives UIKit its own handling
-/// back as soon as another page covers it.
-private struct EdgeSwipeBack: UIViewControllerRepresentable {
+/// A page without a back button (Explore hides its bar, Canvas its back button) loses UIKit's
+/// back swipes: the one from the left edge, and the one across the page. While such a page is on
+/// screen this lets both go back again, and gives UIKit its own handling back as soon as another
+/// page covers it.
+struct EdgeSwipeBack: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Controller { Controller() }
     func updateUIViewController(_ controller: Controller, context: Context) {}
 
     final class Controller: UIViewController, UIGestureRecognizerDelegate {
         private weak var navigation: UINavigationController?
-        private weak var original: UIGestureRecognizerDelegate?
+        private weak var originalEdge: UIGestureRecognizerDelegate?
+        private weak var originalContent: UIGestureRecognizerDelegate?
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            guard let navigation = navigationController ?? owner(), let pop = navigation.interactivePopGestureRecognizer else { return }
+            guard let navigation = navigationController ?? owner() else { return }
             self.navigation = navigation
-            if pop.delegate !== self { original = pop.delegate; pop.delegate = self }
-            pop.isEnabled = true
+            if let edge = navigation.interactivePopGestureRecognizer {
+                if edge.delegate !== self { originalEdge = edge.delegate; edge.delegate = self }
+                edge.isEnabled = true
+            }
+            if let content = navigation.interactiveContentPopGestureRecognizer {
+                if content.delegate !== self { originalContent = content.delegate; content.delegate = self }
+                content.isEnabled = true
+            }
         }
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
-            if let pop = navigation?.interactivePopGestureRecognizer, pop.delegate === self { pop.delegate = original }
+            if let edge = navigation?.interactivePopGestureRecognizer, edge.delegate === self { edge.delegate = originalEdge }
+            if let content = navigation?.interactiveContentPopGestureRecognizer, content.delegate === self { content.delegate = originalContent }
         }
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            (navigation?.viewControllers.count ?? 0) > 1 && navigation?.transitionCoordinator == nil
+            guard let navigation, navigation.viewControllers.count > 1, navigation.transitionCoordinator == nil else { return false }
+            guard gestureRecognizer === navigation.interactiveContentPopGestureRecognizer, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+            // Across the page: only a swipe to the right, and not over a row that can still scroll
+            // back (that row scrolls instead), as UIKit's own handling does.
+            let velocity = pan.velocity(in: pan.view)
+            guard velocity.x > 0, abs(velocity.x) > abs(velocity.y) else { return false }
+            var hit = pan.view?.hitTest(pan.location(in: pan.view), with: nil)
+            while let view = hit {
+                if let scroll = view as? UIScrollView, scroll.contentSize.width > scroll.bounds.width + 1,
+                   scroll.contentOffset.x > -scroll.adjustedContentInset.left + 1 { return false }
+                hit = view.superview
+            }
+            return true
         }
         private func owner() -> UINavigationController? {
             var responder: UIResponder? = view

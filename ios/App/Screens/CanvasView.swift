@@ -88,6 +88,9 @@ private struct CanvasContent: View {
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ToolbarItem(placement: .topBarLeading) { tabs }.sharedBackgroundVisibility(.hidden) }
+            // No back button (the tabs take its place); the back swipes still work.
+            .navigationBarBackButtonHidden(true)
+            .background(EdgeSwipeBack().frame(width: 0, height: 0))
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
             .sheet(isPresented: $showGenres) {
                 CanvasGenreSheet(names: DiscoveryGenre.names(type: kind.rawValue), genres: $genres, anime: $anime)
