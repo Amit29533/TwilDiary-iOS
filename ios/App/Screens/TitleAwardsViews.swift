@@ -1,25 +1,96 @@
 import SwiftUI
 import TwilDiaryCore
 
+/// The title page's awards: each ceremony with how many it won and how many more it was
+/// nominated for, the most decorated first, and See all for the whole history.
 struct TitleAwardsSection: View {
     let route: CatalogRoute
     let title: String
     let imdbID: String?
+    @Environment(DiaryStore.self) private var store
+    @State private var rows: [TitleAwardsPage.CeremonyCount] = []
+
     var body: some View {
-        NavigationLink(value: ShowPageRoute.titleAwards(route, title: title, imdbID: imdbID)) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    ShowSectionHeading(title: "Awards & Nominations")
-                    Label("View award history", systemImage: "trophy")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-                RoundChevron()
+        let destination = ShowPageRoute.titleAwards(route, title: title, imdbID: imdbID)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Awards and nominations").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                NavigationLink("See all", value: destination).font(.system(size: 17, weight: .semibold)).foregroundStyle(ThemeStore.accent)
+                    .frame(minHeight: 44).buttonStyle(.plain).accessibilityLabel("See all awards and nominations")
+                    .accessibilityIdentifier("title-awards-all")
             }
-            .contentShape(Rectangle())
+            if rows.isEmpty {
+                NavigationLink(value: destination) {
+                    Label("View award history", systemImage: "trophy").font(.subheadline).foregroundStyle(.secondary)
+                }.buttonStyle(.plain)
+            } else {
+                NavigationLink(value: destination) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(rows.prefix(5), id: \.ceremony) { row in
+                            HStack(spacing: 10) {
+                                Text(row.ceremony).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                if row.wins > 0 {
+                                    Label("\(row.wins)", systemImage: "trophy.fill").labelStyle(AwardCountStyle(tint: Color(themed: "#e7ca90")))
+                                }
+                                if row.nominations > 0 {
+                                    Label("\(row.nominations)", systemImage: "medal").labelStyle(AwardCountStyle(tint: .secondary))
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(row.ceremony): \(row.wins) won, \(row.nominations) more nominations")
+                        }
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("See all awards and nominations")
-        .accessibilityIdentifier("title-awards-all")
+        .task(id: route) {
+            let local = (try? await TitleAwardHistory.shared.titleRecords(route)) ?? []
+            let people = store.isPreview ? [] : ((try? await TitleAwardHistory.shared.peopleRecords(route, imdbID: imdbID)) ?? [])
+            guard !Task.isCancelled else { return }
+            rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: people, movie: route.kind == .movie))
+        }
+    }
+}
+
+/// A count beside its icon: "🏆 2", "🎖 3".
+private struct AwardCountStyle: LabelStyle {
+    let tint: Color
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.font(.system(size: 15, weight: .medium)).foregroundStyle(tint)
+            configuration.title.font(.system(size: 17)).foregroundStyle(.secondary).monospacedDigit()
+        }
+    }
+}
+
+extension TitleAwardsPage {
+    struct CeremonyCount: Equatable {
+        let ceremony: String
+        let wins: Int
+        let nominations: Int
+    }
+    /// Each ceremony's awards, counted once per year and category however many people shared it:
+    /// the ones it won, and the ones it was only nominated for. Most wins first, then most in all.
+    static func ceremonyCounts(_ records: [TitleAwardRecord]) -> [CeremonyCount] {
+        let shortNames = ["Actor Awards": "SAG Awards", "Academy Awards": "Oscars"]
+        var won: [String: Set<String>] = [:], nominated: [String: Set<String>] = [:]
+        for record in records {
+            let ceremony = AwardEdition(record).ceremony
+            let key = "\(record.year ?? 0)|\(record.category)"
+            if record.won { won[ceremony, default: []].insert(key) } else { nominated[ceremony, default: []].insert(key) }
+        }
+        let ceremonies = Set(won.keys).union(nominated.keys)
+        return ceremonies.map { ceremony in
+            let wins = won[ceremony] ?? []
+            return CeremonyCount(ceremony: shortNames[ceremony] ?? ceremony, wins: wins.count, nominations: (nominated[ceremony] ?? []).subtracting(wins).count)
+        }.sorted {
+            if $0.wins != $1.wins { return $0.wins > $1.wins }
+            if $0.wins + $0.nominations != $1.wins + $1.nominations { return $0.wins + $0.nominations > $1.wins + $1.nominations }
+            return $0.ceremony < $1.ceremony
+        }
     }
 }
 

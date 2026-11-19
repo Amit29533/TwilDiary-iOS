@@ -62,4 +62,23 @@ import TwilDiaryCore
         // A show keeps Wikidata's year: its seasons are honoured year after year.
         XCTAssertEqual(AwardNames.merge(archive: archive, people: [people[3]], movie: false).last?.year, 2023)
     }
+
+    /// The title page's summary: per ceremony, wins and other nominations, an award shared by
+    /// several people counted once; the most decorated ceremony first.
+    func testCeremonyCountsCountEachAwardOnce() {
+        let rows = [
+            TitleAwardRecord(year: 2024, ceremony: "Academy Awards", category: "Best Picture", won: true, recipient: "Emma Thomas"),
+            TitleAwardRecord(year: 2024, ceremony: "Academy Awards", category: "Best Picture", won: true, recipient: "Charles Roven"),
+            TitleAwardRecord(year: 2024, ceremony: "Academy Awards", category: "Best Sound", won: false),
+            TitleAwardRecord(year: 2024, ceremony: "Actor Awards", category: "Cast", won: false),
+            TitleAwardRecord(year: 2024, ceremony: "Actor Awards", category: "Actor", won: false),
+            TitleAwardRecord(year: 2024, ceremony: "Golden Globes", category: "Drama", won: true),
+            TitleAwardRecord(year: 2024, ceremony: "Golden Globes", category: "Drama", won: false)
+        ]
+        let counts = TitleAwardsPage.ceremonyCounts(rows)
+        XCTAssertEqual(counts.map(\.ceremony), ["Oscars", "Golden Globes", "SAG Awards"])
+        XCTAssertEqual(counts[0], .init(ceremony: "Oscars", wins: 1, nominations: 1))
+        XCTAssertEqual(counts[1], .init(ceremony: "Golden Globes", wins: 1, nominations: 0), "won, so not also counted as a nomination")
+        XCTAssertEqual(counts[2], .init(ceremony: "SAG Awards", wins: 0, nominations: 2))
+    }
 }
