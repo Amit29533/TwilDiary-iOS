@@ -41,15 +41,7 @@ struct SearchBrowseShelves: View {
             SearchTVDBListShelf(shelf: .franchises)
             shelf(.worldCinema, categories: SearchBrowseCatalog.worldCinema)
             shelf(.internationalTV, categories: SearchBrowseCatalog.internationalTV)
-            NavigationLink(value: SearchLabRoute()) {
-                HStack {
-                    Label("Search Lab", systemImage: "slider.horizontal.3").font(.headline)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
-                        .foregroundStyle(HomeStyle.secondary).accessibilityHidden(true)
-                }.foregroundStyle(HomeStyle.primary).padding(.horizontal, 14)
-                    .frame(minHeight: 48).cardSurface(14).contentShape(Rectangle())
-            }.buttonStyle(.springPress).accessibilityIdentifier("search-browse-lab")
+            // Search Lab opens from the sliders beside the search field.
         }.accessibilityIdentifier("search-browse")
     }
 

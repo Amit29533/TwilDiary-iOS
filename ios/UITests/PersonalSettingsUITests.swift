@@ -221,7 +221,7 @@ import XCTest
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let lab = app.buttons["search-browse-lab"]
-        for _ in 0..<24 { if lab.isHittable { break }; app.swipeUp() }
+        for _ in 0..<6 { if lab.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(lab.isHittable); lab.tap()
         XCTAssertTrue(app.navigationBars["Search Lab"].waitForExistence(timeout: 5))
     }
@@ -229,7 +229,7 @@ import XCTest
         let app = launch(searchRegression: true)
         app.tabBars.buttons["Search"].tap()
         let lab = app.buttons["search-browse-lab"]
-        for _ in 0..<24 { if lab.isHittable { break }; app.swipeUp() }
+        for _ in 0..<6 { if lab.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(lab.isHittable); lab.tap()
         let keyword = app.textFields["search-lab-keyword"]
         XCTAssertTrue(keyword.waitForExistence(timeout: 5))
