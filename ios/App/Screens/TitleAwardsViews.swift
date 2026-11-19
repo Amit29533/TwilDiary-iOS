@@ -13,13 +13,12 @@ struct TitleAwardsSection: View {
     var body: some View {
         let destination = ShowPageRoute.titleAwards(route, title: title, imdbID: imdbID)
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center) {
                 Text("Awards and nominations").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
-                NavigationLink("See all", value: destination).font(.system(size: 17, weight: .semibold)).foregroundStyle(ThemeStore.accent)
-                    .frame(minHeight: 44).buttonStyle(.plain).accessibilityLabel("See all awards and nominations")
-                    .accessibilityIdentifier("title-awards-all")
+                // The round chevron every section uses for "see all".
+                SectionMoreLink(label: "See all awards and nominations", value: destination, identifier: "title-awards-all")
             }
             if rows.isEmpty {
                 NavigationLink(value: destination) {
