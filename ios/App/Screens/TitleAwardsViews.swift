@@ -29,8 +29,12 @@ struct TitleAwardsSection: View {
                 NavigationLink(value: destination) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(rows.prefix(5).enumerated()), id: \.element.ceremony) { index, row in
-                            if index > 0 { Divider().padding(.leading, 14) }
+                            if index > 0 { Divider().padding(.leading, 44) }
                             HStack(spacing: 8) {
+                                // The row's place, as the ranked lists elsewhere.
+                                Text("\(index + 1).").font(.system(size: 15, weight: .bold)).monospacedDigit()
+                                    .foregroundStyle(index < 3 ? HomeStyle.chipText : HomeStyle.secondary)
+                                    .frame(width: 22, alignment: .leading)
                                 Text(row.ceremony).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                     .lineLimit(1).truncationMode(.tail)
                                 Spacer(minLength: 8)
