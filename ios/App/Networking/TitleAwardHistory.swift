@@ -150,15 +150,15 @@ actor TitleAwardHistory {
         var request = URLRequest(url: url, timeoutInterval: 45)
         request.setValue("application/sparql-results+json", forHTTPHeaderField: "Accept")
         request.setValue("TwilDiary/1.0 (iOS app)", forHTTPHeaderField: "User-Agent")
-        var reply: Data?
-        for attempt in 0..<2 where reply == nil {
+        var answer: Data?
+        for attempt in 0..<2 where answer == nil {
             if attempt > 0 { try await Task.sleep(for: .seconds(2)) }
             if let (data, response) = try? await URLSession.shared.data(for: request), (response as? HTTPURLResponse)?.statusCode == 200 {
-                reply = data
+                answer = data
             }
             try Task.checkCancellation()
         }
-        guard let data = reply else { throw APIError.message("Individual award credits couldn’t be loaded.") }
+        guard let data = answer else { throw APIError.message("Individual award credits couldn’t be loaded.") }
         struct Reply: Decodable {
             struct Results: Decodable { let bindings: [[String: Field]] }
             struct Field: Decodable { let value: String }
