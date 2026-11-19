@@ -704,6 +704,20 @@ struct PreviewEpisodesPage: View {
 
 // MARK: Cast and crew
 
+/// A title's wide picture for the top of its own pages (Cast and crew, Awards) when it isn't in your
+/// diary: those pages showed the plain symbol for titles you were only previewing.
+@MainActor enum TitleCover {
+    private static var known: [CatalogRoute: String] = [:]
+    static func cached(_ route: CatalogRoute) -> String? { known[route] }
+    static func load(_ route: CatalogRoute, store: DiaryStore) async -> String? {
+        if let saved = known[route] { return saved }
+        guard let details = try? await store.browse(route).details else { return nil }
+        let image = CatalogTools.image(details.backdropPath, size: "w780") ?? CatalogTools.image(details.posterPath, size: "w780")
+        if let image { known[route] = image }
+        return image
+    }
+}
+
 struct CastCreditsPage: View {
     let route: CatalogRoute
     let title: String
@@ -718,6 +732,7 @@ struct CastCreditsPage: View {
     @State private var credits: FullTitleCredits?
     @State private var creditsFailure: String?
     @State private var voiceFailure: String?
+    @State private var cover: String?
     private var selected: Tab { selection ?? (anime && characters?.isEmpty != true ? .voices : .cast) }
 
     var body: some View {
@@ -733,11 +748,14 @@ struct CastCreditsPage: View {
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 40)
         }
             .task(id: route) { await load() }
+            .task(id: route) { if savedBackdrop == nil { cover = await TitleCover.load(route, store: store) } }
     }
-    /// The title's backdrop when it's in your diary, else the first character's picture.
-    private var backdrop: String? {
+    private var savedBackdrop: String? {
         store.activeTitles.first { $0.tmdbId == route.id && $0.isSeries == (route.kind != .movie) }?.backdrop
-            ?? characters?.lazy.compactMap(\.image).first
+    }
+    /// The title's backdrop: from your diary, else TMDB's, else the first character's picture.
+    private var backdrop: String? {
+        savedBackdrop ?? cover ?? TitleCover.cached(route) ?? characters?.lazy.compactMap(\.image).first
     }
     private func segment(_ tab: Tab) -> some View {
         let on = selected == tab
