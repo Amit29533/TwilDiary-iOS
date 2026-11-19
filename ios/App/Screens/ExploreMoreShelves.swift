@@ -275,14 +275,12 @@ private struct FeedHeading<Value: Hashable>: View {
     }
 }
 
-/// The AI mark: a brain in CineMind's colours that gives a little wiggle every few seconds.
+/// The AI mark: CineMind's glass orb, its liquid churning (the owner's reference animation).
 struct AISparkle: View {
     var size: CGFloat = 18
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Image(systemName: "brain").font(.system(size: size, weight: .semibold))
-            .foregroundStyle(LinearGradient(colors: [Color(themed: "#7fb2ff"), Color(themed: "#c58cff"), Color(themed: "#ffd36e")], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .symbolEffect(.wiggle.byLayer, options: .repeat(.periodic(delay: 3)), isActive: !reduceMotion)
+        CineMindOrb(size: size * 1.3)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("Picked by AI")
     }
 }

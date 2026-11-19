@@ -116,12 +116,8 @@ struct CineMindMark: View {
     var breathing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Image(systemName: "sparkle").font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)
-            .symbolEffect(.breathe, options: .repeating, isActive: breathing && !reduceMotion)
-            .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
-            .frame(width: size, height: size)
-            .background(AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .degrees(-40)),
-                        in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+        // The glass orb (owner's reference animation); faster while CineMind thinks.
+        CineMindOrb(size: size, lively: breathing && !reduceMotion)
     }
 }
 
