@@ -237,20 +237,17 @@ struct StandardPoster: View {
     let subtitle: String
     var score: Double? = nil
     var subtitleTint: Color = .secondary
+    @AppStorage(PosterSize.captionKey) private var showsCaption = true
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: artwork, title: name, initialsOnly: false)
                 .posterAspect()
-                .overlay(alignment: .bottomLeading) {
-                    if let score, score > 0 {
-                        HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
-                            .font(.system(size: 12)).foregroundStyle(Color(themed: "#e7ca90"))
-                            .padding(.horizontal, 5).padding(.vertical, 3).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6)).padding(6)
-                    }
-                }
+                .overlay(alignment: .bottomLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(subtitleTint).lineLimit(1).frame(height: 18).padding(.top, 4)
+            if showsCaption {
+                Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+                Text(subtitle).font(.system(size: 12)).foregroundStyle(subtitleTint).lineLimit(1).frame(height: 18).padding(.top, 4)
+            }
         }.accessibilityElement(children: .combine)
     }
 }
@@ -289,10 +286,11 @@ struct AISparkle: View {
 private struct FeedTrack<Item: Identifiable, Tile: View>: View {
     let items: [Item]
     @ViewBuilder let tile: (Item) -> Tile
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items) { item in tile(item).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
+                ForEach(items) { item in tile(item).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12) }
             }
         }.scrollIndicators(.hidden).padding(.bottom, 10)
     }
@@ -337,7 +335,8 @@ struct ExploreFeedPage: View {
     let route: ExploreFeedRoute
     @Environment(DiaryStore.self) private var store
     private var feeds: ExploreFeeds { .shared }
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: posterSize.columns) }
 
     private var title: String {
         switch route.kind {
@@ -392,21 +391,8 @@ struct ExploreAIPromptRoute: Hashable {
     let prompt: String
 }
 
-/// The AI area near the top of Explore: one-tap prompts, then CineMind's movie and show picks.
-struct ExploreAIArea: View {
-    @Environment(DiaryStore.self) private var store
-    var body: some View {
-        if !store.isPreview {
-            VStack(alignment: .leading, spacing: 22) {
-                ExploreAIPrompts()
-                CineMindRow(movies: true)
-                CineMindRow(movies: false)
-            }
-        }
-    }
-}
 
-private struct ExploreAIPrompts: View {
+struct ExploreAIPrompts: View {
     static let prompts: [ExploreAIPromptRoute] = [
         .init(label: "Cozy anime", prompt: "Cozy, relaxing slice-of-life anime with warm characters and a gentle pace"),
         .init(label: "Mind-bending thrillers", prompt: "Mind-bending psychological thrillers with twists that change everything"),
@@ -453,7 +439,7 @@ struct ExploreAIPromptPage: View {
     }
 }
 
-private struct CineMindRow: View {
+struct CineMindRow: View {
     let movies: Bool
     @Environment(DiaryStore.self) private var store
     private var feeds: ExploreFeeds { .shared }
@@ -493,21 +479,8 @@ private struct CineMindRow: View {
 
 /// Below Trakt's picks: Because you loved, Trending from your Planned, this season's anime and
 /// Coming soon.
-struct ExploreMoreShelves: View {
-    @Environment(DiaryStore.self) private var store
-    var body: some View {
-        if !store.isPreview {
-            VStack(alignment: .leading, spacing: 22) {
-                BecauseYouLovedRow()
-                TrendingPlannedRow()
-                SeasonalAnimeRow()
-                ComingSoonRow()
-            }
-        }
-    }
-}
 
-private struct BecauseYouLovedRow: View {
+struct BecauseYouLovedRow: View {
     @Environment(DiaryStore.self) private var store
     private var feeds: ExploreFeeds { .shared }
     var body: some View {
@@ -524,7 +497,7 @@ private struct BecauseYouLovedRow: View {
     }
 }
 
-private struct TrendingPlannedRow: View {
+struct TrendingPlannedRow: View {
     @Environment(DiaryStore.self) private var store
     private var feeds: ExploreFeeds { .shared }
     var body: some View {
@@ -552,7 +525,7 @@ private struct SeasonalTile: View {
     }
 }
 
-private struct SeasonalAnimeRow: View {
+struct SeasonalAnimeRow: View {
     @Environment(DiaryStore.self) private var store
     private var feeds: ExploreFeeds { .shared }
     var body: some View {
@@ -617,7 +590,7 @@ private struct ComingTile: View {
     }
 }
 
-private struct ComingSoonRow: View {
+struct ComingSoonRow: View {
     @Environment(DiaryStore.self) private var store
     @State private var movies = true
     private var feeds: ExploreFeeds { .shared }

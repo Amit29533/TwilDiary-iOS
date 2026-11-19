@@ -6,6 +6,7 @@ import TwilDiaryCore
 /// then posters, rows or genre shelves. Select mode swaps the header for Cancel · N selected · All
 /// and shows a glass action bar.
 struct LibraryView: View {
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     enum Layout: String { case grid, list, shelves }
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -207,7 +208,7 @@ struct LibraryView: View {
                     Text("\(extras.count)").font(.system(size: 14)).foregroundStyle(.secondary)
                 }.accessibilityElement(children: .combine).accessibilityIdentifier("library-jellyfin-extras")
                 Text("On your Jellyfin. Open one to add it.").font(.system(size: 13)).foregroundStyle(.secondary)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
                     ForEach(extras) { JellyfinEntryCard(entry: $0) }
                 }
             }.padding(.horizontal, 14).padding(.top, filtered.isEmpty ? 4 : 26)
@@ -237,7 +238,7 @@ struct LibraryView: View {
                     case .grid:
                         if showsOverview { overview }
                         else {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
                                 ForEach(shown) { title in poster(title).onAppear { revealMore(after: title) } }
                             }.padding(.horizontal, 14)
                         }
@@ -256,7 +257,7 @@ struct LibraryView: View {
                 Text(filtered.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                     .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
             }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
                 ForEach(filtered.prefix(5)) { title in poster(title) }
                 // Exactly a poster's size (same 2:3 box and corners as the cards beside it).
                 Button { expandedAll = true } label: {
@@ -306,7 +307,7 @@ struct LibraryView: View {
         }.frame(maxWidth: .infinity).padding(.vertical, 40).padding(.horizontal, 24)
     }
     private var skeleton: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), spacing: 16) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), spacing: 16) {
             ForEach(0..<9, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 6) {
                     RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)).posterAspect()

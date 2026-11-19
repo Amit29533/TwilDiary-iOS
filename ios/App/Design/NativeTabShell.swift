@@ -15,6 +15,8 @@ import UIKit
     let onReselect: @MainActor (AppTab) -> Void
     /// Native's now-watching bar above the tab bar (iOS's tab accessory); nil for none.
     var accessory: AnyView? = nil
+    /// The tabs, in your order (Settings → Customise; Glance can be left out).
+    var tabs: [AppTab] = AppTab.allCases
     let page: @MainActor (AppTab) -> AnyView
 
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection, canPage: canPage, onReselect: onReselect) }
@@ -25,14 +27,9 @@ import UIKit
         // UI tests keep it open so they can reach every tab, unless they ask for the real behaviour.
         let arguments = ProcessInfo.processInfo.arguments
         controller.tabBarMinimizeBehavior = arguments.contains("--ui-testing") && !arguments.contains("--ui-tabbar-minimize") ? .never : .onScrollDown
-        controller.viewControllers = AppTab.allCases.map { tab in
-            let host = UIHostingController(rootView: page(tab))
-            host.view.backgroundColor = .clear
-            host.tabBarItem = UITabBarItem(title: tab.label, image: UIImage(systemName: tab.systemIcon), selectedImage: UIImage(systemName: tab.systemIcon))
-            host.tabBarItem.accessibilityIdentifier = "tab-" + tab.rawValue
-            return host
-        }
         let coordinator = context.coordinator
+        coordinator.tabs = tabs
+        controller.viewControllers = tabs.map { coordinator.host(for: $0, page: page) }
         coordinator.controller = controller
         coordinator.renderedPageKey = pageKey
         // iOS shrinks the bar on scroll down but only brings it back at the end of a page;
@@ -40,7 +37,7 @@ import UIKit
         if controller.tabBarMinimizeBehavior == .onScrollDown { coordinator.scrollUp.attach(to: controller) }
         controller.delegate = coordinator
         // No content swipe between tabs: a sideways swipe belongs to the page (All, Movies, Shows, Anime).
-        controller.selectedIndex = AppTab.allCases.firstIndex(of: selection) ?? 0
+        controller.selectedIndex = tabs.firstIndex(of: selection) ?? 0
         controller.tabBar.tintColor = accent
         coordinator.showAccessory(accessory, in: controller, animated: false)
         return controller
@@ -53,16 +50,23 @@ import UIKit
         controller.view.backgroundColor = ThemeStore.current.followsSystemAppearance ? .systemBackground : .black
         coordinator.showSync(syncing, in: controller, accent: accent)
         coordinator.showAccessory(accessory, in: controller, animated: true)
+        // Your tab order changed (Settings → Customise): the same pages, kept alive, in the new order.
+        if coordinator.tabs != tabs {
+            coordinator.tabs = tabs
+            controller.setViewControllers(tabs.map { coordinator.host(for: $0, page: page) }, animated: false)
+            if !tabs.contains(selection), let first = tabs.first { Task { @MainActor in coordinator.selection.wrappedValue = first } }
+            controller.selectedIndex = tabs.firstIndex(of: selection) ?? 0
+        }
         // Reassigning a root re-diffs that whole tab. Doing all five on every root update
         // (opening Surprise me, any state the root body read) rebuilt every screen.
         if coordinator.renderedPageKey != pageKey {
             coordinator.renderedPageKey = pageKey
             for (index, host) in (controller.viewControllers ?? []).enumerated() {
-                (host as? UIHostingController<AnyView>)?.rootView = page(AppTab.allCases[index])
+                if coordinator.tabs.indices.contains(index) { (host as? UIHostingController<AnyView>)?.rootView = page(coordinator.tabs[index]) }
             }
         }
         guard coordinator.interaction == nil, controller.transitionCoordinator == nil,
-              let index = AppTab.allCases.firstIndex(of: selection), controller.selectedIndex != index else { return }
+              let index = tabs.firstIndex(of: selection), controller.selectedIndex != index else { return }
         // Only a jump asked for from inside a page lands here (Home's Up next or Stats, Profile's
         // Watchlist, a stat opening Library, Search): a tap on the bar has already switched. A short
         // cross-fade instead of a cut (owner's request); none with Reduce Motion or off screen.
@@ -79,6 +83,18 @@ import UIKit
     }
 
     final class Coordinator: NSObject, UITabBarControllerDelegate, UIGestureRecognizerDelegate {
+        /// The tabs on the bar, in order, and each tab's page (kept when the order changes).
+        var tabs: [AppTab] = AppTab.allCases
+        private var hosts: [AppTab: UIHostingController<AnyView>] = [:]
+        func host(for tab: AppTab, page: @MainActor (AppTab) -> AnyView) -> UIHostingController<AnyView> {
+            if let host = hosts[tab] { return host }
+            let host = UIHostingController(rootView: page(tab))
+            host.view.backgroundColor = .clear
+            host.tabBarItem = UITabBarItem(title: tab.label, image: UIImage(systemName: tab.systemIcon), selectedImage: UIImage(systemName: tab.systemIcon))
+            host.tabBarItem.accessibilityIdentifier = "tab-" + tab.rawValue
+            hosts[tab] = host
+            return host
+        }
         // MARK: Now watching (Native)
 
         private var accessoryHost: UIHostingController<AnyView>?
@@ -111,7 +127,7 @@ import UIKit
         /// On: the ring turns (once a second). Off: it stays a moment at least, so a quick sync
         /// doesn't flicker, then the plain icon comes back.
         func showSync(_ on: Bool, in controller: UITabBarController, accent: UIColor) {
-            guard let index = AppTab.allCases.firstIndex(of: .more), let host = controller.viewControllers?[index] else { return }
+            guard let index = tabs.firstIndex(of: .more), let host = controller.viewControllers?[index] else { return }
             if on {
                 spinStop?.cancel(); spinStop = nil
                 guard spinLink == nil || spinAccent != accent else { return }
@@ -204,7 +220,7 @@ import UIKit
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let controller, interaction == nil, controller.transitionCoordinator == nil,
                   controller.presentedViewController == nil, !UIAccessibility.isVoiceOverRunning,
-                  AppTab.allCases.indices.contains(controller.selectedIndex), canPage(AppTab.allCases[controller.selectedIndex]) else { return false }
+                  tabs.indices.contains(controller.selectedIndex), canPage(tabs[controller.selectedIndex]) else { return false }
             // Claim every deliberate horizontal swipe on a root page, including one
             // past either end (it bounces). Declining it would hand the delayed
             // touch to the control underneath, e.g. open a picker's menu.
@@ -247,7 +263,7 @@ import UIKit
                 origin = controller.selectedIndex
                 direction = gesture.velocity(in: controller.view).x < 0 ? 1 : -1
                 target = origin + Int(direction)
-                guard AppTab.allCases.indices.contains(target) else {
+                guard tabs.indices.contains(target) else {
                     edgePage = controller.selectedViewController?.view
                     return
                 }
@@ -283,13 +299,14 @@ import UIKit
             return TabPageAnimator(direction: direction) { [weak self] completed in
                 guard let self else { return }
                 self.interaction = nil
-                self.selection.wrappedValue = AppTab.allCases[completed ? self.target : self.origin]
+                let index = completed ? self.target : self.origin
+                if self.tabs.indices.contains(index) { self.selection.wrappedValue = self.tabs[index] }
             }
         }
         func tabBarController(_ tabBarController: UITabBarController, interactionControllerFor animationController: any UIViewControllerAnimatedTransitioning) -> (any UIViewControllerInteractiveTransitioning)? { interaction }
         func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-            guard interaction == nil, AppTab.allCases.indices.contains(tabBarController.selectedIndex) else { return }
-            let tab = AppTab.allCases[tabBarController.selectedIndex]
+            guard interaction == nil, tabs.indices.contains(tabBarController.selectedIndex) else { return }
+            let tab = tabs[tabBarController.selectedIndex]
             if selection.wrappedValue == tab { onReselect(tab) }
             else { selection.wrappedValue = tab }
         }

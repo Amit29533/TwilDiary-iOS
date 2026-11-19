@@ -175,19 +175,24 @@ struct HomePoster<Badge: View>: View {
     /// The title's score, on the top corner (the bottom one is the row's own badge).
     var score: Double? = nil
     @ViewBuilder var badge: Badge
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @AppStorage(PosterSize.captionKey) private var showsCaption = true
     var body: some View {
+        let width = posterSize.homeWidth
         VStack(alignment: .leading, spacing: 0) {
-            Artwork(path: artwork, title: name, initialsOnly: initialsOnly).frame(width: 128, height: 192)
+            Artwork(path: artwork, title: name, initialsOnly: initialsOnly).frame(width: width, height: width * 1.5)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
                 .overlay(alignment: .topLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
             // Two lines kept for every name, so each card in a row is the same height (a row
             // sized by one card no longer lets a taller one hang into the next section).
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
-                .multilineTextAlignment(.leading).padding(.top, 9)
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4)
-        }.frame(width: 128, alignment: .leading).accessibilityElement(children: .combine)
+            if showsCaption {
+                Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
+                    .multilineTextAlignment(.leading).padding(.top, 9)
+                Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4)
+            }
+        }.frame(width: width, alignment: .leading).accessibilityElement(children: .combine)
     }
 }
 extension HomePoster where Badge == EmptyView {

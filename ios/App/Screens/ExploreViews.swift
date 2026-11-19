@@ -115,22 +115,44 @@ private struct ExploreContent: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 72)
             }
-            // Lazy: rows further down build (and load) as they come on screen.
+            // Lazy: rows further down build (and load) as they come on screen. Your order and
+            // choice of rows (Settings → Customise); by default popular first, then CineMind,
+            // Trakt's, the newer rows and the highest rated.
             LazyVStack(alignment: .leading, spacing: 22) {
-                // Popular movies and shows first, then the AI prompts and CineMind's picks, Trakt's,
-                // the rest of the new rows, and the highest rated.
-                DiscoveryShelfView(section: .popularMovies, service: service)
-                DiscoveryShelfView(section: .popularShows, service: service)
-                ExploreAIArea()
-                RecommendedDiscoveryView(service: service, section: false)
-                ExploreMoreShelves()
-                ForEach([DiscoverySection.ratedShows, .ratedMovies]) { section in DiscoveryShelfView(section: section, service: service) }
+                ForEach(ExploreRow.layout(exploreLayout).visible.compactMap(ExploreRow.init(rawValue:))) { row in
+                    exploreRow(row)
+                }
             }
             .padding(.horizontal, 14)
         }
     }
     @Environment(AppRouter.self) private var router
+    @AppStorage(ExploreRow.key) private var exploreLayout = ""
     private func openLibrary() { router.library("all") }
+
+    /// One of Explore's rows (the extra ones need a real diary; none show in the UI-test fixture).
+    @ViewBuilder private func exploreRow(_ row: ExploreRow) -> some View {
+        switch row {
+        case .popularMovies: DiscoveryShelfView(section: .popularMovies, service: service)
+        case .popularShows: DiscoveryShelfView(section: .popularShows, service: service)
+        case .recommended: RecommendedDiscoveryView(service: service, section: false)
+        case .ratedShows: DiscoveryShelfView(section: .ratedShows, service: service)
+        case .ratedMovies: DiscoveryShelfView(section: .ratedMovies, service: service)
+        default:
+            if !store.isPreview {
+                switch row {
+                case .askCineMind: ExploreAIPrompts()
+                case .cineMovies: CineMindRow(movies: true)
+                case .cineShows: CineMindRow(movies: false)
+                case .loved: BecauseYouLovedRow()
+                case .trending: TrendingPlannedRow()
+                case .seasonal: SeasonalAnimeRow()
+                case .coming: ComingSoonRow()
+                default: EmptyView()
+                }
+            }
+        }
+    }
 
     /// The top poster's titles, worked out once per day and diary change (not on every redraw).
     private static var keptPicks: (key: String, picks: [MediaTitle])?
@@ -303,6 +325,7 @@ private struct DiscoveryShelfView: View {
 }
 
 private struct DiscoveryTrack: View {
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     let items: [CatalogItem]
     var body: some View {
         if !items.isEmpty {
@@ -312,7 +335,7 @@ private struct DiscoveryTrack: View {
                         Group {
                             if let id = item.inLibraryId { NavigationLink(value: id) { CatalogPoster(item: item).zoomSource(ZoomID.title(id)) } }
                             else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
-                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: 3, spacing: 12).shelfTransition().accessibilityIdentifier("catalog-" + item.displayKey)
+                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12).shelfTransition().accessibilityIdentifier("catalog-" + item.displayKey)
                     }
                 }
             }.scrollIndicators(.hidden).padding(.bottom, 10)

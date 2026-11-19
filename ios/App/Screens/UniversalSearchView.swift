@@ -14,6 +14,7 @@ struct UniversalSearchView: View {
 }
 
 struct SearchLandingView: View {
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     let kind: CatalogSearchView.Kind
     let recent: [String]
     let choose: (String) -> Void
@@ -73,7 +74,7 @@ struct SearchLandingView: View {
                                 Group {
                                     if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
                                     else { NavigationLink(value: item.route) { rankedPoster(index: index, item: item) } }
-                                }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: 3, spacing: 12)
+                                }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
                                     .accessibilityIdentifier("trending-show-\(index + 1)")
                             }
                         }

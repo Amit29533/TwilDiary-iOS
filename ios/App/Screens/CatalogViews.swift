@@ -10,7 +10,8 @@ struct CatalogGrid: View {
     var showsLayoutToggle = true
     var forceGrid = false
     private var useGrid: Bool { forceGrid || grid }
-    private var columns: Int { useGrid ? (forceGrid && typeSize.isAccessibilitySize ? 2 : 3) : 1 }
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    private var columns: Int { useGrid ? (forceGrid && typeSize.isAccessibilitySize ? 2 : posterSize.columns) : 1 }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if showsLayoutToggle { HStack { Spacer(); CollectionLayoutToggle(grid: $grid, collection: "catalog") } }
@@ -44,6 +45,7 @@ struct CatalogPoster: View {
     let item: CatalogItem
     var profileTypography = false
     @Environment(DiaryStore.self) private var store
+    @AppStorage(PosterSize.captionKey) private var showsCaption = true
     var body: some View {
         let score = PosterScores.score(for: item, store: store)
         VStack(alignment: .leading, spacing: 0) {
@@ -52,7 +54,9 @@ struct CatalogPoster: View {
                 .overlay(alignment: .bottomLeading) { if let score { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .wantsPosterScore(item, known: score, store: store)
-            if profileTypography {
+            if !showsCaption {
+                EmptyView()
+            } else if profileTypography {
                 ProfileCardCaption(title: item.name).padding(.top, 8)
                 if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
             } else {

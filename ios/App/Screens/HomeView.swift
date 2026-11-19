@@ -17,6 +17,9 @@ struct HomeView: View {
     @SceneStorage("home.continue.title") private var continueSelection = ""
     @AppStorage("homeHistoryGrid") private var historyGrid = false
     @AppStorage("upcomingGrid") private var upcomingGrid = true
+    /// Settings → Customise: Home's sections in your order, and Continue watching at the top.
+    @AppStorage(HomeSection.key) private var homeLayout = ""
+    @AppStorage(HomeSection.continueKey) private var showContinue = true
     var body: some View {
         let now = store.isPreview ? store.now : clock
         let request = store.homeProjectionRequest(at: now)
@@ -47,124 +50,13 @@ struct HomeView: View {
         let recent = projection.recent
         return EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 0) {
-                if watching.isEmpty { header(overArtwork: false) } else { continueSection(watching) }
+                if watching.isEmpty || !showContinue { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: 32) {
-                    // Explore is systematic discovery; Canvas is for browsing artwork at random.
-                    HStack(spacing: 10) {
-                        NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress).accessibilityIdentifier("explore-shortcut")
-                        NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
-                    }.padding(.bottom, -0)
-                    VStack(alignment: .leading, spacing: 16) {
-                        HomeSectionHeader(title: "This week") {
-                            Button { router.statsToday() } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Stats").accessibilityIdentifier("home-stats")
-                        }
-                        HomeWeekCard(overview: overview, now: now)
+                    // Your order and choice of sections (Settings → Customise).
+                    ForEach(HomeSection.layout(homeLayout).visible.compactMap(HomeSection.init(rawValue:))) { section in
+                        homeSection(section, overview: overview, recent: recent, now: now)
                     }
-                    if !overview.planned.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HomeSectionHeader(title: "Up next") {
-                                Button { router.library("planned") } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Planned").accessibilityIdentifier("home-upnext-more")
-                            }
-                            ScrollView(.horizontal) {
-                                LazyHStack(alignment: .top, spacing: 12) {
-                                    ForEach(overview.planned.prefix(12)) { title in
-                                        NavigationLink(value: title.id) {
-                                            HomePoster(artwork: title.poster, name: title.name,
-                                                       subtitle: title.isSeries ? title.categoryName : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
-                                                       score: title.communityScore)
-                                                .zoomSource(ZoomID.title(title.id))
-                                        }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id).shelfTransition()
-                                    }
-                                }.scrollTargetLayout()
-                            }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
-                        }
-                    }
-                    // Your saved Library filters, each a shelf.
-                    if !SavedFilters.shared.all.isEmpty { HomeSavedShelves() }
-                    let seeds = Self.recommendationSeeds(recent)
-                    if !seeds.isEmpty { HomeRecommendedShelf(seeds: seeds) }
-                    // Recently hearted cast and characters together, right under Up next; › opens them by kind.
-                    let favourites = FavouritesStore.shared.items
-                    let favouriteShows = store.favouriteShows
-                    if !favourites.isEmpty || !favouriteShows.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HomeSectionHeader(title: "Favourites", icon: "heart.fill") {
-                                NavigationLink(value: AppDestination.favourites) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
-                            }
-                            ScrollView(.horizontal) {
-                                LazyHStack(alignment: .top, spacing: 12) {
-                                    ForEach(favouriteShows.prefix(6)) { show in
-                                        // Home's standard poster, the size of the characters and people beside it.
-                                        NavigationLink(value: show.id) {
-                                            HomePoster(artwork: show.poster, name: show.name,
-                                                       subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
-                                        }.buttonStyle(.plain).accessibilityIdentifier("home-favourite-show-" + show.id)
-                                    }
-                                    ForEach(favourites.prefix(12)) { item in FavouriteLink(item: item, homeCard: true).shelfTransition() }
-                                }.scrollTargetLayout()
-                            }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 16) {
-                        HomeSectionHeader(title: "New episodes") {
-                            Button { upcomingGrid.toggle() } label: { HomeRoundIcon(system: upcomingGrid ? "list.bullet" : "square.grid.2x2", selected: upcomingGrid) }
-                                .buttonStyle(.plain).accessibilityLabel(upcomingGrid ? "Show as list" : "Show as cards").accessibilityValue(upcomingGrid ? "Cards" : "List").accessibilityIdentifier("upcoming-layout")
-                            NavigationLink(value: AppDestination.calendar) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Airing calendar").accessibilityIdentifier("home-calendar-more")
-                        }
-                        if overview.upcoming.isEmpty {
-                            Text("No upcoming air dates in your library for the next 30 days.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
-                                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .cardSurface(20)
-                                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-                        } else if upcomingGrid {
-                            ScrollView(.horizontal) {
-                                LazyHStack(alignment: .top, spacing: 12) {
-                                    ForEach(overview.upcoming.prefix(12)) { item in
-                                        NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeCard(item: item) }
-                                            .buttonStyle(.springPress).accessibilityIdentifier("home-upcoming-" + item.title.id)
-                                    }
-                                }.scrollTargetLayout()
-                            }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
-                        } else {
-                            VStack(spacing: 10) {
-                                ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
-                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
-                                        .buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
-                                }
-                                if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.system(size: 14, weight: .semibold)) }
-                            }
-                        }
-                    }
-                    let groups = RecentWatchGroup.make(recent, limit: 3)
-                    if !groups.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HomeSectionHeader(title: "Recently watched") {
-                                Button { historyGrid.toggle() } label: { HomeRoundIcon(system: historyGrid ? "list.bullet" : "square.grid.2x2", selected: historyGrid) }
-                                    .buttonStyle(.plain).accessibilityLabel(historyGrid ? "Show as list" : "Show as cards").accessibilityValue(historyGrid ? "Cards" : "List").accessibilityIdentifier("home-history-layout")
-                                NavigationLink(value: AppDestination.history) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All history").accessibilityIdentifier("home-history-more")
-                            }
-                            if historyGrid {
-                                ScrollView(.horizontal) {
-                                    LazyHStack(alignment: .top, spacing: 12) {
-                                        ForEach(groups) { group in
-                                            NavigationLink(value: group.title.id) { HomeRecentCard(group: group) }.buttonStyle(.springPress).accessibilityIdentifier("home-history-event-" + group.id)
-                                        }
-                                    }
-                                }.scrollIndicators(.hidden).scrollClipDisabled()
-                            } else {
-                                VStack(spacing: 10) {
-                                    ForEach(groups) { group in
-                                        NavigationLink(value: group.title.id) {
-                                            HomeRow(artwork: group.title.backdrop ?? group.title.poster, name: group.title.name, chip: group.episodeText,
-                                                    detail: group.count > 1 ? group.count.counted("episode", "episodes") : nil,
-                                                    date: group.date?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
-                                        }.buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + group.id)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }.padding(.horizontal, 16).padding(.top, watching.isEmpty ? 8 : 30).padding(.bottom, 24)
+                }.padding(.horizontal, 16).padding(.top, watching.isEmpty || !showContinue ? 8 : 30).padding(.bottom, 24)
             }
         }
         .contentMargins(.bottom, 90, for: .scrollContent)
@@ -174,6 +66,134 @@ struct HomeView: View {
             if scrolling != active { scrolling = active }
         }
         .refreshable { clock = store.now; await store.refresh() }
+    }
+    /// One of Home's sections (Settings → Customise orders them and hides any but the shortcuts).
+    @ViewBuilder private func homeSection(_ section: HomeSection, overview: HomeOverview, recent: [HistoryEntry], now: Date) -> some View {
+        switch section {
+        case .shortcuts:
+                // Explore is systematic discovery; Canvas is for browsing artwork at random.
+                HStack(spacing: 10) {
+                    NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress).accessibilityIdentifier("explore-shortcut")
+                    NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
+                }.padding(.bottom, -0)
+        case .week:
+                VStack(alignment: .leading, spacing: 16) {
+                    HomeSectionHeader(title: "This week") {
+                        Button { router.statsToday() } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Stats").accessibilityIdentifier("home-stats")
+                    }
+                    HomeWeekCard(overview: overview, now: now)
+                }
+        case .upNext:
+                if !overview.planned.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HomeSectionHeader(title: "Up next") {
+                            Button { router.library("planned") } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Planned").accessibilityIdentifier("home-upnext-more")
+                        }
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(overview.planned.prefix(12)) { title in
+                                    NavigationLink(value: title.id) {
+                                        HomePoster(artwork: title.poster, name: title.name,
+                                                   subtitle: title.isSeries ? title.categoryName : (["Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
+                                                   score: title.communityScore)
+                                            .zoomSource(ZoomID.title(title.id))
+                                    }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id).shelfTransition()
+                                }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
+                    }
+                }
+        case .saved:
+                // Your saved Library filters, each a shelf.
+                if !SavedFilters.shared.all.isEmpty { HomeSavedShelves() }
+        case .recommended:
+                let seeds = Self.recommendationSeeds(recent)
+                if !seeds.isEmpty { HomeRecommendedShelf(seeds: seeds) }
+        case .favourites:
+                // Recently hearted cast and characters together, right under Up next; › opens them by kind.
+                let favourites = FavouritesStore.shared.items
+                let favouriteShows = store.favouriteShows
+                if !favourites.isEmpty || !favouriteShows.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HomeSectionHeader(title: "Favourites", icon: "heart.fill") {
+                            NavigationLink(value: AppDestination.favourites) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
+                        }
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(favouriteShows.prefix(6)) { show in
+                                    // Home's standard poster, the size of the characters and people beside it.
+                                    NavigationLink(value: show.id) {
+                                        HomePoster(artwork: show.poster, name: show.name,
+                                                   subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
+                                    }.buttonStyle(.plain).accessibilityIdentifier("home-favourite-show-" + show.id)
+                                }
+                                ForEach(favourites.prefix(12)) { item in FavouriteLink(item: item, homeCard: true).shelfTransition() }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
+                    }
+                }
+        case .newEpisodes:
+                VStack(alignment: .leading, spacing: 16) {
+                    HomeSectionHeader(title: "New episodes") {
+                        Button { upcomingGrid.toggle() } label: { HomeRoundIcon(system: upcomingGrid ? "list.bullet" : "square.grid.2x2", selected: upcomingGrid) }
+                            .buttonStyle(.plain).accessibilityLabel(upcomingGrid ? "Show as list" : "Show as cards").accessibilityValue(upcomingGrid ? "Cards" : "List").accessibilityIdentifier("upcoming-layout")
+                        NavigationLink(value: AppDestination.calendar) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Airing calendar").accessibilityIdentifier("home-calendar-more")
+                    }
+                    if overview.upcoming.isEmpty {
+                        Text("No upcoming air dates in your library for the next 30 days.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                            .cardSurface(20)
+                            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                    } else if upcomingGrid {
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(overview.upcoming.prefix(12)) { item in
+                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeCard(item: item) }
+                                        .buttonStyle(.springPress).accessibilityIdentifier("home-upcoming-" + item.title.id)
+                                }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
+                                NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
+                                    .buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
+                            }
+                            if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.system(size: 14, weight: .semibold)) }
+                        }
+                    }
+                }
+        case .recent:
+                let groups = RecentWatchGroup.make(recent, limit: 3)
+                if !groups.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HomeSectionHeader(title: "Recently watched") {
+                            Button { historyGrid.toggle() } label: { HomeRoundIcon(system: historyGrid ? "list.bullet" : "square.grid.2x2", selected: historyGrid) }
+                                .buttonStyle(.plain).accessibilityLabel(historyGrid ? "Show as list" : "Show as cards").accessibilityValue(historyGrid ? "Cards" : "List").accessibilityIdentifier("home-history-layout")
+                            NavigationLink(value: AppDestination.history) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All history").accessibilityIdentifier("home-history-more")
+                        }
+                        if historyGrid {
+                            ScrollView(.horizontal) {
+                                LazyHStack(alignment: .top, spacing: 12) {
+                                    ForEach(groups) { group in
+                                        NavigationLink(value: group.title.id) { HomeRecentCard(group: group) }.buttonStyle(.springPress).accessibilityIdentifier("home-history-event-" + group.id)
+                                    }
+                                }
+                            }.scrollIndicators(.hidden).scrollClipDisabled()
+                        } else {
+                            VStack(spacing: 10) {
+                                ForEach(groups) { group in
+                                    NavigationLink(value: group.title.id) {
+                                        HomeRow(artwork: group.title.backdrop ?? group.title.poster, name: group.title.name, chip: group.episodeText,
+                                                detail: group.count > 1 ? group.count.counted("episode", "episodes") : nil,
+                                                date: group.date?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
+                                    }.buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + group.id)
+                                }
+                            }
+                        }
+                    }
+                }
+        }
     }
     /// True full screen: the whole header scrolls away with the artwork.
     private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork) }

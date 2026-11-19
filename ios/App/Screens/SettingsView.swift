@@ -74,11 +74,15 @@ struct SettingsView: View {
                             }.padding(.horizontal, 15).padding(.vertical, 12)
                         }.accessibilityIdentifier("settings-theme")
                         divider
+                        NavigationLink(value: CustomiseRoute()) {
+                            settingsRow("slider.horizontal.3", .purple, "Customise", subtitle: "Home, Explore, tabs and posters", disclosure: true)
+                        }.accessibilityIdentifier("settings-customise")
+                        divider
                         HStack(spacing: 12) {
                             tile("rectangle.portrait.and.arrow.forward", .orange)
                             SettingsRowTitle("Opens on", "The screen TwilDiary starts on")
                             Spacer(minLength: 0)
-                            Menu { Picker("Opens on", selection: $launchTab) { ForEach(AppTab.allCases, id: \.self) { Text($0.label).tag($0) } } }
+                            Menu { Picker("Opens on", selection: $launchTab) { ForEach(TabLayout.visible, id: \.self) { Text($0.label).tag($0) } } }
                                 label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
                         }.settingsRowFrame()
                         divider

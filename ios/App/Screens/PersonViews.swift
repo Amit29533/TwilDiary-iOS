@@ -318,6 +318,7 @@ struct PersonView: View {
 }
 
 struct PersonCreditShelf: View {
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     let items: [CatalogItem]
     var identifier = "person-credit-shelf"
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -336,7 +337,7 @@ struct PersonCreditShelf: View {
                         else { NavigationLink(value: item.route) { CatalogPoster(item: item, profileTypography: true).zoomSource(ZoomID.catalog(item.route)) } }
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
                         if !role.isEmpty { ProfileCardCaption(title: role, secondary: true) }
-                    }.containerRelativeFrame(.horizontal, count: 3, spacing: 12).buttonStyle(.springPress).shelfTransition()
+                    }.containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12).buttonStyle(.springPress).shelfTransition()
                 }
             }
         }.accessibilityIdentifier(identifier)

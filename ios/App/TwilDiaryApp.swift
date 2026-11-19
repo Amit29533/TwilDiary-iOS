@@ -95,7 +95,9 @@ enum AppTab: String, CaseIterable, Hashable {
         #endif
         let saved = UserDefaults.standard.string(forKey: launchKey)
         if saved == "stats" { UserDefaults.standard.set(AppTab.more.rawValue, forKey: launchKey); return .more }
-        return saved.flatMap(AppTab.init(rawValue:)) ?? .glance
+        let chosen = saved.flatMap(AppTab.init(rawValue:)) ?? .glance
+        // A hidden tab (Settings → Customise) can't be the first one shown.
+        return TabLayout.visible.contains(chosen) ? chosen : (TabLayout.visible.first ?? .home)
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
@@ -195,6 +197,8 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
+    /// Settings → Customise: the tab bar's order, and whether Glance shows.
+    @AppStorage(TabLayout.key) private var tabLayout = ""
     /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
     @Namespace private var zoom
     @State private var askAlerts = false
@@ -245,7 +249,7 @@ struct RootView: View {
                 NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme == .native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
                                pageKey: theme.rawValue + ":" + nativeAppearance.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
-                }, onReselect: { router.select($0) }) { tab in
+                }, onReselect: { router.select($0) }, tabs: TabLayout.layout(tabLayout).visible.compactMap(AppTab.init(rawValue:))) { tab in
                     AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance))
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
@@ -370,6 +374,7 @@ struct RootView: View {
                 .navigationDestination(for: ShowPageRoute.self) { ShowPageDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: CanvasListRoute.self) { CanvasListView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: YourListsRoute.self) { _ in YourListsView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: CustomiseRoute.self) { _ in CustomiseView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: YourListRoute.self) { YourListPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {

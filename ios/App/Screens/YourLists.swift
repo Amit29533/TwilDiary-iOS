@@ -263,7 +263,8 @@ struct YourListPage: View {
     /// rank (your order), added, name, year or rating; per list.
     @AppStorage("yourLists.sort") private var sortsJSON = "{}"
     private var model: YourListsStore { .shared }
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: posterSize.columns) }
 
     private var list: YourList? { model.lists.first { $0.id == route.id } }
     private var sort: String {
