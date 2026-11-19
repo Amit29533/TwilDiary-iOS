@@ -984,7 +984,7 @@ struct ProgressCard: View {
                 .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             titleButton(size: 24, onArtwork: true).padding(.trailing, 8)
-            nextLine(primary: .white, secondary: Color.white.opacity(0.8)).shadow(color: .black.opacity(0.5), radius: 4).padding(.top, 4)
+            nextLine(primary: .white, secondary: Color.white.opacity(0.8)).modifier(TextShadow(on: true)).padding(.top, 4)
             glanceRow(accent: ThemeStore.current.native ? .white : HomeStyle.chipText, track: Color.white.opacity(0.25), onArtwork: true).padding(.top, 10)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
@@ -1057,7 +1057,7 @@ struct ProgressCard: View {
                 .foregroundStyle(onArtwork ? Color.white : HomeStyle.ink)
                 .lineLimit(lines).truncationMode(.tail).multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .shadow(color: onArtwork ? .black.opacity(0.6) : .clear, radius: 6, y: 2)
+                .modifier(TextShadow(on: onArtwork))
         }.buttonStyle(.plain).accessibilityIdentifier("progress-title-" + title.id)
     }
     /// What's next in bold, then what's left: "S1 E2 · 11 left (12h 39m)", "Season 1 done", "Movie · 1h 54m".
