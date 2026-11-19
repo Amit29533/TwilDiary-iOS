@@ -93,9 +93,11 @@ struct HomeView: View {
                             ScrollView(.horizontal) {
                                 LazyHStack(alignment: .top, spacing: 12) {
                                     ForEach(favouriteShows.prefix(6)) { show in
+                                        // Home's standard poster, the size of the characters and people beside it.
                                         NavigationLink(value: show.id) {
-                                            LibraryPosterCard(title: show).frame(width: 100)
-                                        }.buttonStyle(.plain)
+                                            HomePoster(artwork: show.poster, name: show.name,
+                                                       subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
+                                        }.buttonStyle(.plain).accessibilityIdentifier("home-favourite-show-" + show.id)
                                     }
                                     ForEach(favourites.prefix(12)) { item in FavouriteLink(item: item, homeCard: true).shelfTransition() }
                                 }.scrollTargetLayout()
