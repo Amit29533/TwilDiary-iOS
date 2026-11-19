@@ -119,6 +119,8 @@ struct CatalogSearchView: View {
     @State private var peopleMatch: (scope: SearchScope, count: Int)?
     @State private var adding = Set<String>()
     @State private var addFailures: [String: String] = [:]
+    /// A Planned result whose removal is being asked about (its library id).
+    @State private var removingPlanned: String?
     var body: some View {
         let scope = searchScope
         let ranked = universal && ready ? allResults : []
@@ -138,7 +140,7 @@ struct CatalogSearchView: View {
             }
             if universal { kindChips(counts: counts, total: ranked.count) }
             if !ready {
-                if universal { SearchLandingView(kind: kind, recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }).id(kind) }
+                if universal { SearchLandingView(kind: kind, recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }, remove: { forget($0) }).id(kind) }
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
             // Nothing found: the closest spelling ("breking bad" → Breaking Bad).
@@ -323,6 +325,7 @@ struct CatalogSearchView: View {
     /// The design's result card: poster, name, "Anime · Series", then In library or + Add.
     private func resultCard(_ result: Result) -> some View {
         let addRoute = result.libraryID == nil ? result.route : nil
+        let plannedID = result.libraryID.flatMap { id in store.title(id)?.status == "planned" ? id : nil }
         let posterWidth: CGFloat = 78
         let spacing: CGFloat = 16
         return VStack(alignment: .leading, spacing: 8) {
@@ -338,17 +341,18 @@ struct CatalogSearchView: View {
                                 .lineLimit(typeSize.isAccessibilitySize ? nil : 2).fixedSize(horizontal: false, vertical: true)
                             Text(result.detail).font(.subheadline).foregroundStyle(HomeStyle.secondary)
                             if let alias = result.alias { Text("Also known as " + alias).font(.caption).foregroundStyle(.secondary) }
-                            if let libraryID = result.libraryID {
+                            if let libraryID = result.libraryID, plannedID == nil {
                                 Text(store.title(libraryID).map { $0.status == "completed" ? "Watched" : $0.status == "planned" ? "Planned" : "In library" } ?? "In library").font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 16).padding(.vertical, 8).background(HomeStyle.chip, in: Capsule())
-                            } else if addRoute != nil {
+                            } else if addRoute != nil || plannedID != nil {
                                 Color.clear.frame(height: addControlHeight).accessibilityHidden(true)
                             }
-                        }.frame(maxWidth: .infinity, minHeight: 117, alignment: addRoute == nil ? .leading : .bottomLeading)
+                        }.frame(maxWidth: .infinity, minHeight: 117, alignment: addRoute == nil && plannedID == nil ? .leading : .bottomLeading)
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain)
                     .accessibilityIdentifier(result.libraryID.map { "search-library-" + $0 } ?? "search-" + (result.route.map(Self.key) ?? result.id))
                 if let route = addRoute { addButton(route, title: result.name).padding(.leading, posterWidth + spacing) }
+                else if let id = plannedID { plannedButton(id, title: result.name).padding(.leading, posterWidth + spacing) }
             }
             if let route = addRoute, let message = addFailures[Self.key(route)] {
                 Text(message).font(.footnote).foregroundStyle(.secondary)
@@ -370,6 +374,29 @@ struct CatalogSearchView: View {
         }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
             .accessibilityLabel((retry ? "Retry adding " : "Add ") + title)
             .accessibilityIdentifier("search-add-" + key)
+    }
+    /// "✓ Planned": tapping it asks, then takes the title back out of Planned (into Trash).
+    private func plannedButton(_ id: String, title: String) -> some View {
+        let busy = adding.contains(id)
+        return Button { removingPlanned = id } label: {
+            Label("Planned", systemImage: "checkmark").lineLimit(1)
+                .font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
+                .opacity(busy ? 0 : 1)
+                .overlay { if busy { ProgressView().controlSize(.small) } }
+                .padding(.horizontal, 16).frame(height: addControlHeight)
+                .background(HomeStyle.chip, in: Capsule())
+        }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
+            .confirmationDialog("Remove \(title) from Planned?", isPresented: Binding(get: { removingPlanned == id }, set: { if !$0 { removingPlanned = nil } }),
+                                titleVisibility: .visible) {
+                Button("Remove from Planned", role: .destructive) { Task { await removePlanned(id) } }
+            } message: { Text("It moves to Trash.") }
+            .accessibilityLabel("Planned. Remove " + title + " from Planned")
+            .accessibilityIdentifier("search-planned-" + id)
+    }
+    private func removePlanned(_ id: String) async {
+        guard let title = store.title(id), title.status == "planned", adding.insert(id).inserted else { return }
+        defer { adding.remove(id) }
+        if await store.trash(title) { Haptics.play(.light) }
     }
     /// + Add: the title joins your library as Planned (its full details are read first).
     private func add(_ route: CatalogRoute) async {
@@ -425,6 +452,10 @@ struct CatalogSearchView: View {
     private var libraryShown: Int { universal && !libraryExpanded ? 4 : libraryLimit }
     private var onlineShown: Int { universal && !onlineExpanded ? 4 : 100 }
     private var recent: [String] { recentJSON.data(using: .utf8).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
+    private func forget(_ value: String) {
+        let values = recent.filter { $0 != value }
+        if let data = try? JSONEncoder().encode(values), let json = String(data: data, encoding: .utf8) { recentJSON = json }
+    }
     private func rememberQuery() {
         guard universal, ready else { return }
         let value = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))

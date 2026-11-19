@@ -19,6 +19,7 @@ struct SearchLandingView: View {
     let recent: [String]
     let choose: (String) -> Void
     let clear: () -> Void
+    var remove: (String) -> Void = { _ in }
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @State private var shows: [CatalogItem] = []
@@ -26,8 +27,8 @@ struct SearchLandingView: View {
     @State private var loadingRevision: UUID?
     @State private var failure: String?
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    init(kind: CatalogSearchView.Kind, recent: [String], choose: @escaping (String) -> Void, clear: @escaping () -> Void) {
-        self.kind = kind; self.recent = recent; self.choose = choose; self.clear = clear
+    init(kind: CatalogSearchView.Kind, recent: [String], choose: @escaping (String) -> Void, clear: @escaping () -> Void, remove: @escaping (String) -> Void = { _ in }) {
+        self.kind = kind; self.recent = recent; self.choose = choose; self.clear = clear; self.remove = remove
         // The chart shown last, at once (it's checked against this session when the page appears).
         // Anime and People have none (they showed the shows' chart kept from another tab).
         _shows = State(initialValue: [.all, .movies, .shows].contains(kind) ? Self.trending[kind == .movies ? "movie" : "tv"]?.items ?? [] : [])
@@ -60,6 +61,7 @@ struct SearchLandingView: View {
                                     .font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 12).frame(height: 36)
                                     .background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.1)))
                             }.buttonStyle(.plain).accessibilityLabel("Search again for " + query)
+                                .contextMenu { Button("Remove", systemImage: "xmark", role: .destructive) { withAnimation(.snappy) { remove(query) } } }
                         }
                     }
                 }

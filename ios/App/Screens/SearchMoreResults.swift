@@ -35,6 +35,9 @@ enum RecentlyViewed {
         if entry.libraryID == nil { entry.libraryID = list.first { $0.key == item.key }?.libraryID }
         return Array(([entry] + list.filter { $0.key != item.key }).prefix(limit))
     }
+    static func encode(_ list: [RecentlyViewedTitle]) -> String {
+        (try? JSONEncoder().encode(list)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
     @MainActor static func record(_ item: RecentlyViewedTitle) {
         let defaults = UserDefaults.standard
         let list = adding(item, to: decode(defaults.string(forKey: storageKey) ?? "[]"))
@@ -71,6 +74,11 @@ struct RecentlyViewedShelf: View {
                                         .lineLimit(2).multilineTextAlignment(.leading)
                                 }.frame(width: 90, alignment: .leading)
                             }.buttonStyle(.springPress).accessibilityIdentifier("search-viewed-" + item.key)
+                                .contextMenu {
+                                    Button("Remove", systemImage: "xmark", role: .destructive) {
+                                        withAnimation(.snappy) { json = RecentlyViewed.encode(items.filter { $0.key != item.key }) }
+                                    }
+                                }
                         }
                     }
                 }.scrollIndicators(.hidden).scrollClipDisabled()
