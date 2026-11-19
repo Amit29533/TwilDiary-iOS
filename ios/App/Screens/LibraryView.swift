@@ -755,7 +755,7 @@ struct GlanceView: View {
                 let rest = Array(ordered.dropFirst())
                 let continuing = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
                 VStack(alignment: .leading, spacing: 8) {
-                    if let first = ordered.first { ProgressCard(title: first, hero: true) }
+                    if let first = ordered.first { ProgressCard(title: first, hero: true, heroLabel: heroLabel) }
                     if !continuing.isEmpty {
                         glanceHeading("Continue", continuing.count)
                         CollectionLayout(grid: grid, spacing: 8) { ForEach(showAll ? continuing : Array(continuing.prefix(8))) { ProgressCard(title: $0, grid: grid) } }
@@ -770,9 +770,19 @@ struct GlanceView: View {
                                 .frame(maxWidth: .infinity, minHeight: 54).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         }.buttonStyle(.springPress).padding(.top, 6).accessibilityIdentifier("glance-show-all")
                     }
+                    if titles.isEmpty {
+                        Group {
+                            if watching.isEmpty { DiaryEmptyState(title: "Nothing on the go", description: "Start a show or a movie and it shows up here.") }
+                            else { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.") }
+                        }.padding(.horizontal, 6).padding(.top, 14)
+                    }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
-                if titles.isEmpty { DiaryEmptyState(title: "A clear little corner", description: "No current watches match these filters. Try another category.").padding(.horizontal, 14).padding(.top, 20) }
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
+            .onChange(of: category) { _, _ in showAll = false }
+            .haptic(.selection, trigger: sortRaw).haptic(.selection, trigger: grid)
+    }
+    private var heroLabel: String {
+        switch sort.wrappedValue { case .recentlyUpdated: "LAST WATCHED"; case .almostDone: "ALMOST DONE"; case .title: "WATCHING" }
     }
     /// One side of the list | grid switch: the chosen one sits on the accent tint.
     private func layoutButton(grid value: Bool, icon: String) -> some View {
@@ -792,7 +802,7 @@ struct GlanceView: View {
     private func order(_ titles: [MediaTitle]) -> [MediaTitle] {
         let chosen = sort.wrappedValue
         let progress = chosen == .almostDone ? Dictionary(uniqueKeysWithValues: titles.map { ($0.id, store.libraryProgress($0)) }) : [:]
-        let activity = chosen == .recentlyUpdated ? GlanceOverview.lastActivity(events: store.workspace.events) : [:]
+        let activity = chosen == .recentlyUpdated ? store.glanceActivity : [:]
         return GlanceOverview.order(titles, sort: chosen, lastActivity: activity, progress: progress)
     }
 }

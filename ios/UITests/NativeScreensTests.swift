@@ -135,7 +135,7 @@ import UIKit
     }
     func testEmptyDiaryScreensRetainNavigationAndSourceEmptyStates() {
         let app = launch(empty: true)
-        XCTAssertTrue(app.staticTexts["A clear little corner"].waitForExistence(timeout: 5)); capture("Empty Glance")
+        XCTAssertTrue(app.staticTexts["Nothing on the go"].waitForExistence(timeout: 5)); capture("Empty Glance")
         app.tabBars.buttons["Home"].tap()
         XCTAssertTrue(app.staticTexts["This week"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Continue watching"].exists); XCTAssertFalse(app.staticTexts["Recently watched"].exists)

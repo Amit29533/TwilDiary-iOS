@@ -791,6 +791,8 @@ struct ProgressCard: View {
     var grid = false
     /// Glance's large card for the most recently updated title: full artwork, text on a scrim.
     var hero = false
+    /// The large card's label: what put it first (the order Glance is in).
+    var heroLabel = "LAST WATCHED"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(DiaryStore.self) private var store
     @State private var loadedCard: WatchCard?
@@ -989,7 +991,7 @@ struct ProgressCard: View {
         HStack(spacing: 0) {
             Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 4) {
-                Text("LAST WATCHED").font(.system(size: 12, weight: .bold)).tracking(1.8)
+                Text(heroLabel).font(.system(size: 12, weight: .bold)).tracking(1.8)
                     // Native: white on the artwork (the accent blue was lost on warm pictures).
                     .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
                     .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)

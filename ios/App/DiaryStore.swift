@@ -52,6 +52,16 @@ import TwilDiaryCore
     /// diary again (and Profile sorted every watch).
     @ObservationIgnored private var cachedActive: (titles: [MediaTitle], events: [WatchEvent])?
     @ObservationIgnored private var cachedNewestFirst: [WatchEvent]?
+    @ObservationIgnored private var cachedGlanceActivity: (revision: UUID, value: [String: GlanceActivity])?
+    /// Each title's newest watch, for Glance's "Recently updated", worked out once per diary change:
+    /// Glance parsed the dates of every watch on each redraw.
+    var glanceActivity: [String: GlanceActivity] {
+        let revision = homeWorkspaceRevision
+        if let cachedGlanceActivity, cachedGlanceActivity.revision == revision { return cachedGlanceActivity.value }
+        let value = GlanceOverview.lastActivity(events: workspace.events)
+        cachedGlanceActivity = (revision, value)
+        return value
+    }
     var activeTitles: [MediaTitle] { active.titles }
     var favouriteShows: [MediaTitle] { activeTitles.filter { $0.favorite && $0.isSeries } }
     /// Every favourite title: shows, movies and anime.
