@@ -24,7 +24,6 @@ struct SearchLandingView: View {
     @State private var loadedRevision: UUID?
     @State private var loadingRevision: UUID?
     @State private var failure: String?
-    @State private var allTop = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     init(kind: CatalogSearchView.Kind, recent: [String], choose: @escaping (String) -> Void, clear: @escaping () -> Void) {
         self.kind = kind; self.recent = recent; self.choose = choose; self.clear = clear
@@ -32,29 +31,15 @@ struct SearchLandingView: View {
         _shows = State(initialValue: Self.trending[kind == .movies ? "movie" : "tv"]?.items ?? [])
     }
     private var loading: Bool { loadingRevision == store.sessionRevision }
-    /// Native: a chart row as in Apple Music: the rank, the poster, name and score, a separator under it.
-    private func chartRow(index: Int, item: CatalogItem) -> some View {
-        HStack(spacing: 14) {
-            Text("\(index + 1)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 24)
-            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 48, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.name).font(.body).foregroundStyle(.primary).lineLimit(2)
-                HStack(spacing: 8) {
-                    if let score = item.rating, score > 0 {
-                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                            .font(.system(size: 14)).foregroundStyle(.secondary)
-                    }
-                    if store.libraryIdentity(item) != nil {
-                        Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
-        }.padding(.vertical, 6)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 100) }
-            .contentShape(Rectangle())
+    /// A trending title's poster with its place in the chart.
+    private func rankedPoster(index: Int, item: CatalogItem) -> some View {
+        CatalogPoster(item: item).overlay(alignment: .topLeading) {
+            Text("\(index + 1)").font(.system(size: 15, weight: .heavy)).monospacedDigit()
+                .foregroundStyle(index < 3 ? ThemeStore.current.accentInk : .white)
+                .frame(minWidth: 28, minHeight: 28).padding(.horizontal, 2)
+                .background(index < 3 ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.black.opacity(0.7)), in: Capsule())
+                .padding(6).accessibilityLabel("Number \(index + 1)")
+        }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -78,51 +63,21 @@ struct SearchLandingView: View {
                 }
             }
             if !shows.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    let chartTitle = kind == .movies ? "Trending movies this week" : "Trending shows this week"
-                    if allTop {
-                        ExploreBrowseHeader(title: chartTitle, symbol: "chart.line.uptrend.xyaxis",
-                                            artwork: ExploreBrowseHeader.artwork(in: shows))
-                            .padding(.horizontal, -14)
-                    } else {
-                        Text(chartTitle).font(.title2.bold())
-                    }
-                    ForEach(Array(shows.prefix(allTop ? 10 : 3).enumerated()), id: \.element.key) { index, item in
-                        Button {
-                            if let id = store.libraryIdentity(item) { router.openTitle(id, tab: .search) }
-                            else { router.paths[.search, default: NavigationPath()].append(item.route) }
-                        } label: {
-                            if ThemeStore.current.native { chartRow(index: index, item: item) } else {
-                            HStack(spacing: 14) {
-                                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 60, height: 76)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                                    HStack(spacing: 8) {
-                                        if let score = item.rating, score > 0 {
-                                            HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#ffc83d"))
-                                        }
-                                        if store.libraryIdentity(item) != nil {
-                                            Text("In library").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.accent)
-                                                .padding(.horizontal, 8).frame(height: 22).background(theme.accent.opacity(0.16), in: Capsule())
-                                        }
-                                    }
-                                }
-                                Spacer(minLength: 0)
-                                Text("\(index + 1)").font(.system(size: 28, weight: .bold)).monospacedDigit()
-                                    .foregroundStyle(index < 3 ? theme.accent : Color.white.opacity(0.3))
-                            }.padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08))).contentShape(Rectangle())
+                // The week's top ten as one row of posters, as the other shelves, each with its rank.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(kind == .movies ? "Trending movies this week" : "Trending shows this week").font(.title2.bold())
+                        .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                    ScrollView(.horizontal) {
+                        LazyHStack(alignment: .top, spacing: 12) {
+                            ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
+                                Group {
+                                    if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
+                                    else { NavigationLink(value: item.route) { rankedPoster(index: index, item: item) } }
+                                }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: 3, spacing: 12)
+                                    .accessibilityIdentifier("trending-show-\(index + 1)")
                             }
-                        }.buttonStyle(.springPress).foregroundStyle(.primary).accessibilityIdentifier("trending-show-\(index + 1)")
-                    }
-                    if !allTop && shows.count > 3 {
-                        Button { allTop = true } label: {
-                            Text("See all \(min(10, shows.count))").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
-                                .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.04), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.08)))
-                        }.buttonStyle(.springPress).accessibilityIdentifier("search-top-all")
-                    }
+                        }
+                    }.scrollIndicators(.hidden).scrollClipDisabled()
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
             if loading && shows.isEmpty { DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .list(rows: 3)) }
