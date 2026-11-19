@@ -430,10 +430,12 @@ struct ExploreAIPrompts: View {
 /// The page a prompt opens: AI search's own results for its description.
 struct ExploreAIPromptPage: View {
     let route: ExploreAIPromptRoute
+    /// The picks shown: the first one's picture is the page's cover.
+    @State private var picks: [CatalogItem] = []
     var body: some View {
-        ExploreBrowsePage(title: route.label, symbol: "sparkles", subtitle: "Picked by CineMind") {
+        ExploreBrowsePage(title: route.label, symbol: "sparkles", subtitle: "Picked by CineMind", artwork: ExploreBrowseHeader.artwork(in: picks)) {
             VStack(alignment: .leading, spacing: 14) {
-                SemanticSearchSection(query: route.prompt, kind: .all)
+                SemanticSearchSection(query: route.prompt, kind: .all, showsLabel: false) { found in picks = found }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }
     }

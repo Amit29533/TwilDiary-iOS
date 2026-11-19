@@ -578,6 +578,10 @@ import TwilDiaryCore
 struct SemanticSearchSection: View {
     let query: String
     let kind: CatalogSearchView.Kind
+    /// Search marks its AI results apart from the others; a CineMind page is all AI and says so in its header.
+    var showsLabel = true
+    /// The matches as they're shown (a CineMind page takes its cover from the first).
+    var onMatches: (([CatalogItem]) -> Void)? = nil
     @Environment(DiaryStore.self) private var store
     @State private var matches: [SemanticSearch.Match] = []
     @State private var loading = false
@@ -605,10 +609,12 @@ struct SemanticSearchSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // AI looks one way everywhere (owner's request): CineMind's mark and its glow colours.
-            HStack(spacing: 8) {
-                CineMindMark(size: 20)
-                Text("FROM YOUR DESCRIPTION").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(CineGlow.linear)
-            }.padding(.top, 6)
+            if showsLabel {
+                HStack(spacing: 8) {
+                    CineMindMark(size: 20)
+                    Text("FROM YOUR DESCRIPTION").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(CineGlow.linear)
+                }.padding(.top, 6)
+            }
             if !hasKey {
                 Button { addingKey = true } label: {
                     VStack(alignment: .leading, spacing: 4) {
@@ -632,6 +638,7 @@ struct SemanticSearchSection: View {
             ForEach(Array(visible.enumerated()), id: \.element.id) { index, match in row(match).cineReveal(order: index) }
         }
         .task(id: query + (hasKey ? "|key" : "")) { await run(query) }
+        .onChange(of: visible.map(\.id), initial: true) { _, _ in onMatches?(visible.map(\.item)) }
         .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         .accessibilityElement(children: .contain).accessibilityIdentifier("semantic-results")
     }
@@ -651,6 +658,11 @@ struct SemanticSearchSection: View {
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e7ca90"))
                                 .accessibilityElement(children: .ignore).accessibilityLabel("Rated \(String(format: "%.1f", score))")
                         }
+                        if let saved = store.libraryIdentity(match.item).flatMap({ store.title($0) }) {
+                            Text(saved.status.capitalized).font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                .lineLimit(1).fixedSize().padding(.horizontal, 8).frame(height: 22).background(HomeStyle.chip, in: Capsule())
+                                .accessibilityLabel("In your library, " + saved.status)
+                        }
                     }
                     // Why it matched, in the assistant's voice: its sparkle in its colours.
                     Text("\(Text(Image(systemName: "sparkle")).foregroundStyle(CineGlow.linear)) \(match.why)").foregroundStyle(HomeStyle.soft)
@@ -663,7 +675,9 @@ struct SemanticSearchSection: View {
         }.buttonStyle(.springPress).accessibilityIdentifier("semantic-" + match.item.key)
     }
     private func detail(_ item: CatalogItem) -> String {
-        [item.route.kind == .tv ? "Show" : "Movie", item.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
+        let anime = store.libraryIdentity(item).flatMap { store.title($0) }.map { $0.category.hasPrefix("anime") } ?? (item.isAnime == true)
+        let kind = item.route.kind == .tv ? (anime ? "Anime" : "Show") : (anime ? "Anime movie" : "Movie")
+        return [kind, item.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// One request per description you send (never while typing).
