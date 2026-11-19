@@ -145,13 +145,20 @@ actor TitleAwardHistory {
         var parts = URLComponents(string: "https://query.wikidata.org/sparql")
         parts?.queryItems = [.init(name: "query", value: query), .init(name: "format", value: "json")]
         guard let url = parts?.url else { throw APIError.message("The credits request is unavailable.") }
-        var request = URLRequest(url: url, timeoutInterval: 15)
+        // Wikidata can take 15 seconds on a title it hasn't answered lately (Parasite took 14),
+        // then answers the same question at once: a long wait, and one more try.
+        var request = URLRequest(url: url, timeoutInterval: 45)
         request.setValue("application/sparql-results+json", forHTTPHeaderField: "Accept")
         request.setValue("TwilDiary/1.0 (iOS app)", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw APIError.message("Individual award credits couldn’t be loaded.")
+        var reply: Data?
+        for attempt in 0..<2 where reply == nil {
+            if attempt > 0 { try await Task.sleep(for: .seconds(2)) }
+            if let (data, response) = try? await URLSession.shared.data(for: request), (response as? HTTPURLResponse)?.statusCode == 200 {
+                reply = data
+            }
+            try Task.checkCancellation()
         }
+        guard let data = reply else { throw APIError.message("Individual award credits couldn’t be loaded.") }
         struct Reply: Decodable {
             struct Results: Decodable { let bindings: [[String: Field]] }
             struct Field: Decodable { let value: String }

@@ -183,10 +183,9 @@ struct TitleAwardsPage: View {
                                 Text(ceremony.name).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                                     .accessibilityAddTraits(.isHeader)
                                 Spacer(minLength: 8)
-                                if ceremony.wins > 0 {
-                                    Label("\(ceremony.wins)", systemImage: "trophy.fill").font(.caption.weight(.semibold)).foregroundStyle(Color(themed: "#e7ca90"))
-                                }
-                                Text(ceremony.rows.count.formatted()).font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
+                                // Wins and the other nominations, each with its own icon (as the title page's card).
+                                if ceremony.wins > 0 { counter("trophy.fill", ceremony.wins, tint: Color(themed: "#e7ca90")) }
+                                if ceremony.rows.count > ceremony.wins { counter("medal", ceremony.rows.count - ceremony.wins, tint: .secondary) }
                             }
                             VStack(alignment: .leading, spacing: 0) {
                                 ForEach(Array(ceremony.rows.enumerated()), id: \.element) { index, row in
@@ -208,7 +207,17 @@ struct TitleAwardsPage: View {
                         Text("Loading award credits…").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-                if let issue { RetryNotice(message: issue) { attempt += 1 } }
+                if let issue {
+                    if records.isEmpty { RetryNotice(message: issue) { attempt += 1 } }
+                    else {
+                        // Some awards are here: a quiet line, not a card in the middle of them.
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.circle").foregroundStyle(.secondary)
+                            Text("Some people's awards didn't load.").foregroundStyle(.secondary)
+                            Button("Try again") { attempt += 1 }.fontWeight(.semibold)
+                        }.font(.footnote).accessibilityElement(children: .combine)
+                    }
+                }
                 if !loading && records.isEmpty && issue == nil {
                     ContentUnavailableView("No award records", systemImage: "trophy")
                 }
