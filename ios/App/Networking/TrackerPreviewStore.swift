@@ -172,6 +172,10 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         // Each missing watch says where it was placed on Simkl (or that it wasn't).
         var comparison = analysed.comparison
         comparison.onlyInDiary = comparison.onlyInDiary.map(SimklMirror.shared.placementNote)
+        // In Trash, still on Simkl: shown, never "Matches your diary" (it's being taken off).
+        for title in SimklMirror.trashedOnSimkl(library, trashed: PhoneTrash.shared.titles, listed: SimklMirror.shared.listedOnSimkl) {
+            comparison.onlyOnTrakt.append(.init(title: title.name, detail: "in Trash, still on Simkl · being taken off"))
+        }
         reports[.simkl] = .init(seconds: Date.now.timeIntervalSince(started), requests: read.requests, fetched: [.history, .ratings, .watchlist, .dropped],
                                 unavailable: [], skipped: library.skipped, comparison: comparison)
         plans[.simkl] = analysed.plan

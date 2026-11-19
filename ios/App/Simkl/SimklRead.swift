@@ -108,6 +108,11 @@ enum SimklLibrary {
     /// One `/sync/all-items/{movies|shows|anime}` reply (extended=full, episode_watched_at=yes)
     /// added to the library: plays, ratings, Plan to watch (the watchlist) and Dropped.
     static func apply(_ kind: String, _ data: Data, mapping: Mapping, into library: inout TraktLibrary) {
+        var listed = Set<String>()
+        apply(kind, data, mapping: mapping, into: &library, listed: &listed)
+    }
+    /// `listed` gets every title the reply lists, on whatever list ("tv:1399").
+    static func apply(_ kind: String, _ data: Data, mapping: Mapping, into library: inout TraktLibrary, listed: inout Set<String>) {
         let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         for item in (root[kind] as? [[String: Any]]) ?? [] {
             let media = (item["movie"] as? [String: Any]) ?? (item["show"] as? [String: Any]) ?? [:]
@@ -177,6 +182,7 @@ enum SimklLibrary {
                 }
             }
             guard let ref else { library.skipped += 1; continue }
+            if let key = ref.diaryKey { listed.insert(key) }
             // Part 1 is watched when it's listed so; without the list, as before (watched or completed).
             let firstPart = listedParts.first { $0.number == 1 }
             if ref.kind == .movie, listedParts.isEmpty ? item["last_watched_at"] is String || (item["status"] as? String) == "completed" : firstPart != nil {

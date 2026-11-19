@@ -55,6 +55,7 @@ extension DiaryStore {
             try serviceClearLists(title)
             PhoneTrash.shared.add(title)
             applyDiarySource()
+            if SimklAccount.shared.canSend { TrackerPreviewStore.shared.refreshSoon(.simkl, store: self, after: 60) }
             // Said, with no Undo: the title comes back from Trash itself.
             dismissUndo()
             undoLabel = "Moved to Trash"

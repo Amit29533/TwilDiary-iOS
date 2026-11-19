@@ -77,6 +77,13 @@ struct SimklQueue: Codable, Equatable, Sendable {
         switch job.kind {
         case .watch:
             if let index = jobs.lastIndex(where: { $0.kind == .unwatch && $0.itemKey == job.itemKey && untried($0) }) { jobs.remove(at: index); return }
+        case .unwatch where job.wholeTitle == true:
+            // The whole title off Simkl: what hadn't gone for it yet is moot (an untried Plan to
+            // watch would only be taken off again), and the removal goes first in line.
+            jobs.removeAll { $0.titleKey == job.titleKey && untried($0) && $0.wholeTitle != true }
+            if jobs.contains(where: { $0.titleKey == job.titleKey && $0.wholeTitle == true && untried($0) }) { return }
+            jobs.insert(job, at: 0)
+            return
         case .unwatch:
             if let index = jobs.lastIndex(where: { $0.kind == .watch && $0.itemKey == job.itemKey && untried($0) && ($0.watchedAt == job.watchedAt || job.watchedAt == nil) }) {
                 jobs.remove(at: index); return
@@ -106,6 +113,10 @@ struct SimklQueue: Codable, Equatable, Sendable {
     }
     /// When the first waiting job may go.
     var nextWake: Date? { jobs.compactMap(\.notBefore).min() }
+    /// A title's waiting whole-title removal goes now (the trash sweep found the title still on Simkl).
+    mutating func hurry(_ titleKey: String) {
+        for index in jobs.indices where jobs[index].titleKey == titleKey && jobs[index].wholeTitle == true { jobs[index].notBefore = nil }
+    }
 }
 
 /// Copies what you do in TwilDiary to Simkl when "Also save my activity to Simkl" is on.
@@ -190,14 +201,17 @@ struct SimklQueue: Codable, Equatable, Sendable {
         case .patchTitle(let titleId, _, let status, let score, let clearScore, _, _, _, _):
             guard let title = resolvedTitle(titleId, store: store), let tmdb = title.tmdbId else { return [] }
             let base = SimklJob(kind: .rate, tmdb: tmdb, movie: !title.isSeries, anime: Self.isAnime(title), name: title.name, year: title.year)
+            if store.trashing.contains(titleId), status != nil {
+                // Moved to Trash: the whole title off Simkl, alone. It takes the rating and every
+                // list with it (test account, 2026-11-19), so no rating removal goes first: queued
+                // ahead of it, the title's removal waited behind that and Simkl kept the title.
+                var job = base; job.kind = .unwatch; job.wholeTitle = true
+                return [job]
+            }
             var jobs: [SimklJob] = []
             if let score { var job = base; job.rating = min(10, max(1, Int(score.rounded()))); jobs.append(job) }
             else if clearScore { var job = base; job.kind = .unrate; jobs.append(job) }
-            if store.trashing.contains(titleId), status != nil {
-                // Moved to Trash: the whole title off Simkl (off every list), not onto the Completed or
-                // Watching list the Trash status would name (a Planned film went to Completed).
-                var job = base; job.kind = .unwatch; job.wholeTitle = true; jobs.append(job)
-            } else if let status, let list = list(for: status, movie: !title.isSeries) { var job = base; job.kind = .list; job.list = list; jobs.append(job) }
+            if let status, let list = list(for: status, movie: !title.isSeries) { var job = base; job.kind = .list; job.list = list; jobs.append(job) }
             return jobs
         default:
             return []
@@ -500,9 +514,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
         requests += await placeAhead(diary, api: api, budget: min(budget, room))
         let mapping = SimklLibrary.mapping(placements: placements, diary: diary, map: AnimeMapStore.shared.map, trashed: PhoneTrash.shared.titles)
         var read = TraktLibrary(activities: TraktActivities(all: root["all"] as? String, stamps: stamps))
+        var listed = Set<String>()
         for kind in ["movies", "shows", "anime"] {
-            if let data = SimklStorage.load(Data.self, Self.libraryFile(kind)) { SimklLibrary.apply(kind, data, mapping: mapping, into: &read) }
+            if let data = SimklStorage.load(Data.self, Self.libraryFile(kind)) { SimklLibrary.apply(kind, data, mapping: mapping, into: &read, listed: &listed) }
         }
+        listedOnSimkl = listed
         library = read
         return (requests, unplacedAnime(diary).count)
     }
@@ -557,6 +573,8 @@ struct SimklQueue: Codable, Equatable, Sendable {
 
     // MARK: Trash on Simkl
 
+    /// Every title the last read found on Simkl ("tv:1399"), on whatever list.
+    @ObservationIgnored private(set) var listedOnSimkl: Set<String> = []
     /// How often the check has sent each trashed title off Simkl ("show:61223": 2).
     @ObservationIgnored private var trashSweeps = SimklStorage.load([String: Int].self, "trash-sweep.json") ?? [:]
     /// Trashed titles Simkl still lists (Plan to watch, Dropped, watches or a rating) go off Simkl
@@ -567,7 +585,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
         guard !store.isPreview, SimklAccount.shared.canSend else { return 0 }
         self.store = store
         var jobs: [SimklJob] = []
-        for title in Self.trashedOnSimkl(library, trashed: trashed) {
+        for title in Self.trashedOnSimkl(library, trashed: trashed, listed: listedOnSimkl) {
             guard let tmdb = title.tmdbId else { continue }
             var job = SimklJob(kind: .unwatch, tmdb: tmdb, movie: !title.isSeries, anime: Self.isAnime(title), name: title.name, year: title.year)
             job.wholeTitle = true; job.swept = true
@@ -577,6 +595,8 @@ struct SimklQueue: Codable, Equatable, Sendable {
         let listed = Set(jobs.map(\.titleKey))
         trashSweeps = trashSweeps.filter { listed.contains($0.key) }
         var queued = 0
+        // A removal already waiting (after a failed try) goes now instead of after its pause.
+        for job in jobs { queue.hurry(job.titleKey) }
         for job in jobs where !queue.jobs.contains(where: { $0.titleKey == job.titleKey && $0.wholeTitle == true }) {
             let tries = trashSweeps[job.titleKey, default: 0]
             if tries >= 3 {
@@ -591,10 +611,11 @@ struct SimklQueue: Codable, Equatable, Sendable {
         if queued > 0 { save(); Task { await resume() } }
         return queued
     }
-    /// The trashed titles Simkl lists in any way, by TMDB id.
-    nonisolated static func trashedOnSimkl(_ library: TraktLibrary, trashed: [MediaTitle]) -> [MediaTitle] {
+    /// The trashed titles Simkl lists in any way, by TMDB id. `listed`: every title Simkl lists,
+    /// whatever its list (Watching, Completed and On hold aren't in the library's lists).
+    nonisolated static func trashedOnSimkl(_ library: TraktLibrary, trashed: [MediaTitle], listed: Set<String> = []) -> [MediaTitle] {
         let refs = library.watchlist.map(\.title) + library.dropped.map(\.title) + library.ratings.map(\.title) + library.plays.map(\.title)
-        let onSimkl = Set(refs.compactMap(\.diaryKey))
+        let onSimkl = Set(refs.compactMap(\.diaryKey)).union(listed)
         return trashed.filter { title in title.tmdbId.map { onSimkl.contains((title.isSeries ? "tv:" : "movie:") + String($0)) } ?? false }
     }
 

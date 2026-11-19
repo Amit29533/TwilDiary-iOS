@@ -514,6 +514,36 @@ final class SimklAddOnTests: XCTestCase {
         XCTAssertEqual(SimklBody.confirmed(kept, groups: groups, asked: [0]), [toni.id])
     }
 
+    /// Trash (2026-11-19): the whole-title removal goes first in line and cancels what hadn't gone
+    /// for that title (an untried Plan to watch, a rating removal), so it never waits behind them.
+    func testAWholeTitleRemovalGoesFirstAndCancelsWhatHadntGone() {
+        var queue = SimklQueue()
+        var other = SimklJob(kind: .list, tmdb: 1, movie: false, name: "Other"); other.list = "plantowatch"
+        var planned = SimklJob(kind: .list, tmdb: 1399, movie: false, name: "Game of Thrones"); planned.list = "plantowatch"
+        var unrate = SimklJob(kind: .unrate, tmdb: 1399, movie: false, name: "Game of Thrones")
+        unrate.attempts = 0
+        queue.add(other); queue.add(planned); queue.add(unrate)
+        var whole = SimklJob(kind: .unwatch, tmdb: 1399, movie: false, name: "Game of Thrones"); whole.wholeTitle = true
+        queue.add(whole)
+        XCTAssertEqual(queue.jobs.map { "\($0.titleKey)|\($0.kind)" }, ["show:1399|unwatch", "show:1|list"])
+        XCTAssertEqual(queue.batch(now: .now).first?.wholeTitle, true, "the removal is the next request")
+        queue.add(whole)
+        XCTAssertEqual(queue.jobs.filter { $0.wholeTitle == true }.count, 1, "once")
+    }
+    /// A trashed show Simkl keeps on Watching with nothing watched isn't in the library's lists; the
+    /// read records it as listed, so the trash sweep still finds it.
+    func testATitleOnWatchingIsRecordedAsListed() throws {
+        let workspace = try diary(titles: [], episodes: [], watched: [])
+        let trashed = try diary(titles: [("got", "Game of Thrones", "show", 1399)], episodes: [], watched: []).titles
+        let row = Data(#"{"shows":[{"status":"watching","show":{"title":"Game of Thrones","year":2011,"ids":{"simkl":17465,"tmdb":"1399"}}}]}"#.utf8)
+        var library = TraktLibrary(), listed = Set<String>()
+        SimklLibrary.apply("shows", row, mapping: SimklLibrary.mapping(placements: [:], diary: workspace, trashed: trashed), into: &library, listed: &listed)
+        XCTAssertTrue(library.watchlist.isEmpty && library.plays.isEmpty)
+        XCTAssertEqual(listed, ["tv:1399"])
+        XCTAssertTrue(SimklMirror.trashedOnSimkl(library, trashed: trashed).isEmpty, "the lists alone miss it")
+        XCTAssertEqual(SimklMirror.trashedOnSimkl(library, trashed: trashed, listed: listed).map(\.tmdbId), [1399])
+    }
+
     /// Force Match takes a whole title off Simkl with no seasons (all of it), apart from episodes.
     func testAWholeTitleComesOffWithoutSeasons() throws {
         var whole = SimklJob(kind: .unwatch, tmdb: 95396, movie: false, name: "Severance"); whole.wholeTitle = true
