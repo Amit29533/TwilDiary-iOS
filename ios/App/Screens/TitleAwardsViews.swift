@@ -165,7 +165,7 @@ struct TitleAwardsPage: View {
         store.libraryIdentity(CatalogItem(id: route.id, mediaType: route.kind, name: title)).flatMap { store.title($0) }.flatMap { $0.backdrop ?? $0.poster }
     }
     /// From your diary, else TMDB's picture of the title (a title you're previewing had none).
-    private var artwork: String? { savedArtwork ?? cover ?? TitleCover.cached(route) }
+    private var artwork: String? { savedArtwork ?? cover ?? TitlePageCover.cached(route) }
 
     var body: some View {
         // Explore's layout: the show's picture at the top, its name, then the awards by ceremony.
@@ -234,7 +234,7 @@ struct TitleAwardsPage: View {
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 32)
         }
         .task(id: attempt) { await load() }
-        .task(id: route) { if savedArtwork == nil { cover = await TitleCover.load(route, store: store) } }
+        .task(id: route) { if savedArtwork == nil { cover = await TitlePageCover.load(route, store: store) } }
     }
 
     private func summaryChip(_ symbol: String, _ count: Int, _ label: String, tint: Color) -> some View {

@@ -706,7 +706,7 @@ struct PreviewEpisodesPage: View {
 
 /// A title's wide picture for the top of its own pages (Cast and crew, Awards) when it isn't in your
 /// diary: those pages showed the plain symbol for titles you were only previewing.
-@MainActor enum TitleCover {
+@MainActor enum TitlePageCover {
     private static var known: [CatalogRoute: String] = [:]
     static func cached(_ route: CatalogRoute) -> String? { known[route] }
     static func load(_ route: CatalogRoute, store: DiaryStore) async -> String? {
@@ -748,14 +748,14 @@ struct CastCreditsPage: View {
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 40)
         }
             .task(id: route) { await load() }
-            .task(id: route) { if savedBackdrop == nil { cover = await TitleCover.load(route, store: store) } }
+            .task(id: route) { if savedBackdrop == nil { cover = await TitlePageCover.load(route, store: store) } }
     }
     private var savedBackdrop: String? {
         store.activeTitles.first { $0.tmdbId == route.id && $0.isSeries == (route.kind != .movie) }?.backdrop
     }
     /// The title's backdrop: from your diary, else TMDB's, else the first character's picture.
     private var backdrop: String? {
-        savedBackdrop ?? cover ?? TitleCover.cached(route) ?? characters?.lazy.compactMap(\.image).first
+        savedBackdrop ?? cover ?? TitlePageCover.cached(route) ?? characters?.lazy.compactMap(\.image).first
     }
     private func segment(_ tab: Tab) -> some View {
         let on = selected == tab
