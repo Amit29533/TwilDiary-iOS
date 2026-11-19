@@ -90,6 +90,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
             let reply = try await client.post("/users/me/lists", body: JSONSerialization.data(withJSONObject: body))
             guard let row = try JSONSerialization.jsonObject(with: reply) as? [String: Any], let list = Self.list(row) else { return nil }
             lists.append(list); entries[list.id] = []
+            Haptics.play(.success)
             return list
         } catch { failure = Self.message(error); return nil }
     }
@@ -112,6 +113,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
             let client = try await TraktDirectStore.shared.client(store: store)
             _ = try await client.send("DELETE", "/users/me/lists/\(list.id)")
             lists.removeAll { $0.id == list.id }; entries[list.id] = nil
+            Haptics.play(.warning)
             return true
         } catch { failure = Self.message(error); return false }
     }
@@ -126,6 +128,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
         do {
             let client = try await TraktDirectStore.shared.client(store: store)
             _ = try await client.post("/users/me/lists/\(list.id)/items" + (on ? "" : "/remove"), body: JSONSerialization.data(withJSONObject: body))
+            Haptics.play(on ? .success : .light)
             await loadEntries(list.id, store: store, force: true)
         } catch { failure = Self.message(error) }
     }
@@ -133,6 +136,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
     /// Your order: the list's items, by their Trakt list-item ids, first to last.
     func reorder(_ list: YourList, to ordered: [YourListEntry], store: DiaryStore) async {
         entries[list.id] = ordered.enumerated().map { YourListEntry(id: $0.element.id, rank: $0.offset + 1, listedAt: $0.element.listedAt, item: $0.element.item) }
+        Haptics.play(.soft)
         do {
             let client = try await TraktDirectStore.shared.client(store: store)
             _ = try await client.post("/users/me/lists/\(list.id)/items/reorder", body: JSONSerialization.data(withJSONObject: ["rank": ordered.map(\.id)]))

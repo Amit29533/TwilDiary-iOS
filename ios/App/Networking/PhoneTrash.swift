@@ -54,6 +54,7 @@ extension DiaryStore {
             try await servicePatch(title, values: ["status": title.isSeries ? "watching" : "completed", "score": NSNull(), "favorite": false])
             try serviceClearLists(title)
             PhoneTrash.shared.add(title)
+            Haptics.play(.warning)
             applyDiarySource()
             if SimklAccount.shared.canSend { TrackerPreviewStore.shared.refreshSoon(.simkl, store: self, after: 60) }
             // Said, with no Undo: the title comes back from Trash itself.
@@ -71,6 +72,7 @@ extension DiaryStore {
         if let score = title.score { values["score"] = score }
         try await servicePatch(title, values: values)
         try PhoneTrash.shared.remove(title)
+        Haptics.play(.success)
         applyDiarySource()
     }
 }

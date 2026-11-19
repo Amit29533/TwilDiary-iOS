@@ -334,6 +334,7 @@ struct FavouritesView: View {
     }
     private func choose(_ kind: String) {
         guard kind != pillTab else { return }
+        Haptics.play(.selection)
         withAnimation(.snappy(duration: 0.25)) { pillTab = kind }
         // The page a moment later, once the pill's first frame is on screen.
         Task { @MainActor in

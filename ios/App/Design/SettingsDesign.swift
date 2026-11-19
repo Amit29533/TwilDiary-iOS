@@ -230,7 +230,7 @@ struct SettingsToggleStyle: ToggleStyle {
                     Capsule().fill(configuration.isOn ? theme.accent : Color(themed: "#3a3a46")).frame(width: 46, height: 28)
                     Circle().fill(configuration.isOn ? ThemeStore.current.accentInk : HomeStyle.primary).frame(width: 22, height: 22).padding(3)
                 }.animation(.snappy(duration: 0.2), value: configuration.isOn)
-            }.buttonStyle(.plain)
+            }.buttonStyle(.plain).haptic(.selection, trigger: configuration.isOn)
         }.accessibilityElement(children: .combine).accessibilityAddTraits(.isToggle)
             .accessibilityValue(configuration.isOn ? "On" : "Off")
             .accessibilityAction { configuration.isOn.toggle() }

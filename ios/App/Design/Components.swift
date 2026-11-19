@@ -371,7 +371,7 @@ struct PageHeader: View {
         }.buttonStyle(.plain)
             // Quick taps can reach the button as one; a real triple tap opens the pick too.
             .simultaneousGesture(TapGesture(count: 3).onEnded { presentPick() })
-            .sensoryFeedback(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick")
+            .haptic(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick")
             .accessibilityAction(named: "Random pick") { presentPick() }
             .accessibilityIdentifier("random-pick-logo")
     }
@@ -464,7 +464,7 @@ struct SearchField: View {
                     else { Capsule().fill(Color.primary.opacity(0.08)).overlay(Capsule().strokeBorder(HomeStyle.outline(0.14), lineWidth: 0.75)) }
                 }
                 .frame(minWidth: 36, minHeight: 36).contentShape(Rectangle())
-        }.buttonStyle(.plain).sensoryFeedback(.selection, trigger: ai.wrappedValue)
+        }.buttonStyle(.plain).haptic(.selection, trigger: ai.wrappedValue)
             .accessibilityLabel("Search by description with AI").accessibilityValue(ai.wrappedValue ? "On" : "Off").accessibilityIdentifier("search-ai")
     }
     /// The border in Gemini's colours, turning slowly, with a soft glow outside it.
@@ -702,7 +702,7 @@ struct CategoryPicker: View {
         }.padding(3).frame(maxWidth: .infinity).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             .padding(.horizontal, 16).padding(.vertical, 4)
             .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22), value: selection)
-            .sensoryFeedback(.selection, trigger: shown)
+            .haptic(.selection, trigger: shown)
             .onChange(of: selection) { _, value in if pending == value { pending = nil } }
     }
     private var classic: some View {
@@ -730,7 +730,7 @@ struct CategoryPicker: View {
         }.padding(.horizontal, 14).padding(.vertical, 4)
             // A side swipe changes the selection directly; the pill follows it the same way.
             .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: selection)
-            .sensoryFeedback(.selection, trigger: shown)
+            .haptic(.selection, trigger: shown)
             .onChange(of: selection) { _, value in if pending == value { pending = nil } }
     }
     private func choose(_ category: LibraryCategory) {
@@ -838,7 +838,7 @@ struct ProgressCard: View {
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact || (ThemeStore.current.native && !hero) ? 0 : 0.17)))
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
-            .sensoryFeedback(.success, trigger: watchFeedback)
+            .haptic(.success, trigger: watchFeedback)
             .sheet(isPresented: $showNotes) { TitleNotesSheet(titleID: title.id) }
     }
     /// Home's Continue watching text over the page backdrop (owner's design): title, "S2 · E3 of 8",

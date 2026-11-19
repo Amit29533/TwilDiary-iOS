@@ -164,6 +164,8 @@ private struct ExploreHeroCarousel: View {
     /// On screen: shown (not under another page) and not scrolled away.
     @State private var shown = false
     @State private var scrolledInto = true
+    /// Your finger is on it (or it's settling after a swipe): a tick per page.
+    @State private var swiping = false
 
     var body: some View {
         let current = titles.firstIndex { $0.id == selected } ?? 0
@@ -177,6 +179,8 @@ private struct ExploreHeroCarousel: View {
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
         .scrollPosition(id: $selected)
+        .onScrollPhaseChange { _, phase in swiping = phase == .interacting || phase == .decelerating }
+        .haptic(.selection, trigger: selected) { _, _ in swiping }
         .overlay(alignment: .bottomTrailing) {
             if titles.count > 1 {
                 HStack(spacing: 5) {

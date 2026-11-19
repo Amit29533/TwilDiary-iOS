@@ -186,7 +186,7 @@ private struct ProfileFavourite: View {
             Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
         }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
-            .sensoryFeedback(.selection, trigger: feedback)
+            .haptic(.selection, trigger: feedback)
     }
 }
 

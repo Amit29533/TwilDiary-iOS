@@ -127,6 +127,7 @@ struct TitleDetailView: View {
                                         Button("Ask CineMind", systemImage: "sparkle") { showCineMind = true }.accessibilityIdentifier("title-cinemind")
                                         // "Favourite" either way; the filled heart says it is one.
                                         Button("Favourite", systemImage: title.favorite ? "heart.fill" : "heart") {
+                                            Haptics.play(.soft)
                                             Task { await store.patch(title, values: ["favorite": !title.favorite]) }
                                         }.disabled(store.writesBlocked).accessibilityIdentifier("title-favorite")
                                         Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { Task { await store.patch(title, values: ["queued": title.queued != true]) } }.disabled(store.writesBlocked)
@@ -388,7 +389,7 @@ struct TitleDetailView: View {
                         Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                             .font(.system(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
                     }.buttonStyle(.diaryWatch).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
-                        .sensoryFeedback(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
+                        .haptic(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)
                 if DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
                     Button { choosingWatchDate = true } label: {
@@ -521,6 +522,7 @@ struct TitleDetailView: View {
     private func episodeArtworkPath(_ episode: Episode, title: MediaTitle) -> String? { episodeDetails.episodes[episode.id]?.artwork ?? episode.still ?? title.backdrop }
     private func episodeScore(_ episode: Episode) -> Double? { episodeDetails.episodes[episode.id]?.communityScore ?? episode.communityScore }
     private func toggleWatched(_ title: MediaTitle, episode: Episode) {
+        Haptics.play(watched.contains(episode.id) ? .light : .success)
         Task {
             if watched.contains(episode.id) { await store.unwatchEpisode(episode) }
             else { await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
@@ -633,7 +635,7 @@ struct TitleDetailView: View {
                 Text("1").foregroundStyle(.secondary)
                 Slider(value: Binding(get: { ratingField.draft ?? 7 }, set: { ratingField.draft = $0 }), in: 1...10, step: 1) { editing in
                     if !editing { Task { await saveRating(value: ratingField.draft) } }
-                }.sensoryFeedback(.selection, trigger: ratingField.draft).accessibilityLabel("Your rating out of 10").accessibilityIdentifier("title-rating-slider")
+                }.haptic(.selection, trigger: ratingField.draft).accessibilityLabel("Your rating out of 10").accessibilityIdentifier("title-rating-slider")
                 Text("10").foregroundStyle(.secondary)
             }.font(.system(size: 12))
             if ratingField.conflict != nil {

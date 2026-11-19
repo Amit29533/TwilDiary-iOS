@@ -313,7 +313,7 @@ struct YearRangeSlider: View {
                     }
                     .position(x: x(upper), y: 22)
             }.frame(width: geo.size.width, height: 44).coordinateSpace(.named("years"))
-        }.frame(height: 44).sensoryFeedback(.selection, trigger: (from ?? 0) + (to ?? 0) * 10_000)
+        }.frame(height: 44).haptic(.selection, trigger: (from ?? 0) + (to ?? 0) * 10_000)
     }
     private func thumb(_ label: String, value: Int) -> some View {
         Circle().fill(.white).frame(width: 26, height: 26).shadow(color: .black.opacity(0.35), radius: 4, y: 2)

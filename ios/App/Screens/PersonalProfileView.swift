@@ -152,7 +152,7 @@ struct MilestoneDetailView: View {
         }.gesture(DragGesture().onChanged { drag = $0.translation.height }.onEnded { value in
             if value.translation.height > 120 { dismiss() } else { withAnimation(.smooth) { drag = 0 } }
         })
-        .sensoryFeedback(.success, trigger: shown) { _, now in now && milestone.earned }
+        .haptic(.success, trigger: shown) { _, now in now && milestone.earned }
         .task {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.72)) { shown = true }
             Task { try? await Task.sleep(for: .seconds(0.45)); withAnimation(.smooth(duration: 0.8)) { filled = true } }

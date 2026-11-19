@@ -18,7 +18,7 @@ struct CollectionLayoutToggle: View {
         }.buttonStyle(.springPress)
             .accessibilityLabel("Show " + collection + (grid ? " as list" : " as " + gridName))
             .accessibilityValue(grid ? gridName.capitalized : "List").accessibilityIdentifier(collection + "-layout")
-            .sensoryFeedback(.selection, trigger: grid)
+            .haptic(.selection, trigger: grid)
     }
 }
 

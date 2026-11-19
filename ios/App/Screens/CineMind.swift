@@ -73,7 +73,7 @@ private struct CopyButton: View {
             Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 13, weight: .semibold)).contentTransition(.symbolEffect(.replace))
                 .frame(width: 32, height: 32).background(Color.primary.opacity(0.06), in: Circle())
         }.buttonStyle(.plain).foregroundStyle(copied ? Color(uiColor: .systemGreen) : Color(uiColor: .secondaryLabel)).accessibilityLabel(copied ? "Copied" : "Copy answer")
-            .sensoryFeedback(.success, trigger: copied) { _, now in now }
+            .haptic(.success, trigger: copied) { _, now in now }
     }
 }
 
@@ -264,7 +264,7 @@ struct CineMindView: View {
             .scrollEdgeEffectStyle(.soft, for: .all)
             .overlay { if thinking { CineEdgeGlow().transition(.opacity) } }
             .animation(.smooth(duration: 0.45), value: thinking)
-            .sensoryFeedback(.impact(weight: .light), trigger: messages.count)
+            .haptic(.impact(weight: .light), trigger: messages.count)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $addingKey, onDismiss: { hasKey = SemanticSearch.key != nil }) { GeminiKeySheet() }
         }

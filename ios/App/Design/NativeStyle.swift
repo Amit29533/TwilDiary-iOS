@@ -207,7 +207,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(segment.id)
             }
         }.padding(3).frame(maxWidth: .infinity).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-            .sensoryFeedback(.selection, trigger: selection)
+            .haptic(.selection, trigger: selection)
     }
 }
 

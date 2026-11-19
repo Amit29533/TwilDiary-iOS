@@ -274,6 +274,7 @@ private struct SeriesRatingMarker: View {
                     .position(x: frame.minX + x, y: frame.minY + y)
             }
         }.allowsHitTesting(false)
+            .haptic(.selection, trigger: selection.index) { _, new in new != nil }
     }
 }
 

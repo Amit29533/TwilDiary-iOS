@@ -68,7 +68,7 @@ struct FavouriteHeartButton: View {
                 .background(tinted ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.black.opacity(0.55)), in: Circle())
                 .frame(width: max(44, size), height: max(44, size)).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove " + name + " from favourites" : "Add " + name + " to favourites")
-            .accessibilityValue(saved ? "Saved" : "Not saved").sensoryFeedback(.selection, trigger: feedback)
+            .accessibilityValue(saved ? "Saved" : "Not saved").haptic(.selection, trigger: feedback)
     }
 }
 

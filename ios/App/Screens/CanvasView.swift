@@ -379,7 +379,7 @@ private struct CanvasGenreSheet: View {
                 }
             }.padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 30)
         }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).presentationBackground(Color(themed: "#111116"))
-            .sensoryFeedback(.selection, trigger: count)
+            .haptic(.selection, trigger: count)
     }
     private func toggle(_ name: String) {
         if name == "Anime" { anime.toggle(); return }

@@ -529,7 +529,7 @@ struct CatalogDetailView: View {
                             } else {
                                 HStack(spacing: 10) {
                                     RatingCircles(mine: nil, community: communityAverage(details.details), onRate: {}, onCommunity: { showInformation = true }, showsMine: false)
-                                    Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { await store.waitForTitle(id); accepted(id) } } } label: {
+                                    Button { Task { if let id = await store.importTitle(details.details, category: details.details.suggestedCategory) { Haptics.play(.success); await store.waitForTitle(id); accepted(id) } } } label: {
                                         primaryLabel(store.busy ? "Adding…" : "Add to Planned", icon: "plus")
                                     }.buttonStyle(.springPress).disabled(store.busy || !store.canMutate).accessibilityIdentifier("catalog-add")
                                 }
@@ -622,6 +622,7 @@ struct CatalogDetailView: View {
         guard let details else { return }
         if let saved = savedTitle { await store.patch(saved, values: values); return }
         guard let id = await store.importTitle(details.details, category: details.details.suggestedCategory) else { return }
+        Haptics.play(.success)
         await store.waitForTitle(id)
         guard let title = store.title(id) else { return }
         await store.patch(title, values: values)

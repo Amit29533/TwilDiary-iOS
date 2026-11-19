@@ -268,6 +268,8 @@ struct RootView: View {
                         onAdd: { router.randomPick = nil; router.library("add") }).id(scope.id)
                 }
             }.onChange(of: store.sessionRevision) { _, _ in router.randomPick = nil }
+            .haptic(.selection, trigger: router.selectedTab)
+            .haptic(.error, trigger: store.error) { _, new in new != nil }
             // Once your diary has loaded the first time: "Turn on notifications", as Cinopsys asks.
             .task(id: store.hasLoadedWorkspace) {
                 guard store.hasLoadedWorkspace, !store.needsSignIn, !store.isPreview,

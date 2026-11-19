@@ -611,6 +611,7 @@ private struct ComingTile: View {
         defer { adding = false }
         guard let browse = try? await store.browse(entry.item.route),
               await store.importTitle(browse.details, category: browse.details.suggestedCategory) != nil else { return }
+        Haptics.play(.success)
         if ReleaseAlerts.enabled { await ReleaseAlerts.refresh(store: store) }
         else { await ReleaseAlerts.setEnabled(true, store: store) }
     }
@@ -631,7 +632,7 @@ private struct ComingSoonRow: View {
                 Picker("Coming soon", selection: $movies) {
                     Text("Movies").tag(true)
                     Text("Shows").tag(false)
-                }.pickerStyle(.segmented).frame(width: 150)
+                }.pickerStyle(.segmented).frame(width: 150).haptic(.selection, trigger: movies)
                 if !feed.items.isEmpty {
                     SectionMoreLink(label: "See all coming soon", value: ExploreFeedRoute(kind: movies ? .comingMovies : .comingShows), identifier: "explore-more-coming")
                 }

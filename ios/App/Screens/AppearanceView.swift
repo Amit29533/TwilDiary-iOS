@@ -4,6 +4,7 @@ import SwiftUI
 struct AppearanceView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
+    @AppStorage(Haptics.key) private var haptics = true
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 2)
 
     var body: some View {
@@ -27,6 +28,23 @@ struct AppearanceView: View {
                                                selection: $nativeAppearance)
                         SettingsFootnote(text: nativeAppearance == .automatic ? "Follows your iPhone’s light or dark setting." : "Always \(nativeAppearance.rawValue), whatever your iPhone is set to.")
                     }.transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                // Haptics: the little taps when you mark, add, switch tabs and trace the rating chart.
+                SettingsGroup(label: "Feel") {
+                    HStack(spacing: ThemeStore.current.native ? 12 : 14) {
+                        SettingsTile(symbol: "iphone.radiowaves.left.and.right")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Haptics").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                                .foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            Text(haptics ? "Little taps as you mark, add, switch and scrub" : "Off · no taps anywhere in the app")
+                                .font(.system(size: ThemeStore.current.native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                        }
+                        Spacer(minLength: 4)
+                        Toggle("", isOn: $haptics).labelsHidden().tint(ThemeStore.current.native ? Color(uiColor: .systemGreen) : theme.accent)
+                    }.padding(.horizontal, 15).frame(minHeight: 64)
+                        .accessibilityElement(children: .combine).accessibilityIdentifier("settings-haptics")
+                        // Turning them on answers with one, so you feel what you chose.
+                        .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }
                 }
                 SettingsFootnote(text: "Changes instantly · saved on this iPhone")
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
