@@ -18,7 +18,7 @@ struct SearchLabView: View {
     private static let languages: [(String, String)] = [("ja", "Japanese"), ("en", "English"), ("ko", "Korean"), ("hi", "Hindi"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French")]
     private static let decades: [(String, Int?, Int?)] = [("Any", nil, nil), ("2020s", 2020, nil), ("2010s", 2010, 2019), ("2000s", 2000, 2009), ("1990s", 1990, 1999), ("Older", nil, 1989)]
     var body: some View {
-        ExploreBrowsePage(title: "Search Lab", symbol: "slider.horizontal.3") {
+        ExploreBrowsePage(title: "Search Lab", symbol: "flask") {
             VStack(alignment: .leading, spacing: 22) {
                 keywordField
                 section("Type") {
@@ -375,7 +375,7 @@ struct SearchLabResultsView: View {
     }
     var body: some View {
         let shown = shown
-        ExploreBrowsePage(title: filters.label ?? "Search Lab", symbol: "slider.horizontal.3",
+        ExploreBrowsePage(title: filters.label ?? "Search Lab", symbol: "flask",
                           artwork: ExploreBrowseHeader.artwork(in: shown)) {
             VStack(alignment: .leading, spacing: 14) {
                 let chips = chips

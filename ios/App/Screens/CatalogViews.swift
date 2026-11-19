@@ -131,7 +131,7 @@ struct CatalogSearchView: View {
                             })
                 if universal {
                     NavigationLink(value: SearchLabRoute()) {
-                        Image(systemName: "slider.horizontal.3").frame(minWidth: 28, minHeight: 32)
+                        Image(systemName: "flask").frame(minWidth: 28, minHeight: 32)
                     }.buttonStyle(.glass).buttonBorderShape(.circle).accessibilityLabel("Advanced filters").accessibilityIdentifier("search-browse-lab")
                 }
                 if let onClose { Button(action: onClose) { RoundTool(icon: "x") }.buttonStyle(.plain).accessibilityLabel("Close search") }

@@ -314,7 +314,7 @@ struct FavouritesView: View {
                 if index > 0 { Spacer(minLength: 2) }
                 let on = selectedTab == kind
                 // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
-                Button { withAnimation(.snappy(duration: 0.28)) { selectedTab = kind } } label: {
+                Button { selectedTab = kind } label: {
                     Text(Favourite.Kind(rawValue: kind)?.label ?? "Title").font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .padding(.horizontal, 12).frame(height: 40)
@@ -328,6 +328,8 @@ struct FavouritesView: View {
                 }.buttonStyle(.plain).layoutPriority(1).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("favourites-tab-" + kind)
             }
         }.padding(4).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
+            // Only the pill slides; the page below swaps at once (animating it made switching lag).
+            .animation(.snappy(duration: 0.25), value: selectedTab)
     }
     /// Grid · list as two icons in one small track.
     private var layoutSwitch: some View {
@@ -346,31 +348,29 @@ struct FavouritesView: View {
     }
 }
 
+/// Your favourite shows: one row of posters, as Home's.
 private struct FavouriteShowsSection: View {
     let shows: [MediaTitle]
-    @State private var query = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Favourite shows").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            Text("Favourite shows").font(.title2.bold()).accessibilityAddTraits(.isHeader).padding(.horizontal, 16)
             if shows.isEmpty {
                 ContentUnavailableView("No favourite shows yet", systemImage: "heart",
                                        description: Text("Open a show in your library and choose Favourite."))
             } else {
-                TextField("Search favourite shows", text: $query)
-                    .textFieldStyle(.roundedBorder).autocorrectionDisabled()
-                let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                let matches = shows.filter { needle.isEmpty || $0.name.localizedStandardContains(needle) }
-                    .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                if matches.isEmpty { ContentUnavailableView.search(text: query) }
-                LazyVStack(spacing: 10) {
-                    ForEach(matches) { show in
-                        NavigationLink(value: show.id) { LibraryTitleRow(title: show) }
-                            .buttonStyle(.plain).accessibilityIdentifier("favourite-show-" + show.id)
-                    }
-                }
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(shows.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { show in
+                            NavigationLink(value: show.id) {
+                                HomePoster(artwork: show.poster, name: show.name,
+                                           subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
+                            }.buttonStyle(.springPress).accessibilityIdentifier("favourite-show-" + show.id)
+                        }
+                    }.padding(.horizontal, 16)
+                }.scrollIndicators(.hidden)
             }
-        }.padding(16)
+        }.padding(.vertical, 16)
     }
 }
 

@@ -116,11 +116,14 @@ private struct ExploreContent: View {
             }
             // Lazy: rows further down build (and load) as they come on screen.
             LazyVStack(alignment: .leading, spacing: 22) {
-                // AI prompts and CineMind's picks, then Trakt's, then the rest of the new rows.
+                // Popular movies and shows first, then the AI prompts and CineMind's picks, Trakt's,
+                // the rest of the new rows, and the highest rated.
+                DiscoveryShelfView(section: .popularMovies, service: service)
+                DiscoveryShelfView(section: .popularShows, service: service)
                 ExploreAIArea()
                 RecommendedDiscoveryView(service: service, section: false)
                 ExploreMoreShelves()
-                ForEach(DiscoverySection.shelves) { section in DiscoveryShelfView(section: section, service: service) }
+                ForEach([DiscoverySection.ratedShows, .ratedMovies]) { section in DiscoveryShelfView(section: section, service: service) }
             }
             .padding(.horizontal, 14)
         }
@@ -153,19 +156,6 @@ private struct DailyDiscoveryHero: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationLink(value: ExploreSectionRoute(section: .daily)) {
-                HStack(spacing: 6) {
-                    Text(DiscoverySection.daily.label)
-                    Image(systemName: "chevron.right").font(.caption.bold())
-                }
-                .font(.subheadline.weight(.semibold))
-                // The theme's accent (blue by default), as the app's other links.
-                .foregroundStyle(ThemeStore.accent)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .accessibilityLabel("View more " + DiscoverySection.daily.label)
-            .accessibilityIdentifier("explore-more-daily")
 
             NavigationLink(value: title.id) {
                 VStack(alignment: .leading, spacing: 6) {

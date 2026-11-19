@@ -250,13 +250,29 @@ private struct FeedHeading<Value: Hashable>: View {
     let title: String
     let value: Value?
     let identifier: String
+    /// CineMind's rows: a shimmering sparkle says the AI picked them.
+    var ai = false
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
-                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 8) {
+                if ai { AISparkle() }
+                Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    .minimumScaleFactor(0.75).truncationMode(.tail)
+            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
             if let value { SectionMoreLink(label: "See all " + title, value: value, identifier: identifier) }
         }
+    }
+}
+
+/// The AI mark: sparkles in CineMind's colours that shimmer.
+struct AISparkle: View {
+    var size: CGFloat = 18
+    var body: some View {
+        Image(systemName: "sparkles").font(.system(size: size, weight: .semibold))
+            .foregroundStyle(LinearGradient(colors: [Color(themed: "#7fb2ff"), Color(themed: "#c58cff"), Color(themed: "#ffd36e")], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+            .accessibilityLabel("Picked by AI")
     }
 }
 
@@ -392,7 +408,10 @@ private struct ExploreAIPrompts: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Ask CineMind").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+            HStack(spacing: 8) {
+                AISparkle()
+                Text("Ask CineMind").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(Self.prompts, id: \.label) { prompt in
@@ -433,7 +452,7 @@ private struct CineMindRow: View {
         let title = movies ? "Movies recommended by CineMind" : "Shows recommended by CineMind"
         VStack(alignment: .leading, spacing: 10) {
             FeedHeading(title: title, value: shown.isEmpty ? nil : ExploreFeedRoute(kind: movies ? .cineMovies : .cineShows),
-                        identifier: "explore-more-cinemind-" + (movies ? "movies" : "shows"))
+                        identifier: "explore-more-cinemind-" + (movies ? "movies" : "shows"), ai: true)
             if SemanticSearch.key == nil {
                 NavigationLink(value: AppDestination.apis) {
                     HStack(spacing: 10) {

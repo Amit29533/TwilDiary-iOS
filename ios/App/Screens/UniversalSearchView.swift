@@ -65,7 +65,7 @@ struct SearchLandingView: View {
             if !shows.isEmpty {
                 // The week's top ten as one row of posters, as the other shelves, each with its rank.
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(kind == .movies ? "Trending movies this week" : "Trending shows this week").font(.title2.bold())
+                    Text(kind == .movies ? "Most searched movies today" : "Most searched today").font(.title2.bold())
                         .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                     ScrollView(.horizontal) {
                         LazyHStack(alignment: .top, spacing: 12) {
@@ -105,7 +105,7 @@ struct SearchLandingView: View {
         defer { if loadingRevision == revision { loadingRevision = nil } }
         do {
             let service = LiveDiscoveryService(store: store, recoverBrowseReads: true)
-            let trendingShows = try await service.page(["source": "tmdb", "type": kind == .movies ? "movie" : "tv", "sort": "trending", "page": "1", "limit": "10"])
+            let trendingShows = try await service.page(["source": "tmdb", "type": kind == .movies ? "movie" : "tv", "sort": "trending", "window": "day", "page": "1", "limit": "10"])
             guard !Task.isCancelled, revision == store.sessionRevision else { return }
             shows = Array(CatalogTools.merging([], trendingShows.items).prefix(10))
             loadedRevision = revision

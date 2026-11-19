@@ -485,7 +485,8 @@ struct RelatedTitlesPage: View {
     @State private var items: [CatalogItem]?
     @State private var failure: String?
     var body: some View {
-        EdgeToEdgeScroll {
+        // Explore's layout: a picture from the titles at the top, then the grid.
+        ExploreBrowsePage(title: "More like this", symbol: "sparkles", subtitle: title, artwork: ExploreBrowseHeader.artwork(in: items ?? [])) {
             VStack(alignment: .leading, spacing: 14) {
                 if let items {
                     if items.isEmpty { Text("No recommendations for this title yet.").font(.subheadline).foregroundStyle(HomeStyle.secondary) }
@@ -494,8 +495,7 @@ struct RelatedTitlesPage: View {
                     RetryNotice(message: failure) { Task { await load() } }
                 } else { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 100)
-        }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ShowPageTitle(title: "More like this", subtitle: title) }
+        }
             .task(id: route) { await load() }
     }
     private func load() async {

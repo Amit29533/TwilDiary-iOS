@@ -450,7 +450,8 @@ import TwilDiaryCore
                 .contains { !(q[$0] ?? "").isEmpty }
             trending = sort == "trending" && keyword == nil && (q["company"] ?? "").isEmpty && (q["network"] ?? "").isEmpty && !lab
             if trending {
-                path = "trending/\(type)/week"
+                // "window": "day" for today's chart (Search's Most searched today), else the week's.
+                path = "trending/\(type)/" + (q["window"] == "day" ? "day" : "week")
             } else {
                 path = "discover/\(type)"
                 let dateField = kind == .movie ? "primary_release_date" : "first_air_date"

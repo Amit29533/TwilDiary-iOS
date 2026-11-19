@@ -87,7 +87,7 @@ private struct CanvasContent: View {
                     .smoothChange(of: [tab == .lists, titles.isEmpty, lists.lists.isEmpty])
             }.padding(.horizontal, 12).padding(.bottom, 100)
         }.diaryScreenBackground().navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { tabs }.sharedBackgroundVisibility(.hidden) }
+            .toolbar { ToolbarItem(placement: .principal) { tabs }.sharedBackgroundVisibility(.hidden) }
             // No back button (the tabs take its place); the back swipes still work.
             .navigationBarBackButtonHidden(true)
             .background(EdgeSwipeBack().frame(width: 0, height: 0))
@@ -108,7 +108,8 @@ private struct CanvasContent: View {
     private struct CanvasRecommendationKey: Hashable { let enabled: Bool; let revision: UUID }
     /// Movies · Shows · Lists on a Liquid Glass track; the chosen one is a lilac pill that slides across.
     private var tabs: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 18) {
+        // Centred, the same space between each.
+        HStack(alignment: .firstTextBaseline, spacing: 28) {
             ForEach(CanvasTab.allCases, id: \.self) { item in
                 let on = tab == item
                 // The page swaps at once (no cross-fade flash); only the words change weight.
@@ -119,7 +120,7 @@ private struct CanvasContent: View {
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
-        }.padding(.leading, 4).fixedSize()
+        }.fixedSize()
     }
     private var pills: some View {
         ScrollView(.horizontal) {

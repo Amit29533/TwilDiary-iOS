@@ -61,29 +61,31 @@ struct StatsJourneyCard: View {
         let most = Dictionary(grouping: events, by: \.titleId).max { $0.value.count < $1.value.count }?.key
         return art(most)
     }
+    /// White over the picture (on Native too), else the card's own text colour.
+    private var ink: Color { backdrop != nil ? .white : StatsHero.ink }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? StatsHero.ink.opacity(0.85) : theme.accent.opacity(0.9))
+            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? ink.opacity(0.85) : theme.accent.opacity(0.9))
             VStack(alignment: .leading, spacing: 2) {
-                Text(longDuration(insights.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(StatsHero.ink).lineLimit(1).minimumScaleFactor(0.6)
-                Text("total watch time").font(.system(size: 16)).foregroundStyle(StatsHero.ink.opacity(0.75))
+                Text(longDuration(insights.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.6)
+                Text("total watch time").font(.system(size: 16)).foregroundStyle(ink.opacity(0.75))
             }
             HStack(spacing: 10) {
                 tile(insights.episodes, "episodes"); tile(insights.shows, "shows"); tile(insights.movies, "movies")
             }
             // The dates bar only means something once there are watches.
             if coverage.total > 0 {
-                Capsule().fill(StatsHero.ink.opacity(0.12)).frame(height: 7)
+                Capsule().fill(ink.opacity(0.12)).frame(height: 7)
                     .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(coverage.percent) / 100) } }
                     .accessibilityLabel("Watches with dates").accessibilityValue("\(coverage.percent)%")
                 HStack {
                     Text("\(coverage.dated.formatted()) watches dated")
                     Spacer(minLength: 6)
                     Text("\(coverage.unknown.formatted()) undated · \(coverage.missingRuntime.formatted()) no runtime")
-                }.font(.system(size: 13)).foregroundStyle(StatsHero.ink.opacity(0.75)).lineLimit(1).minimumScaleFactor(0.8)
+                }.font(.system(size: 13)).foregroundStyle(ink.opacity(0.75)).lineLimit(1).minimumScaleFactor(0.8)
             }
             if coverage.total == 0 {
-                Text("Log a movie or episode to start your stats.").font(.system(size: 14)).foregroundStyle(StatsHero.ink.opacity(0.85))
+                Text("Log a movie or episode to start your stats.").font(.system(size: 14)).foregroundStyle(ink.opacity(0.85))
             } else if coverage.unknown > 0 {
                 // Undated watches stay out of the charts; this opens them in History to give them dates.
                 NavigationLink(value: HistoryRoute(unknown: true)) {
@@ -91,21 +93,21 @@ struct StatsJourneyCard: View {
                         Image(systemName: "calendar.badge.exclamationmark").font(.system(size: 14, weight: .semibold))
                         Text("Review dates").font(.system(size: 14, weight: .semibold))
                         Spacer(minLength: 0)
-                        Text(coverage.unknown.counted("undated watch", "undated watches")).font(.system(size: 13)).foregroundStyle(StatsHero.ink.opacity(0.7))
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(StatsHero.ink.opacity(0.6))
-                    }.foregroundStyle(StatsHero.ink).padding(.horizontal, 14).frame(height: 44)
-                        .background(StatsHero.ink.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(StatsHero.ink.opacity(0.14))).contentShape(Capsule())
+                        Text(coverage.unknown.counted("undated watch", "undated watches")).font(.system(size: 13)).foregroundStyle(ink.opacity(0.7))
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(ink.opacity(0.6))
+                    }.foregroundStyle(ink).padding(.horizontal, 14).frame(height: 44)
+                        .background(ink.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(ink.opacity(0.14))).contentShape(Capsule())
                 }.buttonStyle(.springPress).accessibilityLabel("Review dates").accessibilityIdentifier("stats-review-dates")
             }
             if coverage.future > 0 {
                 Text(coverage.future.counted("future-dated watch waits for its", "future-dated watches wait for their") + " watch day")
-                    .font(.system(size: 12)).foregroundStyle(StatsHero.ink.opacity(0.6))
+                    .font(.system(size: 12)).foregroundStyle(ink.opacity(0.6))
             }
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 ZStack {
                     // Native: a plain card, as the Battery page's (owner's reference for Statistics).
-                    if ThemeStore.current.native { Color(uiColor: .secondarySystemBackground) } else {
+                    if ThemeStore.current.native, backdrop == nil { Color(uiColor: .secondarySystemBackground) } else {
                         Color(themed: "#2a1f45")
                         if let backdrop {
                             // Your last show's picture, dimmed so the numbers stay readable.
@@ -123,11 +125,11 @@ struct StatsJourneyCard: View {
     }
     private func tile(_ value: Int, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value.formatted()).font(.system(size: 19, weight: .bold)).foregroundStyle(StatsHero.ink).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.system(size: 13)).foregroundStyle(StatsHero.ink.opacity(0.7))
+            Text(value.formatted()).font(.system(size: 19, weight: .bold)).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 13)).foregroundStyle(ink.opacity(0.7))
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(StatsHero.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(StatsHero.ink.opacity(0.14)))
+            .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ink.opacity(0.14)))
             .accessibilityElement(children: .combine)
     }
 }

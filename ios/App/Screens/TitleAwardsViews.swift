@@ -12,7 +12,7 @@ struct TitleAwardsSection: View {
 
     var body: some View {
         let destination = ShowPageRoute.titleAwards(route, title: title, imdbID: imdbID)
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
                 Text("Awards and nominations").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     .accessibilityAddTraits(.isHeader)
@@ -26,10 +26,10 @@ struct TitleAwardsSection: View {
                 }.buttonStyle(.plain)
             } else {
                 NavigationLink(value: destination) {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 7) {
                         ForEach(rows.prefix(5), id: \.ceremony) { row in
                             HStack(spacing: 10) {
-                                Text(row.ceremony).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text(row.ceremony).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                                 if row.wins > 0 {
                                     Label("\(row.wins)", systemImage: "trophy.fill").labelStyle(AwardCountStyle(tint: Color(themed: "#e7ca90")))
                                 }
@@ -59,8 +59,8 @@ private struct AwardCountStyle: LabelStyle {
     let tint: Color
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 5) {
-            configuration.icon.font(.system(size: 15, weight: .medium)).foregroundStyle(tint)
-            configuration.title.font(.system(size: 17)).foregroundStyle(.secondary).monospacedDigit()
+            configuration.icon.font(.system(size: 13, weight: .medium)).foregroundStyle(tint)
+            configuration.title.font(.system(size: 15)).foregroundStyle(.secondary).monospacedDigit()
         }
     }
 }

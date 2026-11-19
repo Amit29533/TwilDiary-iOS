@@ -56,13 +56,13 @@ struct ParentalGuideSection: View {
             if rating != nil || !categories.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     ShowSectionHeading(title: "Parental Guide").accessibilityAddTraits(.isHeader)
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 10) {
                         if let rating {
-                            HStack(spacing: 14) {
-                                Text(rating).font(.system(size: 17, weight: .heavy)).foregroundStyle(.black)
-                                    .padding(.horizontal, 14).frame(height: 40).background(.white, in: RoundedRectangle(cornerRadius: 11))
+                            HStack(spacing: 12) {
+                                Text(rating).font(.system(size: 15, weight: .heavy)).foregroundStyle(.black)
+                                    .padding(.horizontal, 12).frame(height: 32).background(.white, in: RoundedRectangle(cornerRadius: 9))
                                 if let age = ParentsGuide.age(for: rating) {
-                                    Label(age, systemImage: "face.smiling").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                    Label(age, systemImage: "face.smiling").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 }
                                 if tmdbRating != nil, let country = extras?.certificationCountry, country != "US" {
                                     Text(Locale.current.localizedString(forRegionCode: country) ?? country).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
@@ -77,9 +77,9 @@ struct ParentalGuideSection: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(18)
-                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 22))
-                    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                    .padding(14)
+                    .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                 }
                 .accessibilityIdentifier("title-parental-guide")
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
@@ -93,17 +93,17 @@ struct ParentalGuideSection: View {
     private func row(_ category: ParentsGuide.Category) -> some View {
         let style = Self.styles[category.id] ?? Style(name: category.id.capitalized, symbol: "circle", color: "#9a96a8")
         let color = Color(themed: style.color)
-        return HStack(spacing: 12) {
-            Image(systemName: style.symbol).font(.system(size: 17, weight: .medium)).foregroundStyle(color).frame(width: 26)
-            Text(style.name).font(.system(size: 16)).foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.85)
+        return HStack(spacing: 10) {
+            Image(systemName: style.symbol).font(.system(size: 14, weight: .medium)).foregroundStyle(color).frame(width: 20)
+            Text(style.name).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(2).minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 4) {
                 ForEach(0..<5, id: \.self) { index in
-                    Capsule().fill(index < category.bars ? color : color.opacity(0.16)).frame(width: 18, height: 8)
+                    Capsule().fill(index < category.bars ? color : color.opacity(0.16)).frame(width: 20, height: 6)
                 }
             }
-            Text(category.levelName).font(.system(size: 15, weight: .medium)).foregroundStyle(category.level == 0 ? HomeStyle.secondary : color)
-                .lineLimit(1).frame(width: 76, alignment: .trailing)
+            Text(category.levelName).font(.system(size: 13, weight: .medium)).foregroundStyle(category.level == 0 ? HomeStyle.secondary : color)
+                .lineLimit(1).frame(width: 64, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore).accessibilityLabel(style.name + ": " + category.levelName)
     }

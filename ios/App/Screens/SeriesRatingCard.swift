@@ -37,10 +37,10 @@ struct SeriesRatingCard: View {
         let chosen = source.flatMap { available.contains($0) ? $0 : nil }
         let points = ratings.episodes.compactMap { episode in episode.score(chosen).map { Point(episode: episode, value: $0) } }
         let episode = selected.flatMap { index in ratings.episodes.first { $0.index == index } }
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 10) {
             Button { selected = nil } label: {
                 Text(episode.map(heading) ?? "\(ratings.episodes.count) episodes")
-                    .font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    .font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary)
                     .lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).accessibilityHint(episode == nil ? "" : "Back to the whole show")
             scores(ratings, episode: episode)
@@ -52,9 +52,9 @@ struct SeriesRatingCard: View {
             chart(points, seasons: ratings.episodes)
             extremes(points)
         }
-        .padding(18)
-        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+        .padding(14)
+        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
         .accessibilityElement(children: .contain).accessibilityIdentifier("title-rating-trend")
     }
 
@@ -79,25 +79,25 @@ struct SeriesRatingCard: View {
     private func scores(_ ratings: SeriesRatings, episode: SeriesRatings.Episode?) -> some View {
         let overall: SeriesRatings.Score? = episode.flatMap { item in item.overall.map { SeriesRatings.Score(value: $0, votes: item.votes) } } ?? ratings.overallShow
         return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) { scoreItems(ratings, episode: episode, overall: overall) }
-            ScrollView(.horizontal) { HStack(spacing: 14) { scoreItems(ratings, episode: episode, overall: overall) } }.scrollIndicators(.hidden)
+            HStack(spacing: 12) { scoreItems(ratings, episode: episode, overall: overall) }
+            ScrollView(.horizontal) { HStack(spacing: 12) { scoreItems(ratings, episode: episode, overall: overall) } }.scrollIndicators(.hidden)
         }
     }
     @ViewBuilder private func scoreItems(_ ratings: SeriesRatings, episode: SeriesRatings.Episode?, overall: SeriesRatings.Score?) -> some View {
         if let overall {
             HStack(spacing: 8) {
                 ZStack {
-                    Circle().stroke(RatingCircles.color(overall.value).opacity(0.2), lineWidth: 4)
-                    Circle().trim(from: 0, to: overall.value / 10).stroke(RatingCircles.color(overall.value), style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    Circle().stroke(RatingCircles.color(overall.value).opacity(0.2), lineWidth: 3)
+                    Circle().trim(from: 0, to: overall.value / 10).stroke(RatingCircles.color(overall.value), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                }.frame(width: 30, height: 30)
+                }.frame(width: 24, height: 24)
                 score(overall)
             }.accessibilityElement(children: .combine).accessibilityLabel("Overall " + overall.value.formatted(.number.precision(.fractionLength(1))))
         }
         ForEach(SeriesRatings.Source.allCases, id: \.self) { source in
             if let value = episode.map({ $0.scores[source] }) ?? ratings.show[source] {
                 HStack(spacing: 8) {
-                    BrandLogo(service: source == .imdb ? .imdb : source == .tmdb ? .tmdb : .trakt, size: 30)
+                    BrandLogo(service: source == .imdb ? .imdb : source == .tmdb ? .tmdb : .trakt, size: 24)
                     score(value)
                 }.accessibilityElement(children: .combine).accessibilityLabel(source.rawValue + " " + value.value.formatted(.number.precision(.fractionLength(1))))
             }
@@ -105,9 +105,9 @@ struct SeriesRatingCard: View {
     }
     private func score(_ score: SeriesRatings.Score) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(score.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 18, weight: .bold)).foregroundStyle(RatingCircles.color(score.value))
+            Text(score.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 16, weight: .bold)).foregroundStyle(RatingCircles.color(score.value))
             if score.votes > 0 {
-                Text(score.votes.formatted(.number.notation(.compactName))).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(score.votes.formatted(.number.notation(.compactName))).font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }.monospacedDigit()
     }
@@ -165,7 +165,7 @@ struct SeriesRatingCard: View {
                     proxy.selectXValue(at: drag.location.x)
                 })
         }
-        .frame(height: 200)
+        .frame(height: 150)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Episode ratings")
         .accessibilityValue(marker.map { "Season \($0.episode.season) episode \($0.episode.number), \($0.value.formatted(.number.precision(.fractionLength(1))))" } ?? "Average \(average.formatted(.number.precision(.fractionLength(1))))")
@@ -201,7 +201,7 @@ struct SeriesRatingCard: View {
 
     private func extremes(_ points: [Point]) -> some View {
         let best = points.max { $0.value < $1.value }, lowest = points.min { $0.value < $1.value }
-        return VStack(spacing: 8) {
+        return VStack(spacing: 6) {
             if let best { extreme("Highest rated", best) }
             if let lowest, lowest.episode.index != best?.episode.index { extreme("Lowest rated", lowest) }
         }
@@ -210,12 +210,12 @@ struct SeriesRatingCard: View {
         Button { selected = point.episode.index } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.caption).foregroundStyle(.secondary)
-                    Text(heading(point.episode)).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(label).font(.caption2).foregroundStyle(.secondary)
+                    Text(heading(point.episode)).font(.footnote.weight(.semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Text(point.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 18, weight: .bold)).foregroundStyle(RatingCircles.color(point.value)).monospacedDigit()
-            }.padding(12).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14)).contentShape(Rectangle())
+                Text(point.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 15, weight: .bold)).foregroundStyle(RatingCircles.color(point.value)).monospacedDigit()
+            }.padding(.horizontal, 10).padding(.vertical, 7).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11)).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
 }
