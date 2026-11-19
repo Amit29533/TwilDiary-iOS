@@ -177,7 +177,9 @@ struct HomePoster<Badge: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+            // Two lines kept for every name, so each card in a row is the same height (a row
+            // sized by one card no longer lets a taller one hang into the next section).
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
                 .multilineTextAlignment(.leading).padding(.top, 9)
             Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4)
         }.frame(width: 128, alignment: .leading).accessibilityElement(children: .combine)
