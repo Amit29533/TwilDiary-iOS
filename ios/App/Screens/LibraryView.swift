@@ -228,7 +228,7 @@ struct LibraryView: View {
                                             SectionMoreButton(label: "See all \(shelf.genre) titles", identifier: "library-genre-" + shelf.genre) { genres = [shelf.genre]; genreRows = false; list = false }
                                         }
                                     }
-                                    ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 10) { ForEach(shelf.titles) { title in poster(title).frame(width: 112) } } }
+                                    ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 10) { ForEach(shelf.titles) { title in poster(title).frame(width: posterSize.homeWidth * 0.875) } } }
                                         .scrollIndicators(.hidden).scrollClipDisabled()
                                 }
                             }
@@ -247,7 +247,7 @@ struct LibraryView: View {
     /// With no filters, the grid opens as an overview: five titles and "+N See all", then the
     /// genres as rows, each opening that genre.
     private var showsOverview: Bool {
-        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && minScore == 0 && filtered.count > 6
+        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && minScore == 0 && filtered.count > overviewCount + 1
     }
     private var overview: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -258,13 +258,13 @@ struct LibraryView: View {
                     .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
-                ForEach(filtered.prefix(5)) { title in poster(title) }
+                ForEach(filtered.prefix(overviewCount)) { title in poster(title) }
                 // Exactly a poster's size (same 2:3 box and corners as the cards beside it).
                 Button { expandedAll = true } label: {
                     Color.clear.posterAspect()
                         .overlay {
                             VStack(spacing: 4) {
-                                Text("+\((filtered.count - 5).formatted())").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
+                                Text("+\((filtered.count - overviewCount).formatted())").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
                                     .lineLimit(1).minimumScaleFactor(0.6)
                                 Text("See all").font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
                             }.padding(.horizontal, 6)
@@ -472,7 +472,7 @@ struct LibraryView: View {
                     }.accessibilityLabel("Close")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { genres = []; tag = ""; drive = ""; favoritesOnly = false } label: { Text("Clear").lineLimit(1).fixedSize() }
+                    Button { genres = []; tag = ""; drive = ""; favoritesOnly = false; minScore = 0 } label: { Text("Clear").lineLimit(1).fixedSize() }
                         .font(.system(size: 15, weight: .semibold)).disabled(activeFilterCount == 0)
                 }
             }
@@ -558,6 +558,8 @@ struct LibraryView: View {
         guard tag.isEmpty else { return [] }
         return jellyfin.extras(diary: collection, category: categoryKey, genres: genres, disk: diskKey(drive), favorites: favorites, sort: sort)
     }
+    /// Two rows of the grid, the last place kept for "See all".
+    private var overviewCount: Int { posterSize.columns * 2 - 1 }
     private var categoryKey: String { category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all" }
     private func diskKey(_ drive: String) -> String {
         drive.isEmpty ? "all" : ["mapped", "unmapped"].contains(drive) || drive.hasPrefix("[") || drive.hasPrefix("drive:") ? drive : "drive:" + drive.uppercased()
@@ -620,11 +622,13 @@ struct LibraryPosterCard: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(PosterSize.ratingKey) private var showsRating = true
+    @AppStorage(PosterSize.captionKey) private var showsCaption = true
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
                 .overlay(alignment: .topLeading) {
-                    if let score {
+                    if showsRating, let score {
                         HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
                             .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 7).frame(height: 22).background(.black.opacity(0.72), in: Capsule()).padding(6)
@@ -641,8 +645,10 @@ struct LibraryPosterCard: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
-            Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
-            Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
+            if showsCaption {
+                Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
+                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
+            }
         }.contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue(Self.details(title, score: score, progress: progress, present: present))
     }
