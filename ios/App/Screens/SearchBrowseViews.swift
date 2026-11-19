@@ -211,7 +211,8 @@ struct SearchCategoryLink: View {
     var body: some View {
         // The remembered picture straight away, so coming back to Search doesn't flash empty tiles.
         let remembered = Self.artworkCache[category.filter]?.url
-        let tileArt = category.artwork(in: store.workspace.activeTitles) ?? preview ?? (isStudio ? nil : remembered)
+        let owned = store.memoized("browse.art|\(category.filter)") { category.artwork(in: store.activeTitles) }
+        let tileArt = owned ?? preview ?? (isStudio ? nil : remembered)
         let logo = studioLogo ?? (isStudio ? remembered : nil)
         NavigationLink(value: destination ?? .titles(category)) {
             if case .studio = category.filter {

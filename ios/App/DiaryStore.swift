@@ -60,7 +60,8 @@ import TwilDiaryCore
         let revision = homeWorkspaceRevision
         if let saved = memo[key], saved.revision == revision, let value = saved.value as? T { return value }
         let value = make()
-        if memo.count >= 32 { memo.removeAll(keepingCapacity: true) }
+        // Room for Search's ~40 browse tiles and the Profile and Statistics figures together.
+        if memo.count >= 128 { memo.removeAll(keepingCapacity: true) }
         memo[key] = (revision, value)
         return value
     }

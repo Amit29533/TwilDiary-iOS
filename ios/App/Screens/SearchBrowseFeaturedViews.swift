@@ -9,6 +9,12 @@ struct SearchTagsShelf: View {
     @ScaledMetric(relativeTo: .subheadline) private var tagRowHeight: CGFloat = 44
     @State private var popular: [SearchBrowseTag] = []
     @State private var loadedKeys: [String] = []
+    private static var kept: [[String]: [SearchBrowseTag]] = [:]
+    init(shows: [CatalogItem], animeFirst: Bool, movies: Bool) {
+        self.shows = shows; self.animeFirst = animeFirst; self.movies = movies
+        let keys = shows.prefix(5).map(\.key)
+        if let saved = Self.kept[keys] { _popular = State(initialValue: saved); _loadedKeys = State(initialValue: keys) }
+    }
 
     private var tags: [SearchBrowseTag] {
         let names = Set(popular.map(\.id))
@@ -42,10 +48,13 @@ struct SearchTagsShelf: View {
             }.padding(.horizontal, -14).scrollIndicators(.hidden)
         }.task(id: keys) {
             guard !keys.isEmpty, keys != loadedKeys else { return }
+            if let saved = Self.kept[keys] { popular = saved; loadedKeys = keys; return }
             let found = await SearchBrowseTag.popular(from: shows, store: store)
             guard !Task.isCancelled else { return }
             popular = found
             loadedKeys = keys
+            if Self.kept.count >= 8 { Self.kept.removeAll() }
+            Self.kept[keys] = found
         }
     }
 }
@@ -374,6 +383,11 @@ struct SearchPeopleShelf: View {
     @Environment(DiaryStore.self) private var store
     @State private var popular: [SearchBrowsePerson] = []
     @State private var loadedRevision: UUID?
+    private static var kept: [SearchBrowseShelf: (revision: UUID, people: [SearchBrowsePerson])] = [:]
+    init(shelf: SearchBrowseShelf) {
+        self.shelf = shelf
+        if let saved = Self.kept[shelf] { _popular = State(initialValue: saved.people); _loadedRevision = State(initialValue: saved.revision) }
+    }
 
     private var people: [SearchBrowsePerson] {
         let ids = Set(popular.map(\.id))
@@ -401,6 +415,7 @@ struct SearchPeopleShelf: View {
                 var seen = Set<Int>()
                 popular = result.people.filter { seen.insert($0.id).inserted }
                 loadedRevision = revision
+                Self.kept[shelf] = (revision, popular)
             }
         }
     }
@@ -493,6 +508,11 @@ private struct SearchBrowsePersonLink: View {
     let person: SearchBrowsePerson
     @Environment(DiaryStore.self) private var store
     @State private var image: String?
+    private static var photos: [Int: String] = [:]
+    init(person: SearchBrowsePerson) {
+        self.person = person
+        _image = State(initialValue: Self.photos[person.id])
+    }
 
     var body: some View {
         NavigationLink(value: PersonRoute(id: person.id)) {
@@ -512,6 +532,7 @@ private struct SearchBrowsePersonLink: View {
                 guard person.image == nil, image == nil, !store.isPreview, let token = TMDBDirect.token(store) else { return }
                 if let reply = try? await TMDBDirect.object("person/\(person.id)", query: [:], token: token), !Task.isCancelled {
                     image = CatalogTools.image(reply["profile_path"] as? String, size: "w185")
+                    if let image { Self.photos[person.id] = image }
                 }
             }
     }
