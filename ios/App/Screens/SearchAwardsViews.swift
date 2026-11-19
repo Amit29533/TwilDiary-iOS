@@ -10,7 +10,8 @@ struct SearchAwardsShelf: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(SearchAwardCeremony.featured.filter { !SearchAwardCeremony.withoutRecords.contains($0.id) }) { ceremony in
-                        AwardCeremonyLink(ceremony: ceremony).containerRelativeFrame(.horizontal) { width, _ in min(164, width * 0.36) }
+                        // The genre tiles' size, so the rows on Search line up.
+                        AwardCeremonyLink(ceremony: ceremony).containerRelativeFrame(.horizontal) { width, _ in min(210, width * 0.44) }
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -96,6 +97,8 @@ private struct AwardCeremonyLink: View {
                     }
                 }.frame(height: height).frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 14)).contentShape(RoundedRectangle(cornerRadius: 14))
+                    // A hairline edge, so dark logos (the Oscars) don't melt into a black page.
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
                     .accessibilityElement().accessibilityLabel(ceremony.displayName)
             } else {
                 SearchBrowseArtworkTile(title: ceremony.displayName, symbol: ceremony.symbol, tint: "#8a6a2a", artwork: nil)
