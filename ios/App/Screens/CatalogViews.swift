@@ -142,7 +142,8 @@ struct CatalogSearchView: View {
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
             // Nothing found: the closest spelling ("breking bad" → Breaking Bad).
-            if universal && ready && !isIMDbLookup && kind != .people && completedScope == scope && failure == nil && !loading && ranked.isEmpty {
+            if universal && ready && !isIMDbLookup && kind != .people && completedScope == scope && failure == nil && !loading && ranked.isEmpty
+                && (kind != .all || (peopleMatch?.scope == scope && peopleMatch?.count == 0)) {
                 DidYouMeanView(query: scope.query) { query = $0 }
             }
             if universal && ready { universalResults(ranked) }

@@ -29,7 +29,8 @@ struct SearchLandingView: View {
     init(kind: CatalogSearchView.Kind, recent: [String], choose: @escaping (String) -> Void, clear: @escaping () -> Void) {
         self.kind = kind; self.recent = recent; self.choose = choose; self.clear = clear
         // The chart shown last, at once (it's checked against this session when the page appears).
-        _shows = State(initialValue: Self.trending[kind == .movies ? "movie" : "tv"]?.items ?? [])
+        // Anime and People have none (they showed the shows' chart kept from another tab).
+        _shows = State(initialValue: [.all, .movies, .shows].contains(kind) ? Self.trending[kind == .movies ? "movie" : "tv"]?.items ?? [] : [])
     }
     private var loading: Bool { loadingRevision == store.sessionRevision }
     /// A trending title's poster with its place in the chart.
@@ -66,7 +67,7 @@ struct SearchLandingView: View {
             if !shows.isEmpty {
                 // The week's top ten as one row of posters, as the other shelves, each with its rank.
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(kind == .movies ? "Most searched movies today" : "Most searched today").font(.title2.bold())
+                    Text(kind == .movies ? "Most searched movies today" : kind == .shows ? "Most searched shows today" : "Most searched today").font(.title2.bold())
                         .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                     ScrollView(.horizontal) {
                         LazyHStack(alignment: .top, spacing: 12) {

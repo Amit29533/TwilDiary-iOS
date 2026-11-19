@@ -41,7 +41,7 @@ struct SearchBrowseShelves: View {
             SearchTVDBListShelf(shelf: .franchises)
             shelf(.worldCinema, categories: SearchBrowseCatalog.worldCinema)
             shelf(.internationalTV, categories: SearchBrowseCatalog.internationalTV)
-            // Search Lab opens from the sliders beside the search field.
+            // Search Lab opens from the flask beside the search field.
         }.accessibilityIdentifier("search-browse")
     }
 
