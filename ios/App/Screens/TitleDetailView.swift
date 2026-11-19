@@ -41,7 +41,8 @@ struct TitleDetailView: View {
     @State private var cardRequest = UUID()
     @State private var cardError: String?
     @AppStorage("episodesGrid") private var episodesGrid = false
-    @State private var watchDate = Date.now
+    /// A day you chose for new watches; nil is today, whenever "today" is.
+    @State private var watchDate: Date?
     @State private var sliderDraft: Double?
     @State private var selectedEpisode: Episode?
     @State private var sheetEpisode: Episode?
@@ -143,7 +144,7 @@ struct TitleDetailView: View {
                                     } label: { TitleMoreButtonLabel() }.accessibilityLabel("More options for " + title.name).accessibilityIdentifier("title-more")
                                 }
                             }
-                            .task { if !initializedEditor { initializedEditor = true; watchDate = store.now; notesField = VersionedField(value: title.notes, version: title.version); ratingField = VersionedField(value: title.score, version: title.version) } }
+                            .task { if !initializedEditor { initializedEditor = true; watchDate = nil; notesField = VersionedField(value: title.notes, version: title.version); ratingField = VersionedField(value: title.score, version: title.version) } }
                             .task(id: season) {
                                 if configuredSeason != season { configuredSeason = season; sliderDraft = nil }
                                 await prepareSeason(title)
@@ -175,7 +176,7 @@ struct TitleDetailView: View {
             .onChange(of: selectedEpisode) { _, episode in if let episode { sheetEpisode = episode } }
             .sheet(isPresented: $choosingWatchDate) {
                 NavigationStack {
-                    EdgeToEdgeScroll { DatePicker("Watch date", selection: $watchDate, in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
+                    EdgeToEdgeScroll { DatePicker("Watch date", selection: Binding(get: { watchDate ?? store.now }, set: { day in watchDate = DiaryDate.calendar().isDate(day, inSameDayAs: store.now) ? nil : day }), in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
                         .navigationTitle("Watch date").navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } }
                 }.presentationDetents([.medium, .large])
@@ -391,7 +392,7 @@ struct TitleDetailView: View {
                     }.buttonStyle(.diaryWatch).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
                         .haptic(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)
-                if DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
+                if let watchDate, DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
                     Button { choosingWatchDate = true } label: {
                         HStack(spacing: 6) { DiaryIcon(name: "calendar-days", size: 14).foregroundStyle(theme.accent); Text("Logging as " + watchDate.formatted(.dateTime.day().month(.abbreviated).year())) }
                             .font(.system(size: 13)).foregroundStyle(Color(themed: "#c5c0cf")).frame(maxWidth: .infinity, minHeight: 36)
@@ -415,12 +416,17 @@ struct TitleDetailView: View {
             .onAppear { if card == nil, let cached = store.cachedCard(title, season: title.isSeries ? season : nil) { card = cached } }
     }
     private func episodeSlider(_ title: MediaTitle, card: WatchCard) -> some View {
-        let states = sliderDraft.map { draft in (0..<max(0, card.progress.total)).map { $0 < Int(draft) ? EpisodeSegment.watched : .unwatched } }
+        let states = sliderDraft.map { draft in
+            let change = SeasonAdjustment.change(episodes: episodes, watched: watched, count: Int(draft))
+            return EpisodeSegment.make(episodes: episodes, total: card.progress.total, watched: watched.subtracting(change.remove.map(\.id)).union(change.add.map(\.id)), nextID: nil)
+        }
             ?? EpisodeSegment.make(episodes: episodes, total: card.progress.total, watched: watched, nextID: card.next?.id)
         return ZStack {
             EpisodeProgressTrack(segments: states, season: season).accessibilityHidden(true).allowsHitTesting(false)
             if !episodes.isEmpty {
                 EpisodeRangeInput(value: sliderDraft ?? Double(card.progress.watched), maximum: episodes.count, enabled: !store.busy && store.canMutate && seasonCanEdit(title), label: "Season \(season) episodes watched", valueText: "\(displayedWatched) of \(card.progress.total) episodes watched", identifier: "episode-progress", scope: title.id + ":season:\(season)", onChange: { sliderDraft = $0 }, onCommit: { count in
+                    // Touched and let go where it was: nothing to save.
+                    guard Int(count) != card.progress.watched else { sliderDraft = nil; return }
                     Task { await store.setSeasonProgress(title, season: season, count: Int(count), watchedAt: watchInstant); sliderDraft = nil; await loadCard(title) }
                 }, onCancel: { sliderDraft = nil })
             }
@@ -617,7 +623,11 @@ struct TitleDetailView: View {
     }
     private var movieViewings: [WatchEvent] { scope.activeEvents.filter { $0.titleId == id && $0.episodeId == nil }.sorted { ($0.recordedAt, $0.id) > ($1.recordedAt, $1.id) } }
     private var displayedWatched: Int { sliderDraft.map(Int.init) ?? card?.progress.watched ?? 0 }
-    private var watchInstant: Date { let calendar = DiaryDate.calendar(); return calendar.isDate(watchDate, inSameDayAs: store.now) ? store.now : calendar.date(bySettingHour: 12, minute: 0, second: 0, of: watchDate) ?? watchDate }
+    private var watchInstant: Date {
+        guard let watchDate else { return store.now }
+        let calendar = DiaryDate.calendar()
+        return calendar.isDate(watchDate, inSameDayAs: store.now) ? store.now : calendar.date(bySettingHour: 12, minute: 0, second: 0, of: watchDate) ?? watchDate
+    }
     private var displayedPercent: Int { guard let total = card?.progress.total, total > 0 else { return 0 }; return Int((Double(displayedWatched) / Double(total) * 100).rounded()) }
     private func ratingPanel(_ title: MediaTitle) -> some View {
         VStack(spacing: 12) {

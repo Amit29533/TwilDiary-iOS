@@ -11,7 +11,12 @@ extension DiaryStore {
     /// The status menu on a show detail belongs to the selected season.
     @discardableResult func setSeasonStatus(_ title: MediaTitle, season: Int, status: String, watchedAt: Date) async -> Bool {
         guard title.isSeries else { return await setStatus(title, status: status, watchedAt: watchedAt) }
-        if status == "planned" { return await setSeasonProgress(title, season: season, count: 0, watchedAt: watchedAt) }
+        if status == "planned" {
+            let done = await setSeasonProgress(title, season: season, count: 0, watchedAt: watchedAt)
+            // Nothing watched anywhere: a Watching chosen by hand goes back to Planned too.
+            if done, self.title(title.id)?.status == "watching", watchedEpisodeIDs(title.id).isEmpty { return await patch(title, values: ["status": "planned"]) }
+            return done
+        }
         if status == "completed" {
             return await perform(refreshing: [title.id]) {
                 try await self.prepareSavedSeason(title, number: season)
@@ -26,7 +31,9 @@ extension DiaryStore {
         if title.status == "dropped" { return "dropped" }
         let progress = seasonProgress(title, season: season)
         if progress.total > 0 && progress.watched >= progress.total { return "completed" }
-        return progress.watched > 0 ? "watching" : "planned"
+        if progress.watched > 0 { return "watching" }
+        // Watching chosen before anything's watched: the title is Watching (Glance shows it), so say so.
+        return title.status == "watching" && watchedEpisodeIDs(title.id).isEmpty ? "watching" : "planned"
     }
     @discardableResult func setSeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async -> Bool {
         await perform(refreshing: [title.id]) { try await self.applySeasonProgress(title, season: season, count: count, watchedAt: watchedAt) }

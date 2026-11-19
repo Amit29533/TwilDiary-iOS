@@ -8,16 +8,27 @@ public struct SeasonAdjustment: Sendable {
         let episodes = workspace.episodes.filter { $0.titleId == titleID && $0.season == season }.sorted { $0.number < $1.number }
         guard workspace.activeTitles.contains(where: { $0.id == titleID }), !episodes.isEmpty,
               count >= 0, count <= episodes.count, validDay(today) else { throw AdjustmentError.invalidProgress }
-        let desired = Set(episodes.prefix(count).map(\.id))
         let active = workspace.activeEvents.filter { $0.titleId == titleID }
         let watched = Set(active.compactMap(\.episodeId))
-        let additions = episodes.filter { desired.contains($0.id) && !watched.contains($0.id) }
+        let planned = change(episodes: episodes, watched: watched, count: count)
+        let additions = planned.add, removed = Set(planned.remove.map(\.id))
         guard additions.allSatisfy({ episode in
             episode.airedOn.map { validDay($0) && $0 <= today } ?? false
         }) else { throw AdjustmentError.unreleasedEpisode }
-        let ids = Set(episodes.map(\.id))
-        let revoked = active.filter { event in event.episodeId.map { ids.contains($0) && !desired.contains($0) } ?? false }
+        let revoked = active.filter { event in event.episodeId.map { removed.contains($0) } ?? false }
         return Self(record: additions, revoke: revoked)
+    }
+    /// What a season's "watched" count of `count` adds or takes away, keeping the history you have:
+    /// raising it marks the earliest unwatched episodes, lowering it unmarks the latest watched ones,
+    /// and the same count changes nothing. (Reading the count as "the first N episodes" recorded E1
+    /// and revoked E4 when E2 and E4 were watched and the slider was let go at 2.)
+    public static func change(episodes: [Episode], watched: Set<String>, count: Int) -> (add: [Episode], remove: [Episode]) {
+        let ordered = episodes.sorted { $0.number < $1.number }
+        let seen = ordered.filter { watched.contains($0.id) }
+        let target = max(0, min(count, ordered.count))
+        if target > seen.count { return (Array(ordered.filter { !watched.contains($0.id) }.prefix(target - seen.count)), []) }
+        if target < seen.count { return ([], Array(seen.suffix(seen.count - target))) }
+        return ([], [])
     }
     public static func validDay(_ day: String) -> Bool {
         guard day.utf8.enumerated().allSatisfy({ index, byte in index == 4 || index == 7 ? byte == 45 : (48...57).contains(byte) }) else { return false }

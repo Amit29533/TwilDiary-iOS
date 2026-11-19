@@ -293,12 +293,11 @@ extension DiaryStore {
 
     func serviceSeasonProgress(_ title: MediaTitle, season: Int, count: Int, watchedAt: Date) async throws {
         let episodes = workspace.episodes.filter { $0.titleId == title.id && $0.season == season }.sorted { $0.number < $1.number }
-        let wanted = Set(episodes.prefix(max(0, count)).map(\.id))
         let watched = Set(workspace.activeEvents.filter { $0.titleId == title.id }.compactMap(\.episodeId))
-        let add = episodes.filter { wanted.contains($0.id) && !watched.contains($0.id) }
-        if !add.isEmpty { try await serviceAddPlays(title, episodes: add.map { (season: $0.season, number: $0.number) }, at: watchedAt) }
-        let remove = episodes.filter { !wanted.contains($0.id) && watched.contains($0.id) }
-            .compactMap { latestServiceEvent(titleID: title.id, episodeID: $0.id) }
+        // Changes what you have (never "the first N": that replaced E4's watch with E1's).
+        let change = SeasonAdjustment.change(episodes: episodes, watched: watched, count: count)
+        if !change.add.isEmpty { try await serviceAddPlays(title, episodes: change.add.map { (season: $0.season, number: $0.number) }, at: watchedAt) }
+        let remove = change.remove.compactMap { latestServiceEvent(titleID: title.id, episodeID: $0.id) }
         if !remove.isEmpty { try await serviceRemoveWatches(remove) }
     }
 
